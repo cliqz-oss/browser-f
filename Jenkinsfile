@@ -333,7 +333,7 @@ jobs["mac"] = {
 }
 
 jobs["linux"] = {
-    node('ubuntu && browser') {
+    node('ubuntu && docker') {
         ws('build') {
             stage('Linux Docker Checkout') {
                 checkout scm
@@ -436,5 +436,9 @@ jobs["linux"] = {
         }
     }
 }
+
+// Stop win and mac builds temporarily
+jobs.remove('windows')
+jobs.remove('mac')
 
 parallel jobs
