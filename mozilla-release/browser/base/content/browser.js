@@ -4068,6 +4068,7 @@ const BrowserSearch = {
    * has search engines.
    */
   updateOpenSearchBadge() {
+#ifdef 0
     BrowserPageActions.addSearchEngine.updateEngines();
 
     var searchBar = this.searchBar;
@@ -4079,6 +4080,7 @@ const BrowserSearch = {
       searchBar.setAttribute("addengines", "true");
     else
       searchBar.removeAttribute("addengines");
+#endif
   },
 
   /**
