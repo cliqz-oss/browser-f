@@ -1122,7 +1122,7 @@ var gBuiltInActions = [
       browserPageActions(buttonNode).emailLink.onCommand(event, buttonNode);
     },
   },
-
+#ifdef 0
   // add search engine
   {
     id: "addSearchEngine",
@@ -1141,6 +1141,7 @@ var gBuiltInActions = [
         .onSubviewShowing(panelViewNode);
     },
   },
+#endif
 ];
 
 #ifdef MOZ_SERVICES_SYNC
