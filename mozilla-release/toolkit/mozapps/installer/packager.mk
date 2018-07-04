@@ -91,15 +91,14 @@ ifeq ($(MOZ_PKG_FORMAT),ZIP)
 	$(MAKE) -C windows ZIP_IN='$(ABS_DIST)/$(PACKAGE)' installer
 endif
 endif
-ifdef MOZ_AUTOMATION
 	cp $(DEPTH)/mozinfo.json $(MOZ_MOZINFO_FILE)
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		--package=$(DIST)/$(PACKAGE) \
-		--installer=$(INSTALLER_PACKAGE)
-endif
-	$(TOUCH) $@
+		$(MOZ_BUILDINFO_FILE) \
+		BUILDID=$(BUILDID) \
+		$(addprefix MOZ_SOURCE_REPO=,$(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)) \
+		MOZ_SOURCE_STAMP=$(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h) \
+		MOZ_PKG_PLATFORM=$(MOZ_PKG_PLATFORM)
+	echo "buildID=$(BUILDID)" > $(MOZ_BUILDID_INFO_TXT_FILE)
 
 GARBAGE += make-package
 
@@ -126,17 +125,10 @@ endif
 	ln -s $(installdir)/$(MOZ_APP_NAME) $(DESTDIR)$(bindir)
 
 upload:
-	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
-	mkdir -p `dirname $(CHECKSUM_FILE)`
-	@$(PYTHON) $(MOZILLA_DIR)/build/checksums.py \
-		-o $(CHECKSUM_FILE) \
-		$(CHECKSUM_ALGORITHM_PARAM) \
-		$(UPLOAD_PATH)
-	@echo 'CHECKSUM FILE START'
-	@cat $(CHECKSUM_FILE)
-	@echo 'CHECKSUM FILE END'
-	$(SIGN_CHECKSUM_CMD)
-	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(CHECKSUM_FILES)
+	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) \
+		--package '$(PACKAGE)' \
+		--properties-file $(DIST)/mach_build_properties.json \
+		$(UPLOAD_FILES)
 
 # source-package creates a source tarball from the files in MOZ_PKG_SRCDIR,
 # which is either set to a clean checkout or defaults to $topsrcdir
