@@ -75,9 +75,7 @@ RUN set -eux; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
     rustup --version; \
     cargo --version; \
-    rustc --version; \
-    rustup toolchain install stable-x86_64-unknown-linux-gnu; \
-    rustup default stable-x86_64-unknown-linux-gnu
+    rustc --version
 
 
 RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
