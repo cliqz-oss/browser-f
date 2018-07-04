@@ -23,6 +23,7 @@
     <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);"/>
     <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();"/>
     <command id="cmd_newForgetTab" oncommand="BrowserOpenPrivateTab();"/>
+    <command id="cmd_newTorWindow" oncommand="BrowserOpenTorWindow();"/>
     <command id="Browser:OpenFile"  oncommand="BrowserOpenFileWindow();"/>
     <command id="Browser:SavePage" oncommand="saveBrowser(gBrowser.selectedBrowser);"/>
 

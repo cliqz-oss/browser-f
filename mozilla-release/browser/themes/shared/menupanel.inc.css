@@ -137,3 +137,7 @@ toolbarpaletteitem[place="palette"] > #bookmarks-menu-button,
 #appMenu-cliqz-connect-button {
   list-style-image: url(chrome://browser/skin/connect.svg);
 }
+
+#appMenu-cliqz-torbrowsing-button {
+  list-style-image: url(chrome://browser/skin/tor-browsing.svg);
+}

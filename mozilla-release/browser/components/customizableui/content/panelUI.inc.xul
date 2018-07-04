@@ -219,6 +219,10 @@
                        label="&newPrivateWindow.label;"
                        key="key_privatebrowsing"
                        command="Tools:PrivateBrowsing"/>
+        <toolbarbutton id="appMenu-cliqz-torbrowsing-button"
+                       label="&torbrowsing.panelUI.label;"
+                       class="subviewbutton subviewbutton-iconic"
+                       command="cmd_newTorWindow"/>
         <toolbarbutton id="appMenuRestoreLastSession"
                        label="&appMenuHistory.restoreSession.label;"
                        class="subviewbutton subviewbutton-iconic"

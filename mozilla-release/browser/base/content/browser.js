@@ -10,6 +10,7 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 const {WebExtensionPolicy} = Cu.getGlobalForObject(Services);
 
@@ -2443,6 +2444,22 @@ function BrowserOpenPrivateTab() {
   gURLBar.focus();
 }
 #endif
+
+function BrowserOpenTorWindow() {
+  Services.mm.broadcastAsyncMessage('MessageChannel:Messages', [{
+    messageName: 'Extension:Message',
+    channelId: ExtensionUtils.getUniqueId(),
+    sender: {
+      id: 'cliqz@cliqz.com',
+      extensionId: 'cliqz@cliqz.com',
+    },
+    recipient: {
+      extensionId: 'onionmode@cliqz.com',
+    },
+    data: new StructuredCloneHolder({ action: "openTorWindow" }),
+    responseType: 3 // MessageChannel.RESPONSE_NONE
+  }]);
+}
 
 var gLastOpenDirectory = {
   _lastDir: null,
