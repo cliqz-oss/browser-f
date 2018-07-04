@@ -99,7 +99,8 @@ RUN sed -i.bkp -e \
 
 RUN mkdir /builds
 
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
+RUN apt-get install software-properties-common -y && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
     apt-get update && \
     apt-get install gcc-6 g++-6 -y && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-6
