@@ -340,7 +340,7 @@ jobs["linux"] = {
             }
 
             stage("Linux Build") {
-                def imageName = 'browser-f'
+                def imageName = 'browser-f-new'
 
                 try {
                     // authorize docker deamon to access registry
@@ -363,6 +363,7 @@ jobs["linux"] = {
                     // Build image with a specific user
                     sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
                 }
+                catch (e) { //pass }
 
                 docker.image(imageName).inside() {
                     stage('Linux Update Dependencies') {
