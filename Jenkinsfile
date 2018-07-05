@@ -333,7 +333,7 @@ jobs["mac"] = {
 }
 
 jobs["linux"] = {
-    node('ubuntu && docker && !gpu') {
+    node('browser && !gpu && us-east-1') {
         ws('build') {
             stage('Linux Docker Checkout') {
                 checkout scm
@@ -344,12 +344,13 @@ jobs["linux"] = {
 
                 try {
                     // authorize docker deamon to access registry
-                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                    /*sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         def image = docker.image(imageName)
                         image.pull()
-                        imageName = image.imageName()
+                        imageName = image.imageName()*/
+                    // SKIP REGISTRY. Built New Docker.
                     }
                 } catch (e) {
                     // if registry fails, build image localy
