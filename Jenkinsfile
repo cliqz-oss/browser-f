@@ -349,9 +349,9 @@ jobs["linux"] = {
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         def image = docker.image(imageName)
                         image.pull()
-                        imageName = image.imageName()*/
-                    // SKIP REGISTRY. Built New Docker.
-                    }
+                        imageName = image.imageName()
+                    // SKIP REGISTRY. Build New Docker.
+                    }*/
                 } catch (e) {
                     // if registry fails, build image localy
                     // Build params with context
