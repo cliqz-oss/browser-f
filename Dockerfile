@@ -70,15 +70,12 @@ RUN set -eux; \
     wget "$url"; \
     echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
     chmod +x rustup-init; \
-    ./rustup-init -y --no-modify-path --default-toolchain 1.20.0; \
+    ./rustup-init -y --no-modify-path --default-toolchain 1.26.0; \
     rm rustup-init; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
     rustup --version; \
     cargo --version; \
-    rustc --version; \
-    rustup self update; \
-    rustup toolchain install stable-x86_64-unknown-linux-gnu; \
-    rustup default stable-x86_64-unknown-linux-gnu
+    rustc --version
 
 
 RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
@@ -98,3 +95,9 @@ RUN sed -i.bkp -e \
       /etc/sudoers
 
 RUN mkdir /builds
+
+RUN apt-get install software-properties-common -y && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
+    apt-get update && \
+    apt-get install gcc-6 g++-6 -y && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-6
