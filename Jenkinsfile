@@ -79,7 +79,7 @@ properties([
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
         string(defaultValue: "1.21.0", name: "CQZ_VERSION"),
-        booleanParam(defaultValue: false, description: '',
+        booleanParam(defaultValue: true, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
     ]),
     pipelineTriggers([])
@@ -333,25 +333,26 @@ jobs["mac"] = {
 }
 
 jobs["linux"] = {
-    node('ubuntu && browser') {
+    node('browser && !gpu && us-east-1') {
         ws('build') {
             stage('Linux Docker Checkout') {
                 checkout scm
             }
 
             stage("Linux Build") {
-                def imageName = 'browser-f'
+                def imageName = 'browser-f-new'
 
                 try {
                     // authorize docker deamon to access registry
-                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                    /*sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         def image = docker.image(imageName)
                         image.pull()
                         imageName = image.imageName()
+                    // SKIP REGISTRY. Build New Docker.
                     }
-                } catch (e) {
+                } catch (e) {*/
                     // if registry fails, build image localy
                     // Build params with context
                     def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
@@ -361,6 +362,9 @@ jobs["linux"] = {
 
                     // Build image with a specific user
                     sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+                }
+                catch (e) { 
+                    //pass
                 }
 
                 docker.image(imageName).inside() {
@@ -436,5 +440,9 @@ jobs["linux"] = {
         }
     }
 }
+
+// Stop win and mac builds temporarily
+jobs.remove('windows')
+jobs.remove('mac')
 
 parallel jobs
