@@ -683,9 +683,9 @@ var gViewController = {
 
 #if 0
     this.viewObjects.discover = gDiscoverView;
+    this.viewObjects.legacy = gLegacyView;
 #endif
     this.viewObjects.list = gListView;
-    this.viewObjects.legacy = gLegacyView;
     this.viewObjects.detail = gDetailView;
     this.viewObjects.updates = gUpdatesView;
 
@@ -2291,7 +2291,8 @@ var gLegacyView = {
 
   async refreshVisibility() {
     if (legacyExtensionsEnabled) {
-      this._categoryItem.disabled = true;
+      if (this._categoryItem)
+        this._categoryItem.disabled = true;
       return;
     }
 
@@ -2308,13 +2309,15 @@ var gLegacyView = {
       }
     }
 
-    if (haveLegacy || haveUnsigned) {
-      this._categoryItem.disabled = false;
-      let name = gStrings.ext.GetStringFromName(`type.${haveUnsigned ? "unsupported" : "legacy"}.name`);
-      this._categoryItem.setAttribute("name", name);
-      this._categoryItem.tooltiptext = name;
-    } else {
-      this._categoryItem.disabled = true;
+    if (this._categoryItem) {
+      if (haveLegacy || haveUnsigned) {
+        this._categoryItem.disabled = false;
+        let name = gStrings.ext.GetStringFromName(`type.${haveUnsigned ? "unsupported" : "legacy"}.name`);
+        this._categoryItem.setAttribute("name", name);
+        this._categoryItem.tooltiptext = name;
+      } else {
+        this._categoryItem.disabled = true;
+      }
     }
   },
 
