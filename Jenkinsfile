@@ -79,7 +79,7 @@ properties([
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
         string(defaultValue: "1.21.0", name: "CQZ_VERSION"),
-        booleanParam(defaultValue: false, description: '',
+        booleanParam(defaultValue: true, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
     ]),
     pipelineTriggers([])
@@ -351,8 +351,8 @@ jobs["linux"] = {
                         image.pull()
                         imageName = image.imageName()
                     // SKIP REGISTRY. Build New Docker.
-                    }*/
-                } catch (e) {
+                    }
+                } catch (e) {*/
                     // if registry fails, build image localy
                     // Build params with context
                     def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
