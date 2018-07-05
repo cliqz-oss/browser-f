@@ -441,8 +441,4 @@ jobs["linux"] = {
     }
 }
 
-// Stop win and mac builds temporarily
-jobs.remove('windows')
-jobs.remove('mac')
-
 parallel jobs
