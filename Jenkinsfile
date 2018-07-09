@@ -341,7 +341,7 @@ jobs["linux"] = {
 
             stage("Linux Build") {
                 def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum Dockerfile | cut -d" " -f1').trim()
-                def imageName = "browser-f-new/buid:${dockerFileCheckSum}"
+                def imageName = "browser-f:${dockerFileCheckSum}"
                 sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                 docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                     // authorize docker deamon to access registry
@@ -357,8 +357,10 @@ jobs["linux"] = {
                         sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
 
                         // Build image with a specific user
-                        def image = sh(returnStdout: true, script:"cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` .")
-                        image.push dockerFileCheckSum
+                        dir('docker'){
+                            def image = docker.build(imageName, "${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` .")
+                            image.push dockerFileCheckSum
+                        }  
                     }
                 }
 
