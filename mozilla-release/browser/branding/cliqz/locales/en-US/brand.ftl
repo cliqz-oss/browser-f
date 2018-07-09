@@ -13,3 +13,4 @@
 ## Reference: https://www.mozilla.org/styleguide/communications/translation/
 
 -brand-short-name = Cliqz
+-vendor-short-name = Cliqz GmbH
