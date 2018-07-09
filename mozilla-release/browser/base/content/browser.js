@@ -4021,6 +4021,9 @@ const BrowserSearch = {
    *                      use the default placeholder.
    */
   _setURLBarPlaceholder(name) {
+    // Cliqz. We do not need to change text in URL bar. Allowing do all other
+    // related stuff when user change search engine, except this part.
+    return;
     let placeholder;
     if (name) {
       placeholder = gBrowserBundle.formatStringFromName("urlbar.placeholder",
