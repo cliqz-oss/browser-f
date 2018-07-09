@@ -365,11 +365,6 @@ jobs["linux"] = {
                 }
 
                 docker.image(imageName).inside() {
-                    stage('Linux Update Dependencies') {
-                    // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-                        sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                    }
-
                     withEnv([
                         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
                         "CQZ_COMMIT=$COMMIT_ID",
