@@ -4500,7 +4500,8 @@ function OpenBrowserWindow(options) {
     // forget about the charset information.
     win = window.openDialog("chrome://browser/content/", "_blank", "chrome,all,dialog=no" + extraFeatures, defaultArgs);
   }
-
+// Cliqz. Not used
+#if 0
   win.addEventListener("MozAfterPaint", () => {
     TelemetryStopwatch.finish("FX_NEW_WINDOW_MS", telemetryObj);
     if (Services.prefs.getIntPref("browser.startup.page") == 1
@@ -4511,7 +4512,7 @@ function OpenBrowserWindow(options) {
       Services.obs.notifyObservers(win, "browser-open-homepage-start");
     }
   }, {once: true});
-
+#endif
   return win;
 }
 
