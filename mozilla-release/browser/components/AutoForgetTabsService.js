@@ -24,11 +24,11 @@ Cu.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
     "resource://gre/modules/ForgetAboutSite.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Sanitizer",
-    "resource:///modules/Sanitizer.jsm");
 XPCOMUtils.defineLazyGetter(this, "nsJSON", () => {
   return Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
 });
+
+var {Sanitizer} = ChromeUtils.import("resource:///modules/Sanitizer.jsm", {});
 
 const browserStrings = Services.strings.createBundle(
     "chrome://browser/locale/browser.properties");
@@ -390,10 +390,12 @@ const NSGetFactory = XPCOMUtils.generateNSGetFactory([AutoForgetTabsService]);
 
 function cleanup(domain) {
   ForgetAboutSite.removeDataFromDomain(domain);
-  const sanitizer = new Sanitizer();
-  sanitizer.range = Sanitizer.getClearRange(Sanitizer.TIMESPAN_5MIN);
-  sanitizer.ignoreTimespan = false;
-  sanitizer.sanitize(["formdata"]);
+  let range = Sanitizer.getClearRange(Sanitizer.TIMESPAN_5MIN);
+  let options = {
+    ignoreTimespan: false,
+    range,
+  };
+  Sanitizer.sanitize(["formdata"], options);
 }
 
 function removeNotificationIfAny(browser, id) {
