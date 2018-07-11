@@ -340,39 +340,31 @@ jobs["linux"] = {
             }
 
             stage("Linux Build") {
-                def imageName = 'browser-f-new'
-
-                try {
+                def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum Dockerfile | cut -d" " -f1').trim()
+                def imageName = "browser-f:${dockerFileCheckSum}"
+                sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                     // authorize docker deamon to access registry
-                    /*sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                    try {
+                            def image = docker.image(imageName)
+                            image.pull()
+                    } catch (e) {
+                        // if registry fails, build image localy and add it to the registry
+                        // Build params with context
+                        def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-                    docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                        def image = docker.image(imageName)
-                        image.pull()
-                        imageName = image.imageName()
-                    // SKIP REGISTRY. Build New Docker.
+                        // Avoiding docker context
+                        sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+
+                        // Build image with a specific user
+                        dir('docker'){
+                            def image = docker.build(imageName, "${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` .")
+                            image.push dockerFileCheckSum
+                        }  
                     }
-                } catch (e) {*/
-                    // if registry fails, build image localy
-                    // Build params with context
-                    def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
-
-                    // Avoiding docker context
-                    sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
-
-                    // Build image with a specific user
-                    sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
-                }
-                catch (e) { 
-                    //pass
                 }
 
                 docker.image(imageName).inside() {
-                    stage('Linux Update Dependencies') {
-                    // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-                        sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                    }
-
                     withEnv([
                         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
                         "CQZ_COMMIT=$COMMIT_ID",
@@ -440,5 +432,9 @@ jobs["linux"] = {
         }
     }
 }
+
+// Stop win and mac builds temporarily
+jobs.remove('windows')
+jobs.remove('mac')
 
 parallel jobs

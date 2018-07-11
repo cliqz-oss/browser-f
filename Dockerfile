@@ -39,13 +39,13 @@ RUN apt-get update && apt-get install -y \
   libxt-dev \
   mesa-common-dev \
   python-dbus \
-  clang-5.0 \
   xvfb \
   yasm
 
 RUN pip install awscli
 
 RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list; \
+  apt-key update; \
   apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C; \
   apt-get update; \
   apt-get install aptly -y
@@ -65,7 +65,6 @@ RUN set -eux; \
         i386) rustArch='i686-unknown-linux-gnu'; rustupSha256='7a1c085591f6c1305877919f8495c04a1c97546d001d1357a7a879cedea5afbb' ;; \
         *) echo >&2 "unsupported architecture: ${dpkgArch}"; exit 1 ;; \
     esac; \
-    \
     url="https://static.rust-lang.org/rustup/archive/1.7.0/${rustArch}/rustup-init"; \
     wget "$url"; \
     echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
@@ -76,11 +75,6 @@ RUN set -eux; \
     rustup --version; \
     cargo --version; \
     rustc --version
-
-
-RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
-  python bootstrap.py --application-choice=browser --no-interactive && \
-  rm bootstrap.py
 
 ARG uid
 ARG gid
@@ -96,8 +90,23 @@ RUN sed -i.bkp -e \
 
 RUN mkdir /builds
 
-RUN apt-get install software-properties-common -y && \
-    add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
-    apt-get update && \
-    apt-get install gcc-6 g++-6 -y && \
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-6
+USER $user
+ENV CLANG_HOME /home/$user/clang/clang+llvm-6.0.0-x86_64-linux-gnu-ubuntu-16.04/
+ENV GCC_VERSION=6.0.0
+ENV CXX=$CLANG_HOME/bin/clang++
+ENV CC=$CLANG_HOME/bin/clang
+ENV LLVM_CONFIG=$CLANG_HOME/bin/llvm-config
+SHELL ["/bin/bash", "-l", "-c"]
+
+#Install CLang
+RUN mkdir -p /home/$user/clang; \
+    cd /home/$user/clang; \
+    wget --output-document=clang.tar.xz --quiet "https://repository.cliqz.com/dist/android/artifacts/clang/clang%2Bllvm-6.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz"; \
+    tar xf clang.tar.xz; \
+    echo 'export PATH=$CLANG_HOME/bin:$PATH' >> ~/.bashrc; \
+    echo 'export LD_LIBRARY_PATH=$CLANG_HOME/lib:LD_LIBRARY_PATH' >> ~/.bashrc; \
+    ln -s /usr/include include; \
+    ln -s /usr/bin bin;\
+    mkdir -p lib/gcc/x86_64-linux-gnu/; \
+    cd lib/gcc/x86_64-linux-gnu/; \
+    ln -s /usr/lib/gcc/x86_64-linux-gnu/$GCC_VERSION $GCC_VERSION
