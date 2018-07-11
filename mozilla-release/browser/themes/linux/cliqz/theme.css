@@ -43,6 +43,10 @@
       /* Always show close tab button on touch density */ }
       :root[uidensity="touch"] #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab:not([pinned="true"]) .tab-content .tab-close-button {
         display: unset; }
+    :root[uidensity="touch"] #navigator-toolbox #back-button > .toolbarbutton-icon {
+      height: 34px; }
+    :root[uidensity="touch"] #navigator-toolbox #nav-bar #nav-bar-customization-target > *:first-child {
+      padding-inline-start: 5px !important; }
     :root[uidensity="touch"] #navigator-toolbox #urlbar, :root[uidensity="touch"] #navigator-toolbox .searchbar-textbox {
       min-height: 36px; }
 
