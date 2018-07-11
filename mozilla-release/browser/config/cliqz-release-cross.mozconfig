@@ -1,0 +1,7 @@
+# mozconfig to cross build on osx
+. $topsrcdir/browser/config/cliqz-release.mozconfig
+
+ac_add_options --disable-crashreporter
+
+ac_add_options --target=x86_64-apple-darwin
+ac_add_options --with-macos-private-frameworks=$CROSS_PRIVATE_FRAMEWORKS
