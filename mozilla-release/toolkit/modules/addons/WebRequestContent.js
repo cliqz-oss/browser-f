@@ -127,7 +127,7 @@ var ContentPolicy = {
     }
 
     if (policyType == Ci.nsIContentPolicy.TYPE_SUBDOCUMENT ||
-        (ChromeUtils.getClassName(node) == "XULElement" &&
+        (node && ChromeUtils.getClassName(node) == "XULElement" &&
          node.localName == "browser")) {
       // Chrome sets frameId to the ID of the sub-window. But when
       // Firefox loads an iframe, it sets |node| to the <iframe>
