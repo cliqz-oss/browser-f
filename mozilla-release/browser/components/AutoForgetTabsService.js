@@ -24,8 +24,11 @@ Cu.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
     "resource://gre/modules/ForgetAboutSite.jsm");
-XPCOMUtils.defineLazyGetter(this, "nsJSON", () => {
-  return Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
+XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
+    "resource://gre/modules/NetUtil.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "gTextDecoder", () => {
+  return new TextDecoder();
 });
 
 var {Sanitizer} = ChromeUtils.import("resource:///modules/Sanitizer.jsm", {});
@@ -432,7 +435,8 @@ function readSetFromFileOrRemoveIt(file) {
     return new Set();
   try {
     const inStream = FileUtils.openFileInputStream(file);
-    return new Set(nsJSON.decodeFromStream(inStream, inStream.available()));
+    let bytes = NetUtil.readInputStream(inStream, inStream.available());
+    return new Set(JSON.parse(gTextDecoder.decode(bytes)));
   }
   catch (e) {
     Cu.reportError(e);
@@ -443,7 +447,8 @@ function readSetFromFileOrRemoveIt(file) {
 function JSONToFile(obj, file) {
   const outStream = FileUtils.openFileOutputStream(file);
   try {
-    nsJSON.encodeToStream(outStream, "UTF-8", true, obj);
+    let savedata = JSON.stringify(obj);
+    outStream.write(savedata, savedata.length);
   }
   finally {
     outStream.close();
