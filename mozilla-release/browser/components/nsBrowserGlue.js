@@ -583,7 +583,9 @@ BrowserGlue.prototype = {
         break;
       case "shield-init-complete":
         this._shieldInitComplete = true;
+#if 0
         this._sendMainPingCentrePing();
+#endif
         break;
     }
   },
