@@ -244,7 +244,7 @@ var gPrivacyPane = {
                              .getService(Components.interfaces.nsIVersionComparator);
     const FIRST_WEB_EXTENSION_VERSION = "2017.10.30";
 
-    AddonManager.getAddonByID(ADDON_ID, function(addon) {
+    AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
       if (!addon) {
         return;
       }
@@ -261,7 +261,7 @@ var gPrivacyPane = {
     });
 
     this.toggleHttpsEverywhere = function() {
-      AddonManager.getAddonByID(ADDON_ID, function(addon) {
+      AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
         if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
           // HTTPS_Everywhere version 2017.10.30 and above is an WebExtension
           // and we control it by its userDisabled state
