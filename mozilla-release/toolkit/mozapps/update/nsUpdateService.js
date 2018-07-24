@@ -308,7 +308,7 @@ function getPerInstallationMutexName(aGlobal = true) {
   var data = converter.convertToByteArray(exeFile.path.toLowerCase());
 
   hasher.update(data, data.length);
-  return (aGlobal ? "Global\\" : "") + "MozillaUpdateMutex-" + hasher.finish(true);
+  return (aGlobal ? "Global\\" : "") + "CliqzUpdateMutex-" + hasher.finish(true);
 }
 
 /**
@@ -2896,7 +2896,7 @@ Checker.prototype = {
     let wrk = Cc["@mozilla.org/windows-registry-key;1"].
               createInstance(Ci.nsIWindowsRegKey);
 
-    let regPath = "SOFTWARE\\Mozilla\\" + Services.appinfo.name +
+    let regPath = "SOFTWARE\\" + Services.appinfo.name +
                   "\\32to64DidMigrate";
     let regValHKCU = WindowsRegistry.readRegKey(wrk.ROOT_KEY_CURRENT_USER,
                                                 regPath, "Never", wrk.WOW64_32);
