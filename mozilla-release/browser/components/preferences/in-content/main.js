@@ -501,12 +501,13 @@ var gMainPane = {
       }
       version += ` (${componentsVersion})`;
       version += ` (${arch})`;
+
+      document.l10n.setAttributes(
+        document.getElementById("updateAppInfo"),
+        "update-application-version",
+        { version }
+      );
     });
-    document.l10n.setAttributes(
-      document.getElementById("updateAppInfo"),
-      "update-application-version",
-      { version }
-    );
 
     // Show a release notes link if we have a URL.
     let relNotesLink = document.getElementById("releasenotes");
