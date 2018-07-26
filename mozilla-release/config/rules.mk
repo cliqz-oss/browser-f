@@ -1218,6 +1218,7 @@ TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_7.5.6.tar.
 TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_7.5.6.tar.xz"
 TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_7.5.6.tar.xz"
 TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_7.5.6.tar.xz"
+CLIQZ_ONIONMODE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/onionmode%40cliqz.com/onionmode%40cliqz.com-0.0.1-browser-signed.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1262,7 +1263,7 @@ endif
 	tar -xf $(DIST_RESPATH)/tor.tar.xz --directory $(DIST_RESPATH)
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG) tor
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_ONIONMODE_XPI_PATH) tor $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
