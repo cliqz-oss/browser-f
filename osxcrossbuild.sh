@@ -1,5 +1,4 @@
 #/usr/bin/env bash
-# FIXME: integrate with other build scripts
 # simple script to cross build on osx
 
 set -e -o pipefail
@@ -69,6 +68,12 @@ for e in "CC" "CXX" "CPP" "TOOLCHAIN_PREFIX" "LLVMCONFIG" "DSYMUTIL" "REAL_DSYMU
         exit -1
     fi
 done
+
+# PATH gets overriden in Jenkins
+if [[ -z $(which rustc) ]]; then
+    export PATH=/opt/rust/bin:$PATH
+fi
+
 
 # actual build process
 cd $SRC_BASE
