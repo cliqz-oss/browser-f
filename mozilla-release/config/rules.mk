@@ -1214,6 +1214,7 @@ endif
 # Cliqz additional distribution files
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
+CONSENTRIC_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/gdprtool@cliqz.com.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
@@ -1232,6 +1233,13 @@ ifdef HTTPSE_EXT_URL
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 endif
 
+CONSENTRIC_XPI_PATH = $(EXTENSIONS_PATH)/gdprtool@cliqz.com.xpi
+$(CONSENTRIC_XPI_PATH): $(EXTENSIONS_PATH)
+ifdef CONSENTRIC_EXT_URL
+	echo CONSENTRIC_XPI_PATH in `pwd`
+	wget --output-document $(CONSENTRIC_XPI_PATH) $(CONSENTRIC_EXT_URL)
+endif
+
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
@@ -1239,7 +1247,7 @@ $(CLIQZ_CFG):
 	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CONSENTRIC_XPI_PATH) $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
