@@ -40,7 +40,3 @@
 <!ENTITY  passwordManager.title          "Password Managers">
 <!ENTITY  passwordManager.desc1          "Ghostery integrates with selected and verified third-party password manager applications.">
 <!ENTITY  passwordManager.desc2          "Note that Ghostery did not create these applications and has no control over what data they might access.">
-
-<!ENTITY  ghostery.title                 "Extended Privacy Control">
-<!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">
-<!ENTITY  ghostery.desc2                 "ones to block.">

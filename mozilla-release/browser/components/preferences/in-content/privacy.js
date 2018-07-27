@@ -373,7 +373,6 @@ var gPrivacyPane = {
     this._pane = document.getElementById("panePrivacy");
     this._initMasterPasswordUI();
     this._initSafeBrowsing();
-    this._initGhosteryUI();
 
     setEventListener("notificationSettingsButton", "command",
       gPrivacyPane.showNotificationExceptions);
@@ -1194,13 +1193,6 @@ var gPrivacyPane = {
   },
 
   /**
-   * Initialize Ghostery addon UI box
-   */
-  _initGhosteryUI() {
-    gPrivacyManagers.init();
-  },
-
-  /**
    * Enables/disables the master password button depending on the state of the
    * "use master password" checkbox, and prompts for master password removal if
    * one is set.
@@ -1682,62 +1674,6 @@ var gPasswordManagers = {
       "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/%7B446900e4-71c2-419f-a6a7-df9c091e268b%7D/latest.xpi"
     }];
   }
-}
-
-var gPrivacyManagers = {
-  init: function() {
-    this._listBox = document.getElementById("privacy-managers-list");
-
-    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
-      var available = results[0],
-          existing  = results[1],
-          existingIDs = [];
-
-      //clean the view
-      while (this._listBox.firstChild && this._listBox.firstChild.localName == "richlistitem")
-        this._listBox.removeChild(this._listBox.firstChild);
-
-      // add already installed privacy managers
-      for (let addonObj of existing) {
-        let addonDescriptor = available.filter(function(addon){ return addon.id == addonObj.id })[0];
-        let _installed_addon = new ItemHandler(this._listBox, addonDescriptor, addonObj, 'installed');
-        this._listBox.appendChild(_installed_addon.listItem);
-        existingIDs.push(addonObj.id);
-      }
-
-      //remove the ones already installed
-      var available = available.filter(function(addon){ return existingIDs.indexOf(addon.id) == -1 });
-      for (let addonObjDesc of available) {
-        let _available_addon = new ItemHandler(this._listBox, addonObjDesc, undefined, 'new');
-        this._listBox.appendChild(_available_addon.listItem);
-      }
-
-    }).bind(this));
-  },
-
-  getExisting: function() {
-    let KNOWN_PW_MANAGERS = ["firefox@ghostery.com"];
-
-    return AddonManager.getAllAddons().then((all) => {
-      // filter only installed extensions
-      return all.filter(function(addon) {
-        return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.includes(addon.id);
-      });
-    });
-  },
-  // can be a promise if we decide to move the list to backend
-  getAvailable: function() {
-    return [{
-      "id": "firefox@ghostery.com",
-      "icons": {
-        "64": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/firefox%40ghostery.com/64x64.png",
-        "128": "https://s3.amazonaws.com/cdn.cliqz.com/browser-f/features/firefox%40ghostery.com/128x128.png"
-      },
-      "name": "Ghostery",
-      "homepageURL": "https://www.ghostery.com",
-      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/firefox@ghostery.com/latest.xpi"
-    }];
-  },
 }
 
 function ItemHandler(container, addonDescriptor, addonObj, status) {
