@@ -7,7 +7,8 @@ if [[ -z ${CQZ_S3_MACOSXBUILD_URL} ]]; then
     exit -1
 fi
 
-OBJ_DIR=obj/dist
+SRC_DIR=mozilla-release
+OBJ_DIR=${SRC_DIR}/obj-x86_64-apple-darwin/dist
 
 OBJ_PATH=${OBJ_DIR}
 

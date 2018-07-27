@@ -442,11 +442,23 @@ jobs["macosxlinux"] = {
             }
 
             stage("MacOS-X-Linux Build") {
-                def imageName = "macosxbuilder:latest"
+                def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum macdocker/Dockerfile | cut -d" " -f1').trim()
+                def imageName = "macosxbuilder:${dockerFileCheckSum}"
+
                 sh "`aws ecr get-login --region=${params.AWS_REGION} --no-include-email)`"
                 docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                    def image = docker.image(imageName)
-                    image.pull()
+                    try {
+                        def image = docker.image(imageName)
+                        image.pull()
+                    } catch (e) {
+                        // if registry fails, build image localy and add it to the registry
+                        // Build image with a specific user
+                        dir('macdocker'){
+                            sh '/bin/bash -lc "./get_dependencies.sh"'
+                            def image = docker.build(imageName)
+                            image.push dockerFileCheckSum
+                        }
+                    }
                 }
 
                 docker.image(imageName).inside() {
