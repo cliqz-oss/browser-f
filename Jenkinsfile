@@ -49,10 +49,8 @@ properties([
                 name: 'CQZ_EXTENSION_URL'),
         string(defaultValue: "5B0571C810B2BC947DE61ADCE8512CEA605A5625",
                 name: "CQZ_CERT_NAME"),
-        string(defaultValue: 's3://cdncliqz/update/browser_beta/https-everywhere/https-everywhere@cliqz.com-2018.6.21-browser_beta-signed.xpi',
+        string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.17-browser-signed.xpi',
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
-        string(defaultValue: 's3://cdncliqz/update/browser/gdprtool@cliqz.com/gdprtool@cliqz.com-0.0.1-browser-signed.xpi',
-                name: 'CQZ_CONSENTRIC_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
@@ -91,7 +89,6 @@ node('docker && us-east-1') {
     stage("Copy XPI") {
         UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
         HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
-        CONSENTRIC_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/gdprtool@cliqz.com.xpi"
 
         withCredentials([
             [$class: 'AmazonWebServicesCredentialsBinding',
@@ -101,7 +98,6 @@ node('docker && us-east-1') {
 
             sh "aws s3 cp ${params.CQZ_EXTENSION_URL} $UPLOAD_PATH"
             sh "aws s3 cp ${params.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
-            sh "aws s3 cp ${params.CQZ_CONSENTRIC_EXTENSION_URL} $CONSENTRIC_UPLOAD_PATH"
         }
     }
 }
