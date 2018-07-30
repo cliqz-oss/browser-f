@@ -465,8 +465,8 @@ search-bar-hidden =
 search-bar-shown =
     .label = Add search bar in toolbar
 
-search-engine-default-header = Default Search Engine
-search-engine-default-desc = Choose the default search engine to use in the address bar and search bar.
+search-engine-default-header = Complementary search engine
+search-engine-default-desc = Choose your backup search engine. If you are not happy with { -brand-short-name }’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.
 
 search-suggestions-option =
     .label = Provide search suggestions
@@ -486,9 +486,9 @@ search-show-suggestions-above-history-option =
 
 search-suggestions-cant-show = Search suggestions will not be shown in location bar results because you have configured { -brand-short-name } to never remember history.
 
-search-one-click-header = One-Click Search Engines
+search-one-click-header = Direct searches
 
-search-one-click-desc = Choose the alternative search engines that appear below the address bar and search bar when you start to enter a keyword.
+search-one-click-desc = Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter.
 
 search-choose-engine-column =
     .label = Search Engine
