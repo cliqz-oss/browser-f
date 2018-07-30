@@ -61,7 +61,6 @@ stage("Copy XPI") {
     CQZ_VERSION=sh(returnStdout: true, script: "cat ./mozilla-release/browser/config/version_display.txt").trim()
     UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
     HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-    CONSENTRIC_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/gdprtool@cliqz.com.xpi"
     LAST_BUILDID_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/lastbuildid"
 
     withCredentials([[
@@ -72,7 +71,6 @@ stage("Copy XPI") {
 
         sh "aws s3 cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
         sh "aws s3 cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-        sh "aws s3 cp $CONSENTRIC_EXTENSION_URL $CONSENTRIC_UPLOAD_PATH"
         sh "rm -f lastbuildid && echo $CQZ_BUILD_ID > lastbuildid && aws s3 cp lastbuildid $LAST_BUILDID_PATH"
     }
 }
