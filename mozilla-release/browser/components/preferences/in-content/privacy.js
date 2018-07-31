@@ -132,6 +132,13 @@ var gPrivacyPane = {
    */
   _shouldPromptForRestart: true,
 
+  get privacyPanesInitialized() {
+    return Promise.all([
+      gPasswordManagers.initialized,
+      gPrivacyManagers.initialized,
+    ]);
+  },
+
 #if 0
   /**
    * Show the Tracking Protection UI depending on the
@@ -1599,10 +1606,11 @@ var gPrivacyPane = {
 };
 
 var gPasswordManagers = {
+  initialized: Promise.resolve(),
   init: function() {
     this._listBox = document.getElementById("password-managers-list");
 
-    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
+    this.initialized = Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
       var available = results[0],
           existing  = results[1],
           existingIDs = [];
@@ -1685,10 +1693,12 @@ var gPasswordManagers = {
 }
 
 var gPrivacyManagers = {
+  initialized: Promise.resolve(),
+
   init: function() {
     this._listBox = document.getElementById("privacy-managers-list");
 
-    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
+    this.initialized = Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
       var available = results[0],
           existing  = results[1],
           existingIDs = [];
