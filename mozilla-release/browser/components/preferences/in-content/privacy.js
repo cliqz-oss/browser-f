@@ -283,6 +283,29 @@ var gPrivacyPane = {
   },
 
   /**
+   * Handles Consentric integration
+   */
+  _initConsentric() {
+    const ADDON_ID = "gdprtool@cliqz.com";
+    AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
+      if (!addon) {
+        // Hide Consentric setting, not exist yet
+        document.getElementById("consentricGroup").style.display = "none";
+      } else {
+        // Set state
+        var stateCheckbox = document.getElementById("consentricEnable");
+        stateCheckbox.checked = !addon.userDisabled;
+      }
+    });
+
+    this.toggleConsentric = function() {
+      AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
+        addon.userDisabled = !addon.userDisabled;
+      })
+    };
+  },
+
+  /**
    * Sets up the UI for the number of days of history to keep, and updates the
    * label of the "Clear Now..." button.
    */
@@ -305,6 +328,7 @@ var gPrivacyPane = {
     this._initAutocomplete();
 
     this._initHttpsEverywhere();
+    this._initConsentric();
 #if CQZ_AUTO_PRIVATE_TAB
     const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
         getService(Ci.nsISupports).wrappedJSObject;
