@@ -243,12 +243,15 @@ async function spotlight(subcategory) {
     }
   }
   if (subcategory) {
+    await gPrivacyPane.privacyPanesInitialized;
+#if 0
     if (!gSearchResultsPane.categoriesInitialized) {
       await waitForSystemAddonInjectionsFinished([{
         isGoingToInject: formAutofillParent.initialized,
         elementId: "formAutofillGroup",
       }]);
     }
+#endif
     scrollAndHighlight(subcategory);
   }
 
