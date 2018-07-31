@@ -41,6 +41,13 @@
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. ">
 <!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">
 
+<!ENTITY  consentric.label          "Consentric">
+<!ENTITY  consentric.enable         "Consentric aktivieren">
+<!ENTITY  consentric.accesskey      "C">
+<!ENTITY  consentric.desc1          "Consentric zeigt auf übersichtliche Weise welche personenbezogenen Daten von Websites">
+<!ENTITY  consentric.desc2          "verarbeitet werden und macht es dem Nutzer leicht zuzustimmen oder abzulehnen.">
+<!ENTITY  consentric.more           "Erfahre mehr">
+
 <!ENTITY  passwordManager.title          "Passwort Manager">
 <!ENTITY  passwordManager.desc1          "Cliqz unterstützt die Einbindung von ausgewählten und geprüften Passwort-Manager Anwendungen.">
 <!ENTITY  passwordManager.desc2          "Diese Anwendungen wurden nicht von Cliqz entwickelt. Cliqz hat keine Kontrolle darüber, auf welche Daten sie Zugriff haben.">
