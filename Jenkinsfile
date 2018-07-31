@@ -29,8 +29,8 @@ def withRVM(version, cl) {
     withEnv([
         "PATH=$path",
         "RUBY_VERSION=$version"
-        ]) {
-            cl()
+    ]) {
+        cl()
     }
 }
 
@@ -41,47 +41,47 @@ properties([
     parameters([
         string(defaultValue: 'pr', name: 'RELEASE_CHANNEL'),
         string(defaultValue: 'google-api-key',
-                name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID'),
+               name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID'),
         string(defaultValue: 'mozilla-api-key',
-                name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID'),
+               name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID'),
         string(defaultValue: 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b',
-                name: 'CQZ_AWS_CREDENTIAL_ID'),
+               name: 'CQZ_AWS_CREDENTIAL_ID'),
         string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi',
-                name: 'CQZ_EXTENSION_URL'),
+               name: 'CQZ_EXTENSION_URL'),
         string(defaultValue: "5B0571C810B2BC947DE61ADCE8512CEA605A5625",
-                name: "CQZ_CERT_NAME"),
+               name: "CQZ_CERT_NAME"),
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.17-browser-signed.xpi',
-                name: 'CQZ_HTTPSE_EXTENSION_URL'),
+               name: 'CQZ_HTTPSE_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
-                name: "WIN_CERT_PASS_CREDENTIAL_ID"),
+               name: "WIN_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
-                name: "WIN_CERT_PATH_CREDENTIAL_ID"),
+               name: "WIN_CERT_PATH_CREDENTIAL_ID"),
         string(defaultValue: "6712f640-9e25-4ec8-b7af-2456ca41b4b3",
-                name: "MAC_CERT_CREDENTIAL_ID"),
+               name: "MAC_CERT_CREDENTIAL_ID"),
         string(defaultValue: "fe75da3d-cb92-4d23-aeab-9e72ca044099",
-                name: "MAC_CERT_PASS_CREDENTIAL_ID"),
+               name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
-                name: "MAR_CERT_CREDENTIAL_ID"),
+               name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
-                name: "MAR_CERT_PASS_CREDENTIAL_ID"),
+               name: "MAR_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "0ece63d0-527d-4468-9b1d-032235589419",
-                name: "MAR_CERT_NICKNAME"),
+               name: "MAR_CERT_NICKNAME"),
         string(defaultValue: "debian-gpg-key",
-                name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"),
+               name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"),
         string(defaultValue: "debian-gpg-pass",
-                name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
+               name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
-                name:"WINDOWS_SLAVE_CREDENTIALS"),
+               name:"WINDOWS_SLAVE_CREDENTIALS"),
         string(defaultValue: 'cliqz/ansible:20170511173229',
-                name: 'IMAGE_NAME'),
+               name: 'IMAGE_NAME'),
         string(defaultValue: 'ami-66c1b770',
-                name: 'IMAGE_AMI'),
+               name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
         string(defaultValue: "1.22.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: true, description: '',
-                    name: 'LIN_REBUILD_IMAGE'),
+                     name: 'LIN_REBUILD_IMAGE'),
     ]),
     pipelineTriggers([])
 ])
@@ -93,9 +93,9 @@ node('docker && us-east-1') {
 
         withCredentials([
             [$class: 'AmazonWebServicesCredentialsBinding',
-            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-            credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+             credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
             sh "aws s3 cp ${params.CQZ_EXTENSION_URL} $UPLOAD_PATH"
             sh "aws s3 cp ${params.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
@@ -109,7 +109,7 @@ node('docker && us-east-1') {
             checkout scm
         }
         try {
-           helpers = load "build-helpers.groovy"
+            helpers = load "build-helpers.groovy"
         } catch(e) {
             echo "Could not load build-helpers"
             throw e
@@ -143,54 +143,54 @@ jobs["windows"] = {
             }
 
             stage('fix keys') {
-              withCredentials([
-                [
-                  $class: 'StringBinding',
-                  credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                  variable: 'CQZ_GOOGLE_API_KEY'
-                ],
-                [
-                  $class: 'StringBinding',
-                  credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                  variable: 'MOZ_MOZILLA_API_KEY'
-                ],
-              ]) {
-                writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
-              }
+                withCredentials([
+                    [
+                        $class: 'StringBinding',
+                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                        variable: 'CQZ_GOOGLE_API_KEY'
+                    ],
+                    [
+                        $class: 'StringBinding',
+                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                        variable: 'MOZ_MOZILLA_API_KEY'
+                    ],
+                ]) {
+                    writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                    writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+                }
             }
 
             withCredentials([
                 [$class: 'FileBinding',
-                    credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID,
-                    variable: 'CLZ_CERTIFICATE_PATH'],
+                 credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID,
+                 variable: 'CLZ_CERTIFICATE_PATH'],
                 [$class: 'StringBinding',
-                    credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID,
-                    variable: 'CLZ_CERTIFICATE_PWD'],
+                 credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID,
+                 variable: 'CLZ_CERTIFICATE_PWD'],
                 [$class: 'AmazonWebServicesCredentialsBinding',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                ]) {
+                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+            ]) {
 
                 withEnv([
-                  "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-                  "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-                  "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+                    "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+                    "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+                    "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
                 ]){
-                  stage('Windows Build') {
-                    bat '''
+                    stage('Windows Build') {
+                        bat '''
                       set CQZ_WORKSPACE=%cd%
                       build_win.bat
                     '''
-                  }
+                    }
                 }
 
                 if (CQZ_BUILD_DE_LOCALIZATION == "1") {
-                  archiveArtifacts 'obj/en_build_properties.json'
-                  archiveArtifacts 'obj/de_build_properties.json'
+                    archiveArtifacts 'obj/en_build_properties.json'
+                    archiveArtifacts 'obj/de_build_properties.json'
                 } else {
-                  archiveArtifacts 'obj/build_properties.json'
+                    archiveArtifacts 'obj/build_properties.json'
                 }
             } // withCredentials
         } // ws
@@ -226,11 +226,11 @@ jobs["mac"] = {
 
                 withCredentials([
                     [$class: 'StringBinding',
-                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                    variable: 'CQZ_GOOGLE_API_KEY'],
+                     credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                     variable: 'CQZ_GOOGLE_API_KEY'],
                     [$class: 'StringBinding',
-                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                    variable: 'MOZ_MOZILLA_API_KEY']]) {
+                     credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                     variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                     stage('fix keys') {
                         writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
@@ -243,16 +243,16 @@ jobs["mac"] = {
                 }
 
                 stage('OSX Sign') {
-                        // remove old package - important if clobber was not done
+                    // remove old package - important if clobber was not done
                     sh '/bin/bash -lc "rm -rf obj/pkg"'
 
                     withCredentials([
                         [$class: 'FileBinding',
-                            credentialsId: params.MAC_CERT_CREDENTIAL_ID,
-                            variable: 'CERT_FILE'],
+                         credentialsId: params.MAC_CERT_CREDENTIAL_ID,
+                         variable: 'CERT_FILE'],
                         [$class: 'StringBinding',
-                            credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
-                            variable: 'CERT_PASS']
+                         credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
+                         variable: 'CERT_PASS']
                     ]) {
                         // create temporary keychain and make it a default one
                         sh '''#!/bin/bash -l -x
@@ -282,11 +282,11 @@ jobs["mac"] = {
                             //expose certs
                             withCredentials([
                                 [$class: 'FileBinding',
-                                    credentialsId: params.MAC_CERT_CREDENTIAL_ID,
-                                    variable: 'CLZ_CERTIFICATE_PATH'],
+                                 credentialsId: params.MAC_CERT_CREDENTIAL_ID,
+                                 variable: 'CLZ_CERTIFICATE_PATH'],
                                 [$class: 'StringBinding',
-                                    credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
-                                    variable: 'CLZ_CERTIFICATE_PWD']]) {
+                                 credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
+                                 variable: 'CLZ_CERTIFICATE_PWD']]) {
 
                                 sh '''#!/bin/bash -l -x
                                     if [ -d $CQZ_CERT_DB_PATH ]; then
@@ -304,11 +304,11 @@ jobs["mac"] = {
                                 // [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc',
                                 // variable: 'CREDENTIALS_TEMPLATE'),
                                 [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
                                 string(credentialsId: params.MAR_CERT_NICKNAME,
-                                variable: 'MAR_CERT_NAME')
+                                       variable: 'MAR_CERT_NAME')
                             ]) {
                                 // sh '/bin/bash -lc "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"'
                                 sh '/bin/bash -lc "./magic_upload_files.sh ${LANG_PARAM}"'
@@ -347,8 +347,8 @@ jobs["linux"] = {
                 docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                     // authorize docker deamon to access registry
                     try {
-                            def image = docker.image(imageName)
-                            image.pull()
+                        def image = docker.image(imageName)
+                        image.pull()
                     } catch (e) {
                         // if registry fails, build image localy and add it to the registry
                         // Build params with context
@@ -374,11 +374,11 @@ jobs["linux"] = {
 
                         withCredentials([
                             [$class: 'StringBinding',
-                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                                variable: 'CQZ_GOOGLE_API_KEY'],
+                             credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                             variable: 'CQZ_GOOGLE_API_KEY'],
                             [$class: 'StringBinding',
-                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                                variable: 'MOZ_MOZILLA_API_KEY']]) {
+                             credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                             variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                             stage('fix keys') {
                                 writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
@@ -387,28 +387,28 @@ jobs["linux"] = {
                         }
 
                         stage('Linux Build Browser') {
-                          try {
-                              sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
-                          } catch (e) {
-                              archive 'obj/config.log'
-                              throw e
-                          }
+                            try {
+                                sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
+                            } catch (e) {
+                                archive 'obj/config.log'
+                                throw e
+                            }
                         }
 
                         withCredentials([
                             [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                             credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                             stage('Publisher (Debian Repo)') {
                                 try {
                                     withCredentials([
                                         [$class: 'FileBinding',
-                                            credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID,
-                                            variable: 'DEBIAN_GPG_KEY'],
+                                         credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID,
+                                         variable: 'DEBIAN_GPG_KEY'],
                                         [$class: 'StringBinding',
-                                            credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID,
-                                            variable: 'DEBIAN_GPG_PASS']]) {
+                                         credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID,
+                                         variable: 'DEBIAN_GPG_PASS']]) {
 
                                         sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
 
@@ -470,11 +470,11 @@ jobs["macosxlinux"] = {
 
                         withCredentials([
                             [$class: 'StringBinding',
-                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                                variable: 'CQZ_GOOGLE_API_KEY'],
+                             credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                             variable: 'CQZ_GOOGLE_API_KEY'],
                             [$class: 'StringBinding',
-                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                                variable: 'MOZ_MOZILLA_API_KEY']]) {
+                             credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                             variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                             stage('fix keys') {
                                 writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
@@ -483,19 +483,19 @@ jobs["macosxlinux"] = {
                         }
 
                         stage('MacOS Cross Build Browser') {
-                          try {
-                              sh '/bin/bash -lc "./osxcrossbuild.sh"'
-                          } catch (e) {
-                              archive 'obj/config.log'
-                              throw e
-                          }
+                            try {
+                                sh '/bin/bash -lc "./osxcrossbuild.sh"'
+                            } catch (e) {
+                                archive 'obj/config.log'
+                                throw e
+                            }
                         }
                     }
-                        withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    withCredentials([
+                        [$class: 'AmazonWebServicesCredentialsBinding',
+                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                         credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         stage('DMG publisher (internal)') {
                             withEnv([
                                 "CQZ_S3_MACOSXBUILD_URL=$CQZ_S3_MACOSXBUILD_URL"]) {
@@ -517,8 +517,5 @@ jobs["macosxlinux"] = {
 // Stop win and mac builds temporarily
 jobs.remove('windows')
 jobs.remove('mac')
-
-// and linux too
-jobs.remove('linux')
 
 parallel jobs
