@@ -343,7 +343,7 @@ jobs["linux"] = {
             stage("Linux Build") {
                 def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum Dockerfile | cut -d" " -f1').trim()
                 def imageName = "browser-f:${dockerFileCheckSum}"
-                sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                sh "`aws ecr get-login --region=${params.AWS_REGION} --no-include-email)`"
                 docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                     // authorize docker deamon to access registry
                     try {
