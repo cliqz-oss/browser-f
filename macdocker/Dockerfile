@@ -3,13 +3,13 @@ FROM ubuntu:17.10
 # build deps for xbuild tools
 RUN apt-get update && \
     apt-get install -y clang make patch unzip llvm cmake git curl uuid-dev \
-        zlib1g-dev libbz2-dev
+        zlib1g-dev libbz2-dev awscli python3 python wget zip autoconf2.13 m4 yasm rsync
 
 # osxcross
 WORKDIR /opt
-RUN curl -LO https://github.com/tpoechtrager/osxcross/archive/master.zip
-RUN unzip master.zip
-RUN ln -s /opt/osxcross-master /opt/osxcross
+RUN curl -LO https://github.com/tpoechtrager/osxcross/archive/c47ff0aeed1a7d0e1f884812fc170e415f05be5a.zip
+RUN unzip c47ff0aeed1a7d0e1f884812fc170e415f05be5a.zip
+RUN ln -s /opt/osxcross-c47ff0aeed1a7d0e1f884812fc170e415f05be5a /opt/osxcross
 WORKDIR /opt/osxcross/
 COPY MacOSX10.11.sdk.tar.bz2 tarballs/
 RUN echo yes | ./build.sh
@@ -18,12 +18,14 @@ RUN echo yes | ./build.sh
 WORKDIR /opt
 RUN git clone https://github.com/mozilla/libdmg-hfsplus.git
 WORKDIR /opt/libdmg-hfsplus
+RUN git checkout a745334
 RUN mkdir build
 WORKDIR build
 RUN cmake ..
 RUN make
 
 # libdmg-hfsplus is broken on newer openssl api, but diskdev commands needs it.
+# so we keep both, and only install newer one after libdmg is built.
 RUN apt-get update && \
 	apt-get install -y libssl-dev
 # diskdev
@@ -36,8 +38,6 @@ RUN make
 
 # browser build-deps.
 WORKDIR /opt
-RUN apt-get update && \
-    apt-get install -y python3 python wget zip autoconf2.13 m4 yasm rsync
 # bring up rust
 ENV RUSTUP_HOME=/opt/rust
 ENV CARGO_HOME=/opt/rust
@@ -45,10 +45,6 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
 RUN chmod -R a+x /opt/rust/bin
 ENV PATH=/opt/rust/bin:$PATH
 RUN rustup target add x86_64-apple-darwin
-
-# bring up aws cli
-RUN apt-get update && \
-    apt-get install -y awscli
 
 # environment variables for build.
 ENV CROSS_CCTOOLS_PATH /opt/osxcross/target
