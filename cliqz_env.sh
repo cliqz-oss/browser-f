@@ -107,4 +107,4 @@ export CQZ_AUTO_PRIVATE_TAB=1
 export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 
-ROOT_PATH=$PWD
+export ROOT_PATH=$PWD
