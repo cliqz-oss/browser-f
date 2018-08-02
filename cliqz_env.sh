@@ -43,6 +43,13 @@ else
   echo 'Unknow OS -`$OSTYPE`'
 fi
 
+# check if we are cross compiling
+if [[ $IS_LINUX == "true" ]]; then
+  if [[ "$CROSS_TARGET" == "darwin"* ]];then
+    OSX_CROSS_BUILD=true
+  fi
+fi
+
 if [ $IS_WIN ]; then
   MAKE=mozmake
   export USE_STUB_INSTALLER=1
@@ -67,6 +74,8 @@ fi
 export MOZ_OBJDIR=../obj
 if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
   export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
+elif [ "$OSX_CROSS_BUILD" == "true" ]; then
+  export MOZCONFIG=browser/config/cliqz-release-cross.mozconfig
 else
   export MOZCONFIG=browser/config/cliqz-release.mozconfig
 fi
@@ -109,3 +118,4 @@ export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 
 export ROOT_PATH=$PWD
+export SHELL=$SHELL

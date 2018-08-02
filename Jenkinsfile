@@ -466,8 +466,8 @@ jobs["macosxlinux"] = {
                         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
                         "CQZ_COMMIT=$COMMIT_ID",
                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
-                        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
-
+                        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
+                        "CROSS_TARGET=darwin"]) {
                         withCredentials([
                             [$class: 'StringBinding',
                              credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
@@ -484,7 +484,7 @@ jobs["macosxlinux"] = {
 
                         stage('MacOS Cross Build Browser') {
                             try {
-                                sh '/bin/bash -lc "./osxcrossbuild.sh"'
+                                sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
                             } catch (e) {
                                 archive 'obj/config.log'
                                 throw e

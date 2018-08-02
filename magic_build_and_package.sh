@@ -9,6 +9,18 @@ set -e
 set -x
 
 source cliqz_env.sh
+if [[ "$OSX_CROSS_BUILD" == "true" ]]; then
+  # Check if envs for cross build is set properly
+  # ${!NAME} will do $NAME and then lookup the variable at the value
+  # for e.g NAME=FIRST and FIRST=VALUE
+  # ${!NAME} will return VALUE
+  for e in "CC" "CXX" "CPP" "TOOLCHAIN_PREFIX" "LLVMCONFIG" "DSYMUTIL" "REAL_DSYMUTIL" "DMG_TOOL" "HFS_TOOL" "HOST_CC" "HOST_CPP" "HOST_CXX" "HOST_CPP" "CROSS_PRIVATE_FRAMEWORKS"; do
+    if [ -z "${!e}" ]; then
+      echo $e not set
+      exit -1
+    fi
+  done
+fi
 
 cd $SRC_BASE
 
