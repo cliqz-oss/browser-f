@@ -45,7 +45,7 @@ fi
 
 # check if we are cross compiling
 if [[ $IS_LINUX == "true" ]]; then
-  if [[ "$CROSS_TARGET" == "darwin"* ]];then
+  if [[ "$CROSS_TARGET" == *"apple-darwin"* ]];then
     OSX_CROSS_BUILD=true
   fi
 fi

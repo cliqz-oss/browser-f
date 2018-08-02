@@ -467,7 +467,7 @@ jobs["macosxlinux"] = {
                         "CQZ_COMMIT=$COMMIT_ID",
                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
                         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
-                        "CROSS_TARGET=darwin"]) {
+                        "CROSS_TARGET=x86_64-apple-darwin"]) {
                         withCredentials([
                             [$class: 'StringBinding',
                              credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
