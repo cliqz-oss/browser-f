@@ -341,7 +341,7 @@ jobs["linux"] = {
             }
 
             stage("Linux Build") {
-                def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum Dockerfile | cut -d" " -f1').trim()
+                def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum docker/Dockerfile | cut -d" " -f1').trim()
                 def imageName = "browser-f:${dockerFileCheckSum}"
                 sh "`aws ecr get-login --region=${params.AWS_REGION} --no-include-email)`"
                 docker.withRegistry(params.DOCKER_REGISTRY_URL) {
@@ -353,9 +353,6 @@ jobs["linux"] = {
                         // if registry fails, build image localy and add it to the registry
                         // Build params with context
                         def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
-
-                        // Avoiding docker context
-                        sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
 
                         // Build image with a specific user
                         dir('docker'){
@@ -442,7 +439,7 @@ jobs["macosxlinux"] = {
             }
 
             stage("MacOS-X-Linux Build") {
-                def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum macdocker/Dockerfile | cut -d" " -f1').trim()
+                def dockerFileCheckSum = sh(returnStdout: true, script: 'md5sum docker/Dockerfile.osxcross | cut -d" " -f1').trim()
                 def imageName = "macosxbuilder:${dockerFileCheckSum}"
 
                 sh "`aws ecr get-login --region=${params.AWS_REGION} --no-include-email)`"
@@ -453,8 +450,8 @@ jobs["macosxlinux"] = {
                     } catch (e) {
                         // if registry fails, build image localy and add it to the registry
                         // Build image with a specific user
-                        dir('macdocker'){
-                            sh '/bin/bash -lc "./get_dependencies.sh"'
+                        dir('docker'){
+                            sh '/bin/bash -lc "./get_osxcross_deps.sh"'
                             def image = docker.build(imageName)
                             image.push dockerFileCheckSum
                         }

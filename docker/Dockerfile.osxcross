@@ -1,3 +1,4 @@
+# dockerfile to build macos version on linux.
 FROM ubuntu:17.10
 
 # build deps for xbuild tools
@@ -11,6 +12,7 @@ RUN curl -LO https://github.com/tpoechtrager/osxcross/archive/c47ff0aeed1a7d0e1f
 RUN unzip c47ff0aeed1a7d0e1f884812fc170e415f05be5a.zip
 RUN ln -s /opt/osxcross-c47ff0aeed1a7d0e1f884812fc170e415f05be5a /opt/osxcross
 WORKDIR /opt/osxcross/
+# Ensure that the docker build directory has this.
 COPY MacOSX10.11.sdk.tar.bz2 tarballs/
 RUN echo yes | ./build.sh
 
