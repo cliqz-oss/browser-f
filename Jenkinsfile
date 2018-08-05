@@ -452,7 +452,7 @@ jobs["macosxlinux"] = {
                         // Build image with a specific user
                         dir('docker'){
                             sh '/bin/bash -lc "./get_osxcross_deps.sh"'
-                            def image = docker.build(imageName, '-f Dockerfile.osxcross')
+                            def image = docker.build(imageName, '-f Dockerfile.osxcross .')
                             image.push dockerFileCheckSum
                         }
                     }
