@@ -78,7 +78,7 @@ properties([
                 name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
-        string(defaultValue: "1.21.3", name: "CQZ_VERSION"),
+        string(defaultValue: "1.22.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: true, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
     ]),
