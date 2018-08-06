@@ -229,7 +229,7 @@ stage('Build') {
 
 def uploadBeta(build_id, cqz_version) {
   def locales = ["en-US", "de"]
-  def installers_suffixes = ["win32.installer.exe", "mac.dmg"]
+  def installers_suffixes = ["win32.installer.exe", "win64.installer.exe", "mac.dmg"]
 
   for (locale in locales) {
       for (inst_suff in installers_suffixes) {
