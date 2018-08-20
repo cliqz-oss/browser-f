@@ -1,0 +1,76 @@
+<script type="application/javascript"
+        src="chrome://browser/content/preferences/in-content/cliqz.home.js"/>
+
+<hbox id="homeCategory"
+      class="subcategory"
+      data-category="paneGeneral">
+      <label class="header-name" flex="1" data-l10n-id="home-page-header"/>
+</hbox>
+<!--
+  We need to add this element
+  otherwise this call throws an Exception
+
+  cliqzAddon = function() {
+    ...
+    document.getElementById("version").textContent = version; (main.js)
+  }
+-->
+<div id="version"></div>
+<groupbox id="homepageGroup"
+  data-category="paneGeneral">
+
+  <hbox>
+    <spacer flex="1" />
+    <button id="restoreDefaultHomePage"
+            flex="1"
+            class="homepage-button"
+            data-l10n-id="home-page-restore-to-default" />
+  </hbox>
+
+  <description data-l10n-id="home-page-choose-what-you-see" />
+
+  <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
+    <description control="disableHomePageExtension" flex="1" />
+    <button id="disableHomePageExtension"
+            class="extension-controlled-button accessory-button"
+            data-l10n-id="disable-extension" />
+  </hbox>
+
+  <hbox>
+    <label control="browserHomePage" flex="1" data-l10n-id="home-page-and-new-windows" />
+    <vbox flex="1">
+      <menulist flex="1" id="homeMode" class="home-mode-ctrl">
+        <menupopup>
+          <menuitem value="0" label="resource://cliqz/freshtab/home.html (Default)"></menuitem>
+          <menuitem value="1" label="Custom URLs..."></menuitem>
+          <menuitem value="2" label="Blank page"></menuitem>
+        </menupopup>
+      </menulist>
+      <vbox id="customSettings" hidden="true">
+        <textbox id="homePageUrl"
+                 flex="1"
+                 class="uri-element home-mode-ctrl"
+                 type="autocomplete"
+                 autocompletesearch="unifiedcomplete"
+                 onsyncfrompreference="return gHomePane.syncFromHomePref();"
+                 placeholder="&abouthome.pageTitle;"
+                 preference="browser.startup.homepage"/>
+        <hbox class="homepage-buttons">
+          <button id="useCurrent"
+                  flex="1"
+                  class="homepage-button"
+                  data-l10n-id="use-current-pages"
+                  data-l10n-args='{"tabCount": 0}'
+                  disabled="true"
+                  preference="pref.browser.homepage.disable_button.current_page"/>
+          <button id="useBookmark"
+                  flex="1"
+                  class="homepage-button"
+                  data-l10n-id="choose-bookmark"
+                  preference="pref.browser.homepage.disable_button.bookmark_page"
+                  searchkeywords="&selectBookmark.title; &selectBookmark.label;"/>
+        </hbox>
+      </vbox>
+    </vbox>
+  </hbox>
+</groupbox>

@@ -43,12 +43,22 @@
   </vbox>
 #endif
 
-#if 0
   <vbox id="startupPageBox">
+#if 0
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
-  </vbox>
 #endif
+    <label accesskey="&startupPage2.accesskey;"
+           control="browserStartupPage">&startupPage2.label;</label>
+    <checkbox
+        id="restoreSessionCheckbox"
+        preference="browser.startup.restoreTabs"
+        label="&startupPrevSession.label;"/>
+    <checkbox
+        id="addCliqzFrashTabCheckbox"
+        preference="browser.startup.addFreshTab"
+        label="&startupUserHomePage.label;"/>
+  </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
@@ -75,6 +85,7 @@
   </vbox>
 #endif
 
+#if 0
   <vbox id="startupPageBox">
     <label accesskey="&startupPage2.accesskey;"
            control="browserStartupPage">&startupPage2.label;</label>
@@ -119,8 +130,11 @@
             data-l10n-id="home-restore-defaults"
             preference="pref.browser.homepage.disable_button.restore_default"/>
   </hbox>
+#endif
 </groupbox>
 
+<!-- Home Page -->
+#include cliqz.home.xul
 <!-- Tab preferences -->
 <groupbox data-category="paneGeneral"
           hidden="true">

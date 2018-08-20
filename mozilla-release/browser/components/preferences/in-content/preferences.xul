@@ -53,6 +53,7 @@
   <link rel="localization" href="browser/preferences/permissions.ftl"/>
   <link rel="localization" href="browser/preferences/selectBookmark.ftl"/>
   <link rel="localization" href="browser/preferences/siteDataSettings.ftl"/>
+  <link rel="localization" href="browser/preferences/cliqz.home.ftl"/>
 
   <script type="text/javascript" src="chrome://global/content/l10n.js"></script>
 

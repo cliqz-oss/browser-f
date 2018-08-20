@@ -409,12 +409,17 @@ var gMainPane = {
       setEventListener("setDefaultButton", "command",
         gMainPane.setDefaultBrowser);
     }
+
+#if 0
     setEventListener("useCurrent", "command",
       gMainPane.setHomePageToCurrent);
     setEventListener("useBookmark", "command",
       gMainPane.setHomePageToBookmark);
     setEventListener("restoreDefaultHomePage", "command",
       gMainPane.restoreDefaultHomePage);
+    setEventListener("disableHomePageExtension", "command",
+                     makeDisableControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY));
+#endif
     setEventListener("disableContainersExtension", "command",
                      makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
     setEventListener("chooseLanguage", "command",
@@ -966,28 +971,6 @@ var gMainPane = {
    * on the value of the browser.privatebrowsing.autostart pref.
    */
 
-/*
-<<<<<<< HEAD
-  updateBrowserStartupLastSession() {
-    let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-    let restorePref = document.getElementById("browser.startup.restoreTabs");
-    let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
-    if (pbAutoStartPref.value) {
-      restoreCheckbox.setAttribute("disabled", "true");
-      restoreCheckbox.checked = false;
-||||||| merged common ancestors
-  updateBrowserStartupLastSession() {
-    let pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-    let startupPref = Preferences.get("browser.startup.page");
-    let group = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
-    if (pbAutoStartPref.value) {
-      option.setAttribute("disabled", "true");
-      if (option.selected) {
-        group.selectedItem = document.getElementById("browserStartupHomePage");
-      }
-=======
-*/
   updateBrowserStartupUI() {
     const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
     const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
@@ -1012,13 +995,6 @@ var gMainPane = {
       }
       newValue = this.STARTUP_PREF_RESTORE_SESSION;
     } else {
-/*<<<<<<< HEAD
-      restoreCheckbox.removeAttribute("disabled");
-      restorePref.updateElements(); // Update corresponding checkbox.
-||||||| merged common ancestors
-      option.removeAttribute("disabled");
-      startupPref.updateElements(); // select the correct radio in the startup group
-=======*/
       newValue = this.STARTUP_PREF_HOMEPAGE;
     }
     startupPref.value = newValue;
