@@ -15,3 +15,4 @@ browser.jar:
    content/browser/preferences/in-content/connect.js
    content/browser/preferences/in-content/sync.js
    content/browser/preferences/in-content/findInPage.js
+   content/browser/preferences/in-content/cliqz.home.js

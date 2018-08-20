@@ -6,6 +6,7 @@
 /* import-globals-from subdialogs.js */
 /* import-globals-from main.js */
 /* import-globals-from home.js */
+/* import-globals-from cliqz.home.js */
 /* import-globals-from search.js */
 /* import-globals-from containers.js */
 /* import-globals-from privacy.js */
@@ -59,6 +60,7 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
+  register_module("paneHome", gHomePane);
 #if MOZ_SERVICES_SYNC
   if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     document.getElementById("category-sync").hidden = false;
