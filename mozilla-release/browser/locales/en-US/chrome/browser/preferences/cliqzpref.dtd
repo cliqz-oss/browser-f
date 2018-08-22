@@ -16,10 +16,10 @@
 <!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
 
 <!-- Forget mode -->
-<!ENTITY  forgetMode.caption "Forget Mode">
-<!ENTITY  forgetMode.enableCheckboxLabel "Enable automatic forget mode">
-<!ENTITY  forgetMode.explanation1 "Automatic forget mode will automatically open websites with adult content inside a forget tab, so that these websites will not be saved in your history and temporary web files including cookies will not be stored.">
-<!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in forget mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
+<!ENTITY  forgetMode.caption "Ghost Mode">
+<!ENTITY  forgetMode.enableCheckboxLabel "Enable automatic Ghost mode">
+<!ENTITY  forgetMode.explanation1 "Automatic Ghost mode will automatically open websites with adult content inside a Ghost tab, so that these websites will not be saved in your history and temporary web files including cookies will not be stored.">
+<!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in Ghost mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
 <!ENTITY  forgetMode.learnMore "Learn more">
 
 <!-- Cliqz addition -->

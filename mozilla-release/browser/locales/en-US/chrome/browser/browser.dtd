@@ -13,7 +13,7 @@
 <!ENTITY mainWindow.titlemodifiermenuseparator " - ">
 <!-- LOCALIZATION NOTE (mainWindow.titlePrivateBrowsingSuffix):
     This will be appended to the window's title inside the forget mode -->
-<!ENTITY mainWindow.titlePrivateBrowsingSuffix "(Forget Mode)">
+<!ENTITY mainWindow.titlePrivateBrowsingSuffix "(Ghost Mode)">
 
 <!ENTITY appmenu.tooltip                     "Open menu">
 <!ENTITY navbarOverflow.label                "More tools…">
@@ -67,7 +67,7 @@ can reach it easily. -->
 <!ENTITY tabCmd.label "New Tab">
 <!ENTITY tabCmd.accesskey "T">
 <!ENTITY tabCmd.commandkey "t">
-<!ENTITY forgetTabCmd.label "New Forget Tab">
+<!ENTITY forgetTabCmd.label "New Ghost Tab">
 <!ENTITY forgetTabCmd.accesskey "F">
 <!ENTITY forgetTabCmd.commandkey "f">
 <!-- LOCALIZATION NOTE (openLocationCmd.label): "Open Location" is only
@@ -308,7 +308,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY newNavigatorCmd.label        "New Window">
 <!ENTITY newNavigatorCmd.key        "N">
 <!ENTITY newNavigatorCmd.accesskey      "N">
-<!ENTITY newPrivateWindow.label     "New Forget Window">
+<!ENTITY newPrivateWindow.label     "New Ghost Window">
 <!ENTITY newPrivateWindow.accesskey "W">
 
 <!ENTITY editMenu.label         "Edit">
@@ -519,11 +519,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY searchSetAsDefault.accesskey "D">
 
 <!ENTITY openLinkCmdInTab.label       "Open Link in New Tab">
-<!ENTITY openLinkCmdInForgetTab.label "Open Link in New Forget Tab">
+<!ENTITY openLinkCmdInForgetTab.label "Open Link in New Ghost Tab">
 <!ENTITY openLinkCmdInTab.accesskey   "T">
 <!ENTITY openLinkCmd.label            "Open Link in New Window">
 <!ENTITY openLinkCmd.accesskey        "W">
-<!ENTITY openLinkInPrivateWindowCmd.label "Open Link in New Forget Window">
+<!ENTITY openLinkInPrivateWindowCmd.label "Open Link in New Ghost Window">
 <!ENTITY openLinkInPrivateWindowCmd.accesskey "P">
 <!ENTITY openLinkCmdInCurrent.label     "Open Link">
 <!ENTITY openLinkCmdInCurrent.accesskey "O">

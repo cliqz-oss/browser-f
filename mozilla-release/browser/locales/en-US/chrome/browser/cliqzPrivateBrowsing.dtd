@@ -3,11 +3,11 @@
 -->
 
 <!ENTITY cliqzPrivateBrowsing.title
-  "Forget Mode">
+  "Ghost Mode">
 <!ENTITY cliqzPrivateBrowsing.header
   "&cliqzPrivateBrowsing.title;">
 <!ENTITY cliqzPrivateBrowsing.explanation
-  "You are browsing in Forget Mode. This means that web pages you visit while in this mode will not be saved in your browser's history, and local data from these pages, including cookies, will not be stored. Your downloads and bookmarks will be saved.">
+  "You are browsing in Ghost Mode. This means that web pages you visit while in this mode will not be saved in your browser's history, and local data from these pages, including cookies, will not be stored. Your downloads and bookmarks will be saved.">
 <!ENTITY cliqzPrivateBrowsing.note
   "Note that your internet service provider or your employer at work can still identify websites you visit.">
 <!ENTITY cliqzPrivateBrowsing.learnMore
