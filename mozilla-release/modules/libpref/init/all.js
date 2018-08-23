@@ -2119,7 +2119,13 @@ pref("network.http.throttle.enable", false);
 #else
 pref("network.http.throttle.enable", true);
 #endif
+
+// Make HTTP throttling v2 algorithm Nightly-only due to bug 1462906
+#ifdef NIGHTLY_BUILD
 pref("network.http.throttle.version", 2);
+#else
+pref("network.http.throttle.version", 1);
+#endif
 
 // V1 prefs
 pref("network.http.throttle.suspend-for", 900);
@@ -3016,7 +3022,7 @@ pref("layout.display-list.dump-content", false);
 pref("layout.display-list.dump-parent", false);
 
 // Toggle retaining display lists between paints
-pref("layout.display-list.retain", false);
+pref("layout.display-list.retain", true);
 pref("layout.display-list.retain.chrome", false);
 
 // Set the maximum amount of modified frames allowed before doing a full

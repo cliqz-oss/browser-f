@@ -50,6 +50,7 @@ extern int    gArgc;
 extern char **gArgv;
 extern int    gRestartArgc;
 extern char **gRestartArgv;
+extern bool gRestartedByOS;
 extern bool gLogConsoleErrors;
 extern nsString gAbsoluteArgv0Path;
 
@@ -110,6 +111,8 @@ BOOL
 WinLaunchChild(const wchar_t *exePath, int argc,
                char **argv, HANDLE userToken = nullptr,
                HANDLE *hProcess = nullptr);
+
+#define PREF_WIN_REGISTER_APPLICATION_RESTART "toolkit.winRegisterApplicationRestart"
 #endif
 
 #define NS_NATIVEAPPSUPPORT_CONTRACTID "@mozilla.org/toolkit/native-app-support;1"
