@@ -42,15 +42,32 @@ XPCOMUtils.defineLazyServiceGetter(this, "INIParserFactory",
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
-let fxProductDir = FileUtils.getDir(
+/*
+ * Ghostery
+ * Getting profile paths for both cliqz and Firefox
+ */
+
+let plat = '';
 #if defined(XP_WIN)
-    "AppData", ["Mozilla", "Firefox"]
+  plat = 'win';
 #elif defined(XP_MACOSX)
-    "ULibDir", ["Application Support", "Firefox"]
+  plat = 'mac';
 #else
-    "Home", [".mozilla", "firefox"]
+  plat = ''
 #endif
-    , false);
+
+let fxProductDir = '';
+let cqProductDir = '';
+if(plat == 'win') {
+  fxProductDir = FileUtils.getDir("AppData", ["Mozilla", "Firefox"], false);
+  cqProductDir = FileUtils.getDir("AppData", ["Cliqz"], false);
+} else if (plat === 'mac') {
+  fxProductDir = FileUtils.getDir("ULibDir", ["Application Support", "Firefox"], false);
+  cqProductDir = FileUtils.getDir("ULibDir", ["Application Support", "Cliqz"], false);
+} else {
+  fxProductDir = FileUtils.getDir("Home", [".mozilla", "firefox"], false);
+  cqProductDir = FileUtils.getDir("Home", [".cliqz", "cliqz"], false);
+}
 
 function getFile(path) {
   let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
@@ -115,12 +132,45 @@ function FirefoxProfileMigrator() {
   this.wrappedJSObject = this; // for testing...
 }
 
+// For CLIQZ migrator
+function CliqzProfileMigrator() {
+  this.wrappedJSObject = this; // for testing...
+}
+
+// This Ghostery migrator is used for profile refresh.
+function GhosteryProfileMigrator() {
+  FirefoxProfileMigrator.apply(this);
+}
+
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
+CliqzProfileMigrator.prototype = Object.create(MigratorPrototype);
+
+GhosteryProfileMigrator.prototype =
+    Object.create(FirefoxProfileMigrator.prototype);
+
+GhosteryProfileMigrator.prototype._getAllProfiles = function() {
+  let allProfiles = new Map();
+  let profiles =
+    Cc["@mozilla.org/toolkit/profile-service;1"]
+      .getService(Ci.nsIToolkitProfileService)
+      .profiles;
+  while (profiles.hasMoreElements()) {
+    let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
+    let rootDir = profile.rootDir;
+
+    if (rootDir.exists() && rootDir.isReadable() &&
+        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
+      allProfiles.set(profile.name, rootDir);
+    }
+  }
+  return allProfiles;
+};
 
 FirefoxProfileMigrator.prototype._getAllProfiles = function() {
   const profiles = new Map();
 
-  const profilesIni = fxProductDir.clone();
+  const dirPath = this instanceof CliqzProfileMigrator ? cqProductDir : fxProductDir;
+  const profilesIni = dirPath.clone();
   profilesIni.append("profiles.ini");
   if (!(profilesIni.exists() &&
         profilesIni.isFile() &&
@@ -139,9 +189,9 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function() {
       // toolkit/profile/nsToolkitProfileService.cpp, Init() method.
       const path = iniParser.getString(section, "Path");
       const isRelative = iniParser.getString(section, "IsRelative") == "1";
-      let profileDir = fxProductDir.clone();
+      let profileDir = dirPath.clone();
       if (isRelative) {
-        profileDir.setRelativeDescriptor(fxProductDir, path);
+        profileDir.setRelativeDescriptor(dirPath, path);
       }
       else {
         // TODO: Never saw absolute paths and never tested this.
@@ -156,32 +206,6 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function() {
   }
 
   return profiles;
-};
-
-// This migrator is used for profile refresh.
-function CliqzProfileMigrator() {
-  FirefoxProfileMigrator.apply(this);
-}
-
-CliqzProfileMigrator.prototype =
-    Object.create(FirefoxProfileMigrator.prototype);
-
-CliqzProfileMigrator.prototype._getAllProfiles = function() {
-  let allProfiles = new Map();
-  let profiles =
-    Cc["@mozilla.org/toolkit/profile-service;1"]
-      .getService(Ci.nsIToolkitProfileService)
-      .profiles;
-  while (profiles.hasMoreElements()) {
-    let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
-    let rootDir = profile.rootDir;
-
-    if (rootDir.exists() && rootDir.isReadable() &&
-        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
-      allProfiles.set(profile.name, rootDir);
-    }
-  }
-  return allProfiles;
 };
 
 function sorter(a, b) {
@@ -609,7 +633,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   };
 
   // Telemetry related migrations.
-  const doingProfileReset = this instanceof CliqzProfileMigrator;
+  const doingProfileReset = this instanceof GhosteryProfileMigrator;
   let times = {
     name: "times", // name is used only by tests.
     type: types.OTHERDATA,
@@ -677,7 +701,7 @@ Object.defineProperty(FirefoxProfileMigrator.prototype, "tabsRestoreURL", {
   get: () => "about:importedtabs"
 });
 
-Object.defineProperty(CliqzProfileMigrator.prototype, "tabsRestoreURL", {
+Object.defineProperty(GhosteryProfileMigrator.prototype, "tabsRestoreURL", {
   get: () => "about:welcomeback"
 });
 
@@ -687,21 +711,37 @@ Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
   get: () => false
 });
 
-Object.defineProperty(CliqzProfileMigrator.prototype, "startupOnlyMigrator", {
+Object.defineProperty(GhosteryProfileMigrator.prototype, "startupOnlyMigrator", {
+  // Ghostery
+  // Use not only as startup migrator, but as option to import from FF later
   get: () => true
 });
+
+/*
+ * Extend all methods of Firefox Migrator
+ * - inheriting same functionality for CLIQZ migration
+ */
+
+CliqzProfileMigrator.prototype = Object.create(FirefoxProfileMigrator.prototype);
 
 FirefoxProfileMigrator.prototype.classDescription = "Firefox Profile Migrator";
 FirefoxProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=firefox";
 FirefoxProfileMigrator.prototype.classID = Components.ID("{91185366-ba97-4438-acba-48deaca63386}");
 
 CliqzProfileMigrator.prototype.classDescription = "Cliqz Profile Migrator";
-CliqzProfileMigrator.prototype.contractID =
-    "@mozilla.org/profile/migrator;1?app=browser&type=cliqz";
-CliqzProfileMigrator.prototype.classID =
-    Components.ID("{f8cfe235-2127-4f42-894f-f8fdf2969233}");
+CliqzProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=cliqz";
+CliqzProfileMigrator.prototype.classID = Components.ID("{f8cfe235-2127-4f42-894f-f8fdf2969233}");
+
+/*
+ * component ID from BrowserProfileMigrators.manifest
+ */
+
+GhosteryProfileMigrator.prototype.classDescription = "Ghostery Profile Migrator";
+GhosteryProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=ghostery";
+GhosteryProfileMigrator.prototype.classID = Components.ID("{a8cde235-2343-4d42-893f-a8adf2339233}");
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([
     FirefoxProfileMigrator,
-    CliqzProfileMigrator
+    CliqzProfileMigrator,
+    GhosteryProfileMigrator
 ]);

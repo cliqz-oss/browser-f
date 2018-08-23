@@ -50,14 +50,14 @@ XPCOMUtils.defineLazyGetter(this, "gAvailableMigratorKeys", function() {
   if (AppConstants.platform == "win") {
     return [
       "firefox", "edge", "ie", "chrome", "chromium", "360se",
-      "canary",
+      "canary", "cliqz"
     ];
   }
   if (AppConstants.platform == "macosx") {
-    return ["firefox", "safari", "chrome", "chromium", "canary"];
+    return ["firefox", "safari", "chrome", "chromium", "canary", "cliqz"];
   }
   if (AppConstants.XP_UNIX) {
-    return ["firefox", "chrome", "chrome-beta", "chrome-dev", "chromium"];
+    return ["firefox", "chrome", "chrome-beta", "chrome-dev", "chromium", "cliqz"];
   }
   return [];
 });
@@ -579,6 +579,8 @@ var MigrationUtils = Object.freeze({
         return "sourceName360se";
       case "cliqz":
         return "sourceNameCliqz";
+      case "ghostery":
+        return "sourceNameGhostery";
     }
     return null;
   },
@@ -770,6 +772,7 @@ var MigrationUtils = Object.freeze({
       "Chromium":                          "chromium", // Windows, OS X
       "Chromium Web Browser":              "chromium", // Linux
       "360\u5b89\u5168\u6d4f\u89c8\u5668": "360se",
+      "Cliqz":                             "cliqz",
     };
 
     let key = "";
@@ -1188,6 +1191,7 @@ var MigrationUtils = Object.freeze({
     "canary":     7,
     "safari":     8,
     "360se":      9,
+    "cliqz":     10,
   },
   getSourceIdForTelemetry(sourceName) {
     return this._sourceNameToIdMapping[sourceName] || 0;

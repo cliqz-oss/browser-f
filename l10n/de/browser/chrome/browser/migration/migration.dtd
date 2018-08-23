@@ -29,6 +29,8 @@
 <!ENTITY importFromChromium.accesskey   "u">
 <!ENTITY importFromFirefox.label        "Firefox">
 <!ENTITY importFromFirefox.accesskey    "F">
+<!ENTITY importFromCliqz.label          "Cliqz">
+<!ENTITY importFromCliqz.accesskey      "Q">
 <!ENTITY importFrom360se.label          "360 Secure Browser">
 <!ENTITY importFrom360se.accesskey      "3">
 
