@@ -45,7 +45,6 @@ RUN apt-get update && apt-get install -y \
 RUN pip install awscli
 
 RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list; \
-  apt-key update; \
   apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C; \
   apt-get update; \
   apt-get install aptly -y
