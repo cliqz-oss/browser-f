@@ -260,6 +260,7 @@ FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
 };
 
 FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileDir, currentProfileDir) {
+  const isCliqz = this instanceof CliqzProfileMigrator;
   let getFileResource = (aMigrationType, aFileNames) => {
     let files = [];
     for (let fileName of aFileNames) {
@@ -307,7 +308,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
             parentGuid = (yield PlacesUtils.bookmarks.insert({
               parentGuid,
               type: PlacesUtils.bookmarks.TYPE_FOLDER,
-              title: "Firefox",
+              title: isCliqz ? 'Cliqz' : 'Firefox',
             })).guid;
             // Create top bookmarks folders on Firefox bookmarks folder and recursively insert child bookmarks
             for (let guid of topBookmarkFolderGuids) {
