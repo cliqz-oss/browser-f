@@ -14,7 +14,7 @@ RUN ln -s /opt/osxcross-c47ff0aeed1a7d0e1f884812fc170e415f05be5a /opt/osxcross
 WORKDIR /opt/osxcross/
 # Ensure that the docker build directory has this.
 COPY MacOSX10.11.sdk.tar.bz2 tarballs/
-RUN echo yes | ./build.sh
+RUN UNATTENDED=1 OSX_VERSION_MIN=10.9 ./build.sh
 
 # hfstools
 WORKDIR /opt
@@ -53,7 +53,7 @@ ENV CROSS_CCTOOLS_PATH /opt/osxcross/target
 ENV CROSS_SYSROOT ${CROSS_CCTOOLS_PATH}/SDK/MacOSX10.11.sdk
 ENV CROSS_PRIVATE_FRAMEWORKS $CROSS_SYSROOT/System/Library/PrivateFrameworks
 
-ENV FLAGS "-B $CROSS_CCTOOLS_PATH/bin -isysroot $CROSS_SYSROOT" 
+ENV FLAGS "-B $CROSS_CCTOOLS_PATH/bin -isysroot $CROSS_SYSROOT -I${CROSS_SYSROOT}/usr/include" 
 ENV CC "$CROSS_CCTOOLS_PATH/bin/x86_64-apple-darwin15-clang $FLAGS" 
 ENV CXX "$CROSS_CCTOOLS_PATH/bin/x86_64-apple-darwin15-clang++ $FLAGS" 
 ENV CPP "$CROSS_CCTOOLS_PATH/bin/x86_64-apple-darwin15-clang $FLAGS -E" 
