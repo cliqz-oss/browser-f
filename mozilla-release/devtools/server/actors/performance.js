@@ -41,7 +41,7 @@ var PerformanceActor = ActorClassWithSpec(performanceSpec, {
     },
   },
 
-  initialize: function(conn, tabActor) {
+  initialize: function(conn, targetActor) {
     Actor.prototype.initialize.call(this, conn);
 
     this._onRecordingStarted = this._onRecordingStarted.bind(this);
@@ -51,7 +51,7 @@ var PerformanceActor = ActorClassWithSpec(performanceSpec, {
     this._onTimelineData = this._onTimelineData.bind(this);
     this._onConsoleProfileStart = this._onConsoleProfileStart.bind(this);
 
-    this.bridge = new PerformanceRecorder(conn, tabActor);
+    this.bridge = new PerformanceRecorder(conn, targetActor);
 
     this.bridge.on("recording-started", this._onRecordingStarted);
     this.bridge.on("recording-stopping", this._onRecordingStopping);
@@ -87,8 +87,8 @@ var PerformanceActor = ActorClassWithSpec(performanceSpec, {
       return null;
     }
 
-    let normalizedOptions = normalizePerformanceFeatures(options, this.traits.features);
-    let recording = await this.bridge.startRecording(normalizedOptions);
+    const normalizedOptions = normalizePerformanceFeatures(options, this.traits.features);
+    const recording = await this.bridge.startRecording(normalizedOptions);
     this.manage(recording);
 
     return recording;
@@ -132,8 +132,8 @@ var PerformanceActor = ActorClassWithSpec(performanceSpec, {
     // a method on the related PerformanceRecordingActor so it can
     // update its internal state.
     if (RECORDING_STATE_CHANGE_EVENTS.has(eventName)) {
-      let recording = data[0];
-      let extraData = data[1];
+      const recording = data[0];
+      const extraData = data[1];
       recording._setState(eventName, extraData);
     }
 

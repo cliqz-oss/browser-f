@@ -18,7 +18,6 @@
 #include "nsIDocShell.h"
 #include "nsIDocShellLoadInfo.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIExternalProtocolHandler.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIObjectFrame.h"
@@ -1603,9 +1602,7 @@ nsObjectLoadingContent::UpdateObjectParameters()
                                                    codebaseStr,
                                                    thisElement->OwnerDoc(),
                                                    docBaseURI);
-    if (NS_SUCCEEDED(rv)) {
-      NS_TryToSetImmutable(newBaseURI);
-    } else {
+    if (NS_FAILED(rv)) {
       // Malformed URI
       LOG(("OBJLC [%p]: Could not parse plugin's codebase as a URI, "
            "will use document baseURI instead", this));
@@ -1656,9 +1653,7 @@ nsObjectLoadingContent::UpdateObjectParameters()
       newMime = NS_LITERAL_CSTRING("text/html");
     }
 
-    if (NS_SUCCEEDED(rv)) {
-      NS_TryToSetImmutable(newURI);
-    } else {
+    if (NS_FAILED(rv)) {
       stateInvalid = true;
     }
   }
@@ -1816,12 +1811,15 @@ nsObjectLoadingContent::UpdateObjectParameters()
              IsPluginType(newMime_Type)) {
     newType = newMime_Type;
     LOG(("OBJLC [%p]: Plugin type with no URI, skipping channel load", this));
-  } else if (newURI) {
+  } else if (newURI && (mOriginalContentType.IsEmpty() || newMime_Type != eType_Null)) {
     // We could potentially load this if we opened a channel on mURI, indicate
-    // This by leaving type as loading
+    // this by leaving type as loading.
+    //
+    // If a MIME type was requested in the tag, but we have decided to set load
+    // type to null, ignore (otherwise we'll default to document type loading).
     newType = eType_Loading;
   } else {
-    // Unloadable - no URI, and no plugin type. Non-plugin types (images,
+    // Unloadable - no URI, and no plugin/MIME type. Non-plugin types (images,
     // documents) always load with a channel.
     newType = eType_Null;
   }
@@ -3568,12 +3566,12 @@ nsObjectLoadingContent::SetupProtoChain(JSContext* aCx,
     return;
   }
 
-  // We get called on random compartments here for some reason
-  // (perhaps because WrapObject can happen on a random compartment?)
-  // so make sure to enter the compartment of aObject.
+  // We get called on random realms here for some reason
+  // (perhaps because WrapObject can happen on a random realm?)
+  // so make sure to enter the realm of aObject.
   MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
 
-  JSAutoCompartment ac(aCx, aObject);
+  JSAutoRealm ar(aCx, aObject);
 
   RefPtr<nsNPAPIPluginInstance> pi;
   nsresult rv = ScriptRequestPluginInstance(aCx, getter_AddRefs(pi));
@@ -3589,7 +3587,7 @@ nsObjectLoadingContent::SetupProtoChain(JSContext* aCx,
   JS::Rooted<JSObject*> pi_obj(aCx); // XPConnect-wrapped peer object, when we get it.
   JS::Rooted<JSObject*> pi_proto(aCx); // 'pi.__proto__'
 
-  rv = GetPluginJSObject(aCx, aObject, pi, &pi_obj, &pi_proto);
+  rv = GetPluginJSObject(aCx, pi, &pi_obj, &pi_proto);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -3673,16 +3671,10 @@ nsObjectLoadingContent::SetupProtoChain(JSContext* aCx,
 // static
 nsresult
 nsObjectLoadingContent::GetPluginJSObject(JSContext *cx,
-                                          JS::Handle<JSObject*> obj,
                                           nsNPAPIPluginInstance *plugin_inst,
                                           JS::MutableHandle<JSObject*> plugin_obj,
                                           JS::MutableHandle<JSObject*> plugin_proto)
 {
-  // NB: We need an AutoEnterCompartment because we can be called from
-  // nsPluginFrame when the plugin loads after the JS object for our content
-  // node has been created.
-  JSAutoCompartment ac(cx, obj);
-
   if (plugin_inst) {
     plugin_inst->GetJSObject(cx, plugin_obj.address());
     if (plugin_obj) {
@@ -3712,7 +3704,7 @@ nsObjectLoadingContent::TeardownProtoChain()
   MOZ_ASSERT(obj);
 
   JS::Rooted<JSObject*> proto(cx);
-  JSAutoCompartment ac(cx, obj);
+  JSAutoRealm ar(cx, obj);
 
   // Loop over the DOM element's JS object prototype chain and remove
   // all JS objects of the class sNPObjectJSWrapperClass

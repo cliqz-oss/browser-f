@@ -24,12 +24,19 @@
               },
               "browser_style": {
                 "type": "boolean",
-                "optional": true
+                "optional": true,
+                "default": true
               },
               "default_panel": {
                 "type": "string",
                 "format": "strictRelativeUrl",
                 "preprocess": "localize"
+              },
+              "open_at_install": {
+                "type": "boolean",
+                "optional": true,
+                "default": true,
+                "description": "Whether or not the sidebar is opened at install. Default is <code>true</code>."
               }
             },
             "optional": true

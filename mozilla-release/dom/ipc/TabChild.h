@@ -99,7 +99,7 @@ public:
     MOZ_CRASH("We should never get here!");
   }
   bool WrapGlobalObject(JSContext* aCx,
-                        JS::CompartmentOptions& aOptions,
+                        JS::RealmOptions& aOptions,
                         JS::MutableHandle<JSObject*> aReflector);
 
   virtual already_AddRefed<nsPIDOMWindowOuter> GetContent(ErrorResult& aError) override;
@@ -163,7 +163,7 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TabChildBase)
 
   virtual bool WrapGlobalObject(JSContext* aCx,
-                                JS::CompartmentOptions& aOptions,
+                                JS::RealmOptions& aOptions,
                                 JS::MutableHandle<JSObject*> aReflector) override
   {
     return mTabChildGlobal->WrapGlobalObject(aCx, aOptions, aReflector);
@@ -655,7 +655,8 @@ public:
                   const uint32_t& aFlags);
 
   // Request that the docshell be marked as active.
-  void ForcePaint(uint64_t aLayerObserverEpoch);
+  void PaintWhileInterruptingJS(uint64_t aLayerObserverEpoch,
+                                bool aForceRepaint);
 
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
   uintptr_t GetNativeWindowHandle() const { return mNativeWindowHandle; }
@@ -728,7 +729,7 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvSetDocShellIsActive(const bool& aIsActive) override;
 
-  virtual mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled, const uint64_t& aLayerObserverEpoch) override;
+  virtual mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled, const bool& aForce, const uint64_t& aLayerObserverEpoch) override;
 
   virtual mozilla::ipc::IPCResult RecvNavigateByKey(const bool& aForward,
                                                     const bool& aForDocumentNavigation) override;

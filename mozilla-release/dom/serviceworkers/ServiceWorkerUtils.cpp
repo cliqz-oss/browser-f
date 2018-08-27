@@ -11,24 +11,17 @@
 namespace mozilla {
 namespace dom {
 
+
 bool
 ServiceWorkerParentInterceptEnabled()
 {
-  // For right now we only support main thread.  In the future we could make
-  // this use an atomic bool if we need to support worker threads.
-  MOZ_ASSERT(NS_IsMainThread());
-
-  static bool sInit = false;
-  static bool sEnabled;
-
-  if (!sInit) {
-    MOZ_ASSERT(NS_IsMainThread());
-    Preferences::AddBoolVarCache(&sEnabled,
-                                 "dom.serviceWorkers.parent_intercept",
-                                 false);
-    sInit = true;
+  static Atomic<bool> sEnabled;
+  static Atomic<bool> sInitialized;
+  if (!sInitialized) {
+    AssertIsOnMainThread();
+    sInitialized = true;
+    sEnabled = Preferences::GetBool("dom.serviceWorkers.parent_intercept", false);
   }
-
   return sEnabled;
 }
 

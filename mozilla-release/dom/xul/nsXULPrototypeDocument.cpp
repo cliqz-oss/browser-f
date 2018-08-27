@@ -115,24 +115,6 @@ nsXULPrototypeDocument::Read(nsIObjectInputStream* aStream)
     }
     mURI = do_QueryInterface(supports);
 
-    uint32_t count, i;
-    nsCOMPtr<nsIURI> styleOverlayURI;
-
-    rv = aStream->Read32(&count);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-
-    for (i = 0; i < count; ++i) {
-        rv = aStream->ReadObject(true, getter_AddRefs(supports));
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-        styleOverlayURI = do_QueryInterface(supports);
-        mStyleSheetReferences.AppendObject(styleOverlayURI);
-    }
-
-
     // nsIPrincipal mNodeInfoManager->mPrincipal
     rv = aStream->ReadObject(true, getter_AddRefs(supports));
     if (NS_FAILED(rv)) {
@@ -147,6 +129,7 @@ nsXULPrototypeDocument::Read(nsIObjectInputStream* aStream)
     // mozilla::dom::NodeInfo table
     nsTArray<RefPtr<mozilla::dom::NodeInfo>> nodeInfos;
 
+    uint32_t count, i;
     rv = aStream->Read32(&count);
     if (NS_FAILED(rv)) {
       return rv;
@@ -272,25 +255,9 @@ nsXULPrototypeDocument::Write(nsIObjectOutputStream* aStream)
 
     rv = aStream->WriteCompoundObject(mURI, NS_GET_IID(nsIURI), true);
 
-    uint32_t count;
-
-    count = mStyleSheetReferences.Count();
-    nsresult tmp = aStream->Write32(count);
-    if (NS_FAILED(tmp)) {
-      rv = tmp;
-    }
-
-    uint32_t i;
-    for (i = 0; i < count; ++i) {
-        tmp = aStream->WriteCompoundObject(mStyleSheetReferences[i],
-                                           NS_GET_IID(nsIURI), true);
-        if (NS_FAILED(tmp)) {
-          rv = tmp;
-        }
-    }
 
     // nsIPrincipal mNodeInfoManager->mPrincipal
-    tmp = aStream->WriteObject(mNodeInfoManager->DocumentPrincipal(),
+    nsresult tmp = aStream->WriteObject(mNodeInfoManager->DocumentPrincipal(),
                                true);
     if (NS_FAILED(tmp)) {
       rv = tmp;
@@ -317,6 +284,7 @@ nsXULPrototypeDocument::Write(nsIObjectOutputStream* aStream)
     if (NS_FAILED(tmp)) {
       rv = tmp;
     }
+    uint32_t i;
     for (i = 0; i < nodeInfoCount; ++i) {
         mozilla::dom::NodeInfo *nodeInfo = nodeInfos[i];
         NS_ENSURE_TRUE(nodeInfo, NS_ERROR_FAILURE);
@@ -351,7 +319,7 @@ nsXULPrototypeDocument::Write(nsIObjectOutputStream* aStream)
     }
 
     // Now serialize the document contents
-    count = mProcessingInstructions.Length();
+    uint32_t count = mProcessingInstructions.Length();
     for (i = 0; i < count; ++i) {
         nsXULPrototypePI* pi = mProcessingInstructions[i];
         tmp = pi->Serialize(aStream, this, &nodeInfos);
@@ -409,7 +377,7 @@ nsXULPrototypeDocument::SetRootElement(nsXULPrototypeElement* aElement)
 nsresult
 nsXULPrototypeDocument::AddProcessingInstruction(nsXULPrototypePI* aPI)
 {
-    NS_PRECONDITION(aPI, "null ptr");
+    MOZ_ASSERT(aPI, "null ptr");
     if (!mProcessingInstructions.AppendElement(aPI)) {
         return NS_ERROR_OUT_OF_MEMORY;
     }
@@ -422,44 +390,10 @@ nsXULPrototypeDocument::GetProcessingInstructions() const
     return mProcessingInstructions;
 }
 
-void
-nsXULPrototypeDocument::AddStyleSheetReference(nsIURI* aURI)
-{
-    NS_PRECONDITION(aURI, "null ptr");
-    if (!mStyleSheetReferences.AppendObject(aURI)) {
-        NS_WARNING("mStyleSheetReferences->AppendElement() failed."
-                   "Stylesheet overlay dropped.");
-    }
-}
-
-const nsCOMArray<nsIURI>&
-nsXULPrototypeDocument::GetStyleSheetReferences() const
-{
-    return mStyleSheetReferences;
-}
-
-NS_IMETHODIMP
-nsXULPrototypeDocument::GetHeaderData(nsAtom* aField, nsAString& aData) const
-{
-    // XXX Not implemented
-    aData.Truncate();
-    return NS_OK;
-}
-
-
-NS_IMETHODIMP
-nsXULPrototypeDocument::SetHeaderData(nsAtom* aField, const nsAString& aData)
-{
-    // XXX Not implemented
-    return NS_OK;
-}
-
-
-
 nsIPrincipal*
 nsXULPrototypeDocument::DocumentPrincipal()
 {
-    NS_PRECONDITION(mNodeInfoManager, "missing nodeInfoManager");
+    MOZ_ASSERT(mNodeInfoManager, "missing nodeInfoManager");
     return mNodeInfoManager->DocumentPrincipal();
 }
 

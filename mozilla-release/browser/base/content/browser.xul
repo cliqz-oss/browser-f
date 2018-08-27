@@ -13,6 +13,7 @@
 <?xml-stylesheet href="chrome://browser/skin/controlcenter/panel.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/customizableui/panelUI.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/downloads/downloads.css"?>
+<?xml-stylesheet href="chrome://browser/skin/searchbar.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/editBookmark.css"?>
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
@@ -99,6 +100,8 @@
       <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
+      <menuitem id="context_toggleMuteSelectedTabs" hidden="true"
+                oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
       <menuseparator/>
       <menuitem id="context_pinTab" label="&pinTab.label;"
                 accesskey="&pinTab.accesskey;"
@@ -109,6 +112,13 @@
       <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
                 accesskey="&duplicateTab.accesskey;"
                 oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
+      <menu id="context_reopenInContainer"
+            label="&reopenInContainer.label;"
+            accesskey="&reopenInContainer.accesskey;"
+            hidden="true">
+        <menupopup oncommand="reopenInContainer(event);"
+                   onpopupshowing="return createReopenInContainerMenu(event);" />
+      </menu>
       <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
@@ -139,6 +149,9 @@
                 observes="History:UndoCloseTab"/>
       <menuitem id="context_closeTab" label="&closeTab.label;" accesskey="&closeTab.accesskey;"
                 oncommand="gBrowser.removeTab(TabContextMenu.contextTab, { animate: true });"/>
+      <menuitem id="context_closeSelectedTabs" label="&closeSelectedTabs.label;"
+                hidden="true" accesskey="&closeSelectedTabs.accesskey;"
+                oncommand="gBrowser.removeMultiSelectedTabs();"/>
     </menupopup>
 
     <!-- bug 415444/582485: event.stopPropagation is here for the cloned version
@@ -218,17 +231,16 @@
            tabspecific="true"
            onpopupshown="StarUI.panelShown(event);"
            aria-labelledby="editBookmarkPanelTitle">
-      <row id="editBookmarkPanelHeader" align="center" hidden="true">
-        <vbox align="center">
-          <image id="editBookmarkPanelStarIcon"/>
-        </vbox>
-        <vbox>
-          <label id="editBookmarkPanelTitle"/>
-          <description id="editBookmarkPanelDescription"/>
-        </vbox>
-      </row>
+      <box class="panel-header">
+        <label id="editBookmarkPanelTitle"/>
+      </box>
+      <html:div id="editBookmarkPanelFaviconContainer">
+        <html:img id="editBookmarkPanelFavicon"/>
+      </html:div>
+      <box id="editBookmarkPanelImage"/>
 #include ../../components/places/content/editBookmarkPanel.inc.xul
-      <hbox id="editBookmarkPanelBottomButtons" pack="end">
+      <hbox id="editBookmarkPanelBottomButtons"
+            style="min-width: 30em;">
 #ifndef XP_UNIX
         <button id="editBookmarkPanelDoneButton"
                 class="editBookmarkPanelBottomButton"
@@ -237,13 +249,11 @@
                 oncommand="StarUI.panel.hidePopup();"/>
         <button id="editBookmarkPanelRemoveButton"
                 class="editBookmarkPanelBottomButton"
-                oncommand="StarUI.removeBookmarkButtonCommand();"
-                accesskey="&editBookmark.removeBookmark.accessKey;"/>
+                oncommand="StarUI.removeBookmarkButtonCommand();"/>
 #else
         <button id="editBookmarkPanelRemoveButton"
                 class="editBookmarkPanelBottomButton"
-                oncommand="StarUI.removeBookmarkButtonCommand();"
-                accesskey="&editBookmark.removeBookmark.accessKey;"/>
+                oncommand="StarUI.removeBookmarkButtonCommand();"/>
         <button id="editBookmarkPanelDoneButton"
                 class="editBookmarkPanelBottomButton"
                 label="&editBookmark.done.label;"
@@ -332,12 +342,24 @@
     </panel>
 
     <menupopup id="toolbar-context-menu"
-               onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator'));">
+               onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); UpdateDownloadsAutoHide(this); UpdateManageExtension(this)">
+      <menuitem oncommand="openAboutAddonsForContextAction(this.parentElement)"
+                accesskey="&customizeMenu.manageExtension.accesskey;"
+                label="&customizeMenu.manageExtension.label;"
+                contexttype="toolbaritem"
+                class="customize-context-manageExtension"/>
+      <menuseparator/>
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
                 accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
                 label="&customizeMenu.pinToOverflowMenu.label;"
                 contexttype="toolbaritem"
                 class="customize-context-moveToPanel"/>
+      <menuitem oncommand="onDownloadsAutoHideChange(event)"
+                type="checkbox"
+                accesskey="&customizeMenu.autoHideDownloadsButton.accesskey;"
+                label="&customizeMenu.autoHideDownloadsButton.label;"
+                contexttype="toolbaritem"
+                class="customize-context-autoHide"/>
       <menuitem oncommand="gCustomizeMode.removeFromArea(document.popupNode)"
                 accesskey="&customizeMenu.removeFromToolbar.accesskey;"
                 label="&customizeMenu.removeFromToolbar.label;"
@@ -414,17 +436,8 @@
 #include ../../components/places/content/placesContextMenu.inc.xul
 
     <panel id="ctrlTab-panel" hidden="true" norestorefocus="true" level="top">
-      <hbox>
-        <button class="ctrlTab-preview" flex="1"/>
-        <button class="ctrlTab-preview" flex="1"/>
-        <button class="ctrlTab-preview" flex="1"/>
-        <button class="ctrlTab-preview" flex="1"/>
-        <button class="ctrlTab-preview" flex="1"/>
-        <button class="ctrlTab-preview" flex="1"/>
-      </hbox>
-      <hbox pack="center">
-        <button id="ctrlTab-showAll" class="ctrlTab-preview" noicon="true"/>
-      </hbox>
+      <hbox id="ctrlTab-previews"/>
+      <hbox id="ctrlTab-showAll-container" pack="center"/>
     </panel>
 
     <panel id="pageActionPanel"
@@ -452,21 +465,19 @@
         </panelview>
       </panelmultiview>
     </panel>
-    <panel id="pageActionFeedback"
+
+    <panel id="confirmation-hint"
            role="alert"
            type="arrow"
            hidden="true"
            flip="slide"
            position="bottomcenter topright"
            tabspecific="true"
-           noautofocus="true"
-           copyURLFeedback="&copyURLFeedback.label;"
-           sendToDeviceFeedback="&sendToDeviceFeedback.label;"
-           sendToDeviceOfflineFeedback="&sendToDeviceOfflineFeedback.label;">
-      <hbox id="pageActionFeedbackAnimatableBox">
-        <image id="pageActionFeedbackAnimatableImage"/>
+           noautofocus="true">
+      <hbox id="confirmation-hint-checkmark-animation-container">
+        <image id="confirmation-hint-checkmark-image"/>
       </hbox>
-      <label id="pageActionFeedbackMessage"/>
+      <label id="confirmation-hint-message"/>
     </panel>
 
     <menupopup id="pageActionContextMenu"
@@ -516,6 +527,7 @@
 #include ../../components/customizableui/content/panelUI.inc.xul
 #include ../../components/controlcenter/content/panel.inc.xul
 #include ../../components/downloads/content/downloadsPanel.inc.xul
+#include browser-allTabsMenu.inc.xul
 
     <hbox id="downloads-animation-container" mousethrough="always">
       <vbox id="downloads-notification-anchor" hidden="true">
@@ -667,29 +679,10 @@
 
       <toolbarbutton id="alltabs-button"
                      class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button badged-button"
-                     type="menu"
+                     oncommand="gTabsPanel.showAllTabsPanel();"
                      label="&listAllTabs.label;"
                      tooltiptext="&listAllTabs.label;"
-                     removable="false">
-        <menupopup id="alltabs-popup"
-                   position="after_end">
-          <menuitem id="alltabs_undoCloseTab"
-                    key="key_undoCloseTab"
-                    label="&undoCloseTab.label;"
-                    observes="History:UndoCloseTab"/>
-          <menuseparator id="alltabs-popup-separator-1"/>
-          <menu id="alltabs_containersTab"
-                label="&newUserContext.label;">
-            <menupopup id="alltabs_containersMenuTab" />
-          </menu>
-          <menuseparator id="alltabs-popup-separator-2"/>
-          <menu id="alltabs_hiddenTabs"
-                label="&hiddenTabs.label;">
-            <menupopup id="alltabs_hiddenTabsMenu"/>
-          </menu>
-          <menuseparator id="alltabs-popup-separator-3"/>
-        </menupopup>
-      </toolbarbutton>
+                     removable="false"/>
 
       <hbox class="titlebar-placeholder" type="post-tabs"
             ordinal="1000"
@@ -770,7 +763,7 @@
                        key="goHome"
                        onclick="BrowserGoHome(event);"
                        cui-areatype="toolbar"
-                       aboutHomeOverrideTooltip="&abouthome.pageTitle;"/>
+                       aboutHomeOverrideTooltip="&homeButton.defaultPage.tooltip;"/>
         <toolbarspring cui-areatype="toolbar" class="chromeclass-toolbar-additional"/>
         <toolbaritem id="urlbar-container" flex="400" persist="width"
                      removable="false"
@@ -818,6 +811,8 @@
                          tooltiptext="&urlbar.persistentStorageBlocked.tooltip;"/>
                   <image data-permission-id="popup" class="blocked-permission-icon popup-icon" role="button"
                          tooltiptext="&urlbar.popupBlocked.tooltip;"/>
+                  <image data-permission-id="autoplay-media" class="blocked-permission-icon autoplay-media-icon" role="button"
+                         tooltiptext="&urlbar.autoplayMediaBlocked.tooltip;"/>
                   <image data-permission-id="canvas" class="blocked-permission-icon canvas-icon" role="button"
                          tooltiptext="&urlbar.canvasBlocked.tooltip;"/>
                   <image data-permission-id="plugin:flash" class="blocked-permission-icon plugin-icon" role="button"
@@ -834,6 +829,8 @@
                          tooltiptext="&urlbar.defaultNotificationAnchor.tooltip;"/>
                   <image id="geo-notification-icon" class="notification-anchor-icon geo-icon" role="button"
                          tooltiptext="&urlbar.geolocationNotificationAnchor.tooltip;"/>
+                  <image id="autoplay-media-notification-icon" class="notification-anchor-icon autoplay-media-icon" role="button"
+                         tooltiptext="&urlbar.autoplayNotificationAnchor.tooltip;"/>
                   <image id="addons-notification-icon" class="notification-anchor-icon install-icon" role="button"
                          tooltiptext="&urlbar.addonsNotificationAnchor.tooltip;"/>
                   <image id="canvas-notification-icon" class="notification-anchor-icon" role="button"
@@ -1129,7 +1126,7 @@
                        placespopup="true"
                        context="placesContext"
                        onpopupshowing="if (!this.parentNode._placesView)
-                                         new PlacesMenu(event, 'place:folder=TOOLBAR',
+                                         new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.toolbarGuid}`,
                                                         PlacesUIUtils.getViewForNode(this.parentNode.parentNode).options);">
               <menuitem id="BMB_viewBookmarksToolbar"
                         class="menuitem-iconic subviewbutton"
@@ -1148,7 +1145,7 @@
                        placespopup="true"
                        context="placesContext"
                        onpopupshowing="if (!this.parentNode._placesView)
-                                         new PlacesMenu(event, 'place:folder=UNFILED_BOOKMARKS',
+                                         new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.unfiledGuid}`,
                                                         PlacesUIUtils.getViewForNode(this.parentNode.parentNode).options);"/>
           </menu>
           <menu id="BMB_mobileBookmarks"
@@ -1160,7 +1157,7 @@
                        placespopup="true"
                        context="placesContext"
                        onpopupshowing="if (!this.parentNode._placesView)
-                                         new PlacesMenu(event, 'place:folder=MOBILE_BOOKMARKS',
+                                         new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.mobileGuid}`,
                                                         PlacesUIUtils.getViewForNode(this.parentNode.parentNode).options);"/>
           </menu>
 
@@ -1216,9 +1213,10 @@
       <vbox id="appcontent" flex="1">
         <notificationbox id="high-priority-global-notificationbox" notificationside="top"/>
         <tabbox id="tabbrowser-tabbox"
-                    flex="1" eventnode="document" tabcontainer="tabbrowser-tabs"
-                    onselect="if (event.target.localName == 'tabpanels') gBrowser.updateCurrentBrowser();">
-          <tabpanels flex="1" class="plain" selectedIndex="0" id="tabbrowser-tabpanels">
+                flex="1" eventnode="document" tabcontainer="tabbrowser-tabs">
+          <tabpanels id="tabbrowser-tabpanels"
+                     flex="1" class="plain" selectedIndex="0"
+                     onselect="if (event.target == this) gBrowser.updateCurrentBrowser();">
             <notificationbox flex="1" notificationside="top">
               <!-- Set large flex to allow the devtools toolbox to set a flex attribute.
                    We don't want the toolbox to actually take up free space, but we do want it to collapse when the window shrinks, and with flex=0 it can't.

@@ -67,7 +67,7 @@ const DATABASE_TO_MEMORY_PERC = 4;
 const DATABASE_TO_DISK_PERC = 2;
 // Maximum size of the optimal database.  High-end hardware has plenty of
 // memory and disk space, but performances don't grow linearly.
-const DATABASE_MAX_SIZE = 73400320; // 70MiB
+const DATABASE_MAX_SIZE = 78643200; // 75 MiB
 // If the physical memory size is bogus, fallback to this.
 const MEMSIZE_FALLBACK_BYTES = 268435456; // 256 MiB
 // If the disk available space is bogus, fallback to this.
@@ -231,7 +231,7 @@ const EXPIRATION_QUERIES = {
   // Hosts accumulated during the places delete are updated through a trigger
   // (see nsPlacesTriggers.h).
   QUERY_UPDATE_HOSTS: {
-    sql: `DELETE FROM moz_updatehostsdelete_temp`,
+    sql: `DELETE FROM moz_updateoriginsdelete_temp`,
     actions: ACTION.TIMED | ACTION.TIMED_OVERLIMIT | ACTION.SHUTDOWN_DIRTY |
              ACTION.IDLE_DIRTY | ACTION.IDLE_DAILY | ACTION.DEBUG
   },
@@ -390,9 +390,7 @@ function nsPlacesExpiration() {
   // Smart Getters
 
   XPCOMUtils.defineLazyGetter(this, "_db", function() {
-    let db = Cc["@mozilla.org/browser/nav-history-service;1"].
-             getService(Ci.nsPIPlacesDatabase).
-             DBConnection;
+    let db = PlacesUtils.history.DBConnection;
 
     // Create the temporary notifications table.
     let stmt = db.createAsyncStatement(

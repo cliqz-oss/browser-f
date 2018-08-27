@@ -30,7 +30,7 @@ public:
     { mGenericTypes |= eTable; }
 
   // TableAccessible
-  virtual uint32_t ColCount() override;
+  virtual uint32_t ColCount() const override;
   virtual uint32_t RowCount() override;
   virtual Accessible* CellAt(uint32_t aRowIndex, uint32_t aColumnIndex) override;
   virtual void ColDescription(uint32_t aColIdx, nsString& aDescription) override;
@@ -50,7 +50,7 @@ public:
 
   // Accessible
   virtual TableAccessible* AsTable() override { return this; }
-  virtual a11y::role NativeRole() override;
+  virtual a11y::role NativeRole() const override;
 
 protected:
   virtual ~XULTreeGridAccessible();
@@ -81,8 +81,8 @@ public:
 
   // Accessible
   virtual void Shutdown() override;
-  virtual a11y::role NativeRole() override;
-  virtual ENameValueFlag Name(nsString& aName) override;
+  virtual a11y::role NativeRole() const override;
+  virtual ENameValueFlag Name(nsString& aName) const override;
   virtual Accessible* ChildAtPoint(int32_t aX, int32_t aY,
                                    EWhichChildAtPoint aWhichChild) override;
 
@@ -90,7 +90,7 @@ public:
   virtual uint32_t ChildCount() const override;
 
   // XULTreeItemAccessibleBase
-  XULTreeGridCellAccessible* GetCellAccessible(nsITreeColumn* aColumn)
+  XULTreeGridCellAccessible* GetCellAccessible(nsTreeColumn* aColumn)
     const final;
   virtual void RowInvalidated(int32_t aStartColIdx, int32_t aEndColIdx) override;
 
@@ -116,7 +116,7 @@ public:
   XULTreeGridCellAccessible(nsIContent* aContent, DocAccessible* aDoc,
                             XULTreeGridRowAccessible* aRowAcc,
                             nsITreeBoxObject* aTree, nsITreeView* aTreeView,
-                            int32_t aRow, nsITreeColumn* aColumn);
+                            int32_t aRow, nsTreeColumn* aColumn);
 
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
@@ -128,19 +128,19 @@ public:
   virtual TableCellAccessible* AsTableCell() override { return this; }
   virtual nsRect BoundsInAppUnits() const override;
   virtual nsIntRect BoundsInCSSPixels() const override;
-  virtual ENameValueFlag Name(nsString& aName) override;
+  virtual ENameValueFlag Name(nsString& aName) const override;
   virtual Accessible* FocusedChild() override;
   virtual already_AddRefed<nsIPersistentProperties> NativeAttributes() override;
   virtual int32_t IndexInParent() const override;
-  virtual Relation RelationByType(RelationType aType) override;
-  virtual a11y::role NativeRole() override;
-  virtual uint64_t NativeState() override;
+  virtual Relation RelationByType(RelationType aType) const override;
+  virtual a11y::role NativeRole() const override;
+  virtual uint64_t NativeState() const override;
   virtual uint64_t NativeInteractiveState() const override;
 
   // ActionAccessible
-  virtual uint8_t ActionCount() override;
+  virtual uint8_t ActionCount() const override;
   virtual void ActionNameAt(uint8_t aIndex, nsAString& aName) override;
-  virtual bool DoAction(uint8_t aIndex) override;
+  virtual bool DoAction(uint8_t aIndex) const override;
 
   // TableCellAccessible
   virtual TableAccessible* Table() const override;
@@ -163,7 +163,8 @@ protected:
   // Accessible
   virtual Accessible* GetSiblingAtOffset(int32_t aOffset,
                                          nsresult* aError = nullptr) const override;
-  virtual void DispatchClickEvent(nsIContent* aContent, uint32_t aActionIndex) override;
+  virtual void DispatchClickEvent(nsIContent* aContent,
+                                  uint32_t aActionIndex) const override;
 
   // XULTreeGridCellAccessible
 
@@ -178,7 +179,7 @@ protected:
   nsITreeView* mTreeView;
 
   int32_t mRow;
-  nsCOMPtr<nsITreeColumn> mColumn;
+  RefPtr<nsTreeColumn> mColumn;
 
   nsString mCachedTextEquiv;
 };

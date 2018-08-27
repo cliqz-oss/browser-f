@@ -12,12 +12,13 @@
 
 @AB_CD@.jar:
 % locale browser @AB_CD@ %locale/browser/
-*   locale/browser/bookmarks.html                  (generic/profile/bookmarks.html.in)
+# bookmarks.html is produced by LOCALIZED_GENERATED_FILES.
+    locale/browser/bookmarks.html                  (bookmarks.html)
     locale/browser/aboutDialog.dtd                 (%chrome/browser/aboutDialog.dtd)
     locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
     locale/browser/aboutRobots.dtd                 (%chrome/browser/aboutRobots.dtd)
-    locale/browser/aboutHome.dtd                   (%chrome/browser/aboutHome.dtd)
     locale/browser/accounts.properties             (%chrome/browser/accounts.properties)
+    locale/browser/aboutRestartRequired.dtd        (%chrome/browser/aboutRestartRequired.dtd)
     locale/browser/aboutSearchReset.dtd            (%chrome/browser/aboutSearchReset.dtd)
     locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
     locale/browser/aboutTabCrashed.dtd             (%chrome/browser/aboutTabCrashed.dtd)
@@ -59,18 +60,6 @@
     locale/browser/preferences/security.dtd           (%chrome/browser/preferences/security.dtd)
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
-#if BUILD_FASTER
-    locale/browser/searchplugins/               (searchplugins/*.xml)
-    locale/browser/searchplugins/list.json      (search/list.json)
-#else
-    locale/browser/searchplugins/               (.deps/generated_@AB_CD@/*.xml)
-    locale/browser/searchplugins/list.json      (.deps/generated_@AB_CD@/list.json)
-#endif
-    locale/browser/searchplugins/images/amazon.ico     (searchplugins/images/amazon.ico)
-    locale/browser/searchplugins/images/ebay.ico       (searchplugins/images/ebay.ico)
-    locale/browser/searchplugins/images/wikipedia.ico  (searchplugins/images/wikipedia.ico)
-    locale/browser/searchplugins/images/yandex-en.ico  (searchplugins/images/yandex-en.ico)
-    locale/browser/searchplugins/images/yandex-ru.ico  (searchplugins/images/yandex-ru.ico)
 % locale browser-region @AB_CD@ %locale/browser-region/
     locale/browser-region/region.properties        (%chrome/browser-region/region.properties)
 # the following files are browser-specific overrides

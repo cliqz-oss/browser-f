@@ -344,7 +344,7 @@ class ExtensionWrapper {
     this.state = "unloading";
 
     if (this.addon) {
-      this.addon.uninstall();
+      await this.addon.uninstall();
     } else {
       await this.extension.shutdown();
     }
@@ -461,10 +461,21 @@ class AOMExtensionWrapper extends ExtensionWrapper {
     }
   }
 
+  maybeSetID(uri, id) {
+    if (!this.id && uri instanceof Ci.nsIJARURI &&
+        uri.JARFile.QueryInterface(Ci.nsIFileURL)
+           .file.equals(this.file)) {
+      this.id = id;
+    }
+  }
+
   setRestarting() {
     if (this.state !== "restarting") {
       this.startupPromise = new Promise(resolve => {
         this.resolveStartup = resolve;
+      }).then(async result => {
+        await this.addonPromise;
+        return result;
       });
     }
     this.state = "restarting";
@@ -497,7 +508,7 @@ class AOMExtensionWrapper extends ExtensionWrapper {
   onEvent(kind, ...args) {
     switch (kind) {
       case "addon-manager-started":
-        AddonManager.getAddonByID(this.id).then(addon => {
+        this.addonPromise = AddonManager.getAddonByID(this.id).then(addon => {
           this.addon = addon;
         });
         // FALLTHROUGH
@@ -509,6 +520,9 @@ class AOMExtensionWrapper extends ExtensionWrapper {
 
       case "startup": {
         let [extension] = args;
+
+        this.maybeSetID(extension.rootURI, extension.id);
+
         if (extension.id === this.id) {
           this.attachExtension(extension);
           this.state = "pending";
@@ -719,12 +733,16 @@ var ExtensionTestUtils = {
     if (data.useAddonManager) {
       let xpiFile = Extension.generateXPI(data);
 
-      return new AOMExtensionWrapper(this.currentScope, xpiFile, data.useAddonManager);
+      return this.loadExtensionXPI(xpiFile, data.useAddonManager);
     }
 
     let extension = Extension.generate(data);
 
     return new ExtensionWrapper(this.currentScope, extension);
+  },
+
+  loadExtensionXPI(xpiFile, useAddonManager = "temporary") {
+    return new AOMExtensionWrapper(this.currentScope, xpiFile, useAddonManager);
   },
 
   get remoteContentScripts() {

@@ -24,7 +24,7 @@ add_task(async function() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
 
   // This addon will be auto-installed at startup
-  writeInstallRDFForExtension(addon1, profileDir);
+  await promiseWriteInstallRDFForExtension(addon1, profileDir);
 
   await promiseStartupManager();
   await promiseShutdownManager();
@@ -33,7 +33,7 @@ add_task(async function() {
   // Replace the JSON store with something bogus
   await saveJSON({not: "what we expect to find"}, gExtensionsJSON.path);
 
-  await promiseStartupManager(false);
+  await promiseStartupManager();
   // Retrieve an addon to force the database to rebuild
   let a1 = await AddonManager.getAddonByID(addon1.id);
 

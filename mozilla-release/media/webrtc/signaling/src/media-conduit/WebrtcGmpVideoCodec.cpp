@@ -80,6 +80,20 @@ WebrtcGmpVideoEncoder::WebrtcGmpVideoEncoder()
   , mCallback(nullptr)
   , mCachedPluginId(0)
 {
+  mCodecParams.mGMPApiVersion = 0;
+  mCodecParams.mCodecType = kGMPVideoCodecInvalid;
+  mCodecParams.mPLType = 0;
+  mCodecParams.mWidth = 0;
+  mCodecParams.mHeight = 0;
+  mCodecParams.mStartBitrate = 0;
+  mCodecParams.mMaxBitrate = 0;
+  mCodecParams.mMinBitrate = 0;
+  mCodecParams.mMaxFramerate = 0;
+  mCodecParams.mFrameDroppingOn = false;
+  mCodecParams.mKeyFrameInterval = 0;
+  mCodecParams.mQPMax = 0;
+  mCodecParams.mNumberOfSimulcastStreams = 0;
+  mCodecParams.mMode = kGMPCodecModeInvalid;
   if (mPCHandle.empty()) {
     mPCHandle = WebrtcGmpPCHandleSetter::GetCurrentHandle();
   }
@@ -219,7 +233,7 @@ WebrtcGmpVideoEncoder::InitEncode_g(
   nsresult rv = aThis->mMPS->GetGMPVideoEncoder(nullptr,
                                                 &tags,
                                                 NS_LITERAL_CSTRING(""),
-                                                Move(callback));
+                                                std::move(callback));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     LOGD(("GMP Encode: GetGMPVideoEncoder failed"));
     aThis->Close_g();
@@ -353,7 +367,7 @@ WebrtcGmpVideoEncoder::RegetEncoderForResolutionChange(
   if (NS_WARN_IF(NS_FAILED(mMPS->GetGMPVideoEncoder(nullptr,
                                                     &tags,
                                                     NS_LITERAL_CSTRING(""),
-                                                    Move(callback))))) {
+                                                    std::move(callback))))) {
     aInitDone->Dispatch(WEBRTC_VIDEO_CODEC_ERROR,
                         "GMP Encode: GetGMPVideoEncoder failed");
   }
@@ -438,7 +452,7 @@ WebrtcGmpVideoEncoder::Encode_g(RefPtr<WebrtcGmpVideoEncoder>& aEncoder,
   }
 
   LOGD(("GMP Encode: %llu", (aInputImage.timestamp() * 1000ll)/90));
-  err = aEncoder->mGMP->Encode(Move(frame), codecSpecificInfo, gmp_frame_types);
+  err = aEncoder->mGMP->Encode(std::move(frame), codecSpecificInfo, gmp_frame_types);
   if (err != GMPNoErr) {
     LOGD(("GMP Encode: failed to encode frame"));
   }
@@ -714,7 +728,7 @@ WebrtcGmpVideoDecoder::InitDecode_g(
   nsresult rv = aThis->mMPS->GetGMPVideoDecoder(nullptr,
                                                 &tags,
                                                 NS_LITERAL_CSTRING(""),
-                                                Move(callback));
+                                                std::move(callback));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     LOGD(("GMP Decode: GetGMPVideoDecoder failed"));
     aThis->Close_g();
@@ -885,7 +899,7 @@ WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
   LOGD(("GMP Decode: %" PRIu64 ", len %zu%s", frame->TimeStamp(),
         aDecodeData->mImage._length, ft == kGMPKeyFrame ? ", KeyFrame" : ""));
 
-  nsresult rv = aThis->mGMP->Decode(Move(frame),
+  nsresult rv = aThis->mGMP->Decode(std::move(frame),
                                     aDecodeData->mMissingFrames,
                                     codecSpecificInfo,
                                     aDecodeData->mRenderTimeMs);

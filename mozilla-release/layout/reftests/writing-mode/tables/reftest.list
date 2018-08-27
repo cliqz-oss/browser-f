@@ -24,8 +24,8 @@ fuzzy-if(Android,255,400) == fixed-table-layout-010-vlr.html fixed-table-layout-
 == fixed-table-layout-014-vlr.html fixed-table-layout-002-ref.html
 == fixed-table-layout-015-vlr.html fixed-table-layout-002-ref.html
 == fixed-table-layout-016-vlr.html fixed-table-layout-002-ref.html
-fuzzy-if(skiaContent,1,50) == fixed-table-layout-017-vlr.html fixed-table-layout-017-ref.html
-fuzzy-if(skiaContent,1,50) == fixed-table-layout-018-vlr.html fixed-table-layout-017-ref.html
+fuzzy-if(skiaContent,1,50) fuzzy-if(Android,1,63) == fixed-table-layout-017-vlr.html fixed-table-layout-017-ref.html
+fuzzy-if(skiaContent,1,50) fuzzy-if(Android,1,63) == fixed-table-layout-018-vlr.html fixed-table-layout-017-ref.html
 fuzzy-if(skiaContent,1,90) == fixed-table-layout-021-vlr.html fixed-table-layout-021-ref.html
 fuzzy-if(skiaContent,1,90) == fixed-table-layout-022-vlr.html fixed-table-layout-022-ref.html
 fuzzy-if(skiaContent,1,90) == fixed-table-layout-023-vlr.html fixed-table-layout-023-ref.html
@@ -50,8 +50,8 @@ fuzzy-if(Android,255,400) == fixed-table-layout-010-vrl.html fixed-table-layout-
 == fixed-table-layout-014-vrl.html fixed-table-layout-002-ref.html
 == fixed-table-layout-015-vrl.html fixed-table-layout-002-ref.html
 == fixed-table-layout-016-vrl.html fixed-table-layout-002-ref.html
-fuzzy-if(skiaContent,1,50) == fixed-table-layout-017-vrl.html fixed-table-layout-017-ref.html
-fuzzy-if(skiaContent,1,50) == fixed-table-layout-018-vrl.html fixed-table-layout-017-ref.html
+fuzzy-if(skiaContent,1,50) fuzzy-if(Android,1,63) == fixed-table-layout-017-vrl.html fixed-table-layout-017-ref.html
+fuzzy-if(skiaContent,1,50) fuzzy-if(Android,1,63) == fixed-table-layout-018-vrl.html fixed-table-layout-017-ref.html
 fuzzy-if(skiaContent,1,90) == fixed-table-layout-021-vrl.html fixed-table-layout-021-ref.html
 fuzzy-if(skiaContent,1,90) == fixed-table-layout-022-vrl.html fixed-table-layout-022-ref.html
 fuzzy-if(skiaContent,1,90) == fixed-table-layout-023-vrl.html fixed-table-layout-023-ref.html
@@ -92,7 +92,7 @@ fuzzy-if(cocoaWidget,23,162) == border-collapse-bevels-1e.html border-collapse-b
 == sideways-rl-row-progression-1a.html sideways-rl-row-progression-1-ref.html
 == sideways-rl-row-progression-1b.html sideways-rl-row-progression-1-ref.html
 
-== 1259168-ref.html 1259168-vrl.html
-== 1259168-ref.html 1259168-vlr.html
-== 1259168-ref.html 1259168-srl.html
-== 1259168-ref.html 1259168-slr.html
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1259168-ref.html 1259168-vrl.html # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1259168-ref.html 1259168-vlr.html # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1259168-ref.html 1259168-srl.html # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 1259168-ref.html 1259168-slr.html # Bug 1392106

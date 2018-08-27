@@ -15,7 +15,6 @@
 #include "mozilla/RefPtr.h"
 #include "nsCOMPtr.h"
 #include "nsIObserver.h"
-#include "nsIStringBundle.h"
 #include "nsNSSCallbacks.h"
 #include "prerror.h"
 #include "sslt.h"
@@ -54,16 +53,6 @@ class NS_NO_VTABLE nsINSSComponent : public nsISupports
 {
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_INSSCOMPONENT_IID)
-
-  NS_IMETHOD GetPIPNSSBundleString(const char* name,
-                                   nsAString& outString) = 0;
-  NS_IMETHOD PIPBundleFormatStringFromName(const char* name,
-                                           const char16_t** params,
-                                           uint32_t numParams,
-                                           nsAString& outString) = 0;
-
-  NS_IMETHOD GetNSSBundleString(const char* name,
-                                nsAString& outString) = 0;
 
   NS_IMETHOD LogoutAuthenticatedPK11() = 0;
 
@@ -115,13 +104,6 @@ public:
 
   static nsresult GetNewPrompter(nsIPrompt** result);
 
-  NS_IMETHOD GetPIPNSSBundleString(const char* name,
-                                   nsAString& outString) override;
-  NS_IMETHOD PIPBundleFormatStringFromName(const char* name,
-                                           const char16_t** params,
-                                           uint32_t numParams,
-                                           nsAString& outString) override;
-  NS_IMETHOD GetNSSBundleString(const char* name, nsAString& outString) override;
   NS_IMETHOD LogoutAuthenticatedPK11() override;
 
 #ifdef DEBUG
@@ -162,11 +144,9 @@ private:
   nsresult InitializeNSS();
   void ShutdownNSS();
 
-  void UnloadLoadableRoots();
-  void setValidationOptions(bool isInitialSetting);
+  void setValidationOptions(bool isInitialSetting,
+                            const mozilla::MutexAutoLock& proofOfLock);
   nsresult setEnabledTLSVersions();
-  nsresult InitializePIPNSSBundle();
-  nsresult ConfigureInternalPKCS11Token();
   nsresult RegisterObservers();
 
   void MaybeEnableFamilySafetyCompatibility();
@@ -191,8 +171,6 @@ private:
   mozilla::Mutex mMutex;
 
   // The following members are accessed from more than one thread:
-  nsCOMPtr<nsIStringBundle> mPIPNSSBundle;
-  nsCOMPtr<nsIStringBundle> mNSSErrorsBundle;
   bool mNSSInitialized;
 #ifdef DEBUG
   nsString mTestBuiltInRootHash;
@@ -233,12 +211,5 @@ CheckForSmartCardChanges()
   return NS_OK;
 #endif
 }
-
-class nsNSSErrors
-{
-public:
-  static const char* getDefaultErrorStringName(PRErrorCode err);
-  static const char* getOverrideErrorStringName(PRErrorCode aErrorCode);
-};
 
 #endif // _nsNSSComponent_h_

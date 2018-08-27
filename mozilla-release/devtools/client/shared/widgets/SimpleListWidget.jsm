@@ -16,7 +16,7 @@ this.EXPORTED_SYMBOLS = ["SimpleListWidget"];
  * Note: this widget should be used in tandem with the WidgetMethods in
  * view-helpers.js.
  *
- * @param nsIDOMNode aNode
+ * @param Node aNode
  *        The element associated with the widget.
  */
 function SimpleListWidget(aNode) {
@@ -44,15 +44,15 @@ SimpleListWidget.prototype = {
    *
    * @param number aIndex
    *        The position in the container intended for this item.
-   * @param nsIDOMNode aContents
+   * @param Node aContents
    *        The node displayed in the container.
-   * @return nsIDOMNode
+   * @return Node
    *         The element associated with the displayed item.
    */
   insertItemAt: function(aIndex, aContents) {
     aContents.classList.add("simple-list-widget-item");
 
-    let list = this._list;
+    const list = this._list;
     return list.insertBefore(aContents, list.childNodes[aIndex]);
   },
 
@@ -61,7 +61,7 @@ SimpleListWidget.prototype = {
    *
    * @param number aIndex
    *        The position in the container intended for this item.
-   * @return nsIDOMNode
+   * @return Node
    *         The element associated with the displayed item.
    */
   getItemAtIndex: function(aIndex) {
@@ -71,7 +71,7 @@ SimpleListWidget.prototype = {
   /**
    * Immediately removes the specified child node from this container.
    *
-   * @param nsIDOMNode aChild
+   * @param Node aChild
    *        The element associated with the displayed item.
    */
   removeChild: function(aChild) {
@@ -86,8 +86,8 @@ SimpleListWidget.prototype = {
    * Removes all of the child nodes from this container.
    */
   removeAllItems: function() {
-    let list = this._list;
-    let parent = this._parent;
+    const list = this._list;
+    const parent = this._parent;
 
     while (list.hasChildNodes()) {
       list.firstChild.remove();
@@ -100,7 +100,7 @@ SimpleListWidget.prototype = {
 
   /**
    * Gets the currently selected child node in this container.
-   * @return nsIDOMNode
+   * @return Node
    */
   get selectedItem() {
     return this._selectedItem;
@@ -108,15 +108,15 @@ SimpleListWidget.prototype = {
 
   /**
    * Sets the currently selected child node in this container.
-   * @param nsIDOMNode aChild
+   * @param Node aChild
    */
   set selectedItem(aChild) {
-    let childNodes = this._list.childNodes;
+    const childNodes = this._list.childNodes;
 
     if (!aChild) {
       this._selectedItem = null;
     }
-    for (let node of childNodes) {
+    for (const node of childNodes) {
       if (node == aChild) {
         node.classList.add("selected");
         this._selectedItem = node;
@@ -161,7 +161,7 @@ SimpleListWidget.prototype = {
   /**
    * Ensures the specified element is visible.
    *
-   * @param nsIDOMNode aElement
+   * @param Node aElement
    *        The element to make visible.
    */
   ensureElementIsVisible: function(aElement) {
@@ -170,7 +170,7 @@ SimpleListWidget.prototype = {
     }
 
     // Ensure the element is visible but not scrolled horizontally.
-    let boxObject = this._list.boxObject;
+    const boxObject = this._list.boxObject;
     boxObject.ensureElementIsVisible(aElement);
     boxObject.scrollBy(-this._list.clientWidth, 0);
   },
@@ -206,7 +206,7 @@ SimpleListWidget.prototype = {
     if (this._headerTextNode || !this._headerTextValue) {
       return;
     }
-    let label = this.document.createElement("label");
+    const label = this.document.createElement("label");
     label.className = "plain simple-list-widget-perma-text";
     label.setAttribute("value", this._headerTextValue);
 
@@ -221,7 +221,7 @@ SimpleListWidget.prototype = {
     if (this._emptyTextNode || !this._emptyTextValue) {
       return;
     }
-    let label = this.document.createElement("label");
+    const label = this.document.createElement("label");
     label.className = "plain simple-list-widget-empty-text";
     label.setAttribute("value", this._emptyTextValue);
 

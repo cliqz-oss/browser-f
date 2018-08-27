@@ -385,7 +385,7 @@ private:
     return mParams.mLevel < aLevel;
   }
   ResultExpr AllowBelowLevel(int aLevel, ResultExpr aOrElse) const {
-    return BelowLevel(aLevel) ? Allow() : Move(aOrElse);
+    return BelowLevel(aLevel) ? Allow() : std::move(aOrElse);
   }
   ResultExpr AllowBelowLevel(int aLevel) const {
     return AllowBelowLevel(aLevel, InvalidSyscall());
@@ -743,7 +743,7 @@ public:
   ContentSandboxPolicy(SandboxBrokerClient* aBroker,
                        ContentProcessSandboxParams&& aParams)
     : mBroker(aBroker)
-    , mParams(Move(aParams))
+    , mParams(std::move(aParams))
     , mAllowSysV(PR_GetEnv("MOZ_SANDBOX_ALLOW_SYSV") != nullptr)
     , mUsingRenderDoc(PR_GetEnv("RENDERDOC_CAPTUREOPTS") != nullptr)
     { }
@@ -1053,6 +1053,14 @@ public:
     case __NR_mremap:
       return Allow();
 
+      // Bug 1462640: Mesa libEGL uses mincore to test whether values
+      // are pointers, for reasons.
+    case __NR_mincore: {
+      Arg<size_t> length(1);
+      return If(length == getpagesize(), Allow())
+             .Else(SandboxPolicyCommon::EvaluateSyscall(sysno));
+    }
+
     case __NR_sigaltstack:
       return Allow();
 
@@ -1217,7 +1225,7 @@ UniquePtr<sandbox::bpf_dsl::Policy>
 GetContentSandboxPolicy(SandboxBrokerClient* aMaybeBroker,
                         ContentProcessSandboxParams&& aParams)
 {
-  return MakeUnique<ContentSandboxPolicy>(aMaybeBroker, Move(aParams));
+  return MakeUnique<ContentSandboxPolicy>(aMaybeBroker, std::move(aParams));
 }
 #endif // MOZ_CONTENT_SANDBOX
 

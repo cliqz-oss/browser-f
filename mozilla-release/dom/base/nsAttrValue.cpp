@@ -20,7 +20,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ServoBindingTypes.h"
 #include "mozilla/ServoUtils.h"
-#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/DeclarationBlock.h"
 #include "nsContentUtils.h"
 #include "nsReadableUtils.h"
 #include "nsHTMLCSSStyleSheet.h"
@@ -150,7 +150,7 @@ nsAttrValue::nsAttrValue(already_AddRefed<DeclarationBlock> aValue,
                          const nsAString* aSerialized)
     : mBits(0)
 {
-  SetTo(Move(aValue), aSerialized);
+  SetTo(std::move(aValue), aSerialized);
 }
 
 nsAttrValue::nsAttrValue(const nsIntMargin& aValue)
@@ -737,7 +737,7 @@ nsAttrValue::GetAsAtom() const
 const nsCheapString
 nsAttrValue::GetStringValue() const
 {
-  NS_PRECONDITION(Type() == eString, "wrong type");
+  MOZ_ASSERT(Type() == eString, "wrong type");
 
   return nsCheapString(static_cast<nsStringBuffer*>(GetPtr()));
 }
@@ -758,7 +758,7 @@ nsAttrValue::GetColorValue(nscolor& aColor) const
 void
 nsAttrValue::GetEnumString(nsAString& aResult, bool aRealTag) const
 {
-  NS_PRECONDITION(Type() == eEnum, "wrong type");
+  MOZ_ASSERT(Type() == eEnum, "wrong type");
 
   uint32_t allEnumBits =
     (BaseType() == eIntegerBase) ? static_cast<uint32_t>(GetIntInternal())
@@ -800,8 +800,8 @@ nsAttrValue::GetAtomCount() const
 nsAtom*
 nsAttrValue::AtomAt(int32_t aIndex) const
 {
-  NS_PRECONDITION(aIndex >= 0, "Index must not be negative");
-  NS_PRECONDITION(GetAtomCount() > uint32_t(aIndex), "aIndex out of range");
+  MOZ_ASSERT(aIndex >= 0, "Index must not be negative");
+  MOZ_ASSERT(GetAtomCount() > uint32_t(aIndex), "aIndex out of range");
 
   if (BaseType() == eAtomBase) {
     return GetAtomValue();
@@ -1263,7 +1263,7 @@ nsAttrValue::ParseAtomArray(const nsAString& aValue)
 
   AtomArray* array = GetAtomArrayValue();
 
-  if (!array->AppendElement(Move(classAtom))) {
+  if (!array->AppendElement(std::move(classAtom))) {
     Reset();
     return;
   }
@@ -1278,7 +1278,7 @@ nsAttrValue::ParseAtomArray(const nsAString& aValue)
 
     classAtom = NS_AtomizeMainThread(Substring(start, iter));
 
-    if (!array->AppendElement(Move(classAtom))) {
+    if (!array->AppendElement(std::move(classAtom))) {
       Reset();
       return;
     }
@@ -1400,8 +1400,8 @@ nsAttrValue::ParseEnumValue(const nsAString& aValue,
   }
 
   if (aDefaultValue) {
-    NS_PRECONDITION(aTable <= aDefaultValue && aDefaultValue < tableEntry,
-                    "aDefaultValue not inside aTable?");
+    MOZ_ASSERT(aTable <= aDefaultValue && aDefaultValue < tableEntry,
+               "aDefaultValue not inside aTable?");
     SetIntValueAndType(EnumTableEntryToValue(aTable, aDefaultValue),
                        eEnum, &aValue);
     return true;
@@ -1443,7 +1443,7 @@ bool
 nsAttrValue::ParseIntWithBounds(const nsAString& aString,
                                 int32_t aMin, int32_t aMax)
 {
-  NS_PRECONDITION(aMin < aMax, "bad boundaries");
+  MOZ_ASSERT(aMin < aMax, "bad boundaries");
 
   ResetIfSet();
 
@@ -1701,7 +1701,7 @@ nsAttrValue::ParseStyleAttribute(const nsAString& aString,
 
   RefPtr<URLExtraData> data = new URLExtraData(baseURI, docURI,
                                                 principal);
-  RefPtr<DeclarationBlock> decl = ServoDeclarationBlock::
+  RefPtr<DeclarationBlock> decl = DeclarationBlock::
     FromCssText(aString, data,
                 ownerDoc->GetCompatibilityMode(),
                 ownerDoc->CSSLoader());
@@ -1949,7 +1949,7 @@ nsAttrValue::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
       if (Type() == eCSSDeclaration && container->mValue.mCSSDeclaration) {
         // TODO: mCSSDeclaration might be owned by another object which
         //       would make us count them twice, bug 677493.
-        // Bug 1281964: For ServoDeclarationBlock if we do measure we'll
+        // Bug 1281964: For DeclarationBlock if we do measure we'll
         // need a way to call the Servo heap_size_of function.
         //n += container->mCSSDeclaration->SizeOfIncludingThis(aMallocSizeOf);
       } else if (Type() == eAtomArray && container->mValue.mAtomArray) {
@@ -1965,4 +1965,3 @@ nsAttrValue::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
 
   return n;
 }
-

@@ -64,8 +64,7 @@ protected:
   virtual bool DeallocPUDPSocketChild(PUDPSocketChild*) override;
   virtual PDNSRequestChild* AllocPDNSRequestChild(const nsCString& aHost,
                                                   const OriginAttributes& aOriginAttributes,
-                                                  const uint32_t& aFlags,
-                                                  const nsCString& aNetworkInterface) override;
+                                                  const uint32_t& aFlags) override;
   virtual bool DeallocPDNSRequestChild(PDNSRequestChild*) override;
   virtual PDataChannelChild* AllocPDataChannelChild(const uint32_t& channelId) override;
   virtual bool DeallocPDataChannelChild(PDataChannelChild* child) override;
@@ -96,6 +95,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvPredOnPredictDNS(const URIParams& aURI) override;
 
   virtual mozilla::ipc::IPCResult RecvSpeculativeConnectRequest() override;
+  virtual mozilla::ipc::IPCResult RecvNetworkChangeNotification(nsCString const& type) override;
 };
 
 /**

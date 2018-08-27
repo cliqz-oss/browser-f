@@ -6,11 +6,12 @@
 
 #include "WindowsLocationProvider.h"
 #include "nsGeoPosition.h"
-#include "nsIDOMGeoPositionError.h"
 #include "nsComponentManagerUtils.h"
 #include "prtime.h"
 #include "MLSFallback.h"
+#include "mozilla/FloatingPoint.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/dom/PositionErrorBinding.h"
 
 namespace mozilla {
 namespace dom {
@@ -101,7 +102,6 @@ LocationEvent::QueryInterface(REFIID iid, void** ppv)
   return S_OK;
 }
 
-
 STDMETHODIMP
 LocationEvent::OnStatusChanged(REFIID aReportType,
                                LOCATION_REPORT_STATUS aStatus)
@@ -129,11 +129,11 @@ LocationEvent::OnStatusChanged(REFIID aReportType,
   uint16_t err;
   switch (aStatus) {
   case REPORT_ACCESS_DENIED:
-    err = nsIDOMGeoPositionError::PERMISSION_DENIED;
+    err = PositionErrorBinding::PERMISSION_DENIED;
     break;
   case REPORT_NOT_SUPPORTED:
   case REPORT_ERROR:
-    err = nsIDOMGeoPositionError::POSITION_UNAVAILABLE;
+    err = PositionErrorBinding::POSITION_UNAVAILABLE;
     break;
   default:
     return S_OK;
@@ -162,17 +162,22 @@ LocationEvent::OnLocationChanged(REFIID aReportType,
   DOUBLE longitude = 0.0;
   latLongReport->GetLongitude(&longitude);
 
-  DOUBLE alt = 0.0;
+  DOUBLE alt = UnspecifiedNaN<double>();
   latLongReport->GetAltitude(&alt);
 
   DOUBLE herror = 0.0;
   latLongReport->GetErrorRadius(&herror);
 
-  DOUBLE verror = 0.0;
+  DOUBLE verror = UnspecifiedNaN<double>();
   latLongReport->GetAltitudeError(&verror);
 
+  double heading = UnspecifiedNaN<double>();
+  double speed = UnspecifiedNaN<double>();
+
+  // nsGeoPositionCoords will convert NaNs to null for optional properties of
+  // the JavaScript Coordinates object.
   RefPtr<nsGeoPosition> position =
-    new nsGeoPosition(latitude, longitude, alt, herror, verror, 0.0, 0.0,
+    new nsGeoPosition(latitude, longitude, alt, herror, verror, heading, speed,
                       PR_Now() / PR_USEC_PER_MSEC);
   mCallback->Update(position);
 
@@ -270,7 +275,7 @@ WindowsLocationProvider::CreateAndWatchMLSProvider(
     return NS_OK;
   }
 
-  mMLSProvider = new MLSFallback();
+  mMLSProvider = new MLSFallback(0);
   return mMLSProvider->Startup(new MLSUpdate(aCallback));
 }
 

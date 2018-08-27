@@ -5,7 +5,6 @@
 "use strict";
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm", {});
-const { XPCOMUtils } = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", {});
 
 ChromeUtils.defineModuleGetter(this, "E10SUtils",
                                "resource://gre/modules/E10SUtils.jsm");
@@ -37,8 +36,8 @@ function ContentProcessForward() {
   Services.cpmm.addMessageListener("DevTools:StopForwardingContentProcessMessage", this);
 }
 ContentProcessForward.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
-                                         Ci.nsISupportsWeakReference]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
+                                          Ci.nsISupportsWeakReference]),
 
   receiveMessage(message) {
     if (message.name == "DevTools:StopForwardingContentProcessMessage") {
@@ -49,9 +48,9 @@ ContentProcessForward.prototype = {
   observe(subject, topic, data) {
     switch (topic) {
       case "console-api-log-event": {
-        let consoleMsg = subject.wrappedJSObject;
+        const consoleMsg = subject.wrappedJSObject;
 
-        let msgData = {
+        const msgData = {
           ...consoleMsg,
           arguments: [],
           filename: consoleMsg.filename.substring(0, MSG_MGR_CONSOLE_INFO_MAX),
@@ -63,8 +62,8 @@ ContentProcessForward.prototype = {
 
         // We can't send objects over the message manager, so we sanitize
         // them out, replacing those arguments with "<unavailable>".
-        let unavailString = "<unavailable>";
-        let unavailStringLength = unavailString.length * 2; // 2-bytes per char
+        const unavailString = "<unavailable>";
+        const unavailStringLength = unavailString.length * 2; // 2-bytes per char
 
         // When the sum of argument sizes reaches MSG_MGR_CONSOLE_MAX_SIZE,
         // replace all arguments with "<truncated>".

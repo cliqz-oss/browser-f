@@ -9,9 +9,10 @@
 
 "use strict";
 
-const baseURL = "https://developer.mozilla.org/docs/Web/JavaScript/Reference/Errors/";
+const baseErrorURL = "https://developer.mozilla.org/docs/Web/JavaScript/Reference/Errors/";
 const params =
   "?utm_source=mozilla&utm_medium=firefox-console-errors&utm_campaign=default";
+
 const ErrorDocs = {
   JSMSG_READ_ONLY: "Read-only",
   JSMSG_BAD_ARRAY_LENGTH: "Invalid_array_length",
@@ -85,6 +86,7 @@ const ErrorDocs = {
   JSMSG_INCOMPATIBLE_METHOD: "Called_on_incompatible_type",
   JSMSG_BAD_INSTANCEOF_RHS: "invalid_right_hand_side_instanceof_operand",
   JSMSG_EMPTY_ARRAY_REDUCE: "Reduce_of_empty_array_with_no_initial_value",
+  JSMSG_NOT_ITERABLE: "is_not_iterable",
 };
 
 const MIXED_CONTENT_LEARN_MORE = "https://developer.mozilla.org/docs/Web/Security/Mixed_content";
@@ -107,17 +109,43 @@ const ErrorCategories = {
   "source map": SOURCE_MAP_LEARN_MORE,
 };
 
+const baseCorsErrorUrl = "https://developer.mozilla.org/docs/Web/HTTP/CORS/Errors/";
+const corsParams =
+  "?utm_source=devtools&utm_medium=firefox-cors-errors&utm_campaign=default";
+const CorsErrorDocs = {
+  CORSDisabled: "CORSDisabled",
+  CORSDidNotSucceed: "CORSDidNotSucceed",
+  CORSOriginHeaderNotAdded: "CORSOriginHeaderNotAdded",
+  CORSExternalRedirectNotAllowed: "CORSExternalRedirectNotAllowed",
+  CORSRequestNotHttp: "CORSRequestNotHttp",
+  CORSMissingAllowOrigin: "CORSMissingAllowOrigin",
+  CORSMultipleAllowOriginNotAllowed: "CORSMultipleAllowOriginNotAllowed",
+  CORSAllowOriginNotMatchingOrigin: "CORSAllowOriginNotMatchingOrigin",
+  CORSNotSupportingCredentials: "CORSNotSupportingCredentials",
+  CORSMethodNotFound: "CORSMethodNotFound",
+  CORSMissingAllowCredentials: "CORSMissingAllowCredentials",
+  CORSPreflightDidNotSucceed: "CORSPreflightDidNotSucceed",
+  CORSInvalidAllowMethod: "CORSInvalidAllowMethod",
+  CORSInvalidAllowHeader: "CORSInvalidAllowHeader",
+  CORSMissingAllowHeaderFromPreflight: "CORSMissingAllowHeaderFromPreflight",
+};
+
 exports.GetURL = (error) => {
   if (!error) {
     return undefined;
   }
 
-  let doc = ErrorDocs[error.errorMessageName];
+  const doc = ErrorDocs[error.errorMessageName];
   if (doc) {
-    return baseURL + doc + params;
+    return baseErrorURL + doc + params;
   }
 
-  let categoryURL = ErrorCategories[error.category];
+  const corsDoc = CorsErrorDocs[error.category];
+  if (corsDoc) {
+    return baseCorsErrorUrl + corsDoc + corsParams;
+  }
+
+  const categoryURL = ErrorCategories[error.category];
   if (categoryURL) {
     return categoryURL + params;
   }

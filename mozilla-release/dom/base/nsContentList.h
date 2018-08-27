@@ -387,8 +387,8 @@ public:
     // most common namespace id is kNameSpaceID_Unknown.  So check the
     // string first.  Cases in which whether our root's ownerDocument
     // is HTML changes are extremely rare, so check those last.
-    NS_PRECONDITION(mXMLMatchAtom,
-                    "How did we get here with a null match atom on our list?");
+    MOZ_ASSERT(mXMLMatchAtom,
+               "How did we get here with a null match atom on our list?");
     return
       mXMLMatchAtom->Equals(aKey.mTagname) &&
       mRootNode == aKey.mRootNode &&
@@ -433,8 +433,11 @@ protected:
    *
    * @param aNeededLength the length the list should have when we are
    *        done (unless it exhausts the document)
+   * @param aExpectedElementsIfDirty is for debugging only to
+   *        assert that mElements has expected number of entries.
    */
-  virtual void PopulateSelf(uint32_t aNeededLength);
+  virtual void PopulateSelf(uint32_t aNeededLength,
+                            uint32_t aExpectedElementsIfDirty = 0);
 
   /**
    * @param  aContainer a content node which must be a descendant of
@@ -684,7 +687,10 @@ private:
   *
   * @param aNeededLength The list of length should have when we are
   *                      done (unless it exhausts the document).
+  * @param aExpectedElementsIfDirty is for debugging only to
+  *        assert that mElements has expected number of entries.
   */
-  void PopulateSelf(uint32_t aNeededLength) override;
+  void PopulateSelf(uint32_t aNeededLength,
+                    uint32_t aExpectedElementsIfDirty = 0) override;
 };
 #endif // nsContentList_h___

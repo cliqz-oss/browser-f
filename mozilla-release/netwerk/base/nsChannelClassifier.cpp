@@ -16,7 +16,6 @@
 #include "nsIClassOfService.h"
 #include "nsIDocShell.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIIOService.h"
@@ -1024,6 +1023,12 @@ TrackingURICallback::OnTrackerFound(nsresult aErrorCode)
     channel->Cancel(aErrorCode);
   } else {
     MOZ_ASSERT(mChannelClassifier->ShouldEnableTrackingAnnotation());
+
+    // Even with TP disabled, we still want to show the user that there
+    // are unblocked trackers on the site, so notify the UI that we loaded
+    // tracking content. UI code can treat this notification differently
+    // depending on whether TP is enabled or disabled.
+    mChannelClassifier->NotifyTrackingProtectionDisabled(channel);
 
     SetIsTrackingResourceHelper(channel);
     if (CachedPrefs::GetInstance()->IsLowerNetworkPriority()) {

@@ -5,6 +5,8 @@
 <!DOCTYPE html [
   <!ENTITY % globalDTD SYSTEM "chrome://global/locale/global.dtd">
   %globalDTD;
+  <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd" >
+  %brandDTD;
 
   <!ENTITY viewAllItems               "View All Items">
   <!ENTITY paymentSummaryTitle        "Your Payment">
@@ -25,6 +27,8 @@
   <!ENTITY deliveryAddress.editPage.title "Edit Delivery Address">
   <!ENTITY pickupAddress.addPage.title    "Add Pickup Address">
   <!ENTITY pickupAddress.editPage.title   "Edit Pickup Address">
+  <!ENTITY billingAddress.addPage.title   "Add Billing Address">
+  <!ENTITY billingAddress.editPage.title  "Edit Billing Address">
   <!ENTITY basicCard.addPage.title    "Add Credit Card">
   <!ENTITY basicCard.editPage.title   "Edit Credit Card">
   <!ENTITY payer.addPage.title        "Add Payer Contact">
@@ -39,12 +43,16 @@
   <!ENTITY orderDetailsLabel          "Order Details">
   <!ENTITY orderTotalLabel            "Total">
   <!ENTITY basicCardPage.error.genericSave    "There was an error saving the payment card.">
+  <!ENTITY basicCardPage.addressAddLink.label "Add">
+  <!ENTITY basicCardPage.addressEditLink.label "Edit">
   <!ENTITY basicCardPage.backButton.label     "Back">
   <!ENTITY basicCardPage.saveButton.label     "Save">
-  <!ENTITY basicCardPage.persistCheckbox.label     "Save credit card to Firefox (Security code will not be saved)">
+  <!ENTITY basicCardPage.persistCheckbox.label     "Save credit card to &brandShortName; (Security code will not be saved)">
   <!ENTITY addressPage.error.genericSave      "There was an error saving the address.">
+  <!ENTITY addressPage.cancelButton.label     "Cancel">
   <!ENTITY addressPage.backButton.label       "Back">
   <!ENTITY addressPage.saveButton.label       "Save">
+  <!ENTITY addressPage.persistCheckbox.label  "Save address to &brandShortName;">
 ]>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -53,6 +61,7 @@
   <!-- chrome: is needed for global.dtd -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' chrome:"/>
 
+  <link rel="stylesheet" href="chrome://global/skin/in-content/common.css"/>
   <link rel="stylesheet" href="paymentRequest.css"/>
   <link rel="stylesheet" href="components/rich-select.css"/>
   <link rel="stylesheet" href="components/address-option.css"/>
@@ -83,7 +92,7 @@
 
     <div id="main-container">
       <section id="payment-summary" class="page">
-        <h1>&paymentSummaryTitle;</h1>
+        <h2>&paymentSummaryTitle;</h2>
 
         <section>
           <div id="error-text"></div>
@@ -92,6 +101,7 @@
                id="shipping-type-label"
                data-shipping-address-label="&shippingAddressLabel;"
                data-delivery-address-label="&deliveryAddressLabel;"
+               data-persist-checkbox-label="&addressPage.persistCheckbox.label;"
                data-pickup-address-label="&pickupAddressLabel;"><label></label></div>
           <address-picker class="shipping-related"
                           data-add-link-label="&address.addLink.label;"
@@ -103,8 +113,6 @@
 
           <div><label>&paymentMethodsLabel;</label></div>
           <payment-method-picker selected-state-key="selectedPaymentCard"
-                                 data-add-basic-card-title="&basicCard.addPage.title;"
-                                 data-edit-basic-card-title="&basicCard.editPage.title;"
                                  data-add-link-label="&basicCard.addLink.label;"
                                  data-edit-link-label="&basicCard.editLink.label;">
           </payment-method-picker>
@@ -120,6 +128,7 @@
         <footer id="controls-container">
           <button id="cancel">&cancelPaymentButton.label;</button>
           <button id="pay"
+                  class="primary"
                   data-initial-label="&approvePaymentButton.label;"
                   data-processing-label="&processingPaymentButton.label;"
                   data-fail-label="&failPaymentButton.label;"
@@ -128,23 +137,32 @@
         </footer>
       </section>
       <section id="order-details-overlay" hidden="hidden">
-        <h1>&orderDetailsLabel;</h1>
+        <h2>&orderDetailsLabel;</h2>
         <order-details></order-details>
       </section>
 
       <basic-card-form id="basic-card-page"
                        class="page"
+                       data-add-basic-card-title="&basicCard.addPage.title;"
+                       data-edit-basic-card-title="&basicCard.editPage.title;"
                        data-error-generic-save="&basicCardPage.error.genericSave;"
+                       data-address-add-link-label="&basicCardPage.addressAddLink.label;"
+                       data-address-edit-link-label="&basicCardPage.addressEditLink.label;"
+                       data-billing-address-title-add="&billingAddress.addPage.title;"
+                       data-billing-address-title-edit="&billingAddress.editPage.title;"
                        data-back-button-label="&basicCardPage.backButton.label;"
                        data-save-button-label="&basicCardPage.saveButton.label;"
+                       data-cancel-button-label="&cancelPaymentButton.label;"
                        data-persist-checkbox-label="&basicCardPage.persistCheckbox.label;"
                        hidden="hidden"></basic-card-form>
 
       <address-form id="address-page"
                     class="page"
                     data-error-generic-save="&addressPage.error.genericSave;"
+                    data-cancel-button-label="&addressPage.cancelButton.label;"
                     data-back-button-label="&addressPage.backButton.label;"
                     data-save-button-label="&addressPage.saveButton.label;"
+                    data-persist-checkbox-label="&addressPage.persistCheckbox.label;"
                     hidden="hidden"></address-form>
     </div>
 
@@ -173,6 +191,7 @@
                   data-delivery-address-title-edit="&deliveryAddress.editPage.title;"
                   data-pickup-address-title-add="&pickupAddress.addPage.title;"
                   data-pickup-address-title-edit="&pickupAddress.editPage.title;"
+                  data-billing-address-title-add="&billingAddress.addPage.title;"
                   data-payer-title-add="&payer.addPage.title;"
                   data-payer-title-edit="&payer.editPage.title;"></payment-dialog>
 </body>

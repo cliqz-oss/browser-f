@@ -24,6 +24,7 @@
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
 #include "mozilla/SandboxSettings.h"
+#include "nsCocoaFeatures.h"
 #endif
 
 using mozilla::dom::FakePluginTagInit;
@@ -303,19 +304,25 @@ nsPluginTag::nsPluginTag(uint32_t aId,
                          bool aFromExtension,
                          int32_t aSandboxLevel,
                          uint32_t aBlocklistState)
-  : nsIInternalPluginTag(aName, aDescription, aFileName, aVersion, aMimeTypes,
-                         aMimeDescriptions, aExtensions),
-    mId(aId),
-    mContentProcessRunningCount(0),
-    mLibrary(nullptr),
-    mIsFlashPlugin(aIsFlashPlugin),
-    mSupportsAsyncRender(aSupportsAsyncRender),
-    mLastModifiedTime(aLastModifiedTime),
-    mSandboxLevel(aSandboxLevel),
-    mIsSandboxLoggingEnabled(false),
-    mNiceFileName(),
-    mIsFromExtension(aFromExtension),
-    mBlocklistState(aBlocklistState)
+  : nsIInternalPluginTag(aName,
+                         aDescription,
+                         aFileName,
+                         aVersion,
+                         aMimeTypes,
+                         aMimeDescriptions,
+                         aExtensions)
+  , mId(aId)
+  , mContentProcessRunningCount(0)
+  , mHadLocalInstance(false)
+  , mLibrary(nullptr)
+  , mIsFlashPlugin(aIsFlashPlugin)
+  , mSupportsAsyncRender(aSupportsAsyncRender)
+  , mLastModifiedTime(aLastModifiedTime)
+  , mSandboxLevel(aSandboxLevel)
+  , mIsSandboxLoggingEnabled(false)
+  , mNiceFileName()
+  , mIsFromExtension(aFromExtension)
+  , mBlocklistState(aBlocklistState)
 {
 }
 
@@ -419,9 +426,9 @@ nsPluginTag::InitSandboxLevel()
   }
 
 #if defined(_AMD64_)
-  // As level 2 is now the default NPAPI sandbox level for 64-bit flash, we
-  // don't want to allow a lower setting. This should be changed if the
-  // firefox.js pref file is changed.
+  // Level 3 is now the default NPAPI sandbox level for 64-bit flash.
+  // We permit the user to drop the sandbox level by at most 1.  This should
+  // be kept up to date with the default value in the firefox.js pref file.
   if (mIsFlashPlugin && mSandboxLevel < 2) {
     mSandboxLevel = 2;
   }
@@ -429,14 +436,32 @@ nsPluginTag::InitSandboxLevel()
 
 #elif defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   if (mIsFlashPlugin) {
-    if (PR_GetEnv("MOZ_DISABLE_NPAPI_SANDBOX") ||
-        NS_FAILED(Preferences::GetInt("dom.ipc.plugins.sandbox-level.flash",
-                                      &mSandboxLevel))) {
+    // For older OS versions, use a different Flash sandbox level.
+    // The following pref indicates which OS versions this applies to.
+    int legacyOSMinorMax = Preferences::GetInt(
+        "dom.ipc.plugins.sandbox-level.flash.max-legacy-os-minor", 10);
+
+    const char* levelPref = "dom.ipc.plugins.sandbox-level.flash";
+
+    if (PR_GetEnv("MOZ_DISABLE_NPAPI_SANDBOX")) {
+      // Flash sandbox disabled
       mSandboxLevel = 0;
+    } else if (nsCocoaFeatures::OSXVersionMajor() == 10 &&
+               nsCocoaFeatures::OSXVersionMinor() <= legacyOSMinorMax) {
+      // We're on an older OS version. Use the minimum of both
+      // prefs so that setting the standard level pref to 0 is sufficient
+      // to disable the sandbox regardless of OS version.
+      const char* legacyLevelPref =
+        "dom.ipc.plugins.sandbox-level.flash.legacy";
+      int32_t compatLevel = Preferences::GetInt(legacyLevelPref, 0);
+      int32_t level = Preferences::GetInt(levelPref, 0);
+      mSandboxLevel = std::min(compatLevel, level);
     } else {
-      mSandboxLevel = ClampFlashSandboxLevel(mSandboxLevel);
+      // Use standard level
+      mSandboxLevel = Preferences::GetInt(levelPref, 0);
     }
 
+    mSandboxLevel = ClampFlashSandboxLevel(mSandboxLevel);
     if (mSandboxLevel > 0) {
       // Enable sandbox logging in the plugin process if it has
       // been turned on via prefs or environment variables.

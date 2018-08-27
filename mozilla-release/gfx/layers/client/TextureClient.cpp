@@ -45,9 +45,7 @@
 #endif
 #ifdef MOZ_X11
 #include "mozilla/layers/TextureClientX11.h"
-#ifdef GL_PROVIDER_GLX
 #include "GLXLibrary.h"
-#endif
 #endif
 
 #ifdef XP_MACOSX
@@ -1127,7 +1125,6 @@ TextureClient::CreateForDrawing(TextureForwarder* aAllocator,
   {
     data = X11TextureData::Create(aSize, aFormat, aTextureFlags, aAllocator);
   }
-#ifdef GL_PROVIDER_GLX
   if (!data && aLayersBackend == LayersBackend::LAYERS_OPENGL &&
       type == gfxSurfaceType::Xlib &&
       aFormat != SurfaceFormat::A8 &&
@@ -1135,7 +1132,6 @@ TextureClient::CreateForDrawing(TextureForwarder* aAllocator,
   {
     data = X11TextureData::Create(aSize, aFormat, aTextureFlags, aAllocator);
   }
-#endif
 #endif
 
 #ifdef XP_MACOSX
@@ -1456,7 +1452,7 @@ TextureClient::GPUVideoDesc(SurfaceDescriptorGPUVideo* const aOutDesc)
   MOZ_RELEASE_ASSERT(mData);
   mData->GetSubDescriptor(&subDesc);
 
-  *aOutDesc = SurfaceDescriptorGPUVideo(handle, Move(subDesc));
+  *aOutDesc = SurfaceDescriptorGPUVideo(handle, std::move(subDesc));
 }
 
 class MemoryTextureReadLock : public NonBlockingTextureReadLock {

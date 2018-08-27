@@ -14,6 +14,8 @@ For events recorded into Firefox Telemetry we also provide an API that opaquely 
 
     Every new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers. We try to reply within a business day.
 
+.. _events.serializationformat:
+
 Serialization format
 ====================
 
@@ -116,6 +118,12 @@ The following event properties are valid:
   - ``expiry_version`` *(string)*: The version number in which the event expires, e.g. ``"50"``, or ``"never"``. A version number of type "N" is automatically converted to "N.0a1" in order to expire the event also in the development channels. For events that never expire the value ``never`` can be used.
 
 - ``extra_keys`` *(optional, object)*: An object that specifies valid keys for the ``extra`` argument and a description - see the example above.
+- ``products`` *(optional, list of strings)*: A list of products the event can be recorded on. It defaults to ``all``. Currently supported values are:
+
+  - ``firefox``
+  - ``fennec``
+  - ``geckoview``
+  - ``all`` (record on all products)
 
 The API
 =======
@@ -203,6 +211,7 @@ Register new events from add-ons.
 
 For events recorded from add-ons, registration happens at runtime. Any new events must first be registered through this function before they can be recorded.
 The registered categories will automatically be enabled for recording.
+If a dynamic event uses the same category as a static event, the category will also be enabled upon registration.
 
 After registration, the events can be recorded through the ``recordEvent()`` function. They will be submitted in the main pings payload under ``processes.dynamic.events``.
 
@@ -228,10 +237,14 @@ Internal API
 
 .. code-block:: js
 
-  Services.telemetry.snapshotEvents(dataset, clear);
+  Services.telemetry.snapshotEvents(dataset, clear, eventLimit);
   Services.telemetry.clearEvents();
 
 These functions are only supposed to be used by Telemetry internally or in tests.
+
+Also, the ``event-telemetry-storage-limit-reached`` topic is notified when the event ping event
+limit is reached (configurable via the ``toolkit.telemetry.eventping.eventLimit`` preference).
+This is intended only for use internally or in tests.
 
 .. _events.event-summary:
 
@@ -261,7 +274,7 @@ Example:
   Services.telemetry.recordEvent("interaction", "click", "document", "xuldoc");
   Services.telemetry.recordEvent("interaction", "click", "document", "xuldoc-neighbour");
 
-  // And in each of child proccesses 1 through 4, this happens:
+  // And in each of child processes 1 through 4, this happens:
   Services.telemetry.recordEvent("interaction", "click", "document", "htmldoc");
 
 In the case that ``interaction.click.document`` is statically-registered, this will result in the

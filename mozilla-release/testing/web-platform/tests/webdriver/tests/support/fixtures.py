@@ -14,6 +14,10 @@ from tests.support.wait import wait
 default_host = "http://127.0.0.1"
 default_port = "4444"
 
+default_script_timeout = 30
+default_page_load_timeout = 300
+default_implicit_wait_timeout = 0
+
 
 def ignore_exceptions(f):
     def inner(*args, **kwargs):
@@ -50,6 +54,14 @@ def _dismiss_user_prompts(session):
             pass
 
     session.window_handle = current_window
+
+
+@ignore_exceptions
+def _restore_timeouts(session):
+    """Restores modified timeouts to their default values"""
+    session.timeouts.implicit = default_implicit_wait_timeout
+    session.timeouts.page_load = default_page_load_timeout
+    session.timeouts.script = default_script_timeout
 
 
 @ignore_exceptions
@@ -93,6 +105,26 @@ def _windows(session, exclude=None):
         exclude = []
     wins = [w for w in session.handles if w not in exclude]
     return set(wins)
+
+
+def add_event_listeners(session):
+    """Register listeners for tracked events on element."""
+    def add_event_listeners(element, tracked_events):
+        element.session.execute_script("""
+            let element = arguments[0];
+            let trackedEvents = arguments[1];
+
+            if (!("events" in window)) {
+              window.events = [];
+            }
+
+            for (var i = 0; i < trackedEvents.length; i++) {
+              element.addEventListener(trackedEvents[i], function (event) {
+                window.events.push(event.type);
+              });
+            }
+            """, args=(element, tracked_events))
+    return add_event_listeners
 
 
 def create_frame(session):
@@ -168,6 +200,7 @@ def session(configuration, request):
     request.addfinalizer(lambda: _restore_windows(_current_session))
     request.addfinalizer(lambda: _dismiss_user_prompts(_current_session))
     request.addfinalizer(lambda: _ensure_valid_window(_current_session))
+    request.addfinalizer(lambda: _restore_timeouts(_current_session))
 
     return _current_session
 

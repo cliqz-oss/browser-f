@@ -25,18 +25,18 @@ try {
 
     DebuggerServer.init();
     // We want a special server without any root actor and only tab actors.
-    // We are going to spawn a ContentActor instance in the next few lines,
+    // We are going to spawn a FrameTargetActor instance in the next few lines,
     // it is going to act like a root actor without being one.
     DebuggerServer.registerActors({ tab: true });
 
-    let connections = new Map();
+    const connections = new Map();
 
-    let onConnect = DevToolsUtils.makeInfallible(function(msg) {
+    const onConnect = DevToolsUtils.makeInfallible(function(msg) {
       removeMessageListener("debug:connect", onConnect);
 
-      let mm = msg.target;
-      let prefix = msg.data.prefix;
-      let addonId = msg.data.addonId;
+      const mm = msg.target;
+      const prefix = msg.data.prefix;
+      const addonId = msg.data.addonId;
 
       // Using the JS debugger causes problems when we're trying to
       // schedule those zone groups across different threads. Calling
@@ -46,21 +46,21 @@ try {
       // passed to blockThreadedExecution has run, signaling that
       // we're running single-threaded.
       Cu.blockThreadedExecution(() => {
-        let conn = DebuggerServer.connectToParent(prefix, mm);
+        const conn = DebuggerServer.connectToParent(prefix, mm);
         conn.parentMessageManager = mm;
         connections.set(prefix, conn);
 
         let actor;
 
         if (addonId) {
-          const { WebExtensionChildActor } = require("devtools/server/actors/webextension");
-          actor = new WebExtensionChildActor(conn, chromeGlobal, prefix, addonId);
+          const { WebExtensionTargetActor } = require("devtools/server/actors/targets/webextension");
+          actor = new WebExtensionTargetActor(conn, chromeGlobal, prefix, addonId);
         } else {
-          const { ContentActor } = require("devtools/server/actors/content");
-          actor = new ContentActor(conn, chromeGlobal, prefix);
+          const { FrameTargetActor } = require("devtools/server/actors/targets/frame");
+          actor = new FrameTargetActor(conn, chromeGlobal);
         }
 
-        let actorPool = new ActorPool(conn);
+        const actorPool = new ActorPool(conn);
         actorPool.addActor(actor);
         conn.addActorPool(actorPool);
 
@@ -72,8 +72,8 @@ try {
 
     // Allows executing module setup helper from the parent process.
     // See also: DebuggerServer.setupInChild()
-    let onSetupInChild = DevToolsUtils.makeInfallible(msg => {
-      let { module, setupChild, args } = msg.data;
+    const onSetupInChild = DevToolsUtils.makeInfallible(msg => {
+      const { module, setupChild, args } = msg.data;
       let m;
 
       try {
@@ -86,7 +86,7 @@ try {
 
         m[setupChild].apply(m, args);
       } catch (e) {
-        let errorMessage =
+        const errorMessage =
           "Exception during actor module setup running in the child process: ";
         DevToolsUtils.reportException(errorMessage + e);
         dumpn(`ERROR: ${errorMessage}\n\t module: '${module}'\n\t ` +
@@ -102,9 +102,9 @@ try {
 
     addMessageListener("debug:setup-in-child", onSetupInChild);
 
-    let onDisconnect = DevToolsUtils.makeInfallible(function(msg) {
-      let prefix = msg.data.prefix;
-      let conn = connections.get(prefix);
+    const onDisconnect = DevToolsUtils.makeInfallible(function(msg) {
+      const prefix = msg.data.prefix;
+      const conn = connections.get(prefix);
       if (!conn) {
         // Several copies of this frame script can be running for a single frame since it
         // is loaded once for each DevTools connection to the frame.  If this disconnect
@@ -127,7 +127,7 @@ try {
     // messageManager connection goes away.  Watching for "unload" here ensures we close
     // any connections when the frame is unloaded.
     addEventListener("unload", () => {
-      for (let conn of connections.values()) {
+      for (const conn of connections.values()) {
         conn.close();
       }
       connections.clear();

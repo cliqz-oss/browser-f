@@ -9,7 +9,7 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Timer.jsm");
 
-Cu.importGlobalProperties(["Element"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["Element"]);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
@@ -211,6 +211,7 @@ let InternalFaviconLoader = {
 var PlacesUIUtils = {
   LOAD_IN_SIDEBAR_ANNO: "bookmarkProperties/loadInSidebar",
   DESCRIPTION_ANNO: "bookmarkProperties/description",
+  LAST_USED_FOLDERS_META_KEY: "bookmarks/lastusedfolders",
 
   /**
    * Makes a URI from a spec, and do fixup
@@ -481,38 +482,6 @@ var PlacesUIUtils = {
   },
 
   /**
-   * Get the description associated with a document, as specified in a <META>
-   * element.
-   * @param   doc
-   *          A DOM Document to get a description for
-   * @return A description string if a META element was discovered with a
-   *         "description" or "httpequiv" attribute, empty string otherwise.
-   */
-  getDescriptionFromDocument: function PUIU_getDescriptionFromDocument(doc) {
-    var metaElements = doc.getElementsByTagName("META");
-    for (var i = 0; i < metaElements.length; ++i) {
-      if (metaElements[i].name.toLowerCase() == "description" ||
-          metaElements[i].httpEquiv.toLowerCase() == "description") {
-        return metaElements[i].content;
-      }
-    }
-    return "";
-  },
-
-  /**
-   * Retrieve the description of an item
-   * @param aItemId
-   *        item identifier
-   * @return the description of the given item, or an empty string if it is
-   * not set.
-   */
-  getItemDescription: function PUIU_getItemDescription(aItemId) {
-    if (PlacesUtils.annotations.itemHasAnnotation(aItemId, this.DESCRIPTION_ANNO))
-      return PlacesUtils.annotations.getItemAnnotation(aItemId, this.DESCRIPTION_ANNO);
-    return "";
-  },
-
-  /**
    * Check whether or not the given node represents a removable entry (either in
    * history or in bookmarks).
    *
@@ -604,13 +573,7 @@ var PlacesUIUtils = {
     if (!aItemsToOpen.length)
       return;
 
-    // Prefer the caller window if it's a browser window, otherwise use
-    // the top browser window.
-    var browserWindow = null;
-    browserWindow =
-      aWindow && aWindow.document.documentElement.getAttribute("windowtype") == "navigator:browser" ?
-      aWindow : BrowserWindowTracker.getTopWindow();
-
+    let browserWindow = getBrowserWindow(aWindow);
     var urls = [];
     let skipMarking = browserWindow && PrivateBrowsingUtils.isWindowPrivate(browserWindow);
     for (let item of aItemsToOpen) {
@@ -707,10 +670,16 @@ var PlacesUIUtils = {
   function PUIU_openNodeWithEvent(aNode, aEvent) {
     let window = aEvent.target.ownerGlobal;
 
+    let browserWindow = getBrowserWindow(window);
+
     let where = window.whereToOpenLink(aEvent, false, true);
-    if (where == "current" && this.loadBookmarksInTabs &&
-        PlacesUtils.nodeIsBookmark(aNode) && !aNode.uri.startsWith("javascript:")) {
-      where = "tab";
+    if (this.loadBookmarksInTabs && PlacesUtils.nodeIsBookmark(aNode)) {
+      if (where == "current" && !aNode.uri.startsWith("javascript:")) {
+        where = "tab";
+      }
+      if (where == "tab" && browserWindow.isTabEmpty(browserWindow.gBrowser.selectedTab)) {
+        where = "current";
+      }
     }
 
     this._openNodeIn(aNode, where, window);
@@ -943,7 +912,7 @@ var PlacesUIUtils = {
     } else {
       let insertionIndex = await insertionPoint.getIndex();
       itemsCount = items.length;
-      transactions = await getTransactionsForTransferItems(
+      transactions = getTransactionsForTransferItems(
         items, insertionIndex, insertionPoint.guid, !doCopy);
     }
 
@@ -963,10 +932,8 @@ var PlacesUIUtils = {
       // If we're not a tag, then we need to get the ids of the items to select.
       batchingItem = async () => {
         for (let transaction of transactions) {
-          let guid = await transaction.transact();
-          if (guid) {
-            guidsToSelect.push(guid);
-          }
+          let result = await transaction.transact();
+          guidsToSelect = guidsToSelect.concat(result);
         }
       };
     }
@@ -1064,7 +1031,7 @@ var PlacesUIUtils = {
     if (win.top.XULBrowserWindow) {
       win.top.XULBrowserWindow.setOverLink(url, null);
     }
-  }
+  },
 };
 
 // These are lazy getters to avoid importing PlacesUtils immediately.
@@ -1156,8 +1123,8 @@ function getResultForBatching(viewOrElement) {
  *                         copy them.
  * @return {Array} Returns an array of created PlacesTransactions.
  */
-async function getTransactionsForTransferItems(items, insertionIndex,
-                                               insertionParentGuid, doMove) {
+function getTransactionsForTransferItems(items, insertionIndex,
+                                         insertionParentGuid, doMove) {
   let canMove = true;
   for (let item of items) {
     if (!PlacesUIUtils.SUPPORTED_FLAVORS.includes(item.type)) {
@@ -1189,57 +1156,17 @@ async function getTransactionsForTransferItems(items, insertionIndex,
     doMove = false;
   }
 
-  return doMove ? getTransactionsForMove(items, insertionIndex, insertionParentGuid) :
-                  getTransactionsForCopy(items, insertionIndex, insertionParentGuid);
-}
-
-/**
- * Processes a set of transfer items and returns an array of transactions.
- *
- * @param {Array} items A list of unwrapped nodes to get transactions for.
- * @param {Integer} insertionIndex The requested index for insertion.
- * @param {String} insertionParentGuid The guid of the parent folder to insert
- *                                     or move the items to.
- * @return {Array} Returns an array of created PlacesTransactions.
- */
-async function getTransactionsForMove(items, insertionIndex,
-                                      insertionParentGuid) {
-  let transactions = [];
-  let index = insertionIndex;
-
-  for (let item of items) {
-    if (index != -1 && item.itemGuid) {
-      // Note: we use the parent from the existing bookmark as the sidebar
-      // gives us an unwrapped.parent that is actually a query and not the real
-      // parent.
-      let existingBookmark = await PlacesUtils.bookmarks.fetch(item.itemGuid);
-
-      // If we're dropping on the same folder, then we may need to adjust
-      // the index to insert at the correct place.
-      if (existingBookmark && insertionParentGuid == existingBookmark.parentGuid) {
-        if (index > existingBookmark.index) {
-          // If we're dragging down, we need to go one lower to insert at
-          // the real point as moving the element changes the index of
-          // everything below by 1.
-          index--;
-        } else if (index == existingBookmark.index) {
-          // This isn't moving so we skip it.
-          continue;
-        }
-      }
-    }
-
-    transactions.push(PlacesTransactions.Move({
-      guid: item.itemGuid,
-      newIndex: index,
+  if (doMove) {
+    // Move is simple, we pass the transaction a list of GUIDs and where to move
+    // them to.
+    return [PlacesTransactions.Move({
+      guids: items.map(item => item.itemGuid),
       newParentGuid: insertionParentGuid,
-    }));
-
-    if (index != -1 && item.itemGuid) {
-      index++;
-    }
+      newIndex: insertionIndex,
+    })];
   }
-  return transactions;
+
+  return getTransactionsForCopy(items, insertionIndex, insertionParentGuid);
 }
 
 /**
@@ -1251,8 +1178,8 @@ async function getTransactionsForMove(items, insertionIndex,
  *                                     or move the items to.
  * @return {Array} Returns an array of created PlacesTransactions.
  */
-async function getTransactionsForCopy(items, insertionIndex,
-                                      insertionParentGuid) {
+function getTransactionsForCopy(items, insertionIndex,
+                                insertionParentGuid) {
   let transactions = [];
   let index = insertionIndex;
 
@@ -1299,4 +1226,11 @@ async function getTransactionsForCopy(items, insertionIndex,
     }
   }
   return transactions;
+}
+
+function getBrowserWindow(aWindow) {
+  // Prefer the caller window if it's a browser window, otherwise use
+  // the top browser window.
+  return aWindow && aWindow.document.documentElement.getAttribute("windowtype") == "navigator:browser" ?
+    aWindow : BrowserWindowTracker.getTopWindow();
 }

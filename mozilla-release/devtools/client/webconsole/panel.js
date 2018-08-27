@@ -42,11 +42,11 @@ WebConsolePanel.prototype = {
    *         A promise that is resolved when the Web Console completes opening.
    */
   open: function() {
-    let parentDoc = this._toolbox.doc;
-    let iframe = parentDoc.getElementById("toolbox-panel-iframe-webconsole");
+    const parentDoc = this._toolbox.doc;
+    const iframe = parentDoc.getElementById("toolbox-panel-iframe-webconsole");
 
     // Make sure the iframe content window is ready.
-    let deferredIframe = defer();
+    const deferredIframe = defer();
     let win, doc;
     if ((win = iframe.contentWindow) &&
         (doc = win.document) &&
@@ -74,14 +74,14 @@ WebConsolePanel.prototype = {
       .then((target) => {
         this._frameWindow._remoteTarget = target;
 
-        let webConsoleUIWindow = iframe.contentWindow.wrappedJSObject;
-        let chromeWindow = iframe.ownerDocument.defaultView;
+        const webConsoleUIWindow = iframe.contentWindow.wrappedJSObject;
+        const chromeWindow = iframe.ownerDocument.defaultView;
         return HUDService.openWebConsole(this.target, webConsoleUIWindow,
                                          chromeWindow);
       })
       .then((webConsole) => {
         this.hud = webConsole;
-        // Pipe 'reloaded' event from NewWebConsoleFrame to WebConsolePanel.
+        // Pipe 'reloaded' event from WebConsoleFrame to WebConsolePanel.
         // These events are listened by the Toolbox.
         this.hud.ui.on("reloaded", () => {
           this.emit("reloaded");
@@ -90,7 +90,7 @@ WebConsolePanel.prototype = {
         this.emit("ready");
         return this;
       }, (reason) => {
-        let msg = "WebConsolePanel open failed. " +
+        const msg = "WebConsolePanel open failed. " +
                   reason.error + ": " + reason.message;
         dump(msg + "\n");
         console.error(msg, reason);

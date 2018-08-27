@@ -301,7 +301,7 @@ EventListenerManager::AddEventListenerInternal(
   } else {
     listener->mListenerType = Listener::eNativeListener;
   }
-  listener->mListener = Move(aListenerHolder);
+  listener->mListener = std::move(aListenerHolder);
 
 
   if (aFlags.mInSystemGroup) {
@@ -461,7 +461,7 @@ EventListenerManager::ProcessApzAwareEventListenerAdd()
     }
   }
 
-  if (doc && nsDisplayListBuilder::LayerEventRegionsEnabled()) {
+  if (doc && gfxPlatform::AsyncPanZoomEnabled()) {
     nsIPresShell* ps = doc->GetShell();
     if (ps) {
       nsIFrame* f = ps->GetRootFrame();
@@ -731,7 +731,7 @@ EventListenerManager::AddEventListenerByType(
     }
   }
 
-  AddEventListenerInternal(Move(aListenerHolder),
+  AddEventListenerInternal(std::move(aListenerHolder),
                            message, atom, aType, flags);
 }
 
@@ -746,7 +746,7 @@ EventListenerManager::RemoveEventListenerByType(
     nsContentUtils::GetEventMessageAndAtomForListener(aType,
                                                       getter_AddRefs(atom)) :
     eUnidentifiedEvent;
-  RemoveEventListenerInternal(Move(aListenerHolder),
+  RemoveEventListenerInternal(std::move(aListenerHolder),
                               message, atom, aType, aFlags);
 }
 
@@ -1025,11 +1025,11 @@ EventListenerManager::CompileEventHandlerInternal(Listener* aListener,
   // where mTarget is a Window.
   //
   // The wrapScope doesn't really matter here, because the target will create
-  // its reflector in the proper scope, and then we'll enter that compartment.
+  // its reflector in the proper scope, and then we'll enter that realm.
   JS::Rooted<JSObject*> wrapScope(cx, global->GetGlobalJSObject());
   JS::Rooted<JS::Value> v(cx);
   {
-    JSAutoCompartment ac(cx, wrapScope);
+    JSAutoRealm ar(cx, wrapScope);
     nsresult rv = nsContentUtils::WrapNative(cx, mTarget, &v,
                                              /* aAllowWrapping = */ false);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1038,9 +1038,9 @@ EventListenerManager::CompileEventHandlerInternal(Listener* aListener,
   }
 
   JS::Rooted<JSObject*> target(cx, &v.toObject());
-  JSAutoCompartment ac(cx, target);
+  JSAutoRealm ar(cx, target);
 
-  // Now that we've entered the compartment we actually care about, create our
+  // Now that we've entered the realm we actually care about, create our
   // scope chain.  Note that we start with |element|, not aElement, because
   // mTarget is different from aElement in the <body> case, where mTarget is a
   // Window, and in that case we do not want the scope chain to include the body
@@ -1245,9 +1245,9 @@ EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
                   nsAutoString typeStr;
                   (*aDOMEvent)->GetType(typeStr);
                   uint16_t phase = (*aDOMEvent)->EventPhase();
-                  timelines->AddMarkerForDocShell(docShell, Move(
+                  timelines->AddMarkerForDocShell(docShell,
                     MakeUnique<EventTimelineMarker>(
-                      typeStr, phase, MarkerTracingType::START)));
+                      typeStr, phase, MarkerTracingType::START));
                 }
               }
             }
@@ -1258,7 +1258,7 @@ EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
               // Move the listener to the stack before handling the event.
               // The order is important, otherwise the listener could be
               // called again inside the listener.
-              listenerHolder.emplace(Move(*listener));
+              listenerHolder.emplace(std::move(*listener));
               listener = listenerHolder.ptr();
               hasRemovedListener = true;
             }
@@ -1273,18 +1273,25 @@ EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
               nsAutoString typeStr;
               (*aDOMEvent)->GetType(typeStr);
               AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-                "EventListenerManager::HandleEventInternal", EVENTS, typeStr);
-              TimeStamp startTime = TimeStamp::Now();
+                "EventListenerManager::HandleEventInternal", OTHER, typeStr);
 
-              rv = HandleEventSubType(listener, *aDOMEvent, aCurrentTarget);
-
-              TimeStamp endTime = TimeStamp::Now();
               uint16_t phase = (*aDOMEvent)->EventPhase();
               profiler_add_marker(
                 "DOMEvent",
                 MakeUnique<DOMEventMarkerPayload>(typeStr, phase,
                                                   aEvent->mTimeStamp,
-                                                  startTime, endTime));
+                                                  "DOMEvent",
+                                                  TRACING_INTERVAL_START));
+
+              rv = HandleEventSubType(listener, *aDOMEvent, aCurrentTarget);
+
+              phase = (*aDOMEvent)->EventPhase();
+              profiler_add_marker(
+                "DOMEvent",
+                MakeUnique<DOMEventMarkerPayload>(typeStr, phase,
+                                                  aEvent->mTimeStamp,
+                                                  "DOMEvent",
+                                                  TRACING_INTERVAL_END));
             } else
 #endif
             {
@@ -1386,7 +1393,7 @@ EventListenerManager::AddEventListener(
   EventListenerFlags flags;
   flags.mCapture = aUseCapture;
   flags.mAllowUntrustedEvents = aWantsUntrusted;
-  return AddEventListenerByType(Move(aListenerHolder), aType, flags);
+  return AddEventListenerByType(std::move(aListenerHolder), aType, flags);
 }
 
 void
@@ -1410,7 +1417,7 @@ EventListenerManager::AddEventListener(
     }
   }
   flags.mAllowUntrustedEvents = aWantsUntrusted;
-  return AddEventListenerByType(Move(aListenerHolder), aType, flags, passive);
+  return AddEventListenerByType(std::move(aListenerHolder), aType, flags, passive);
 }
 
 void
@@ -1421,7 +1428,7 @@ EventListenerManager::RemoveEventListener(
 {
   EventListenerFlags flags;
   flags.mCapture = aUseCapture;
-  RemoveEventListenerByType(Move(aListenerHolder), aType, flags);
+  RemoveEventListenerByType(std::move(aListenerHolder), aType, flags);
 }
 
 void
@@ -1438,7 +1445,7 @@ EventListenerManager::RemoveEventListener(
     flags.mCapture = options.mCapture;
     flags.mInSystemGroup = options.mMozSystemGroup;
   }
-  RemoveEventListenerByType(Move(aListenerHolder), aType, flags);
+  RemoveEventListenerByType(std::move(aListenerHolder), aType, flags);
 }
 
 void

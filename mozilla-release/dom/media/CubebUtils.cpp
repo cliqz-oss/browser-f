@@ -29,8 +29,8 @@
 #include "GeneratedJNIWrappers.h"
 #endif
 
-#define AUDIOIPC_POOL_SIZE_DEFAULT 1
-#define AUDIOIPC_STACK_SIZE_DEFAULT (64*1024)
+#define AUDIOIPC_POOL_SIZE_DEFAULT 2
+#define AUDIOIPC_STACK_SIZE_DEFAULT (64*4096)
 
 #define PREF_VOLUME_SCALE "media.volume_scale"
 #define PREF_CUBEB_BACKEND "media.cubeb.backend"
@@ -266,12 +266,12 @@ void PrefChanged(const char* aPref, void* aClosure)
   else if (strcmp(aPref, PREF_AUDIOIPC_POOL_SIZE) == 0) {
     StaticMutexAutoLock lock(sMutex);
     sAudioIPCPoolSize =  Preferences::GetUint(PREF_AUDIOIPC_POOL_SIZE,
-                                             AUDIOIPC_POOL_SIZE_DEFAULT);
+                                              AUDIOIPC_POOL_SIZE_DEFAULT);
   }
   else if (strcmp(aPref, PREF_AUDIOIPC_STACK_SIZE) == 0) {
     StaticMutexAutoLock lock(sMutex);
     sAudioIPCStackSize = Preferences::GetUint(PREF_AUDIOIPC_STACK_SIZE,
-                                             AUDIOIPC_STACK_SIZE_DEFAULT);
+                                              AUDIOIPC_STACK_SIZE_DEFAULT);
   }
 #endif
 }
@@ -304,13 +304,13 @@ bool InitPreferredSampleRate()
   if (sPreferredSampleRate != 0) {
     return true;
   }
+#ifdef MOZ_WIDGET_ANDROID
+  sPreferredSampleRate = AndroidGetAudioOutputSampleRate();
+#else
   cubeb* context = GetCubebContextUnlocked();
   if (!context) {
     return false;
   }
-#ifdef MOZ_WIDGET_ANDROID
-  sPreferredSampleRate = AndroidGetAudioOutputSampleRate();
-#else
   if (cubeb_get_preferred_sample_rate(context,
                                       &sPreferredSampleRate) != CUBEB_OK) {
 

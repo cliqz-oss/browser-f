@@ -231,22 +231,9 @@ enum class StyleOrient : uint8_t {
   Vertical,
 };
 
-
-// See nsStyleColor
-#define NS_STYLE_COLOR_INHERIT_FROM_BODY  2  /* Can't come from CSS directly */
-
-// See nsStyleColor
-#define NS_COLOR_CURRENTCOLOR                   -1
-#define NS_COLOR_MOZ_DEFAULT_COLOR              -2
-#define NS_COLOR_MOZ_DEFAULT_BACKGROUND_COLOR   -3
-#define NS_COLOR_MOZ_HYPERLINKTEXT              -4
-#define NS_COLOR_MOZ_VISITEDHYPERLINKTEXT       -5
-#define NS_COLOR_MOZ_ACTIVEHYPERLINKTEXT        -6
-// Only valid as paints in SVG glyphs
-#define NS_COLOR_CONTEXT_FILL                   -7
-#define NS_COLOR_CONTEXT_STROKE                 -8
-
 // See nsStyleDisplay
+//
+// These need to be in sync with WillChangeBits in box.rs.
 #define NS_STYLE_WILL_CHANGE_STACKING_CONTEXT   (1<<0)
 #define NS_STYLE_WILL_CHANGE_TRANSFORM          (1<<1)
 #define NS_STYLE_WILL_CHANGE_SCROLL             (1<<2)
@@ -254,8 +241,8 @@ enum class StyleOrient : uint8_t {
 #define NS_STYLE_WILL_CHANGE_FIXPOS_CB          (1<<4)
 #define NS_STYLE_WILL_CHANGE_ABSPOS_CB          (1<<5)
 
-// See AnimationEffectReadOnly.webidl
-// and mozilla/dom/AnimationEffectReadOnlyBinding.h
+// See AnimationEffect.webidl
+// and mozilla/dom/AnimationEffectBinding.h
 namespace dom {
 enum class PlaybackDirection : uint8_t;
 enum class FillMode : uint8_t;
@@ -269,9 +256,11 @@ enum class FillMode : uint8_t;
 #define NS_STYLE_ANIMATION_PLAY_STATE_PAUSED      1
 
 // See nsStyleImageLayers
-#define NS_STYLE_IMAGELAYER_ATTACHMENT_SCROLL        0
-#define NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED         1
-#define NS_STYLE_IMAGELAYER_ATTACHMENT_LOCAL         2
+enum class StyleImageLayerAttachment : uint8_t {
+    Scroll,
+    Fixed,
+    Local
+};
 
 // A magic value that we use for our "pretend that background-clip is
 // 'padding' when we have a solid border" optimization.  This isn't
@@ -421,7 +410,7 @@ enum class StyleContent : uint8_t {
 // See nsStyleDisplay
 //
 // NOTE: Order is important! If you change it, make sure to take a look at
-// the FrameConstructorDataByDisplay stuff (both the XUL and non-XUL version),
+// the FrameConstructionDataByDisplay stuff (both the XUL and non-XUL version),
 // and ensure it's still correct!
 enum class StyleDisplay : uint8_t {
   None = 0,
@@ -468,15 +457,21 @@ enum class StyleDisplay : uint8_t {
 };
 
 // See nsStyleDisplay
-// If these are re-ordered, nsComputedDOMStyle::DoGetContain() and
-// nsCSSValue::AppendToString() must be updated.
+// If these are re-ordered, nsComputedDOMStyle::DoGetContain() must be updated.
 #define NS_STYLE_CONTAIN_NONE                   0
-#define NS_STYLE_CONTAIN_STRICT                 0x1
-#define NS_STYLE_CONTAIN_LAYOUT                 0x2
-#define NS_STYLE_CONTAIN_STYLE                  0x4
-#define NS_STYLE_CONTAIN_PAINT                  0x8
+#define NS_STYLE_CONTAIN_SIZE                   0x01
+#define NS_STYLE_CONTAIN_LAYOUT                 0x02
+#define NS_STYLE_CONTAIN_STYLE                  0x04
+#define NS_STYLE_CONTAIN_PAINT                  0x08
+#define NS_STYLE_CONTAIN_STRICT                 0x10
+#define NS_STYLE_CONTAIN_CONTENT                0x20
 // NS_STYLE_CONTAIN_ALL_BITS does not correspond to a keyword.
 #define NS_STYLE_CONTAIN_ALL_BITS               (NS_STYLE_CONTAIN_LAYOUT | \
+                                                 NS_STYLE_CONTAIN_STYLE  | \
+                                                 NS_STYLE_CONTAIN_PAINT  | \
+                                                 NS_STYLE_CONTAIN_SIZE)
+// NS_STYLE_CONTAIN_CONTENT_BITS does not correspond to a keyword.
+#define NS_STYLE_CONTAIN_CONTENT_BITS           (NS_STYLE_CONTAIN_LAYOUT | \
                                                  NS_STYLE_CONTAIN_STYLE  | \
                                                  NS_STYLE_CONTAIN_PAINT)
 
@@ -912,9 +907,6 @@ enum class StyleWhiteSpace : uint8_t {
 // See nsStyleText
 #define NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE        0
 #define NS_STYLE_TEXT_COMBINE_UPRIGHT_ALL         1
-#define NS_STYLE_TEXT_COMBINE_UPRIGHT_DIGITS_2    2
-#define NS_STYLE_TEXT_COMBINE_UPRIGHT_DIGITS_3    3
-#define NS_STYLE_TEXT_COMBINE_UPRIGHT_DIGITS_4    4
 
 // See nsStyleText
 #define NS_STYLE_LINE_HEIGHT_BLOCK_HEIGHT       0

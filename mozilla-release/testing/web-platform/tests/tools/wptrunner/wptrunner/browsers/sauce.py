@@ -101,7 +101,7 @@ def browser_kwargs(test_type, run_info_data, **kwargs):
 def executor_kwargs(test_type, server_config, cache_manager, run_info_data,
                     **kwargs):
     executor_kwargs = base_executor_kwargs(test_type, server_config,
-                                           cache_manager, **kwargs)
+                                           cache_manager, run_info_data, **kwargs)
 
     executor_kwargs["capabilities"] = get_capabilities(**kwargs)
 
@@ -166,7 +166,7 @@ class SauceConnect():
             "--metrics-address=0.0.0.0:9876",
             "--readyfile=./sauce_is_ready",
             "--tunnel-domains",
-            ",".join(self.env_config['domains'].values())
+            ",".join(self.env_config.domains_set)
         ])
 
         # Timeout config vars

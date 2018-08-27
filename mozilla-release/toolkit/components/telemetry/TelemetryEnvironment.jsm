@@ -563,6 +563,9 @@ EnvironmentAddonBuilder.prototype = {
   onUninstalling() {
     this._onAddonChange();
   },
+  onUninstalled() {
+    this._onAddonChange();
+  },
 
   _onAddonChange() {
     this._environment._log.trace("_onAddonChange");
@@ -1349,14 +1352,6 @@ EnvironmentCache.prototype = {
       xpcomAbi: Services.appinfo.XPCOMABI,
       updaterAvailable: AppConstants.MOZ_UPDATER,
     };
-
-    // Add |architecturesInBinary| only for Mac Universal builds.
-    if ("@mozilla.org/xpcom/mac-utils;1" in Cc) {
-      let macUtils = Cc["@mozilla.org/xpcom/mac-utils;1"].getService(Ci.nsIMacUtils);
-      if (macUtils && macUtils.isUniversalBinary) {
-        buildData.architecturesInBinary = macUtils.architecturesInBinary;
-      }
-    }
 
     return buildData;
   },

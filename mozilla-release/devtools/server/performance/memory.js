@@ -14,10 +14,8 @@ loader.lazyRequireGetter(this, "DeferredTask",
 loader.lazyRequireGetter(this, "StackFrameCache",
   "devtools/server/actors/utils/stack", true);
 loader.lazyRequireGetter(this, "ChromeUtils");
-loader.lazyRequireGetter(this, "ChromeActor", "devtools/server/actors/chrome",
-                         true);
-loader.lazyRequireGetter(this, "ChildProcessActor",
-                         "devtools/server/actors/child-process", true);
+loader.lazyRequireGetter(this, "ParentProcessTargetActor", "devtools/server/actors/targets/parent-process", true);
+loader.lazyRequireGetter(this, "ContentProcessTargetActor", "devtools/server/actors/targets/content-process", true);
 
 /**
  * A class that returns memory data for a parent actor's window.
@@ -144,8 +142,8 @@ Memory.prototype = {
     // If we are observing the whole process, then scope the snapshot
     // accordingly. Otherwise, use the debugger's debuggees.
     if (!boundaries) {
-      if (this.parent instanceof ChromeActor ||
-          this.parent instanceof ChildProcessActor) {
+      if (this.parent instanceof ParentProcessTargetActor ||
+          this.parent instanceof ContentProcessTargetActor) {
         boundaries = { runtime: true };
       } else {
         boundaries = { debugger: this.dbg };
@@ -308,19 +306,19 @@ Memory.prototype = {
       allocationsTimestamps: [],
       allocationSizes: [],
     };
-    for (let { frame: stack, timestamp, size } of allocations) {
+    for (const { frame: stack, timestamp, size } of allocations) {
       if (stack && Cu.isDeadWrapper(stack)) {
         continue;
       }
 
       // Safe because SavedFrames are frozen/immutable.
-      let waived = Cu.waiveXrays(stack);
+      const waived = Cu.waiveXrays(stack);
 
       // Ensure that we have a form, size, and index for new allocations
       // because we potentially haven't seen some or all of them yet. After this
       // loop, we can rely on the fact that every frame we deal with already has
       // its metadata stored.
-      let index = this._frameCache.addFrame(waived);
+      const index = this._frameCache.addFrame(waived);
 
       packet.allocations.push(index);
       packet.allocationsTimestamps.push(timestamp);
@@ -355,17 +353,17 @@ Memory.prototype = {
    * @returns object
    */
   measure: function() {
-    let result = {};
+    const result = {};
 
-    let jsObjectsSize = {};
-    let jsStringsSize = {};
-    let jsOtherSize = {};
-    let domSize = {};
-    let styleSize = {};
-    let otherSize = {};
-    let totalSize = {};
-    let jsMilliseconds = {};
-    let nonJSMilliseconds = {};
+    const jsObjectsSize = {};
+    const jsStringsSize = {};
+    const jsOtherSize = {};
+    const domSize = {};
+    const styleSize = {};
+    const otherSize = {};
+    const totalSize = {};
+    const jsMilliseconds = {};
+    const nonJSMilliseconds = {};
 
     try {
       this._mgr.sizeOfTab(this.parent.window, jsObjectsSize, jsStringsSize, jsOtherSize,

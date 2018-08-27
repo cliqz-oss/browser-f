@@ -142,7 +142,7 @@ int GetChildAndCall(MEM_FUN&& f, ARGS&&... args)
   OffTheBooksMutexAutoLock lock(CamerasSingleton::Mutex());
   CamerasChild* child = GetCamerasChild();
   if (child) {
-    return (child->*f)(mozilla::Forward<ARGS>(args)...);
+    return (child->*f)(std::forward<ARGS>(args)...);
   } else {
     return -1;
   }
@@ -192,6 +192,7 @@ public:
   int StartCapture(CaptureEngine aCapEngine,
                    const int capture_id, webrtc::VideoCaptureCapability& capability,
                    FrameRelay* func);
+  int FocusOnSelectedSource(CaptureEngine aCapEngine, const int capture_id);
   int StopCapture(CaptureEngine aCapEngine, const int capture_id);
   int AllocateCaptureDevice(CaptureEngine aCapEngine,
                             const char* unique_idUTF8,

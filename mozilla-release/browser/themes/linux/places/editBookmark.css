@@ -1,8 +1,11 @@
-%if 0
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-%endif
+
+#editBookmarkPanelRows > vbox {
+  margin-bottom: .5em;
+}
+
 /**** folder menulist ****/
 .folder-icon > .menulist-label-box > .menulist-icon {
   width: 16px;
@@ -14,7 +17,9 @@
 }
 
 .folder-icon {
-  list-style-image: url("moz-icon://stock/gtk-directory?size=menu") !important;
+  list-style-image: url("chrome://browser/skin/places/folder.svg") !important;
+  -moz-context-properties: fill;
+  fill: currentColor;
 }
 
 
@@ -35,10 +40,6 @@
   -moz-appearance: button-arrow-down;
 }
 
-#editBookmarkPanelContent {
-  min-width: 23em;
-}
-
 #editBMPanel_folderTree {
   margin-top: 2px;
   margin-bottom: 2px;
@@ -57,15 +58,15 @@
 /* Bookmark panel dropdown menu items */
 #editBMPanel_folderMenuList[selectedIndex="0"],
 #editBMPanel_toolbarFolderItem {
-  list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.png") !important;  
+  list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.svg") !important;
 }
 
 #editBMPanel_folderMenuList[selectedIndex="1"],
 #editBMPanel_bmRootItem {
-  list-style-image: url("chrome://browser/skin/places/bookmarksMenu.png") !important;  
+  list-style-image: url("chrome://browser/skin/places/bookmarksMenu.svg") !important;
 }
 
 #editBMPanel_folderMenuList[selectedIndex="2"],
 #editBMPanel_unfiledRootItem {
-  list-style-image: url("chrome://browser/skin/places/unsortedBookmarks.png") !important;  
+  list-style-image: url("chrome://browser/skin/places/unfiledBookmarks.svg") !important;
 }

@@ -445,6 +445,7 @@ struct ParamTraits<mozilla::WidgetKeyboardEvent>
     WriteParam(aMsg, aParam.mLocation);
     WriteParam(aMsg, aParam.mUniqueId);
     WriteParam(aMsg, aParam.mIsSynthesizedByTIP);
+    WriteParam(aMsg, aParam.mMaybeSkippableInRemoteProcess);
 #ifdef XP_MACOSX
     WriteParam(aMsg, aParam.mNativeKeyCode);
     WriteParam(aMsg, aParam.mNativeModifierFlags);
@@ -482,6 +483,7 @@ struct ParamTraits<mozilla::WidgetKeyboardEvent>
         ReadParam(aMsg, aIter, &aResult->mLocation) &&
         ReadParam(aMsg, aIter, &aResult->mUniqueId) &&
         ReadParam(aMsg, aIter, &aResult->mIsSynthesizedByTIP) &&
+        ReadParam(aMsg, aIter, &aResult->mMaybeSkippableInRemoteProcess) &&
 #ifdef XP_MACOSX
         ReadParam(aMsg, aIter, &aResult->mNativeKeyCode) &&
         ReadParam(aMsg, aIter, &aResult->mNativeModifierFlags) &&
@@ -968,6 +970,63 @@ struct ParamTraits<mozilla::widget::IMEState::Open>
 };
 
 template<>
+struct ParamTraits<mozilla::widget::IMEState>
+{
+  typedef mozilla::widget::IMEState paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    WriteParam(aMsg, aParam.mEnabled);
+    WriteParam(aMsg, aParam.mOpen);
+  }
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
+  {
+    return ReadParam(aMsg, aIter, &aResult->mEnabled) &&
+           ReadParam(aMsg, aIter, &aResult->mOpen);
+  }
+};
+
+template<>
+struct ParamTraits<mozilla::widget::InputContext::Origin>
+  : ContiguousEnumSerializerInclusive<
+      mozilla::widget::InputContext::Origin,
+      mozilla::widget::InputContext::Origin::ORIGIN_MAIN,
+      mozilla::widget::InputContext::Origin::ORIGIN_CONTENT>
+{
+};
+
+template<>
+struct ParamTraits<mozilla::widget::InputContext>
+{
+  typedef mozilla::widget::InputContext paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    WriteParam(aMsg, aParam.mIMEState);
+    WriteParam(aMsg, aParam.mHTMLInputType);
+    WriteParam(aMsg, aParam.mHTMLInputInputmode);
+    WriteParam(aMsg, aParam.mActionHint);
+    WriteParam(aMsg, aParam.mOrigin);
+    WriteParam(aMsg, aParam.mMayBeIMEUnaware);
+    WriteParam(aMsg, aParam.mHasHandledUserInput);
+    WriteParam(aMsg, aParam.mInPrivateBrowsing);
+  }
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
+  {
+    return ReadParam(aMsg, aIter, &aResult->mIMEState) &&
+           ReadParam(aMsg, aIter, &aResult->mHTMLInputType) &&
+           ReadParam(aMsg, aIter, &aResult->mHTMLInputInputmode) &&
+           ReadParam(aMsg, aIter, &aResult->mActionHint) &&
+           ReadParam(aMsg, aIter, &aResult->mOrigin) &&
+           ReadParam(aMsg, aIter, &aResult->mMayBeIMEUnaware) &&
+           ReadParam(aMsg, aIter, &aResult->mHasHandledUserInput) &&
+           ReadParam(aMsg, aIter, &aResult->mInPrivateBrowsing);
+  }
+};
+
+template<>
 struct ParamTraits<mozilla::widget::InputContextAction::Cause>
   : ContiguousEnumSerializerInclusive<
       mozilla::widget::InputContextAction::Cause,
@@ -984,6 +1043,24 @@ struct ParamTraits<mozilla::widget::InputContextAction::FocusChange>
       mozilla::widget::InputContextAction::FocusChange::FOCUS_NOT_CHANGED,
       mozilla::widget::InputContextAction::FocusChange::WIDGET_CREATED>
 {
+};
+
+template<>
+struct ParamTraits<mozilla::widget::InputContextAction>
+{
+  typedef mozilla::widget::InputContextAction paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    WriteParam(aMsg, aParam.mCause);
+    WriteParam(aMsg, aParam.mFocusChange);
+  }
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter, paramType* aResult)
+  {
+    return ReadParam(aMsg, aIter, &aResult->mCause) &&
+           ReadParam(aMsg, aIter, &aResult->mFocusChange);
+  }
 };
 
 template<>

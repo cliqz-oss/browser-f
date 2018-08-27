@@ -38,8 +38,8 @@ class TraceableFifo : public js::Fifo<T, MinInlineCapacity, AllocPolicy>
   public:
     explicit TraceableFifo(AllocPolicy alloc = AllocPolicy()) : Base(alloc) {}
 
-    TraceableFifo(TraceableFifo&& rhs) : Base(mozilla::Move(rhs)) { }
-    TraceableFifo& operator=(TraceableFifo&& rhs) { return Base::operator=(mozilla::Move(rhs)); }
+    TraceableFifo(TraceableFifo&& rhs) : Base(std::move(rhs)) { }
+    TraceableFifo& operator=(TraceableFifo&& rhs) { return Base::operator=(std::move(rhs)); }
 
     TraceableFifo(const TraceableFifo&) = delete;
     TraceableFifo& operator=(const TraceableFifo&) = delete;
@@ -74,9 +74,9 @@ class MutableWrappedPtrOperations<TraceableFifo<T, Capacity, AllocPolicy>, Wrapp
   public:
     T& front() { return fifo().front(); }
 
-    template<typename U> bool pushBack(U&& u) { return fifo().pushBack(mozilla::Forward<U>(u)); }
+    template<typename U> bool pushBack(U&& u) { return fifo().pushBack(std::forward<U>(u)); }
     template<typename... Args> bool emplaceBack(Args&&... args) {
-        return fifo().emplaceBack(mozilla::Forward<Args...>(args...));
+        return fifo().emplaceBack(std::forward<Args...>(args...));
     }
 
     void popFront() { fifo().popFront(); }

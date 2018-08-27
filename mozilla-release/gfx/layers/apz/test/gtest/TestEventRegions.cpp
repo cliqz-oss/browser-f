@@ -161,7 +161,7 @@ protected:
 };
 
 TEST_F(APZEventRegionsTester, HitRegionImmediateResponse) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateEventRegionsLayerTree1();
 
@@ -228,17 +228,17 @@ TEST_F(APZEventRegionsTester, HitRegionAccumulatesChildren) {
 }
 
 TEST_F(APZEventRegionsTester, Obscuration) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateObscuringLayerTree();
   ScopedLayerTreeRegistration registration(manager, LayersId{0}, root, mcc);
 
   manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
 
-  TestAsyncPanZoomController* parent = ApzcOf(layers[1]);
+  RefPtr<TestAsyncPanZoomController> parent = ApzcOf(layers[1]);
   TestAsyncPanZoomController* child = ApzcOf(layers[2]);
 
-  ApzcPanNoFling(parent, 75, 25);
+  Pan(parent, 75, 25, PanOptions::NoFling);
 
   gfx::CompositorHitTestInfo result;
   RefPtr<AsyncPanZoomController> hit = manager->GetTargetAPZC(ScreenPoint(50, 75), &result);

@@ -38,6 +38,7 @@
 #include "mozilla/Hal.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/intl/OSPreferences.h"
+#include "mozilla/widget/ScreenManager.h"
 #include "prenv.h"
 
 #include "AndroidBridge.h"
@@ -70,6 +71,7 @@
 #include "fennec/MemoryMonitor.h"
 #include "fennec/Telemetry.h"
 #include "fennec/ThumbnailHelper.h"
+#include "ScreenHelperAndroid.h"
 
 #ifdef DEBUG_ANDROID_EVENTS
 #define EVLOG(args...)  ALOG(args)
@@ -78,6 +80,7 @@
 #endif
 
 using namespace mozilla;
+using namespace mozilla::widget;
 
 nsIGeolocationUpdate *gLocationCallback = nullptr;
 
@@ -343,7 +346,8 @@ public:
 
     static void OnLocationChanged(double aLatitude, double aLongitude,
                                   double aAltitude, float aAccuracy,
-                                  float aBearing, float aSpeed, int64_t aTime)
+                                  float aAltitudeAccuracy,
+                                  float aHeading, float aSpeed, int64_t aTime)
     {
         if (!gLocationCallback) {
             return;
@@ -351,7 +355,7 @@ public:
 
         RefPtr<nsIDOMGeoPosition> geoPosition(
                 new nsGeoPosition(aLatitude, aLongitude, aAltitude, aAccuracy,
-                                  aAccuracy, aBearing, aSpeed, aTime));
+                                  aAltitudeAccuracy, aHeading, aSpeed, aTime));
         gLocationCallback->Update(geoPosition);
     }
 
@@ -407,6 +411,7 @@ nsAppShell::nsAppShell()
     if (!XRE_IsParentProcess()) {
         if (jni::IsAvailable()) {
             GeckoThreadSupport::Init();
+            GeckoAppShellSupport::Init();
 
             // Set the corresponding state in GeckoThread.
             java::GeckoThread::SetState(java::GeckoThread::State::RUNNING());
@@ -415,6 +420,9 @@ nsAppShell::nsAppShell()
     }
 
     if (jni::IsAvailable()) {
+        ScreenManager& screenManager = ScreenManager::GetSingleton();
+        screenManager.SetHelper(mozilla::MakeUnique<ScreenHelperAndroid>());
+
         // Initialize JNI and Set the corresponding state in GeckoThread.
         AndroidBridge::ConstructBridge();
         GeckoAppShellSupport::Init();
@@ -424,7 +432,6 @@ nsAppShell::nsAppShell()
         mozilla::GeckoProcessManager::Init();
         mozilla::GeckoScreenOrientation::Init();
         mozilla::PrefsHelper::Init();
-        mozilla::GeckoVRManager::Init();
         nsWindow::InitNatives();
 
         if (jni::IsFennec()) {
@@ -533,13 +540,14 @@ nsAppShell::Init()
     if (obsServ) {
         obsServ->AddObserver(this, "browser-delayed-startup-finished", false);
         obsServ->AddObserver(this, "profile-after-change", false);
-        obsServ->AddObserver(this, "tab-child-created", false);
         obsServ->AddObserver(this, "quit-application", false);
         obsServ->AddObserver(this, "quit-application-granted", false);
         obsServ->AddObserver(this, "xpcom-shutdown", false);
 
         if (XRE_IsParentProcess()) {
             obsServ->AddObserver(this, "chrome-document-loaded", false);
+        } else {
+            obsServ->AddObserver(this, "content-document-global-created", false);
         }
     }
 
@@ -659,19 +667,33 @@ nsAppShell::Observe(nsISupports* aSubject,
             mozilla::PrefsHelper::OnPrefChange(aData);
         }
 
-    } else if (!strcmp(aTopic, "tab-child-created")) {
+    } else if (!strcmp(aTopic, "content-document-global-created")) {
         // Associate the PuppetWidget of the newly-created TabChild with a
         // GeckoEditableChild instance.
         MOZ_ASSERT(!XRE_IsParentProcess());
 
+        nsCOMPtr<mozIDOMWindowProxy> domWindow = do_QueryInterface(aSubject);
+        MOZ_ASSERT(domWindow);
+        nsCOMPtr<nsIWidget> domWidget = widget::WidgetUtils::DOMWindowToWidget(
+                nsPIDOMWindowOuter::From(domWindow));
+        NS_ENSURE_TRUE(domWidget, NS_OK);
+
         dom::ContentChild* contentChild = dom::ContentChild::GetSingleton();
-        nsCOMPtr<nsITabChild> ptabChild = do_QueryInterface(aSubject);
-        NS_ENSURE_TRUE(contentChild && ptabChild, NS_OK);
+        dom::TabChild* tabChild = domWidget->GetOwningTabChild();
+        RefPtr<widget::PuppetWidget> widget(tabChild->WebWidget());
+        NS_ENSURE_TRUE(contentChild && tabChild && widget, NS_OK);
+
+        widget::TextEventDispatcherListener* listener =
+                widget->GetNativeTextEventDispatcherListener();
+        if (listener && listener !=
+                static_cast<widget::TextEventDispatcherListener*>(widget)) {
+            // We already set a listener before.
+            return NS_OK;
+        }
 
         // Get the content/tab ID in order to get the correct
         // IGeckoEditableParent object, which GeckoEditableChild uses to
         // communicate with the parent process.
-        const auto tabChild = static_cast<dom::TabChild*>(ptabChild.get());
         const uint64_t contentId = contentChild->GetID();
         const uint64_t tabId = tabChild->GetTabId();
         NS_ENSURE_TRUE(contentId && tabId, NS_OK);
@@ -680,9 +702,8 @@ nsAppShell::Observe(nsISupports* aSubject,
                 contentId, tabId);
         NS_ENSURE_TRUE(editableParent, NS_OK);
 
-        RefPtr<widget::PuppetWidget> widget(tabChild->WebWidget());
         auto editableChild = java::GeckoEditableChild::New(editableParent);
-        NS_ENSURE_TRUE(widget && editableChild, NS_OK);
+        NS_ENSURE_TRUE(editableChild, NS_OK);
 
         RefPtr<widget::GeckoEditableSupport> editableSupport =
                 new widget::GeckoEditableSupport(editableChild);
@@ -706,7 +727,7 @@ nsAppShell::ProcessNextNativeEvent(bool mayWait)
 {
     EVLOG("nsAppShell::ProcessNextNativeEvent %d", mayWait);
 
-    AUTO_PROFILER_LABEL("nsAppShell::ProcessNextNativeEvent", EVENTS);
+    AUTO_PROFILER_LABEL("nsAppShell::ProcessNextNativeEvent", OTHER);
 
     mozilla::UniquePtr<Event> curEvent;
 
@@ -725,8 +746,8 @@ nsAppShell::ProcessNextNativeEvent(bool mayWait)
             }
 
             AUTO_PROFILER_LABEL("nsAppShell::ProcessNextNativeEvent:Wait",
-                                EVENTS);
-            mozilla::HangMonitor::Suspend();
+                                IDLE);
+            mozilla::BackgroundHangMonitor().NotifyWait();
 
             curEvent = mEventQueue.Pop(/* mayWait */ true);
         }
@@ -735,7 +756,7 @@ nsAppShell::ProcessNextNativeEvent(bool mayWait)
     if (!curEvent)
         return false;
 
-    mozilla::HangMonitor::NotifyActivity(curEvent->ActivityType());
+    mozilla::BackgroundHangMonitor().NotifyActivity();
 
     curEvent->Run();
     return true;
@@ -772,13 +793,13 @@ nsAppShell::SyncRunEvent(Event&& event,
     };
 
     UniquePtr<Event> runAndNotifyEvent = mozilla::MakeUnique<
-            LambdaEvent<decltype(runAndNotify)>>(mozilla::Move(runAndNotify));
+            LambdaEvent<decltype(runAndNotify)>>(std::move(runAndNotify));
 
     if (eventFactory) {
-        runAndNotifyEvent = (*eventFactory)(mozilla::Move(runAndNotifyEvent));
+        runAndNotifyEvent = (*eventFactory)(std::move(runAndNotifyEvent));
     }
 
-    appShell->mEventQueue.Post(mozilla::Move(runAndNotifyEvent));
+    appShell->mEventQueue.Post(std::move(runAndNotifyEvent));
 
     while (!finished && MOZ_LIKELY(sAppShell && !sAppShell->mSyncRunQuit)) {
         appShell->mSyncRunFinished.Wait();

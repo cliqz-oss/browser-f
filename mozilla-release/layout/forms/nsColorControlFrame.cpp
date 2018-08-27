@@ -11,7 +11,6 @@
 #include "nsCSSPseudoElements.h"
 #include "nsCheckboxRadioFrame.h"
 #include "nsGkAtoms.h"
-#include "nsIDOMNode.h"
 #include "nsIFormControl.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsIDocument.h"
@@ -139,14 +138,4 @@ nsContainerFrame*
 nsColorControlFrame::GetContentInsertionFrame()
 {
   return this;
-}
-
-Element*
-nsColorControlFrame::GetPseudoElement(CSSPseudoElementType aType)
-{
-  if (aType == CSSPseudoElementType::mozColorSwatch) {
-    return mColorContent;
-  }
-
-  return nsContainerFrame::GetPseudoElement(aType);
 }

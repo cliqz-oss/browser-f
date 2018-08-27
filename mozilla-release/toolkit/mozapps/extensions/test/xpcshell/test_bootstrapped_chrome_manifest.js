@@ -5,17 +5,6 @@
 const ADDON = {
   "install.rdf": {
     "id": "bug675371@tests.mozilla.org",
-    "version": "1.0",
-    "bootstrap": "true",
-    "name": "Bug 675371 Test",
-    "description": "Test Description",
-    "targetApplications": [
-      {
-        "id": "xpcshell@tests.mozilla.org",
-        "minVersion": "1",
-        "maxVersion": "1"
-      }
-    ]
   },
   "chrome.manifest": `content bug675371 .`,
   "test.js": `var active = true;`,
@@ -35,7 +24,7 @@ function checkActive(expected) {
   if (expected) {
     load();
   } else {
-    Assert.throws(load);
+    Assert.throws(load, /Error opening input stream/);
   }
   equal(target.active, expected, "Manifest is active?");
 }
@@ -48,10 +37,10 @@ add_task(async function test() {
   // Tests that chrome.manifest is registered when the addon is installed.
   checkActive(true);
 
-  addon.userDisabled = true;
+  await addon.disable();
   checkActive(false);
 
-  addon.userDisabled = false;
+  await addon.enable();
   checkActive(true);
 
   await promiseShutdownManager();

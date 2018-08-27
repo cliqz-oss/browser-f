@@ -70,6 +70,15 @@
 
 <!ENTITY url_bar_default_text2 "Suchen oder Adresse eingeben">
 
+<!-- Localization note (url_bar_qrcode_text2) : This text will be
+     heard by non-visual users when the focus is on the QR Code
+     icon in the url bar. -->
+<!ENTITY url_bar_qrcode_text2 "QR-Scanner verwenden, um zu suchen oder Adresse einzugeben">
+<!-- Localization note (url_bar_mic_text2) : This text will be
+     heard by non-visual users when the focus is on the Microphone
+     icon in the url bar. -->
+<!ENTITY url_bar_mic_text2 "Mikrofon verwenden, um zu suchen oder Adresse einzugeben">
+
 <!ENTITY bookmark "Lesezeichen">
 <!ENTITY bookmark_remove "Lesezeichen entfernen">
 <!ENTITY bookmark_added "Lesezeichen hinzugefügt">
@@ -207,6 +216,7 @@
 <!ENTITY pref_category_advanced_summary3 "Tabs wiederherstellen, geringerer Datenverbrauch, Entwicklerwerkzeuge">
 <!ENTITY pref_category_notifications "Benachrichtigungen">
 <!ENTITY pref_category_notifications_summary "Neue Funktionen, Website-Aktualisierungen">
+<!ENTITY pref_category_notifications_summary2 "Neue Funktionen + App-Tipps">
 <!ENTITY pref_developer_remotedebugging_usb "Externes Debugging über USB">
 <!ENTITY pref_developer_remotedebugging_wifi "Externes Debugging über WLAN">
 <!ENTITY pref_developer_remotedebugging_wifi_disabled_summary "WLAN-Debugging erfordert, dass eine App zum Lesen von QR-Codes auf Ihrem Gerät installiert ist.">

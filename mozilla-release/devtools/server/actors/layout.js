@@ -52,7 +52,7 @@ const FlexboxActor = ActorClassWithSpec(flexboxSpec, {
       return this.actorID;
     }
 
-    let form = {
+    const form = {
       actor: this.actorID,
     };
 
@@ -99,13 +99,13 @@ const GridActor = ActorClassWithSpec(gridSpec, {
 
     // Seralize the grid fragment data into JSON so protocol.js knows how to write
     // and read the data.
-    let gridFragments = this.containerEl.getGridFragments();
+    const gridFragments = this.containerEl.getGridFragments();
     this.gridFragments = getStringifiableFragments(gridFragments);
 
     // Record writing mode and text direction for use by the grid outline.
-    let { direction, writingMode } = CssLogic.getComputedStyle(this.containerEl);
+    const { direction, writingMode } = CssLogic.getComputedStyle(this.containerEl);
 
-    let form = {
+    const form = {
       actor: this.actorID,
       direction,
       gridFragments: this.gridFragments,
@@ -127,17 +127,17 @@ const GridActor = ActorClassWithSpec(gridSpec, {
  * The CSS layout actor provides layout information for the given document.
  */
 const LayoutActor = ActorClassWithSpec(layoutSpec, {
-  initialize(conn, tabActor, walker) {
+  initialize(conn, targetActor, walker) {
     Actor.prototype.initialize.call(this, conn);
 
-    this.tabActor = tabActor;
+    this.targetActor = targetActor;
     this.walker = walker;
   },
 
   destroy() {
     Actor.prototype.destroy.call(this);
 
-    this.tabActor = null;
+    this.targetActor = null;
     this.walker = null;
   },
 
@@ -165,7 +165,7 @@ const LayoutActor = ActorClassWithSpec(layoutSpec, {
       node = node.rawNode;
     }
 
-    let treeWalker = this.walker.getDocumentWalker(node,
+    const treeWalker = this.walker.getDocumentWalker(node,
       nodeFilterConstants.SHOW_ELEMENT);
     let currentNode = treeWalker.currentNode;
     let displayType = this.walker.getNode(currentNode).displayType;
@@ -260,11 +260,11 @@ const LayoutActor = ActorClassWithSpec(layoutSpec, {
       node = node.documentElement;
     }
 
-    let gridElements = node.getElementsWithGrid();
+    const gridElements = node.getElementsWithGrid();
     let gridActors = gridElements.map(n => new GridActor(this, n));
 
-    let frames = node.querySelectorAll("iframe, frame");
-    for (let frame of frames) {
+    const frames = node.querySelectorAll("iframe, frame");
+    for (const frame of frames) {
       gridActors = gridActors.concat(this.getGrids(frame.contentDocument));
     }
 

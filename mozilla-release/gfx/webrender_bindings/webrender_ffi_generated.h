@@ -17,6 +17,10 @@
 namespace mozilla {
 namespace wr {
 
+static const uint32_t MAX_CACHED_PROGRAM_COUNT = 15;
+
+static const uint64_t MAX_LOAD_TIME_MS = 400;
+
 enum class BorderStyle : uint32_t {
   None = 0,
   Solid = 1,
@@ -147,14 +151,6 @@ enum class RepeatMode : uint32_t {
   Sentinel /* this must be last for serialization purposes. */
 };
 
-enum class SubpixelDirection : uint32_t {
-  None = 0,
-  Horizontal,
-  Vertical,
-
-  Sentinel /* this must be last for serialization purposes. */
-};
-
 enum class TransformStyle : uint32_t {
   Flat = 0,
   Preserve3D = 1,
@@ -225,9 +221,6 @@ struct LayoutPixel;
 // The renderer is responsible for submitting to the GPU the work prepared by the
 // RenderBackend.
 struct Renderer;
-
-// The resource updates for a given transaction (they must be applied in the same frame).
-struct ResourceUpdates;
 
 // Offset in number of tiles.
 struct Tiles;
@@ -612,18 +605,6 @@ struct TypedSideOffsets2D {
 template<typename T>
 using SideOffsets2D = TypedSideOffsets2D<T, UnknownUnit>;
 
-struct NinePatchDescriptor {
-  uint32_t width;
-  uint32_t height;
-  SideOffsets2D<uint32_t> slice;
-
-  bool operator==(const NinePatchDescriptor& aOther) const {
-    return width == aOther.width &&
-           height == aOther.height &&
-           slice == aOther.slice;
-  }
-};
-
 struct Shadow {
   LayoutVector2D offset;
   ColorF color;
@@ -900,7 +881,6 @@ struct ColorU {
 
 struct FontInstanceOptions {
   FontRenderMode render_mode;
-  SubpixelDirection subpx_dir;
   FontInstanceFlags flags;
   // When bg_color.a is != 0 and render_mode is FontRenderMode::Subpixel,
   // the text will be rendered with bg_color.r/g/b as an opaque estimated
@@ -909,7 +889,6 @@ struct FontInstanceOptions {
 
   bool operator==(const FontInstanceOptions& aOther) const {
     return render_mode == aOther.render_mode &&
-           subpx_dir == aOther.subpx_dir &&
            flags == aOther.flags &&
            bg_color == aOther.bg_color;
   }
@@ -1026,6 +1005,10 @@ extern bool is_in_main_thread();
 extern bool is_in_render_thread();
 
 WR_INLINE
+bool remove_program_binary_disk_cache(const nsAString *aProfPath)
+WR_FUNC;
+
+WR_INLINE
 const VecU8 *wr_add_ref_arc(const ArcVecU8 *aArc)
 WR_FUNC;
 
@@ -1085,7 +1068,8 @@ WR_DESTRUCTOR_SAFE_FUNC;
 
 WR_INLINE
 void wr_api_send_transaction(DocumentHandle *aDh,
-                             Transaction *aTransaction)
+                             Transaction *aTransaction,
+                             bool aIsAsync)
 WR_FUNC;
 
 WR_INLINE
@@ -1110,8 +1094,7 @@ WR_FUNC;
 
 WR_INLINE
 uintptr_t wr_dp_define_clip(WrState *aState,
-                            const uintptr_t *aAncestorScrollId,
-                            const uintptr_t *aAncestorClipId,
+                            const uintptr_t *aParentId,
                             LayoutRect aClipRect,
                             const ComplexClipRegion *aComplex,
                             uintptr_t aComplexCount,
@@ -1119,10 +1102,16 @@ uintptr_t wr_dp_define_clip(WrState *aState,
 WR_FUNC;
 
 WR_INLINE
+uint64_t wr_dp_define_clipchain(WrState *aState,
+                                const uint64_t *aParentClipchainId,
+                                const uintptr_t *aClips,
+                                uintptr_t aClipsCount)
+WR_FUNC;
+
+WR_INLINE
 uintptr_t wr_dp_define_scroll_layer(WrState *aState,
                                     uint64_t aScrollId,
-                                    const uintptr_t *aAncestorScrollId,
-                                    const uintptr_t *aAncestorClipId,
+                                    const uintptr_t *aParentId,
                                     LayoutRect aContentRect,
                                     LayoutRect aClipRect)
 WR_FUNC;
@@ -1156,7 +1145,8 @@ void wr_dp_pop_scroll_layer(WrState *aState)
 WR_FUNC;
 
 WR_INLINE
-void wr_dp_pop_stacking_context(WrState *aState)
+void wr_dp_pop_stacking_context(WrState *aState,
+                                bool aIsReferenceFrame)
 WR_FUNC;
 
 WR_INLINE
@@ -1193,7 +1183,9 @@ void wr_dp_push_border_image(WrState *aState,
                              bool aIsBackfaceVisible,
                              BorderWidths aWidths,
                              WrImageKey aImage,
-                             NinePatchDescriptor aPatch,
+                             uint32_t aWidth,
+                             uint32_t aHeight,
+                             SideOffsets2D<uint32_t> aSlice,
                              SideOffsets2D<float> aOutset,
                              RepeatMode aRepeatHorizontal,
                              RepeatMode aRepeatVertical)
@@ -1240,14 +1232,15 @@ WR_FUNC;
 WR_INLINE
 void wr_dp_push_clip_and_scroll_info(WrState *aState,
                                      uintptr_t aScrollId,
-                                     const uintptr_t *aClipId)
+                                     const uint64_t *aClipChainId)
 WR_FUNC;
 
 WR_INLINE
 void wr_dp_push_iframe(WrState *aState,
                        LayoutRect aRect,
                        bool aIsBackfaceVisible,
-                       WrPipelineId aPipelineId)
+                       WrPipelineId aPipelineId,
+                       bool aIgnoreMissingPipeline)
 WR_FUNC;
 
 WR_INLINE
@@ -1335,7 +1328,9 @@ void wr_dp_push_stacking_context(WrState *aState,
                                  const WrFilterOp *aFilters,
                                  uintptr_t aFilterCount,
                                  bool aIsBackfaceVisible,
-                                 GlyphRasterSpace aGlyphRasterSpace)
+                                 GlyphRasterSpace aGlyphRasterSpace,
+                                 bool *aOutIsReferenceFrame,
+                                 uintptr_t *aOutReferenceFrameId)
 WR_FUNC;
 
 WR_INLINE
@@ -1425,7 +1420,8 @@ void wr_program_cache_delete(WrProgramCache *aProgramCache)
 WR_DESTRUCTOR_SAFE_FUNC;
 
 WR_INLINE
-WrProgramCache *wr_program_cache_new()
+WrProgramCache *wr_program_cache_new(const nsAString *aProfPath,
+                                     WrThreadPool *aThreadPool)
 WR_FUNC;
 
 WR_INLINE
@@ -1480,14 +1476,14 @@ void wr_renderer_update_program_cache(Renderer *aRenderer,
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_add_blob_image(ResourceUpdates *aResources,
+void wr_resource_updates_add_blob_image(Transaction *aTxn,
                                         WrImageKey aImageKey,
                                         const WrImageDescriptor *aDescriptor,
                                         WrVecU8 *aBytes)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_add_external_image(ResourceUpdates *aResources,
+void wr_resource_updates_add_external_image(Transaction *aTxn,
                                             WrImageKey aImageKey,
                                             const WrImageDescriptor *aDescriptor,
                                             WrExternalImageId aExternalImageId,
@@ -1496,14 +1492,14 @@ void wr_resource_updates_add_external_image(ResourceUpdates *aResources,
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_add_font_descriptor(ResourceUpdates *aResources,
+void wr_resource_updates_add_font_descriptor(Transaction *aTxn,
                                              WrFontKey aKey,
                                              WrVecU8 *aBytes,
                                              uint32_t aIndex)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_add_font_instance(ResourceUpdates *aResources,
+void wr_resource_updates_add_font_instance(Transaction *aTxn,
                                            WrFontInstanceKey aKey,
                                            WrFontKey aFontKey,
                                            float aGlyphSize,
@@ -1513,48 +1509,40 @@ void wr_resource_updates_add_font_instance(ResourceUpdates *aResources,
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_add_image(ResourceUpdates *aResources,
+void wr_resource_updates_add_image(Transaction *aTxn,
                                    WrImageKey aImageKey,
                                    const WrImageDescriptor *aDescriptor,
                                    WrVecU8 *aBytes)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_add_raw_font(ResourceUpdates *aResources,
+void wr_resource_updates_add_raw_font(Transaction *aTxn,
                                       WrFontKey aKey,
                                       WrVecU8 *aBytes,
                                       uint32_t aIndex)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_clear(ResourceUpdates *aResources)
+void wr_resource_updates_clear(Transaction *aTxn)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_delete(ResourceUpdates *aUpdates)
-WR_DESTRUCTOR_SAFE_FUNC;
-
-WR_INLINE
-void wr_resource_updates_delete_font(ResourceUpdates *aResources,
+void wr_resource_updates_delete_font(Transaction *aTxn,
                                      WrFontKey aKey)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_delete_font_instance(ResourceUpdates *aResources,
+void wr_resource_updates_delete_font_instance(Transaction *aTxn,
                                               WrFontInstanceKey aKey)
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_delete_image(ResourceUpdates *aResources,
+void wr_resource_updates_delete_image(Transaction *aTxn,
                                       WrImageKey aKey)
 WR_FUNC;
 
 WR_INLINE
-ResourceUpdates *wr_resource_updates_new()
-WR_FUNC;
-
-WR_INLINE
-void wr_resource_updates_update_blob_image(ResourceUpdates *aResources,
+void wr_resource_updates_update_blob_image(Transaction *aTxn,
                                            WrImageKey aImageKey,
                                            const WrImageDescriptor *aDescriptor,
                                            WrVecU8 *aBytes,
@@ -1562,7 +1550,7 @@ void wr_resource_updates_update_blob_image(ResourceUpdates *aResources,
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_update_external_image(ResourceUpdates *aResources,
+void wr_resource_updates_update_external_image(Transaction *aTxn,
                                                WrImageKey aKey,
                                                const WrImageDescriptor *aDescriptor,
                                                WrExternalImageId aExternalImageId,
@@ -1571,7 +1559,7 @@ void wr_resource_updates_update_external_image(ResourceUpdates *aResources,
 WR_FUNC;
 
 WR_INLINE
-void wr_resource_updates_update_image(ResourceUpdates *aResources,
+void wr_resource_updates_update_image(Transaction *aTxn,
                                       WrImageKey aKey,
                                       const WrImageDescriptor *aDescriptor,
                                       WrVecU8 *aBytes)
@@ -1581,14 +1569,12 @@ WR_INLINE
 uintptr_t wr_root_scroll_node_id()
 WR_FUNC;
 
+extern void wr_schedule_render(WrWindowId aWindowId);
+
 WR_INLINE
 void wr_set_item_tag(WrState *aState,
                      uint64_t aScrollId,
                      uint16_t aHitInfo)
-WR_FUNC;
-
-WR_INLINE
-void wr_shutdown_log_for_gpu_process()
 WR_FUNC;
 
 WR_INLINE
@@ -1687,8 +1673,7 @@ void wr_transaction_update_epoch(Transaction *aTxn,
 WR_FUNC;
 
 WR_INLINE
-void wr_transaction_update_resources(Transaction *aTxn,
-                                     ResourceUpdates *aResourceUpdates)
+void wr_try_load_shader_from_disk(WrProgramCache *aProgramCache)
 WR_FUNC;
 
 WR_INLINE

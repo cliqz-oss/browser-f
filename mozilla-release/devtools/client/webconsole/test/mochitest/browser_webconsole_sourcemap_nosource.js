@@ -31,16 +31,16 @@ add_task(async function() {
   await pushPref("devtools.source-map.client-service.enabled", true);
 
   const hud = await openNewTabAndConsole(PAGE_URL);
-  const toolbox = hud.ui.newConsoleOutput.toolbox;
+  const toolbox = hud.ui.consoleOutput.toolbox;
 
   info("Finding \"here\" message and waiting for source map to be applied");
   await waitFor(() => {
-    let node = findMessage(hud, "here");
+    const node = findMessage(hud, "here");
     if (!node) {
       return false;
     }
-    let frameLinkNode = node.querySelector(".message-location .frame-link");
-    let url = frameLinkNode.getAttribute("data-url");
+    const frameLinkNode = node.querySelector(".message-location .frame-link");
+    const url = frameLinkNode.getAttribute("data-url");
     return url.includes("nosuchfile");
   });
 

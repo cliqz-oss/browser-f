@@ -8,14 +8,13 @@ linux64/opt:
         symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
             - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
-            - builds/releng_sub_linux_configs/enable_count_ctors.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
@@ -24,6 +23,7 @@ linux64/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-plain/opt:
@@ -65,7 +65,7 @@ linux64-dmd/opt:
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -83,6 +83,7 @@ linux64-dmd/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64/pgo:
@@ -95,7 +96,7 @@ linux64/pgo:
         symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -103,7 +104,6 @@ linux64/pgo:
         config:
             - builds/releng_base_firefox.py
             - builds/releng_base_linux_64_builds.py
-            - builds/releng_sub_linux_configs/enable_count_ctors.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
@@ -112,6 +112,7 @@ linux64/pgo:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-fuzzing/debug:
@@ -124,7 +125,7 @@ linux64-fuzzing/debug:
         symbol: Bf
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 3600
         env:
             PERFHERDER_EXTRA_OPTIONS: fuzzing
     run:
@@ -143,6 +144,7 @@ linux64-fuzzing/debug:
         - linux64-gcc
         - linux64-sccache
         - linux64-rust
+        - linux64-rust-size
 
 linux64/debug:
     description: "Linux64 Debug"
@@ -154,7 +156,7 @@ linux64/debug:
         symbol: B
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -171,6 +173,7 @@ linux64/debug:
         - linux64-gcc
         - linux64-sccache
         - linux64-rust
+        - linux64-rust-size
 
 linux64-plain/debug:
     description: "Linux64 Debug Plain"
@@ -215,7 +218,7 @@ linux64-devedition-nightly/opt:
         symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -233,6 +236,7 @@ linux64-devedition-nightly/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-base-toolchains/opt:
@@ -245,7 +249,7 @@ linux64-base-toolchains/opt:
         symbol: Bb
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains
     run:
@@ -274,7 +278,7 @@ linux64-base-toolchains/debug:
         symbol: Bb
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 3600
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains
     run:
@@ -305,14 +309,13 @@ linux/opt:
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         docker-image: {in-tree: debian7-i386-build}
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
         config:
             - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
-            - builds/releng_sub_linux_configs/enable_count_ctors.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
@@ -321,6 +324,7 @@ linux/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux/debug:
@@ -334,7 +338,7 @@ linux/debug:
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         docker-image: {in-tree: debian7-i386-build}
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -350,6 +354,7 @@ linux/debug:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux/pgo:
@@ -363,7 +368,7 @@ linux/pgo:
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         docker-image: {in-tree: debian7-i386-build}
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -371,7 +376,6 @@ linux/pgo:
         config:
             - builds/releng_base_firefox.py
             - builds/releng_base_linux_32_builds.py
-            - builds/releng_sub_linux_configs/enable_count_ctors.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
@@ -380,6 +384,7 @@ linux/pgo:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux-rusttests/opt:
@@ -466,7 +471,7 @@ linux-devedition-nightly/opt:
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         docker-image: {in-tree: debian7-i386-build}
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -484,6 +489,7 @@ linux-devedition-nightly/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux-nightly/opt:
@@ -502,7 +508,7 @@ linux-nightly/opt:
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
         docker-image: {in-tree: debian7-i386-build}
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -518,6 +524,7 @@ linux-nightly/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 
@@ -533,7 +540,7 @@ linux64-asan/opt:
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: "opt asan"
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -546,9 +553,10 @@ linux64-asan/opt:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-6-pre
+        - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 
@@ -564,7 +572,7 @@ linux64-asan-fuzzing/opt:
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -577,9 +585,10 @@ linux64-asan-fuzzing/opt:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-6-pre
+        - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-asan-reporter-nightly/opt:
@@ -597,7 +606,7 @@ linux64-asan-reporter-nightly/opt:
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-reporter
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -611,9 +620,10 @@ linux64-asan-reporter-nightly/opt:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-6-pre
+        - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-asan/debug:
@@ -628,7 +638,7 @@ linux64-asan/debug:
     worker:
         env:
             PERFHERDER_EXTRA_OPTIONS: "debug asan"
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -641,9 +651,74 @@ linux64-asan/debug:
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-6-pre
+        - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
+        - linux64-sccache
+
+linux64-lto/opt:
+    description: "Linux64 Opt LTO"
+    index:
+        product: firefox
+        job-name: linux64-lto-opt
+    treeherder:
+        platform: linux64/lto
+        symbol: Bo
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: "opt lto"
+        max-run-time: 7200
+    run:
+        using: mozharness
+        actions: [get-secrets build check-test update]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: lto-tc
+        tooltool-downloads: public
+        need-xvfb: true
+    toolchains:
+        - linux64-clang
+        - linux64-gcc
+        - linux64-rust
+        - linux64-rust-size
+        - linux64-sccache
+
+linux64-lto/debug:
+    description: "Linux64 Debug LTO"
+    index:
+        product: firefox
+        job-name: linux64-lto-debug
+    treeherder:
+        platform: linux64/lto
+        symbol: Bd
+        tier: 2
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: "debug lto"
+        max-run-time: 7200
+    run:
+        using: mozharness
+        actions: [get-secrets build check-test update]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: lto-tc-and-debug
+        tooltool-downloads: public
+        need-xvfb: true
+    toolchains:
+        - linux64-clang
+        - linux64-gcc
+        - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-nightly/opt:
@@ -661,7 +736,7 @@ linux64-nightly/opt:
         symbol: N
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -677,6 +752,7 @@ linux64-nightly/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-noopt/debug:
@@ -708,6 +784,7 @@ linux64-noopt/debug:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache
 
 linux64-rusttests/opt:
@@ -787,7 +864,7 @@ linux64-tup/opt:
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 3600
         env:
             PERFHERDER_EXTRA_OPTIONS: tup
     run:
@@ -804,7 +881,7 @@ linux64-tup/opt:
     toolchains:
         - linux64-clang
         - linux64-gcc
-        - linux64-rust
+        - linux64-rust-nightly
         - linux64-sccache
         - linux64-tup
 
@@ -817,10 +894,10 @@ linux64-jsdcov/opt:
         platform: linux64-jsdcov/opt
         symbol: B
         tier: 2
-    run-on-projects: []
+    run-on-projects: ['mozilla-central', 'try']
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -837,6 +914,35 @@ linux64-jsdcov/opt:
         - linux64-rust
         - linux64-sccache
 
+linux64-ccov/debug:
+    description: "Linux64-CCov Debug"
+    index:
+        product: firefox
+        job-name: linux64-ccov-debug
+    treeherder:
+        platform: linux64-ccov/debug
+        symbol: B
+        tier: 2
+    run-on-projects: ['mozilla-central', 'try']
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        max-run-time: 7200
+    run:
+        using: mozharness
+        actions: [get-secrets build check-test update]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: code-coverage-debug
+        tooltool-downloads: public
+        need-xvfb: true
+    toolchains:
+        - linux64-clang
+        - linux64-rust
+        - linux64-gcc
+
 linux64-ccov/opt:
     description: "Linux64-CCov Opt"
     index:
@@ -846,10 +952,10 @@ linux64-ccov/opt:
         platform: linux64-ccov/opt
         symbol: B
         tier: 2
-    run-on-projects: []
+    run-on-projects: ['try']
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 7200
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -858,11 +964,11 @@ linux64-ccov/opt:
             - builds/releng_base_linux_64_builds.py
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
-        custom-build-variant-cfg: code-coverage
+        custom-build-variant-cfg: code-coverage-opt
         tooltool-downloads: public
         need-xvfb: true
     toolchains:
-        - linux64-clang-4
+        - linux64-clang
         - linux64-rust
         - linux64-gcc
 
@@ -877,7 +983,7 @@ linux64-add-on-devel/opt:
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux
     worker:
-        max-run-time: 36000
+        max-run-time: 3600
     run:
         using: mozharness
         actions: [get-secrets build check-test update]
@@ -894,4 +1000,5 @@ linux64-add-on-devel/opt:
         - linux64-clang
         - linux64-gcc
         - linux64-rust
+        - linux64-rust-size
         - linux64-sccache

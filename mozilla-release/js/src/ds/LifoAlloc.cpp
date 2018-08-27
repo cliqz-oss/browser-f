@@ -8,6 +8,12 @@
 
 #include "mozilla/MathAlgorithms.h"
 
+#include "ds/MemoryProtectionExceptionHandler.h"
+
+#ifdef LIFO_CHUNK_PROTECT
+# include "gc/Memory.h"
+#endif
+
 using namespace js;
 
 using mozilla::RoundUpPow2;
@@ -18,15 +24,15 @@ namespace detail {
 
 /* static */
 UniquePtr<BumpChunk>
-BumpChunk::newWithCapacity(size_t size)
+BumpChunk::newWithCapacity(size_t size, bool protect)
 {
-    MOZ_ASSERT(RoundUpPow2(size) == size);
-    MOZ_ASSERT(size >= sizeof(BumpChunk));
+    MOZ_DIAGNOSTIC_ASSERT(RoundUpPow2(size) == size);
+    MOZ_DIAGNOSTIC_ASSERT(size >= sizeof(BumpChunk));
     void* mem = js_malloc(size);
     if (!mem)
         return nullptr;
 
-    UniquePtr<BumpChunk> result(new (mem) BumpChunk(size));
+    UniquePtr<BumpChunk> result(new (mem) BumpChunk(size, protect));
 
     // We assume that the alignment of LIFO_ALLOC_ALIGN is less than that of the
     // underlying memory allocator -- creating a new BumpChunk should always
@@ -44,6 +50,96 @@ BumpChunk::canAlloc(size_t n)
     return bump_ <= newBump && newBump <= capacity_;
 }
 
+#ifdef LIFO_CHUNK_PROTECT
+
+static const uint8_t*
+AlignPtrUp(const uint8_t* ptr, uintptr_t align) {
+    MOZ_ASSERT(mozilla::IsPowerOfTwo(align));
+    uintptr_t uptr = uintptr_t(ptr);
+    uintptr_t diff = uptr & (align - 1);
+    diff = (align - diff) & (align - 1);
+    uptr = uptr + diff;
+    return (uint8_t*) uptr;
+}
+
+static const uint8_t*
+AlignPtrDown(const uint8_t* ptr, uintptr_t align) {
+    MOZ_ASSERT(mozilla::IsPowerOfTwo(align));
+    uintptr_t uptr = uintptr_t(ptr);
+    uptr = uptr & ~(align - 1);
+    return (uint8_t*) uptr;
+}
+
+void
+BumpChunk::setRWUntil(Loc loc) const
+{
+    if (!protect_)
+        return;
+
+    uintptr_t pageSize = gc::SystemPageSize();
+    // The allocated chunks might not be aligned on page boundaries. This code
+    // is used to ensure that we are changing the memory protection of pointers
+    // which are within the range of the BumpChunk, or that the range formed by
+    // [b .. e] is empty.
+    const uint8_t* b = base();
+    const uint8_t* e = capacity_;
+    b = AlignPtrUp(b, pageSize);
+    e = AlignPtrDown(e, pageSize);
+    if (e < b)
+        e = b;
+    // The mid-point is aligned to the next page, and clamp to the end-point to
+    // ensure that it remains in the [b .. e] range.
+    const uint8_t* m = nullptr;
+    switch (loc) {
+      case Loc::Header:
+        m = b;
+        break;
+      case Loc::Allocated:
+        m = begin();
+        break;
+      case Loc::Reserved:
+        m = end();
+        break;
+      case Loc::End:
+        m = e;
+        break;
+    }
+    m = AlignPtrUp(m, pageSize);
+    if (e < m)
+        m = e;
+
+    if (b < m)
+        gc::UnprotectPages(const_cast<uint8_t*>(b), m - b);
+    // Note: We could use no-access protection for everything after begin(), but
+    // we need to read capabilities for reading the bump_ / capacity_ fields
+    // from this function to unprotect the memory later.
+    if (m < e)
+        gc::MakePagesReadOnly(const_cast<uint8_t*>(m), e - m);
+}
+
+// The memory protection handler is catching memory accesses error on the
+// regions registered into it. These method, instead of registering sub-ranges
+// of the BumpChunk within setRWUntil, we just register the full BumpChunk
+// ranges, and let the MemoryProtectionExceptionHandler catch bad memory
+// accesses when it is being protected by setRWUntil.
+void
+BumpChunk::addMProtectHandler() const
+{
+    if (!protect_)
+        return;
+    js::MemoryProtectionExceptionHandler::addRegion(const_cast<uint8_t*>(base()), capacity_ - base());
+}
+
+void
+BumpChunk::removeMProtectHandler() const
+{
+    if (!protect_)
+        return;
+    js::MemoryProtectionExceptionHandler::removeRegion(const_cast<uint8_t*>(base()));
+}
+
+#endif
+
 } // namespace detail
 } // namespace js
 
@@ -51,11 +147,13 @@ void
 LifoAlloc::freeAll()
 {
     while (!chunks_.empty()) {
-        BumpChunk bc = mozilla::Move(chunks_.popFirst());
+        chunks_.begin()->setRWUntil(Loc::End);
+        BumpChunk bc = chunks_.popFirst();
         decrementCurSize(bc->computedSizeOfIncludingThis());
     }
     while (!unused_.empty()) {
-        BumpChunk bc = mozilla::Move(unused_.popFirst());
+        unused_.begin()->setRWUntil(Loc::End);
+        BumpChunk bc = unused_.popFirst();
         decrementCurSize(bc->computedSizeOfIncludingThis());
     }
 
@@ -89,8 +187,21 @@ LifoAlloc::newChunkWithCapacity(size_t n)
         chunkSize = defaultChunkSize_;
     }
 
+    bool protect = false;
+#ifdef LIFO_CHUNK_PROTECT
+    protect = protect_;
+    // In a few cases where we keep adding memory protection, we might OOM while
+    // doing a mprotect / VirtualProtect due to the consumption of space in the
+    // page table reserved by the system. This error appears as an OOM on Linux,
+    // as an Invalid parameters on Windows and as a crash on OS/X. This code caps
+    // the amount of memory protected in order to limit occurences of this issue.
+    const size_t MaxPeakSize = 32 * 1024 * 1024;
+    if (protect && MaxPeakSize <= this->peakSize_)
+        protect = false;
+#endif
+
     // Create a new BumpChunk, and allocate space for it.
-    BumpChunk result = detail::BumpChunk::newWithCapacity(chunkSize);
+    BumpChunk result = detail::BumpChunk::newWithCapacity(chunkSize, protect);
     if (!result)
         return nullptr;
     MOZ_ASSERT(result->computedSizeOfIncludingThis() == chunkSize);
@@ -100,12 +211,22 @@ LifoAlloc::newChunkWithCapacity(size_t n)
 bool
 LifoAlloc::getOrCreateChunk(size_t n)
 {
+    // This function is adding a new BumpChunk in which all upcoming allocation
+    // would be made. Thus, we protect against out-of-bounds the last chunk in
+    // which we did our previous allocations.
+    auto protectLast = [&]() {
+        if (!chunks_.empty())
+            chunks_.last()->setRWUntil(Loc::Reserved);
+    };
+
     // Look for existing unused BumpChunks to satisfy the request, and pick the
     // first one which is large enough, and move it into the list of used
     // chunks.
     if (!unused_.empty()) {
         if (unused_.begin()->canAlloc(n)) {
-            chunks_.append(mozilla::Move(unused_.popFirst()));
+            protectLast();
+            chunks_.append(unused_.popFirst());
+            chunks_.last()->setRWUntil(Loc::End);
             return true;
         }
 
@@ -114,9 +235,11 @@ LifoAlloc::getOrCreateChunk(size_t n)
             detail::BumpChunk* elem = i->next();
             MOZ_ASSERT(elem->empty());
             if (elem->canAlloc(n)) {
-                BumpChunkList temp = mozilla::Move(unused_.splitAfter(i.get()));
-                chunks_.append(mozilla::Move(temp.popFirst()));
-                unused_.appendAll(mozilla::Move(temp));
+                BumpChunkList temp = unused_.splitAfter(i.get());
+                protectLast();
+                chunks_.append(temp.popFirst());
+                unused_.appendAll(std::move(temp));
+                chunks_.last()->setRWUntil(Loc::End);
                 return true;
             }
         }
@@ -127,7 +250,11 @@ LifoAlloc::getOrCreateChunk(size_t n)
     if (!newChunk)
         return false;
     size_t size = newChunk->computedSizeOfIncludingThis();
-    chunks_.append(mozilla::Move(newChunk));
+    // The last chunk in which allocations are performed should be protected
+    // with setRWUntil(Loc::End), but this is not necessary here because any new
+    // allocation should be protected as RW already.
+    protectLast();
+    chunks_.append(std::move(newChunk));
     incrementCurSize(size);
     return true;
 }
@@ -139,8 +266,8 @@ LifoAlloc::transferFrom(LifoAlloc* other)
     MOZ_ASSERT(!other->markCount);
 
     incrementCurSize(other->curSize_);
-    appendUnused(mozilla::Move(other->unused_));
-    appendUsed(mozilla::Move(other->chunks_));
+    appendUnused(std::move(other->unused_));
+    appendUsed(std::move(other->chunks_));
     other->curSize_ = 0;
 }
 
@@ -153,7 +280,7 @@ LifoAlloc::transferUnusedFrom(LifoAlloc* other)
     for (detail::BumpChunk& bc : other->unused_)
         size += bc.computedSizeOfIncludingThis();
 
-    appendUnused(mozilla::Move(other->unused_));
+    appendUnused(std::move(other->unused_));
     incrementCurSize(size);
     other->decrementCurSize(size);
 }

@@ -30,10 +30,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-
-static char *RCSSTRING __UNUSED__="$Id: ice_media_stream.c,v 1.2 2008/04/28 17:59:01 ekr Exp $";
-
 #include <string.h>
 #include <assert.h>
 #include <nr_api.h>
@@ -376,6 +372,12 @@ static void nr_ice_media_stream_check_timer_cb(NR_SOCKET s, int h, void *cb_arg)
 
     _status=0;
   abort:
+    if (_status) {
+      // cb doesn't return anything, but we should probably log that we aborted
+      // This also quiets the unused variable warnings.
+      r_log(LOG_ICE,LOG_DEBUG,"ICE-PEER(%s): check timer cb for media stream %s abort with status: %d",
+        stream->pctx->label,stream->label, _status);
+    }
     return;
   }
 
@@ -564,8 +566,8 @@ int nr_ice_media_stream_set_state(nr_ice_media_stream *str, int state)
     if (state == str->ice_state)
       return 0;
 
-    assert(state < sizeof(nr_ice_media_stream_states)/sizeof(char *));
-    assert(str->ice_state < sizeof(nr_ice_media_stream_states)/sizeof(char *));
+    assert((size_t)state < sizeof(nr_ice_media_stream_states)/sizeof(char *));
+    assert((size_t)str->ice_state < sizeof(nr_ice_media_stream_states)/sizeof(char *));
 
     r_log(LOG_ICE,LOG_DEBUG,"ICE-PEER(%s): stream %s state %s->%s",
       str->pctx->label,str->label,

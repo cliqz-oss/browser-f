@@ -20,6 +20,7 @@ dump("DEVTOOLS_CSS_DB_DELIMITER");
 // Output JSON
 dump(JSON.stringify({
   cssProperties: cssProperties(),
+  preferences: preferences(),
   pseudoElements: pseudoElements()
 }));
 
@@ -37,13 +38,25 @@ dump("DEVTOOLS_CSS_DB_DELIMITER");
  */
 function cssProperties() {
   const properties = generateCssProperties();
-  for (let key in properties) {
+  for (const key in properties) {
     // Ignore OS-specific properties
     if (key.includes("-moz-osx-")) {
       properties[key] = undefined;
     }
   }
   return properties;
+}
+
+/**
+ * A list of preferences of CSS properties.
+ */
+function preferences() {
+  const prefs = InspectorUtils.getCSSPropertyPrefs();
+  const result = [];
+  for (const {name, pref} of prefs) {
+    result.push([name, pref]);
+  }
+  return result;
 }
 
 /**

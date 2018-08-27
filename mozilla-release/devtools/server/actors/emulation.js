@@ -22,13 +22,13 @@ const { TouchSimulator } = require("devtools/server/actors/emulation/touch-simul
  * values, so that the absence of a previous value can be distinguished from the value for
  * "no override" for each of the properties.
  */
-let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
+const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
 
-  initialize(conn, tabActor) {
+  initialize(conn, targetActor) {
     protocol.Actor.prototype.initialize.call(this, conn);
-    this.tabActor = tabActor;
-    this.docShell = tabActor.docShell;
-    this.touchSimulator = new TouchSimulator(tabActor.chromeEventHandler);
+    this.targetActor = targetActor;
+    this.docShell = targetActor.docShell;
+    this.touchSimulator = new TouchSimulator(targetActor.chromeEventHandler);
   },
 
   destroy() {
@@ -36,7 +36,7 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
     this.clearNetworkThrottling();
     this.clearTouchEventsOverride();
     this.clearUserAgentOverride();
-    this.tabActor = null;
+    this.targetActor = null;
     this.docShell = null;
     this.touchSimulator = null;
     protocol.Actor.prototype.destroy.call(this);
@@ -48,10 +48,10 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
    * monitor, which for historical reasons is part of the console actor.
    */
   get _consoleActor() {
-    if (this.tabActor.exited) {
+    if (this.targetActor.exited) {
       return null;
     }
-    let form = this.tabActor.form();
+    const form = this.targetActor.form();
     return this.conn._getOrCreateActor(form.consoleActor);
   },
 
@@ -93,7 +93,7 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
    * Transform the RDP format into the internal format and then set network throttling.
    */
   setNetworkThrottling({ downloadThroughput, uploadThroughput, latency }) {
-    let throttleData = {
+    const throttleData = {
       latencyMean: latency,
       latencyMax: latency,
       downloadBPSMean: downloadThroughput,
@@ -105,7 +105,7 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
   },
 
   _setNetworkThrottling(throttleData) {
-    let current = this._getNetworkThrottling();
+    const current = this._getNetworkThrottling();
     // Check if they are both objects or both null
     let match = throttleData == current;
     // If both objects, check all entries
@@ -122,14 +122,14 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
       this._previousNetworkThrottling = current;
     }
 
-    let consoleActor = this._consoleActor;
+    const consoleActor = this._consoleActor;
     if (!consoleActor) {
       return false;
     }
-    consoleActor.onStartListeners({
+    consoleActor.startListeners({
       listeners: [ "NetworkActivity" ],
     });
-    consoleActor.onSetPreferences({
+    consoleActor.setPreferences({
       preferences: {
         "NetworkMonitor.throttleData": throttleData,
       }
@@ -141,11 +141,11 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
    * Get network throttling and then transform the internal format into the RDP format.
    */
   getNetworkThrottling() {
-    let throttleData = this._getNetworkThrottling();
+    const throttleData = this._getNetworkThrottling();
     if (!throttleData) {
       return null;
     }
-    let { downloadBPSMax, uploadBPSMax, latencyMax } = throttleData;
+    const { downloadBPSMax, uploadBPSMax, latencyMax } = throttleData;
     return {
       downloadThroughput: downloadBPSMax,
       uploadThroughput: uploadBPSMax,
@@ -154,11 +154,11 @@ let EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
   },
 
   _getNetworkThrottling() {
-    let consoleActor = this._consoleActor;
+    const consoleActor = this._consoleActor;
     if (!consoleActor) {
       return null;
     }
-    let prefs = consoleActor.onGetPreferences({
+    const prefs = consoleActor.getPreferences({
       preferences: [ "NetworkMonitor.throttleData" ],
     });
     return prefs.preferences["NetworkMonitor.throttleData"] || null;

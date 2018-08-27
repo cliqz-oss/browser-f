@@ -26,6 +26,9 @@ struct nsCSSValueList;
 
 namespace mozilla {
 class FontSlantStyle;
+namespace dom {
+class Element;
+}
 }
 
 // Style utility functions
@@ -115,9 +118,6 @@ public:
   static void AppendCubicBezierKeywordTimingFunction(
       nsTimingFunction::Type aType,
       nsAString& aResult);
-
-  static void AppendSerializedFontSrc(const nsCSSValue& aValue,
-                                      nsAString& aResult);
 
   // convert bitmask value to keyword name for a functional alternate
   static void GetFunctionalAlternatesName(int32_t aFeature,

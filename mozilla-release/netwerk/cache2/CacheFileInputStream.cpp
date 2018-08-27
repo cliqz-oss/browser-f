@@ -17,7 +17,7 @@ NS_IMPL_ADDREF(CacheFileInputStream)
 NS_IMETHODIMP_(MozExternalRefCountType)
 CacheFileInputStream::Release()
 {
-  NS_PRECONDITION(0 != mRefCnt, "dup release");
+  MOZ_ASSERT(0 != mRefCnt, "dup release");
   nsrefcnt count = --mRefCnt;
   NS_LOG_RELEASE(this, count, "CacheFileInputStream");
 
@@ -149,6 +149,10 @@ CacheFileInputStream::ReadSegments(nsWriteSegmentFun aWriter, void *aClosure,
       return mStatus;
     }
 
+    return NS_OK;
+  }
+
+  if (aCount == 0) {
     return NS_OK;
   }
 

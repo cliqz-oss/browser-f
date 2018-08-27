@@ -164,10 +164,13 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/MemoryChecking.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/TextUtils.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/Unused.h"
 
+#include <algorithm>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -193,7 +196,10 @@ struct TokenPos {
     uint32_t    begin;  // Offset of the token's first char.
     uint32_t    end;    // Offset of 1 past the token's last char.
 
-    TokenPos() {}
+    TokenPos()
+      : begin(0),
+        end(0)
+    {}
     TokenPos(uint32_t begin, uint32_t end) : begin(begin), end(end) {}
 
     // Return a TokenPos that covers left, right, and anything in between.
@@ -545,17 +551,20 @@ class TokenStreamAnyChars
                         StrictModeGetter* smg);
 
     template<typename CharT, class AnyCharsAccess> friend class GeneralTokenStreamChars;
+    template<typename CharT, class AnyCharsAccess> friend class TokenStreamChars;
     template<typename CharT, class AnyCharsAccess> friend class TokenStreamSpecific;
 
     template<typename CharT> friend class TokenStreamPosition;
 
     // Accessors.
-    const Token& currentToken() const { return tokens[cursor]; }
+    unsigned cursor() const { return cursor_; }
+    unsigned nextCursor() const { return (cursor_ + 1) & ntokensMask; }
+    unsigned aheadCursor(unsigned steps) const { return (cursor_ + steps) & ntokensMask; }
+
+    const Token& currentToken() const { return tokens[cursor()]; }
     bool isCurrentTokenType(TokenKind type) const {
         return currentToken().type == type;
     }
-
-    bool getMutedErrors() const { return mutedErrors; }
 
     MOZ_MUST_USE bool checkOptions();
 
@@ -579,14 +588,6 @@ class TokenStreamAnyChars
 
         MOZ_ASSERT(TokenKindIsPossibleIdentifierName(currentToken().type));
         return false;
-    }
-
-    PropertyName* nextName() const {
-        if (nextToken().type != TokenKind::Name)
-            return nextToken().name();
-
-        MOZ_ASSERT(TokenKindIsPossibleIdentifierName(nextToken().type));
-        return reservedWordToPropertyName(nextToken().type);
     }
 
     bool isCurrentTokenAssignment() const {
@@ -661,7 +662,7 @@ class TokenStreamAnyChars
           default:
             MOZ_CRASH("unexpected modifier exception");
         }
-        tokens[(cursor + 1) & ntokensMask].modifierException = modifierException;
+        tokens[nextCursor()].modifierException = modifierException;
 #endif
     }
 
@@ -687,8 +688,8 @@ class TokenStreamAnyChars
         return sourceMapURL_.get();
     }
 
-    // This class maps a userbuf offset (which is 0-indexed) to a line number
-    // (which is 1-indexed) and a column index (which is 0-indexed).
+    // This class maps a sourceUnits offset (which is 0-indexed) to a line
+    // number (which is 1-indexed) and a column index (which is 0-indexed).
     class SourceCoords
     {
         // For a given buffer holding source code, |lineStartOffsets_| has one
@@ -769,10 +770,6 @@ class TokenStreamAnyChars
 
     SourceCoords srcCoords;
 
-    JSAtomState& names() const {
-        return cx->names();
-    }
-
     JSContext* context() const {
         return cx;
     }
@@ -794,16 +791,33 @@ class TokenStreamAnyChars
   public:
     const Token& nextToken() const {
         MOZ_ASSERT(hasLookahead());
-        return tokens[(cursor + 1) & ntokensMask];
+        return tokens[nextCursor()];
     }
 
     bool hasLookahead() const { return lookahead > 0; }
+
+    void advanceCursor() {
+        cursor_ = (cursor_ + 1) & ntokensMask;
+    }
+
+    void retractCursor() {
+        cursor_ = (cursor_ - 1) & ntokensMask;
+    }
+
+    Token* allocateToken() {
+        advanceCursor();
+
+        Token* tp = &tokens[cursor()];
+        MOZ_MAKE_MEM_UNDEFINED(tp, sizeof(*tp));
+
+        return tp;
+    }
 
     // Push the last scanned token back into the stream.
     void ungetToken() {
         MOZ_ASSERT(lookahead < maxLookahead);
         lookahead++;
-        cursor = (cursor - 1) & ntokensMask;
+        retractCursor();
     }
 
   public:
@@ -835,7 +849,9 @@ class TokenStreamAnyChars
     const ReadOnlyCompileOptions& options_;
 
     Token               tokens[ntokens];    // circular token buffer
-    unsigned            cursor;             // index of last parsed token
+  private:
+    unsigned            cursor_;            // index of last parsed token
+  protected:
     unsigned            lookahead;          // count of lookahead tokens
     unsigned            lineno;             // current line number
     TokenStreamFlags    flags;              // flags -- see above
@@ -844,17 +860,205 @@ class TokenStreamAnyChars
     const char*         filename_;          // input filename or null
     UniqueTwoByteChars  displayURL_;        // the user's requested source URL or null
     UniqueTwoByteChars  sourceMapURL_;      // source map's filename or null
-    uint8_t             isExprEnding[size_t(TokenKind::Limit)];// which tokens definitely terminate exprs?
+
+    /**
+     * An array storing whether a TokenKind observed while attempting to extend
+     * a valid AssignmentExpression into an even longer AssignmentExpression
+     * (e.g., extending '3' to '3 + 5') will terminate it without error.
+     *
+     * For example, ';' always ends an AssignmentExpression because it ends a
+     * Statement or declaration.  '}' always ends an AssignmentExpression
+     * because it terminates BlockStatement, FunctionBody, and embedded
+     * expressions in TemplateLiterals.  Therefore both entries are set to true
+     * in TokenStreamAnyChars construction.
+     *
+     * But e.g. '+' *could* extend an AssignmentExpression, so its entry here
+     * is false.  Meanwhile 'this' can't extend an AssignmentExpression, but
+     * it's only valid after a line break, so its entry here must be false.
+     *
+     * NOTE: This array could be static, but without C99's designated
+     *       initializers it's easier zeroing here and setting the true entries
+     *       in the constructor body.  (Having this per-instance might also aid
+     *       locality.)  Don't worry!  Initialization time for each TokenStream
+     *       is trivial.  See bug 639420.
+     */
+    bool isExprEnding[size_t(TokenKind::Limit)] = {}; // all-false initially
+
     JSContext* const    cx;
     bool                mutedErrors;
     StrictModeGetter*   strictModeGetter;  // used to test for strict mode
+};
+
+// This is the low-level interface to the JS source code buffer.  It just gets
+// raw Unicode code units -- 16-bit char16_t units of source text that are not
+// (always) full code points, and 8-bit units of UTF-8 source text soon.
+// TokenStreams functions are layered on top and do some extra stuff like
+// converting all EOL sequences to '\n', tracking the line number, and setting
+// |flags.isEOF|.  (The "raw" in "raw Unicode code units" refers to the lack of
+// EOL sequence normalization.)
+//
+// buf[0..length-1] often represents a substring of some larger source,
+// where we have only the substring in memory. The |startOffset| argument
+// indicates the offset within this larger string at which our string
+// begins, the offset of |buf[0]|.
+template<typename CharT>
+class SourceUnits
+{
+  public:
+    SourceUnits(const CharT* buf, size_t length, size_t startOffset)
+      : base_(buf),
+        startOffset_(startOffset),
+        limit_(buf + length),
+        ptr(buf)
+    { }
+
+    bool atStart() const {
+        MOZ_ASSERT(ptr, "shouldn't be using if poisoned");
+        return ptr == base_;
+    }
+
+    bool atEnd() const {
+        MOZ_ASSERT(ptr <= limit_, "shouldn't have overrun");
+        return ptr >= limit_;
+    }
+
+    size_t startOffset() const {
+        return startOffset_;
+    }
+
+    size_t offset() const {
+        return startOffset_ + mozilla::PointerRangeSize(base_, ptr);
+    }
+
+    const CharT* codeUnitPtrAt(size_t offset) const {
+        MOZ_ASSERT(startOffset_ <= offset);
+        MOZ_ASSERT(offset - startOffset_ <= mozilla::PointerRangeSize(base_, limit_));
+        return base_ + (offset - startOffset_);
+    }
+
+    const CharT* limit() const {
+        return limit_;
+    }
+
+    CharT previousCodeUnit() {
+        MOZ_ASSERT(ptr, "can't get previous code unit if poisoned");
+        MOZ_ASSERT(!atStart(), "must have a previous code unit to get");
+        return *(ptr - 1);
+    }
+
+    CharT getCodeUnit() {
+        return *ptr++;      // this will nullptr-crash if poisoned
+    }
+
+    CharT peekCodeUnit() const {
+        return *ptr;        // this will nullptr-crash if poisoned
+    }
+
+    bool peekCodeUnits(uint8_t n, CharT* out) const {
+        MOZ_ASSERT(ptr, "shouldn't peek into poisoned SourceUnits");
+        if (n > mozilla::PointerRangeSize(ptr, limit_))
+            return false;
+
+        std::copy_n(ptr, n, out);
+        return true;
+    }
+
+    void skipCodeUnits(uint32_t n) {
+        MOZ_ASSERT(ptr, "shouldn't use poisoned SourceUnits");
+        MOZ_ASSERT(n <= mozilla::PointerRangeSize(ptr, limit_),
+                   "shouldn't skip beyond end of SourceUnits");
+        ptr += n;
+    }
+
+    void unskipCodeUnits(uint32_t n) {
+        MOZ_ASSERT(ptr, "shouldn't use poisoned SourceUnits");
+        MOZ_ASSERT(n <= mozilla::PointerRangeSize(base_, ptr),
+                   "shouldn't skip beyond start of SourceUnits");
+        ptr -= n;
+    }
+
+    bool matchCodeUnit(CharT c) {
+        if (*ptr == c) {    // this will nullptr-crash if poisoned
+            ptr++;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Unget the '\n' (CR) that precedes a '\n' (LF), when ungetting a line
+     * terminator that's a full "\r\n" sequence.  If the prior code unit isn't
+     * '\r', do nothing.
+     */
+    void ungetOptionalCRBeforeLF() {
+        MOZ_ASSERT(ptr, "shouldn't unget a '\\r' from poisoned SourceUnits");
+        MOZ_ASSERT(*ptr == CharT('\n'),
+                   "function should only be called when a '\\n' was just "
+                   "ungotten, and any '\\r' preceding it must also be "
+                   "ungotten");
+        if (*(ptr - 1) == CharT('\r'))
+            ptr--;
+    }
+
+    void ungetCodeUnit() {
+        MOZ_ASSERT(!atStart(), "can't unget if currently at start");
+        MOZ_ASSERT(ptr);     // make sure it hasn't been poisoned
+        ptr--;
+    }
+
+    const CharT* addressOfNextCodeUnit(bool allowPoisoned = false) const {
+        MOZ_ASSERT_IF(!allowPoisoned, ptr);     // make sure it hasn't been poisoned
+        return ptr;
+    }
+
+    // Use this with caution!
+    void setAddressOfNextCodeUnit(const CharT* a, bool allowPoisoned = false) {
+        MOZ_ASSERT_IF(!allowPoisoned, a);
+        ptr = a;
+    }
+
+    // Poison the SourceUnits so they can't be accessed again.
+    void poisonInDebug() {
+#ifdef DEBUG
+        ptr = nullptr;
+#endif
+    }
+
+    static bool isRawEOLChar(int32_t c) {
+        return c == '\n' ||
+               c == '\r' ||
+               c == unicode::LINE_SEPARATOR ||
+               c == unicode::PARA_SEPARATOR;
+    }
+
+    // Returns the offset of the next EOL, but stops once 'max' characters
+    // have been scanned (*including* the char at startOffset_).
+    size_t findEOLMax(size_t start, size_t max);
+
+  private:
+    /** Base of buffer. */
+    const CharT* base_;
+
+    /** Offset of base_[0]. */
+    uint32_t startOffset_;
+
+    /** Limit for quick bounds check. */
+    const CharT* limit_;
+
+    /** Next char to get. */
+    const CharT* ptr;
 };
 
 template<typename CharT>
 class TokenStreamCharsBase
 {
   protected:
-    void ungetCharIgnoreEOL(int32_t c);
+    void ungetCodeUnit(int32_t c) {
+        if (c == EOF)
+            return;
+
+        sourceUnits.ungetCodeUnit();
+    }
 
   public:
     using CharBuffer = Vector<CharT, 32>;
@@ -869,130 +1073,67 @@ class TokenStreamCharsBase
     MOZ_MUST_USE bool copyTokenbufTo(JSContext* cx,
                                      UniquePtr<char16_t[], JS::FreePolicy>* destination);
 
-    // This is the low-level interface to the JS source code buffer.  It just
-    // gets raw chars, basically.  TokenStreams functions are layered on top
-    // and do some extra stuff like converting all EOL sequences to '\n',
-    // tracking the line number, and setting |flags.isEOF|.  (The "raw" in "raw
-    // chars" refers to the lack of EOL sequence normalization.)
-    //
-    // buf[0..length-1] often represents a substring of some larger source,
-    // where we have only the substring in memory. The |startOffset| argument
-    // indicates the offset within this larger string at which our string
-    // begins, the offset of |buf[0]|.
-    class TokenBuf
-    {
-      public:
-        TokenBuf(const CharT* buf, size_t length, size_t startOffset)
-          : base_(buf),
-            startOffset_(startOffset),
-            limit_(buf + length),
-            ptr(buf)
-        { }
-
-        bool hasRawChars() const {
-            return ptr < limit_;
-        }
-
-        bool atStart() const {
-            return offset() == 0;
-        }
-
-        size_t startOffset() const {
-            return startOffset_;
-        }
-
-        size_t offset() const {
-            return startOffset_ + mozilla::PointerRangeSize(base_, ptr);
-        }
-
-        const CharT* rawCharPtrAt(size_t offset) const {
-            MOZ_ASSERT(startOffset_ <= offset);
-            MOZ_ASSERT(offset - startOffset_ <= mozilla::PointerRangeSize(base_, limit_));
-            return base_ + (offset - startOffset_);
-        }
-
-        const CharT* limit() const {
-            return limit_;
-        }
-
-        CharT getRawChar() {
-            return *ptr++;      // this will nullptr-crash if poisoned
-        }
-
-        CharT peekRawChar() const {
-            return *ptr;        // this will nullptr-crash if poisoned
-        }
-
-        bool matchRawChar(CharT c) {
-            if (*ptr == c) {    // this will nullptr-crash if poisoned
-                ptr++;
-                return true;
-            }
-            return false;
-        }
-
-        bool matchRawCharBackwards(CharT c) {
-            MOZ_ASSERT(ptr);     // make sure it hasn't been poisoned
-            if (*(ptr - 1) == c) {
-                ptr--;
-                return true;
-            }
-            return false;
-        }
-
-        void ungetRawChar() {
-            MOZ_ASSERT(ptr);     // make sure it hasn't been poisoned
-            ptr--;
-        }
-
-        const CharT* addressOfNextRawChar(bool allowPoisoned = false) const {
-            MOZ_ASSERT_IF(!allowPoisoned, ptr);     // make sure it hasn't been poisoned
-            return ptr;
-        }
-
-        // Use this with caution!
-        void setAddressOfNextRawChar(const CharT* a, bool allowPoisoned = false) {
-            MOZ_ASSERT_IF(!allowPoisoned, a);
-            ptr = a;
-        }
-
-#ifdef DEBUG
-        // Poison the TokenBuf so it cannot be accessed again.
-        void poison() {
-            ptr = nullptr;
-        }
-#endif
-
-        static bool isRawEOLChar(int32_t c) {
-            return c == '\n' ||
-                   c == '\r' ||
-                   c == unicode::LINE_SEPARATOR ||
-                   c == unicode::PARA_SEPARATOR;
-        }
-
-        // Returns the offset of the next EOL, but stops once 'max' characters
-        // have been scanned (*including* the char at startOffset_).
-        size_t findEOLMax(size_t start, size_t max);
-
-      private:
-        /** Base of buffer. */
-        const CharT* base_;
-
-        /** Offset of base_[0]. */
-        uint32_t startOffset_;
-
-        /** Limit for quick bounds check. */
-        const CharT* limit_;
-
-        /** Next char to get. */
-        const CharT* ptr;
-    };
+    using SourceUnits = frontend::SourceUnits<CharT>;
 
     MOZ_MUST_USE bool appendCodePointToTokenbuf(uint32_t codePoint);
 
+    // |expect| cannot be an EOL char.
+    bool matchCodeUnit(int32_t expect) {
+        MOZ_ASSERT(expect != EOF, "shouldn't be matching EOFs");
+        MOZ_ASSERT(!SourceUnits::isRawEOLChar(expect));
+        return MOZ_LIKELY(!sourceUnits.atEnd()) && sourceUnits.matchCodeUnit(expect);
+    }
+
   protected:
-    /** User input buffer. */
-    TokenBuf userbuf;
+    int32_t peekCodeUnit() {
+        return MOZ_LIKELY(!sourceUnits.atEnd()) ? sourceUnits.peekCodeUnit() : EOF;
+    }
+
+    void consumeKnownCodeUnit(int32_t unit) {
+        MOZ_ASSERT(unit != EOF, "shouldn't be matching EOF");
+        MOZ_ASSERT(!sourceUnits.atEnd(), "must have units to consume");
+#ifdef DEBUG
+        CharT next =
+#endif
+            sourceUnits.getCodeUnit();
+        MOZ_ASSERT(next == unit, "must be consuming the correct unit");
+    }
+
+    MOZ_MUST_USE bool
+    fillWithTemplateStringContents(CharBuffer& charbuf, const CharT* cur, const CharT* end) {
+        while (cur < end) {
+            // U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR are
+            // interpreted literally inside template literal contents; only
+            // literal CRLF sequences are normalized to '\n'.  See
+            // <https://tc39.github.io/ecma262/#sec-static-semantics-tv-and-trv>.
+            CharT ch = *cur;
+            if (ch == '\r') {
+                ch = '\n';
+                if ((cur + 1 < end) && (*(cur + 1) == '\n'))
+                    cur++;
+            }
+
+            if (!charbuf.append(ch))
+                return false;
+
+            cur++;
+        }
+
+        return true;
+    }
+
+    /**
+     * Determine whether a code unit constitutes a complete ASCII code point.
+     * (The code point's exact value might not be used, however, if subsequent
+     * code observes that |unit| is part of a LineTerminatorSequence.)
+     */
+    static constexpr MOZ_ALWAYS_INLINE MOZ_MUST_USE bool isAsciiCodePoint(CharT unit) {
+        return mozilla::IsAscii(unit);
+    }
+
+  protected:
+    /** Code units in the source code being tokenized. */
+    SourceUnits sourceUnits;
 
     /** Current token string buffer. */
     CharBuffer tokenbuf;
@@ -1005,16 +1146,62 @@ TokenStreamCharsBase<char16_t>::atomizeChars(JSContext* cx, const char16_t* char
     return AtomizeChars(cx, chars, length);
 }
 
+/** A small class encapsulating computation of the start-offset of a Token. */
+class TokenStart
+{
+    uint32_t startOffset_;
+
+  public:
+    /**
+     * Compute a starting offset that is the current offset of |sourceUnits|,
+     * offset by |adjust|.  (For example, |adjust| of -1 indicates the code
+     * unit one backwards from |sourceUnits|'s current offset.)
+     */
+    template<class SourceUnits>
+    TokenStart(const SourceUnits& sourceUnits, ptrdiff_t adjust)
+      : startOffset_(sourceUnits.offset() + adjust)
+    {}
+
+    TokenStart(const TokenStart&) = default;
+
+    uint32_t offset() const { return startOffset_; }
+};
+
 template<typename CharT, class AnyCharsAccess>
 class GeneralTokenStreamChars
   : public TokenStreamCharsBase<CharT>
 {
     using CharsSharedBase = TokenStreamCharsBase<CharT>;
 
-  protected:
-    using typename CharsSharedBase::TokenBuf;
+    Token* newTokenInternal(TokenKind kind, TokenStart start, TokenKind* out);
 
-    using CharsSharedBase::userbuf;
+    /**
+     * Allocates a new Token from the given offset to the current offset,
+     * ascribes it the given kind, and sets |*out| to that kind.
+     */
+    Token* newToken(TokenKind kind, TokenStart start, TokenStreamShared::Modifier modifier,
+                    TokenKind* out)
+    {
+        Token* token = newTokenInternal(kind, start, out);
+
+#ifdef DEBUG
+        // Save the modifier used to get this token, so that if an ungetToken()
+        // occurs and then the token is re-gotten (or peeked, etc.), we can
+        // assert both gets used compatible modifiers.
+        token->modifier = modifier;
+        token->modifierException = TokenStreamShared::NoException;
+#endif
+
+        return token;
+    }
+
+    uint32_t matchUnicodeEscape(uint32_t* codePoint);
+    uint32_t matchExtendedUnicodeEscape(uint32_t* codePoint);
+
+  protected:
+    using typename CharsSharedBase::SourceUnits;
+
+    using CharsSharedBase::sourceUnits;
 
   public:
     using CharsSharedBase::CharsSharedBase;
@@ -1036,9 +1223,84 @@ class GeneralTokenStreamChars
         return static_cast<TokenStreamSpecific*>(this);
     }
 
-    int32_t getCharIgnoreEOL();
+    void newSimpleToken(TokenKind kind, TokenStart start, TokenStreamShared::Modifier modifier,
+                        TokenKind* out)
+    {
+        newToken(kind, start, modifier, out);
+    }
+
+    void newNumberToken(double dval, DecimalPoint decimalPoint, TokenStart start,
+                        TokenStreamShared::Modifier modifier, TokenKind* out)
+    {
+        Token* token = newToken(TokenKind::Number, start, modifier, out);
+        token->setNumber(dval, decimalPoint);
+    }
+
+    void newAtomToken(TokenKind kind, JSAtom* atom, TokenStart start,
+                      TokenStreamShared::Modifier modifier, TokenKind* out)
+    {
+        MOZ_ASSERT(kind == TokenKind::String ||
+                   kind == TokenKind::TemplateHead ||
+                   kind == TokenKind::NoSubsTemplate);
+
+        Token* token = newToken(kind, start, modifier, out);
+        token->setAtom(atom);
+    }
+
+    void newNameToken(PropertyName* name, TokenStart start, TokenStreamShared::Modifier modifier,
+                      TokenKind* out)
+    {
+        Token* token = newToken(TokenKind::Name, start, modifier, out);
+        token->setName(name);
+    }
+
+    void newRegExpToken(RegExpFlag reflags, TokenStart start, TokenKind* out)
+    {
+        Token* token = newToken(TokenKind::RegExp, start, TokenStreamShared::Operand, out);
+        token->setRegExpFlags(reflags);
+    }
+
+    MOZ_COLD bool badToken();
+
+    /**
+     * Get the next code unit -- the next numeric sub-unit of source text,
+     * possibly smaller than a full code point -- without updating line/column
+     * counters or consuming LineTerminatorSequences.
+     *
+     * Because of these limitations, only use this if (a) the resulting code
+     * unit is guaranteed to be ungotten (by ungetCodeUnit()) if it's an EOL,
+     * and (b) the line-related state (lineno, linebase) is not used before
+     * it's ungotten.
+     */
+    int32_t getCodeUnit() {
+        if (MOZ_LIKELY(!sourceUnits.atEnd()))
+            return sourceUnits.getCodeUnit();
+
+        anyCharsAccess().flags.isEOF = true;
+        return EOF;
+    }
+
+    void ungetCodeUnit(int32_t c) {
+        MOZ_ASSERT_IF(c == EOF, anyCharsAccess().flags.isEOF);
+
+        CharsSharedBase::ungetCodeUnit(c);
+    }
 
     void ungetChar(int32_t c);
+
+    /**
+     * Consume characters til EOL/EOF following the start of a single-line
+     * comment, without consuming the EOL/EOF.
+     */
+    void consumeRestOfSingleLineComment();
+
+    MOZ_MUST_USE MOZ_ALWAYS_INLINE bool updateLineInfoForEOL() {
+        return anyCharsAccess().internalUpdateLineInfoForEOL(sourceUnits.offset());
+    }
+
+  protected:
+    uint32_t matchUnicodeEscapeIdStart(uint32_t* codePoint);
+    bool matchUnicodeEscapeIdent(uint32_t* codePoint);
 };
 
 template<typename CharT, class AnyCharsAccess> class TokenStreamChars;
@@ -1056,42 +1318,113 @@ class TokenStreamChars<char16_t, AnyCharsAccess>
 
     using typename GeneralCharsBase::TokenStreamSpecific;
 
-    void matchMultiUnitCodePointSlow(char16_t lead, uint32_t* codePoint);
-
   protected:
     using GeneralCharsBase::anyCharsAccess;
-    using GeneralCharsBase::getCharIgnoreEOL;
-    using CharsSharedBase::ungetCharIgnoreEOL;
-    using GeneralCharsBase::userbuf;
+    using GeneralCharsBase::getCodeUnit;
+    using CharsSharedBase::isAsciiCodePoint;
+    using GeneralCharsBase::sourceUnits;
+    using CharsSharedBase::ungetCodeUnit;
+    using GeneralCharsBase::updateLineInfoForEOL;
+
+    using typename GeneralCharsBase::SourceUnits;
 
     using GeneralCharsBase::GeneralCharsBase;
 
-    // |c| must be the code unit just gotten.  If it and the subsequent code
-    // unit form a valid surrogate pair, get the second code unit, set
-    // |*codePoint| to the code point encoded by the surrogate pair, and return
-    // true.  Otherwise do not get a second code unit, set |*codePoint = 0|,
-    // and return true.
-    //
-    // ECMAScript specifically requires that unpaired UTF-16 surrogates be
-    // treated as the corresponding code point and not as an error.  See
-    // <https://tc39.github.io/ecma262/#sec-ecmascript-language-types-string-type>.
-    // Therefore this function always returns true.  The |bool| return type
-    // exists so that a future UTF-8 |TokenStreamChars| can treat malformed
-    // multi-code unit UTF-8 sequences as errors.  (Because ECMAScript only
-    // interprets UTF-16 inputs, the process of translating the UTF-8 to UTF-16
-    // would fail, so no script should execute.  Technically, we shouldn't even
-    // be tokenizing -- but it probably isn't realistic to assume every user
-    // correctly passes only valid UTF-8, at least not without better types in
-    // our codebase for strings that by construction only contain valid UTF-8.)
-    MOZ_ALWAYS_INLINE bool matchMultiUnitCodePoint(char16_t c, uint32_t* codePoint) {
-        if (MOZ_LIKELY(!unicode::IsLeadSurrogate(c)))
-            *codePoint = 0;
-        else
-            matchMultiUnitCodePointSlow(c, codePoint);
-        return true;
+    // Try to get the next code point, normalizing '\r', '\r\n', '\n', and the
+    // Unicode line/paragraph separators into '\n'.  Also updates internal
+    // line-counter state.  Return true on success and store the character in
+    // |*c|.  Return false and leave |*c| undefined on failure.
+    MOZ_MUST_USE bool getCodePoint(int32_t* cp);
+
+    // A deprecated alias for |getCodePoint|: most code using this is being
+    // replaced with different approaches.
+    MOZ_MUST_USE bool getChar(int32_t* cp) {
+        return getCodePoint(cp);
     }
 
+    /**
+     * Given a just-consumed ASCII code unit/point |lead|, consume a full code
+     * point or LineTerminatorSequence (normalizing it to '\n') and store it in
+     * |*codePoint|.  Return true on success, otherwise return false and leave
+     * |*codePoint| undefined on failure.
+     *
+     * If a LineTerminatorSequence was consumed, also update line/column info.
+     *
+     * This may change the current |sourceUnits| offset.
+     */
+    MOZ_MUST_USE bool getFullAsciiCodePoint(char16_t lead, int32_t* codePoint) {
+        MOZ_ASSERT(isAsciiCodePoint(lead),
+                   "non-ASCII code units must be handled separately");
+        MOZ_ASSERT(lead == sourceUnits.previousCodeUnit(),
+                   "getFullAsciiCodePoint called incorrectly");
+
+        if (MOZ_UNLIKELY(lead == '\r')) {
+            if (MOZ_LIKELY(!sourceUnits.atEnd()))
+                sourceUnits.matchCodeUnit('\n');
+        } else if (MOZ_LIKELY(lead != '\n')) {
+            *codePoint = lead;
+            return true;
+        }
+
+        *codePoint = '\n';
+        bool ok = updateLineInfoForEOL();
+        if (!ok) {
+#ifdef DEBUG
+            *codePoint = EOF; // sentinel value to hopefully cause errors
+#endif
+            MOZ_MAKE_MEM_UNDEFINED(codePoint, sizeof(*codePoint));
+        }
+        return ok;
+    }
+
+    /**
+     * Given a just-consumed non-ASCII code unit (and maybe point) |lead|,
+     * consume a full code point or LineTerminatorSequence (normalizing it to
+     * '\n') and store it in |*codePoint|.  Return true on success, otherwise
+     * return false and leave |*codePoint| undefined on failure.
+     *
+     * If a LineTerminatorSequence was consumed, also update line/column info.
+     *
+     * This may change the current |sourceUnits| offset.
+     */
+    MOZ_MUST_USE bool getNonAsciiCodePoint(char16_t lead, int32_t* cp);
+
+    /**
+     * Unget a full code point (ASCII or not) without altering line/column
+     * state.  If line/column state must be updated, this must happen manually.
+     * This method ungets a single code point, not a LineTerminatorSequence
+     * that is multiple code points.  (Generally you shouldn't be in a state
+     * where you've just consumed "\r\n" and want to unget that full sequence.)
+     *
+     * This function ordinarily should be used to unget code points that have
+     * been consumed *without* line/column state having been updated.
+     */
     void ungetCodePointIgnoreEOL(uint32_t codePoint);
+
+    /**
+     * Unget an originally non-ASCII, normalized code point, including undoing
+     * line/column updates that were performed for it.  Don't use this if the
+     * code point was gotten *without* line/column state being updated!
+     */
+    void ungetNonAsciiNormalizedCodePoint(uint32_t codePoint) {
+        MOZ_ASSERT_IF(isAsciiCodePoint(codePoint),
+                      codePoint == '\n');
+        MOZ_ASSERT(codePoint != unicode::LINE_SEPARATOR,
+                   "should not be ungetting un-normalized code points");
+        MOZ_ASSERT(codePoint != unicode::PARA_SEPARATOR,
+                   "should not be ungetting un-normalized code points");
+
+        ungetCodePointIgnoreEOL(codePoint);
+        if (codePoint == '\n')
+            anyCharsAccess().undoInternalUpdateLineInfoForEOL();
+    }
+
+    /**
+     * Unget a just-gotten LineTerminator sequence: '\r', '\n', '\r\n', or
+     * a Unicode line/paragraph separator, also undoing line/column information
+     * changes reflecting that LineTerminator.
+     */
+    void ungetLineTerminator();
 };
 
 // TokenStream is the lexical scanner for JavaScript source text.
@@ -1101,8 +1434,8 @@ class TokenStreamChars<char16_t, AnyCharsAccess>
 // linearly scans it into |Token|s.
 //
 // Internally the class uses a four element circular buffer |tokens| of
-// |Token|s. As an index for |tokens|, the member |cursor| points to the
-// current token. Calls to getToken() increase |cursor| by one and return the
+// |Token|s. As an index for |tokens|, the member |cursor_| points to the
+// current token. Calls to getToken() increase |cursor_| by one and return the
 // new current token. If a TokenStream was just created, the current token is
 // uninitialized. It's therefore important that one of the first four member
 // functions listed below is called first. The circular buffer lets us go back
@@ -1165,19 +1498,38 @@ class MOZ_STACK_CLASS TokenStreamSpecific
 
   private:
     using typename CharsSharedBase::CharBuffer;
-    using typename CharsSharedBase::TokenBuf;
+    using typename CharsSharedBase::SourceUnits;
 
   private:
     using CharsSharedBase::appendCodePointToTokenbuf;
     using CharsSharedBase::atomizeChars;
+    using GeneralCharsBase::badToken;
+    using CharsSharedBase::consumeKnownCodeUnit;
+    using GeneralCharsBase::consumeRestOfSingleLineComment;
     using CharsSharedBase::copyTokenbufTo;
-    using GeneralCharsBase::getCharIgnoreEOL;
-    using CharsBase::matchMultiUnitCodePoint;
+    using CharsSharedBase::fillWithTemplateStringContents;
+    using CharsBase::getChar;
+    using CharsBase::getCodePoint;
+    using GeneralCharsBase::getCodeUnit;
+    using CharsBase::getFullAsciiCodePoint;
+    using CharsBase::getNonAsciiCodePoint;
+    using CharsSharedBase::isAsciiCodePoint;
+    using CharsSharedBase::matchCodeUnit;
+    using GeneralCharsBase::matchUnicodeEscapeIdent;
+    using GeneralCharsBase::matchUnicodeEscapeIdStart;
+    using GeneralCharsBase::newAtomToken;
+    using GeneralCharsBase::newNameToken;
+    using GeneralCharsBase::newNumberToken;
+    using GeneralCharsBase::newRegExpToken;
+    using GeneralCharsBase::newSimpleToken;
+    using CharsSharedBase::peekCodeUnit;
+    using CharsSharedBase::sourceUnits;
     using CharsSharedBase::tokenbuf;
     using GeneralCharsBase::ungetChar;
-    using CharsSharedBase::ungetCharIgnoreEOL;
     using CharsBase::ungetCodePointIgnoreEOL;
-    using CharsSharedBase::userbuf;
+    using CharsSharedBase::ungetCodeUnit;
+    using CharsBase::ungetNonAsciiNormalizedCodePoint;
+    using GeneralCharsBase::updateLineInfoForEOL;
 
     template<typename CharU> friend class TokenStreamPosition;
 
@@ -1269,28 +1621,20 @@ class MOZ_STACK_CLASS TokenStreamSpecific
 
         MOZ_ASSERT(anyChars.currentToken().type == TokenKind::TemplateHead ||
                    anyChars.currentToken().type == TokenKind::NoSubsTemplate);
-        const CharT* cur = userbuf.rawCharPtrAt(anyChars.currentToken().pos.begin + 1);
+        const CharT* cur = sourceUnits.codeUnitPtrAt(anyChars.currentToken().pos.begin + 1);
         const CharT* end;
         if (anyChars.currentToken().type == TokenKind::TemplateHead) {
             // Of the form    |`...${|   or   |}...${|
-            end = userbuf.rawCharPtrAt(anyChars.currentToken().pos.end - 2);
+            end = sourceUnits.codeUnitPtrAt(anyChars.currentToken().pos.end - 2);
         } else {
             // NO_SUBS_TEMPLATE is of the form   |`...`|   or   |}...`|
-            end = userbuf.rawCharPtrAt(anyChars.currentToken().pos.end - 1);
+            end = sourceUnits.codeUnitPtrAt(anyChars.currentToken().pos.end - 1);
         }
 
         CharBuffer charbuf(anyChars.cx);
-        while (cur < end) {
-            CharT ch = *cur;
-            if (ch == '\r') {
-                ch = '\n';
-                if ((cur + 1 < end) && (*(cur + 1) == '\n'))
-                    cur++;
-            }
-            if (!charbuf.append(ch))
-                return nullptr;
-            cur++;
-        }
+        if (!fillWithTemplateStringContents(charbuf, cur, end))
+            return nullptr;
+
         return atomizeChars(anyChars.cx, charbuf.begin(), charbuf.length());
     }
 
@@ -1321,6 +1665,50 @@ class MOZ_STACK_CLASS TokenStreamSpecific
 
     MOZ_MUST_USE bool putIdentInTokenbuf(const CharT* identStart);
 
+    /**
+     * Tokenize a decimal number that begins at |numStart| into the provided
+     * token.
+     *
+     * |unit| must be one of these values:
+     *
+     *   1. The first decimal digit in the integral part of a decimal number
+     *      not starting with '0' or '.', e.g. '1' for "17", '3' for "3.14", or
+     *      '8' for "8.675309e6".
+     *
+     *   In this case, the next |getCodeUnit()| must return the code unit after
+     *   |unit| in the overall number.
+     *
+     *   2. The '.' in a "."/"0."-prefixed decimal number or the 'e'/'E' in a
+     *      "0e"/"0E"-prefixed decimal number, e.g. ".17", "0.42", or "0.1e3".
+     *
+     *   In this case, the next |getCodeUnit()| must return the code unit
+     *   *after* the first decimal digit *after* the '.'.  So the next code
+     *   unit would be '7' in ".17", '2' in "0.42", 'e' in "0.4e+8", or '/' in
+     *   "0.5/2" (three separate tokens).
+     *
+     *   3. The code unit after the '0' where "0" is the entire number token.
+     *
+     *   In this case, the next |getCodeUnit()| would return the code unit
+     *   after |unit|, but this function will never perform such call.
+     *
+     *   4. (Non-strict mode code only)  The first '8' or '9' in a "noctal"
+     *      number that begins with a '0' but contains a non-octal digit in its
+     *      integer part so is interpreted as decimal, e.g. '9' in "09.28" or
+     *      '8' in "0386" or '9' in "09+7" (three separate tokens").
+     *
+     *   In this case, the next |getCodeUnit()| returns the code unit after
+     *   |unit|: '.', '6', or '+' in the examples above.
+     *
+     * This interface is super-hairy and horribly stateful.  Unfortunately, its
+     * hair merely reflects the intricacy of ECMAScript numeric literal syntax.
+     * And incredibly, it *improves* on the goto-based horror that predated it.
+     */
+    MOZ_MUST_USE bool decimalNumber(int32_t unit, TokenStart start, const CharT* numStart,
+                                    Modifier modifier, TokenKind* out);
+
+    /** Tokenize a regular expression literal beginning at |start|. */
+    MOZ_MUST_USE bool regexpLiteral(TokenStart start, TokenKind* out);
+
   public:
     // Advance to the next token.  If the token stream encountered an error,
     // return false.  Otherwise return true and store the token kind in |*ttp|.
@@ -1330,7 +1718,7 @@ class MOZ_STACK_CLASS TokenStreamSpecific
         if (anyChars.lookahead != 0) {
             MOZ_ASSERT(!anyChars.flags.hadError);
             anyChars.lookahead--;
-            anyChars.cursor = (anyChars.cursor + 1) & ntokensMask;
+            anyChars.advanceCursor();
             TokenKind tt = anyChars.currentToken().type;
             MOZ_ASSERT(tt != TokenKind::Eol);
             verifyConsistentModifier(modifier, anyChars.currentToken());
@@ -1472,33 +1860,21 @@ class MOZ_STACK_CLASS TokenStreamSpecific
     void seek(const Position& pos);
     MOZ_MUST_USE bool seek(const Position& pos, const TokenStreamAnyChars& other);
 
-    const CharT* rawCharPtrAt(size_t offset) const {
-        return userbuf.rawCharPtrAt(offset);
+    const CharT* codeUnitPtrAt(size_t offset) const {
+        return sourceUnits.codeUnitPtrAt(offset);
     }
 
     const CharT* rawLimit() const {
-        return userbuf.limit();
+        return sourceUnits.limit();
     }
 
-    MOZ_MUST_USE bool identifierName(Token* token, const CharT* identStart,
-                                     IdentifierEscapes escaping);
+    MOZ_MUST_USE bool identifierName(TokenStart start, const CharT* identStart,
+                                     IdentifierEscapes escaping, Modifier modifier,
+                                     TokenKind* out);
 
-    MOZ_MUST_USE bool getTokenInternal(TokenKind* ttp, Modifier modifier);
+    MOZ_MUST_USE bool getTokenInternal(TokenKind* const ttp, const Modifier modifier);
 
-    MOZ_MUST_USE bool getStringOrTemplateToken(char untilChar, Token** tp);
-
-    // Try to get the next character, normalizing '\r', '\r\n', and '\n' into
-    // '\n'.  Also updates internal line-counter state.  Return true on success
-    // and store the character in |*c|.  Return false and leave |*c| undefined
-    // on failure.
-    MOZ_MUST_USE bool getChar(int32_t* cp);
-
-    Token* newToken(ptrdiff_t adjust);
-    uint32_t peekUnicodeEscape(uint32_t* codePoint);
-    uint32_t peekExtendedUnicodeEscape(uint32_t* codePoint);
-    uint32_t matchUnicodeEscapeIdStart(uint32_t* codePoint);
-    bool matchUnicodeEscapeIdent(uint32_t* codePoint);
-    bool peekChars(int n, CharT* cp);
+    MOZ_MUST_USE bool getStringOrTemplateToken(char untilChar, Modifier modifier, TokenKind* out);
 
     MOZ_MUST_USE bool getDirectives(bool isMultiline, bool shouldWarnDeprecated);
     MOZ_MUST_USE bool getDirective(bool isMultiline, bool shouldWarnDeprecated,
@@ -1507,42 +1883,6 @@ class MOZ_STACK_CLASS TokenStreamSpecific
                                    UniquePtr<char16_t[], JS::FreePolicy>* destination);
     MOZ_MUST_USE bool getDisplayURL(bool isMultiline, bool shouldWarnDeprecated);
     MOZ_MUST_USE bool getSourceMappingURL(bool isMultiline, bool shouldWarnDeprecated);
-
-    // |expect| cannot be an EOL char.
-    bool matchChar(int32_t expect) {
-        MOZ_ASSERT(!TokenBuf::isRawEOLChar(expect));
-        return MOZ_LIKELY(userbuf.hasRawChars()) && userbuf.matchRawChar(expect);
-    }
-
-    void consumeKnownChar(int32_t expect) {
-        int32_t c;
-        MOZ_ALWAYS_TRUE(getChar(&c));
-        MOZ_ASSERT(c == expect);
-    }
-
-    MOZ_MUST_USE bool peekChar(int32_t* c) {
-        if (!getChar(c))
-            return false;
-        ungetChar(*c);
-        return true;
-    }
-
-    void skipChars(uint32_t n) {
-        while (n-- > 0) {
-            MOZ_ASSERT(userbuf.hasRawChars());
-            mozilla::DebugOnly<int32_t> c = getCharIgnoreEOL();
-            MOZ_ASSERT(!TokenBuf::isRawEOLChar(c));
-        }
-    }
-
-    void skipCharsIgnoreEOL(uint8_t n) {
-        while (n-- > 0) {
-            MOZ_ASSERT(userbuf.hasRawChars());
-            getCharIgnoreEOL();
-        }
-    }
-
-    MOZ_MUST_USE MOZ_ALWAYS_INLINE bool updateLineInfoForEOL();
 };
 
 // It's preferable to define this in TokenStream.cpp, but its template-ness
@@ -1559,17 +1899,15 @@ TokenStreamPosition<CharT>::TokenStreamPosition(AutoKeepAtoms& keepAtoms,
 {
     TokenStreamAnyChars& anyChars = tokenStream.anyCharsAccess();
 
-    buf = tokenStream.userbuf.addressOfNextRawChar(/* allowPoisoned = */ true);
+    buf = tokenStream.sourceUnits.addressOfNextCodeUnit(/* allowPoisoned = */ true);
     flags = anyChars.flags;
     lineno = anyChars.lineno;
     linebase = anyChars.linebase;
     prevLinebase = anyChars.prevLinebase;
     lookahead = anyChars.lookahead;
     currentToken = anyChars.currentToken();
-    for (unsigned i = 0; i < anyChars.lookahead; i++) {
-        lookaheadTokens[i] =
-            anyChars.tokens[(anyChars.cursor + 1 + i) & TokenStreamShared::ntokensMask];
-    }
+    for (unsigned i = 0; i < anyChars.lookahead; i++)
+        lookaheadTokens[i] = anyChars.tokens[anyChars.aheadCursor(1 + i)];
 }
 
 class TokenStreamAnyCharsAccess

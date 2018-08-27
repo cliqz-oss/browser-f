@@ -11,10 +11,10 @@
 
 #include "nsMappedAttributes.h"
 #include "nsHTMLStyleSheet.h"
+#include "mozilla/DeclarationBlock.h"
 #include "mozilla/GenericSpecifiedValues.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/ServoDeclarationBlock.h"
 #include "mozilla/ServoSpecifiedValues.h"
 
 using namespace mozilla;
@@ -54,7 +54,7 @@ nsMappedAttributes::nsMappedAttributes(const nsMappedAttributes& aCopy)
     mSheet(aCopy.mSheet),
     mRuleMapper(aCopy.mRuleMapper),
     // This is only called by ::Clone, which is used to create independent
-    // nsMappedAttributes objects which should not share a ServoDeclarationBlock
+    // nsMappedAttributes objects which should not share a DeclarationBlock
     mServoStyle(nullptr)
 {
   NS_ASSERTION(mBufferSize >= aCopy.mAttrCount, "can't fit attributes");
@@ -152,7 +152,7 @@ void
 nsMappedAttributes::SetAndSwapAttr(nsAtom* aAttrName, nsAttrValue& aValue,
                                    bool* aValueWasSet)
 {
-  NS_PRECONDITION(aAttrName, "null name");
+  MOZ_ASSERT(aAttrName, "null name");
   *aValueWasSet = false;
   uint32_t i;
   for (i = 0; i < mAttrCount && !Attrs()[i].mName.IsSmaller(aAttrName); ++i) {
@@ -178,7 +178,7 @@ nsMappedAttributes::SetAndSwapAttr(nsAtom* aAttrName, nsAttrValue& aValue,
 const nsAttrValue*
 nsMappedAttributes::GetAttr(nsAtom* aAttrName) const
 {
-  NS_PRECONDITION(aAttrName, "null name");
+  MOZ_ASSERT(aAttrName, "null name");
 
   for (uint32_t i = 0; i < mAttrCount; ++i) {
     if (Attrs()[i].mName.Equals(aAttrName)) {

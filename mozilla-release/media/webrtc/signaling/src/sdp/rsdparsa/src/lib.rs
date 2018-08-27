@@ -1,6 +1,13 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 
+#[cfg(feature="serialize")]
+#[macro_use]
+extern crate serde_derive;
+#[cfg(feature="serialize")]
+extern crate serde;
+
 use std::net::IpAddr;
+use std::str::FromStr;
 use std::fmt;
 
 pub mod attribute_type;
@@ -9,14 +16,16 @@ pub mod media_type;
 pub mod network;
 pub mod unsupported_types;
 
-use attribute_type::{SdpAttribute, parse_attribute};
+use attribute_type::{SdpAttribute, SdpAttributeType, parse_attribute};
 use error::{SdpParserInternalError, SdpParserError};
-use media_type::{SdpMedia, SdpMediaLine, parse_media, parse_media_vector};
+use media_type::{SdpMedia, SdpMediaLine, parse_media, parse_media_vector, SdpProtocolValue,
+                 SdpMediaValue, SdpFormatList};
 use network::{parse_addrtype, parse_nettype, parse_unicast_addr};
 use unsupported_types::{parse_email, parse_information, parse_key, parse_phone, parse_repeat,
                         parse_uri, parse_zone};
 
 #[derive(Clone)]
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub enum SdpBandwidth {
     As(u32),
     Ct(u32),
@@ -25,6 +34,7 @@ pub enum SdpBandwidth {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub struct SdpConnection {
     pub addr: IpAddr,
     pub ttl: Option<u8>,
@@ -32,6 +42,7 @@ pub struct SdpConnection {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub struct SdpOrigin {
     pub username: String,
     pub session_id: u64,
@@ -51,11 +62,13 @@ impl fmt::Display for SdpOrigin {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub struct SdpTiming {
     pub start: u64,
     pub stop: u64,
 }
 
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub enum SdpType {
     Attribute(SdpAttribute),
     Bandwidth(SdpBandwidth),
@@ -74,11 +87,13 @@ pub enum SdpType {
     Zone(String),
 }
 
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub struct SdpLine {
     pub line_number: usize,
     pub sdp_type: SdpType,
 }
 
+#[cfg_attr(feature="serialize", derive(Serialize))]
 pub struct SdpSession {
     pub version: u64,
     pub origin: SdpOrigin,
@@ -88,6 +103,7 @@ pub struct SdpSession {
     pub timing: Option<SdpTiming>,
     pub attribute: Vec<SdpAttribute>,
     pub media: Vec<SdpMedia>,
+    pub warnings: Vec<SdpParserError>
     // unsupported values:
     // information: Option<String>,
     // uri: Option<String>,
@@ -109,6 +125,7 @@ impl SdpSession {
             timing: None,
             attribute: Vec::new(),
             media: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -160,19 +177,36 @@ impl SdpSession {
         !self.attribute.is_empty()
     }
 
-    // FIXME this is a temporary hack until we re-oranize the SdpAttribute enum
-    // so that we can build a generic has_attribute(X) function
-    fn has_extmap_attribute(&self) -> bool {
-        for attribute in &self.attribute {
-            if let &SdpAttribute::Extmap(_) = attribute {
-                return true;
-            }
-        }
-        false
+    pub fn get_attribute(&self, t: SdpAttributeType) -> Option<&SdpAttribute> {
+       self.attribute.iter().filter(|a| SdpAttributeType::from(*a) == t).next()
     }
 
     pub fn has_media(&self) -> bool {
         !self.media.is_empty()
+    }
+
+    pub fn add_media(&mut self, media_type: SdpMediaValue, direction: SdpAttribute, port: u32,
+                     protocol: SdpProtocolValue, addr: String)
+                     -> Result<(),SdpParserInternalError> {
+       let mut media = SdpMedia::new(SdpMediaLine {
+           media: media_type,
+           port,
+           port_count: 1,
+           proto: protocol,
+           formats: SdpFormatList::Integers(Vec::new()),
+       });
+
+       media.add_attribute(&direction)?;
+
+       media.set_connection(&SdpConnection {
+           addr: IpAddr::from_str(addr.as_str())?,
+           ttl: None,
+           amount: None,
+       })?;
+
+       self.media.push(media);
+
+       Ok(())
     }
 }
 
@@ -600,14 +634,37 @@ fn sanity_check_sdp_session(session: &SdpSession) -> Result<(), SdpParserError> 
     }
 
     // Check that extmaps are not defined on session and media level
-    if session.has_extmap_attribute() {
+    if session.get_attribute(SdpAttributeType::Extmap).is_some() {
         for msection in &session.media {
-            if msection.has_extmap_attribute() {
+            if msection.get_attribute(SdpAttributeType::Extmap).is_some() {
                 return Err(SdpParserError::Sequence {
                                message: "Extmap can't be define at session and media level"
                                    .to_string(),
                                line_number: 0,
                            });
+            }
+        }
+    }
+
+    for msection in &session.media {
+        if msection.get_attribute(SdpAttributeType::Sendonly).is_some() {
+            if let Some(&SdpAttribute::Simulcast(ref x)) = msection.get_attribute(SdpAttributeType::Simulcast) {
+                if x.receive.len() > 0 {
+                    return Err(SdpParserError::Sequence {
+                        message: "Simulcast can't define receive parameters for sendonly".to_string(),
+                        line_number: 0,
+                    });
+                }
+            }
+        }
+        if msection.get_attribute(SdpAttributeType::Recvonly).is_some() {
+            if let Some(&SdpAttribute::Simulcast(ref x)) = msection.get_attribute(SdpAttributeType::Simulcast) {
+                if x.send.len() > 0 {
+                    return Err(SdpParserError::Sequence {
+                        message: "Simulcast can't define send parameters for recvonly".to_string(),
+                        line_number: 0,
+                    });
+                }
             }
         }
     }
@@ -674,7 +731,7 @@ fn test_sanity_check_sdp_session_extmap() {
     }
     let ret = sdp_session.add_attribute(&extmap);
     assert!(ret.is_ok());
-    assert!(sdp_session.has_extmap_attribute());
+    assert!(sdp_session.get_attribute(SdpAttributeType::Extmap).is_some());
 
     assert!(sanity_check_sdp_session(&sdp_session).is_ok());
 
@@ -688,7 +745,7 @@ fn test_sanity_check_sdp_session_extmap() {
     }
     let mut second_media = create_dummy_media_section();
     assert!(second_media.add_attribute(&mextmap).is_ok());
-    assert!(second_media.has_extmap_attribute());
+    assert!(second_media.get_attribute(SdpAttributeType::Extmap).is_some());
 
     sdp_session.extend_media(vec![second_media]);
     assert!(sdp_session.media.len() == 2);
@@ -856,18 +913,23 @@ pub fn parse_sdp(sdp: &str, fail_on_warning: bool) -> Result<SdpSession, SdpPars
             }
         };
     }
-    for warning in warnings {
-        if fail_on_warning {
-            return Err(warning);
-        } else {
-            println!("Warning: {}", warning);
-        };
+
+    if fail_on_warning && (warnings.len() > 0) {
+        return Err(warnings[0].clone());
     }
+
     // We just return the last of the errors here
     if let Some(e) = errors.pop() {
         return Err(e);
     };
-    let session = parse_sdp_vector(&sdp_lines)?;
+
+    let mut session = parse_sdp_vector(&sdp_lines)?;
+    session.warnings = warnings;
+
+    for warning in &session.warnings {
+        println!("Warning: {}", &warning);
+    }
+
     Ok(session)
 }
 

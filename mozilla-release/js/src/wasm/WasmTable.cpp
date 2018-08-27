@@ -20,8 +20,8 @@
 
 #include "mozilla/CheckedInt.h"
 
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmJS.h"
 
@@ -33,7 +33,7 @@ Table::Table(JSContext* cx, const TableDesc& desc, HandleWasmTableObject maybeOb
              UniqueByteArray array)
   : maybeObject_(maybeObject),
     observers_(cx->zone()),
-    array_(Move(array)),
+    array_(std::move(array)),
     kind_(desc.kind),
     length_(desc.limits.initial),
     maximum_(desc.limits.maximum),
@@ -54,7 +54,7 @@ Table::create(JSContext* cx, const TableDesc& desc, HandleWasmTableObject maybeO
     if (!array)
         return nullptr;
 
-    return SharedTable(cx->new_<Table>(cx, desc, maybeObject, Move(array)));
+    return SharedTable(cx->new_<Table>(cx, desc, maybeObject, std::move(array)));
 }
 
 void

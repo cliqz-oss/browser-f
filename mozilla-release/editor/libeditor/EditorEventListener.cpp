@@ -138,7 +138,7 @@ EditorEventListener::Connect(EditorBase* aEditorBase)
 nsresult
 EditorEventListener::InstallToEditor()
 {
-  NS_PRECONDITION(mEditorBase, "The caller must set mEditorBase");
+  MOZ_ASSERT(mEditorBase, "The caller must set mEditorBase");
 
   EventTarget* piTarget = mEditorBase->GetDOMEventTarget();
   NS_ENSURE_TRUE(piTarget, NS_ERROR_FAILURE);
@@ -547,9 +547,9 @@ EditorEventListener::KeyUp(const WidgetKeyboardEvent* aKeyboardEvent)
   if ((aKeyboardEvent->mKeyCode == NS_VK_SHIFT ||
        aKeyboardEvent->mKeyCode == NS_VK_CONTROL) &&
       mShouldSwitchTextDirection && editorBase->IsPlaintextEditor()) {
-    editorBase->SwitchTextDirectionTo(mSwitchToRTL ?
-      nsIPlaintextEditor::eEditorRightToLeft :
-      nsIPlaintextEditor::eEditorLeftToRight);
+    editorBase->SwitchTextDirectionTo(
+                  mSwitchToRTL ? EditorBase::TextDirection::eRTL :
+                                 EditorBase::TextDirection::eLTR);
     mShouldSwitchTextDirection = false;
   }
   return NS_OK;
@@ -898,8 +898,8 @@ EditorEventListener::Drop(DragEvent* aDragEvent)
 
   aDragEvent->StopPropagation();
   aDragEvent->PreventDefault();
-  RefPtr<EditorBase> editorBase(mEditorBase);
-  return editorBase->InsertFromDrop(aDragEvent);
+  RefPtr<TextEditor> textEditor = mEditorBase->AsTextEditor();
+  return textEditor->OnDrop(aDragEvent);
 }
 
 bool
@@ -965,7 +965,7 @@ EditorEventListener::CanDrop(DragEvent* aEvent)
   }
 
   // If selection is collapsed, allow to drop it always.
-  if (selection->Collapsed()) {
+  if (selection->IsCollapsed()) {
     return true;
   }
 

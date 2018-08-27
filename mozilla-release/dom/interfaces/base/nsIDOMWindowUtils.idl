@@ -31,7 +31,6 @@ native nscolor(nscolor);
 
 interface nsIArray;
 interface nsICycleCollectorListener;
-interface nsIDOMNode;
 interface nsIPreloadedStyleSheet;
 interface nsITransferable;
 interface nsIQueryContentEventResult;
@@ -49,6 +48,7 @@ webidl DOMRect;
 webidl Element;
 webidl EventTarget;
 webidl Event;
+webidl Node;
 webidl NodeList;
 
 [scriptable, uuid(4d6732ca-9da7-4176-b8a1-8dde15cd0bf9)]
@@ -780,7 +780,7 @@ interface nsIDOMWindowUtils : nsISupports {
    *
    * This method requires chrome privileges.
    */
-  nsITranslationNodeList getTranslationNodes(in nsIDOMNode aRoot);
+  nsITranslationNodeList getTranslationNodes(in Node aRoot);
 
   /**
    * Compare the two canvases, returning the number of differing pixels and
@@ -936,7 +936,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * @note Event handlers won't get aEvent as parameter, but a similar event.
    *       Also, aEvent should not be reused.
    */
-  boolean dispatchDOMEventViaPresShell(in nsIDOMNode aTarget,
+  boolean dispatchDOMEventViaPresShell(in Node aTarget,
                                        in Event aEvent,
                                        in boolean aTrusted);
 
@@ -1402,7 +1402,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * with that offset if async scrolling is enabled, and then the offset
    * will be removed. Only call this while test-controlled refreshes is enabled.
    */
-  void setAsyncScrollOffset(in nsIDOMNode aNode, in float aX, in float aY);
+  void setAsyncScrollOffset(in Element aElement, in float aX, in float aY);
 
   /**
    * Set async zoom value. aRootElement should be the document element of our
@@ -1410,7 +1410,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * existing zoom if async scrolling is enabled, and then the zoom will be
    * removed. Only call this while test-controlled refreshes is enabled.
    */
-  void setAsyncZoom(in nsIDOMNode aRootElement, in float aValue);
+  void setAsyncZoom(in Element aRootElement, in float aValue);
 
   /**
    * Do a round-trip to the compositor to ensure any pending APZ repaint requests
@@ -1682,7 +1682,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * may be disabled. Such cases are for example the existence of disabled
    * attribute or -moz-user-input: none.
    */
-  boolean isNodeDisabledForEvents(in nsIDOMNode aNode);
+  boolean isNodeDisabledForEvents(in Node aNode);
 
   /**
    * Setting paintFlashing to true will flash newly painted area.
@@ -1701,20 +1701,11 @@ interface nsIDOMWindowUtils : nsISupports {
    * Returns the value of the transform value on the compositor thread.
    * Unlike the above getOMTAStyle, the transform value returned by this
    * includes both of animating and APZ values.
-   * Note: This function doesn't work on WebRender at all.
+   * Note: This function doesn't work on WebRender at all.  Also this function
+   * does work only for transform layer and opacity layer with animations.
    */
   AString getOMTCTransform(in Element aElement,
                            [optional] in AString aPseudoElement);
-
-  /**
-   * Special function that gets a property syncronously from the last composite
-   * that occured.
-   *
-   * Supported properties:
-   *   "overdraw": Report a percentage between 0 and 999 indicate how many times
-   *               each pixels on the destination window have been touched.
-   */
-  float requestCompositorProperty(in AString aProperty);
 
   /**
    * If aHandlingInput is true, this informs the event state manager that
@@ -1849,7 +1840,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * non-deterministic, we have this method here for more determinism when
    * running tests.
    */
-  void forceUseCounterFlush(in nsIDOMNode aNode);
+  void forceUseCounterFlush(in Node aNode);
 
   /**
    * Enable or disable displayport suppression. This is intended to be used by
@@ -1928,13 +1919,6 @@ interface nsIDOMWindowUtils : nsISupports {
   void ensureDirtyRootFrame();
 
   /**
-   * Whether the current document is styled by Servo's style engine.
-   *
-   * Always true, pending removal.
-   */
-  readonly attribute boolean isStyledByServo;
-
-  /**
    * Capture the contents of the current WebRender frame and
    * save them to a folder relative to the current working directory.
    */
@@ -1973,7 +1957,7 @@ interface nsIDOMWindowUtils : nsISupports {
 [scriptable, uuid(c694e359-7227-4392-a138-33c0cc1f15a6)]
 interface nsITranslationNodeList : nsISupports {
   readonly attribute unsigned long length;
-  nsIDOMNode item(in unsigned long index);
+  Node item(in unsigned long index);
 
   // A translation root is a block element, or an inline element
   // which its parent is not a translation node.

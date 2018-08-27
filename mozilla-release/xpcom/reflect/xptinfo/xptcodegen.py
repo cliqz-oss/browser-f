@@ -10,7 +10,6 @@
 
 import json
 from perfecthash import PerfectHash
-import time
 from collections import OrderedDict
 
 # We fix the number of entries in our intermediate table used by the perfect
@@ -18,13 +17,16 @@ from collections import OrderedDict
 # generate a more efficient modulo due to it being a power of 2.
 PHFSIZE = 512
 
+
 def indented(s):
     return s.replace('\n', '\n  ')
+
 
 def cpp(v):
     if type(v) == bool:
         return "true" if v else "false"
     return str(v)
+
 
 def mkstruct(*fields):
     def mk(comment, **vals):
@@ -35,6 +37,7 @@ def mkstruct(*fields):
         r += "\n}"
         return r
     return mk
+
 
 ##########################################################
 # Ensure these fields are in the same order as xptinfo.h #
@@ -129,11 +132,13 @@ def split_at_idxs(s, lengths):
         idx += length
     assert idx == len(s)
 
-def split_iid(iid): # Get the individual components out of an IID string.
-    iid = iid.replace('-', '') # Strip any '-' delimiters
+
+def split_iid(iid):  # Get the individual components out of an IID string.
+    iid = iid.replace('-', '')  # Strip any '-' delimiters
     return tuple(split_at_idxs(iid, (8, 4, 4, 2, 2, 2, 2, 2, 2, 2, 2)))
 
-def iid_bytes(iid): # Get the byte representation of the IID for hashing.
+
+def iid_bytes(iid):  # Get the byte representation of the IID for hashing.
     bs = bytearray()
     for num in split_iid(iid):
         b = bytearray.fromhex(num)
@@ -145,9 +150,38 @@ def iid_bytes(iid): # Get the byte representation of the IID for hashing.
     return bs
 
 # Split a 16-bit integer into its high and low 8 bits
+
+
 def splitint(i):
     assert i < 2**16
     return (i >> 8, i & 0xff)
+
+
+# Occasionally in xpconnect, we need to fabricate types to pass into the
+# conversion methods. In some cases, these types need to be arrays, which hold
+# indicies into the extra types array.
+#
+# These are some types which should have known indexes into the extra types
+# array.
+utility_types = [
+    {'tag': 'TD_INT8'},
+    {'tag': 'TD_UINT8'},
+    {'tag': 'TD_INT16'},
+    {'tag': 'TD_UINT16'},
+    {'tag': 'TD_INT32'},
+    {'tag': 'TD_UINT32'},
+    {'tag': 'TD_INT64'},
+    {'tag': 'TD_UINT64'},
+    {'tag': 'TD_FLOAT'},
+    {'tag': 'TD_DOUBLE'},
+    {'tag': 'TD_BOOL'},
+    {'tag': 'TD_CHAR'},
+    {'tag': 'TD_WCHAR'},
+    {'tag': 'TD_PNSIID'},
+    {'tag': 'TD_PSTRING'},
+    {'tag': 'TD_PWSTRING'},
+    {'tag': 'TD_INTERFACE_IS_TYPE', 'iid_is': 0},
+]
 
 
 # Core of the code generator. Takes a list of raw JSON XPT interfaces, and
@@ -168,7 +202,7 @@ def link_to_cpp(interfaces, fd):
         if name is not None:
             idx = name_phf.lookup(bytearray(name, 'ascii'))
             if iid_phf.values[idx]['name'] == name:
-                return idx + 1 # One-based, so we can use 0 as a sentinel.
+                return idx + 1  # One-based, so we can use 0 as a sentinel.
         return 0
 
     # NOTE: State used while linking. This is done with closures rather than a
@@ -187,7 +221,8 @@ def link_to_cpp(interfaces, fd):
     strings = OrderedDict()
 
     def lower_uuid(uuid):
-        return "{0x%s, 0x%s, 0x%s, {0x%s, 0x%s, 0x%s, 0x%s, 0x%s, 0x%s, 0x%s, 0x%s}}" % split_iid(uuid)
+        return ("{0x%s, 0x%s, 0x%s, {0x%s, 0x%s, 0x%s, 0x%s, 0x%s, 0x%s, 0x%s, 0x%s}}" %
+                split_iid(uuid))
 
     def lower_domobject(do):
         assert do['tag'] == 'TD_DOMOBJECT'
@@ -201,7 +236,7 @@ def link_to_cpp(interfaces, fd):
                 "%d = %s" % (idx, do['name']),
                 # These methods are defined at the top of the generated file.
                 mUnwrap="UnwrapDOMObject<mozilla::dom::prototypes::id::%s, %s>" %
-                    (do['name'], do['native']),
+                (do['name'], do['native']),
                 mWrap="WrapDOMObject<%s>" % do['native'],
                 mCleanup="CleanupDOMObject<%s>" % do['native'],
             ))
@@ -220,7 +255,15 @@ def link_to_cpp(interfaces, fd):
             strings[s] = 0
         return strings[s]
 
-    def describe_type(type): # Create the type's documentation comment.
+    def lower_extra_type(type):
+        key = describe_type(type)
+        idx = type_cache.get(key)
+        if idx is None:
+            idx = type_cache[key] = len(types)
+            types.append(lower_type(type))
+        return idx
+
+    def describe_type(type):  # Create the type's documentation comment.
         tag = type['tag'][3:].lower()
         if tag == 'array':
             return '%s[size_is=%d]' % (
@@ -239,13 +282,7 @@ def link_to_cpp(interfaces, fd):
 
         if tag == 'TD_ARRAY':
             d1 = type['size_is']
-
-            # index of element in extra types list
-            key = describe_type(type['element'])
-            d2 = type_cache.get(key)
-            if d2 is None:
-                d2 = type_cache[key] = len(types)
-                types.append(lower_type(type['element']))
+            d2 = lower_extra_type(type['element'])
 
         elif tag == 'TD_INTERFACE_TYPE':
             d1, d2 = splitint(interface_idx(type['name']))
@@ -283,7 +320,7 @@ def link_to_cpp(interfaces, fd):
         methodname = "%s::%s" % (ifacename, method['name'])
 
         if 'notxpcom' in method['flags'] or 'hidden' in method['flags']:
-            paramidx = name = numparams = 0 # hide parameters
+            paramidx = name = numparams = 0  # hide parameters
         else:
             name = lower_string(method['name'])
             numparams = len(method['params'])
@@ -332,17 +369,17 @@ def link_to_cpp(interfaces, fd):
             mValue="(uint32_t)%d" % const['value'],
         ))
 
-    def lower_prop_hooks(iface): # XXX: Used by xpt shims
+    def lower_prop_hooks(iface):  # XXX: Used by xpt shims
         assert iface['shim'] is not None
 
         # Add an include for the Binding file for the shim.
         includes.add("mozilla/dom/%sBinding.h" %
-            (iface['shimfile'] or iface['shim']))
+                     (iface['shimfile'] or iface['shim']))
 
         # Add the property hook reference to the sPropHooks table.
         prophooks.append(
-            "mozilla::dom::%sBinding::sNativePropertyHooks, // %d = %s(%s)" % \
-                (iface['shim'], len(prophooks), iface['name'], iface['shim']))
+            "mozilla::dom::%sBinding::sNativePropertyHooks, // %d = %s(%s)" %
+            (iface['shim'], len(prophooks), iface['name'], iface['shim']))
 
     def collect_base_info(iface):
         methods = 0
@@ -411,6 +448,12 @@ def link_to_cpp(interfaces, fd):
         for const in iface['consts']:
             lower_const(const, iface['name'])
 
+    # Lower the types which have fixed indexes first, and check that the indexes
+    # seem correct.
+    for expected, ty in enumerate(utility_types):
+        got = lower_extra_type(ty)
+        assert got == expected, "Wrong index when lowering"
+
     # Lower interfaces in the order of the IID phf's values lookup.
     for iface in iid_phf.values:
         lower_iface(iface)
@@ -458,7 +501,7 @@ namespace detail {
     # Static data arrays
     def array(ty, name, els):
         fd.write("const %s %s[] = {%s\n};\n\n" %
-            (ty, name, ','.join(indented('\n' + str(e)) for e in els)))
+                 (ty, name, ','.join(indented('\n' + str(e)) for e in els)))
     array("nsXPTInterfaceInfo", "sInterfaces", ifaces)
     array("nsXPTType", "sTypes", types)
     array("nsXPTParamInfo", "sParams", params)
@@ -486,8 +529,14 @@ namespace detail {
     phfarr("sPHF_Names", "uint32_t", name_phf.intermediate)
     phfarr("sPHF_NamesIdxs", "uint16_t", name_phf.values)
 
+    # Generate some checks that the indexes for the utility types match the
+    # declared ones in xptinfo.h
+    for idx, ty in enumerate(utility_types):
+        fd.write("static_assert(%d == (uint8_t)nsXPTType::Idx::%s, \"Bad idx\");\n" %
+                 (idx, ty['tag'][3:]))
+
     # The footer contains some checks re: the size of the generated arrays.
-    fd.write("""\
+    fd.write("""
 const uint16_t sInterfacesSize = mozilla::ArrayLength(sInterfaces);
 static_assert(sInterfacesSize == mozilla::ArrayLength(sPHF_NamesIdxs),
               "sPHF_NamesIdxs must have same size as sInterfaces");
@@ -530,6 +579,7 @@ def main():
     args = parser.parse_args(sys.argv[1:])
     with open(args.outfile, 'w') as fd:
         link_and_write(args.xpts, fd)
+
 
 if __name__ == '__main__':
     main()

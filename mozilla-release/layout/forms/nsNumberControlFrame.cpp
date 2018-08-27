@@ -415,6 +415,8 @@ nsNumberControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
     nsContentUtils::AddScriptRunner(focusJob);
   }
 
+  SyncDisabledState(); // Sync disabled state of 'mTextField'.
+
   if (StyleDisplay()->mAppearance == NS_THEME_TEXTFIELD) {
     // The author has elected to hide the spinner by setting this
     // -moz-appearance. We will reframe if it changes.
@@ -442,8 +444,6 @@ nsNumberControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
                             spinBoxCI.mChildren,
                             nsGkAtoms::div,
                             CSSPseudoElementType::mozNumberSpinDown);
-
-  SyncDisabledState();
 
   return rv;
 }
@@ -584,7 +584,7 @@ nsNumberControlFrame::IsFocused() const
   // Normally this depends on the state of our anonymous text control (which
   // takes focus for us), but in the case that it does not have a frame we will
   // have focus ourself.
-  return mTextField->AsElement()->State().HasState(NS_EVENT_STATE_FOCUS) ||
+  return mTextField->State().HasState(NS_EVENT_STATE_FOCUS) ||
          mContent->AsElement()->State().HasState(NS_EVENT_STATE_FOCUS);
 }
 
@@ -741,35 +741,6 @@ nsNumberControlFrame::AnonTextControlIsEmpty()
   nsAutoString value;
   HTMLInputElement::FromNode(mTextField)->GetValue(value, CallerType::System);
   return value.IsEmpty();
-}
-
-Element*
-nsNumberControlFrame::GetPseudoElement(CSSPseudoElementType aType)
-{
-  if (aType == CSSPseudoElementType::mozNumberWrapper) {
-    return mOuterWrapper;
-  }
-
-  if (aType == CSSPseudoElementType::mozNumberText) {
-    return mTextField;
-  }
-
-  if (aType == CSSPseudoElementType::mozNumberSpinBox) {
-    // Might be null.
-    return mSpinBox;
-  }
-
-  if (aType == CSSPseudoElementType::mozNumberSpinUp) {
-    // Might be null.
-    return mSpinUp;
-  }
-
-  if (aType == CSSPseudoElementType::mozNumberSpinDown) {
-    // Might be null.
-    return mSpinDown;
-  }
-
-  return nsContainerFrame::GetPseudoElement(aType);
 }
 
 #ifdef ACCESSIBILITY

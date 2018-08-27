@@ -20,7 +20,7 @@ this.EXPORTED_SYMBOLS = ["AbstractTreeItem"];
  *
  * Language:
  *   - An "item" is an instance of an AbstractTreeItem.
- *   - An "element" or "node" is an nsIDOMNode.
+ *   - An "element" or "node" is a Node.
  *
  * The following events are emitted by this tree, always from the root item,
  * with the first argument pointing to the affected child item:
@@ -78,7 +78,7 @@ this.EXPORTED_SYMBOLS = ["AbstractTreeItem"];
  *   }]
  * };
  * let root = new MyCustomTreeItem(dataSrc, { parent: null });
- * root.attachTo(nsIDOMNode);
+ * root.attachTo(Node);
  * root.expand();
  *
  * The following tree view will be generated (after expanding all nodes):
@@ -144,9 +144,9 @@ AbstractTreeItem.prototype = {
    * inheriting classes to create the child node displayed in the tree.
    * Use `this.level` and the provided `arrowNode` as you see fit.
    *
-   * @param nsIDOMNode document
-   * @param nsIDOMNode arrowNode
-   * @return nsIDOMNode
+   * @param Node document
+   * @param Node arrowNode
+   * @return Node
    */
   _displaySelf: function(document, arrowNode) {
     throw new Error(
@@ -206,7 +206,7 @@ AbstractTreeItem.prototype = {
 
   /**
    * Gets the element containing all tree items.
-   * @return nsIDOMNode
+   * @return Node
    */
   get container() {
     return this._containerNode;
@@ -235,20 +235,20 @@ AbstractTreeItem.prototype = {
    * @return object
    */
   get bounds() {
-    let win = this.document.defaultView;
-    let utils = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    const win = this.document.defaultView;
+    const utils = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
     return utils.getBoundsWithoutFlushing(this._containerNode);
   },
 
   /**
    * Creates and appends this tree item to the specified parent element.
    *
-   * @param nsIDOMNode containerNode
+   * @param Node containerNode
    *        The parent element for this tree item (and every other tree item).
-   * @param nsIDOMNode fragmentNode [optional]
+   * @param Node fragmentNode [optional]
    *        An optional document fragment temporarily holding this tree item in
    *        the current batch. Defaults to the `containerNode`.
-   * @param nsIDOMNode beforeNode [optional]
+   * @param Node beforeNode [optional]
    *        An optional child element which should succeed this tree item.
    */
   attachTo: function(containerNode, fragmentNode = containerNode, beforeNode = null) {
@@ -327,7 +327,7 @@ AbstractTreeItem.prototype = {
    * @param function cb
    */
   traverse: function(cb) {
-    for (let child of this._childTreeItems) {
+    for (const child of this._childTreeItems) {
       cb(child);
       child.bfs();
     }
@@ -340,7 +340,7 @@ AbstractTreeItem.prototype = {
    * @return AbstractTreeItem
    */
   find: function(predicate) {
-    for (let child of this._childTreeItems) {
+    for (const child of this._childTreeItems) {
       if (predicate(child) || child.find(predicate)) {
         return child;
       }
@@ -387,7 +387,7 @@ AbstractTreeItem.prototype = {
    * Hides all children of this item in the tree.
    */
   _hideChildren: function() {
-    for (let item of this._childTreeItems) {
+    for (const item of this._childTreeItems) {
       item._targetNode.remove();
       item._hideChildren();
     }
@@ -402,7 +402,7 @@ AbstractTreeItem.prototype = {
       this._fragment = this.document.createDocumentFragment();
     }
 
-    let childTreeItems = this._childTreeItems;
+    const childTreeItems = this._childTreeItems;
 
     for (let i = 0, len = childTreeItems.length; i < len; i++) {
       childTreeItems[i].attachTo(this._containerNode, this._fragment);
@@ -415,9 +415,9 @@ AbstractTreeItem.prototype = {
    * Appends all children successively.
    */
   _appendChildrenSuccessive: function() {
-    let childTreeItems = this._childTreeItems;
-    let expandedChildTreeItems = childTreeItems.filter(e => e._expanded);
-    let nextNode = this._getSiblingAtDelta(1);
+    const childTreeItems = this._childTreeItems;
+    const expandedChildTreeItems = childTreeItems.filter(e => e._expanded);
+    const nextNode = this._getSiblingAtDelta(1);
 
     for (let i = 0, len = childTreeItems.length; i < len; i++) {
       childTreeItems[i].attachTo(this._containerNode, undefined, nextNode);
@@ -441,13 +441,13 @@ AbstractTreeItem.prototype = {
     this._onFocus = this._onFocus.bind(this);
     this._onBlur = this._onBlur.bind(this);
 
-    let document = this.document;
+    const document = this.document;
 
-    let arrowNode = this._arrowNode = document.createElement("hbox");
+    const arrowNode = this._arrowNode = document.createElement("hbox");
     arrowNode.className = "arrow theme-twisty";
     arrowNode.addEventListener("mousedown", this._onArrowClick);
 
-    let targetNode = this._targetNode = this._displaySelf(document, arrowNode);
+    const targetNode = this._targetNode = this._displaySelf(document, arrowNode);
     targetNode.style.MozUserFocus = "normal";
 
     targetNode.addEventListener("mousedown", this._onClick);
@@ -465,12 +465,12 @@ AbstractTreeItem.prototype = {
    *
    * @param number delta
    *        The offset from this item to the target item.
-   * @return nsIDOMNode
+   * @return Node
    *         The element displaying the target item at the specified offset.
    */
   _getSiblingAtDelta: function(delta) {
-    let childNodes = this._containerNode.childNodes;
-    let indexOfSelf = Array.indexOf(childNodes, this._targetNode);
+    const childNodes = this._containerNode.childNodes;
+    const indexOfSelf = Array.indexOf(childNodes, this._targetNode);
     if (indexOfSelf + delta >= 0) {
       return childNodes[indexOfSelf + delta];
     }
@@ -478,15 +478,15 @@ AbstractTreeItem.prototype = {
   },
 
   _getNodesPerPageSize: function() {
-    let childNodes = this._containerNode.childNodes;
-    let nodeHeight = this._getHeight(childNodes[childNodes.length - 1]);
-    let containerHeight = this.bounds.height;
+    const childNodes = this._containerNode.childNodes;
+    const nodeHeight = this._getHeight(childNodes[childNodes.length - 1]);
+    const containerHeight = this.bounds.height;
     return Math.ceil(containerHeight / nodeHeight);
   },
 
   _getHeight: function(elem) {
-    let win = this.document.defaultView;
-    let utils = win.QueryInterface(Ci.nsIInterfaceRequestor)
+    const win = this.document.defaultView;
+    const utils = win.QueryInterface(Ci.nsIInterfaceRequestor)
                    .getInterface(Ci.nsIDOMWindowUtils);
     return utils.getBoundsWithoutFlushing(elem).height;
   },
@@ -495,7 +495,7 @@ AbstractTreeItem.prototype = {
    * Focuses the first item in this tree.
    */
   _focusFirstNode: function() {
-    let childNodes = this._containerNode.childNodes;
+    const childNodes = this._containerNode.childNodes;
     // The root node of the tree may be hidden in practice, so uses for-loop
     // here to find the next visible node.
     for (let i = 0; i < childNodes.length; i++) {
@@ -511,7 +511,7 @@ AbstractTreeItem.prototype = {
    * Focuses the last item in this tree.
    */
   _focusLastNode: function() {
-    let childNodes = this._containerNode.childNodes;
+    const childNodes = this._containerNode.childNodes;
     childNodes[childNodes.length - 1].focus();
   },
 
@@ -519,20 +519,20 @@ AbstractTreeItem.prototype = {
    * Focuses the next item in this tree.
    */
   _focusNextNode: function() {
-    let nextElement = this._getSiblingAtDelta(1);
+    const nextElement = this._getSiblingAtDelta(1);
     if (nextElement) {
       nextElement.focus();
-    } // nsIDOMNode
+    } // Node
   },
 
   /**
    * Focuses the previous item in this tree.
    */
   _focusPrevNode: function() {
-    let prevElement = this._getSiblingAtDelta(-1);
+    const prevElement = this._getSiblingAtDelta(-1);
     if (prevElement) {
       prevElement.focus();
-    } // nsIDOMNode
+    } // Node
   },
 
   /**
@@ -542,7 +542,7 @@ AbstractTreeItem.prototype = {
    * may have multiple children.
    */
   _focusParentNode: function() {
-    let parentItem = this._parentItem;
+    const parentItem = this._parentItem;
     if (parentItem) {
       parentItem.focus();
     } // AbstractTreeItem
@@ -612,7 +612,7 @@ AbstractTreeItem.prototype = {
         return;
 
       case KeyCodes.DOM_VK_PAGE_UP:
-        let pageUpElement =
+        const pageUpElement =
           this._getSiblingAtDelta(-this._getNodesPerPageSize());
         // There's a chance that the root node is hidden. In this case, its
         // height will be 0.
@@ -624,7 +624,7 @@ AbstractTreeItem.prototype = {
         return;
 
       case KeyCodes.DOM_VK_PAGE_DOWN:
-        let pageDownElement =
+        const pageDownElement =
           this._getSiblingAtDelta(this._getNodesPerPageSize());
         if (pageDownElement) {
           pageDownElement.focus();

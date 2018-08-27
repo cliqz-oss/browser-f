@@ -139,14 +139,15 @@ class GeckoViewNavigation extends GeckoViewModule {
         nextTabParentId: aNextTabParentId
       });
     }).then(window => {
-      browser = (window && window.browser);
+      browser = (window && window.browser) || null;
     }, () => {
       browser = null;
     });
 
     // Wait indefinitely for app to respond with a browser or null
-    Services.tm.spinEventLoopUntil(() => browser !== undefined);
-    return browser;
+    Services.tm.spinEventLoopUntil(() =>
+        this.window.closed || browser !== undefined);
+    return browser || null;
   }
 
   // nsIBrowserDOMWindow.
@@ -154,8 +155,8 @@ class GeckoViewNavigation extends GeckoViewModule {
     debug `createContentWindow: uri=${aUri && aUri.spec}
                                 where=${aWhere} flags=${aFlags}`;
 
-    if (LoadURIDelegate.load(this.eventDispatcher, aUri, aWhere, aFlags,
-                             aTriggeringPrincipal)) {
+    if (LoadURIDelegate.load(this.window, this.eventDispatcher,
+                             aUri, aWhere, aFlags)) {
       // The app has handled the load, abort open-window handling.
       Components.returnCode = Cr.NS_ERROR_ABORT;
       return null;
@@ -174,12 +175,12 @@ class GeckoViewNavigation extends GeckoViewModule {
   createContentWindowInFrame(aUri, aParams, aWhere, aFlags, aNextTabParentId,
                              aName) {
     debug `createContentWindowInFrame: uri=${aUri && aUri.spec}
-                                       params=${aParams} where=${aWhere}
-                                       flags=${aFlags}
+                                       where=${aWhere} flags=${aFlags}
                                        nextTabParentId=${aNextTabParentId}
                                        name=${aName}`;
 
-    if (LoadURIDelegate.load(this.eventDispatcher, aUri, aWhere, aFlags, null)) {
+    if (LoadURIDelegate.load(this.window, this.eventDispatcher,
+                             aUri, aWhere, aFlags)) {
       // The app has handled the load, abort open-window handling.
       Components.returnCode = Cr.NS_ERROR_ABORT;
       return null;
@@ -199,8 +200,8 @@ class GeckoViewNavigation extends GeckoViewModule {
     debug `handleOpenUri: uri=${aUri && aUri.spec}
                           where=${aWhere} flags=${aFlags}`;
 
-    if (LoadURIDelegate.load(this.eventDispatcher, aUri, aWhere, aFlags,
-                             aTriggeringPrincipal)) {
+    if (LoadURIDelegate.load(this.window, this.eventDispatcher,
+                             aUri, aWhere, aFlags)) {
       return null;
     }
 
@@ -248,9 +249,6 @@ class GeckoViewNavigation extends GeckoViewModule {
 
   onEnable() {
     debug `onEnable`;
-
-    this.registerContent(
-      "chrome://geckoview/content/GeckoViewNavigationContent.js");
 
     let flags = Ci.nsIWebProgress.NOTIFY_LOCATION;
     this.progressFilter =

@@ -10,8 +10,7 @@
 // devtools.
 // It contains various common helper functions.
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr, Constructor: CC}
-  = Components;
+const { Constructor: CC } = Components;
 
 function scopedCuImport(path) {
   const scope = {};
@@ -25,8 +24,11 @@ const {loader, require} = scopedCuImport("resource://devtools/shared/Loader.jsm"
 const {gDevTools} = require("devtools/client/framework/devtools");
 const {TargetFactory} = require("devtools/client/framework/target");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
+
+// This is overridden in files that load shared-head via loadSubScript.
+// eslint-disable-next-line prefer-const
 let promise = require("promise");
-let defer = require("devtools/shared/defer");
+const defer = require("devtools/shared/defer");
 const Services = require("Services");
 const KeyShortcuts = require("devtools/client/shared/key-shortcuts");
 
@@ -65,10 +67,10 @@ registerCleanupFunction(function() {
  * Watch console messages for failed propType definitions in React components.
  */
 const ConsoleObserver = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 
   observe: function(subject) {
-    let message = subject.wrappedJSObject.arguments[0];
+    const message = subject.wrappedJSObject.arguments[0];
 
     if (message && /Failed propType/.test(message.toString())) {
       ok(false, message);
@@ -87,7 +89,7 @@ const env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironmen
 const DEBUG_ALLOCATIONS = env.get("DEBUG_DEVTOOLS_ALLOCATIONS");
 if (DEBUG_ALLOCATIONS) {
   const { allocationTracker } = require("devtools/shared/test-helpers/allocation-tracker");
-  let tracker = allocationTracker();
+  const tracker = allocationTracker();
   registerCleanupFunction(() => {
     if (DEBUG_ALLOCATIONS == "normal") {
       tracker.logCount();
@@ -102,7 +104,7 @@ var waitForTime = DevToolsUtils.waitForTime;
 
 function loadFrameScriptUtils(browser = gBrowser.selectedBrowser) {
   let mm = browser.messageManager;
-  let frameURL = "chrome://mochitests/content/browser/devtools/client/shared/test/frame-script-utils.js";
+  const frameURL = "chrome://mochitests/content/browser/devtools/client/shared/test/frame-script-utils.js";
   info("Loading the helper frame script " + frameURL);
   mm.loadFrameScript(frameURL, false);
   SimpleTest.registerCleanupFunction(() => {
@@ -111,9 +113,11 @@ function loadFrameScriptUtils(browser = gBrowser.selectedBrowser) {
   return mm;
 }
 
+Services.prefs.setBoolPref("devtools.inspector.three-pane-enabled", true);
 Services.prefs.setBoolPref("devtools.inspector.show-three-pane-tooltip", false);
 registerCleanupFunction(() => {
   Services.prefs.clearUserPref("devtools.dump.emit");
+  Services.prefs.clearUserPref("devtools.inspector.three-pane-enabled");
   Services.prefs.clearUserPref("devtools.inspector.show-three-pane-tooltip");
   Services.prefs.clearUserPref("devtools.toolbox.host");
   Services.prefs.clearUserPref("devtools.toolbox.previousHost");
@@ -135,23 +139,35 @@ registerCleanupFunction(async function cleanup() {
  *   - {ChromeWindow} window Firefox top level window we should use to open the tab
  *   - {Number} userContextId The userContextId of the tab.
  *   - {String} preferredRemoteType
+ *   - {Boolean} waitForLoad Wait for the page in the new tab to load. (Defaults to true.)
  * @return a promise that resolves to the tab object when the url is loaded
  */
-var addTab = async function(url, options = { background: false, window: window }) {
+var addTab = async function(url, options = {}) {
   info("Adding a new tab with URL: " + url);
 
-  let { background } = options;
-  let { gBrowser } = options.window ? options.window : window;
-  let { userContextId } = options;
+  const {
+    background = false,
+    userContextId,
+    preferredRemoteType,
+    waitForLoad = true,
+  } = options;
+  const { gBrowser } = options.window ? options.window : window;
 
-  let tab = BrowserTestUtils.addTab(gBrowser, url,
-    {userContextId, preferredRemoteType: options.preferredRemoteType});
+  const tab = BrowserTestUtils.addTab(gBrowser, url, {
+    userContextId,
+    preferredRemoteType,
+  });
+
   if (!background) {
     gBrowser.selectedTab = tab;
   }
-  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 
-  info("Tab added and finished loading");
+  if (waitForLoad) {
+    await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+    info("Tab added and finished loading");
+  } else {
+    info("Tab added");
+  }
 
   return tab;
 };
@@ -164,8 +180,8 @@ var addTab = async function(url, options = { background: false, window: window }
 var removeTab = async function(tab) {
   info("Removing tab.");
 
-  let { gBrowser } = tab.ownerDocument.defaultView;
-  let onClose = once(gBrowser.tabContainer, "TabClose");
+  const { gBrowser } = tab.ownerDocument.defaultView;
+  const onClose = once(gBrowser.tabContainer, "TabClose");
   gBrowser.removeTab(tab);
   await onClose;
 
@@ -192,7 +208,7 @@ var refreshTab = async function(tab = gBrowser.selectedTab) {
 function synthesizeKeyFromKeyTag(key) {
   is(key && key.tagName, "key", "Successfully retrieved the <key> node");
 
-  let modifiersAttr = key.getAttribute("modifiers");
+  const modifiersAttr = key.getAttribute("modifiers");
 
   let name = null;
 
@@ -204,7 +220,7 @@ function synthesizeKeyFromKeyTag(key) {
 
   isnot(name, null, "Successfully retrieved keycode/key");
 
-  let modifiers = {
+  const modifiers = {
     shiftKey: !!modifiersAttr.match("shift"),
     ctrlKey: !!modifiersAttr.match("control"),
     altKey: !!modifiersAttr.match("alt"),
@@ -226,9 +242,9 @@ function synthesizeKeyFromKeyTag(key) {
  */
 function synthesizeKeyShortcut(key, target) {
   // parseElectronKey requires any window, just to access `KeyboardEvent`
-  let window = Services.appShell.hiddenDOMWindow;
-  let shortcut = KeyShortcuts.parseElectronKey(window, key);
-  let keyEvent = {
+  const window = Services.appShell.hiddenDOMWindow;
+  const shortcut = KeyShortcuts.parseElectronKey(window, key);
+  const keyEvent = {
     altKey: shortcut.alt,
     ctrlKey: shortcut.ctrl,
     metaKey: shortcut.meta,
@@ -261,7 +277,7 @@ function waitForNEvents(target, eventName, numTimes, useCapture = false) {
   let count = 0;
 
   return new Promise(resolve => {
-    for (let [add, remove] of [
+    for (const [add, remove] of [
       ["on", "off"],
       ["addEventListener", "removeEventListener"],
       ["addListener", "removeListener"],
@@ -299,9 +315,9 @@ function waitForNEvents(target, eventName, numTimes, useCapture = false) {
  */
 function waitForDOM(target, selector, expectedLength = 1) {
   return new Promise((resolve) => {
-    let observer = new MutationObserver((mutations) => {
+    const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
-        let elements = mutation.target.querySelectorAll(selector);
+        const elements = mutation.target.querySelectorAll(selector);
 
         if (elements.length === expectedLength) {
           observer.disconnect();
@@ -345,7 +361,7 @@ function once(target, eventName, useCapture = false) {
  *                 - "../../../commandline/test/helpers.js"
  */
 function loadHelperScript(filePath) {
-  let testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
+  const testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
   Services.scriptloader.loadSubScript(testDir + "/" + filePath, this);
 }
 
@@ -383,7 +399,7 @@ var openToolboxForTab = async function(tab, toolId, hostType) {
   info("Opening the toolbox");
 
   let toolbox;
-  let target = TargetFactory.forTab(tab);
+  const target = TargetFactory.forTab(tab);
   await target.makeRemote();
 
   // Check if the toolbox is already loaded.
@@ -415,7 +431,7 @@ var openToolboxForTab = async function(tab, toolId, hostType) {
  * toolbox has been opened. Resolves to the toolbox.
  */
 var openNewTabAndToolbox = async function(url, toolId, hostType) {
-  let tab = await addTab(url);
+  const tab = await addTab(url);
   return openToolboxForTab(tab, toolId, hostType);
 };
 
@@ -426,7 +442,7 @@ var openNewTabAndToolbox = async function(url, toolId, hostType) {
  * closed.
  */
 var closeTabAndToolbox = async function(tab = gBrowser.selectedTab) {
-  let target = TargetFactory.forTab(tab);
+  const target = TargetFactory.forTab(tab);
   if (target) {
     await gDevTools.closeToolbox(target);
   }
@@ -465,14 +481,27 @@ function waitUntil(predicate, interval = 10) {
 }
 
 /**
+ * Variant of waitUntil that accepts a predicate returning a promise.
+ */
+async function asyncWaitUntil(predicate, interval = 10) {
+  let success = await predicate();
+  while (!success) {
+    // Wait for X milliseconds.
+    await new Promise(resolve => setTimeout(resolve, interval));
+    // Test the predicate again.
+    success = await predicate();
+  }
+}
+
+/**
  * Takes a string `script` and evaluates it directly in the content
  * in potentially a different process.
  */
 let MM_INC_ID = 0;
 function evalInDebuggee(script, browser = gBrowser.selectedBrowser) {
   return new Promise(resolve => {
-    let id = MM_INC_ID++;
-    let mm = browser.messageManager;
+    const id = MM_INC_ID++;
+    const mm = browser.messageManager;
     mm.sendAsyncMessage("devtools:test:eval", { script, id });
     mm.addMessageListener("devtools:test:eval:response", handler);
 
@@ -534,7 +563,7 @@ function waitForContextMenu(popup, button, onShown, onHidden) {
 
 function synthesizeContextMenuEvent(el) {
   el.scrollIntoView();
-  let eventDetails = {type: "contextmenu", button: 2};
+  const eventDetails = {type: "contextmenu", button: 2};
   EventUtils.synthesizeMouse(el, 5, 2, eventDetails, el.ownerDocument.defaultView);
 }
 
@@ -560,7 +589,7 @@ function waitForClipboardPromise(setup, expected) {
  */
 function pushPref(preferenceName, value) {
   return new Promise(resolve => {
-    let options = {"set": [[preferenceName, value]]};
+    const options = {"set": [[preferenceName, value]]};
     SpecialPowers.pushPrefEnv(options, resolve);
   });
 }
@@ -575,12 +604,12 @@ function pushPref(preferenceName, value) {
  * @return {?} anything that is found at the provided path in the object.
  */
 function lookupPath(obj, path) {
-  let segments = path.split(".");
+  const segments = path.split(".");
   return segments.reduce((prev, current) => prev[current], obj);
 }
 
 var closeToolbox = async function() {
-  let target = TargetFactory.forTab(gBrowser.selectedTab);
+  const target = TargetFactory.forTab(gBrowser.selectedTab);
   await gDevTools.closeToolbox(target);
 };
 
@@ -589,7 +618,7 @@ var closeToolbox = async function() {
  * Windows (see Bug 666254).
  */
 function emptyClipboard() {
-  let clipboard = Services.clipboard;
+  const clipboard = Services.clipboard;
   clipboard.emptyClipboard(clipboard.kGlobalClipboard);
 }
 
@@ -631,7 +660,7 @@ function waitForTitleChange(toolbox) {
  */
 function createTestHTTPServer() {
   const {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js", {});
-  let server = new HttpServer();
+  const server = new HttpServer();
 
   registerCleanupFunction(async function cleanup() {
     await new Promise(resolve => server.stop(resolve));
@@ -657,7 +686,7 @@ async function injectEventUtilsInContentTask(browser) {
       return;
     }
 
-    let EventUtils = this.EventUtils = {};
+    const EventUtils = this.EventUtils = {};
 
     EventUtils.window = {};
     EventUtils.parent = EventUtils.window;

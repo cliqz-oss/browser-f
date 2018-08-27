@@ -9,61 +9,37 @@ sys.path.append(os.path.dirname(__file__))
 
 from session_store_test_case import SessionStoreTestCase
 
-# We test the following combinations with simulated Windows shutdown:
-# - Start page = restore session (expect restore in all cases)
-#   - RAR (toolkit.winRegisterApplicationRestart) disabled
-#   - RAR enabled, restarted manually
-#
-# - Start page = home
-#   - RAR disabled (no restore)
-#   - RAR enabled:
-#     - restarted by OS (restore)
-#     - restarted manually (no restore)
 
+class TestSessionStoreWindowsShutdown(SessionStoreTestCase):
 
-class TestWindowsShutdown(SessionStoreTestCase):
     def setUp(self):
-        super(TestWindowsShutdown, self).setUp(
-                startup_page=3,
-                no_auto_updates=False)
+        super(TestSessionStoreWindowsShutdown, self).setUp(startup_page=3, no_auto_updates=False)
 
     def test_with_variety(self):
-        """Test session restore selected by user."""
-        self.windows_shutdown_with_variety(restart_by_os=False, expect_restore=True)
+        """ Test restoring a set of windows across Windows shutdown.
 
+        Opens a set of windows, both standard and private, with
+        some number of tabs in them. Once the tabs have loaded, shuts down
+        the browser with the Windows Restart Manager, restarts the browser,
+        and then ensures that the standard tabs have been restored,
+        and that the private ones have not.
 
-class TestWindowsShutdownRegisterRestart(SessionStoreTestCase):
-    def setUp(self):
-        super(TestWindowsShutdownRegisterRestart, self).setUp(
-                startup_page=3,
-                no_auto_updates=False,
-                win_register_restart=True)
+        This specifically exercises the Windows synchronous shutdown
+        mechanism, which terminates the process in response to the
+        Restart Manager's WM_ENDSESSION message.
+        """
 
-    def test_manual_restart(self):
-        """Test that restore tabs works in case of register restart failure."""
-        self.windows_shutdown_with_variety(restart_by_os=False, expect_restore=True)
+        current_windows_set = self.convert_open_windows_to_set()
+        self.assertEqual(current_windows_set, self.all_windows,
+                         msg='Not all requested windows have been opened. Expected {}, got {}.'
+                         .format(self.all_windows, current_windows_set))
 
+        self.marionette.quit(in_app=True, callback=lambda: self.simulate_os_shutdown())
+        self.marionette.start_session()
+        self.marionette.set_context('chrome')
 
-class TestWindowsShutdownNormal(SessionStoreTestCase):
-    def setUp(self):
-        super(TestWindowsShutdownNormal, self).setUp(
-                no_auto_updates=False)
-
-    def test_with_variety(self):
-        """Test that windows are not restored on a normal restart."""
-        self.windows_shutdown_with_variety(restart_by_os=False, expect_restore=False)
-
-
-class TestWindowsShutdownForcedSessionRestore(SessionStoreTestCase):
-    def setUp(self):
-        super(TestWindowsShutdownForcedSessionRestore, self).setUp(
-                no_auto_updates=False,
-                win_register_restart=True)
-
-    def test_os_restart(self):
-        """Test that register application restart restores the session."""
-        self.windows_shutdown_with_variety(restart_by_os=True, expect_restore=True)
-
-    def test_manual_restart(self):
-        """Test that OS shutdown is ignored on manual start."""
-        self.windows_shutdown_with_variety(restart_by_os=False, expect_restore=False)
+        current_windows_set = self.convert_open_windows_to_set()
+        self.assertEqual(current_windows_set, self.test_windows,
+                         msg="""Non private browsing windows should have
+                         been restored. Expected {}, got {}.
+                         """.format(self.test_windows, current_windows_set))

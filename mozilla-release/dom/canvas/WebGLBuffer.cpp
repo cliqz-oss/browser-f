@@ -157,7 +157,7 @@ WebGLBuffer::BufferData(GLenum target, size_t size, const void* data, GLenum usa
     mUsage = usage;
     mByteLength = size;
     mFetchInvalidator.InvalidateCaches();
-    mIndexCache = Move(newIndexCache);
+    mIndexCache = std::move(newIndexCache);
 
     if (mIndexCache) {
         if (!mIndexRanges.empty()) {
@@ -301,7 +301,7 @@ MaxForRange(const void* const start, const uint32_t count,
     return maxVal;
 }
 
-static const uint32_t kMaxIndexRanges = 256;
+static const uint32_t kMaxIndexRanges = 1000 * 1000;
 
 Maybe<uint32_t>
 WebGLBuffer::GetIndexedFetchMaxVert(const GLenum type, const uint64_t byteOffset,

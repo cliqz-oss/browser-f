@@ -23,7 +23,6 @@ DOM_PREF(ImageBitmapExtensionsEnabled, "canvas.imagebitmap_extensions.enabled")
 DOM_PREF(DOMCachesEnabled, "dom.caches.enabled")
 DOM_PREF(DOMCachesTestingEnabled, "dom.caches.testing.enabled")
 DOM_PREF(PerformanceLoggingEnabled, "dom.performance.enable_user_timing_logging")
-DOM_PREF(SchedulerLoggingEnabled, "dom.performance.enable_scheduler_timing")
 DOM_PREF(NotificationEnabled, "dom.webnotifications.enabled")
 DOM_PREF(NotificationEnabledInServiceWorkers, "dom.webnotifications.serviceworker.enabled")
 DOM_PREF(NotificationRIEnabled, "dom.webnotifications.requireinteraction.enabled")
@@ -42,6 +41,9 @@ DOM_PREF(EnableAutoDeclineCanvasPrompts, "privacy.resistFingerprinting.autoDecli
 DOM_PREF(DevToolsEnabled, "devtools.enabled")
 DOM_PREF(PerformanceObserverEnabled, "dom.enable_performance_observer")
 DOM_PREF(IndexedDBStorageOptionsEnabled, "dom.indexedDB.storageOption.enabled")
+#ifdef JS_BUILD_BINAST
+DOM_PREF(BinASTEncodingEnabled, "dom.script_loader.binast_encoding.enabled")
+#endif
 
 DOM_WEBIDL_PREF(ImageBitmapExtensionsEnabled)
 DOM_WEBIDL_PREF(DOMCachesEnabled)

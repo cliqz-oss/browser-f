@@ -19,6 +19,7 @@ class Font extends PureComponent {
       font: PropTypes.shape(Types.font).isRequired,
       fontOptions: PropTypes.shape(Types.fontOptions).isRequired,
       onPreviewFonts: PropTypes.func.isRequired,
+      onToggleFontHighlight: PropTypes.func.isRequired,
     };
   }
 
@@ -57,11 +58,11 @@ class Font extends PureComponent {
     // Cut the rule text in 3 parts: the selector, the declarations, the closing brace.
     // This way we can collapse the declarations by default and display an expander icon
     // to expand them again.
-    let leading = ruleText.substring(0, ruleText.indexOf("{") + 1);
-    let body = ruleText.substring(ruleText.indexOf("{") + 1, ruleText.lastIndexOf("}"));
-    let trailing = ruleText.substring(ruleText.lastIndexOf("}"));
+    const leading = ruleText.substring(0, ruleText.indexOf("{") + 1);
+    const body = ruleText.substring(ruleText.indexOf("{") + 1, ruleText.lastIndexOf("}"));
+    const trailing = ruleText.substring(ruleText.lastIndexOf("}"));
 
-    let { isFontFaceRuleExpanded } = this.state;
+    const { isFontFaceRuleExpanded } = this.state;
 
     return dom.pre(
       {
@@ -82,9 +83,9 @@ class Font extends PureComponent {
   }
 
   renderFontCSSCodeTwisty() {
-    let { isFontFaceRuleExpanded } = this.state;
+    const { isFontFaceRuleExpanded } = this.state;
 
-    let attributes = {
+    const attributes = {
       className: "theme-twisty",
       onClick: this.onFontFaceRuleToggle,
     };
@@ -96,15 +97,16 @@ class Font extends PureComponent {
   }
 
   render() {
-    let {
+    const {
       font,
       fontOptions,
       onPreviewFonts,
+      onToggleFontHighlight,
     } = this.props;
 
-    let { previewText } = fontOptions;
+    const { previewText } = fontOptions;
 
-    let {
+    const {
       previewUrl,
       rule,
       ruleText,
@@ -114,7 +116,7 @@ class Font extends PureComponent {
       {
         className: "font",
       },
-      FontMeta({ font }),
+      FontMeta({ font, onToggleFontHighlight }),
       FontPreview({ previewText, previewUrl, onPreviewFonts }),
       this.renderFontCSSCode(rule, ruleText)
     );

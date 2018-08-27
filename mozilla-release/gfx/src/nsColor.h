@@ -86,10 +86,6 @@ inline uint32_t RoundingDivideBy255(uint32_t n)
   return (n + 127) / 255;
 }
 
-// Blend one RGBA color with another based on a given ratio.
-// It is a linear interpolation on each channel with alpha premultipled.
-nscolor LinearBlendColors(nscolor aBg, nscolor aFg, uint_fast8_t aFgRatio);
-
 } // namespace mozilla
 
 // Translate a hex string to a color. Return true if it parses ok,
@@ -103,10 +99,6 @@ bool NS_LooseHexToRGB(const nsString& aBuf, nscolor* aResult);
 // Translate a color name to a color. Return true if it parses ok,
 // otherwise return false.
 bool NS_ColorNameToRGB(const nsAString& aBuf, nscolor* aResult);
-
-// Returns an array of all possible color names, and sets
-// *aSizeArray to the size of that array. Do NOT call |free()| on this array.
-const char * const * NS_AllColorNames(size_t *aSizeArray);
 
 // function to convert from HSL color space to RGB color space
 // the float parameters are all expected to be in the range 0-1

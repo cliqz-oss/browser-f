@@ -5,7 +5,6 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 # ***** END LICENSE BLOCK *****
 
-import argparse
 import math
 import os
 import posixpath
@@ -13,7 +12,6 @@ import re
 import sys
 import mozinfo
 from manifestparser import TestManifest
-from mozharness.base.script import PostScriptAction
 
 
 class SingleTestMixin(object):
@@ -29,7 +27,8 @@ class SingleTestMixin(object):
         manifests = [
             (os.path.join(dirs['abs_mochitest_dir'], 'tests', 'mochitest.ini'), 'plain'),
             (os.path.join(dirs['abs_mochitest_dir'], 'chrome', 'chrome.ini'), 'chrome'),
-            (os.path.join(dirs['abs_mochitest_dir'], 'browser', 'browser-chrome.ini'), 'browser-chrome'),
+            (os.path.join(dirs['abs_mochitest_dir'], 'browser',
+                          'browser-chrome.ini'), 'browser-chrome'),
             (os.path.join(dirs['abs_mochitest_dir'], 'a11y', 'a11y.ini'), 'a11y'),
             (os.path.join(dirs['abs_xpcshell_dir'], 'tests', 'xpcshell.ini'), 'xpcshell'),
         ]
@@ -43,15 +42,17 @@ class SingleTestMixin(object):
                 # specifies tests by path (it cannot distinguish between two or more
                 # tests with the same path specified in multiple manifests).
                 disabled = [t['relpath'] for t in active if 'disabled' in t]
-                new_by_path = {t['relpath']:(suite,t.get('subsuite')) \
-                               for t in active if 'disabled' not in t and \
+                new_by_path = {t['relpath']: (suite, t.get('subsuite'))
+                               for t in active if 'disabled' not in t and
                                t['relpath'] not in disabled}
                 tests_by_path.update(new_by_path)
                 self.info("Per-test run updated with manifest %s" % path)
 
         ref_manifests = [
-            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'layout', 'reftests', 'reftest.list'), 'reftest', 'gpu'), #gpu
-            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'testing', 'crashtest', 'crashtests.list'), 'crashtest', None),
+            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'layout',
+                          'reftests', 'reftest.list'), 'reftest', 'gpu'),  # gpu
+            (os.path.join(dirs['abs_reftest_dir'], 'tests', 'testing',
+                          'crashtest', 'crashtests.list'), 'crashtest', None),
         ]
         sys.path.append(dirs['abs_reftest_dir'])
         import manifest
@@ -60,7 +61,9 @@ class SingleTestMixin(object):
             if os.path.exists(path):
                 man = manifest.ReftestManifest()
                 man.load(path)
-                tests_by_path.update({os.path.relpath(t,self.reftest_test_dir):(suite,subsuite) for t in man.files})
+                tests_by_path.update({
+                    os.path.relpath(t, self.reftest_test_dir): (suite, subsuite) for t in man.files
+                })
                 self.info("Per-test run updated with manifest %s" % path)
 
         suite = 'jsreftest'
@@ -78,7 +81,7 @@ class SingleTestMixin(object):
                 if epos > 0:
                     relpath = t[epos+1:]
                     relpath = os.path.join('js', 'src', 'tests', relpath)
-                    tests_by_path.update({relpath:(suite,None)})
+                    tests_by_path.update({relpath: (suite, None)})
                 else:
                     self.warning("unexpected jsreftest test format: %s" % str(t))
             self.info("Per-test run updated with manifest %s" % path)
@@ -89,35 +92,37 @@ class SingleTestMixin(object):
             # automation-relevance uses posixpath.sep
             file = file.replace(posixpath.sep, os.sep)
             entry = tests_by_path.get(file)
-            if entry:
-                if gpu and entry[1] not in ['gpu', 'webgl']:
-                    continue
-                elif not gpu and entry[1] in ['gpu', 'webgl']:
-                    continue
+            if not entry:
+                continue
 
-                self.info("Per-test run found test %s" % file)
-                subsuite_mapping = {
-                    ('browser-chrome', 'clipboard') : 'browser-chrome-clipboard',
-                    ('chrome', 'clipboard') : 'chrome-clipboard',
-                    ('plain', 'clipboard') : 'plain-clipboard',
-                    ('browser-chrome', 'devtools') : 'mochitest-devtools-chrome',
-                    ('browser-chrome', 'screenshots') : 'browser-chrome-screenshots',
-                    ('plain', 'media') : 'mochitest-media',
-                     # below should be on test-verify-gpu job
-                    ('browser-chrome', 'gpu') : 'browser-chrome-gpu',
-                    ('chrome', 'gpu') : 'chrome-gpu',
-                    ('plain', 'gpu') : 'plain-gpu',
-                    ('plain', 'webgl') : 'mochitest-gl',
-                }
-                if entry in subsuite_mapping:
-                    suite = subsuite_mapping[entry]
-                else:
-                    suite = entry[0]
-                suite_files = self.suites.get(suite)
-                if not suite_files:
-                    suite_files = []
-                suite_files.append(file)
-                self.suites[suite] = suite_files
+            if gpu and entry[1] not in ['gpu', 'webgl']:
+                continue
+            elif not gpu and entry[1] in ['gpu', 'webgl']:
+                continue
+
+            self.info("Per-test run found test %s (%s)" % (file, entry[0]))
+            subsuite_mapping = {
+                ('browser-chrome', 'clipboard'): 'browser-chrome-clipboard',
+                ('chrome', 'clipboard'): 'chrome-clipboard',
+                ('plain', 'clipboard'): 'plain-clipboard',
+                ('browser-chrome', 'devtools'): 'mochitest-devtools-chrome',
+                ('browser-chrome', 'screenshots'): 'browser-chrome-screenshots',
+                ('plain', 'media'): 'mochitest-media',
+                # below should be on test-verify-gpu job
+                ('browser-chrome', 'gpu'): 'browser-chrome-gpu',
+                ('chrome', 'gpu'): 'chrome-gpu',
+                ('plain', 'gpu'): 'plain-gpu',
+                ('plain', 'webgl'): 'mochitest-gl',
+            }
+            if entry in subsuite_mapping:
+                suite = subsuite_mapping[entry]
+            else:
+                suite = entry[0]
+            suite_files = self.suites.get(suite)
+            if not suite_files:
+                suite_files = []
+            suite_files.append(file)
+            self.suites[suite] = suite_files
 
     def _find_wpt_tests(self, dirs, changed_files):
         # Setup sys.path to include all the dependencies required to import
@@ -181,19 +186,22 @@ class SingleTestMixin(object):
         mozinfo.update({'verify': True})
         self.info("Per-test run using mozinfo: %s" % str(mozinfo.info))
 
-        # determine which files were changed on this push
-        url = '%s/json-automationrelevance/%s' % (repository.rstrip('/'), revision)
-        contents = self.retry(get_automationrelevance, attempts=2, sleeptime=10)
         changed_files = set()
-        for c in contents['changesets']:
-            self.info(" {cset} {desc}".format(
-                cset=c['node'][0:12],
-                desc=c['desc'].splitlines()[0].encode('ascii', 'ignore')))
-            changed_files |= set(c['files'])
+        if os.environ.get('MOZHARNESS_TEST_PATHS', None) is not None:
+            changed_files |= set(os.environ['MOZHARNESS_TEST_PATHS'].split(':'))
+        else:
+            # determine which files were changed on this push
+            url = '%s/json-automationrelevance/%s' % (repository.rstrip('/'), revision)
+            contents = self.retry(get_automationrelevance, attempts=2, sleeptime=10)
+            for c in contents['changesets']:
+                self.info(" {cset} {desc}".format(
+                    cset=c['node'][0:12],
+                    desc=c['desc'].splitlines()[0].encode('ascii', 'ignore')))
+                changed_files |= set(c['files'])
 
         if self.config.get('per_test_category') == "web-platform":
             self._find_wpt_tests(dirs, changed_files)
-        elif self.config.get('gpu_required') == True:
+        elif self.config.get('gpu_required', 'False') != 'False':
             self._find_misc_tests(dirs, changed_files, gpu=True)
         else:
             self._find_misc_tests(dirs, changed_files)
@@ -292,7 +300,7 @@ class SingleTestMixin(object):
                 suites = self.suites.keys()
             elif all_suites and self.tests_downloaded:
                 suites = dict((key, all_suites.get(key)) for key in
-                    self.suites if key in all_suites.keys())
+                              self.suites if key in all_suites.keys())
             else:
                 # Until test zips are downloaded, manifests are not available,
                 # so it is not possible to determine which suites are active/
@@ -323,4 +331,3 @@ class SingleTestMixin(object):
             test_name = test_name.rstrip(os.path.sep)
         self.log("TinderboxPrint: Per-test run of %s<br/>: %s" %
                  (test_name, tbpl_status), level=log_level)
-

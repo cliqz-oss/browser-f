@@ -1175,6 +1175,7 @@ IsHandlerInvalidationNeeded(uint32_t aEvent)
     case EVENT_OBJECT_NAMECHANGE:
     case EVENT_OBJECT_DESCRIPTIONCHANGE:
     case EVENT_OBJECT_VALUECHANGE:
+    case EVENT_OBJECT_FOCUS:
     case IA2_EVENT_ACTION_CHANGED:
     case IA2_EVENT_DOCUMENT_LOAD_COMPLETE:
     case IA2_EVENT_DOCUMENT_LOAD_STOPPED:
@@ -1728,12 +1729,12 @@ AccessibleWrap::SetHandlerControl(DWORD aPid, RefPtr<IHandlerControl> aCtrl)
     ClearOnShutdown(&sHandlerControllers);
   }
 
-  HandlerControllerData ctrlData(aPid, Move(aCtrl));
+  HandlerControllerData ctrlData(aPid, std::move(aCtrl));
   if (sHandlerControllers->Contains(ctrlData)) {
     return;
   }
 
-  sHandlerControllers->AppendElement(Move(ctrlData));
+  sHandlerControllers->AppendElement(std::move(ctrlData));
 }
 
 /* static */

@@ -84,20 +84,13 @@ const SearchAutocompleteProviderInternal = {
 
     // The search engines will always be processed in the order returned by the
     // search service, which can be defined by the user.
-    Services.search.getVisibleEngines().forEach(e => this._addEngine(e));
+    Services.search.getEngines().forEach(e => this._addEngine(e));
   },
 
   _addEngine(engine) {
-    if (engine.alias) {
-      this.aliasMatches.push({
-        alias: engine.alias,
-        engineName: engine.name,
-        iconUrl: engine.iconURI ? engine.iconURI.spec : null,
-      });
-    }
-
     let domain = engine.getResultDomain();
-    if (domain) {
+
+    if (domain && !engine.hidden) {
       this.priorityMatches.push({
         token: domain,
         // The searchForm property returns a simple URL for the search engine, but
@@ -105,6 +98,22 @@ const SearchAutocompleteProviderInternal = {
         url: engine.searchForm,
         engineName: engine.name,
         iconUrl: engine.iconURI ? engine.iconURI.spec : null,
+      });
+    }
+
+    let aliases = [];
+
+    if (engine.alias) {
+      aliases.push(engine.alias);
+    }
+    aliases.push(...engine.wrappedJSObject._internalAliases);
+
+    if (aliases.length) {
+      this.aliasMatches.push({
+        aliases,
+        engineName: engine.name,
+        iconUrl: engine.iconURI ? engine.iconURI.spec : null,
+        resultDomain: domain,
       });
     }
   },
@@ -231,8 +240,10 @@ var PlacesSearchAutocompleteProvider = Object.freeze({
 
     // Match at the beginning for now.  In the future, an "options" argument may
     // allow the matching behavior to be tuned.
-    return SearchAutocompleteProviderInternal.priorityMatches
-                                             .find(m => m.token.startsWith(searchToken));
+    return SearchAutocompleteProviderInternal.priorityMatches.find(m => {
+      return m.token.startsWith(searchToken) ||
+             m.token.startsWith("www." + searchToken);
+    });
   },
 
   /**
@@ -249,13 +260,15 @@ var PlacesSearchAutocompleteProvider = Object.freeze({
    *           alias: The matched search engine's alias.
    *           engineName: The display name of the search engine.
    *           iconUrl: Icon associated to the match, or null if not available.
+   *           resultDomain: The domain name for the search engine's results;
+   *                         see nsISearchEngine::getResultDomain.
    *         }
    */
   async findMatchByAlias(searchToken) {
     await this.ensureInitialized();
 
     return SearchAutocompleteProviderInternal.aliasMatches
-             .find(m => m.alias.toLocaleLowerCase() == searchToken.toLocaleLowerCase());
+             .find(m => m.aliases.some(a => a.toLocaleLowerCase() == searchToken.toLocaleLowerCase()));
   },
 
   async getDefaultMatch() {

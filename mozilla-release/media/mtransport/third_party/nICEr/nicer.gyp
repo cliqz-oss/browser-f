@@ -17,15 +17,15 @@
           'include_dirs' : [
               ## EXTERNAL
               # nrappkit
-	      '../nrappkit/src/event',
-	      '../nrappkit/src/log',
+              '../nrappkit/src/event',
+              '../nrappkit/src/log',
               '../nrappkit/src/plugin',
-	      '../nrappkit/src/registry',
-	      '../nrappkit/src/share',
-	      '../nrappkit/src/stats',
-	      '../nrappkit/src/util',
-	      '../nrappkit/src/util/libekr',
- 	      '../nrappkit/src/port/generic/include',
+              '../nrappkit/src/registry',
+              '../nrappkit/src/share',
+              '../nrappkit/src/stats',
+              '../nrappkit/src/util',
+              '../nrappkit/src/util/libekr',
+              '../nrappkit/src/port/generic/include',
 
               # INTERNAL
               "./src/crypto",
@@ -133,13 +133,13 @@
               'USE_TURN',
               'NR_SOCKET_IS_VOID_PTR',
               'restrict=',
-	      'R_PLATFORM_INT_TYPES=<stdint.h>',
-	      'R_DEFINED_INT2=int16_t',
-	      'R_DEFINED_UINT2=uint16_t',
-	      'R_DEFINED_INT4=int32_t',
-	      'R_DEFINED_UINT4=uint32_t',
-	      'R_DEFINED_INT8=int64_t',
-	      'R_DEFINED_UINT8=uint64_t',
+              'R_PLATFORM_INT_TYPES=<stdint.h>',
+              'R_DEFINED_INT2=int16_t',
+              'R_DEFINED_UINT2=uint16_t',
+              'R_DEFINED_INT4=int32_t',
+              'R_DEFINED_UINT4=uint32_t',
+              'R_DEFINED_INT8=int64_t',
+              'R_DEFINED_UINT8=uint64_t',
           ],
 
           'conditions' : [
@@ -175,18 +175,19 @@
                      '__UNUSED__=__attribute__((unused))',
                  ],
 
-		 'include_dirs': [
-		     '../nrappkit/src/port/darwin/include'
-		 ],
+                 'include_dirs': [
+                     '../nrappkit/src/port/darwin/include'
+                 ],
 
-		 'sources': [
-		 ],
+                 'sources': [
+                 ],
               }],
 
               ## Win
               [ 'OS == "win"', {
                 'defines' : [
                     'WIN32',
+                    '_WINSOCK_DEPRECATED_NO_WARNINGS',
                     'USE_ICE',
                     'USE_TURN',
                     'USE_RFC_3489_BACKWARDS_COMPATIBLE',
@@ -198,10 +199,11 @@
                     'NO_REG_RPC'
                 ],
 
-		 'include_dirs': [
-		     '../nrappkit/src/port/win32/include'
-		 ],
+                 'include_dirs': [
+                     '../nrappkit/src/port/win32/include'
+                 ],
               }],
+
               ## Linux/Android
               [ '(OS == "linux") or (OS=="android")', {
                 'cflags_mozilla': [
@@ -225,21 +227,26 @@
                      '__UNUSED__=__attribute__((unused))',
                  ],
 
-		 'include_dirs': [
-		     '../nrappkit/src/port/linux/include'
-		 ],
+                 'include_dirs': [
+                     '../nrappkit/src/port/linux/include'
+                 ],
 
-		 'sources': [
-		 ],
+                 'sources': [
+                 ],
              }],
              ['have_ethtool_cmd_speed_hi==0', {
                'defines': [
                   "DONT_HAVE_ETHTOOL_SPEED_HI",
                ]
              }],
-        ['libfuzzer == 1', {
+        ['(libfuzzer == 1) and (libfuzzer_fuzzer_no_link_flag == 1)', {
           'cflags_mozilla': [
-            '-fsanitize-coverage=trace-pc-guard',
+            '-fsanitize=fuzzer-no-link'
+         ],
+        }],
+        ['(libfuzzer == 1) and (libfuzzer_fuzzer_no_link_flag == 0)', {
+          'cflags_mozilla': [
+            '-fsanitize-coverage=trace-pc-guard,trace-cmp'
          ],
         }],
           ],

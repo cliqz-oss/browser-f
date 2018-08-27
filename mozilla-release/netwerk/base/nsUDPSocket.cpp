@@ -21,7 +21,7 @@
 #include "prio.h"
 #include "nsNetAddr.h"
 #include "nsNetSegmentUtils.h"
-#include "NetworkActivityMonitor.h"
+#include "IOActivityMonitor.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStreamUtils.h"
 #include "nsIPipe.h"
@@ -264,6 +264,7 @@ nsUDPSocket::nsUDPSocket()
   , mByteReadCount(0)
   , mByteWriteCount(0)
 {
+  this->mAddr.inet = {};
   mAddr.raw.family = PR_AF_UNSPEC;
   // we want to be able to access the STS directly, and it may not have been
   // constructed yet.  the STS constructor sets gSocketTransportService.
@@ -678,8 +679,8 @@ nsUDPSocket::InitWithAddress(const NetAddr *aAddr, nsIPrincipal *aPrincipal,
 
   PRNetAddrToNetAddr(&addr, &mAddr);
 
-  // create proxy via NetworkActivityMonitor
-  NetworkActivityMonitor::AttachIOLayer(mFD);
+  // create proxy via IOActivityMonitor
+  IOActivityMonitor::MonitorSocket(mFD);
 
   // wait until AsyncListen is called before polling the socket for
   // client connections.
@@ -1151,7 +1152,7 @@ public:
     : Runnable("net::SendRequestRunnable")
     , mSocket(aSocket)
     , mAddr(aAddr)
-    , mData(Move(aData))
+    , mData(std::move(aData))
   { }
 
   NS_DECL_NSIRUNNABLE
@@ -1270,7 +1271,7 @@ nsUDPSocket::SendWithAddress(const NetAddr *aAddr, const uint8_t *aData,
     }
 
     nsresult rv = mSts->Dispatch(
-      new SendRequestRunnable(this, *aAddr, Move(fallibleArray)),
+      new SendRequestRunnable(this, *aAddr, std::move(fallibleArray)),
       NS_DISPATCH_NORMAL);
     NS_ENSURE_SUCCESS(rv, rv);
     *_retval = aDataLength;

@@ -94,10 +94,10 @@ DocAccessibleParent::RecvShowEvent(const ShowEventData& aData,
   uint32_t type = nsIAccessibleEvent::EVENT_SHOW;
   xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(target);
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
-  nsIDOMNode* node = nullptr;
+  nsINode* node = nullptr;
   RefPtr<xpcAccEvent> event = new xpcAccEvent(type, xpcAcc, doc, node,
                                               aFromUser);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }
@@ -185,7 +185,7 @@ DocAccessibleParent::RecvHideEvent(const uint64_t& aRootID,
     ProxyAccessible* prev = root->PrevSibling();
     xpcAccessibleGeneric* xpcPrev = prev ? GetXPCAccessible(prev) : nullptr;
     xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
-    nsIDOMNode* node = nullptr;
+    nsINode* node = nullptr;
     event = new xpcAccHideEvent(type, xpcAcc, doc, node, aFromUser, xpcParent,
                                 xpcNext, xpcPrev);
   }
@@ -196,7 +196,7 @@ DocAccessibleParent::RecvHideEvent(const uint64_t& aRootID,
   MOZ_ASSERT(CheckDocTree());
 
   if (event) {
-    nsCoreUtils::DispatchAccEvent(Move(event));
+    nsCoreUtils::DispatchAccEvent(std::move(event));
   }
 
   return IPC_OK();
@@ -223,11 +223,11 @@ DocAccessibleParent::RecvEvent(const uint64_t& aID, const uint32_t& aEventType)
 
   xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(proxy);
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
-  nsIDOMNode* node = nullptr;
+  nsINode* node = nullptr;
   bool fromUser = true; // XXX fix me
   RefPtr<xpcAccEvent> event = new xpcAccEvent(aEventType, xpcAcc, doc, node,
                                               fromUser);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }
@@ -259,11 +259,11 @@ DocAccessibleParent::RecvStateChangeEvent(const uint64_t& aID,
   bool extra;
   uint32_t state = nsAccUtils::To32States(aState, &extra);
   bool fromUser = true; // XXX fix this
-  nsIDOMNode* node = nullptr; // XXX can we do better?
+  nsINode* node = nullptr; // XXX can we do better?
   RefPtr<xpcAccStateChangeEvent> event =
     new xpcAccStateChangeEvent(type, xpcAcc, doc, node, fromUser, state, extra,
                                aEnabled);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }
@@ -297,12 +297,12 @@ DocAccessibleParent::RecvCaretMoveEvent(const uint64_t& aID,
 
   xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(proxy);
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
-  nsIDOMNode* node = nullptr;
+  nsINode* node = nullptr;
   bool fromUser = true; // XXX fix me
   uint32_t type = nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED;
   RefPtr<xpcAccCaretMoveEvent> event =
     new xpcAccCaretMoveEvent(type, xpcAcc, doc, node, fromUser, aOffset);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }
@@ -335,11 +335,11 @@ DocAccessibleParent::RecvTextChangeEvent(const uint64_t& aID,
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
   uint32_t type = aIsInsert ? nsIAccessibleEvent::EVENT_TEXT_INSERTED :
                               nsIAccessibleEvent::EVENT_TEXT_REMOVED;
-  nsIDOMNode* node = nullptr;
+  nsINode* node = nullptr;
   RefPtr<xpcAccTextChangeEvent> event =
     new xpcAccTextChangeEvent(type, xpcAcc, doc, node, aFromUser, aStart, aLen,
                               aIsInsert, aStr);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }
@@ -383,7 +383,44 @@ DocAccessibleParent::RecvSelectionEvent(const uint64_t& aID,
   xpcAccessibleDocument* xpcDoc = GetAccService()->GetXPCDocument(this);
   RefPtr<xpcAccEvent> event = new xpcAccEvent(aType, xpcTarget, xpcDoc,
                                               nullptr, false);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
+
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+DocAccessibleParent::RecvVirtualCursorChangeEvent(const uint64_t& aID,
+                                                  const uint64_t& aOldPositionID,
+                                                  const int32_t& aOldStartOffset,
+                                                  const int32_t& aOldEndOffset,
+                                                  const uint64_t& aNewPositionID,
+                                                  const int32_t& aNewStartOffset,
+                                                  const int32_t& aNewEndOffset,
+                                                  const int16_t& aReason,
+                                                  const bool& aFromUser)
+{
+  ProxyAccessible* target = GetAccessible(aID);
+  ProxyAccessible* oldPosition = GetAccessible(aOldPositionID);
+  ProxyAccessible* newPosition = GetAccessible(aNewPositionID);
+
+#if defined(ANDROID)
+  ProxyVirtualCursorChangeEvent(target,
+                                newPosition, aOldStartOffset, aOldEndOffset,
+                                oldPosition, aNewStartOffset, aNewEndOffset,
+                                aReason, aFromUser);
+#endif
+
+  xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
+  RefPtr<xpcAccVirtualCursorChangeEvent> event =
+    new xpcAccVirtualCursorChangeEvent(nsIAccessibleEvent::EVENT_VIRTUALCURSOR_CHANGED,
+                                       GetXPCAccessible(target), doc,
+                                       nullptr, aFromUser,
+                                       GetXPCAccessible(oldPosition),
+                                       aOldStartOffset, aOldEndOffset,
+                                       GetXPCAccessible(newPosition),
+                                       aNewStartOffset, aNewEndOffset,
+                                       aReason);
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }
@@ -631,7 +668,7 @@ DocAccessibleParent::MaybeInitWindowEmulation()
                                                IID_IAccessible,
                                                getter_AddRefs(hwndAcc)))) {
       RefPtr<IDispatch> wrapped(mscom::PassthruProxy::Wrap<IDispatch>(WrapNotNull(hwndAcc)));
-      hWndAccHolder.Set(IDispatchHolder::COMPtrType(mscom::ToProxyUniquePtr(Move(wrapped))));
+      hWndAccHolder.Set(IDispatchHolder::COMPtrType(mscom::ToProxyUniquePtr(std::move(wrapped))));
     }
 
     Unused << SendEmulatedWindow(reinterpret_cast<uintptr_t>(mEmulatedWindowHandle),
@@ -671,14 +708,14 @@ DocAccessibleParent::SendParentCOMProxy()
 
   RefPtr<IDispatch> wrapped(mscom::PassthruProxy::Wrap<IDispatch>(WrapNotNull(nativeAcc)));
 
-  IDispatchHolder::COMPtrType ptr(mscom::ToProxyUniquePtr(Move(wrapped)));
-  IDispatchHolder holder(Move(ptr));
+  IDispatchHolder::COMPtrType ptr(mscom::ToProxyUniquePtr(std::move(wrapped)));
+  IDispatchHolder holder(std::move(ptr));
   if (!PDocAccessibleParent::SendParentCOMProxy(holder)) {
     return;
   }
 
 #if defined(MOZ_CONTENT_SANDBOX)
-  mParentProxyStream = Move(holder.GetPreservedStream());
+  mParentProxyStream = std::move(holder.GetPreservedStream());
 #endif // defined(MOZ_CONTENT_SANDBOX)
 }
 
@@ -745,11 +782,11 @@ DocAccessibleParent::RecvFocusEvent(const uint64_t& aID,
 
   xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(proxy);
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
-  nsIDOMNode* node = nullptr;
+  nsINode* node = nullptr;
   bool fromUser = true; // XXX fix me
   RefPtr<xpcAccEvent> event = new xpcAccEvent(nsIAccessibleEvent::EVENT_FOCUS,
                                               xpcAcc, doc, node, fromUser);
-  nsCoreUtils::DispatchAccEvent(Move(event));
+  nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
 }

@@ -33,7 +33,11 @@
                 class="accessory-button"
                 data-l10n-id="forms-exceptions"
                 preference="pref.privacy.disable_button.view_passwords_exceptions"
-                search-l10n-ids="permissions-address"/>
+                search-l10n-ids="
+                  permissions-address,
+                  permissions-exceptions-saved-logins-window.title,
+                  permissions-exceptions-saved-logins-desc,
+                "/>
       </hbox>
     </hbox>
     <hbox id="showPasswordBox" pack="end">
@@ -81,7 +85,7 @@
                     value="custom"
                     search-l10n-ids="
                       history-private-browsing-permanent.label,
-                      history-remember-option.label,
+                      history-remember-browser-option.label,
                       history-remember-search-option.label,
                       history-clear-on-close-option.label,
                       history-clear-on-close-settings.label"/>
@@ -116,7 +120,7 @@
                     preference="browser.privatebrowsing.autostart"/>
           <vbox class="indent">
             <checkbox id="rememberHistory"
-                      data-l10n-id="history-remember-option"
+                      data-l10n-id="history-remember-browser-option"
                       preference="places.history.enabled"/>
             <checkbox id="rememberForms"
                       data-l10n-id="history-remember-search-option"
@@ -142,7 +146,7 @@
         <button id="clearDataSettings"
                 class="accessory-button"
                 data-l10n-id="history-clear-on-close-settings"
-                searchkeywords="&clearDataSettings3.label;
+                searchkeywords="&clearDataSettings4.label;
                                 &historySection.label;
                                 &itemHistoryAndDownloads.label;
                                 &itemCookies.label;
@@ -224,7 +228,7 @@
         <button id="clearSiteDataButton"
             class="accessory-button"
             icon="clear"
-            search-l10n-ids="clear-site-data-cookies, clear-site-data-cache"
+            search-l10n-ids="clear-site-data-cookies-empty.label, clear-site-data-cache-empty.label"
             data-l10n-id="sitedata-clear"/>
       </hbox>
       <hbox>
@@ -236,6 +240,8 @@
                   site-data-column-host.label,
                   site-data-column-cookies.label,
                   site-data-column-storage.label,
+                  site-data-settings-description,
+                  site-data-remove-all.label,
                 "/>
       </hbox>
       <hbox>
@@ -250,7 +256,8 @@
                   permissions-remove.label,
                   permissions-remove-all.label,
                   permissions-button-cancel.label,
-                  permissions-button-ok.label
+                  permissions-button-ok.label,
+                  permissions-exceptions-cookie-desc,
                 " />
       </hbox>
     </vbox>
@@ -276,7 +283,7 @@
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
   <caption><label data-l10n-id="tracking-header"/></caption>
-  <vbox>
+  <vbox data-subcategory="trackingprotection">
     <hbox align="start">
       <vbox flex="1">
         <description data-l10n-id="tracking-desc">
@@ -339,7 +346,9 @@
                     permissions-remove.label,
                     permissions-remove-all.label,
                     permissions-button-cancel.label,
-                    permissions-button-ok.label
+                    permissions-button-ok.label,
+                    permissions-exceptions-tracking-protection-window.title,
+                    permissions-exceptions-tracking-protection-desc,
                   "/>
         </hbox>
         <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
@@ -376,7 +385,7 @@
 <groupbox id="permissionsGroup" data-category="panePrivacy" hidden="true">
   <caption class="search-header" hidden="true"><label data-l10n-id="permissions-header"/></caption>
 
-  <grid>
+  <grid data-subcategory="permissions">
     <columns>
       <column flex="1"/>
       <column/>
@@ -397,6 +406,10 @@
                     permissions-remove-all.label,
                     permissions-button-cancel.label,
                     permissions-button-ok.label,
+                    permissions-site-location-window.title,
+                    permissions-site-location-desc,
+                    permissions-site-location-disable-label,
+                    permissions-site-location-disable-desc,
                   " />
         </hbox>
       </row>
@@ -416,6 +429,10 @@
                     permissions-remove-all.label,
                     permissions-button-cancel.label,
                     permissions-button-ok.label,
+                    permissions-site-camera-window.title,
+                    permissions-site-camera-desc,
+                    permissions-site-camera-disable-label,
+                    permissions-site-camera-disable-desc,
                   " />
         </hbox>
       </row>
@@ -435,6 +452,10 @@
                     permissions-remove-all.label,
                     permissions-button-cancel.label,
                     permissions-button-ok.label,
+                    permissions-site-microphone-window.title,
+                    permissions-site-microphone-desc,
+                    permissions-site-microphone-disable-label,
+                    permissions-site-microphone-disable-desc,
                   " />
         </hbox>
       </row>
@@ -459,6 +480,10 @@
                     permissions-remove-all.label,
                     permissions-button-cancel.label,
                     permissions-button-ok.label,
+                    permissions-site-notification-window.title,
+                    permissions-site-notification-desc,
+                    permissions-site-notification-disable-label,
+                    permissions-site-notification-disable-desc,
                   " />
         </hbox>
       </row>
@@ -471,7 +496,25 @@
 
   <separator flex="1"/>
 
-  <hbox align="start">
+  <hbox align="start" id="autoplayMediaBox" hidden="true">
+    <checkbox id="autoplayMediaPolicy"
+              data-l10n-id="permissions-block-autoplay-media"
+              flex="1" />
+    <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+    <hbox>
+      <button id="autoplayMediaPolicyButton"
+              class="accessory-button"
+              data-l10n-id="permissions-block-autoplay-media-exceptions"
+              search-l10n-ids="permissions-address,
+                               permissions-button-cancel.label,
+                               permissions-button-ok.label,
+                               permissions-exceptions-autoplay-media-window.title,
+                               permissions-exceptions-autoplay-media-desc
+                               " />
+    </hbox>
+  </hbox>
+
+  <hbox>
     <checkbox id="popupPolicy" preference="dom.disable_open_during_load"
               data-l10n-id="permissions-block-popups"
               onsyncfrompreference="return gPrivacyPane.updateButtons('popupPolicyButton',
@@ -485,7 +528,9 @@
               search-l10n-ids="
                 permissions-address,
                 permissions-button-cancel.label,
-                permissions-button-ok.label
+                permissions-button-ok.label,
+                permissions-exceptions-popup-window.title,
+                permissions-exceptions-popup-desc,
               " />
     </hbox>
   </hbox>
@@ -508,6 +553,8 @@
                 permissions-remove-all.label,
                 permissions-button-cancel.label,
                 permissions-button-ok.label,
+                permissions-exceptions-addons-window.title,
+                permissions-exceptions-addons-desc,
               " />
     </hbox>
   </hbox>
@@ -549,6 +596,18 @@
       <label id="FHRLearnMore"
              class="learnMore text-link"
              data-l10n-id="collection-health-report-link"/>
+      <vbox class="indent">
+        <hbox align="center">
+          <checkbox id="optOutStudiesEnabled"
+                    class="tail-with-learn-more"
+                    data-l10n-id="collection-studies"/>
+          <label id="viewShieldStudies"
+                 href="about:studies"
+                 useoriginprincipal="true"
+                 class="learnMore text-link"
+                 data-l10n-id="collection-studies-link"/>
+        </hbox>
+      </vbox>
     </description>
 #ifndef MOZ_TELEMETRY_REPORTING
   <description id="TelemetryDisabledDesc"

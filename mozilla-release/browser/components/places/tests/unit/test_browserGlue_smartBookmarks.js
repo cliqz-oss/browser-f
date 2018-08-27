@@ -22,8 +22,8 @@ function run_test() {
 
 registerCleanupFunction(() => PlacesUtils.bookmarks.eraseEverything());
 
-function countFolderChildren(aFolderItemId) {
-  let rootNode = PlacesUtils.getFolderContents(aFolderItemId).root;
+function countFolderChildren(aFolderGuid) {
+  let rootNode = PlacesUtils.getFolderContents(aFolderGuid).root;
   let cc = rootNode.childCount;
   // Dump contents.
   for (let i = 0; i < cc ; i++) {
@@ -49,7 +49,8 @@ add_task(async function setup() {
   // Ensure preferences status.
   Assert.ok(!Services.prefs.getBoolPref(PREF_AUTO_EXPORT_HTML));
   Assert.ok(!Services.prefs.getBoolPref(PREF_RESTORE_DEFAULT_BOOKMARKS));
-  Assert.throws(() => Services.prefs.getBoolPref(PREF_IMPORT_BOOKMARKS_HTML));
+  Assert.throws(() => Services.prefs.getBoolPref(PREF_IMPORT_BOOKMARKS_HTML),
+    /NS_ERROR_UNEXPECTED/);
 });
 
 add_task(async function test_version_0() {
@@ -72,9 +73,9 @@ add_task(async function test_version_0() {
   await rebuildSmartBookmarks();
 
   // Count items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Check version has been updated.
@@ -98,9 +99,9 @@ add_task(async function test_version_change() {
   Assert.equal(bm.title, "new title");
 
   // Sanity check items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Set preferences.
@@ -109,9 +110,9 @@ add_task(async function test_version_change() {
   await rebuildSmartBookmarks();
 
   // Count items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Check smart bookmark has been replaced, itemId has changed.
@@ -131,9 +132,9 @@ add_task(async function test_version_change_pos() {
   info("bookmarks position is retained when version changes.");
 
   // Sanity check items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   let bm = await PlacesUtils.bookmarks.fetch({
@@ -149,9 +150,9 @@ add_task(async function test_version_change_pos() {
   await rebuildSmartBookmarks();
 
   // Count items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Check smart bookmarks are still in correct position.
@@ -171,9 +172,9 @@ add_task(async function test_version_change_pos_moved() {
   info("moved bookmarks position is retained when version changes.");
 
   // Sanity check items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   let bm1 = await PlacesUtils.bookmarks.fetch({
@@ -202,9 +203,9 @@ add_task(async function test_version_change_pos_moved() {
   await rebuildSmartBookmarks();
 
   // Count items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   bm1 = await PlacesUtils.bookmarks.fetch({
@@ -237,9 +238,9 @@ add_task(async function test_recreation() {
   await PlacesUtils.bookmarks.remove(bm.guid);
 
   // Sanity check items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Set preferences.
@@ -249,9 +250,9 @@ add_task(async function test_recreation() {
 
   // Count items.
   // We should not have recreated the smart bookmark on toolbar.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Check version has been updated.
@@ -263,9 +264,9 @@ add_task(async function test_recreation_version_0() {
   info("Even if a smart bookmark has been removed recreate it if version is 0.");
 
   // Sanity check items.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Set preferences.
@@ -275,9 +276,9 @@ add_task(async function test_recreation_version_0() {
 
   // Count items.
   // We should not have recreated the smart bookmark on toolbar.
-  Assert.equal(countFolderChildren(PlacesUtils.toolbarFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.toolbarGuid),
                SMART_BOOKMARKS_ON_TOOLBAR + DEFAULT_BOOKMARKS_ON_TOOLBAR);
-  Assert.equal(countFolderChildren(PlacesUtils.bookmarksMenuFolderId),
+  Assert.equal(countFolderChildren(PlacesUtils.bookmarks.menuGuid),
                SMART_BOOKMARKS_ON_MENU + DEFAULT_BOOKMARKS_ON_MENU);
 
   // Check version has been updated.

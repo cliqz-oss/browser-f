@@ -311,7 +311,9 @@ LogicError(const char* aMsg)
 void
 ActorIdReadError(const char* aActorDescription)
 {
+#ifndef FUZZING
   MOZ_CRASH_UNSAFE_PRINTF("Error deserializing id for %s", aActorDescription);
+#endif
 }
 
 void
@@ -669,17 +671,21 @@ IProtocol::ManagedState::GetActorEventTarget(IProtocol* aActor)
   return mProtocol->Manager()->GetActorEventTarget(aActor);
 }
 
-IToplevelProtocol::IToplevelProtocol(const char* aName, ProtocolId aProtoId, Side aSide)
- : IProtocol(aSide, MakeUnique<ToplevelState>(aName, this, aSide)),
-   mMonitor("mozilla.ipc.IToplevelProtocol.mMonitor"),
-   mProtocolId(aProtoId),
-   mOtherPid(mozilla::ipc::kInvalidProcessId),
-   mOtherPidState(ProcessIdState::eUnstarted)
+IToplevelProtocol::IToplevelProtocol(const char* aName,
+                                     ProtocolId aProtoId,
+                                     Side aSide)
+  : IProtocol(aSide, MakeUnique<ToplevelState>(aName, this, aSide))
+  , mMonitor("mozilla.ipc.IToplevelProtocol.mMonitor")
+  , mProtocolId(aProtoId)
+  , mOtherPid(mozilla::ipc::kInvalidProcessId)
+  , mOtherPidState(ProcessIdState::eUnstarted)
+  , mIsMainThreadProtocol(false)
 {
 }
 
 IToplevelProtocol::~IToplevelProtocol()
 {
+  mState = nullptr;
   if (mTrans) {
     RefPtr<DeleteTask<Transport>> task = new DeleteTask<Transport>(mTrans.release());
     XRE_GetIOMessageLoop()->PostTask(task.forget());

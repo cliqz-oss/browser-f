@@ -203,12 +203,13 @@ imgFrame::imgFrame()
   : mMonitor("imgFrame")
   , mDecoded(0, 0, 0, 0)
   , mLockCount(0)
-  , mTimeout(FrameTimeout::FromRawMilliseconds(100))
-  , mDisposalMethod(DisposalMethod::NOT_SPECIFIED)
-  , mBlendMethod(BlendMethod::OVER)
   , mAborted(false)
   , mFinished(false)
   , mOptimizable(false)
+  , mTimeout(FrameTimeout::FromRawMilliseconds(100))
+  , mDisposalMethod(DisposalMethod::NOT_SPECIFIED)
+  , mBlendMethod(BlendMethod::OVER)
+  , mFormat(SurfaceFormat::UNKNOWN)
   , mPalettedImageData(nullptr)
   , mPaletteDepth(0)
   , mNonPremult(false)
@@ -234,7 +235,7 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
                          SurfaceFormat aFormat,
                          uint8_t aPaletteDepth /* = 0 */,
                          bool aNonPremult /* = false */,
-                         bool aIsAnimated /* = false */)
+                         const Maybe<AnimationParams>& aAnimParams /* = Nothing() */)
 {
   // Assert for properties that should be verified by decoders,
   // warn for properties related to bad content.
@@ -246,6 +247,15 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
 
   mImageSize = aImageSize;
   mFrameRect = aRect;
+
+  if (aAnimParams) {
+    mBlendRect = aAnimParams->mBlendRect;
+    mTimeout = aAnimParams->mTimeout;
+    mBlendMethod = aAnimParams->mBlendMethod;
+    mDisposalMethod = aAnimParams->mDisposalMethod;
+  } else {
+    mBlendRect = aRect;
+  }
 
   // We only allow a non-trivial frame rect (i.e., a frame rect that doesn't
   // cover the entire image) for paletted animation frames. We never draw those
@@ -284,7 +294,8 @@ imgFrame::InitForDecoder(const nsIntSize& aImageSize,
   } else {
     MOZ_ASSERT(!mLockedSurface, "Called imgFrame::InitForDecoder() twice?");
 
-    mRawSurface = AllocateBufferForImage(mFrameRect.Size(), mFormat, aIsAnimated);
+    bool postFirstFrame = aAnimParams && aAnimParams->mFrameNum > 0;
+    mRawSurface = AllocateBufferForImage(mFrameRect.Size(), mFormat, postFirstFrame);
     if (!mRawSurface) {
       mAborted = true;
       return NS_ERROR_OUT_OF_MEMORY;
@@ -485,9 +496,9 @@ imgFrame::DrawableRef()
 }
 
 RawAccessFrameRef
-imgFrame::RawAccessRef()
+imgFrame::RawAccessRef(bool aOnlyFinished /*= false*/)
 {
-  return RawAccessFrameRef(this);
+  return RawAccessFrameRef(this, aOnlyFinished);
 }
 
 void
@@ -496,7 +507,7 @@ imgFrame::SetRawAccessOnly()
   AssertImageDataLocked();
 
   // Lock our data and throw away the key.
-  LockImageData();
+  LockImageData(false);
 }
 
 
@@ -627,20 +638,11 @@ imgFrame::ImageUpdatedInternal(const nsIntRect& aUpdateRect)
 
 void
 imgFrame::Finish(Opacity aFrameOpacity /* = Opacity::SOME_TRANSPARENCY */,
-                 DisposalMethod aDisposalMethod /* = DisposalMethod::KEEP */,
-                 FrameTimeout aTimeout
-                   /* = FrameTimeout::FromRawMilliseconds(0) */,
-                 BlendMethod aBlendMethod /* = BlendMethod::OVER */,
-                 const Maybe<IntRect>& aBlendRect /* = Nothing() */,
                  bool aFinalize /* = true */)
 {
   MonitorAutoLock lock(mMonitor);
   MOZ_ASSERT(mLockCount > 0, "Image data should be locked");
 
-  mDisposalMethod = aDisposalMethod;
-  mTimeout = aTimeout;
-  mBlendMethod = aBlendMethod;
-  mBlendRect = aBlendRect;
   ImageUpdatedInternal(GetRect());
 
   if (aFinalize) {
@@ -746,35 +748,33 @@ imgFrame::GetPaletteData() const
   return data;
 }
 
-nsresult
-imgFrame::LockImageData()
+uint8_t*
+imgFrame::LockImageData(bool aOnlyFinished)
 {
   MonitorAutoLock lock(mMonitor);
 
   MOZ_ASSERT(mLockCount >= 0, "Unbalanced locks and unlocks");
-  if (mLockCount < 0) {
-    return NS_ERROR_FAILURE;
+  if (mLockCount < 0 || (aOnlyFinished && !mFinished)) {
+    return nullptr;
   }
 
-  mLockCount++;
-
-  // If we are not the first lock, there's nothing to do.
-  if (mLockCount != 1) {
-    return NS_OK;
-  }
-
-  // If we're the first lock, but have the locked surface, we're OK.
-  if (mLockedSurface) {
-    return NS_OK;
-  }
-
-  // Paletted images don't have surfaces, so there's nothing to do.
+  uint8_t* data;
   if (mPalettedImageData) {
-    return NS_OK;
+    data = mPalettedImageData;
+  } else if (mLockedSurface) {
+    data = mLockedSurface->GetData();
+  } else {
+    data = nullptr;
   }
 
-  MOZ_ASSERT_UNREACHABLE("It's illegal to re-lock an optimized imgFrame");
-  return NS_ERROR_FAILURE;
+  // If the raw data is still available, we should get a valid pointer for it.
+  if (!data) {
+    MOZ_ASSERT_UNREACHABLE("It's illegal to re-lock an optimized imgFrame");
+    return nullptr;
+  }
+
+  ++mLockCount;
+  return data;
 }
 
 void
@@ -864,26 +864,6 @@ imgFrame::GetSourceSurfaceInternal()
   }
 
   return CreateLockedSurface(mRawSurface, mFrameRect.Size(), mFormat);
-}
-
-AnimationData
-imgFrame::GetAnimationData() const
-{
-  MonitorAutoLock lock(mMonitor);
-  MOZ_ASSERT(mLockCount > 0, "Image data should be locked");
-
-  uint8_t* data;
-  if (mPalettedImageData) {
-    data = mPalettedImageData;
-  } else {
-    uint32_t length;
-    GetImageDataInternal(&data, &length);
-  }
-
-  bool hasAlpha = mFormat == SurfaceFormat::B8G8R8A8;
-
-  return AnimationData(data, PaletteDataLength(), mTimeout, GetRect(),
-                       mBlendMethod, mBlendRect, mDisposalMethod, hasAlpha);
 }
 
 void

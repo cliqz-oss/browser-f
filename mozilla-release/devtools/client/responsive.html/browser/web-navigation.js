@@ -5,10 +5,12 @@
 "use strict";
 
 const { Ci, Cu, Cr } = require("chrome");
-const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
+const ChromeUtils = require("ChromeUtils");
 const Services = require("Services");
 const { NetUtil } = require("resource://gre/modules/NetUtil.jsm");
 const { Utils } = require("resource://gre/modules/sessionstore/Utils.jsm");
+const Telemetry = require("devtools/client/shared/telemetry");
+const telemetry = new Telemetry();
 
 function readInputStreamToString(stream) {
   return NetUtil.readInputStreamToString(stream, stream.available());
@@ -33,7 +35,7 @@ function BrowserElementWebNavigation(browser) {
 
 BrowserElementWebNavigation.prototype = {
 
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
     Ci.nsIWebNavigation
   ]),
 
@@ -78,7 +80,7 @@ BrowserElementWebNavigation.prototype = {
       triggeringPrincipal: triggeringPrincipal
                            ? Utils.serializePrincipal(triggeringPrincipal)
                            : null,
-      requestTime: Services.telemetry.msSystemNow(),
+      requestTime: telemetry.msSystemNow(),
     });
   },
 
@@ -147,7 +149,7 @@ BrowserElementWebNavigation.prototype = {
       "canGoForward",
       "_currentURI",
     ];
-    for (let property of state) {
+    for (const property of state) {
       this[property] = otherWebNavigation[property];
     }
   },
@@ -176,7 +178,7 @@ const FLAGS = [
   "STOP_ALL",
 ];
 
-for (let flag of FLAGS) {
+for (const flag of FLAGS) {
   BrowserElementWebNavigation.prototype[flag] = Ci.nsIWebNavigation[flag];
 }
 

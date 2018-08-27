@@ -605,6 +605,17 @@ var gPermissionObject = {
    *    don't want to expose a "Hide Prompt" button to the user through pageinfo.
    */
 
+  "autoplay-media": {
+    exactHostMatch: true,
+    getDefault() {
+      if (Services.prefs.getBoolPref("media.autoplay.enabled")) {
+        return SitePermissions.ALLOW;
+      }
+      return SitePermissions.UNKNOWN;
+    },
+    labelID: "autoplay-media"
+  },
+
   "image": {
     states: [ SitePermissions.ALLOW, SitePermissions.BLOCK ],
   },

@@ -381,6 +381,7 @@ MacOSFontEntry::MacOSFontEntry(const nsAString& aPostscriptName,
       mHasAATSmallCaps(false),
       mHasAATSmallCapsInitialized(false),
       mCheckedForTracking(false),
+      mCheckedForOpszAxis(false),
       mTrakTable(nullptr),
       mTrakValues(nullptr),
       mTrakSizeTable(nullptr)
@@ -407,6 +408,7 @@ MacOSFontEntry::MacOSFontEntry(const nsAString& aPostscriptName,
       mHasAATSmallCaps(false),
       mHasAATSmallCapsInitialized(false),
       mCheckedForTracking(false),
+      mCheckedForOpszAxis(false),
       mTrakTable(nullptr),
       mTrakValues(nullptr),
       mTrakSizeTable(nullptr)
@@ -1626,7 +1628,7 @@ static const char kSystemFont_system[] = "-apple-system";
 
 bool
 gfxMacPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
-                                           nsTArray<gfxFontFamily*>* aOutput,
+                                           nsTArray<FamilyAndGeneric>* aOutput,
                                            FindFamiliesFlags aFlags,
                                            gfxFontStyle* aStyle,
                                            gfxFloat aDevToCssSize)

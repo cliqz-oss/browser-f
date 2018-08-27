@@ -41,7 +41,7 @@ using mozilla::TimeDuration;
 using mozilla::dom::Animation;
 using mozilla::dom::AnimationPlayState;
 using mozilla::dom::CSSTransition;
-using mozilla::dom::KeyframeEffectReadOnly;
+using mozilla::dom::Nullable;
 
 using namespace mozilla;
 using namespace mozilla::css;
@@ -119,7 +119,7 @@ ElementPropertyTransition::UpdateStartValueFromReplacedTransition()
     if (startValue.mServo) {
       mKeyframes[0].mPropertyValues[0].mServoDeclarationBlock =
         Servo_AnimationValue_Uncompute(startValue.mServo).Consume();
-      mProperties[0].mSegments[0].mFromValue = Move(startValue);
+      mProperties[0].mSegments[0].mFromValue = std::move(startValue);
     }
   }
 
@@ -322,7 +322,7 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
   mPreviousTransitionPhase = currentPhase;
 
   if (!events.IsEmpty()) {
-    presContext->AnimationEventDispatcher()->QueueEvents(Move(events));
+    presContext->AnimationEventDispatcher()->QueueEvents(std::move(events));
   }
 }
 
@@ -394,7 +394,7 @@ CSSTransition::GetCurrentTimeAt(const dom::DocumentTimeline& aTimeline,
 }
 
 void
-CSSTransition::SetEffectFromStyle(dom::AnimationEffectReadOnly* aEffect)
+CSSTransition::SetEffectFromStyle(dom::AnimationEffect* aEffect)
 {
   Animation::SetEffectNoUpdate(aEffect);
 
@@ -463,47 +463,58 @@ nsTransitionManager::DoUpdateTransitions(
   // Per http://lists.w3.org/Archives/Public/www-style/2009Aug/0109.html
   // I'll consider only the transitions from the number of items in
   // 'transition-property' on down, and later ones will override earlier
-  // ones (tracked using |whichStarted|).
+  // ones (tracked using |propertiesChecked|).
   bool startedAny = false;
-  nsCSSPropertyIDSet whichStarted;
-  for (uint32_t i = aDisp.mTransitionPropertyCount; i-- != 0; ) {
-    // Check the combined duration (combination of delay and duration)
-    // first, since it defaults to zero, which means we can ignore the
-    // transition.
-    if (aDisp.GetTransitionCombinedDuration(i) > 0.0f) {
-      // We might have something to transition.  See if any of the
-      // properties in question changed and are animatable.
-      // FIXME: Would be good to find a way to share code between this
-      // interpretation of transition-property and the one below.
-      nsCSSPropertyID property = aDisp.GetTransitionProperty(i);
-      if (property == eCSSPropertyExtra_no_properties ||
-          property == eCSSPropertyExtra_variable ||
-          property == eCSSProperty_UNKNOWN) {
-        // Nothing to do, but need to exclude this from cases below.
-      } else if (property == eCSSPropertyExtra_all_properties) {
-        for (nsCSSPropertyID p = nsCSSPropertyID(0);
-             p < eCSSProperty_COUNT_no_shorthands;
-             p = nsCSSPropertyID(p + 1)) {
+  nsCSSPropertyIDSet propertiesChecked;
+  for (uint32_t i = aDisp.mTransitionPropertyCount; i--; ) {
+    // We're not going to look at any further transitions, so we can just avoid
+    // looking at this if we know it will not start any transitions.
+    if (i == 0 && aDisp.GetTransitionCombinedDuration(i) <= 0.0f) {
+      continue;
+    }
+
+    nsCSSPropertyID property = aDisp.GetTransitionProperty(i);
+    if (property == eCSSPropertyExtra_no_properties ||
+        property == eCSSPropertyExtra_variable ||
+        property == eCSSProperty_UNKNOWN) {
+      // Nothing to do.
+      continue;
+    }
+    // We might have something to transition.  See if any of the
+    // properties in question changed and are animatable.
+    // FIXME: Would be good to find a way to share code between this
+    // interpretation of transition-property and the one below.
+    // FIXME(emilio): This should probably just use the "all" shorthand id, and
+    // we should probably remove eCSSPropertyExtra_all_properties.
+    if (property == eCSSPropertyExtra_all_properties) {
+      for (nsCSSPropertyID p = nsCSSPropertyID(0);
+           p < eCSSProperty_COUNT_no_shorthands;
+           p = nsCSSPropertyID(p + 1)) {
+        if (!nsCSSProps::IsEnabled(p, CSSEnabledState::eForAllContent)) {
+          continue;
+        }
+        startedAny |=
           ConsiderInitiatingTransition(p, aDisp, i, aElement, aPseudoType,
                                        aElementTransitions,
                                        aOldStyle, aNewStyle,
-                                       &startedAny, &whichStarted);
-        }
-      } else if (nsCSSProps::IsShorthand(property)) {
-        CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(subprop, property,
-                                             CSSEnabledState::eForAllContent)
-        {
+                                       propertiesChecked);
+      }
+    } else if (nsCSSProps::IsShorthand(property)) {
+      CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(subprop, property,
+                                           CSSEnabledState::eForAllContent)
+      {
+        startedAny |=
           ConsiderInitiatingTransition(*subprop, aDisp, i, aElement, aPseudoType,
                                        aElementTransitions,
                                        aOldStyle, aNewStyle,
-                                       &startedAny, &whichStarted);
-        }
-      } else {
+                                       propertiesChecked);
+      }
+    } else {
+      startedAny |=
         ConsiderInitiatingTransition(property, aDisp, i, aElement, aPseudoType,
                                      aElementTransitions,
                                      aOldStyle, aNewStyle,
-                                     &startedAny, &whichStarted);
-      }
+                                     propertiesChecked);
     }
   }
 
@@ -599,7 +610,7 @@ AppendKeyframe(double aOffset,
     RefPtr<RawServoDeclarationBlock> decl =
       Servo_AnimationValue_Uncompute(aValue.mServo).Consume();
     frame.mPropertyValues.AppendElement(
-      Move(PropertyValuePair(aProperty, Move(decl))));
+      PropertyValuePair(aProperty, std::move(decl)));
   } else {
     MOZ_CRASH("old style system disabled");
   }
@@ -614,14 +625,14 @@ GetTransitionKeyframes(nsCSSPropertyID aProperty,
 {
   nsTArray<Keyframe> keyframes(2);
 
-  Keyframe& fromFrame = AppendKeyframe(0.0, aProperty, Move(aStartValue),
+  Keyframe& fromFrame = AppendKeyframe(0.0, aProperty, std::move(aStartValue),
                                        keyframes);
   if (aTimingFunction.mType != nsTimingFunction::Type::Linear) {
     fromFrame.mTimingFunction.emplace();
     fromFrame.mTimingFunction->Init(aTimingFunction);
   }
 
-  AppendKeyframe(1.0, aProperty, Move(aEndValue), keyframes);
+  AppendKeyframe(1.0, aProperty, std::move(aEndValue), keyframes);
 
   return keyframes;
 }
@@ -632,7 +643,7 @@ IsTransitionable(nsCSSPropertyID aProperty)
   return Servo_Property_IsTransitionable(aProperty);
 }
 
-void
+bool
 nsTransitionManager::ConsiderInitiatingTransition(
   nsCSSPropertyID aProperty,
   const nsStyleDisplay& aStyleDisplay,
@@ -642,8 +653,7 @@ nsTransitionManager::ConsiderInitiatingTransition(
   CSSTransitionCollection*& aElementTransitions,
   const ComputedStyle& aOldStyle,
   const ComputedStyle& aNewStyle,
-  bool* aStartedAny,
-  nsCSSPropertyIDSet* aWhichStarted)
+  nsCSSPropertyIDSet& aPropertiesChecked)
 {
   // IsShorthand itself will assert if aProperty is not a property.
   MOZ_ASSERT(!nsCSSProps::IsShorthand(aProperty),
@@ -651,23 +661,29 @@ nsTransitionManager::ConsiderInitiatingTransition(
   NS_ASSERTION(!aElementTransitions ||
                aElementTransitions->mElement == aElement, "Element mismatch");
 
-  // Ignore disabled properties. We can arrive here if the transition-property
-  // is 'all' and the disabled property has a default value which derives value
-  // from another property, e.g. color.
-  if (!nsCSSProps::IsEnabled(aProperty, CSSEnabledState::eForAllContent)) {
-    return;
+  // A later item in transition-property already specified a transition for this
+  // property, so we ignore this one.
+  // See http://lists.w3.org/Archives/Public/www-style/2009Aug/0109.html .
+  if (aPropertiesChecked.HasProperty(aProperty)) {
+    return false;
   }
 
-  if (aWhichStarted->HasProperty(aProperty)) {
-    // A later item in transition-property already started a
-    // transition for this property, so we ignore this one.
-    // See comment above and
-    // http://lists.w3.org/Archives/Public/www-style/2009Aug/0109.html .
-    return;
-  }
+  aPropertiesChecked.AddProperty(aProperty);
 
   if (!IsTransitionable(aProperty)) {
-    return;
+    return false;
+  }
+
+  float delay = aStyleDisplay.GetTransitionDelay(transitionIdx);
+
+  // The spec says a negative duration is treated as zero.
+  float duration =
+    std::max(aStyleDisplay.GetTransitionDuration(transitionIdx), 0.0f);
+
+  // If the combined duration of this transition is 0 or less don't start a
+  // transition.
+  if (delay + duration <= 0.0f) {
+    return false;
   }
 
   dom::DocumentTimeline* timeline = aElement->OwnerDoc()->Timeline();
@@ -718,7 +734,7 @@ nsTransitionManager::ConsiderInitiatingTransition(
   if (haveCurrentTransition && haveValues &&
       aElementTransitions->mAnimations[currentIndex]->ToValue() == endValue) {
     // GetAnimationRule already called RestyleForAnimation.
-    return;
+    return false;
   }
 
   if (!shouldAnimate) {
@@ -746,17 +762,11 @@ nsTransitionManager::ConsiderInitiatingTransition(
       }
       // GetAnimationRule already called RestyleForAnimation.
     }
-    return;
+    return false;
   }
 
   const nsTimingFunction &tf =
     aStyleDisplay.GetTransitionTimingFunction(transitionIdx);
-  float delay = aStyleDisplay.GetTransitionDelay(transitionIdx);
-  float duration = aStyleDisplay.GetTransitionDuration(transitionIdx);
-  if (duration < 0.0) {
-    // The spec says a negative duration is treated as zero.
-    duration = 0.0;
-  }
 
   AnimationValue startForReversingTest = startValue;
   double reversePortion = 1.0;
@@ -820,7 +830,7 @@ nsTransitionManager::ConsiderInitiatingTransition(
                                   effectOptions);
 
   pt->SetKeyframes(GetTransitionKeyframes(aProperty,
-                                          Move(startValue), Move(endValue), tf),
+                                          std::move(startValue), std::move(endValue), tf),
                    &aNewStyle);
 
   RefPtr<CSSTransition> animation =
@@ -840,7 +850,7 @@ nsTransitionManager::ConsiderInitiatingTransition(
     if (!aElementTransitions) {
       MOZ_ASSERT(!createdCollection, "outparam should agree with return value");
       NS_WARNING("allocating collection failed");
-      return;
+      return false;
     }
 
     if (createdCollection) {
@@ -887,7 +897,7 @@ nsTransitionManager::ConsiderInitiatingTransition(
   } else {
     if (!animations.AppendElement(animation)) {
       NS_WARNING("out of memory");
-      return;
+      return false;
     }
   }
 
@@ -896,7 +906,6 @@ nsTransitionManager::ConsiderInitiatingTransition(
     effectSet->UpdateAnimationGeneration(mPresContext);
   }
 
-  *aStartedAny = true;
-  aWhichStarted->AddProperty(aProperty);
+  return true;
 }
 

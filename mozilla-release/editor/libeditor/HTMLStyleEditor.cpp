@@ -45,12 +45,12 @@ namespace mozilla {
 
 using namespace dom;
 
-static bool
-IsEmptyTextNode(HTMLEditor* aThis, nsINode* aNode)
+bool
+HTMLEditor::IsEmptyTextNode(nsINode& aNode)
 {
   bool isEmptyTextNode = false;
-  return EditorBase::IsTextNode(aNode) &&
-         NS_SUCCEEDED(aThis->IsEmptyNode(aNode, &isEmptyTextNode)) &&
+  return EditorBase::IsTextNode(&aNode) &&
+         NS_SUCCEEDED(IsEmptyNode(&aNode, &isEmptyTextNode)) &&
          isEmptyTextNode;
 }
 
@@ -77,7 +77,7 @@ HTMLEditor::SetInlineProperty(nsAtom* aProperty,
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  if (selection->Collapsed()) {
+  if (selection->IsCollapsed()) {
     // Manipulating text attributes on a collapsed selection only sets state
     // for the next text insertion
     mTypeInState->SetProp(aProperty, aAttribute, aValue);
@@ -85,16 +85,20 @@ HTMLEditor::SetInlineProperty(nsAtom* aProperty,
   }
 
   AutoPlaceholderBatch batchIt(this);
-  AutoRules beginRulesSniffing(this, EditAction::insertElement,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertElement,
+                                      nsIEditor::eNext);
   AutoSelectionRestorer selectionRestorer(selection, this);
   AutoTransactionsConserveSelection dontChangeMySelection(this);
 
   bool cancel, handled;
-  RulesInfo ruleInfo(EditAction::setTextProperty);
+  EditSubActionInfo subActionInfo(EditSubAction::eSetTextProperty);
   // Protect the edit rules object from dying
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
   if (!cancel && !handled) {
     // Loop through the ranges in the selection
     AutoRangeArray arrayOfRanges(selection);
@@ -175,7 +179,7 @@ HTMLEditor::SetInlineProperty(nsAtom* aProperty,
   }
   if (!cancel) {
     // Post-process
-    return rules->DidDoAction(selection, &ruleInfo, rv);
+    return rules->DidDoAction(selection, subActionInfo, rv);
   }
   return NS_OK;
 }
@@ -345,7 +349,7 @@ HTMLEditor::SetInlinePropertyOnNodeImpl(nsIContent& aNode,
       for (nsCOMPtr<nsIContent> child = aNode.GetFirstChild();
            child;
            child = child->GetNextSibling()) {
-        if (IsEditable(child) && !IsEmptyTextNode(this, child)) {
+        if (IsEditable(child) && !IsEmptyTextNode(*child)) {
           arrayOfNodes.AppendElement(*child);
         }
       }
@@ -983,7 +987,7 @@ HTMLEditor::GetInlinePropertyBase(nsAtom& aProperty,
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  bool isCollapsed = selection->Collapsed();
+  bool isCollapsed = selection->IsCollapsed();
   RefPtr<nsRange> range = selection->GetRangeAt(0);
   // XXX: Should be a while loop, to get each separate range
   // XXX: ERROR_HANDLING can currentItem be null?
@@ -1051,7 +1055,7 @@ HTMLEditor::GetInlinePropertyBase(nsAtom& aProperty,
 
       // just ignore any non-editable nodes
       if (content->GetAsText() && (!IsEditable(content) ||
-                                   IsEmptyTextNode(this, content))) {
+                                   IsEmptyTextNode(*content))) {
         continue;
       }
       if (content->GetAsText()) {
@@ -1189,8 +1193,10 @@ NS_IMETHODIMP
 HTMLEditor::RemoveAllInlineProperties()
 {
   AutoPlaceholderBatch batchIt(this);
-  AutoRules beginRulesSniffing(this, EditAction::resetTextProperties,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this,
+                                      EditSubAction::eRemoveAllTextProperties,
+                                      nsIEditor::eNext);
 
   nsresult rv = RemoveInlineProperty(nullptr, nullptr);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1216,7 +1222,7 @@ HTMLEditor::RemoveInlineProperty(nsAtom* aProperty,
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  if (selection->Collapsed()) {
+  if (selection->IsCollapsed()) {
     // Manipulating text attributes on a collapsed selection only sets state
     // for the next text insertion
 
@@ -1234,17 +1240,21 @@ HTMLEditor::RemoveInlineProperty(nsAtom* aProperty,
   }
 
   AutoPlaceholderBatch batchIt(this);
-  AutoRules beginRulesSniffing(this, EditAction::removeTextProperty,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eRemoveTextProperty,
+                                      nsIEditor::eNext);
   AutoSelectionRestorer selectionRestorer(selection, this);
   AutoTransactionsConserveSelection dontChangeMySelection(this);
 
   bool cancel, handled;
-  RulesInfo ruleInfo(EditAction::removeTextProperty);
+  EditSubActionInfo subActionInfo(EditSubAction::eRemoveTextProperty);
   // Protect the edit rules object from dying
   RefPtr<TextEditRules> rules(mRules);
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
   if (!cancel && !handled) {
     // Loop through the ranges in the selection
     // Since ranges might be modified by SplitStyleAboveRange, we need hold
@@ -1339,7 +1349,7 @@ HTMLEditor::RemoveInlineProperty(nsAtom* aProperty,
   }
   if (!cancel) {
     // Post-process
-    rv = rules->DidDoAction(selection, &ruleInfo, rv);
+    rv = rules->DidDoAction(selection, subActionInfo, rv);
     NS_ENSURE_SUCCESS(rv, rv);
   }
   return NS_OK;
@@ -1366,7 +1376,7 @@ HTMLEditor::RelativeFontChange(FontSize aDir)
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_FAILURE);
   // If selection is collapsed, set typing state
-  if (selection->Collapsed()) {
+  if (selection->IsCollapsed()) {
     nsAtom& atom = aDir == FontSize::incr ? *nsGkAtoms::big :
                                              *nsGkAtoms::small;
 
@@ -1391,8 +1401,9 @@ HTMLEditor::RelativeFontChange(FontSize aDir)
 
   // Wrap with txn batching, rules sniffing, and selection preservation code
   AutoPlaceholderBatch batchIt(this);
-  AutoRules beginRulesSniffing(this, EditAction::setTextProperty,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eSetTextProperty,
+                                      nsIEditor::eNext);
   AutoSelectionRestorer selectionRestorer(selection, this);
   AutoTransactionsConserveSelection dontChangeMySelection(this);
 

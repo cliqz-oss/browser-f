@@ -102,13 +102,13 @@ struct PointerType
  *
  *   struct S { int x; S(int x) : x(x) {} };
  *   UniquePtr<S> g3, g4(new S(5));
- *   g3 = Move(g4); // g3 owns the S, g4 cleared
+ *   g3 = std::move(g4); // g3 owns the S, g4 cleared
  *   S* p = g3.get(); // g3 still owns |p|
  *   assert(g3->x == 5); // operator-> works (if .get() != nullptr)
  *   assert((*g3).x == 5); // also operator* (again, if not cleared)
  *   Swap(g3, g4); // g4 now owns the S, g3 cleared
  *   g3.swap(g4);  // g3 now owns the S, g4 cleared
- *   UniquePtr<S> g5(Move(g3)); // g5 owns the S, g3 cleared
+ *   UniquePtr<S> g5(std::move(g3)); // g5 owns the S, g3 cleared
  *   g5.reset(); // deletes the S, g5 cleared
  *
  *   struct FreePolicy { void operator()(void* p) { free(p); } };
@@ -143,10 +143,10 @@ struct PointerType
  *
  *   UniquePtr<Base> b1;
  *   // BAD: DefaultDelete<Base> and DefaultDelete<Derived> don't interconvert
- *   UniquePtr<Derived> d1(Move(b));
+ *   UniquePtr<Derived> d1(std::move(b));
  *
  *   UniquePtr<Base> b2;
- *   UniquePtr<Derived, DefaultDelete<Base>> d2(Move(b2)); // okay
+ *   UniquePtr<Derived, DefaultDelete<Base>> d2(std::move(b2)); // okay
  *
  * UniquePtr is specialized for array types.  Specializing with an array type
  * creates a smart-pointer version of that array -- not a pointer to such an
@@ -253,14 +253,14 @@ public:
   // behavior really isn't something you should use.
   UniquePtr(Pointer aPtr,
             typename RemoveReference<D>::Type&& aD2)
-    : mTuple(aPtr, Move(aD2))
+    : mTuple(aPtr, std::move(aD2))
   {
     static_assert(!IsReference<D>::value,
                   "rvalue deleter can't be stored by reference");
   }
 
   UniquePtr(UniquePtr&& aOther)
-    : mTuple(aOther.release(), Forward<DeleterType>(aOther.get_deleter()))
+    : mTuple(aOther.release(), std::forward<DeleterType>(aOther.get_deleter()))
   {}
 
   MOZ_IMPLICIT
@@ -281,7 +281,7 @@ public:
                                ? IsSame<D, E>::value
                                : IsConvertible<E, D>::value),
                               int>::Type aDummy = 0)
-    : mTuple(aOther.release(), Forward<E>(aOther.get_deleter()))
+    : mTuple(aOther.release(), std::forward<E>(aOther.get_deleter()))
   {
   }
 
@@ -290,7 +290,7 @@ public:
   UniquePtr& operator=(UniquePtr&& aOther)
   {
     reset(aOther.release());
-    get_deleter() = Forward<DeleterType>(aOther.get_deleter());
+    get_deleter() = std::forward<DeleterType>(aOther.get_deleter());
     return *this;
   }
 
@@ -304,7 +304,7 @@ public:
                   "can't assign from UniquePtr holding an array");
 
     reset(aOther.release());
-    get_deleter() = Forward<E>(aOther.get_deleter());
+    get_deleter() = std::forward<E>(aOther.get_deleter());
     return *this;
   }
 
@@ -314,7 +314,7 @@ public:
     return *this;
   }
 
-  T& operator*() const { return *get(); }
+  typename AddLvalueReference<T>::Type operator*() const { return *get(); }
   Pointer operator->() const
   {
     MOZ_ASSERT(get(), "dereferencing a UniquePtr containing nullptr");
@@ -349,8 +349,8 @@ public:
     mTuple.swap(aOther.mTuple);
   }
 
-  UniquePtr(const UniquePtr& aOther) = delete; // construct using Move()!
-  void operator=(const UniquePtr& aOther) = delete; // assign using Move()!
+  UniquePtr(const UniquePtr& aOther) = delete; // construct using std::move()!
+  void operator=(const UniquePtr& aOther) = delete; // assign using std::move()!
 };
 
 // In case you didn't read the comment by the main definition (you should!): the
@@ -414,7 +414,7 @@ public:
   // comment by this constructor in the non-T[] specialization above.
   UniquePtr(Pointer aPtr,
             typename RemoveReference<D>::Type&& aD2)
-    : mTuple(aPtr, Move(aD2))
+    : mTuple(aPtr, std::move(aD2))
   {
     static_assert(!IsReference<D>::value,
                   "rvalue deleter can't be stored by reference");
@@ -429,7 +429,7 @@ public:
   = delete;
 
   UniquePtr(UniquePtr&& aOther)
-    : mTuple(aOther.release(), Forward<DeleterType>(aOther.get_deleter()))
+    : mTuple(aOther.release(), std::forward<DeleterType>(aOther.get_deleter()))
   {}
 
   MOZ_IMPLICIT
@@ -445,7 +445,7 @@ public:
   UniquePtr& operator=(UniquePtr&& aOther)
   {
     reset(aOther.release());
-    get_deleter() = Forward<DeleterType>(aOther.get_deleter());
+    get_deleter() = std::forward<DeleterType>(aOther.get_deleter());
     return *this;
   }
 
@@ -493,8 +493,8 @@ public:
 
   void swap(UniquePtr& aOther) { mTuple.swap(aOther.mTuple); }
 
-  UniquePtr(const UniquePtr& aOther) = delete; // construct using Move()!
-  void operator=(const UniquePtr& aOther) = delete; // assign using Move()!
+  UniquePtr(const UniquePtr& aOther) = delete; // construct using std::move()!
+  void operator=(const UniquePtr& aOther) = delete; // assign using std::move()!
 };
 
 /**
@@ -677,7 +677,7 @@ template<typename T, typename... Args>
 typename detail::UniqueSelector<T>::SingleObject
 MakeUnique(Args&&... aArgs)
 {
-  return UniquePtr<T>(new T(Forward<Args>(aArgs)...));
+  return UniquePtr<T>(new T(std::forward<Args>(aArgs)...));
 }
 
 template<typename T>

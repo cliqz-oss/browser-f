@@ -10,6 +10,8 @@ var { "classes": Cc, "interfaces": Ci, "utils": Cu } = Components;
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
+Cu.importGlobalProperties(["Blob"]);
+
 if (!("self" in this)) {
   this.self = this;
 }
@@ -17,19 +19,19 @@ if (!("self" in this)) {
 var bufferCache = [];
 
 function is(a, b, msg) {
-  Assert.equal(a, b, Components.stack.caller);
+  Assert.equal(a, b, msg);
 }
 
 function ok(cond, msg) {
-  Assert.ok(!!cond, Components.stack.caller);
+  Assert.ok(!!cond, msg);
 }
 
 function isnot(a, b, msg) {
-  Assert.notEqual(a, b, Components.stack.caller);
+  Assert.notEqual(a, b, msg);
 }
 
 function todo(condition, name, diag) {
-  todo_check_true(condition, Components.stack.caller);
+  todo_check_true(condition);
 }
 
 function run_test() {
@@ -340,8 +342,7 @@ function getChromeFilesDir()
 
   let idbEntries = idbDir.directoryEntries;
   while (idbEntries.hasMoreElements()) {
-    let entry = idbEntries.getNext();
-    let file = entry.QueryInterface(Ci.nsIFile);
+    let file = idbEntries.nextFile;
     if (file.isDirectory()) {
       return file;
     }
@@ -427,7 +428,7 @@ function verifyBuffers(buffer1, buffer2)
 
 function verifyBlob(blob1, blob2)
 {
-  is(blob1 instanceof Ci.nsIDOMBlob, true,
+  is(Blob.isInstance(blob1), true,
      "Instance of nsIDOMBlob");
   is(blob1 instanceof File, blob2 instanceof File,
      "Instance of DOM File");

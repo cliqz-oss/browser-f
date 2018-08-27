@@ -35,6 +35,9 @@ left instead of right. -->
 <!ENTITY  closeOtherTabs.label               "Andere Tabs schließen">
 <!ENTITY  closeOtherTabs.accesskey           "A">
 
+<!ENTITY  closeSelectedTabs.label            "Ausgewählte Tabs schließen">
+<!ENTITY  closeSelectedTabs.accesskey        "s">
+
 
 <!-- LOCALIZATION NOTE (pinTab.label, unpinTab.label): "Pin" is being
 used as a metaphor for expressing the fact that these tabs are "pinned" to the
@@ -55,13 +58,14 @@ can reach it easily. -->
 <!ENTITY  sendToDeviceOfflineFeedback.label  "Vorgemerkt (derzeit offline)">
 <!ENTITY  moveToNewWindow.label              "In neues Fenster verschieben">
 <!ENTITY  moveToNewWindow.accesskey          "n">
+<!ENTITY  reopenInContainer.label            "In Tab-Umgebung verschieben">
+<!ENTITY  reopenInContainer.accesskey        "U">
 <!ENTITY  bookmarkAllTabs.label              "Lesezeichen für alle Tabs hinzufügen…">
 <!ENTITY  bookmarkAllTabs.accesskey          "L">
 <!ENTITY  undoCloseTab.label                 "Geschlossenen Tab wiederherstellen">
 <!ENTITY  undoCloseTab.accesskey             "G">
 <!ENTITY  closeTab.label                     "Tab schließen">
 <!ENTITY  closeTab.accesskey                 "c">
-
 <!ENTITY  hiddenTabs.label                   "Ausgeblendete Tabs">
 
 <!ENTITY  listAllTabs.label      "Alle Tabs auflisten">
@@ -211,6 +215,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY urlbar.defaultNotificationAnchor.tooltip         "Ansicht mit Benachrichtigung öffnen">
 <!ENTITY urlbar.geolocationNotificationAnchor.tooltip     "Ansicht mit Standortanfrage öffnen">
+<!ENTITY urlbar.autoplayNotificationAnchor.tooltip        "Ansicht für automatische Wiedergabe öffnen">
 <!ENTITY urlbar.addonsNotificationAnchor.tooltip          "Ansicht mit Anfrage zur Installation eines Add-ons öffnen">
 <!ENTITY urlbar.canvasNotificationAnchor.tooltip          "Erlaubnis zur Abfrage von Canvas-Daten verwalten">
 <!ENTITY urlbar.indexedDBNotificationAnchor.tooltip       "Ansicht über Offline-Speicher öffnen">
@@ -219,7 +224,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.webNotificationAnchor.tooltip             "Ändern, ob diese Website Benachrichtigungen senden darf">
 <!ENTITY urlbar.persistentStorageNotificationAnchor.tooltip     "Daten im dauerhaften Speicher speichern">
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
-
 <!ENTITY urlbar.webAuthnAnchor.tooltip                    "Ansicht für Web-Authentifizierung öffnen">
 
 <!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
@@ -239,6 +243,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
 <!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
 <!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
+<!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Sie haben die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
 <!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
 <!ENTITY urlbar.flashPluginBlocked.tooltip       "Sie haben den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
 <!ENTITY urlbar.midiBlocked.tooltip              "Sie haben den Zugriff auf MIDI für diese Website blockiert.">
@@ -250,6 +255,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!-- Toolbar items -->
 <!ENTITY homeButton.label             "Startseite">
 
+<!ENTITY homeButton.defaultPage.tooltip "&brandShortName;-Startseite">
 
 <!ENTITY bookmarksButton.label          "Lesezeichen">
 <!ENTITY bookmarksCmd.commandkey "B">
@@ -305,6 +311,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fileMenu.accesskey       "D">
 <!ENTITY newUserContext.label             "Neuer Tab in Umgebung">
 <!ENTITY newUserContext.accesskey         "m">
+<!ENTITY manageUserContext.label          "Tab-Umgebungen verwalten">
+<!ENTITY manageUserContext.accesskey      "v">
 <!ENTITY newNavigatorCmd.label        "&#xad;Neues Fenster">
 <!ENTITY newNavigatorCmd.key        "N">
 <!ENTITY newNavigatorCmd.accesskey      "N">
@@ -431,7 +439,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY customizeMenu.addMoreItems.label "Mehr Einträge hinzufügen…">
 <!ENTITY customizeMenu.addMoreItems.accesskey "E">
 
+<!ENTITY customizeMenu.autoHideDownloadsButton.label "Automatisch aus Symbolleiste ausblenden">
+<!ENTITY customizeMenu.autoHideDownloadsButton.accesskey "u">
 <!ENTITY customizeMenu.manageExtension.label "Erweiterung verwalten">
+<!ENTITY customizeMenu.manageExtension.accesskey "w">
 
 <!-- LOCALIZATION NOTE (moreMenu.label) This label is used in the new Photon
     app (hamburger) menu. When clicked, it opens a subview that contains
@@ -604,6 +615,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY hidePluginCmd.label          "Plugin ausblenden">
 <!ENTITY hidePluginCmd.accesskey      "b">
 <!ENTITY copyLinkCmd.label            "Link-Adresse kopieren">
+<!-- LOCALIZATION NOTE (copyLinkCmd.accesskey): The access keys for "Copy Link
+Location" and "Copy Email Address" should be the same if possible; the two
+context menu items are mutually exclusive. -->
 <!ENTITY copyLinkCmd.accesskey        "k">
 <!ENTITY copyImageCmd.label           "Grafikadresse kopieren">
 <!ENTITY copyImageCmd.accesskey       "d">
@@ -614,6 +628,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY copyAudioURLCmd.label        "Audio-Adresse kopieren">
 <!ENTITY copyAudioURLCmd.accesskey    "o">
 <!ENTITY copyEmailCmd.label           "E-Mail-Adresse kopieren">
+<!-- LOCALIZATION NOTE (copyEmailCmd.accesskey): The access keys for "Copy Link
+Location" and "Copy Email Address" should be the same if possible; the two
+context menu items are mutually exclusive. -->
 <!ENTITY copyEmailCmd.accesskey       "E">
 <!ENTITY thisFrameMenu.label              "Aktueller Frame">
 <!ENTITY thisFrameMenu.accesskey          "F">
@@ -793,10 +810,13 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY identity.moreInfoLinkText2 "Weitere Informationen">
 
+<!ENTITY identity.clearSiteData "Cookies und Websitedaten löschen…">
 
 <!ENTITY identity.permissions "Berechtigungen">
 <!ENTITY identity.permissionsEmpty "Der Website wurden keine besonderen Berechtigungen erteilt.">
 <!ENTITY identity.permissionsReloadHint "Eventuell muss die Seite neu geladen werden, um die Änderungen zu übernehmen.">
+
+<!ENTITY identity.permissionsPreferences.tooltip "Berechtigungs-Einstellungen öffnen">
 
 <!-- Name for the tabs toolbar as spoken by screen readers.
      The word "toolbar" is appended automatically and should not be contained below! -->
@@ -896,8 +916,11 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY getUserMedia.audioCapture.label "Audio des Tabs wird weitergegeben.">
 <!ENTITY getUserMedia.allWindowsShared.message "Alle sichtbaren Fenster auf dem Bildschirm werden weitergegeben.">
 
+<!ENTITY trackingProtection.on "Schutz vor Aktivitätenverfolgung: EIN">
+<!ENTITY trackingProtection.off "Schutz vor Aktivitätenverfolgung: AUS">
+
 <!ENTITY trackingProtection.title "Schutz vor Aktivitätenverfolgung">
-<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Teile der Seite, die Ihre Surfaktivitäten verfolgen könnten.">
+<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Seitenelemente, die Ihre Surfaktivitäten verfolgen könnten.">
 <!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die Ihre Surfaktivitäten verfolgen könnten. Sie haben den Schutz deaktiviert.">
 <!ENTITY trackingProtection.notDetected3 "Keine Inhalte zur Aktivitätenverfolgung auf dieser Seite gefunden.">
 <!-- LOCALIZATION NOTE (trackingProtection.unblock.label, trackingProtection.unblock.accesskey):
@@ -912,6 +935,30 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY trackingProtection.unblockPrivate.accesskey "d">
 <!ENTITY trackingProtection.block2.label "Schutz aktivieren">
 <!ENTITY trackingProtection.block2.accesskey "a">
+
+<!ENTITY trackingProtection.tooltip "Schutz vor Aktivitätenverfolgung - Einstellungen öffnen">
+<!ENTITY trackingProtection.detectedBlocked4 "&brandShortName; blockierte Teile dieser Seite, welche Ihr Surfverhalten verfolgen könnten.">
+<!ENTITY trackingProtection.detectedNotBlocked5 "&brandShortName; hat Seitenelemente entdeckt, welche Ihr Surfverhalten verfolgen könnten.">
+<!ENTITY trackingProtection.detectedException "&brandShortName; hat Seitenelemente entdeckt, welche Ihr Surfverhalten verfolgen könnten. Sie haben den Schutz für diese Website deaktiviert.">
+<!ENTITY trackingProtection.notDetected5 "Keine Seitenelemente entdeckt, welche Ihr Surfverhalten verfolgen">
+<!ENTITY trackingProtection.notDetectedException "Keine Seitenelemente entdeckt, welche Ihr Surfverhalten verfolgen. Sie haben den Schutz für diese Website deaktiviert.">
+
+<!ENTITY trackingProtection.reloadRequired2 "Sie haben den Schutz vor Aktivitätenverfolgung aktiviert. Laden Sie diese Seite neu, um alle verfolgenden Seiteninhalte zu blockieren.">
+
+<!-- LOCALIZATION NOTE (trackingProtection.unblock3.label, trackingProtection.unblock3.accesskey):
+     The associated button with this label and accesskey is only shown when opening the control
+     center while looking at a site with trackers in NON-private browsing mode. -->
+<!ENTITY trackingProtection.unblock3.label "Deaktivieren für diese Website">
+<!ENTITY trackingProtection.unblock3.accesskey "D">
+<!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate3.label, trackingProtection.unblockPrivate3.accesskey):
+     The associated button with this label and accesskey is only shown when opening the control
+     center while looking at a site with trackers in PRIVATE browsing mode. -->
+<!ENTITY trackingProtection.unblockPrivate3.label "Deaktivieren für diese Sitzung">
+<!ENTITY trackingProtection.unblockPrivate3.accesskey "D">
+<!ENTITY trackingProtection.block4.label "Aktivieren für diese Website">
+<!ENTITY trackingProtection.block4.accesskey "A">
+<!ENTITY trackingProtection.reload2.label "Seite neu laden">
+<!ENTITY trackingProtection.reload2.accesskey "n">
 
 <!ENTITY pluginNotification.showAll.label "Alle anzeigen">
 <!ENTITY pluginNotification.showAll.accesskey "z">
@@ -990,8 +1037,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY newTabControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY newTabControlled.disableButton.accesskey "d">
 
-<!ENTITY homepageControlled.message "Eine Erweiterung hat die Homepage geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
-<!ENTITY homepageControlled.header.message "Ihre Homepage hat sich geändert.">
+<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
+<!ENTITY homepageControlled.header.message "Ihre Startseite hat sich geändert.">
 <!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
 <!ENTITY homepageControlled.keepButton.accesskey "b">
 <!ENTITY homepageControlled.disableButton.label "Erweiterung deaktivieren">

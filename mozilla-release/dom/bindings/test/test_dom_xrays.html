@@ -171,7 +171,7 @@ function test()
 
   // Check that DataTransfer's .types has the hack to alias contains()
   // to includes().
-  var dataTransfer = new win.DataTransfer("foo", true);
+  var dataTransfer = new win.DataTransfer();
   is(dataTransfer.types.contains, dataTransfer.types.includes,
      "Should have contains() set up as an alias to includes()");
   // Waive Xrays on the dataTransfer itself, since the .types we get is
@@ -274,6 +274,14 @@ function test()
      "Shouldn't see constant property on instances");
   isnot(typeof Object.getOwnPropertyDescriptor(win.Node.prototype, "ELEMENT_NODE"), "undefined",
         "Should see constant property on prototype objects");
+
+  // Adopting nodes should not lose expandos.
+  var elem = doc.createElement("span");
+  elem.expando = 5;
+  is(elem.expando, 5, "We just set this property");
+  document.adoptNode(elem);
+  is(elem.wrappedJSObject, undefined, "Shouldn't be an Xray anymore");
+  is(elem.expando, 5, "Expando should not get lost");
 
   SimpleTest.finish();
 }

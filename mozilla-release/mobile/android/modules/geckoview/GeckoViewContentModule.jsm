@@ -25,6 +25,8 @@ class GeckoViewContentModule {
   constructor(aModuleName, aGlobal) {
     this.moduleName = aModuleName;
     this.messageManager = aGlobal;
+    this.enabled = false;
+    this.settings = {};
 
     if (!aGlobal._gvEventDispatcher) {
       aGlobal._gvEventDispatcher =
@@ -42,32 +44,47 @@ class GeckoViewContentModule {
     this.messageManager.addMessageListener(
       "GeckoView:UpdateSettings",
       aMsg => {
-        this.settings = aMsg.data;
+        Object.assign(this.settings, aMsg.data);
         this.onSettingsUpdate();
       }
     );
+
     this.messageManager.addMessageListener(
-      "GeckoView:Register",
+      "GeckoView:UpdateModuleState",
       aMsg => {
-        if (aMsg.data.module == this.moduleName) {
-          this.settings = aMsg.data.settings;
-          this.onEnable();
+        if (aMsg.data.module !== this.moduleName) {
+          return;
         }
-      }
-    );
-    this.messageManager.addMessageListener(
-      "GeckoView:Unregister",
-      aMsg => {
-        if (aMsg.data.module == this.moduleName) {
-          this.onDisable();
+
+        const {enabled, settings} = aMsg.data;
+
+        if (settings) {
+          Object.assign(this.settings, settings);
+        }
+
+        if (enabled !== this.enabled) {
+          if (!enabled) {
+            this.onDisable();
+          }
+
+          this.enabled = enabled;
+
+          if (enabled) {
+            this.onEnable();
+          }
+        }
+
+        if (settings) {
+          this.onSettingsUpdate();
         }
       }
     );
 
     this.onInit();
 
-    this.messageManager.sendAsyncMessage(
-      "GeckoView:ContentRegistered", { module: this.moduleName });
+    this.messageManager.sendAsyncMessage("GeckoView:ContentModuleLoaded", {
+      module: this.moduleName,
+    });
   }
 
   // Override to initialize module.

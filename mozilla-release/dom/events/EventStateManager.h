@@ -44,6 +44,7 @@ class WheelTransaction;
 namespace dom {
 class DataTransfer;
 class Element;
+class Selection;
 class TabParent;
 } // namespace dom
 
@@ -147,6 +148,8 @@ public:
    *                  affect the return value.
    */
   bool SetContentState(nsIContent* aContent, EventStates aState);
+
+  void NativeAnonymousContentRemoved(nsIContent* aAnonContent);
   void ContentRemoved(nsIDocument* aDocument, nsIContent* aContent);
 
   bool EventStatusOK(WidgetGUIEvent* aEvent);
@@ -1024,7 +1027,7 @@ protected:
   void DetermineDragTargetAndDefaultData(nsPIDOMWindowOuter* aWindow,
                                          nsIContent* aSelectionTarget,
                                          dom::DataTransfer* aDataTransfer,
-                                         nsISelection** aSelection,
+                                         dom::Selection** aSelection,
                                          nsIContent** aTargetNode,
                                          nsACString& aPrincipalURISpec);
 
@@ -1044,7 +1047,7 @@ protected:
                           WidgetDragEvent* aDragEvent,
                           dom::DataTransfer* aDataTransfer,
                           nsIContent* aDragTarget,
-                          nsISelection* aSelection,
+                          dom::Selection* aSelection,
                           const nsACString& aPrincipalURISpec);
 
   bool IsTrackingDragGesture ( ) const { return mGestureDownContent != nullptr; }
@@ -1086,6 +1089,17 @@ protected:
   void HandleQueryContentEvent(WidgetQueryContentEvent* aEvent);
 
 private:
+  // Removes a node from the :hover / :active chain if needed, notifying if the
+  // node is not a NAC subtree.
+  //
+  // Only meant to be called from ContentRemoved and
+  // NativeAnonymousContentRemoved.
+  void RemoveNodeFromChainIfNeeded(EventStates aState,
+                                   nsIContent* aContentRemoved,
+                                   bool aNotify);
+
+  bool IsEventOutsideDragThreshold(WidgetInputEvent* aEvent) const;
+
   static inline void DoStateChange(dom::Element* aElement,
                                    EventStates aState, bool aAddState);
   static inline void DoStateChange(nsIContent* aContent, EventStates aState,

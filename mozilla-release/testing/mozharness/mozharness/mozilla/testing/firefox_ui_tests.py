@@ -10,8 +10,7 @@ import copy
 import os
 import sys
 
-from mozharness.base.log import FATAL, WARNING
-from mozharness.base.python import PostScriptRun, PreScriptAction
+from mozharness.base.python import PreScriptAction
 from mozharness.mozilla.structuredlog import StructuredOutputParser
 from mozharness.mozilla.testing.testbase import (
     TestingMixin,
@@ -30,7 +29,8 @@ firefox_ui_tests_config_options = [
         "action": "store_true",
         "dest": "allow_software_gl_layers",
         "default": False,
-        "help": "Permits a software GL implementation (such as LLVMPipe) to use the GL compositor.",
+        "help": "Permits a software GL implementation (such as LLVMPipe) to use the GL "
+        "compositor.",
     }],
     [["--enable-webrender"], {
         "action": "store_true",
@@ -125,7 +125,7 @@ class FirefoxUITests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
             default_actions=default_actions or actions,
             *args, **kwargs)
 
-        # Code which doesn't run on buildbot has to include the following properties
+        # Code which runs in automation has to include the following properties
         self.binary_path = self.config.get('binary_path')
         self.installer_path = self.config.get('installer_path')
         self.installer_url = self.config.get('installer_url')
@@ -261,7 +261,8 @@ class FirefoxUITests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
             env.update({'MINIDUMP_STACKWALK': self.minidump_stackwalk_path})
         env['RUST_BACKTRACE'] = 'full'
 
-        # If code coverage is enabled, set GCOV_PREFIX and JS_CODE_COVERAGE_OUTPUT_DIR env variables
+        # If code coverage is enabled, set GCOV_PREFIX and JS_CODE_COVERAGE_OUTPUT_DIR
+        # env variables
         if self.config.get('code_coverage'):
             env['GCOV_PREFIX'] = self.gcov_dir
             env['JS_CODE_COVERAGE_OUTPUT_DIR'] = self.jsvm_dir
@@ -279,7 +280,7 @@ class FirefoxUITests(TestingMixin, VCSToolsScript, CodeCoverageMixin):
                                        env=env)
 
         tbpl_status, log_level, summary = parser.evaluate_parser(return_code)
-        self.buildbot_status(tbpl_status, level=log_level)
+        self.record_status(tbpl_status, level=log_level)
 
         return return_code
 

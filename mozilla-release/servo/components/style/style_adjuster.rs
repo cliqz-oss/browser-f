@@ -212,12 +212,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 .insert(ComputedValueFlags::HAS_TEXT_DECORATION_LINES);
         }
 
-        if display == Display::None {
-            self.style
-                .flags
-                .insert(ComputedValueFlags::IS_IN_DISPLAY_NONE_SUBTREE);
-        }
-
         if self.style.is_pseudo_element() {
             self.style
                 .flags
@@ -262,8 +256,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         use computed_values::text_combine_upright::T as TextCombineUpright;
         use computed_values::writing_mode::T as WritingMode;
 
-        let writing_mode = self.style.get_inheritedbox().clone_writing_mode();
-        let text_combine_upright = self.style.get_inheritedtext().clone_text_combine_upright();
+        let writing_mode = self.style.get_inherited_box().clone_writing_mode();
+        let text_combine_upright = self.style.get_inherited_text().clone_text_combine_upright();
 
         if writing_mode != WritingMode::HorizontalTb &&
             text_combine_upright == TextCombineUpright::All
@@ -272,7 +266,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 .flags
                 .insert(ComputedValueFlags::IS_TEXT_COMBINED);
             self.style
-                .mutate_inheritedbox()
+                .mutate_inherited_box()
                 .set_writing_mode(WritingMode::HorizontalTb);
         }
     }
@@ -311,8 +305,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// <https://lists.w3.org/Archives/Public/www-style/2017Mar/0045.html>
     /// <https://github.com/servo/servo/issues/15754>
     fn adjust_for_writing_mode(&mut self, layout_parent_style: &ComputedValues) {
-        let our_writing_mode = self.style.get_inheritedbox().clone_writing_mode();
-        let parent_writing_mode = layout_parent_style.get_inheritedbox().clone_writing_mode();
+        let our_writing_mode = self.style.get_inherited_box().clone_writing_mode();
+        let parent_writing_mode = layout_parent_style.get_inherited_box().clone_writing_mode();
 
         if our_writing_mode != parent_writing_mode &&
             self.style.get_box().clone_display() == Display::Inline
@@ -325,39 +319,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                     .set_adjusted_display(Display::InlineBlock, false);
             } else {
                 self.style.mutate_box().set_display(Display::InlineBlock);
-            }
-        }
-    }
-
-    #[cfg(feature = "gecko")]
-    fn adjust_for_contain(&mut self) {
-        use properties::longhands::contain::SpecifiedValue;
-
-        // An element with contain: paint needs to be a formatting context, and
-        // also implies overflow: clip.
-        //
-        // TODO(emilio): This mimics Gecko, but spec links are missing!
-        let contain = self.style.get_box().clone_contain();
-        if !contain.contains(SpecifiedValue::PAINT) {
-            return;
-        }
-
-        if self.style.get_box().clone_display() == Display::Inline {
-            self.style
-                .mutate_box()
-                .set_adjusted_display(Display::InlineBlock, false);
-        }
-
-        // When 'contain: paint', update overflow from 'visible' to 'clip'.
-        if self.style
-            .get_box()
-            .clone_contain()
-            .contains(SpecifiedValue::PAINT)
-        {
-            if self.style.get_box().clone_overflow_x() == Overflow::Visible {
-                let box_style = self.style.mutate_box();
-                box_style.set_overflow_x(Overflow::MozHiddenUnscrollable);
-                box_style.set_overflow_y(Overflow::MozHiddenUnscrollable);
             }
         }
     }
@@ -535,13 +496,13 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             return;
         }
 
-        match self.style.get_inheritedtext().clone_text_align() {
+        match self.style.get_inherited_text().clone_text_align() {
             TextAlign::MozLeft | TextAlign::MozCenter | TextAlign::MozRight => {},
             _ => return,
         }
 
         self.style
-            .mutate_inheritedtext()
+            .mutate_inherited_text()
             .set_text_align(TextAlign::Start)
     }
 
@@ -555,8 +516,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         use values::computed::text::TextDecorationsInEffect;
 
         let decorations_in_effect = TextDecorationsInEffect::from_style(&self.style);
-        if self.style.get_inheritedtext().text_decorations_in_effect != decorations_in_effect {
-            self.style.mutate_inheritedtext().text_decorations_in_effect = decorations_in_effect;
+        if self.style.get_inherited_text().text_decorations_in_effect != decorations_in_effect {
+            self.style.mutate_inherited_text().text_decorations_in_effect = decorations_in_effect;
         }
     }
 
@@ -766,7 +727,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         #[cfg(feature = "gecko")]
         {
             self.adjust_for_table_text_align();
-            self.adjust_for_contain();
             self.adjust_for_mathvariant();
             self.adjust_for_justify_items();
         }

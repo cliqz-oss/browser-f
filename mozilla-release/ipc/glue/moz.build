@@ -126,6 +126,14 @@ else:
         'ProcessUtils_none.cpp',
     ]
 
+if CONFIG['OS_ARCH'] != 'WINNT':
+    EXPORTS.mozilla.ipc += [
+        'FileDescriptorShuffle.h',
+    ]
+    UNIFIED_SOURCES += [
+        'FileDescriptorShuffle.cpp',
+    ]
+
 EXPORTS.ipc += [
     'IPCMessageUtils.h',
 ]
@@ -228,3 +236,9 @@ if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-shadow']
+
+if CONFIG['NIGHTLY_BUILD']:
+    DEFINES['ASYNC_CONTENTPROC_LAUNCH'] = True
+
+# Add libFuzzer configuration directives
+include('/tools/fuzzing/libfuzzer-config.mozbuild')

@@ -22,7 +22,57 @@ nsSimpleNestedURI::nsSimpleNestedURI(nsIURI* innerURI)
     : mInnerURI(innerURI)
 {
     NS_ASSERTION(innerURI, "Must have inner URI");
-    NS_TryToSetImmutable(innerURI);
+}
+
+nsresult
+nsSimpleNestedURI::SetPathQueryRef(const nsACString &aPathQueryRef)
+{
+    NS_ENSURE_TRUE(mInnerURI, NS_ERROR_NOT_INITIALIZED);
+
+    nsCOMPtr<nsIURI> inner;
+    nsresult rv = NS_MutateURI(mInnerURI)
+                    .SetPathQueryRef(aPathQueryRef)
+                    .Finalize(inner);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = nsSimpleURI::SetPathQueryRef(aPathQueryRef);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // If the regular SetPathQueryRef worked, also set it on the inner URI
+    mInnerURI = inner;
+    return NS_OK;
+}
+
+nsresult
+nsSimpleNestedURI::SetQuery(const nsACString &aQuery)
+{
+    NS_ENSURE_TRUE(mInnerURI, NS_ERROR_NOT_INITIALIZED);
+
+    nsCOMPtr<nsIURI> inner;
+    nsresult rv = NS_MutateURI(mInnerURI)
+                    .SetQuery(aQuery)
+                    .Finalize(inner);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = nsSimpleURI::SetQuery(aQuery);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // If the regular SetQuery worked, also set it on the inner URI
+    mInnerURI = inner;
+    return NS_OK;
+}
+
+nsresult
+nsSimpleNestedURI::SetRef(const nsACString &aRef)
+{
+    NS_ENSURE_TRUE(mInnerURI, NS_ERROR_NOT_INITIALIZED);
+
+    nsCOMPtr<nsIURI> inner;
+    nsresult rv = NS_MutateURI(mInnerURI)
+                    .SetRef(aRef)
+                    .Finalize(inner);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = nsSimpleURI::SetRef(aRef);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // If the regular SetRef worked, also set it on the inner URI
+    mInnerURI = inner;
+    return NS_OK;
 }
 
 // nsISerializable
@@ -40,16 +90,12 @@ nsSimpleNestedURI::ReadPrivate(nsIObjectInputStream *aStream)
     nsresult rv = nsSimpleURI::ReadPrivate(aStream);
     if (NS_FAILED(rv)) return rv;
 
-    NS_ASSERTION(!mMutable, "How did that happen?");
-
     nsCOMPtr<nsISupports> supports;
     rv = aStream->ReadObject(true, getter_AddRefs(supports));
     if (NS_FAILED(rv)) return rv;
 
     mInnerURI = do_QueryInterface(supports, &rv);
     if (NS_FAILED(rv)) return rv;
-
-    NS_TryToSetImmutable(mInnerURI);
 
     return rv;
 }
@@ -103,19 +149,19 @@ nsSimpleNestedURI::Deserialize(const mozilla::ipc::URIParams& aParams)
         return false;
 
     mInnerURI = DeserializeURI(params.innerURI());
-
-    NS_TryToSetImmutable(mInnerURI);
     return true;
 }
 
 // nsINestedURI
 
 NS_IMETHODIMP
-nsSimpleNestedURI::GetInnerURI(nsIURI** uri)
+nsSimpleNestedURI::GetInnerURI(nsIURI** aURI)
 {
     NS_ENSURE_TRUE(mInnerURI, NS_ERROR_NOT_INITIALIZED);
 
-    return NS_EnsureSafeToReturn(mInnerURI, uri);
+    nsCOMPtr<nsIURI> uri = mInnerURI;
+    uri.forget(aURI);
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -162,9 +208,9 @@ nsSimpleNestedURI::StartClone(nsSimpleURI::RefHandlingEnum refHandlingMode,
     NS_ENSURE_TRUE(mInnerURI, nullptr);
 
     nsCOMPtr<nsIURI> innerClone;
-    nsresult rv;
+    nsresult rv = NS_OK;
     if (refHandlingMode == eHonorRef) {
-        rv = mInnerURI->Clone(getter_AddRefs(innerClone));
+        innerClone = mInnerURI;
     } else if (refHandlingMode == eReplaceRef) {
         rv = mInnerURI->CloneWithNewRef(newRef, getter_AddRefs(innerClone));
     } else {
@@ -177,7 +223,6 @@ nsSimpleNestedURI::StartClone(nsSimpleURI::RefHandlingEnum refHandlingMode,
 
     nsSimpleNestedURI* url = new nsSimpleNestedURI(innerClone);
     SetRefOnClone(url, refHandlingMode, newRef);
-    url->SetMutable(false);
 
     return url;
 }
@@ -208,9 +253,6 @@ nsSimpleNestedURI::Mutate(nsIURIMutator** aMutator)
     if (NS_FAILED(rv)) {
         return rv;
     }
-    // StartClone calls SetMutable(false) but we need the mutator clone
-    // to be mutable
-    mutator->ResetMutable();
     mutator.forget(aMutator);
     return NS_OK;
 }

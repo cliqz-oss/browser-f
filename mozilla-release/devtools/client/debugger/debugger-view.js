@@ -179,7 +179,7 @@ var DebuggerView = {
   _destroyPanes: function () {
     dumpn("Destroying the DebuggerView panes");
 
-    if (gHostType != "side") {
+    if (gHostType != "right" && gHostType != "left") {
       Prefs.workersAndSourcesWidth = this._workersAndSourcesPane.getAttribute("width");
       Prefs.instrumentsWidth = this._instrumentsPane.getAttribute("width");
     }
@@ -703,7 +703,7 @@ var DebuggerView = {
    * Handles a host change event issued by the parent toolbox.
    *
    * @param string aType
-   *        The host type, either "bottom", "side" or "window".
+   *        The host type, either "bottom", "left", "right" or "window".
    */
   handleHostChanged: function (hostType) {
     this._hostType = hostType;
@@ -723,7 +723,9 @@ var DebuggerView = {
    * Set the layout to "vertical" or "horizontal" depending on the host type.
    */
   updateLayoutMode: function () {
-    if (this._isSmallWindowHost() || this._hostType == "side") {
+    if (this._isSmallWindowHost() ||
+        this._hostType == "left" ||
+        this._hostType == "right") {
       this._setLayoutMode("vertical");
     } else {
       this._setLayoutMode("horizontal");
@@ -849,7 +851,7 @@ function ResultsPanelContainer() {
 ResultsPanelContainer.prototype = extend(WidgetMethods, {
   /**
    * Sets the anchor node for this container panel.
-   * @param nsIDOMNode aNode
+   * @param Node aNode
    */
   set anchor(aNode) {
     this._anchor = aNode;
@@ -882,7 +884,7 @@ ResultsPanelContainer.prototype = extend(WidgetMethods, {
 
   /**
    * Gets the anchor node for this container panel.
-   * @return nsIDOMNode
+   * @return Node
    */
   get anchor() {
     return this._anchor;

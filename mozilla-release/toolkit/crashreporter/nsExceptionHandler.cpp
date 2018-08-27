@@ -117,6 +117,7 @@ using mozilla::ipc::CrashReporterClient;
 // From toolkit/library/rust/shared/lib.rs
 extern "C" {
   void install_rust_panic_hook();
+  void install_rust_oom_hook();
   bool get_rust_panic_reason(char** reason, size_t* length);
 }
 
@@ -840,7 +841,7 @@ LaunchCrashReporterActivity(XP_CHAR* aProgramPath, XP_CHAR* aMinidumpPath,
     if (androidUserSerial) {
       Unused << execlp("/system/bin/am",
                        "/system/bin/am",
-                       "start",
+                       "startservice",
                        "--user", androidUserSerial,
                        "-a", "org.mozilla.gecko.reportCrash",
                        "-n", aProgramPath,
@@ -850,7 +851,7 @@ LaunchCrashReporterActivity(XP_CHAR* aProgramPath, XP_CHAR* aMinidumpPath,
     } else {
       Unused << execlp("/system/bin/am",
                        "/system/bin/am",
-                       "start",
+                       "startservice",
                        "-a", "org.mozilla.gecko.reportCrash",
                        "-n", aProgramPath,
                        "--es", "minidumpPath", aMinidumpPath,
@@ -1544,10 +1545,10 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
   const char* androidPackageName = PR_GetEnv("MOZ_ANDROID_PACKAGE_NAME");
   if (androidPackageName != nullptr) {
     nsCString package(androidPackageName);
-    package.AppendLiteral("/org.mozilla.gecko.CrashReporter");
+    package.AppendLiteral("/org.mozilla.gecko.CrashReporterService");
     crashReporterPath = ToNewCString(package);
   } else {
-    nsCString package(ANDROID_PACKAGE_NAME "/org.mozilla.gecko.CrashReporter");
+    nsCString package(ANDROID_PACKAGE_NAME "/org.mozilla.gecko.CrashReporterService");
     crashReporterPath = ToNewCString(package);
   }
 #endif // !defined(MOZ_WIDGET_ANDROID)
@@ -1686,6 +1687,8 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
   oldTerminateHandler = std::set_terminate(&TerminateHandler);
 
   install_rust_panic_hook();
+
+  install_rust_oom_hook();
 
   InitThreadAnnotation();
 
@@ -2231,6 +2234,7 @@ GetAnnotation(const nsACString& key, nsACString& data)
   if (!gExceptionHandler)
     return false;
 
+  MutexAutoLock lock(*crashReporterAPILock);
   nsAutoCString entry;
   if (!crashReporterAPIData_Hash->Get(key, &entry))
     return false;
@@ -2943,6 +2947,10 @@ WriteLiteral(PRFileDesc* fd, const char (&str)[N])
   PR_Write(fd, str, N - 1);
 }
 
+/*
+ * If accessing the AnnotationTable |data| argument requires locks, the
+ * caller should ensure the required locks are already held.
+ */
 static bool
 WriteExtraData(nsIFile* extraFile,
                const AnnotationTable& data,
@@ -3067,11 +3075,14 @@ WriteExtraForMinidump(nsIFile* minidump,
     return false;
   }
 
-  if (!WriteExtraData(extra, *crashReporterAPIData_Hash,
-                      blacklist,
-                      true /*write crash time*/,
-                      true /*truncate*/)) {
-    return false;
+  {
+    MutexAutoLock lock(*crashReporterAPILock);
+    if (!WriteExtraData(extra, *crashReporterAPIData_Hash,
+                        blacklist,
+                        true /*write crash time*/,
+                        true /*truncate*/)) {
+      return false;
+    }
   }
 
   if (pid && processToCrashFd.count(pid)) {
@@ -3794,7 +3805,7 @@ NotifyDumpResult(bool aResult,
   if (aAsync) {
     MOZ_ASSERT(!!aCallbackThread);
     Unused << aCallbackThread->Dispatch(NS_NewRunnableFunction("CrashReporter::InvokeCallback",
-                                                               Move(runnable)),
+                                                               std::move(runnable)),
                                         NS_DISPATCH_SYNC);
   } else {
     runnable();
@@ -3832,7 +3843,7 @@ CreatePairedChildMinidumpAsync(ProcessHandle aTargetPid,
          , GetMinidumpType()
 #endif
       )) {
-    NotifyDumpResult(false, aAsync, Move(aCallback), Move(aCallbackThread));
+    NotifyDumpResult(false, aAsync, std::move(aCallback), std::move(aCallbackThread));
     return;
   }
 
@@ -3841,7 +3852,7 @@ CreatePairedChildMinidumpAsync(ProcessHandle aTargetPid,
   if (!targetExtra) {
     targetMinidump->Remove(false);
 
-    NotifyDumpResult(false, aAsync, Move(aCallback), Move(aCallbackThread));
+    NotifyDumpResult(false, aAsync, std::move(aCallback), std::move(aCallbackThread));
     return;
   }
 
@@ -3856,7 +3867,7 @@ CreatePairedChildMinidumpAsync(ProcessHandle aTargetPid,
 
   targetMinidump.forget(aMainDumpOut);
 
-  NotifyDumpResult(true, aAsync, Move(aCallback), Move(aCallbackThread));
+  NotifyDumpResult(true, aAsync, std::move(aCallback), std::move(aCallbackThread));
 }
 
 void
@@ -3914,7 +3925,7 @@ CreateMinidumpsAndPair(ProcessHandle aTargetPid,
   }
 
   nsCString incomingPairName(aIncomingPairName);
-  std::function<void(bool)> callback = Move(aCallback);
+  std::function<void(bool)> callback = std::move(aCallback);
   // Don't call do_GetCurrentThread() if this is called synchronously because
   // 1. it's unnecessary, and 2. more importantly, it might create one if called
   // from a native thread, and the thread will be leaked.
@@ -3927,14 +3938,14 @@ CreateMinidumpsAndPair(ProcessHandle aTargetPid,
                                    incomingDumpToPair,
                                    aMainDumpOut,
                                    dump_path,
-                                   Move(callback),
-                                   Move(callbackThread),
+                                   std::move(callback),
+                                   std::move(callbackThread),
                                    aAsync);
   };
 
   if (aAsync) {
     sMinidumpWriterThread->Dispatch(NS_NewRunnableFunction("CrashReporter::CreateMinidumpsAndPair",
-                                                           Move(doDump)),
+                                                           std::move(doDump)),
                                     nsIEventTarget::DISPATCH_NORMAL);
   } else {
     doDump();

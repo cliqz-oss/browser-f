@@ -25,11 +25,11 @@
 #include "nsCaret.h"
 #include "nsContentUtils.h"
 #include "nsGkAtoms.h"
-#include "nsISelection.h"
 #include "nsQuickSort.h"
 #include "SVGObserverUtils.h"
 #include "nsSVGOuterSVGFrame.h"
 #include "nsSVGPaintServerFrame.h"
+#include "mozilla/dom/Selection.h"
 #include "mozilla/dom/SVGRect.h"
 #include "mozilla/dom/SVGTextContentElementBinding.h"
 #include "nsSVGIntegrationUtils.h"
@@ -419,7 +419,7 @@ TruncateTo(nsTArray<T>& aArrayToTruncate, const nsTArray<U>& aReferenceArray)
 static SVGTextFrame*
 FrameIfAnonymousChildReflowed(SVGTextFrame* aFrame)
 {
-  NS_PRECONDITION(aFrame, "aFrame must not be null");
+  MOZ_ASSERT(aFrame, "aFrame must not be null");
   nsIFrame* kid = aFrame->PrincipalChildList().FirstChild();
   if (NS_SUBTREE_DIRTY(kid)) {
     MOZ_ASSERT(false, "should have already reflowed the anonymous block child");
@@ -1560,7 +1560,7 @@ public:
    * Constructs a TextFrameIterator for the specified SVGTextFrame
    * with an optional frame subtree to restrict iterated text frames to.
    */
-  explicit TextFrameIterator(SVGTextFrame* aRoot, nsIFrame* aSubtree = nullptr)
+  explicit TextFrameIterator(SVGTextFrame* aRoot, const nsIFrame* aSubtree = nullptr)
     : mRootFrame(aRoot),
       mSubtree(aSubtree),
       mCurrentFrame(aRoot),
@@ -1699,7 +1699,7 @@ private:
   /**
    * The frame for the subtree we are also interested in tracking.
    */
-  nsIFrame* mSubtree;
+  const nsIFrame* mSubtree;
 
   /**
    * The current value of the iterator.
@@ -1873,7 +1873,7 @@ public:
    */
   explicit TextRenderedRunIterator(SVGTextFrame* aSVGTextFrame,
                                    RenderedRunFilter aFilter = eAllFrames,
-                                   nsIFrame* aSubtree = nullptr)
+                                   const nsIFrame* aSubtree = nullptr)
     : mFrameIterator(FrameIfAnonymousChildReflowed(aSVGTextFrame), aSubtree),
       mFilter(aFilter),
       mTextElementCharIndex(0),
@@ -2439,10 +2439,12 @@ CharIterator::CharIterator(SVGTextFrame* aSVGTextFrame,
     mFrameForTrimCheck(nullptr),
     mTrimmedOffset(0),
     mTrimmedLength(0),
+    mTextRun(nullptr),
     mTextElementCharIndex(0),
     mGlyphStartTextElementCharIndex(0),
-    mLengthAdjustScaleFactor(aSVGTextFrame->mLengthAdjustScaleFactor)
-  , mPostReflow(aPostReflow)
+    mGlyphUndisplayedCharacters(0),
+    mLengthAdjustScaleFactor(aSVGTextFrame->mLengthAdjustScaleFactor),
+    mPostReflow(aPostReflow)
 {
   if (!AtEnd()) {
     mSkipCharsIterator = TextFrame()->EnsureTextRun(nsTextFrame::eInflated);
@@ -2772,7 +2774,8 @@ public:
       mContext(aContext),
       mFrame(aFrame),
       mCanvasTM(aCanvasTM),
-      mImgParams(aImgParams)
+      mImgParams(aImgParams),
+      mColor(0)
   {
   }
 
@@ -3521,14 +3524,12 @@ SVGTextFrame::NotifySVGChanged(uint32_t aFlags)
 static int32_t
 GetCaretOffset(nsCaret* aCaret)
 {
-  nsCOMPtr<nsISelection> selection = aCaret->GetSelection();
+  RefPtr<Selection> selection = aCaret->GetSelection();
   if (!selection) {
     return -1;
   }
 
-  int32_t offset = -1;
-  selection->GetAnchorOffset(&offset);
-  return offset;
+  return selection->AnchorOffset();
 }
 
 /**
@@ -5744,7 +5745,7 @@ SVGTextFrame::TransformFramePointToTextChild(const Point& aPoint,
  */
 gfxRect
 SVGTextFrame::TransformFrameRectFromTextChild(const nsRect& aRect,
-                                              nsIFrame* aChildFrame)
+                                              const nsIFrame* aChildFrame)
 {
   NS_ASSERTION(aChildFrame &&
                nsLayoutUtils::GetClosestFrameOfType

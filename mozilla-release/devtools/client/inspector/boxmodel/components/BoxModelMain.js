@@ -15,9 +15,6 @@ const BoxModelEditable = createFactory(require("./BoxModelEditable"));
 
 const Types = require("../types");
 
-const BOXMODEL_STRINGS_URI = "devtools/client/locales/boxmodel.properties";
-const BOXMODEL_L10N = new LocalizationHelper(BOXMODEL_STRINGS_URI);
-
 const SHARED_STRINGS_URI = "devtools/client/locales/shared.properties";
 const SHARED_L10N = new LocalizationHelper(SHARED_STRINGS_URI);
 
@@ -56,8 +53,8 @@ class BoxModelMain extends PureComponent {
   }
 
   componentDidUpdate() {
-    let displayPosition = this.getDisplayPosition();
-    let isContentBox = this.getContextBox();
+    const displayPosition = this.getDisplayPosition();
+    const isContentBox = this.getContextBox();
 
     this.layouts = {
       "position": new Map([
@@ -102,8 +99,8 @@ class BoxModelMain extends PureComponent {
     let { activeDescendant } = this.state;
 
     if (!activeDescendant) {
-      let displayPosition = this.getDisplayPosition();
-      let nextLayout = displayPosition ? this.positionLayout : this.marginLayout;
+      const displayPosition = this.getDisplayPosition();
+      const nextLayout = displayPosition ? this.positionLayout : this.marginLayout;
       activeDescendant = nextLayout.getAttribute("data-box");
       this.setAriaActive(nextLayout);
     }
@@ -112,7 +109,7 @@ class BoxModelMain extends PureComponent {
   }
 
   getBorderOrPaddingValue(property) {
-    let { layout } = this.props.boxModel;
+    const { layout } = this.props.boxModel;
     return layout[property] ? parseFloat(layout[property]) : "-";
   }
 
@@ -120,7 +117,7 @@ class BoxModelMain extends PureComponent {
    * Returns true if the layout box sizing is context box and false otherwise.
    */
   getContextBox() {
-    let { layout } = this.props.boxModel;
+    const { layout } = this.props.boxModel;
     return layout["box-sizing"] == "content-box";
   }
 
@@ -128,7 +125,7 @@ class BoxModelMain extends PureComponent {
    * Returns true if the position is displayed and false otherwise.
    */
   getDisplayPosition() {
-    let { layout } = this.props.boxModel;
+    const { layout } = this.props.boxModel;
     return layout.position && layout.position != "static";
   }
 
@@ -137,7 +134,7 @@ class BoxModelMain extends PureComponent {
       return "-";
     }
 
-    let { layout } = this.props.boxModel;
+    const { layout } = this.props.boxModel;
 
     property -= parseFloat(layout["border-top-width"]) +
                 parseFloat(layout["border-bottom-width"]) +
@@ -149,14 +146,14 @@ class BoxModelMain extends PureComponent {
   }
 
   getMarginValue(property, direction) {
-    let { layout } = this.props.boxModel;
-    let autoMargins = layout.autoMargins || {};
+    const { layout } = this.props.boxModel;
+    const autoMargins = layout.autoMargins || {};
     let value = "-";
 
     if (direction in autoMargins) {
       value = autoMargins[direction];
     } else if (layout[property]) {
-      let parsedValue = parseFloat(layout[property]);
+      const parsedValue = parseFloat(layout[property]);
 
       if (Number.isNaN(parsedValue)) {
         // Not a number. We use the raw string.
@@ -172,14 +169,14 @@ class BoxModelMain extends PureComponent {
   }
 
   getPositionValue(property) {
-    let { layout } = this.props.boxModel;
+    const { layout } = this.props.boxModel;
     let value = "-";
 
     if (!layout[property]) {
       return value;
     }
 
-    let parsedValue = parseFloat(layout[property]);
+    const parsedValue = parseFloat(layout[property]);
 
     if (Number.isNaN(parsedValue)) {
       // Not a number. We use the raw string.
@@ -196,7 +193,7 @@ class BoxModelMain extends PureComponent {
       return "-";
     }
 
-    let { layout } = this.props.boxModel;
+    const { layout } = this.props.boxModel;
 
     property -= parseFloat(layout["border-left-width"]) +
                 parseFloat(layout["border-right-width"]) +
@@ -218,10 +215,10 @@ class BoxModelMain extends PureComponent {
    *         Current active layout
    */
   moveFocus({ target, shiftKey }, level) {
-    let editBoxes = [
+    const editBoxes = [
       ...findDOMNode(this).querySelectorAll(`[data-box="${level}"].boxmodel-editable`)
     ];
-    let editingMode = target.tagName === "input";
+    const editingMode = target.tagName === "input";
     // target.nextSibling is input field
     let position = editingMode ? editBoxes.indexOf(target.nextSibling)
                                : editBoxes.indexOf(target);
@@ -234,7 +231,7 @@ class BoxModelMain extends PureComponent {
       shiftKey ? position-- : position++;
     }
 
-    let editBox = editBoxes[position];
+    const editBox = editBoxes[position];
     editBox.focus();
 
     if (editingMode) {
@@ -249,7 +246,7 @@ class BoxModelMain extends PureComponent {
    *         Element of next layout that user has navigated to
    */
   setAriaActive(nextLayout) {
-    let { boxModelContainer } = this.props;
+    const { boxModelContainer } = this.props;
 
     // We set this attribute for testing purposes.
     if (boxModelContainer) {
@@ -298,17 +295,17 @@ class BoxModelMain extends PureComponent {
    *         The event triggered by a keypress on the box model
    */
   onKeyDown(event) {
-    let { target, keyCode } = event;
-    let isEditable = target._editable || target.editor;
+    const { target, keyCode } = event;
+    const isEditable = target._editable || target.editor;
 
-    let level = this.getAriaActiveDescendant();
-    let editingMode = target.tagName === "input";
+    const level = this.getAriaActiveDescendant();
+    const editingMode = target.tagName === "input";
 
     switch (keyCode) {
       case KeyCodes.DOM_VK_RETURN:
         if (!isEditable) {
           this.setState({ focusable: true }, () => {
-            let editableBox = this.layouts[level].get(keyCode);
+            const editableBox = this.layouts[level].get(keyCode);
             if (editableBox) {
               editableBox.boxModelEditable.focus();
             }
@@ -321,7 +318,7 @@ class BoxModelMain extends PureComponent {
           event.preventDefault();
           event.stopPropagation();
           this.setState({ focusable: false }, () => {
-            let nextLayout = this.layouts[level].get(keyCode);
+            const nextLayout = this.layouts[level].get(keyCode);
 
             if (!nextLayout) {
               return;
@@ -364,9 +361,9 @@ class BoxModelMain extends PureComponent {
    *         The event triggered by a mouse click on the box model
    */
   onLevelClick(event) {
-    let { target } = event;
-    let displayPosition = this.getDisplayPosition();
-    let isContentBox = this.getContextBox();
+    const { target } = event;
+    const displayPosition = this.getDisplayPosition();
+    const isContentBox = this.getContextBox();
 
     // Avoid switching the aria active descendant to the position or content layout
     // if those are not editable.
@@ -375,7 +372,7 @@ class BoxModelMain extends PureComponent {
       return;
     }
 
-    let nextLayout = this.layouts[target.getAttribute("data-box")].get("click");
+    const nextLayout = this.layouts[target.getAttribute("data-box")].get("click");
     this.setAriaActive(nextLayout);
 
     if (target && target._editable) {
@@ -384,39 +381,39 @@ class BoxModelMain extends PureComponent {
   }
 
   render() {
-    let {
+    const {
       boxModel,
       onShowBoxModelEditor,
     } = this.props;
-    let { layout } = boxModel;
+    const { layout } = boxModel;
     let { height, width } = layout;
-    let { activeDescendant: level, focusable } = this.state;
+    const { activeDescendant: level, focusable } = this.state;
 
-    let borderTop = this.getBorderOrPaddingValue("border-top-width");
-    let borderRight = this.getBorderOrPaddingValue("border-right-width");
-    let borderBottom = this.getBorderOrPaddingValue("border-bottom-width");
-    let borderLeft = this.getBorderOrPaddingValue("border-left-width");
+    const borderTop = this.getBorderOrPaddingValue("border-top-width");
+    const borderRight = this.getBorderOrPaddingValue("border-right-width");
+    const borderBottom = this.getBorderOrPaddingValue("border-bottom-width");
+    const borderLeft = this.getBorderOrPaddingValue("border-left-width");
 
-    let paddingTop = this.getBorderOrPaddingValue("padding-top");
-    let paddingRight = this.getBorderOrPaddingValue("padding-right");
-    let paddingBottom = this.getBorderOrPaddingValue("padding-bottom");
-    let paddingLeft = this.getBorderOrPaddingValue("padding-left");
+    const paddingTop = this.getBorderOrPaddingValue("padding-top");
+    const paddingRight = this.getBorderOrPaddingValue("padding-right");
+    const paddingBottom = this.getBorderOrPaddingValue("padding-bottom");
+    const paddingLeft = this.getBorderOrPaddingValue("padding-left");
 
-    let displayPosition = this.getDisplayPosition();
-    let positionTop = this.getPositionValue("top");
-    let positionRight = this.getPositionValue("right");
-    let positionBottom = this.getPositionValue("bottom");
-    let positionLeft = this.getPositionValue("left");
+    const displayPosition = this.getDisplayPosition();
+    const positionTop = this.getPositionValue("top");
+    const positionRight = this.getPositionValue("right");
+    const positionBottom = this.getPositionValue("bottom");
+    const positionLeft = this.getPositionValue("left");
 
-    let marginTop = this.getMarginValue("margin-top", "top");
-    let marginRight = this.getMarginValue("margin-right", "right");
-    let marginBottom = this.getMarginValue("margin-bottom", "bottom");
-    let marginLeft = this.getMarginValue("margin-left", "left");
+    const marginTop = this.getMarginValue("margin-top", "top");
+    const marginRight = this.getMarginValue("margin-right", "right");
+    const marginBottom = this.getMarginValue("margin-bottom", "bottom");
+    const marginLeft = this.getMarginValue("margin-left", "left");
 
     height = this.getHeightValue(height);
     width = this.getWidthValue(width);
 
-    let contentBox = layout["box-sizing"] == "content-box" ?
+    const contentBox = layout["box-sizing"] == "content-box" ?
       dom.div(
         {
           className: "boxmodel-size",
@@ -452,7 +449,7 @@ class BoxModelMain extends PureComponent {
         },
         dom.span(
           {
-            title: BOXMODEL_L10N.getStr("boxmodel.content"),
+            title: "content",
           },
           SHARED_L10N.getFormatStr("dimensions", width, height)
         )
@@ -475,9 +472,9 @@ class BoxModelMain extends PureComponent {
           {
             className: "boxmodel-legend",
             "data-box": "position",
-            title: BOXMODEL_L10N.getStr("boxmodel.position"),
+            title: "position",
           },
-          BOXMODEL_L10N.getStr("boxmodel.position")
+          "position"
         )
         :
         null,
@@ -539,7 +536,7 @@ class BoxModelMain extends PureComponent {
               dom.div({
                 className: "boxmodel-contents",
                 "data-box": "content",
-                title: BOXMODEL_L10N.getStr("boxmodel.content"),
+                title: "content",
                 ref: div => {
                   this.contentLayout = div;
                 },

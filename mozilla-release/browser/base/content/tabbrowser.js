@@ -69,7 +69,7 @@ window._gBrowser = {
 
   ownerDocument: document,
 
-  closingTabsEnum: { ALL: 0, OTHER: 1, TO_END: 2 },
+  closingTabsEnum: { ALL: 0, OTHER: 1, TO_END: 2, MULTI_SELECTED: 3 },
 
   _visibleTabs: null,
 
@@ -96,6 +96,8 @@ window._gBrowser = {
   _lastFindValue: "",
 
   _contentWaitingCount: 0,
+
+  _tabLayerCache: [],
 
   tabAnimationsInProgress: 0,
 
@@ -128,11 +130,15 @@ window._gBrowser = {
     "audioPlaybackStopped", "pauseMedia", "stopMedia",
     "resumeMedia", "mute", "unmute", "blockedPopups", "lastURI",
     "purgeSessionHistory", "stopScroll", "startScroll",
-    "userTypedValue", "userTypedClear", "mediaBlocked",
+    "userTypedValue", "userTypedClear",
     "didStartLoadSinceLastUserTyping", "audioMuted"
   ],
 
   _removingTabs: [],
+
+  _multiSelectedTabsSet: new WeakSet(),
+
+  _lastMultiSelectedTabRef: null,
 
   /**
    * Tab close requests are ignored if the window is closing anyway,
@@ -521,6 +527,20 @@ window._gBrowser = {
     browserContainer.insertBefore(StatusPanel.panel, browser.parentNode.nextSibling);
   },
 
+  _updateTabBarForPinnedTabs() {
+    this.tabContainer._unlockTabSizing();
+    this.tabContainer._positionPinnedTabs();
+    this.tabContainer._updateCloseButtons();
+  },
+
+  _notifyPinnedStatus(aTab) {
+    this.getBrowserForTab(aTab).messageManager.sendAsyncMessage("Browser:AppTab", { isAppTab: aTab.pinned });
+
+    let event = document.createEvent("Events");
+    event.initEvent(aTab.pinned ? "TabPinned" : "TabUnpinned", true, false);
+    aTab.dispatchEvent(event);
+  },
+
   pinTab(aTab) {
     if (aTab.pinned)
       return;
@@ -530,15 +550,8 @@ window._gBrowser = {
 
     this.moveTabTo(aTab, this._numPinnedTabs);
     aTab.setAttribute("pinned", "true");
-    this.tabContainer._unlockTabSizing();
-    this.tabContainer._positionPinnedTabs();
-    this.tabContainer._updateCloseButtons();
-
-    this.getBrowserForTab(aTab).messageManager.sendAsyncMessage("Browser:AppTab", { isAppTab: true });
-
-    let event = document.createEvent("Events");
-    event.initEvent("TabPinned", true, false);
-    aTab.dispatchEvent(event);
+    this._updateTabBarForPinnedTabs();
+    this._notifyPinnedStatus(aTab);
   },
 
   unpinTab(aTab) {
@@ -548,15 +561,8 @@ window._gBrowser = {
     this.moveTabTo(aTab, this._numPinnedTabs - 1);
     aTab.removeAttribute("pinned");
     aTab.style.marginInlineStart = "";
-    this.tabContainer._unlockTabSizing();
-    this.tabContainer._positionPinnedTabs();
-    this.tabContainer._updateCloseButtons();
-
-    this.getBrowserForTab(aTab).messageManager.sendAsyncMessage("Browser:AppTab", { isAppTab: false });
-
-    let event = document.createEvent("Events");
-    event.initEvent("TabUnpinned", true, false);
-    aTab.dispatchEvent(event);
+    this._updateTabBarForPinnedTabs();
+    this._notifyPinnedStatus(aTab);
   },
 
   previewTab(aTab, aCallback) {
@@ -1279,6 +1285,7 @@ window._gBrowser = {
                                                   [brandShortName]);
       isContentTitle = true;
     } else {
+      // See if we can use the URI as the title.
       if (browser.currentURI.displaySpec) {
         try {
           title = this.mURIFixup.createExposableURI(browser.currentURI).displaySpec;
@@ -1288,25 +1295,24 @@ window._gBrowser = {
       }
 
       if (title && !isBlankPageURL(title)) {
-        // At this point, we now have a URI.
-        // Let's try to unescape it using a character set
-        // in case the URI is not ASCII.
-        try {
-          // If it's a long data: URI that uses base64 encoding, truncate to
-          // a reasonable length rather than trying to display the entire thing.
-          // We can't shorten arbitrary URIs like this, as bidi etc might mean
-          // we need the trailing characters for display. But a base64-encoded
-          // data-URI is plain ASCII, so this is OK for tab-title display.
-          // (See bug 1408854.)
-          if (title.length > 500 && title.match(/^data:[^,]+;base64,/)) {
-            title = title.substring(0, 500) + "\u2026";
-          } else {
-            var characterSet = browser.characterSet;
+        // If it's a long data: URI that uses base64 encoding, truncate to a
+        // reasonable length rather than trying to display the entire thing,
+        // which can be slow.
+        // We can't shorten arbitrary URIs like this, as bidi etc might mean
+        // we need the trailing characters for display. But a base64-encoded
+        // data-URI is plain ASCII, so this is OK for tab-title display.
+        // (See bug 1408854.)
+        if (title.length > 500 && title.match(/^data:[^,]+;base64,/)) {
+          title = title.substring(0, 500) + "\u2026";
+        } else {
+          // Try to unescape not-ASCII URIs using the current character set.
+          try {
+            let characterSet = browser.characterSet;
             title = Services.textToSubURI.unEscapeNonAsciiURI(characterSet, title);
-          }
-        } catch (ex) { /* Do nothing. */ }
+          } catch (ex) { /* Do nothing. */ }
+        }
       } else {
-        // Still no title? Fall back to our untitled string.
+        // No suitable URI? Fall back to our untitled string.
         title = this.tabContainer.emptyTabTitle;
       }
     }
@@ -1511,7 +1517,7 @@ window._gBrowser = {
         // opening the next ones.
       }
     } else {
-      firstTabAdded = this.addTab(aURIs[0], {
+      let params = {
         ownerTab: owner,
         skipAnimation: multiple,
         allowThirdPartyFixup: aAllowThirdPartyFixup,
@@ -1519,25 +1525,30 @@ window._gBrowser = {
         userContextId: aUserContextId,
         triggeringPrincipal: aTriggeringPrincipal,
         bulkOrderedOpen: multiple,
-      });
-      if (aNewIndex !== -1) {
-        this.moveTabTo(firstTabAdded, aNewIndex);
+      };
+      if (aNewIndex > -1) {
+        params.index = aNewIndex;
+      }
+      firstTabAdded = this.addTab(aURIs[0], params);
+      if (aNewIndex > -1) {
         targetTabIndex = firstTabAdded._tPos;
       }
     }
 
     let tabNum = targetTabIndex;
     for (let i = 1; i < aURIs.length; ++i) {
-      let tab = this.addTab(aURIs[i], {
+      let params = {
         skipAnimation: true,
         allowThirdPartyFixup: aAllowThirdPartyFixup,
         postData: aPostDatas[i],
         userContextId: aUserContextId,
         triggeringPrincipal: aTriggeringPrincipal,
         bulkOrderedOpen: true,
-      });
-      if (targetTabIndex !== -1)
-        this.moveTabTo(tab, ++tabNum);
+      };
+      if (targetTabIndex > -1) {
+        params.index = ++tabNum;
+      }
+      this.addTab(aURIs[i], params);
     }
 
     if (firstTabAdded && !aLoadInBackground) {
@@ -1613,7 +1624,7 @@ window._gBrowser = {
 
     // Change the "remote" attribute.
     let parent = aBrowser.parentNode;
-    parent.removeChild(aBrowser);
+    aBrowser.remove();
     if (aShouldBeRemote) {
       aBrowser.setAttribute("remote", "true");
       aBrowser.setAttribute("remoteType", aOptions.remoteType);
@@ -1963,19 +1974,8 @@ window._gBrowser = {
               gBrowser._insertBrowser(aTab);
             };
           break;
-        case "resumeMedia":
-          getter = () =>
-            () => {
-              // No need to insert a browser, so we just call the browser's
-              // method.
-              aTab.addEventListener("SSTabRestoring", () => {
-                browser[name]();
-              }, { once: true });
-            };
-          break;
         case "userTypedValue":
         case "userTypedClear":
-        case "mediaBlocked":
           getter = () => SessionStore.getLazyTabValue(aTab, name);
           break;
         default:
@@ -2098,6 +2098,12 @@ window._gBrowser = {
       return;
     }
 
+    // Reset webrtc sharing state.
+    if (tab._sharingState) {
+      this.setBrowserSharing(aBrowser, {});
+    }
+    webrtcUI.forgetStreamsFromBrowser(aBrowser);
+
     // Set browser parameters for when browser is restored.  Also remove
     // listeners and set up lazy restore data in SessionStore. This must
     // be done before aBrowser is destroyed and removed from the document.
@@ -2129,9 +2135,7 @@ window._gBrowser = {
     }
 
     aBrowser.destroy();
-
-    let notificationbox = this.getNotificationBox(aBrowser);
-    this.tabpanels.removeChild(notificationbox);
+    this.getNotificationBox(aBrowser).remove();
     tab.removeAttribute("linkedpanel");
 
     this._createLazyBrowser(tab);
@@ -2167,6 +2171,8 @@ window._gBrowser = {
     var aFocusUrlBar;
     var aName;
     var aBulkOrderedOpen;
+    var aIndex;
+    var aPinned;
     if (arguments.length == 2 &&
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2199,6 +2205,8 @@ window._gBrowser = {
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
       aBulkOrderedOpen = params.bulkOrderedOpen;
+      aIndex = params.index;
+      aPinned = params.pinned;
     }
 
     // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2268,6 +2276,10 @@ window._gBrowser = {
       t.setAttribute("skipbackgroundnotify", true);
     }
 
+    if (aPinned) {
+      t.setAttribute("pinned", "true");
+    }
+
     t.className = "tabbrowser-tab";
 
     this.tabContainer._unlockTabSizing();
@@ -2275,7 +2287,7 @@ window._gBrowser = {
     // When overflowing, new tabs are scrolled into view smoothly, which
     // doesn't go well together with the width transition. So we skip the
     // transition in that case.
-    let animate = !aSkipAnimation &&
+    let animate = !aSkipAnimation && !aPinned &&
       this.tabContainer.getAttribute("overflow") != "true" &&
       this.animationsEnabled;
     if (!animate) {
@@ -2291,8 +2303,6 @@ window._gBrowser = {
     // invalidate cache
     this._visibleTabs = null;
 
-    this.tabContainer.appendChild(t);
-
     let usingPreloadedContent = false;
     let b;
 
@@ -2301,8 +2311,52 @@ window._gBrowser = {
       if (aOwner)
         t.owner = aOwner;
 
-      var position = this.tabs.length - 1;
-      t._tPos = position;
+      // Ensure we have an index if one was not provided. _insertTabAt
+      // will do some additional validation.
+      if (typeof aIndex != "number") {
+        // Move the new tab after another tab if needed.
+        if (!aBulkOrderedOpen &&
+            ((openerTab &&
+              Services.prefs.getBoolPref("browser.tabs.insertRelatedAfterCurrent")) ||
+             Services.prefs.getBoolPref("browser.tabs.insertAfterCurrent"))) {
+
+          let lastRelatedTab = openerTab && this._lastRelatedTabMap.get(openerTab);
+          aIndex = (lastRelatedTab || openerTab || this.selectedTab)._tPos + 1;
+
+          if (lastRelatedTab) {
+            lastRelatedTab.owner = null;
+          } else if (openerTab) {
+            t.owner = openerTab;
+          }
+          // Always set related map if opener exists.
+          if (openerTab) {
+            this._lastRelatedTabMap.set(openerTab, t);
+          }
+        } else {
+          // This is intentionally past bounds, see the comment below on insertBefore.
+          aIndex = this.tabs.length;
+        }
+      }
+      // Ensure position respectes tab pinned state.
+      if (aPinned) {
+        aIndex = Math.min(aIndex, this._numPinnedTabs);
+      } else {
+        aIndex = Math.max(aIndex, this._numPinnedTabs);
+      }
+
+      // use .item() instead of [] because dragging to the end of the strip goes out of
+      // bounds: .item() returns null (so it acts like appendChild), but [] throws
+      let tabAfter = this.tabs.item(aIndex);
+      this.tabContainer.insertBefore(t, tabAfter);
+      if (tabAfter) {
+        this._updateTabsAfterInsert();
+      } else {
+        t._tPos = aIndex;
+      }
+
+      if (aPinned) {
+        this._updateTabBarForPinnedTabs();
+      }
       this.tabContainer._setPositionalAttributes();
 
       TabBarVisibility.update();
@@ -2393,9 +2447,9 @@ window._gBrowser = {
       throw e;
     }
 
-    // Hack to ensure that the about:newtab favicon is loaded
+    // Hack to ensure that the about:newtab, and about:welcome favicon is loaded
     // instantaneously, to avoid flickering and improve perceived performance.
-    if (aURI == "about:newtab") {
+    if (aURI == "about:newtab" || aURI == "about:home" || aURI == "about:welcome") {
       this.setIcon(t, "chrome://branding/content/icon32.png");
     } else if (aURI == "about:privatebrowsing") {
       this.setIcon(t, "chrome://browser/skin/privatebrowsing/favicon.svg");
@@ -2452,24 +2506,6 @@ window._gBrowser = {
       }
     }
 
-    // Move the new tab after another tab if needed.
-    if (!aBulkOrderedOpen &&
-        ((openerTab &&
-          Services.prefs.getBoolPref("browser.tabs.insertRelatedAfterCurrent")) ||
-         Services.prefs.getBoolPref("browser.tabs.insertAfterCurrent"))) {
-
-      let lastRelatedTab = openerTab && this._lastRelatedTabMap.get(openerTab);
-      let newTabPos = (lastRelatedTab || openerTab || this.selectedTab)._tPos + 1;
-
-      if (lastRelatedTab)
-        lastRelatedTab.owner = null;
-      else if (openerTab)
-        t.owner = openerTab;
-      this.moveTabTo(t, newTabPos, true);
-      if (openerTab)
-        this._lastRelatedTabMap.set(openerTab, t);
-    }
-
     // This field is updated regardless if we actually animate
     // since it's important that we keep this count correct in all cases.
     this.tabAnimationsInProgress++;
@@ -2479,6 +2515,11 @@ window._gBrowser = {
         // kick the animation off
         t.setAttribute("fadein", "true");
       });
+    }
+
+    // Additionally send pinned tab events
+    if (aPinned) {
+      this._notifyPinnedStatus(t);
     }
 
     return t;
@@ -2499,6 +2540,9 @@ window._gBrowser = {
           throw new Error("Required argument missing: aTab");
 
         tabsToClose = this.getTabsToTheEndFrom(aTab).length;
+        break;
+      case this.closingTabsEnum.MULTI_SELECTED:
+        tabsToClose = this.multiSelectedTabsCount;
         break;
       default:
         throw new Error("Invalid argument: " + aCloseTabs);
@@ -2559,28 +2603,12 @@ window._gBrowser = {
     return tabsToEnd;
   },
 
-  removeTabsToTheEndFrom(aTab, aParams) {
+  removeTabsToTheEndFrom(aTab) {
     if (!this.warnAboutClosingTabs(this.closingTabsEnum.TO_END, aTab))
       return;
 
-    let removeTab = tab => {
-      // Avoid changing the selected browser several times.
-      if (tab.selected)
-        this.selectedTab = aTab;
-
-      this.removeTab(tab, aParams);
-    };
-
     let tabs = this.getTabsToTheEndFrom(aTab);
-    let tabsWithBeforeUnload = [];
-    for (let i = tabs.length - 1; i >= 0; --i) {
-      let tab = tabs[i];
-      if (this._hasBeforeUnload(tab))
-        tabsWithBeforeUnload.push(tab);
-      else
-        removeTab(tab);
-    }
-    tabsWithBeforeUnload.forEach(removeTab);
+    this.removeCollectionOfTabs(tabs);
   },
 
   removeAllTabsBut(aTab) {
@@ -2588,21 +2616,41 @@ window._gBrowser = {
       return;
     }
 
-    let tabs = this.visibleTabs.reverse();
+    let tabs = this.visibleTabs.filter(tab => tab != aTab && !tab.pinned);
     this.selectedTab = aTab;
+    this.removeCollectionOfTabs(tabs);
+  },
 
+  removeMultiSelectedTabs() {
+    if (!this.warnAboutClosingTabs(this.closingTabsEnum.MULTI_SELECTED)) {
+      return;
+    }
+
+    let selectedTabs = ChromeUtils.nondeterministicGetWeakSetKeys(this._multiSelectedTabsSet)
+                                  .filter(tab => tab.isConnected);
+    this.removeCollectionOfTabs(selectedTabs);
+  },
+
+  removeCollectionOfTabs(tabs) {
     let tabsWithBeforeUnload = [];
-    for (let i = tabs.length - 1; i >= 0; --i) {
-      let tab = tabs[i];
-      if (tab != aTab && !tab.pinned) {
-        if (this._hasBeforeUnload(tab))
-          tabsWithBeforeUnload.push(tab);
-        else
-          this.removeTab(tab, { animate: true });
-      }
+    let lastToClose;
+    let aParams = {animation: true};
+    for (let tab of tabs) {
+      if (tab.selected)
+        lastToClose = tab;
+      else if (this._hasBeforeUnload(tab))
+        tabsWithBeforeUnload.push(tab);
+      else
+        this.removeTab(tab, aParams);
     }
     for (let tab of tabsWithBeforeUnload) {
-      this.removeTab(tab, { animate: true });
+      this.removeTab(tab, aParams);
+    }
+
+    // Avoid changing the selected browser several times by removing it,
+    // if appropriate, lastly.
+    if (lastToClose) {
+      this.removeTab(lastToClose, aParams);
     }
   },
 
@@ -2712,6 +2760,13 @@ window._gBrowser = {
       if (aTab.closing || (!timedOut && !permitUnload)) {
         return false;
       }
+    }
+
+    // this._switcher would normally cover removing a tab from this
+    // cache, but we may not have one at this time.
+    let tabCacheIndex = this._tabLayerCache.indexOf(aTab);
+    if (tabCacheIndex != -1) {
+      this._tabLayerCache.splice(tabCacheIndex, 1);
     }
 
     this._blurTab(aTab);
@@ -2890,7 +2945,7 @@ window._gBrowser = {
     var wasPinned = aTab.pinned;
 
     // Remove the tab ...
-    this.tabContainer.removeChild(aTab);
+    aTab.remove();
 
     // Update hashiddentabs if this tab was hidden.
     if (aTab.hidden)
@@ -3394,6 +3449,30 @@ window._gBrowser = {
     return window.openDialog(getBrowserURL(), "_blank", options, aTab);
   },
 
+  _updateTabsAfterInsert() {
+    for (let i = 0; i < this.tabs.length; i++) {
+      this.tabs[i]._tPos = i;
+      this.tabs[i]._selected = false;
+    }
+
+    // If we're in the midst of an async tab switch while calling
+    // moveTabTo, we can get into a case where _visuallySelected
+    // is set to true on two different tabs.
+    //
+    // What we want to do in moveTabTo is to remove logical selection
+    // from all tabs, and then re-add logical selection to selectedTab
+    // (and visual selection as well if we're not running with e10s, which
+    // setting _selected will do automatically).
+    //
+    // If we're running with e10s, then the visual selection will not
+    // be changed, which is fine, since if we weren't in the midst of a
+    // tab switch, the previously visually selected tab should still be
+    // correct, and if we are in the midst of a tab switch, then the async
+    // tab switcher will set the visually selected tab once the tab switch
+    // has completed.
+    this.selectedTab._selected = true;
+  },
+
   moveTabTo(aTab, aIndex, aKeepRelatedTabs) {
     var oldPosition = aTab._tPos;
     if (oldPosition == aIndex)
@@ -3421,28 +3500,7 @@ window._gBrowser = {
     // use .item() instead of [] because dragging to the end of the strip goes out of
     // bounds: .item() returns null (so it acts like appendChild), but [] throws
     this.tabContainer.insertBefore(aTab, this.tabs.item(aIndex));
-
-    for (let i = 0; i < this.tabs.length; i++) {
-      this.tabs[i]._tPos = i;
-      this.tabs[i]._selected = false;
-    }
-
-    // If we're in the midst of an async tab switch while calling
-    // moveTabTo, we can get into a case where _visuallySelected
-    // is set to true on two different tabs.
-    //
-    // What we want to do in moveTabTo is to remove logical selection
-    // from all tabs, and then re-add logical selection to selectedTab
-    // (and visual selection as well if we're not running with e10s, which
-    // setting _selected will do automatically).
-    //
-    // If we're running with e10s, then the visual selection will not
-    // be changed, which is fine, since if we weren't in the midst of a
-    // tab switch, the previously visually selected tab should still be
-    // correct, and if we are in the midst of a tab switch, then the async
-    // tab switcher will set the visually selected tab once the tab switch
-    // has completed.
-    this.selectedTab._selected = true;
+    this._updateTabsAfterInsert();
 
     if (wasFocused)
       this.selectedTab.focus();
@@ -3484,8 +3542,15 @@ window._gBrowser = {
       eventDetail: { adoptedTab: aTab },
       preferredRemoteType: linkedBrowser.remoteType,
       sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-      skipAnimation: true
+      skipAnimation: true,
+      index: aIndex,
     };
+
+    let numPinned = this._numPinnedTabs;
+    if (aIndex < numPinned || (aTab.pinned && aIndex == numPinned)) {
+      params.pinned = true;
+    }
+
     if (aTab.hasAttribute("usercontextid")) {
       // new tab must have the same usercontextid as the old one
       params.userContextId = aTab.getAttribute("usercontextid");
@@ -3497,13 +3562,6 @@ window._gBrowser = {
     newBrowser.stop();
     // Make sure it has a docshell.
     newBrowser.docShell;
-
-    let numPinned = this._numPinnedTabs;
-    if (aIndex < numPinned || (aTab.pinned && aIndex == numPinned)) {
-      this.pinTab(newTab);
-    }
-
-    this.moveTabTo(newTab, aIndex);
 
     // We need to select the tab before calling swapBrowsersAndCloseOther
     // so that window.content in chrome windows points to the right tab
@@ -3567,6 +3625,107 @@ window._gBrowser = {
    */
   duplicateTab(aTab, aRestoreTabImmediately) {
     return SessionStore.duplicateTab(window, aTab, 0, aRestoreTabImmediately);
+  },
+
+  addToMultiSelectedTabs(aTab, skipPositionalAttributes) {
+    if (aTab.multiselected) {
+      return;
+    }
+
+    aTab.setAttribute("multiselected", "true");
+    this._multiSelectedTabsSet.add(aTab);
+
+    if (!skipPositionalAttributes) {
+      this.tabContainer._setPositionalAttributes();
+    }
+  },
+
+  /**
+   * Adds two given tabs and all tabs between them into the (multi) selected tabs collection
+   */
+  addRangeToMultiSelectedTabs(aTab1, aTab2) {
+    // Let's avoid going through all the heavy process below when the same
+    // tab is given as params.
+    if (aTab1 == aTab2) {
+      this.addToMultiSelectedTabs(aTab1);
+      return;
+    }
+
+    const tabs = this._visibleTabs;
+    const indexOfTab1 = tabs.indexOf(aTab1);
+    const indexOfTab2 = tabs.indexOf(aTab2);
+
+    const [lowerIndex, higherIndex] = indexOfTab1 < indexOfTab2 ?
+      [indexOfTab1, indexOfTab2] : [indexOfTab2, indexOfTab1];
+
+    for (let i = lowerIndex; i <= higherIndex; i++) {
+      this.addToMultiSelectedTabs(tabs[i], true);
+    }
+    this.tabContainer._setPositionalAttributes();
+  },
+
+  removeFromMultiSelectedTabs(aTab) {
+    if (!aTab.multiselected) {
+      return;
+    }
+    aTab.removeAttribute("multiselected");
+    this.tabContainer._setPositionalAttributes();
+    this._multiSelectedTabsSet.delete(aTab);
+  },
+
+  clearMultiSelectedTabs(updatePositionalAttributes) {
+    const selectedTabs = ChromeUtils.nondeterministicGetWeakSetKeys(this._multiSelectedTabsSet);
+    for (let tab of selectedTabs) {
+      if (tab.isConnected && tab.multiselected) {
+        tab.removeAttribute("multiselected");
+      }
+    }
+    this._multiSelectedTabsSet = new WeakSet();
+    if (updatePositionalAttributes) {
+      this.tabContainer._setPositionalAttributes();
+    }
+  },
+
+  get multiSelectedTabsCount() {
+    return ChromeUtils.nondeterministicGetWeakSetKeys(this._multiSelectedTabsSet)
+      .filter(tab => tab.isConnected && !tab.closing)
+      .length;
+  },
+
+  get lastMultiSelectedTab() {
+    let tab = this._lastMultiSelectedTabRef ? this._lastMultiSelectedTabRef.get() : null;
+    if (tab && tab.isConnected && this._multiSelectedTabsSet.has(tab)) {
+      return tab;
+    }
+    return gBrowser.selectedTab;
+  },
+
+  set lastMultiSelectedTab(aTab) {
+    this._lastMultiSelectedTabRef = Cu.getWeakReference(aTab);
+  },
+
+  toggleMuteAudioOnMultiSelectedTabs(aTab) {
+    const selectedTabs = ChromeUtils.nondeterministicGetWeakSetKeys(this._multiSelectedTabsSet)
+                                    .filter(tab => tab.isConnected);
+    let tabsToToggle;
+
+    if (aTab.activeMediaBlocked) {
+      tabsToToggle = selectedTabs.filter(tab =>
+        tab.activeMediaBlocked || tab.linkedBrowser.audioMuted
+      );
+    } else {
+      let tabMuted = aTab.linkedBrowser.audioMuted;
+      tabsToToggle = selectedTabs.filter(tab =>
+        // When a user is looking to mute selected tabs, then media-blocked tabs
+        // should not be toggled. Otherwise those media-blocked tabs are going into a
+        // playing and unmuted state.
+        tab.linkedBrowser.audioMuted == tabMuted && !tab.activeMediaBlocked ||
+        tab.activeMediaBlocked && tabMuted
+      );
+    }
+    for (let tab of tabsToToggle) {
+      tab.toggleMuteAudio();
+    }
   },
 
   activateBrowserForPrintPreview(aBrowser) {
@@ -3638,9 +3797,12 @@ window._gBrowser = {
 
     if (AppConstants.platform != "macosx") {
       if (aEvent.ctrlKey && !aEvent.shiftKey && !aEvent.metaKey &&
-          aEvent.keyCode == KeyEvent.DOM_VK_F4 &&
-          !this.selectedTab.pinned) {
-        this.removeCurrentTab({ animate: true });
+          aEvent.keyCode == KeyEvent.DOM_VK_F4) {
+        if (gBrowser.multiSelectedTabsCount) {
+          gBrowser.removeMultiSelectedTabs();
+        } else if (!this.selectedTab.pinned) {
+          this.removeCurrentTab({ animate: true });
+        }
         aEvent.preventDefault();
       }
     }
@@ -4075,7 +4237,7 @@ window._gBrowser = {
       let tab = this.getTabForBrowser(browser);
 
       if (this.selectedBrowser == browser) {
-        TabCrashHandler.onSelectedBrowserCrash(browser);
+        TabCrashHandler.onSelectedBrowserCrash(browser, false);
       } else {
         this.updateBrowserRemoteness(browser, false);
         SessionStore.reviveCrashedTab(tab);
@@ -4083,6 +4245,17 @@ window._gBrowser = {
 
       tab.removeAttribute("soundplaying");
       this.setIcon(tab, icon, browser.contentPrincipal, browser.contentRequestContextID);
+    });
+
+    this.addEventListener("oop-browser-buildid-mismatch", (event) => {
+      if (!event.isTrusted)
+        return;
+
+      let browser = event.originalTarget;
+
+      if (this.selectedBrowser == browser) {
+        TabCrashHandler.onSelectedBrowserCrash(browser, true);
+      }
     });
 
     this.addEventListener("DOMAudioPlaybackStarted", (event) => {
@@ -4243,8 +4416,10 @@ class TabProgressListener {
     if (!this._shouldShowProgress(aRequest))
       return;
 
-    if (this.mTotalProgress && this.mTab.hasAttribute("busy"))
+    if (this.mTotalProgress && this.mTab.hasAttribute("busy")) {
       this.mTab.setAttribute("progress", "true");
+      gBrowser._tabAttrModified(this.mTab, ["progress"]);
+    }
 
     this._callProgressListeners("onProgressChange",
                                 [aWebProgress, aRequest,
@@ -4331,6 +4506,7 @@ class TabProgressListener {
         if (!(aStateFlags & Ci.nsIWebProgressListener.STATE_RESTORING) &&
             aWebProgress && aWebProgress.isTopLevel) {
           this.mTab.setAttribute("busy", "true");
+          gBrowser._tabAttrModified(this.mTab, ["busy"]);
           this.mTab._notselectedsinceload = !this.mTab.selected;
           SchedulePressure.startMonitoring(window, {
             highPressureFn() {
@@ -4368,8 +4544,10 @@ class TabProgressListener {
     } else if (aStateFlags & Ci.nsIWebProgressListener.STATE_STOP &&
                aStateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK) {
 
+      let modifiedAttrs = [];
       if (this.mTab.hasAttribute("busy")) {
         this.mTab.removeAttribute("busy");
+        modifiedAttrs.push("busy");
         if (!document.querySelector(".tabbrowser-tab[busy]")) {
           SchedulePressure.stopMonitoring(window);
           gBrowser.tabContainer.removeAttribute("schedulepressure");
@@ -4389,10 +4567,16 @@ class TabProgressListener {
 
           this.mTab.setAttribute("bursting", "true");
         }
-
-        gBrowser._tabAttrModified(this.mTab, ["busy"]);
       }
-      this.mTab.removeAttribute("progress");
+
+      if (this.mTab.hasAttribute("progress")) {
+        this.mTab.removeAttribute("progress");
+        modifiedAttrs.push("progress");
+      }
+
+      if (modifiedAttrs.length) {
+        gBrowser._tabAttrModified(this.mTab, modifiedAttrs);
+      }
 
       if (aWebProgress.isTopLevel) {
         let isSuccessful = Components.isSuccessCode(aStatus);
@@ -4413,13 +4597,14 @@ class TabProgressListener {
 
         // Ignore initial about:blank to prevent flickering.
         if (!this.mBrowser.mIconURL && !ignoreBlank) {
-          // Don't switch to the default icon on about:home or about:newtab,
-          // since these pages get their favicon set in browser code to
-          // improve perceived performance.
+          // Don't switch to the default icon on about:home, about:newtab,
+          // about:privatebrowsing, or about:welcome since these pages get
+          // their favicon set in browser code to improve perceived performance.
           let isNewTab = originalLocation &&
-            (originalLocation.spec == "about:newtab" ||
+             (originalLocation.spec == "about:newtab" ||
               originalLocation.spec == "about:privatebrowsing" ||
-              originalLocation.spec == "about:home");
+              originalLocation.spec == "about:home" ||
+              originalLocation.spec == "about:welcome");
           if (!isNewTab) {
             gBrowser.useDefaultIcon(this.mTab);
           }
@@ -4541,6 +4726,14 @@ class TabProgressListener {
             PrivateBrowsingUtils.permanentPrivateBrowsing)) {
         gBrowser._unifiedComplete.registerOpenPage(aLocation, userContextId);
         this.mBrowser.registeredOpenURI = aLocation;
+      }
+
+      if (this.mTab != gBrowser.selectedTab) {
+        let tabCacheIndex = gBrowser._tabLayerCache.indexOf(this.mTab);
+        if (tabCacheIndex != -1) {
+          gBrowser._tabLayerCache.splice(tabCacheIndex, 1);
+          gBrowser._getSwitcher().cleanUpTabAfterEviction(this.mTab);
+        }
       }
     }
 

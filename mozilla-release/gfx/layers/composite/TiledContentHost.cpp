@@ -97,8 +97,8 @@ TiledLayerBufferComposite::AddAnimationInvalidation(nsIntRegion& aRegion)
   // process of fading in.
   for (size_t i = 0; i < mRetainedTiles.Length(); i++) {
     if (!mRetainedTiles[i].mFadeStart.IsNull()) {
-      TileIntPoint position = mTiles.TilePosition(i);
-      IntPoint offset = GetTileOffset(position);
+      TileCoordIntPoint coord = mTiles.TileCoord(i);
+      IntPoint offset = GetTileOffset(coord);
       nsIntRegion tileRegion = IntRect(offset, GetScaledTileSize());
       aRegion.OrWith(tileRegion);
     }
@@ -205,7 +205,7 @@ class TextureSourceRecycler
 {
 public:
   explicit TextureSourceRecycler(nsTArray<TileHost>&& aTileSet)
-    : mTiles(Move(aTileSet))
+    : mTiles(std::move(aTileSet))
     , mFirstPossibility(0)
   {}
 
@@ -225,9 +225,9 @@ public:
       // If this tile matches, then copy across the retained texture source (if
       // any).
       if (aTile.mTextureHost == mTiles[i].mTextureHost) {
-        aTile.mTextureSource = Move(mTiles[i].mTextureSource);
+        aTile.mTextureSource = std::move(mTiles[i].mTextureSource);
         if (aTile.mTextureHostOnWhite) {
-          aTile.mTextureSourceOnWhite = Move(mTiles[i].mTextureSourceOnWhite);
+          aTile.mTextureSourceOnWhite = std::move(mTiles[i].mTextureSourceOnWhite);
         }
         break;
       }
@@ -247,9 +247,9 @@ public:
 
       if (mTiles[i].mTextureSource &&
           mTiles[i].mTextureHost->GetFormat() == aTile.mTextureHost->GetFormat()) {
-        aTile.mTextureSource = Move(mTiles[i].mTextureSource);
+        aTile.mTextureSource = std::move(mTiles[i].mTextureSource);
         if (aTile.mTextureHostOnWhite) {
-          aTile.mTextureSourceOnWhite = Move(mTiles[i].mTextureSourceOnWhite);
+          aTile.mTextureSourceOnWhite = std::move(mTiles[i].mTextureSourceOnWhite);
         }
         break;
       }
@@ -295,7 +295,7 @@ TiledLayerBufferComposite::UseTiles(const SurfaceDescriptorTiles& aTiles,
 
   const InfallibleTArray<TileDescriptor>& tileDescriptors = aTiles.tiles();
 
-  TextureSourceRecycler oldRetainedTiles(Move(mRetainedTiles));
+  TextureSourceRecycler oldRetainedTiles(std::move(mRetainedTiles));
   mRetainedTiles.SetLength(tileDescriptors.Length());
 
   // Step 1, deserialize the incoming set of tiles into mRetainedTiles, and attempt
@@ -333,7 +333,7 @@ TiledLayerBufferComposite::UseTiles(const SurfaceDescriptorTiles& aTiles,
       }
     }
 
-    tile.mTilePosition = newTiles.TilePosition(i);
+    tile.mTileCoord = newTiles.TileCoord(i);
 
     // If this same tile texture existed in the old tile set then this will move the texture
     // source into our new tile.
@@ -404,8 +404,8 @@ void
 TiledLayerBufferComposite::Clear()
 {
   mRetainedTiles.Clear();
-  mTiles.mFirst = TileIntPoint();
-  mTiles.mSize = TileIntSize();
+  mTiles.mFirst = TileCoordIntPoint();
+  mTiles.mSize = TileCoordIntSize();
   mValidRegion = nsIntRegion();
   mResolution = 1.0;
 }
@@ -610,11 +610,11 @@ TiledContentHost::RenderLayerBuffer(TiledLayerBufferComposite& aLayerBuffer,
       continue;
     }
 
-    TileIntPoint tilePosition = aLayerBuffer.GetPlacement().TilePosition(i);
+    TileCoordIntPoint tileCoord = aLayerBuffer.GetPlacement().TileCoord(i);
     // A sanity check that catches a lot of mistakes.
-    MOZ_ASSERT(tilePosition.x == tile.mTilePosition.x && tilePosition.y == tile.mTilePosition.y);
+    MOZ_ASSERT(tileCoord.x == tile.mTileCoord.x && tileCoord.y == tile.mTileCoord.y);
 
-    IntPoint tileOffset = aLayerBuffer.GetTileOffset(tilePosition);
+    IntPoint tileOffset = aLayerBuffer.GetTileOffset(tileCoord);
     nsIntRegion tileDrawRegion = IntRect(tileOffset, aLayerBuffer.GetScaledTileSize());
     tileDrawRegion.AndWith(compositeRegion);
 

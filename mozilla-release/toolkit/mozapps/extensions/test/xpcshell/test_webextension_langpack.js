@@ -13,7 +13,42 @@ const profileDir = gProfD.clone();
 profileDir.append("extensions");
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "58");
-startupManager();
+
+const ADDONS = {
+  langpack_1: {
+    "browser/localization/und/browser.ftl": "message-browser = Value from Browser\n",
+    "localization/und/toolkit_test.ftl": "message-id1 = Value 1\n",
+    "chrome/und/locale/und/global/test.properties": "message = Value from .properties\n",
+    "manifest.json": {
+      "name": "und Language Pack",
+      "version": "1",
+      "manifest_version": 2,
+      "applications": {
+        "gecko": {
+          "id": "langpack-und@test.mozilla.org",
+          "strict_min_version": "58.0",
+          "strict_max_version": "58.*"
+        }
+      },
+      "sources": {
+        "browser": {
+          "base_path": "browser/"
+        }
+      },
+      "langpack_id": "und",
+      "languages": {
+        "und": {
+          "chrome_resources": {
+            "global": "chrome/und/locale/und/global/"
+          },
+          "version": "20171001190118"
+        }
+      },
+      "author": "Mozilla Localization Task Force",
+      "description": "Language pack for Testy for und"
+    }
+  },
+};
 
 function promiseLangpackStartup() {
   return new Promise(resolve => {
@@ -31,20 +66,22 @@ function promiseLangpackStartup() {
  * languages at various stages.
  */
 add_task(async function() {
+  await promiseStartupManager();
+
   // Make sure that `und` locale is not installed.
   equal(L10nRegistry.getAvailableLocales().includes("und"), false);
   equal(Services.locale.getAvailableLocales().includes("und"), false);
 
   let [, {addon}] = await Promise.all([
     promiseLangpackStartup(),
-    promiseInstallFile(do_get_addon("langpack_1"), true),
+    AddonTestUtils.promiseInstallXPI(ADDONS.langpack_1),
   ]);
 
   // Now make sure that `und` locale is available.
   equal(L10nRegistry.getAvailableLocales().includes("und"), true);
   equal(Services.locale.getAvailableLocales().includes("und"), true);
 
-  addon.userDisabled = true;
+  await addon.disable();
 
   // It is not available after the langpack has been disabled.
   equal(L10nRegistry.getAvailableLocales().includes("und"), false);
@@ -54,14 +91,14 @@ add_task(async function() {
   // addon is synchronous or asynchronous.
   await Promise.all([
     promiseLangpackStartup(),
-    (() => { addon.userDisabled = false; })()
+    addon.enable(),
   ]);
 
   // After re-enabling it, the `und` locale is available again.
   equal(L10nRegistry.getAvailableLocales().includes("und"), true);
   equal(Services.locale.getAvailableLocales().includes("und"), true);
 
-  addon.uninstall();
+  await addon.uninstall();
 
   // After the langpack has been uninstalled, no more `und` in locales.
   equal(L10nRegistry.getAvailableLocales().includes("und"), false);
@@ -75,7 +112,7 @@ add_task(async function() {
 add_task(async function() {
   let [, {addon}] = await Promise.all([
     promiseLangpackStartup(),
-    promiseInstallFile(do_get_addon("langpack_1"), true),
+    AddonTestUtils.promiseInstallXPI(ADDONS.langpack_1),
   ]);
 
   {
@@ -106,7 +143,7 @@ add_task(async function() {
     Services.locale.setRequestedLocales(reqLocs);
   }
 
-  addon.uninstall();
+  await addon.uninstall();
 });
 
 /**
@@ -116,7 +153,7 @@ add_task(async function() {
 add_task(async function() {
   let [, {addon}] = await Promise.all([
     promiseLangpackStartup(),
-    promiseInstallFile(do_get_addon("langpack_1"), true),
+    AddonTestUtils.promiseInstallXPI(ADDONS.langpack_1),
   ]);
   Assert.ok(addon.isActive);
 
@@ -125,11 +162,11 @@ add_task(async function() {
   gAppInfo.version = "59";
   gAppInfo.platformVersion = "59";
 
-  await promiseStartupManager(true);
+  await promiseStartupManager();
 
   addon = await promiseAddonByID(ID);
   Assert.ok(!addon.isActive);
   Assert.ok(addon.appDisabled);
 
-  addon.uninstall();
+  await addon.uninstall();
 });

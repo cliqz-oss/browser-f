@@ -8,16 +8,15 @@ var Services = require("Services");
 loader.lazyRequireGetter(this, "Utils", "devtools/client/webconsole/utils", true);
 loader.lazyRequireGetter(this, "extend", "devtools/shared/extend", true);
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
-loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 loader.lazyRequireGetter(this, "Tools", "devtools/client/definitions", true);
 loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
-loader.lazyRequireGetter(this, "NewWebConsoleFrame", "devtools/client/webconsole/new-webconsole", true);
+loader.lazyRequireGetter(this, "WebConsoleFrame", "devtools/client/webconsole/webconsole-frame", true);
 loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
 loader.lazyRequireGetter(this, "DebuggerClient", "devtools/shared/client/debugger-client", true);
-loader.lazyRequireGetter(this, "showDoorhanger", "devtools/client/shared/doorhanger", true);
 loader.lazyRequireGetter(this, "viewSource", "devtools/client/shared/view-source");
 loader.lazyRequireGetter(this, "l10n", "devtools/client/webconsole/webconsole-l10n");
+loader.lazyRequireGetter(this, "openDocLink", "devtools/client/shared/link", true);
 const BC_WINDOW_FEATURES = "chrome,titlebar,toolbar,centerscreen,resizable,dialog=no";
 
 // The preference prefix for all of the Browser Console filters.
@@ -84,7 +83,7 @@ HUD_SERVICE.prototype =
    *         A promise object for the opening of the new WebConsole instance.
    */
   openWebConsole(target, iframeWindow, chromeWindow) {
-    let hud = new WebConsole(target, iframeWindow, chromeWindow);
+    const hud = new WebConsole(target, iframeWindow, chromeWindow);
     this.consoles.set(hud.hudId, hud);
     return hud.init();
   },
@@ -104,7 +103,7 @@ HUD_SERVICE.prototype =
    *         A promise object for the opening of the new BrowserConsole instance.
    */
   openBrowserConsole(target, iframeWindow, chromeWindow) {
-    let hud = new BrowserConsole(target, iframeWindow, chromeWindow);
+    const hud = new BrowserConsole(target, iframeWindow, chromeWindow);
     this._browserConsoleID = hud.hudId;
     this.consoles.set(hud.hudId, hud);
     return hud.init();
@@ -117,8 +116,8 @@ HUD_SERVICE.prototype =
    * @returns object
    */
   getHudByWindow(contentWindow) {
-    for (let [, hud] of this.consoles) {
-      let target = hud.target;
+    for (const [, hud] of this.consoles) {
+      const target = hud.target;
       if (target && target.tab && target.window === contentWindow) {
         return hud;
       }
@@ -144,13 +143,13 @@ HUD_SERVICE.prototype =
    *         Console.
    */
   getOpenWebConsole() {
-    let tab = this.currentContext().gBrowser.selectedTab;
+    const tab = this.currentContext().gBrowser.selectedTab;
     if (!tab || !TargetFactory.isKnownTab(tab)) {
       return null;
     }
-    let target = TargetFactory.forTab(tab);
-    let toolbox = gDevTools.getToolbox(target);
-    let panel = toolbox ? toolbox.getPanel("webconsole") : null;
+    const target = TargetFactory.forTab(tab);
+    const toolbox = gDevTools.getToolbox(target);
+    const panel = toolbox ? toolbox.getPanel("webconsole") : null;
     return panel ? panel.hud : null;
   },
 
@@ -159,7 +158,7 @@ HUD_SERVICE.prototype =
    */
   async toggleBrowserConsole() {
     if (this._browserConsoleID) {
-      let hud = this.getHudReferenceById(this._browserConsoleID);
+      const hud = this.getHudReferenceById(this._browserConsoleID);
       return hud.destroy();
     }
 
@@ -176,14 +175,14 @@ HUD_SERVICE.prototype =
 
       DebuggerServer.allowChromeProcess = true;
 
-      let client = new DebuggerClient(DebuggerServer.connectPipe());
+      const client = new DebuggerClient(DebuggerServer.connectPipe());
       await client.connect();
-      let response = await client.getProcess();
-      return { form: response.form, client, chrome: true, isTabActor: true };
+      const response = await client.getProcess();
+      return { form: response.form, client, chrome: true, isBrowsingContext: true };
     }
 
     async function openWindow(t) {
-      let win = Services.ww.openWindow(null, Tools.webConsole.browserConsoleURL,
+      const win = Services.ww.openWindow(null, Tools.webConsole.browserConsoleURL,
                                        "_blank", BC_WINDOW_FEATURES, null);
       let iframeWindow = win;
 
@@ -196,7 +195,7 @@ HUD_SERVICE.prototype =
       // With a XUL wrapper doc, we host webconsole.html in an iframe.
       // Wait for that to be ready before resolving:
       if (!Tools.webConsole.browserConsoleUsesHTML) {
-        let iframe = win.document.querySelector("iframe");
+        const iframe = win.document.querySelector("iframe");
         await new Promise(resolve => {
           iframe.addEventListener("DOMContentLoaded", resolve, {once: true});
         });
@@ -209,15 +208,15 @@ HUD_SERVICE.prototype =
     // Temporarily cache the async startup sequence so that if toggleBrowserConsole
     // gets called again we can return this console instead of opening another one.
     this._browserConsoleInitializing = (async () => {
-      let connection = await connect();
-      let target = await TargetFactory.forRemoteTab(connection);
-      let {iframeWindow, chromeWindow} = await openWindow(target);
-      let browserConsole =
+      const connection = await connect();
+      const target = await TargetFactory.forRemoteTab(connection);
+      const {iframeWindow, chromeWindow} = await openWindow(target);
+      const browserConsole =
         await this.openBrowserConsole(target, iframeWindow, chromeWindow);
       return browserConsole;
     })();
 
-    let browserConsole = await this._browserConsoleInitializing;
+    const browserConsole = await this._browserConsoleInitializing;
     this._browserConsoleInitializing = null;
     return browserConsole;
   },
@@ -226,7 +225,7 @@ HUD_SERVICE.prototype =
    * Opens or focuses the Browser Console.
    */
   openBrowserConsoleOrFocus() {
-    let hud = this.getBrowserConsole();
+    const hud = this.getBrowserConsole();
     if (hud) {
       hud.iframeWindow.focus();
       return Promise.resolve(hud);
@@ -270,11 +269,11 @@ function WebConsole(target, iframeWindow, chromeWindow) {
   this.hudId = "hud_" + ++gHudId;
   this.target = target;
   this.browserWindow = this.chromeWindow.top;
-  let element = this.browserWindow.document.documentElement;
+  const element = this.browserWindow.document.documentElement;
   if (element.getAttribute("windowtype") != gDevTools.chromeWindowType) {
     this.browserWindow = HUDService.currentContext();
   }
-  this.ui = new NewWebConsoleFrame(this);
+  this.ui = new WebConsoleFrame(this);
 }
 WebConsole.prototype = {
   iframeWindow: null,
@@ -352,17 +351,6 @@ WebConsole.prototype = {
   },
 
   /**
-   * The clear output button handler.
-   * @private
-   */
-  _onClearButton() {
-    if (this.target.isLocalTab) {
-      gDevToolsBrowser.getDeveloperToolbar(this.browserWindow)
-        .resetErrorsCount(this.target.tab);
-    }
-  },
-
-  /**
    * Alias for the WebConsoleFrame.setFilterState() method.
    * @see webconsole.js::WebConsoleFrame.setFilterState()
    */
@@ -377,12 +365,7 @@ WebConsole.prototype = {
    *        The URL you want to open in a new tab.
    */
   openLink(link, e) {
-    let isOSX = Services.appinfo.OS == "Darwin";
-    let where = "tab";
-    if (e && (e.button === 1 || (e.button === 0 && (isOSX ? e.metaKey : e.ctrlKey)))) {
-      where = "tabshifted";
-    }
-    this.chromeUtilsWindow.openWebLinkIn(link, where);
+    openDocLink(link);
   },
 
   /**
@@ -410,7 +393,7 @@ WebConsole.prototype = {
    *        The line number which you want to place the caret.
    */
   viewSourceInStyleEditor(sourceURL, sourceLine) {
-    let toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = gDevTools.getToolbox(this.target);
     if (!toolbox) {
       this.viewSource(sourceURL, sourceLine);
       return;
@@ -431,7 +414,7 @@ WebConsole.prototype = {
    *        The line number which you want to place the caret.
    */
   viewSourceInDebugger(sourceURL, sourceLine) {
-    let toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = gDevTools.getToolbox(this.target);
     if (!toolbox) {
       this.viewSource(sourceURL, sourceLine);
       return;
@@ -466,11 +449,11 @@ WebConsole.prototype = {
    *         returned.
    */
   getDebuggerFrames() {
-    let toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = gDevTools.getToolbox(this.target);
     if (!toolbox) {
       return null;
     }
-    let panel = toolbox.getPanel("jsdebugger");
+    const panel = toolbox.getPanel("jsdebugger");
 
     if (!panel) {
       return null;
@@ -480,11 +463,11 @@ WebConsole.prototype = {
   },
 
   async getMappedExpression(expression) {
-    let toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = gDevTools.getToolbox(this.target);
     if (!toolbox) {
       return expression;
     }
-    let panel = toolbox.getPanel("jsdebugger");
+    const panel = toolbox.getPanel("jsdebugger");
 
     if (!panel) {
       return expression;
@@ -505,11 +488,11 @@ WebConsole.prototype = {
    *         then |null| is returned.
    */
   getInspectorSelection() {
-    let toolbox = gDevTools.getToolbox(this.target);
+    const toolbox = gDevTools.getToolbox(this.target);
     if (!toolbox) {
       return null;
     }
-    let panel = toolbox.getPanel("inspector");
+    const panel = toolbox.getPanel("inspector");
     if (!panel || !panel.selection) {
       return null;
     }
@@ -533,9 +516,9 @@ WebConsole.prototype = {
 
       // The document may already be removed
       if (this.chromeUtilsWindow && this.mainPopupSet) {
-        let popupset = this.mainPopupSet;
-        let panels = popupset.querySelectorAll("panel[hudId=" + this.hudId + "]");
-        for (let panel of panels) {
+        const popupset = this.mainPopupSet;
+        const panels = popupset.querySelectorAll("panel[hudId=" + this.hudId + "]");
+        for (const panel of panels) {
           panel.hidePopup();
         }
       }
@@ -552,7 +535,7 @@ WebConsole.prototype = {
         }
       }
 
-      let id = Utils.supportsString(this.hudId);
+      const id = Utils.supportsString(this.hudId);
       Services.obs.notifyObservers(id, "web-console-destroyed");
     })();
 
@@ -605,22 +588,15 @@ BrowserConsole.prototype = extend(WebConsole.prototype, {
 
     this.ui._filterPrefsPrefix = BC_FILTER_PREFS_PREFIX;
 
-    let window = this.iframeWindow;
+    const window = this.iframeWindow;
 
     // Make sure that the closing of the Browser Console window destroys this
     // instance.
     window.addEventListener("unload", () => {
-      window.removeEventListener("focus", onFocus);
       this.destroy();
     }, {once: true});
 
     this._telemetry.toolOpened("browserconsole");
-
-    // Create an onFocus handler just to display the dev edition promo.
-    // This is to prevent race conditions in some environments.
-    // Hook to display promotional Developer Edition doorhanger. Only displayed once.
-    let onFocus = () => showDoorhanger({ window, type: "deveditionpromo" });
-    window.addEventListener("focus", onFocus);
 
     this._bcInit = this.$init();
     return this._bcInit;

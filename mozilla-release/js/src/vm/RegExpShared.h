@@ -28,7 +28,7 @@
 namespace js {
 
 class ArrayObject;
-class RegExpCompartment;
+class RegExpRealm;
 class RegExpShared;
 class RegExpStatics;
 class VectorMatchPairs;
@@ -163,7 +163,7 @@ class RegExpShared : public gc::TenuredCell
 
     // Register a table with this RegExpShared, and take ownership.
     bool addTable(JitCodeTable table) {
-        return tables.append(Move(table));
+        return tables.append(std::move(table));
     }
 
     /* Accessors */
@@ -234,7 +234,9 @@ class RegExpZone
         JSAtom* atom;
         uint16_t flag;
 
-        Key() {}
+        Key()
+          : atom(nullptr), flag(0)
+        { }
         Key(JSAtom* atom, RegExpFlag flag)
           : atom(atom), flag(flag)
         { }
@@ -288,7 +290,7 @@ class RegExpZone
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf);
 };
 
-class RegExpCompartment
+class RegExpRealm
 {
     /*
      * This is the template object where the result of re.exec() is based on,
@@ -321,7 +323,7 @@ class RegExpCompartment
     ArrayObject* createMatchResultTemplateObject(JSContext* cx);
 
   public:
-    explicit RegExpCompartment();
+    explicit RegExpRealm();
 
     void sweep();
 
@@ -346,10 +348,10 @@ class RegExpCompartment
     }
 
     static size_t offsetOfOptimizableRegExpPrototypeShape() {
-        return offsetof(RegExpCompartment, optimizableRegExpPrototypeShape_);
+        return offsetof(RegExpRealm, optimizableRegExpPrototypeShape_);
     }
     static size_t offsetOfOptimizableRegExpInstanceShape() {
-        return offsetof(RegExpCompartment, optimizableRegExpInstanceShape_);
+        return offsetof(RegExpRealm, optimizableRegExpInstanceShape_);
     }
 };
 

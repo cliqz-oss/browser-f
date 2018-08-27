@@ -37,10 +37,10 @@ function run_test_with_server(server, callback) {
 
 function test_nested_breakpoint() {
   gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    let source = gThreadClient.source(packet.frame.where.source);
-    let location = { line: gDebuggee.line0 + 5 };
+    const source = gThreadClient.source(packet.frame.where.source);
+    const location = { line: gDebuggee.line0 + 5 };
 
-    source.setBreakpoint(location, function(response, bpClient) {
+    source.setBreakpoint(location).then(function([response, bpClient]) {
       // Check that the breakpoint has properly skipped forward one line.
       Assert.equal(response.actualLocation.source.actor, source.actor);
       Assert.equal(response.actualLocation.line, location.line + 1);

@@ -21,11 +21,6 @@
     "url_hashindex", "moz_places", "url_hash", "" \
   )
 
-#define CREATE_IDX_MOZ_PLACES_FAVICON \
-  CREATE_PLACES_IDX( \
-    "faviconindex", "moz_places", "favicon_id", "" \
-  )
-
 #define CREATE_IDX_MOZ_PLACES_REVHOST \
   CREATE_PLACES_IDX( \
     "hostindex", "moz_places", "rev_host", "" \
@@ -49,6 +44,11 @@
 #define CREATE_IDX_MOZ_PLACES_GUID \
   CREATE_PLACES_IDX( \
     "guid_uniqueindex", "moz_places", "guid", "UNIQUE" \
+  )
+
+#define CREATE_IDX_MOZ_PLACES_ORIGIN_ID \
+  CREATE_PLACES_IDX( \
+    "originidindex", "moz_places", "origin_id", "" \
   )
 
 /**

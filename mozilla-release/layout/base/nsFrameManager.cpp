@@ -84,10 +84,10 @@ nsFrameManager::InsertFrames(nsContainerFrame* aParentFrame,
                              nsIFrame*         aPrevFrame,
                              nsFrameList&      aFrameList)
 {
-  NS_PRECONDITION(!aPrevFrame || (!aPrevFrame->GetNextContinuation()
-                  || (((aPrevFrame->GetNextContinuation()->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER))
-                  && !(aPrevFrame->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER))),
-                  "aPrevFrame must be the last continuation in its chain!");
+  MOZ_ASSERT(!aPrevFrame || (!aPrevFrame->GetNextContinuation()
+             || (((aPrevFrame->GetNextContinuation()->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER))
+             && !(aPrevFrame->GetStateBits() & NS_FRAME_IS_OVERFLOW_CONTAINER))),
+             "aPrevFrame must be the last continuation in its chain!");
 
   if (aParentFrame->IsAbsoluteContainer() &&
       aListID == aParentFrame->GetAbsoluteListID()) {
@@ -163,14 +163,14 @@ nsFrameManager::CaptureFrameStateFor(nsIFrame* aFrame,
   }
 
   // Store the state. aState owns frameState now.
-  aState->AddState(stateKey, Move(frameState));
+  aState->AddState(stateKey, std::move(frameState));
 }
 
 void
 nsFrameManager::CaptureFrameState(nsIFrame* aFrame,
                                   nsILayoutHistoryState* aState)
 {
-  NS_PRECONDITION(nullptr != aFrame && nullptr != aState, "null parameters passed in");
+  MOZ_ASSERT(nullptr != aFrame && nullptr != aState, "null parameters passed in");
 
   CaptureFrameStateFor(aFrame, aState);
 
@@ -245,7 +245,7 @@ void
 nsFrameManager::RestoreFrameState(nsIFrame* aFrame,
                                   nsILayoutHistoryState* aState)
 {
-  NS_PRECONDITION(nullptr != aFrame && nullptr != aState, "null parameters passed in");
+  MOZ_ASSERT(nullptr != aFrame && nullptr != aState, "null parameters passed in");
 
   RestoreFrameStateFor(aFrame, aState);
 
@@ -256,14 +256,6 @@ nsFrameManager::RestoreFrameState(nsIFrame* aFrame,
     for (; !childFrames.AtEnd(); childFrames.Next()) {
       RestoreFrameState(childFrames.get(), aState);
     }
-  }
-}
-
-void
-nsFrameManager::DestroyAnonymousContent(already_AddRefed<nsIContent> aContent)
-{
-  if (nsCOMPtr<nsIContent> content = aContent) {
-    content->UnbindFromTree();
   }
 }
 

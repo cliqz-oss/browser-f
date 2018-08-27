@@ -7,21 +7,21 @@
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(
-    this, "env", "@mozilla.org/process/environment;1", "nsIEnvironment");
-ChromeUtils.defineModuleGetter(this, "Log",
-    "resource://gre/modules/Log.jsm");
 const {
   EnvironmentPrefs,
   MarionettePrefs,
 } = ChromeUtils.import("chrome://marionette/content/prefs.js", {});
-ChromeUtils.defineModuleGetter(this, "Preferences",
-    "resource://gre/modules/Preferences.jsm");
-XPCOMUtils.defineLazyGetter(this, "log", () => {
-  let log = Log.repository.getLogger("Marionette");
-  log.addAppender(new Log.DumpAppender());
-  return log;
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  Log: "chrome://marionette/content/log.js",
+  Preferences: "resource://gre/modules/Preferences.jsm",
+  TCPListener: "chrome://marionette/content/server.js",
 });
+
+XPCOMUtils.defineLazyGetter(this, "log", Log.get);
+
+XPCOMUtils.defineLazyServiceGetter(
+    this, "env", "@mozilla.org/process/environment;1", "nsIEnvironment");
 
 const NOTIFY_RUNNING = "remote-active";
 
@@ -216,9 +216,6 @@ const RECOMMENDED_PREFS = new Map([
   // Do not scan Wifi
   ["geo.wifi.scan", false],
 
-  // No hang monitor
-  ["hangmonitor.timeout", 0],
-
   // Show chrome errors and warnings in the error console
   ["javascript.options.showInConsole", true],
 
@@ -268,7 +265,7 @@ const RECOMMENDED_PREFS = new Map([
 const isRemote = Services.appinfo.processType ==
     Services.appinfo.PROCESS_TYPE_CONTENT;
 
-class MarionetteMainProcess {
+class MarionetteParentProcess {
   constructor() {
     this.server = null;
 
@@ -280,8 +277,6 @@ class MarionetteMainProcess {
     // and that we are ready to start the Marionette server
     this.finalUIStartup = false;
 
-    log.level = MarionettePrefs.logLevel;
-
     this.enabled = env.exists(ENV_ENABLED);
     this.alteredPrefs = new Set();
 
@@ -290,7 +285,7 @@ class MarionetteMainProcess {
   }
 
   get running() {
-    return this.server && this.server.alive;
+    return !!this.server && this.server.alive;
   }
 
   set enabled(value) {
@@ -307,7 +302,7 @@ class MarionetteMainProcess {
         return this.running;
 
       default:
-        log.warn("Unknown IPC message to main process: " + name);
+        log.warn("Unknown IPC message to parent process: " + name);
         return null;
     }
   }
@@ -318,7 +313,7 @@ class MarionetteMainProcess {
     switch (topic) {
       case "nsPref:changed":
         if (this.enabled) {
-          this.init();
+          this.init(false);
         } else {
           this.uninit();
         }
@@ -383,6 +378,7 @@ class MarionetteMainProcess {
         }
 
         if (this.gfxWindow) {
+          log.debug("GFX sanity window detected, waiting until it has been closed...");
           Services.obs.addObserver(this, "domwindowclosed");
         } else {
           Services.obs.addObserver(this, "xpcom-will-shutdown");
@@ -411,16 +407,18 @@ class MarionetteMainProcess {
     }, {once: true});
   }
 
-  init() {
+  init(quit = true) {
     if (this.running || !this.enabled || !this.finalUIStartup) {
+      log.debug(`Init aborted (running=${this.running}, ` +
+                `enabled=${this.enabled}, finalUIStartup=${this.finalUIStartup})`);
       return;
     }
 
-    // wait for delayed startup...
+    log.debug(`Waiting for delayed startup...`);
     Services.tm.idleDispatchToMainThread(async () => {
-      // ... and for startup tests
       let startupRecorder = Promise.resolve();
       if ("@mozilla.org/test/startuprecorder;1" in Cc) {
+        log.debug(`Waiting for startup tests...`);
         startupRecorder = Cc["@mozilla.org/test/startuprecorder;1"]
             .getService().wrappedJSObject.done;
       }
@@ -437,20 +435,20 @@ class MarionetteMainProcess {
       }
 
       try {
-        const {TCPListener} = ChromeUtils.import("chrome://marionette/content/server.js", {});
-        let listener = new TCPListener(MarionettePrefs.port);
-        listener.start();
-        this.server = listener;
+        this.server = new TCPListener(MarionettePrefs.port);
+        this.server.start();
       } catch (e) {
         log.fatal("Remote protocol server failed to start", e);
         this.uninit();
-        Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
+        if (quit) {
+          Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
+        }
         return;
       }
 
       env.set(ENV_ENABLED, "1");
       Services.obs.notifyObservers(this, NOTIFY_RUNNING, true);
-      log.info(`Listening on port ${this.server.port}`);
+      log.debug("Remote service is active");
     });
   }
 
@@ -464,6 +462,7 @@ class MarionetteMainProcess {
     if (this.running) {
       this.server.stop();
       Services.obs.notifyObservers(this, NOTIFY_RUNNING);
+      log.debug("Remote service is inactive");
     }
   }
 
@@ -480,7 +479,7 @@ class MarionetteContentProcess {
   get running() {
     let reply = Services.cpmm.sendSyncMessage("Marionette:IsRunning");
     if (reply.length == 0) {
-      log.warn("No reply from main process");
+      log.warn("No reply from parent process");
       return false;
     }
     return reply[0];
@@ -503,7 +502,7 @@ const MarionetteFactory = {
       if (isRemote) {
         this.instance_ = new MarionetteContentProcess();
       } else {
-        this.instance_ = new MarionetteMainProcess();
+        this.instance_ = new MarionetteParentProcess();
       }
     }
 

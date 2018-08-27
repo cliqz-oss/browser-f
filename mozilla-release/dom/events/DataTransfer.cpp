@@ -10,7 +10,6 @@
 
 #include "DataTransfer.h"
 
-#include "nsIDOMDocument.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIScriptSecurityManager.h"
 #include "mozilla/dom/DOMStringList.h"
@@ -198,22 +197,12 @@ DataTransfer::~DataTransfer()
 
 // static
 already_AddRefed<DataTransfer>
-DataTransfer::Constructor(const GlobalObject& aGlobal,
-                          const nsAString& aEventType, bool aIsExternal,
-                          ErrorResult& aRv)
+DataTransfer::Constructor(const GlobalObject& aGlobal, ErrorResult& aRv)
 {
-  nsAutoCString onEventType("on");
-  AppendUTF16toUTF8(aEventType, onEventType);
-  RefPtr<nsAtom> eventTypeAtom = NS_Atomize(onEventType);
-  if (!eventTypeAtom) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return nullptr;
-  }
 
-  EventMessage eventMessage = nsContentUtils::GetEventMessage(eventTypeAtom);
   RefPtr<DataTransfer> transfer = new DataTransfer(aGlobal.GetAsSupports(),
-                                                     eventMessage, aIsExternal,
-                                                     -1);
+                                                   eCopy, /* is external */ false, /* clipboard type */ -1);
+  transfer->mEffectAllowed = nsIDragService::DRAGDROP_ACTION_NONE;
   return transfer.forget();
 }
 
@@ -432,15 +421,14 @@ DataTransfer::GetMozSourceNode()
     return nullptr;
   }
 
-  nsCOMPtr<nsIDOMNode> sourceNode;
+  nsCOMPtr<nsINode> sourceNode;
   dragSession->GetSourceNode(getter_AddRefs(sourceNode));
-  nsCOMPtr<nsINode> node = do_QueryInterface(sourceNode);
-  if (node && !nsContentUtils::LegacyIsCallerNativeCode()
-      && !nsContentUtils::CanCallerAccess(node)) {
+  if (sourceNode && !nsContentUtils::LegacyIsCallerNativeCode()
+      && !nsContentUtils::CanCallerAccess(sourceNode)) {
     return nullptr;
   }
 
-  return node.forget();
+  return sourceNode.forget();
 }
 
 already_AddRefed<DOMStringList>
@@ -745,7 +733,7 @@ DataTransfer::UpdateDragImage(Element& aImage, int32_t aX, int32_t aY)
 
   nsCOMPtr<nsIDragSession> dragSession = nsContentUtils::GetDragSession();
   if (dragSession) {
-    dragSession->UpdateDragImage(aImage.AsDOMNode(), aX, aY);
+    dragSession->UpdateDragImage(&aImage, aX, aY);
   }
 }
 
@@ -823,16 +811,11 @@ DataTransfer::Clone(nsISupports* aParent, EventMessage aEventMessage,
 }
 
 already_AddRefed<nsIArray>
-DataTransfer::GetTransferables(nsIDOMNode* aDragTarget)
+DataTransfer::GetTransferables(nsINode* aDragTarget)
 {
   MOZ_ASSERT(aDragTarget);
 
-  nsCOMPtr<nsINode> dragNode = do_QueryInterface(aDragTarget);
-  if (!dragNode) {
-    return nullptr;
-  }
-
-  nsIDocument* doc = dragNode->GetComposedDoc();
+  nsIDocument* doc = aDragTarget->GetComposedDoc();
   if (!doc) {
     return nullptr;
   }

@@ -11,7 +11,7 @@
 #include "mozilla/MacroForEach.h"
 #include "mozilla/MathAlgorithms.h"
 
-#include "vm/JSCompartment.h"
+#include "vm/Realm.h"
 
 #if defined(JS_CODEGEN_X86)
 # include "jit/x86/MacroAssembler-x86.h"
@@ -33,15 +33,13 @@
 #include "jit/AtomicOp.h"
 #include "jit/IonInstrumentation.h"
 #include "jit/IonTypes.h"
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "jit/TemplateObject.h"
 #include "jit/VMFunctions.h"
 #include "vm/ProxyObject.h"
 #include "vm/Shape.h"
 #include "vm/TypedArrayObject.h"
 #include "vm/UnboxedObject.h"
-
-using mozilla::FloatingPoint;
 
 // * How to read/write MacroAssembler method declarations:
 //
@@ -1147,7 +1145,7 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     void branchTestObjCompartment(Condition cond, Register obj, const Address& compartment,
                                   Register scratch, Label* label);
-    void branchTestObjCompartment(Condition cond, Register obj, const JSCompartment* compartment,
+    void branchTestObjCompartment(Condition cond, Register obj, const JS::Compartment* compartment,
                                   Register scratch, Label* label);
     void branchIfObjGroupHasNoAddendum(Register obj, Register scratch, Label* label);
     void branchIfPretenuredGroup(const ObjectGroup* group, Register scratch, Label* label);
@@ -2192,8 +2190,10 @@ class MacroAssembler : public MacroAssemblerSpecific
     void debugAssertIsObject(const ValueOperand& val);
     void debugAssertObjHasFixedSlots(Register obj, Register scratch);
 
+    void branchIfNativeIteratorNotReusable(Register ni, Label* notReusable);
+
     using MacroAssemblerSpecific::extractTag;
-    Register extractTag(const TypedOrValueRegister& reg, Register scratch) {
+    MOZ_MUST_USE Register extractTag(const TypedOrValueRegister& reg, Register scratch) {
         if (reg.hasValue())
             return extractTag(reg.valueReg(), scratch);
         mov(ImmWord(MIRTypeToTag(reg.type())), scratch);
@@ -2201,7 +2201,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
 
     using MacroAssemblerSpecific::extractObject;
-    Register extractObject(const TypedOrValueRegister& reg, Register scratch) {
+    MOZ_MUST_USE Register extractObject(const TypedOrValueRegister& reg, Register scratch) {
         if (reg.hasValue())
             return extractObject(reg.valueReg(), scratch);
         MOZ_ASSERT(reg.type() == MIRType::Object);

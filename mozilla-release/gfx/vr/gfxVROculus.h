@@ -15,7 +15,7 @@
 #include "mozilla/EnumeratedArray.h"
 
 #include "gfxVR.h"
-#include "VRDisplayHost.h"
+#include "VRDisplayLocal.h"
 #include "ovr_capi_dynamic.h"
 
 struct ID3D11Device;
@@ -90,7 +90,7 @@ private:
   void StopRendering();
 };
 
-class VRDisplayOculus : public VRDisplayHost
+class VRDisplayOculus : public VRDisplayLocal
 {
 public:
   void ZeroSensor() override;
@@ -214,7 +214,8 @@ private:
   void HandlePoseTracking(uint32_t aControllerIdx,
                           const dom::GamepadPoseState& aPose,
                           VRControllerHost* aController);
-  void HandleIndexTriggerPress(uint32_t aControllerIdx, uint32_t aButton, float aValue);
+  void HandleIndexTriggerPress(uint32_t aControllerIdx, uint32_t aButton, float aValue,
+                               uint64_t aTouchMask, uint64_t aButtonTouched);
   void HandleHandTriggerPress(uint32_t aControllerIdx, uint32_t aButton, float aValue);
   void HandleTouchEvent(uint32_t aControllerIdx, uint32_t aButton,
                         uint64_t aTouchMask, uint64_t aTouched);

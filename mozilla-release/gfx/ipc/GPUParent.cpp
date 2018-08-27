@@ -11,6 +11,7 @@
 #include "gfxCrashReporterUtils.h"
 #include "gfxPlatform.h"
 #include "gfxPrefs.h"
+#include "GLContextProvider.h"
 #include "GPUProcessHost.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Telemetry.h"
@@ -83,6 +84,7 @@ GPUParent::GetSingleton()
 
 bool
 GPUParent::Init(base::ProcessId aParentPid,
+                const char* aParentBuildID,
                 MessageLoop* aIOLoop,
                 IPC::Channel* aChannel)
 {
@@ -99,10 +101,15 @@ GPUParent::Init(base::ProcessId aParentPid,
 
   nsDebugImpl::SetMultiprocessMode("GPU");
 
-  // This must be sent before any IPDL message, which may hit sentinel
+  // This must be checked before any IPDL message, which may hit sentinel
   // errors due to parent and content processes having different
   // versions.
-  GetIPCChannel()->SendBuildID();
+  MessageChannel* channel = GetIPCChannel();
+  if (channel && !channel->SendBuildIDsMatchMessage(aParentBuildID)) {
+    // We need to quit this process if the buildID doesn't match the parent's.
+    // This can occur when an update occurred in the background.
+    ProcessChild::QuickExit();
+  }
 
   // Init crash reporter support.
   CrashReporterClient::InitSingleton(this);
@@ -274,35 +281,35 @@ GPUParent::RecvInit(nsTArray<GfxPrefSetting>&& prefs,
 mozilla::ipc::IPCResult
 GPUParent::RecvInitCompositorManager(Endpoint<PCompositorManagerParent>&& aEndpoint)
 {
-  CompositorManagerParent::Create(Move(aEndpoint));
+  CompositorManagerParent::Create(std::move(aEndpoint));
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 GPUParent::RecvInitVsyncBridge(Endpoint<PVsyncBridgeParent>&& aVsyncEndpoint)
 {
-  mVsyncBridge = VsyncBridgeParent::Start(Move(aVsyncEndpoint));
+  mVsyncBridge = VsyncBridgeParent::Start(std::move(aVsyncEndpoint));
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 GPUParent::RecvInitImageBridge(Endpoint<PImageBridgeParent>&& aEndpoint)
 {
-  ImageBridgeParent::CreateForGPUProcess(Move(aEndpoint));
+  ImageBridgeParent::CreateForGPUProcess(std::move(aEndpoint));
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 GPUParent::RecvInitVRManager(Endpoint<PVRManagerParent>&& aEndpoint)
 {
-  VRManagerParent::CreateForGPUProcess(Move(aEndpoint));
+  VRManagerParent::CreateForGPUProcess(std::move(aEndpoint));
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 GPUParent::RecvInitUiCompositorController(const LayersId& aRootLayerTreeId, Endpoint<PUiCompositorControllerParent>&& aEndpoint)
 {
-  UiCompositorControllerParent::Start(aRootLayerTreeId, Move(aEndpoint));
+  UiCompositorControllerParent::Start(aRootLayerTreeId, std::move(aEndpoint));
   return IPC_OK();
 }
 
@@ -310,7 +317,7 @@ mozilla::ipc::IPCResult
 GPUParent::RecvInitProfiler(Endpoint<PProfilerChild>&& aEndpoint)
 {
 #ifdef MOZ_GECKO_PROFILER
-  mProfilerController = ChildProfilerController::Create(Move(aEndpoint));
+  mProfilerController = ChildProfilerController::Create(std::move(aEndpoint));
 #endif
   return IPC_OK();
 }
@@ -377,6 +384,9 @@ GPUParent::RecvSimulateDeviceReset(GPUDeviceData* aOut)
 #if defined(XP_WIN)
   DeviceManagerDx::Get()->ForceDeviceReset(ForcedDeviceResetReason::COMPOSITOR_UPDATED);
   DeviceManagerDx::Get()->MaybeResetAndReacquireDevices();
+  if (gfxVars::UseWebRender()) {
+    wr::RenderThread::Get()->SimulateDeviceReset();
+  }
 #endif
   RecvGetDeviceStatus(aOut);
   return IPC_OK();
@@ -385,14 +395,14 @@ GPUParent::RecvSimulateDeviceReset(GPUDeviceData* aOut)
 mozilla::ipc::IPCResult
 GPUParent::RecvNewContentCompositorManager(Endpoint<PCompositorManagerParent>&& aEndpoint)
 {
-  CompositorManagerParent::Create(Move(aEndpoint));
+  CompositorManagerParent::Create(std::move(aEndpoint));
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult
 GPUParent::RecvNewContentImageBridge(Endpoint<PImageBridgeParent>&& aEndpoint)
 {
-  if (!ImageBridgeParent::CreateForContent(Move(aEndpoint))) {
+  if (!ImageBridgeParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
@@ -401,7 +411,7 @@ GPUParent::RecvNewContentImageBridge(Endpoint<PImageBridgeParent>&& aEndpoint)
 mozilla::ipc::IPCResult
 GPUParent::RecvNewContentVRManager(Endpoint<PVRManagerParent>&& aEndpoint)
 {
-  if (!VRManagerParent::CreateForContent(Move(aEndpoint))) {
+  if (!VRManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
@@ -410,7 +420,7 @@ GPUParent::RecvNewContentVRManager(Endpoint<PVRManagerParent>&& aEndpoint)
 mozilla::ipc::IPCResult
 GPUParent::RecvNewContentVideoDecoderManager(Endpoint<PVideoDecoderManagerParent>&& aEndpoint)
 {
-  if (!dom::VideoDecoderManagerParent::CreateForContent(Move(aEndpoint))) {
+  if (!dom::VideoDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
@@ -492,6 +502,20 @@ GPUParent::ActorDestroy(ActorDestroyReason aWhy)
   if (wr::RenderThread::Get()) {
     wr::RenderThread::ShutDown();
   }
+
+  // Shut down the default GL context provider.
+  gl::GLContextProvider::Shutdown();
+
+#if defined(XP_WIN)
+  // The above shutdown calls operate on the available context providers on
+  // most platforms.  Windows is a "special snowflake", though, and has three
+  // context providers available, so we have to shut all of them down.
+  // We should only support the default GL provider on Windows; then, this
+  // could go away. Unfortunately, we currently support WGL (the default) for
+  // WebGL on Optimus.
+  gl::GLContextProviderEGL::Shutdown();
+#endif
+
   Factory::ShutDown();
 #if defined(XP_WIN)
   DeviceManagerDx::Shutdown();

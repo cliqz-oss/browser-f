@@ -63,6 +63,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   TelemetryModules: "resource://gre/modules/TelemetryModules.jsm",
   UpdatePing: "resource://gre/modules/UpdatePing.jsm",
   TelemetryHealthPing: "resource://gre/modules/TelemetryHealthPing.jsm",
+  TelemetryEventPing: "resource://gre/modules/TelemetryEventPing.jsm",
   OS: "resource://gre/modules/osfile.jsm",
 });
 
@@ -686,8 +687,14 @@ var Impl = {
         // in the future.
         TelemetryStorage.removeFHRDatabase();
 
-        // Report the modules loaded in the Firefox process.
-        TelemetryModules.start();
+        // The init sequence is forced to run on shutdown for short sessions and
+        // we don't want to start TelemetryModules as the timer registration will fail.
+        if (!this._shuttingDown) {
+          // Report the modules loaded in the Firefox process.
+          TelemetryModules.start();
+        }
+
+        TelemetryEventPing.startup();
 
         this._delayedInitTaskDeferred.resolve();
       } catch (e) {
@@ -728,8 +735,6 @@ var Impl = {
       return;
     }
 
-    this._shuttingDown = true;
-
     Services.prefs.removeObserver(PREF_BRANCH_LOG, configureLogging);
     this._detachObservers();
 
@@ -740,6 +745,8 @@ var Impl = {
       }
 
       UpdatePing.shutdown();
+
+      TelemetryEventPing.shutdown();
 
       // Stop the datachoices infobar display.
       TelemetryReportingPolicy.shutdown();
@@ -772,6 +779,8 @@ var Impl = {
   shutdown() {
     this._log.trace("shutdown");
 
+    this._shuttingDown = true;
+
     // We can be in one the following states here:
     // 1) setupTelemetry was never called
     // or it was called and
@@ -781,7 +790,6 @@ var Impl = {
 
     // This handles 1).
     if (!this._initStarted) {
-      this._shuttingDown = true;
       this._shutDown = true;
       return Promise.resolve();
     }

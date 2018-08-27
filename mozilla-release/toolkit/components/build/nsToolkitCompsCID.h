@@ -33,9 +33,6 @@
 #define NS_FORMHISTORYAUTOCOMPLETE_CONTRACTID \
   "@mozilla.org/autocomplete/search;1?name=form-history"
 
-#define NS_GLOBALHISTORY_DATASOURCE_CONTRACTID \
-  "@mozilla.org/rdf/datasource;1?name=history"
-
 #define NS_TYPEAHEADFIND_CONTRACTID \
     "@mozilla.org/typeaheadfind;1"
 
@@ -85,6 +82,11 @@
 
 #define NS_ADDONCONTENTPOLICY_CONTRACTID \
   "@mozilla.org/addons/content-policy;1"
+
+#if defined(ENABLE_TESTS)
+#define NS_TELEMETRYGECKOVIEWTESTING_CONTRACTID \
+  "@mozilla.org/telemetry/geckoview-testing;1"
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -186,3 +188,8 @@
 
 #define NS_ADDON_POLICY_SERVICE_CONTRACTID \
   "@mozilla.org/addons/policy-service;1"
+
+#if defined(ENABLE_TESTS)
+#define NS_TELEMETRYGECKOVIEWTESTING_CID \
+  { 0xaaa3f7f2, 0x8ef0, 0x41ec, { 0x8d, 0x3, 0xae, 0xd6, 0x67, 0xcf, 0x7f, 0xa2 } };
+#endif

@@ -8,7 +8,8 @@
 // this button is visible both in BOTTOM and SIDE hosts.
 
 add_task(async function() {
-  await pushPref("devtools.inspector.three-pane-toggle", true);
+  info("Switch to 2 pane inspector to test the 3 pane toggle button behavior");
+  await pushPref("devtools.inspector.three-pane-enabled", false);
 
   info("Open the inspector in a bottom toolbox host");
   const { inspector, toolbox } = await openInspectorForURL("about:blank", "bottom");
@@ -19,8 +20,8 @@ add_task(async function() {
   ok(button.classList.contains("pane-collapsed"), "The button is in collapsed state");
   ok(!!button.getClientRects().length, "The button is visible");
 
-  info("Switch the host to side type");
-  await toolbox.switchHost("side");
+  info("Switch the host to the right");
+  await toolbox.switchHost("right");
 
   ok(!!button.getClientRects().length, "The button is still visible");
   ok(button.classList.contains("pane-collapsed"),

@@ -70,7 +70,6 @@
 #include "nsIDocumentInlines.h"
 #include "nsIDocShellTreeOwner.h"
 #include "nsIDOMChromeWindow.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsFocusManager.h"
@@ -202,9 +201,8 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(TabChildBase)
 already_AddRefed<nsIDocument>
 TabChildBase::GetDocument() const
 {
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  WebNavigation()->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  nsCOMPtr<nsIDocument> doc;
+  WebNavigation()->GetDocument(getter_AddRefs(doc));
   return doc.forget();
 }
 
@@ -647,7 +645,7 @@ TabChild::Init()
           static_cast<TabChild*>(tabChild.get())->ContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
         }
       });
-  mAPZEventState = new APZEventState(mPuppetWidget, Move(callback));
+  mAPZEventState = new APZEventState(mPuppetWidget, std::move(callback));
 
   mIPCOpen = true;
   return NS_OK;
@@ -1720,19 +1718,14 @@ TabChild::HandleRealMouseButtonEvent(const WidgetMouseEvent& aEvent,
   // actually go through the APZ code and so their mHandledByAPZ flag is false.
   // Since thos events didn't go through APZ, we don't need to send
   // notifications for them.
-  bool pendingLayerization = false;
+  UniquePtr<DisplayportSetListener> postLayerization;
   if (aInputBlockId && aEvent.mFlags.mHandledByAPZ) {
     nsCOMPtr<nsIDocument> document(GetDocument());
-    pendingLayerization =
-      APZCCallbackHelper::SendSetTargetAPZCNotification(mPuppetWidget, document,
-                                                        aEvent, aGuid,
-                                                        aInputBlockId);
+    postLayerization = APZCCallbackHelper::SendSetTargetAPZCNotification(
+        mPuppetWidget, document, aEvent, aGuid, aInputBlockId);
   }
 
-  InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eIgnore);
-  if (pendingLayerization) {
-    InputAPZContext::SetPendingLayerization();
-  }
+  InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eIgnore, postLayerization != nullptr);
 
   WidgetMouseEvent localEvent(aEvent);
   localEvent.mWidget = mPuppetWidget;
@@ -1742,6 +1735,15 @@ TabChild::HandleRealMouseButtonEvent(const WidgetMouseEvent& aEvent,
 
   if (aInputBlockId && aEvent.mFlags.mHandledByAPZ) {
     mAPZEventState->ProcessMouseEvent(aEvent, aGuid, aInputBlockId);
+  }
+
+  // Do this after the DispatchWidgetEventViaAPZ call above, so that if the
+  // mouse event triggered a post-refresh AsyncDragMetrics message to be sent
+  // to APZ (from scrollbar dragging in nsSliderFrame), then that will reach
+  // APZ before the SetTargetAPZC message. This ensures the drag input block
+  // gets the drag metrics before handling the input events.
+  if (postLayerization && postLayerization->Register()) {
+    Unused << postLayerization.release();
   }
 }
 
@@ -1823,8 +1825,12 @@ TabChild::DispatchWheelEvent(const WidgetWheelEvent& aEvent,
   WidgetWheelEvent localEvent(aEvent);
   if (aInputBlockId && aEvent.mFlags.mHandledByAPZ) {
     nsCOMPtr<nsIDocument> document(GetDocument());
-    APZCCallbackHelper::SendSetTargetAPZCNotification(
-      mPuppetWidget, document, aEvent, aGuid, aInputBlockId);
+    UniquePtr<DisplayportSetListener> postLayerization =
+        APZCCallbackHelper::SendSetTargetAPZCNotification(
+            mPuppetWidget, document, aEvent, aGuid, aInputBlockId);
+    if (postLayerization && postLayerization->Register()) {
+      Unused << postLayerization.release();
+    }
   }
 
   localEvent.mWidget = mPuppetWidget;
@@ -1899,9 +1905,12 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
         mPuppetWidget, document, localEvent, aInputBlockId,
         mSetAllowedTouchBehaviorCallback);
     }
-    APZCCallbackHelper::SendSetTargetAPZCNotification(mPuppetWidget, document,
-                                                      localEvent, aGuid,
-                                                      aInputBlockId);
+    UniquePtr<DisplayportSetListener> postLayerization =
+        APZCCallbackHelper::SendSetTargetAPZCNotification(
+            mPuppetWidget, document, localEvent, aGuid, aInputBlockId);
+    if (postLayerization && postLayerization->Register()) {
+      Unused << postLayerization.release();
+    }
   }
 
   // Dispatch event to content (potentially a long-running operation)
@@ -2043,7 +2052,7 @@ bool
 TabChild::SkipRepeatedKeyEvent(const WidgetKeyboardEvent& aEvent)
 {
   if (mRepeatedKeyEventTime.IsNull() ||
-      !aEvent.mIsRepeat ||
+      !aEvent.CanSkipInRemoteProcess() ||
       (aEvent.mMessage != eKeyDown && aEvent.mMessage != eKeyPress)) {
     mRepeatedKeyEventTime = TimeStamp();
     mSkipKeyPress = false;
@@ -2306,7 +2315,7 @@ TabChild::RecvAsyncMessage(const nsString& aMessage,
                            const ClonedMessageData& aData)
 {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-    "TabChild::RecvAsyncMessage", EVENTS, aMessage);
+    "TabChild::RecvAsyncMessage", OTHER, aMessage);
 
   CrossProcessCpowHolder cpows(Manager(), aCpows);
   if (!mTabChildGlobal) {
@@ -2538,7 +2547,9 @@ TabChild::RemovePendingDocShellBlocker()
   }
   if (!mPendingDocShellBlockers && mPendingRenderLayersReceivedMessage) {
     mPendingRenderLayersReceivedMessage = false;
-    RecvRenderLayers(mPendingRenderLayers, mPendingLayerObserverEpoch);
+    RecvRenderLayers(mPendingRenderLayers,
+                     false /* aForceRepaint */,
+                     mPendingLayerObserverEpoch);
   }
 }
 
@@ -2569,7 +2580,7 @@ TabChild::RecvSetDocShellIsActive(const bool& aIsActive)
 }
 
 mozilla::ipc::IPCResult
-TabChild::RecvRenderLayers(const bool& aEnabled, const uint64_t& aLayerObserverEpoch)
+TabChild::RecvRenderLayers(const bool& aEnabled, const bool& aForceRepaint, const uint64_t& aLayerObserverEpoch)
 {
   if (mPendingDocShellBlockers > 0) {
     mPendingRenderLayersReceivedMessage = true;
@@ -2587,19 +2598,19 @@ TabChild::RecvRenderLayers(const bool& aEnabled, const uint64_t& aLayerObserverE
   }
   mLayerObserverEpoch = aLayerObserverEpoch;
 
-  auto clearForcePaint = MakeScopeExit([&] {
+  auto clearPaintWhileInterruptingJS = MakeScopeExit([&] {
     // We might force a paint, or we might already have painted and this is a
     // no-op. In either case, once we exit this scope, we need to alert the
     // ProcessHangMonitor that we've finished responding to what might have
     // been a request to force paint. This is so that the BackgroundHangMonitor
     // for force painting can be made to wait again.
     if (aEnabled) {
-      ProcessHangMonitor::ClearForcePaint(mLayerObserverEpoch);
+      ProcessHangMonitor::ClearPaintWhileInterruptingJS(mLayerObserverEpoch);
     }
   });
 
   if (aEnabled) {
-    ProcessHangMonitor::MaybeStartForcePaint();
+    ProcessHangMonitor::MaybeStartPaintWhileInterruptingJS();
   }
 
   if (mCompositorOptions) {
@@ -2614,12 +2625,12 @@ TabChild::RecvRenderLayers(const bool& aEnabled, const uint64_t& aLayerObserverE
   }
 
   if (aEnabled) {
-    if (IsVisible()) {
+    if (!aForceRepaint && IsVisible()) {
       // This request is a no-op. In this case, we still want a MozLayerTreeReady
       // notification to fire in the parent (so that it knows that the child has
-      // updated its epoch). ForcePaintNoOp does that.
+      // updated its epoch). PaintWhileInterruptingJSNoOp does that.
       if (IPCOpen()) {
-        Unused << SendForcePaintNoOp(mLayerObserverEpoch);
+        Unused << SendPaintWhileInterruptingJSNoOp(mLayerObserverEpoch);
         return IPC_OK();
       }
     }
@@ -3217,6 +3228,9 @@ TabChild::ReinitRendering()
   gfx::VRManagerChild::IdentifyTextureHost(mTextureFactoryIdentifier);
 
   InitAPZState();
+  RefPtr<LayerManager> lm = mPuppetWidget->GetLayerManager();
+  MOZ_ASSERT(lm);
+  lm->SetLayerObserverEpoch(mLayerObserverEpoch);
 
   nsCOMPtr<nsIDocument> doc(GetDocument());
   doc->NotifyLayerManagerRecreated();
@@ -3428,6 +3442,7 @@ TabChild::AllocPPaymentRequestChild()
 bool
 TabChild::DeallocPPaymentRequestChild(PPaymentRequestChild* actor)
 {
+  delete actor;
   return true;
 }
 
@@ -3448,7 +3463,8 @@ TabChild::GetOuterRect()
 }
 
 void
-TabChild::ForcePaint(uint64_t aLayerObserverEpoch)
+TabChild::PaintWhileInterruptingJS(uint64_t aLayerObserverEpoch,
+                                   bool aForceRepaint)
 {
   if (!IPCOpen() || !mPuppetWidget || !mPuppetWidget->HasLayerManager()) {
     // Don't bother doing anything now. Better to wait until we receive the
@@ -3457,7 +3473,7 @@ TabChild::ForcePaint(uint64_t aLayerObserverEpoch)
   }
 
   nsAutoScriptBlocker scriptBlocker;
-  RecvRenderLayers(true, aLayerObserverEpoch);
+  RecvRenderLayers(true /* aEnabled */, aForceRepaint, aLayerObserverEpoch);
 }
 
 void
@@ -3535,7 +3551,7 @@ NS_IMPL_RELEASE_INHERITED(TabChildGlobal, DOMEventTargetHelper)
 
 bool
 TabChildGlobal::WrapGlobalObject(JSContext* aCx,
-                                 JS::CompartmentOptions& aOptions,
+                                 JS::RealmOptions& aOptions,
                                  JS::MutableHandle<JSObject*> aReflector)
 {
   bool ok = ContentFrameMessageManagerBinding::Wrap(aCx, this, this, aOptions,
@@ -3611,9 +3627,9 @@ TabChildGlobal::Dispatch(TaskCategory aCategory,
                          already_AddRefed<nsIRunnable>&& aRunnable)
 {
   if (mTabChild && mTabChild->TabGroup()) {
-    return mTabChild->TabGroup()->Dispatch(aCategory, Move(aRunnable));
+    return mTabChild->TabGroup()->Dispatch(aCategory, std::move(aRunnable));
   }
-  return DispatcherTrait::Dispatch(aCategory, Move(aRunnable));
+  return DispatcherTrait::Dispatch(aCategory, std::move(aRunnable));
 }
 
 nsISerialEventTarget*

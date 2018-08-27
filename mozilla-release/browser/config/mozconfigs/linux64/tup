@@ -13,3 +13,7 @@ export TUP=${TOOLTOOL_DIR}/tup/tup
 . "$topsrcdir/build/mozconfig.common.override"
 
 ac_add_options --enable-build-backends=Tup
+ac_add_options --disable-js-shell
+# To enable the option to upload the tup database, uncomment the line below
+# ac_add_options --upload-tup-db
+

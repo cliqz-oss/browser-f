@@ -5,6 +5,9 @@
 #[macro_use]
 mod util;
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+pub mod hidproto;
+
 #[cfg(any(target_os = "linux"))]
 extern crate libudev;
 
@@ -12,8 +15,18 @@ extern crate libudev;
 #[path = "linux/mod.rs"]
 pub mod platform;
 
+#[cfg(any(target_os = "freebsd"))]
+extern crate devd_rs;
+
+#[cfg(any(target_os = "freebsd"))]
+#[path = "freebsd/mod.rs"]
+pub mod platform;
+
 #[cfg(any(target_os = "macos"))]
 extern crate core_foundation_sys;
+
+#[cfg(any(target_os = "macos"))]
+extern crate core_foundation;
 
 #[cfg(any(target_os = "macos"))]
 #[path = "macos/mod.rs"]
@@ -23,7 +36,11 @@ pub mod platform;
 #[path = "windows/mod.rs"]
 pub mod platform;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+#[cfg(
+    not(
+        any(target_os = "linux", target_os = "freebsd", target_os = "macos", target_os = "windows")
+    )
+)]
 #[path = "stub/mod.rs"]
 pub mod platform;
 

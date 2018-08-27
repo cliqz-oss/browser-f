@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 ChromeUtils.import("resource://gre/modules/PlacesSearchAutocompleteProvider.jsm");
+ChromeUtils.import("resource://testing-common/AppInfo.jsm");
+updateAppInfo();
 
 add_task(async function() {
     // Tell the search service we are running in the US.  This also has the
     // desired side-effect of preventing our geoip lookup.
-   Services.prefs.setBoolPref("browser.search.isUS", true);
    Services.prefs.setCharPref("browser.search.countryCode", "US");
    Services.prefs.setBoolPref("browser.search.geoSpecificDefaults", false);
 
@@ -35,7 +36,8 @@ add_task(async function hide_search_engine_nomatch() {
   Services.search.removeEngine(engine);
   await promiseTopic;
   Assert.ok(engine.hidden);
-  Assert.equal(null, await PlacesSearchAutocompleteProvider.findMatchByToken(token.substr(0, 1)));
+  let match = await PlacesSearchAutocompleteProvider.findMatchByToken(token.substr(0, 1));
+  Assert.ok(!match || match.token != token);
 });
 
 add_task(async function add_search_engine_match() {
@@ -55,17 +57,17 @@ add_task(async function test_aliased_search_engine_match() {
   // Lower case
   let match = await PlacesSearchAutocompleteProvider.findMatchByAlias("pork");
   Assert.equal(match.engineName, "bacon");
-  Assert.equal(match.alias, "pork");
+  Assert.equal(match.aliases[0], "pork");
   Assert.equal(match.iconUrl, null);
   // Upper case
   let match1 = await PlacesSearchAutocompleteProvider.findMatchByAlias("PORK");
   Assert.equal(match1.engineName, "bacon");
-  Assert.equal(match1.alias, "pork");
+  Assert.equal(match1.aliases[0], "pork");
   Assert.equal(match1.iconUrl, null);
   // Cap case
   let match2 = await PlacesSearchAutocompleteProvider.findMatchByAlias("Pork");
   Assert.equal(match2.engineName, "bacon");
-  Assert.equal(match2.alias, "pork");
+  Assert.equal(match2.aliases[0], "pork");
   Assert.equal(match2.iconUrl, null);
 });
 
@@ -78,17 +80,17 @@ add_task(async function test_aliased_search_engine_match_upper_case_alias() {
   // lower case
   let match = await PlacesSearchAutocompleteProvider.findMatchByAlias("pr");
   Assert.equal(match.engineName, "patch");
-  Assert.equal(match.alias, "PR");
+  Assert.equal(match.aliases[0], "PR");
   Assert.equal(match.iconUrl, null);
   // Upper case
   let match1 = await PlacesSearchAutocompleteProvider.findMatchByAlias("PR");
   Assert.equal(match1.engineName, "patch");
-  Assert.equal(match1.alias, "PR");
+  Assert.equal(match1.aliases[0], "PR");
   Assert.equal(match1.iconUrl, null);
   // Cap case
   let match2 = await PlacesSearchAutocompleteProvider.findMatchByAlias("Pr");
   Assert.equal(match2.engineName, "patch");
-  Assert.equal(match2.alias, "PR");
+  Assert.equal(match2.aliases[0], "PR");
   Assert.equal(match2.iconUrl, null);
 });
 
@@ -112,6 +114,11 @@ add_task(async function test_parseSubmissionURL_basic() {
 
   result = PlacesSearchAutocompleteProvider.parseSubmissionURL("http://example.org/");
   Assert.equal(result, null);
+});
+
+add_task(async function test_builtin_aliased_search_engine_match() {
+  let match = await PlacesSearchAutocompleteProvider.findMatchByAlias("@google");
+  Assert.equal(match.engineName, "Google");
 });
 
 function promiseDefaultSearchEngine() {

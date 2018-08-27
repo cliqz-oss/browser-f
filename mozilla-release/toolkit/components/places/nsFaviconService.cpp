@@ -127,7 +127,6 @@ NS_IMPL_CLASSINFO(nsFaviconService, nullptr, 0, NS_FAVICONSERVICE_CID)
 NS_IMPL_ISUPPORTS_CI(
   nsFaviconService
 , nsIFaviconService
-, mozIAsyncFavicons
 , nsITimerCallback
 , nsINamed
 )
@@ -265,7 +264,10 @@ nsFaviconService::GetDefaultFavicon(nsIURI** _retval)
                             NS_LITERAL_CSTRING(FAVICON_DEFAULT_URL));
     NS_ENSURE_SUCCESS(rv, rv);
   }
-  return mDefaultIcon->Clone(_retval);
+
+  nsCOMPtr<nsIURI> uri = mDefaultIcon;
+  uri.forget(_retval);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -390,11 +392,17 @@ nsFaviconService::SetAndFetchFaviconForPage(nsIURI* aPageURI,
     if (StringBeginsWith(icon.host, NS_LITERAL_CSTRING("www."))) {
       icon.host.Cut(0, 4);
     }
-    nsAutoCString path;
-    rv = aFaviconURI->GetPathQueryRef(path);
-    if (NS_SUCCEEDED(rv) && path.EqualsLiteral("/favicon.ico")) {
-      icon.rootIcon = 1;
-    }
+  }
+
+  // A root icon is when the icon and page have the same host and the path
+  // is just /favicon.ico. These icons are considered valid for the whole
+  // origin and expired with the origin through a trigger.
+  nsAutoCString path;
+  if (NS_SUCCEEDED(aFaviconURI->GetPathQueryRef(path)) &&
+      !icon.host.IsEmpty() &&
+      icon.host.Equals(page.host) &&
+      path.EqualsLiteral("/favicon.ico")) {
+    icon.rootIcon = 1;
   }
 
   // If the page url points to an image, the icon's url will be the same.
@@ -464,16 +472,14 @@ nsFaviconService::ReplaceFaviconData(nsIURI* aFaviconURI,
   iconData->fetchMode = FETCH_NEVER;
   nsresult rv = aFaviconURI->GetSpec(iconData->spec);
   NS_ENSURE_SUCCESS(rv, rv);
-  nsAutoCString path;
-  rv = aFaviconURI->GetPathQueryRef(path);
-  if (NS_SUCCEEDED(rv) && path.EqualsLiteral("/favicon.ico")) {
-    iconData->rootIcon = 1;
-  }
   // URIs can arguably lack a host.
   Unused << aFaviconURI->GetHost(iconData->host);
   if (StringBeginsWith(iconData->host, NS_LITERAL_CSTRING("www."))) {
     iconData->host.Cut(0, 4);
   }
+
+  // Note we can't set rootIcon here, because don't know the page it will be
+  // associated with. We'll do that later in SetAndFetchFaviconForPage.
 
   IconPayload payload;
   payload.mimeType = aMimeType;
@@ -550,13 +556,13 @@ nsFaviconService::ReplaceFaviconDataFromDataURL(nsIURI* aFaviconURI,
   NS_ENSURE_TRUE(loadingPrincipal, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsILoadInfo> loadInfo =
-    new mozilla::LoadInfo(loadingPrincipal,
-                          nullptr, // aTriggeringPrincipal
-                          nullptr, // aLoadingNode
-                          nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS |
-                          nsILoadInfo::SEC_ALLOW_CHROME |
-                          nsILoadInfo::SEC_DISALLOW_SCRIPT,
-                          nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON);
+    new mozilla::net::LoadInfo(loadingPrincipal,
+                               nullptr, // aTriggeringPrincipal
+                               nullptr, // aLoadingNode
+                               nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS |
+                               nsILoadInfo::SEC_ALLOW_CHROME |
+                               nsILoadInfo::SEC_DISALLOW_SCRIPT,
+                               nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON);
 
   nsCOMPtr<nsIChannel> channel;
   rv = protocolHandler->NewChannel2(dataURI, loadInfo, getter_AddRefs(channel));

@@ -17,7 +17,7 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/TimeStamp.h" // for TimeStamp, TimeDuration
 #include "mozilla/dom/AnimationBinding.h" // for AnimationPlayState
-#include "mozilla/dom/AnimationEffectReadOnly.h"
+#include "mozilla/dom/AnimationEffect.h"
 #include "mozilla/dom/AnimationTimeline.h"
 #include "mozilla/dom/Promise.h"
 #include "nsCSSPropertyID.h"
@@ -96,13 +96,13 @@ public:
   // Animation interface methods
   static already_AddRefed<Animation>
   Constructor(const GlobalObject& aGlobal,
-              AnimationEffectReadOnly* aEffect,
+              AnimationEffect* aEffect,
               const Optional<AnimationTimeline*>& aTimeline,
               ErrorResult& aRv);
   void GetId(nsAString& aResult) const { aResult = mId; }
   void SetId(const nsAString& aId);
-  AnimationEffectReadOnly* GetEffect() const { return mEffect; }
-  void SetEffect(AnimationEffectReadOnly* aEffect);
+  AnimationEffect* GetEffect() const { return mEffect; }
+  void SetEffect(AnimationEffect* aEffect);
   AnimationTimeline* GetTimeline() const { return mTimeline; }
   void SetTimeline(AnimationTimeline* aTimeline);
   Nullable<TimeDuration> GetStartTime() const { return mStartTime; }
@@ -155,7 +155,7 @@ public:
 
   virtual void CancelFromStyle() { CancelNoUpdate(); }
   void SetTimelineNoUpdate(AnimationTimeline* aTimeline);
-  void SetEffectNoUpdate(AnimationEffectReadOnly* aEffect);
+  void SetEffectNoUpdate(AnimationEffect* aEffect);
 
   virtual void Tick();
   bool NeedsTicks() const
@@ -172,7 +172,7 @@ public:
    * should begin.
    *
    * When the document finishes painting, any pending animations in its table
-   * are marked as being ready to start by calling StartOnNextTick.
+   * are marked as being ready to start by calling TriggerOnNextTick.
    * The moment when the paint completed is also recorded, converted to a
    * timeline time, and passed to StartOnTick. This is so that when these
    * animations do start, they can be timed from the point when painting
@@ -227,8 +227,9 @@ public:
    */
   void TriggerNow();
   /**
-   * When StartOnNextTick is called, we store the ready time but we don't apply
-   * it until the next tick. In the meantime, GetStartTime() will return null.
+   * When TriggerOnNextTick is called, we store the ready time but we don't
+   * apply it until the next tick. In the meantime, GetStartTime() will return
+   * null.
    *
    * However, if we build layer animations again before the next tick, we
    * should initialize them with the start time that GetStartTime() will return
@@ -363,7 +364,7 @@ public:
   /**
    * Updates various bits of state that we need to update as the result of
    * running ComposeStyle().
-   * See the comment of KeyframeEffectReadOnly::WillComposeStyle for more detail.
+   * See the comment of KeyframeEffect::WillComposeStyle for more detail.
    */
   void WillComposeStyle();
 
@@ -488,7 +489,7 @@ protected:
   nsIDocument* GetRenderedDocument() const;
 
   RefPtr<AnimationTimeline> mTimeline;
-  RefPtr<AnimationEffectReadOnly> mEffect;
+  RefPtr<AnimationEffect> mEffect;
   // The beginning of the delay period.
   Nullable<TimeDuration> mStartTime; // Timeline timescale
   Nullable<TimeDuration> mHoldTime;  // Animation timescale

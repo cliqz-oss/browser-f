@@ -101,7 +101,7 @@ APZEventState::APZEventState(nsIWidget* aWidget,
                              ContentReceivedInputBlockCallback&& aCallback)
   : mWidget(nullptr)  // initialized in constructor body
   , mActiveElementManager(new ActiveElementManager())
-  , mContentReceivedInputBlockCallback(Move(aCallback))
+  , mContentReceivedInputBlockCallback(std::move(aCallback))
   , mPendingTouchPreventedResponse(false)
   , mPendingTouchPreventedBlockId(0)
   , mEndTouchIsClick(false)
@@ -418,11 +418,6 @@ APZEventState::ProcessMouseEvent(const WidgetMouseEvent& aEvent,
                                  const ScrollableLayerGuid& aGuid,
                                  uint64_t aInputBlockId)
 {
-  // If we get here and the drag block has not been confirmed by the code in
-  // nsSliderFrame, then no scrollbar reacted to the event thus APZC will
-  // ignore this drag block. We can send defaultPrevented as either true or
-  // false, it doesn't matter, because APZ won't have the scrollbar metrics
-  // anyway, and will know to drop the block.
   bool defaultPrevented = false;
   mContentReceivedInputBlockCallback(aGuid, aInputBlockId, defaultPrevented);
 }

@@ -31,10 +31,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-
-static char *RCSSTRING __UNUSED__="$Id: ice_ctx.c,v 1.2 2008/04/28 17:59:01 ekr Exp $";
-
 #include <csi_platform.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -689,7 +685,7 @@ static int nr_ice_get_default_local_address(nr_ice_ctx *ctx, int ip_version, nr_
     if (i == addr_ct) {
       if ((r=nr_transport_addr_copy(&addrp->addr, &default_addr)))
         ABORT(r);
-      strlcpy(addrp->addr.ifname, "default route", sizeof(addrp->addr.ifname));
+      (void)strlcpy(addrp->addr.ifname, "default route", sizeof(addrp->addr.ifname));
     }
 
     _status=0;
@@ -914,7 +910,7 @@ int nr_ice_get_global_attributes(nr_ice_ctx *ctx,char ***attrsp, int *attrctp)
 static int nr_ice_random_string(char *str, int len)
   {
     unsigned char bytes[100];
-    int needed;
+    size_t needed;
     int r,_status;
 
     if(len%2) ABORT(R_BAD_ARGS);
@@ -1086,18 +1082,4 @@ int nr_ice_get_new_ice_pwd(char** pwd)
       *pwd = 0;
     }
     return(_status);
-  }
-
-#ifndef UINT2_MAX
-#define UINT2_MAX ((UINT2)(65535U))
-#endif
-
-void nr_ice_accumulate_count(UINT2* orig_count, UINT2 new_count)
-  {
-    if (UINT2_MAX - new_count < *orig_count) {
-      // don't rollover, just stop accumulating at MAX value
-      *orig_count = UINT2_MAX;
-    } else {
-      *orig_count += new_count;
-    }
   }

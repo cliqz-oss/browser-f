@@ -102,6 +102,7 @@ public:
   virtual TextureFactoryIdentifier GetTextureFactoryIdentifier() override;
 
   virtual void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator) override;
+  virtual TransactionId GetLastTransactionId() override;
 
   virtual void AddDidCompositeObserver(DidCompositeObserver* aObserver) override;
   virtual void RemoveDidCompositeObserver(DidCompositeObserver* aObserver) override;
@@ -151,9 +152,6 @@ public:
   // See equivalent function in ClientLayerManager
   const APZTestData& GetAPZTestData() const
   { return mApzTestData; }
-
-  bool SetPendingScrollUpdateForNextTransaction(FrameMetrics::ViewID aScrollId,
-                                                const ScrollUpdateInfo& aUpdateInfo) override;
 
   WebRenderCommandBuilder& CommandBuilder() { return mWebRenderCommandBuilder; }
   WebRenderUserDataRefTable* GetWebRenderUserDataTable() { return mWebRenderCommandBuilder.GetWebRenderUserDataTable(); }

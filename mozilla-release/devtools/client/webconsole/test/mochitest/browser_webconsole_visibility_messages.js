@@ -41,7 +41,7 @@ add_task(async function() {
   await waitFor(() => (document.visibilityState == "hidden"));
 
   const onAllMessagesInStore = new Promise(done => {
-    const store = hud.ui.newConsoleOutput.getStore();
+    const store = hud.ui.consoleOutput.getStore();
     store.subscribe(() => {
       const messages = store.getState().messages.messagesById.size;
       // Also consider the "in-console log" message
@@ -67,7 +67,7 @@ add_task(async function() {
   await toolbox.selectTool("webconsole");
 
   info("And wait for all messages to be visible");
-  let waitForMessagePromises = [];
+  const waitForMessagePromises = [];
   for (let j = 1; j <= MESSAGES_COUNT; j++) {
     waitForMessagePromises.push(waitFor(() => findMessage(hud, "in-inspector log " + j)));
   }
@@ -104,7 +104,7 @@ add_task(async function() {
   });
 
   info("Wait for all messages to be visible in the split console");
-  let waitForMessagePromises = [];
+  const waitForMessagePromises = [];
   for (let j = 1; j <= MESSAGES_COUNT; j++) {
     waitForMessagePromises.push(waitFor(() => findMessage(hud, "in-inspector log " + j)));
   }

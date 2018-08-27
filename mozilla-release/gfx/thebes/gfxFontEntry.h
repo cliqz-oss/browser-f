@@ -24,8 +24,10 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
+#include <math.h>
 
 typedef struct gr_face gr_face;
+typedef struct FT_MM_Var_ FT_MM_Var;
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -50,14 +52,14 @@ class SVGContextPaint;
 class gfxCharacterMap : public gfxSparseBitSet {
 public:
     nsrefcnt AddRef() {
-        NS_PRECONDITION(int32_t(mRefCnt) >= 0, "illegal refcnt");
+        MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");
         ++mRefCnt;
         NS_LOG_ADDREF(this, mRefCnt, "gfxCharacterMap", sizeof(*this));
         return mRefCnt;
     }
 
     nsrefcnt Release() {
-        NS_PRECONDITION(0 != mRefCnt, "dup release");
+        MOZ_ASSERT(0 != mRefCnt, "dup release");
         --mRefCnt;
         NS_LOG_RELEASE(this, mRefCnt, "gfxCharacterMap");
         if (mRefCnt == 0) {
@@ -158,6 +160,7 @@ public:
     bool IsItalic() const { return SlantStyle().Min().IsItalic(); }
     bool IsOblique() const { return SlantStyle().Min().IsOblique(); }
     bool IsUpright() const { return SlantStyle().Min().IsNormal(); }
+    inline bool SupportsItalic();
     inline bool SupportsBold(); // defined below, because of RangeFlags use
     bool IgnoreGDEF() const { return mIgnoreGDEF; }
     bool IgnoreGSUB() const { return mIgnoreGSUB; }
@@ -379,6 +382,8 @@ public:
     GetVariationInstances(nsTArray<gfxFontVariationInstance>& aInstances) = 0;
 
     bool HasBoldVariableWeight();
+    bool HasItalicVariation();
+    void CheckForVariationAxes();
 
     // Set up the entry's weight/stretch/style ranges according to axes found
     // by GetVariationAxes (for installed fonts; do NOT call this for user
@@ -392,6 +397,9 @@ public:
 
     // Get the font's list of features (if any) for DevTools support.
     void GetFeatureInfo(nsTArray<gfxFontFeatureInfo>& aFeatureInfo);
+
+    // This is only called on platforms where we use FreeType.
+    virtual FT_MM_Var* GetMMVar() { return nullptr; }
 
     nsString         mName;
     nsString         mFamilyName;
@@ -436,16 +444,20 @@ public:
         eAutoWeight     = (1 << 0),
         eAutoStretch    = (1 << 1),
         eAutoSlantStyle = (1 << 2),
+
         // Flag to record whether the face has a variable "wght" axis
         // that supports "bold" values, used to disable the application
         // of synthetic-bold effects.
         eBoldVariableWeight = (1 << 3),
+        // Whether the face has an 'ital' axis.
+        eItalicVariation    = (1 << 4),
+
         // Flags to record if the face uses a non-CSS-compatible scale
         // for weight and/or stretch, in which case we won't map the
         // properties to the variation axes (though they can still be
         // explicitly set using font-variation-settings).
-        eNonCSSWeight   = (1 << 4),
-        eNonCSSStretch  = (1 << 5)
+        eNonCSSWeight   = (1 << 5),
+        eNonCSSStretch  = (1 << 6)
     };
     RangeFlags       mRangeFlags = RangeFlags::eNoFlags;
 
@@ -475,7 +487,7 @@ public:
     bool             mHasCmapTable : 1;
     bool             mGrFaceInitialized : 1;
     bool             mCheckedForColorGlyph : 1;
-    bool             mCheckedForVariableWeight : 1;
+    bool             mCheckedForVariationAxes : 1;
 
 protected:
     friend class gfxPlatformFontList;
@@ -613,9 +625,9 @@ private:
         // the old, because the mHashtable pointer in mSharedBlobData (if
         // present) will not be updated.
         FontTableHashEntry(FontTableHashEntry&& toMove)
-            : KeyClass(mozilla::Move(toMove))
-            , mSharedBlobData(mozilla::Move(toMove.mSharedBlobData))
-            , mBlob(mozilla::Move(toMove.mBlob))
+            : KeyClass(std::move(toMove))
+            , mSharedBlobData(std::move(toMove.mSharedBlobData))
+            , mBlob(std::move(toMove.mBlob))
         {
             toMove.mSharedBlobData = nullptr;
             toMove.mBlob = nullptr;
@@ -659,6 +671,15 @@ private:
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(gfxFontEntry::RangeFlags)
 
 inline bool
+gfxFontEntry::SupportsItalic()
+{
+    return SlantStyle().Max().IsItalic() ||
+           ((mRangeFlags & RangeFlags::eAutoSlantStyle) ==
+               RangeFlags::eAutoSlantStyle &&
+            HasItalicVariation());
+}
+
+inline bool
 gfxFontEntry::SupportsBold()
 {
     // bold == weights 600 and above
@@ -674,20 +695,19 @@ gfxFontEntry::SupportsBold()
 // used when iterating over all fonts looking for a match for a given character
 struct GlobalFontMatch {
     GlobalFontMatch(const uint32_t aCharacter,
-                    const gfxFontStyle *aStyle) :
-        mCh(aCharacter), mStyle(aStyle),
-        mMatchRank(0.0f), mCount(0), mCmapsTested(0)
+                    const gfxFontStyle& aStyle) :
+        mStyle(aStyle), mCh(aCharacter),
+        mCount(0), mCmapsTested(0), mMatchDistance(INFINITY)
         {
-
         }
 
+    RefPtr<gfxFontEntry>   mBestMatch;   // current best match
+    RefPtr<gfxFontFamily>  mMatchedFamily; // the family it belongs to
+    const gfxFontStyle&    mStyle;       // style to match
     const uint32_t         mCh;          // codepoint to be matched
-    const gfxFontStyle*    mStyle;       // style to match
-    float                  mMatchRank;   // metric indicating closest match
-    RefPtr<gfxFontEntry> mBestMatch;   // current best match
-    RefPtr<gfxFontFamily> mMatchedFamily; // the family it belongs to
     uint32_t               mCount;       // number of fonts matched
     uint32_t               mCmapsTested; // number of cmaps tested
+    float                  mMatchDistance; // metric indicating closest match
 };
 
 class gfxFontFamily {
@@ -770,10 +790,10 @@ public:
 
     // checks for a matching font within the family
     // used as part of the font fallback process
-    void FindFontForChar(GlobalFontMatch *aMatchData);
+    void FindFontForChar(GlobalFontMatch* aMatchData);
 
     // checks all fonts for a matching font within the family
-    void SearchAllFontsForChar(GlobalFontMatch *aMatchData);
+    void SearchAllFontsForChar(GlobalFontMatch* aMatchData);
 
     // read in other family names, if any, and use functor to add each into cache
     virtual void ReadOtherFamilyNames(gfxPlatformFontList *aPlatformFontList);
@@ -907,6 +927,31 @@ protected:
         kBoldMask   = 0x01,
         kItalicMask = 0x02
     };
+};
+
+// Struct used in the gfxFontGroup font list to keep track of a font family
+// together with the CSS generic (if any) that was mapped to it in this
+// particular case (so it can be reported to the DevTools font inspector).
+struct FamilyAndGeneric final {
+    FamilyAndGeneric()
+        : mFamily(nullptr)
+        , mGeneric(mozilla::FontFamilyType::eFamily_none)
+    {
+    }
+    FamilyAndGeneric(const FamilyAndGeneric& aOther)
+        : mFamily(aOther.mFamily)
+        , mGeneric(aOther.mGeneric)
+    {
+    }
+    explicit FamilyAndGeneric(gfxFontFamily* aFamily,
+                              mozilla::FontFamilyType aGeneric =
+                                  mozilla::FontFamilyType::eFamily_none)
+        : mFamily(aFamily)
+        , mGeneric(aGeneric)
+    {
+    }
+    gfxFontFamily* mFamily;
+    mozilla::FontFamilyType mGeneric;
 };
 
 #endif

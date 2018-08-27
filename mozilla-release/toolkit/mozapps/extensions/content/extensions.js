@@ -5,7 +5,7 @@
 "use strict";
 
 /* import-globals-from ../../../content/contentAreaUtils.js */
-/* globals XMLStylesheetProcessingInstruction */
+/* globals ProcessingInstruction */
 /* exported UPDATES_RELEASENOTES_TRANSFORMFILE, XMLURI_PARSE_ERROR, loadView, gBrowser */
 
 ChromeUtils.import("resource://gre/modules/DeferredTask.jsm");
@@ -109,7 +109,7 @@ Object.defineProperty(this, "gIsInitializing", {
 function initialize(event) {
   // XXXbz this listener gets _all_ load events for all nodes in the
   // document... but relies on not being called "too early".
-  if (event.target instanceof XMLStylesheetProcessingInstruction) {
+  if (event.target instanceof ProcessingInstruction) {
     return;
   }
   document.removeEventListener("load", initialize, true);
@@ -1147,7 +1147,7 @@ var gViewController = {
                   addon: aAddon,
                   icon: aAddon.iconURL,
                   permissions: perms,
-                  resolve() { aAddon.userDisabled = false; },
+                  resolve() { aAddon.enable(); },
                   reject() {},
                 },
               },
@@ -1156,7 +1156,7 @@ var gViewController = {
             return;
           }
         }
-        aAddon.userDisabled = false;
+        aAddon.enable();
       },
       getTooltip(aAddon) {
         if (!aAddon)
@@ -1174,7 +1174,7 @@ var gViewController = {
                 hasPermission(aAddon, "disable"));
       },
       doCommand(aAddon) {
-        aAddon.userDisabled = true;
+        aAddon.disable();
       },
       getTooltip(aAddon) {
         if (!aAddon)
@@ -1207,15 +1207,15 @@ var gViewController = {
           return false;
         return hasPermission(aAddon, "uninstall");
       },
-      doCommand(aAddon) {
-        if (gViewController.currentViewObj != gDetailView) {
-          aAddon.uninstall();
-          return;
+      async doCommand(aAddon) {
+        // Make sure we're on the list view, which supports undo.
+        if (gViewController.currentViewObj != gListView) {
+          await new Promise(resolve => {
+            document.addEventListener("ViewChanged", resolve, {once: true});
+            gViewController.loadView(`addons://list/${aAddon.type}`);
+          });
         }
-
-        gViewController.popState(function() {
-          gViewController.currentViewObj.getListItemForID(aAddon.id).uninstall();
-        });
+        gViewController.currentViewObj.getListItemForID(aAddon.id).uninstall();
       },
       getTooltip(aAddon) {
         if (!aAddon)
@@ -1495,7 +1495,7 @@ function sortElements(aElements, aSortBy, aAscending) {
   // order of priority.
 
   const DATE_FIELDS = ["updateDate"];
-  const NUMERIC_FIELDS = ["size", "relevancescore"];
+  const NUMERIC_FIELDS = ["relevancescore"];
 
   // We're going to group add-ons into the following buckets:
   //
@@ -2714,16 +2714,6 @@ var gDetailView = {
     }
 
     document.getElementById("detail-rating-row").hidden = !aAddon.averageRating && !aAddon.reviewURL;
-
-    var sizeRow = document.getElementById("detail-size");
-    if (aAddon.size && aIsRemote) {
-      let [size, unit] = DownloadUtils.convertByteUnits(parseInt(aAddon.size));
-      let formatted = gStrings.dl.GetStringFromName("doneSize");
-      formatted = formatted.replace("#1", size).replace("#2", unit);
-      sizeRow.value = formatted;
-    } else {
-      sizeRow.value = null;
-    }
 
     var canUpdate = !aIsRemote && hasPermission(aAddon, "upgrade");
     document.getElementById("detail-updates-row").hidden = !canUpdate;

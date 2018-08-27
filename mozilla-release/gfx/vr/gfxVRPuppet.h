@@ -12,7 +12,7 @@
 #include "nsRefPtrHashtable.h"
 
 #include "gfxVR.h"
-#include "VRDisplayHost.h"
+#include "VRDisplayLocal.h"
 
 #if defined(XP_MACOSX)
 class MacIOSurface;
@@ -21,7 +21,7 @@ namespace mozilla {
 namespace gfx {
 namespace impl {
 
-class VRDisplayPuppet : public VRDisplayHost
+class VRDisplayPuppet : public VRDisplayLocal
 {
 public:
   void SetDisplayInfo(const VRDisplayInfo& aDisplayInfo);
@@ -42,8 +42,8 @@ protected:
                            const IntSize& aSize,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
-#elif defined(MOZ_ANDROID_GOOGLE_VR)
-  virtual bool SubmitFrame(const mozilla::layers::EGLImageDescriptor* aDescriptor,
+#elif defined(MOZ_WIDGET_ANDROID)
+  virtual bool SubmitFrame(const mozilla::layers::SurfaceTextureDescriptor& aDescriptor,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect) override;
 #endif

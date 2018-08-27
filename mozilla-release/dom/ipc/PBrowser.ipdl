@@ -51,10 +51,9 @@ using nscolor from "nsColor.h";
 using class mozilla::WidgetCompositionEvent from "ipc/nsGUIEventIPC.h";
 using struct mozilla::widget::IMENotification from "mozilla/widget/IMEData.h";
 using struct mozilla::widget::IMENotificationRequests from "mozilla/widget/IMEData.h";
-using mozilla::widget::IMEState::Enabled from "mozilla/widget/IMEData.h";
-using mozilla::widget::IMEState::Open from "mozilla/widget/IMEData.h";
-using mozilla::widget::InputContextAction::Cause from "mozilla/widget/IMEData.h";
-using mozilla::widget::InputContextAction::FocusChange from "mozilla/widget/IMEData.h";
+using struct mozilla::widget::IMEState from "mozilla/widget/IMEData.h";
+using struct mozilla::widget::InputContext from "mozilla/widget/IMEData.h";
+using struct mozilla::widget::InputContextAction from "mozilla/widget/IMEData.h";
 using mozilla::gfx::IntSize from "mozilla/gfx/Point.h";
 using mozilla::gfx::IntPoint from "mozilla/gfx/Point.h";
 using mozilla::gfx::IntRect from "mozilla/gfx/Rect.h";
@@ -322,6 +321,11 @@ parent:
     async SetCandidateWindowForPlugin(CandidateWindowPosition aPosition);
 
     /**
+     * Enable or Disable IME by windowless plugin if plugin has focus.
+     */
+    async EnableIMEForPlugin(bool aEnable);
+
+    /**
      * Notifies the parent process of native key event data received in a
      * plugin process directly.
      *
@@ -350,17 +354,10 @@ parent:
                                 nsCString[] enabledCommands,
                                 nsCString[] disabledCommands);
 
-    nested(inside_cpow) sync GetInputContext() returns (Enabled IMEEnabled,
-                                                        Open IMEOpen);
+    nested(inside_cpow) sync GetInputContext() returns (IMEState state);
 
-    nested(inside_cpow) async SetInputContext(Enabled IMEEnabled,
-                                              Open IMEOpen,
-                                              nsString type,
-                                              nsString inputmode,
-                                              nsString actionHint,
-                                              bool inPrivateBrowsing,
-                                              Cause cause,
-                                              FocusChange focusChange);
+    nested(inside_cpow) async SetInputContext(InputContext context,
+                                              InputContextAction action);
 
     sync IsParentWindowMainWidgetVisible() returns (bool visible);
 
@@ -555,7 +552,7 @@ parent:
     /**
      * Child informs the parent that the layer tree is already available.
      */
-    async ForcePaintNoOp(uint64_t aLayerObserverEpoch);
+    async PaintWhileInterruptingJSNoOp(uint64_t aLayerObserverEpoch);
 
     /**
      * Sent by the child to the parent to inform it that an update to the
@@ -762,11 +759,15 @@ child:
      * @param aEnabled
      *        True if the child should render and upload layers, false if the
      *        child should clear layers.
+     * @param aForceRepaint
+     *        True if the child should force a paint even if it's already
+     *        visible.
      * @param aLayerObserverEpoch
      *        The layer observer epoch for this activation. This message should be
-     *        ignored if this epoch has already been observed (via ForcePaint).
+     *        ignored if this epoch has already been observed (via
+     *        PaintWhileInterruptingJS).
      */
-    async RenderLayers(bool aEnabled, uint64_t aLayerObserverEpoch);
+    async RenderLayers(bool aEnabled, bool aForceRepaint, uint64_t aLayerObserverEpoch);
 
     /**
      * Notify the child that it shouldn't paint the offscreen displayport.

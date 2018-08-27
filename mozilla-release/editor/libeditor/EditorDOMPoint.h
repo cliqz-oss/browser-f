@@ -16,7 +16,6 @@
 #include "nsCOMPtr.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
-#include "nsIDOMNode.h"
 #include "nsINode.h"
 
 namespace mozilla {
@@ -97,14 +96,6 @@ public:
     }
   }
 
-  EditorDOMPointBase(nsIDOMNode* aDOMContainer,
-                     int32_t aOffset)
-    : mIsChildInitialized(false)
-  {
-    nsCOMPtr<nsINode> container = do_QueryInterface(aDOMContainer);
-    this->Set(container, aOffset);
-  }
-
   /**
    * Different from RangeBoundary, aPointedNode should be a child node
    * which you want to refer.
@@ -121,16 +112,6 @@ public:
       "The child is nullptr or doesn't have its parent");
     NS_WARNING_ASSERTION(mChild && mChild->GetParentNode() == mParent,
       "Initializing RangeBoundary with invalid value");
-  }
-
-  explicit EditorDOMPointBase(nsIDOMNode* aDOMPointedNode)
-    : mIsChildInitialized(false)
-  {
-    nsCOMPtr<nsIContent> child = do_QueryInterface(aDOMPointedNode);
-    if (NS_WARN_IF(!child)) {
-      return;
-    }
-    this->Set(child);
   }
 
   EditorDOMPointBase(nsINode* aContainer,
@@ -189,19 +170,13 @@ public:
   dom::Element*
   GetContainerAsElement() const
   {
-    return mParent && mParent->IsElement() ? mParent->AsElement() : nullptr;
+    return Element::FromNodeOrNull(mParent);
   }
 
   dom::Text*
   GetContainerAsText() const
   {
     return mParent ? mParent->GetAsText() : nullptr;
-  }
-
-  nsIDOMNode*
-  GetContainerAsDOMNode() const
-  {
-    return mParent ? mParent->AsDOMNode() : nullptr;
   }
 
   /**

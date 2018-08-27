@@ -17,7 +17,6 @@ from mozharness.base.log import INFO
 from mozharness.base.script import PreScriptAction
 from mozharness.base.transfer import TransferMixin
 from mozharness.base.vcs.vcsbase import MercurialScript
-from mozharness.mozilla.blob_upload import BlobUploadMixin, blobupload_config_options
 from mozharness.mozilla.testing.errors import LogcatErrorList
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.mozilla.testing.unittest import TestSummaryOutputParserHelper
@@ -29,11 +28,8 @@ from mozharness.mozilla.testing.errors import HarnessErrorList
 
 from mozharness.mozilla.structuredlog import StructuredOutputParser
 
-# TODO: we could remove emulator specific code after B2G ICS emulator buildbot
-#       builds is turned off, Bug 1209180.
 
-
-class MarionetteTest(TestingMixin, MercurialScript, BlobUploadMixin, TransferMixin,
+class MarionetteTest(TestingMixin, MercurialScript, TransferMixin,
                      CodeCoverageMixin):
     config_options = [[
         ["--application"],
@@ -115,7 +111,6 @@ class MarionetteTest(TestingMixin, MercurialScript, BlobUploadMixin, TransferMix
         "help": "Tries to enable the WebRender compositor."
         }
      ]] + copy.deepcopy(testing_config_options) \
-        + copy.deepcopy(blobupload_config_options) \
         + copy.deepcopy(code_coverage_config_options)
 
     repos = []
@@ -124,7 +119,6 @@ class MarionetteTest(TestingMixin, MercurialScript, BlobUploadMixin, TransferMix
         super(MarionetteTest, self).__init__(
             config_options=self.config_options,
             all_actions=['clobber',
-                         'read-buildbot-config',
                          'pull',
                          'download-and-extract',
                          'create-virtualenv',
@@ -386,7 +380,7 @@ class MarionetteTest(TestingMixin, MercurialScript, BlobUploadMixin, TransferMix
 
         self.log("Marionette exited with return code %s: %s" % (return_code, tbpl_status),
                  level=level)
-        self.buildbot_status(tbpl_status)
+        self.record_status(tbpl_status)
 
 
 if __name__ == '__main__':

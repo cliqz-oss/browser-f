@@ -4,10 +4,10 @@
 
 from __future__ import absolute_import, unicode_literals
 
+import json
 import logging
 import mozinfo
 import os
-import subprocess
 
 from mach.decorators import (
     Command,
@@ -31,22 +31,20 @@ class MachCommands(MachCommandBase):
     '''
     Run Valgrind tests.
     '''
+
     def __init__(self, context):
         MachCommandBase.__init__(self, context)
 
     @Command('valgrind-test', category='testing',
-        conditions=[conditions.is_firefox, is_valgrind_build],
-        description='Run the Valgrind test job (memory-related errors).')
+             conditions=[conditions.is_firefox, is_valgrind_build],
+             description='Run the Valgrind test job (memory-related errors).')
     @CommandArgument('--suppressions', default=[], action='append',
-        metavar='FILENAME',
-        help='Specify a suppression file for Valgrind to use. Use '
-            '--suppression multiple times to specify multiple suppression '
-            'files.')
+                     metavar='FILENAME',
+                     help='Specify a suppression file for Valgrind to use. Use '
+                     '--suppression multiple times to specify multiple suppression '
+                     'files.')
     def valgrind_test(self, suppressions):
-        import sys
-        import tempfile
 
-        from mozbuild.base import MozbuildObject
         from mozfile import TemporaryDirectory
         from mozhttpd import MozHttpd
         from mozprofile import FirefoxProfile, Preferences
@@ -64,10 +62,18 @@ class MachCommands(MachCommandBase):
         httpd.start(block=False)
 
         with TemporaryDirectory() as profilePath:
-            #TODO: refactor this into mozprofile
-            prefpath = os.path.join(self.topsrcdir, 'testing', 'profiles', 'common', 'user.js')
+            # TODO: refactor this into mozprofile
+            profile_data_dir = os.path.join(
+                self.topsrcdir, 'testing', 'profiles')
+            with open(os.path.join(profile_data_dir, 'profiles.json'), 'r') as fh:
+                base_profiles = json.load(fh)['valgrind']
+
+            prefpaths = [os.path.join(profile_data_dir, profile, 'user.js')
+                         for profile in base_profiles]
             prefs = {}
-            prefs.update(Preferences.read_prefs(prefpath))
+            for path in prefpaths:
+                prefs.update(Preferences.read_prefs(path))
+
             interpolation = {
                 'server': '%s:%d' % httpd.httpd.server_address,
             }
@@ -76,7 +82,8 @@ class MachCommands(MachCommandBase):
                     v = v.format(**interpolation)
                 prefs[k] = Preferences.cast(v)
 
-            quitter = os.path.join(self.topsrcdir, 'tools', 'quitter', 'quitter@mozilla.org.xpi')
+            quitter = os.path.join(
+                self.topsrcdir, 'tools', 'quitter', 'quitter@mozilla.org.xpi')
 
             locations = ServerLocations()
             locations.add_host(host='127.0.0.1',
@@ -161,7 +168,8 @@ class MachCommands(MachCommandBase):
                     status = 1  # turns the TBPL job orange
                     self.log(logging.ERROR, 'valgrind-fail-parsing',
                              {'errs': errs, 'supps': supps},
-                             'TEST-UNEXPECTED-FAIL | valgrind-test | error parsing: {errs} errors seen, but {supps} generated suppressions seen')
+                             'TEST-UNEXPECTED-FAIL | valgrind-test | error parsing: {errs} errors '
+                             'seen, but {supps} generated suppressions seen')
 
                 elif errs == 0:
                     status = 0
@@ -171,15 +179,17 @@ class MachCommands(MachCommandBase):
                     status = 1  # turns the TBPL job orange
                     # We've already printed details of the errors.
 
-                if exitcode == None:
+                if exitcode is None:
                     status = 2  # turns the TBPL job red
                     self.log(logging.ERROR, 'valgrind-fail-timeout',
                              {'timeout': timeout},
-                             'TEST-UNEXPECTED-FAIL | valgrind-test | Valgrind timed out (reached {timeout} second limit)')
+                             'TEST-UNEXPECTED-FAIL | valgrind-test | Valgrind timed out '
+                             '(reached {timeout} second limit)')
                 elif exitcode != 0:
                     status = 2  # turns the TBPL job red
                     self.log(logging.ERROR, 'valgrind-fail-errors', {},
-                             'TEST-UNEXPECTED-FAIL | valgrind-test | non-zero exit code from Valgrind')
+                             'TEST-UNEXPECTED-FAIL | valgrind-test | non-zero exit code'
+                             'from Valgrind')
 
                 httpd.stop()
 

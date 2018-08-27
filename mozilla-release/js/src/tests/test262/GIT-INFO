@@ -1,7 +1,5 @@
-commit ea6c18c5e21189acd2fd26961ea6dc6d2a1947ac
-Author: André Bargull <andre.bargull@gmail.com>
-Date:   Thu Mar 22 17:20:29 2018 -0700
+commit a8f7012587250b32ffb43a3cbd8da8a9f9d1565e
+Author: Rick Waldron <waldron.rick@gmail.com>
+Date:   Tue May 22 15:47:50 2018 -0400
 
-    Don't compute NaN values in functions (#1503)
-    
-    `function nan() { return /* expression to compute NaN */ }` may not return the same implementation-distinguishable NaN value before and after JIT compilation.
+    Array.prototype.flatten => Array.prototype.flat (#1569)

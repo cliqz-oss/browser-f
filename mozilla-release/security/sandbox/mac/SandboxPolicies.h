@@ -344,6 +344,14 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
     ; automatically issued by the font server in response to font
     ; API calls.
     (extension "com.apple.app-sandbox.read"))
+  ; Fonts may continue to work without explicitly allowing these
+  ; services because, at present, connections are made to the services
+  ; before the sandbox is enabled as a side-effect of some API calls.
+  (allow mach-lookup
+    (global-name "com.apple.fonts")
+    (global-name "com.apple.FontObjectsServer"))
+  (if (<= macosMinorVersion 11)
+    (allow mach-lookup (global-name "com.apple.FontServer")))
 
   ; Fonts
   ; Workaround for sandbox extensions not being automatically
@@ -358,6 +366,8 @@ static const char contentSandboxRules[] = R"SANDBOX_LITERAL(
       (home-subpath "/Library/FontCollections")
       (home-subpath "/Library/Application Support/Adobe/CoreSync/plugins/livetype")
       (home-subpath "/Library/Application Support/FontAgent")
+      (home-subpath "/Library/Extensis/UTC") ; bug 1469657
+      (subpath "/Library/Extensis/UTC")      ; bug 1469657
       (regex #"\.fontvault/")
       (home-subpath "/FontExplorer X/Font Library")))
 )SANDBOX_LITERAL";
@@ -407,6 +417,7 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
   (define macosMinorVersion (string->number (param "MAC_OS_MINOR")))
   (define homeDir (param "HOME_PATH"))
   (define tempDir (param "DARWIN_USER_TEMP_DIR"))
+  (define cacheDir (param "DARWIN_USER_CACHE_DIR"))
   (define pluginPath (param "PLUGIN_BINARY_PATH"))
 
   (if (string=? shouldLog "TRUE")
@@ -465,6 +476,10 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
          (iokit-user-client-class "AGPMClient")
          (iokit-user-client-class "AppleGraphicsControlClient")
          (iokit-user-client-class "AppleGraphicsPolicyClient"))
+  ; Camera access
+  (allow iokit-open
+         (iokit-user-client-class "IOUSBDeviceUserClientV2")
+         (iokit-user-client-class "IOUSBInterfaceUserClientV2"))
 
   ; Network
   (allow file-read*
@@ -561,6 +576,10 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
   (define (tempDir-regex tempDir-relative-regex)
     (regex (string-append "^" (regex-quote tempDir)) tempDir-relative-regex))
 
+  ; Utility for allowing access to specific files within the cache dir
+  (define (cache-literal cache-relative-literal)
+    (literal (string-append cacheDir cache-relative-literal)))
+
   ; Read-only paths
   (allow file-read*
       (literal "/")
@@ -617,8 +636,6 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
       (global-name "com.apple.audio.audiohald")
       (global-name "com.apple.audio.coreaudiod")
       (global-name "com.apple.cfnetwork.AuthBrokerAgent")
-      (global-name "com.apple.FontObjectsServer")
-      (global-name "com.apple.fonts")
       (global-name "com.apple.lsd.mapdb")
       (global-name "com.apple.pasteboard.1") ; Allows paste into input field
       (global-name "com.apple.dock.server")
@@ -629,13 +646,25 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
       (local-name "com.apple.tsm.portname")
       (global-name "com.apple.axserver")
       (global-name "com.apple.pbs.fetch_services")
-      (global-name "com.apple.tccd.system")
       (global-name "com.apple.tsm.uiserver")
       (global-name "com.apple.inputmethodkit.launchagent")
       (global-name "com.apple.inputmethodkit.launcher")
       (global-name "com.apple.inputmethodkit.getxpcendpoint")
       (global-name "com.apple.decalog4.incoming")
-      (global-name "com.apple.windowserver.active"))
+      (global-name "com.apple.windowserver.active")
+      (global-name "com.apple.trustd.agent")
+      (global-name "com.apple.ocspd"))
+  ; Required for camera access
+  (allow mach-lookup
+      (global-name "com.apple.tccd")
+      (global-name "com.apple.tccd.system")
+      (global-name "com.apple.cmio.AppleCameraAssistant")
+      (global-name "com.apple.cmio.IIDCVideoAssistant")
+      (global-name "com.apple.cmio.AVCAssistant")
+      (global-name "com.apple.cmio.VDCAssistant"))
+  ; bug 1475707
+  (if (= macosMinorVersion 9)
+     (allow mach-lookup (global-name "com.apple.xpcd")))
 
   ; Fonts
   (allow file-read*
@@ -648,6 +677,14 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
     ; automatically issued by the font server in response to font
     ; API calls.
     (extension "com.apple.app-sandbox.read"))
+  ; Fonts may continue to work without explicitly allowing these
+  ; services because, at present, connections are made to the services
+  ; before the sandbox is enabled as a side-effect of some API calls.
+  (allow mach-lookup
+    (global-name "com.apple.fonts")
+    (global-name "com.apple.FontObjectsServer"))
+  (if (<= macosMinorVersion 11)
+    (allow mach-lookup (global-name "com.apple.FontServer")))
 
   ; Fonts
   ; Workaround for sandbox extensions not being automatically
@@ -662,10 +699,17 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
       (home-subpath "/Library/FontCollections")
       (home-subpath "/Library/Application Support/Adobe/CoreSync/plugins/livetype")
       (home-subpath "/Library/Application Support/FontAgent")
+      (home-subpath "/Library/Extensis/UTC") ; bug 1469657
+      (subpath "/Library/Extensis/UTC")      ; bug 1469657
       (regex #"\.fontvault/")
       (home-subpath "/FontExplorer X/Font Library")))
 
-  (if (string=? sandbox-level-1 "TRUE") (begin
+  ; level 1: global read access permitted, no global write access
+  (if (string=? sandbox-level-1 "TRUE") (allow file-read*))
+
+  ; level 2: read access via file dialog exceptions, no global write access
+  (if (or (string=? sandbox-level-2 "TRUE")
+          (string=? sandbox-level-1 "TRUE")) (begin
     ; Open file dialogs
     (allow mach-lookup
 	; needed for the dialog sidebar
@@ -744,6 +788,21 @@ static const char flashPluginSandboxRules[] = R"SANDBOX_LITERAL(
       (literal "/Library/PreferencePanes/Flash Player.prefPane")
       (home-library-literal "/PreferencePanes/Flash Player.prefPane")
       (home-library-regex "/Application Support/Macromedia/ss\.(cfg|cfn|sgn)$"))
+
+  (allow file-read*
+      (literal "/Library/Preferences/com.apple.security.plist")
+      (subpath "/private/var/db/mds"))
+  ; Tests revealed file-write-{data,create,flags} required for some encrypted
+  ; video playback. Allowing file-write* to match system profiles.
+  (allow file-read* file-write*
+      (require-all
+          (vnode-type REGULAR-FILE)
+          (require-any
+              (cache-literal "/mds/mds.lock")
+              (cache-literal "/mds/mdsDirectory.db")
+              (cache-literal "/mds/mdsDirectory.db_")
+              (cache-literal "/mds/mdsObject.db")
+              (cache-literal "/mds/mdsObject.db_"))))
 
   (allow network-bind (local ip))
 

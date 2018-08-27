@@ -57,11 +57,11 @@ public:
     }
 
     virtual bool IsANGLE() const override {
-        return sEGLLibrary.IsANGLE();
+        return GLLibraryEGL::Get()->IsANGLE();
     }
 
     virtual bool IsWARP() const override {
-        return sEGLLibrary.IsWARP();
+        return GLLibraryEGL::Get()->IsWARP();
     }
 
     virtual bool BindTexImage() override;
@@ -96,12 +96,14 @@ public:
     }
 
     EGLDisplay GetEGLDisplay() const {
-        return sEGLLibrary.Display();
+        return GLLibraryEGL::Get()->Display();
     }
 
     bool BindTex2DOffscreen(GLContext* aOffscreen);
     void UnbindTex2DOffscreen(GLContext* aOffscreen);
     void BindOffscreenFramebuffer();
+
+    void Destroy();
 
     static already_AddRefed<GLContextEGL>
     CreateEGLPBufferOffscreenContext(CreateContextFlags flags,
@@ -116,7 +118,9 @@ protected:
 public:
     const EGLConfig mConfig;
 protected:
+    const RefPtr<GLLibraryEGL> mEgl;
     EGLSurface mSurface;
+    const EGLSurface mFallbackSurface;
 public:
     const EGLContext mContext;
 protected:
@@ -133,6 +137,10 @@ protected:
     static EGLSurface CreatePBufferSurfaceTryingPowerOfTwo(EGLConfig config,
                                                            EGLenum bindToTextureFormat,
                                                            gfx::IntSize& pbsize);
+#if defined(MOZ_WAYLAND)
+    static EGLSurface CreateWaylandBufferSurface(EGLConfig config,
+                                                 gfx::IntSize& pbsize);
+#endif
 #if defined(MOZ_WIDGET_ANDROID)
 public:
     EGLSurface CreateCompatibleSurface(void* aWindow);

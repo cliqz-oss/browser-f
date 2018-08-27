@@ -22,14 +22,14 @@ using namespace mozilla::a11y;
 ////////////////////////////////////////////////////////////////////////////////
 
 role
-HTMLListAccessible::NativeRole()
+HTMLListAccessible::NativeRole() const
 {
   a11y::role r = GetAccService()->MarkupRole(mContent);
   return r != roles::NOTHING ? r : roles::LIST;
 }
 
 uint64_t
-HTMLListAccessible::NativeState()
+HTMLListAccessible::NativeState() const
 {
   return HyperTextAccessibleWrap::NativeState() | states::READONLY;
 }
@@ -62,14 +62,14 @@ HTMLLIAccessible::Shutdown()
 }
 
 role
-HTMLLIAccessible::NativeRole()
+HTMLLIAccessible::NativeRole() const
 {
   a11y::role r = GetAccService()->MarkupRole(mContent);
   return r != roles::NOTHING ? r : roles::LISTITEM;
 }
 
 uint64_t
-HTMLLIAccessible::NativeState()
+HTMLLIAccessible::NativeState() const
 {
   return HyperTextAccessibleWrap::NativeState() | states::READONLY;
 }
@@ -147,7 +147,7 @@ HTMLListBulletAccessible::GetFrame() const
 }
 
 ENameValueFlag
-HTMLListBulletAccessible::Name(nsString &aName)
+HTMLListBulletAccessible::Name(nsString& aName) const
 {
   aName.Truncate();
 
@@ -161,13 +161,13 @@ HTMLListBulletAccessible::Name(nsString &aName)
 }
 
 role
-HTMLListBulletAccessible::NativeRole()
+HTMLListBulletAccessible::NativeRole() const
 {
   return roles::STATICTEXT;
 }
 
 uint64_t
-HTMLListBulletAccessible::NativeState()
+HTMLListBulletAccessible::NativeState() const
 {
   return LeafAccessible::NativeState() | states::READONLY;
 }

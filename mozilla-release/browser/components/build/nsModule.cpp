@@ -20,7 +20,6 @@
 #include "nsIEHistoryEnumerator.h"
 #endif
 
-#include "rdf.h"
 #include "nsFeedSniffer.h"
 #include "AboutRedirector.h"
 #include "nsIAboutModule.h"
@@ -101,6 +100,8 @@ static const mozilla::Module::ContractIDEntry kBrowserContracts[] = {
     { NS_ABOUT_MODULE_CONTRACTID_PREFIX "preferences", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
     { NS_ABOUT_MODULE_CONTRACTID_PREFIX "downloads", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
     { NS_ABOUT_MODULE_CONTRACTID_PREFIX "reader", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
+    { NS_ABOUT_MODULE_CONTRACTID_PREFIX "restartrequired", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
+    { NS_ABOUT_MODULE_CONTRACTID_PREFIX "welcome", &kNS_BROWSER_ABOUT_REDIRECTOR_CID },
 #if defined(XP_WIN)
     { NS_IEHISTORYENUMERATOR_CONTRACTID, &kNS_WINIEHISTORYENUMERATOR_CID },
 #elif defined(XP_MACOSX)

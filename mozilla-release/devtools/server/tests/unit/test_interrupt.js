@@ -12,7 +12,7 @@ function run_test() {
   gDebuggee = testGlobal("test-1");
   DebuggerServer.addTestGlobal(gDebuggee);
 
-  let transport = DebuggerServer.connectPipe();
+  const transport = DebuggerServer.connectPipe();
   gClient = new DebuggerClient(transport);
   gClient.connect().then(function(type, traits) {
     attachTestTab(gClient, "test-1", test_attach);
@@ -21,7 +21,7 @@ function run_test() {
 }
 
 function test_attach(response, tabClient) {
-  tabClient.attachThread({}, function(response, threadClient) {
+  tabClient.attachThread({}).then(function([response, threadClient]) {
     Assert.equal(threadClient.paused, true);
     threadClient.resume(function() {
       test_interrupt(threadClient);

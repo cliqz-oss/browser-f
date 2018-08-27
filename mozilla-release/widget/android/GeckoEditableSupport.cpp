@@ -10,7 +10,6 @@
 #include "KeyEvent.h"
 #include "PuppetWidget.h"
 #include "nsIContent.h"
-#include "nsISelection.h"
 
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/Preferences.h"
@@ -909,6 +908,11 @@ GeckoEditableSupport::FlushIMEChanges(FlushChangesFlag aFlags)
         mEditable->OnSelectionChange(selStart, selEnd);
         flushOnException();
     }
+
+    while (mIMEActiveReplaceTextCount) {
+        mIMEActiveReplaceTextCount--;
+        OnImeSynchronize();
+    }
 }
 
 void
@@ -967,11 +971,26 @@ void
 GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
                                        jni::String::Param aText)
 {
-    AutoIMESynchronize as(this);
+    mIMEActiveReplaceTextCount++;
+
+    if (!DoReplaceText(aStart, aEnd, aText)) {
+        // We did not process the event, so reply to it now.
+        mIMEActiveReplaceTextCount--;
+        OnImeSynchronize();
+    }
+}
+
+bool
+GeckoEditableSupport::DoReplaceText(int32_t aStart, int32_t aEnd,
+                                    jni::String::Param aText)
+{
+    // Return true if processed and we should reply to the OnImeReplaceText
+    // event later. Return false if _not_ processed and we should reply to the
+    // OnImeReplaceText event now.
 
     if (mIMEMaskEventsCount > 0) {
         // Not focused; still reply to events, but don't do anything else.
-        return;
+        return false;
     }
 
     if (mWindow) {
@@ -982,8 +1001,8 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
         Replace text in Gecko thread from aStart to aEnd with the string text.
     */
     nsCOMPtr<nsIWidget> widget = GetWidget();
-    NS_ENSURE_TRUE_VOID(mDispatcher && widget);
-    NS_ENSURE_SUCCESS_VOID(BeginInputTransaction(mDispatcher));
+    NS_ENSURE_TRUE(mDispatcher && widget, false);
+    NS_ENSURE_SUCCESS(BeginInputTransaction(mDispatcher), false);
 
     RefPtr<TextComposition> composition(GetComposition());
     MOZ_ASSERT(!composition || !composition->IsEditorHandlingEvent());
@@ -992,7 +1011,8 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
     const bool composing = !mIMERanges->IsEmpty();
     nsEventStatus status = nsEventStatus_eIgnore;
 
-    if (!mIMEKeyEvents.IsEmpty() || !mDispatcher->IsComposing() ||
+    if (!mIMEKeyEvents.IsEmpty() ||
+        !composition || !mDispatcher->IsComposing() ||
         uint32_t(aStart) != composition->NativeOffsetOfStartComposition() ||
         uint32_t(aEnd) != composition->NativeOffsetOfStartComposition() +
                           composition->String().Length()) {
@@ -1029,7 +1049,7 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
                 }
             }
             mIMEKeyEvents.Clear();
-            return;
+            return true;
         }
 
         if (aStart != aEnd) {
@@ -1039,7 +1059,7 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
             event.mTime = PR_Now() / 1000;
             widget->DispatchEvent(&event, status);
             if (!mDispatcher || widget->Destroyed()) {
-                return;
+                return false;
             }
         }
     } else if (composition->String().Equals(string)) {
@@ -1057,7 +1077,7 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
         mInputContext.mMayBeIMEUnaware) {
         SendIMEDummyKeyEvent(widget, eKeyDown);
         if (!mDispatcher || widget->Destroyed()) {
-            return;
+            return false;
         }
     }
 
@@ -1070,7 +1090,7 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
         mDispatcher->CommitComposition(status, &string);
     }
     if (!mDispatcher || widget->Destroyed()) {
-        return;
+        return false;
     }
 
     if (sDispatchKeyEventsInCompositionForAnyApps ||
@@ -1078,6 +1098,7 @@ GeckoEditableSupport::OnImeReplaceText(int32_t aStart, int32_t aEnd,
         SendIMEDummyKeyEvent(widget, eKeyUp);
         // Widget may be destroyed after dispatching the above event.
     }
+    return true;
 }
 
 void
@@ -1153,7 +1174,7 @@ GeckoEditableSupport::OnImeUpdateComposition(int32_t aStart, int32_t aEnd,
     RefPtr<TextComposition> composition(GetComposition());
     MOZ_ASSERT(!composition || !composition->IsEditorHandlingEvent());
 
-    if (!mDispatcher->IsComposing() ||
+    if (!composition || !mDispatcher->IsComposing() ||
         uint32_t(aStart) != composition->NativeOffsetOfStartComposition() ||
         uint32_t(aEnd) != composition->NativeOffsetOfStartComposition() +
                           composition->String().Length()) {
@@ -1189,10 +1210,10 @@ GeckoEditableSupport::OnImeUpdateComposition(int32_t aStart, int32_t aEnd,
     }
 
 #ifdef DEBUG_ANDROID_IME
-    const NS_ConvertUTF16toUTF8 data(event.mData);
+    const NS_ConvertUTF16toUTF8 data(string);
     const char* text = data.get();
     ALOGIME("IME: IME_SET_TEXT: text=\"%s\", length=%u, range=%u",
-            text, event.mData.Length(), event.mRanges->Length());
+            text, string.Length(), mIMERanges->Length());
 #endif // DEBUG_ANDROID_IME
 
     if (NS_WARN_IF(NS_FAILED(BeginInputTransaction(mDispatcher)))) {
@@ -1255,6 +1276,8 @@ GeckoEditableSupport::NotifyIME(TextEventDispatcher* aTextEventDispatcher,
         case NOTIFY_IME_OF_FOCUS: {
             ALOGIME("IME: NOTIFY_IME_OF_FOCUS");
 
+            mIMEFocusCount++;
+
             RefPtr<GeckoEditableSupport> self(this);
             RefPtr<TextEventDispatcher> dispatcher = aTextEventDispatcher;
 
@@ -1265,7 +1288,7 @@ GeckoEditableSupport::NotifyIME(TextEventDispatcher* aTextEventDispatcher,
                 nsCOMPtr<nsIWidget> widget = dispatcher->GetWidget();
 
                 --mIMEMaskEventsCount;
-                if (mIMEMaskEventsCount || !widget || widget->Destroyed()) {
+                if (!mIMEFocusCount || !widget || widget->Destroyed()) {
                     return;
                 }
 
@@ -1301,10 +1324,17 @@ GeckoEditableSupport::NotifyIME(TextEventDispatcher* aTextEventDispatcher,
         case NOTIFY_IME_OF_BLUR: {
             ALOGIME("IME: NOTIFY_IME_OF_BLUR");
 
-            if (!mIMEMaskEventsCount) {
-                mEditable->NotifyIME(EditableListener::NOTIFY_IME_OF_BLUR);
-                OnRemovedFrom(mDispatcher);
-            }
+            mIMEFocusCount--;
+            MOZ_ASSERT(mIMEFocusCount >= 0);
+
+            RefPtr<GeckoEditableSupport> self(this);
+            nsAppShell::PostEvent([this, self] {
+                if (!mIMEFocusCount) {
+                    mIMEActiveReplaceTextCount = 0;
+                    mEditable->NotifyIME(EditableListener::NOTIFY_IME_OF_BLUR);
+                    OnRemovedFrom(mDispatcher);
+                }
+            });
 
             // Mask events because we lost focus. Unmask on the next focus.
             mIMEMaskEventsCount++;
@@ -1392,29 +1422,25 @@ GeckoEditableSupport::SetInputContext(const InputContext& aContext,
         return;
     }
 
-    if (mIMEUpdatingContext) {
-        return;
-    }
-    mIMEUpdatingContext = true;
-
-    RefPtr<GeckoEditableSupport> self(this);
     const bool inPrivateBrowsing = mInputContext.mInPrivateBrowsing;
-    const bool isUserAction = aAction.IsHandlingUserInput() || aContext.mHasHandledUserInput;
+    const bool isUserAction =
+            aAction.IsHandlingUserInput() || aContext.mHasHandledUserInput;
     const int32_t flags =
             (inPrivateBrowsing ? EditableListener::IME_FLAG_PRIVATE_BROWSING : 0) |
             (isUserAction ? EditableListener::IME_FLAG_USER_ACTION : 0);
 
-    nsAppShell::PostEvent([this, self, flags] {
+    // Post an event to keep calls in order relative to NotifyIME.
+    nsAppShell::PostEvent([this, self = RefPtr<GeckoEditableSupport>(this),
+                           flags, context = mInputContext] {
         nsCOMPtr<nsIWidget> widget = GetWidget();
 
-        mIMEUpdatingContext = false;
         if (!widget || widget->Destroyed()) {
             return;
         }
-        mEditable->NotifyIMEContext(mInputContext.mIMEState.mEnabled,
-                                    mInputContext.mHTMLInputType,
-                                    mInputContext.mHTMLInputInputmode,
-                                    mInputContext.mActionHint,
+        mEditable->NotifyIMEContext(context.mIMEState.mEnabled,
+                                    context.mHTMLInputType,
+                                    context.mHTMLInputInputmode,
+                                    context.mActionHint,
                                     flags);
     });
 }

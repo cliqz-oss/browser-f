@@ -11,7 +11,6 @@
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"               // for member, local
 #include "nsGkAtoms.h"              // for nsGkAtoms::baseURIProperty
-#include "nsIDOMNode.h"
 #include "mozilla/dom/NodeInfo.h"            // member (in nsCOMPtr)
 #include "nsIVariant.h"             // for use in GetUserData()
 #include "nsIWeakReference.h"
@@ -76,6 +75,7 @@ struct BoxQuadOptions;
 struct ConvertCoordinateOptions;
 class DocGroup;
 class DocumentFragment;
+class DocumentOrShadowRoot;
 class DOMPoint;
 class DOMQuad;
 class DOMRectReadOnly;
@@ -130,28 +130,7 @@ enum {
 
   NODE_IS_EDITABLE =                      NODE_FLAG_BIT(6),
 
-  // This node was created by layout as native anonymous content. This
-  // generally corresponds to things created by nsIAnonymousContentCreator,
-  // though there are exceptions (svg:use content does not have this flag
-  // set, and any non-nsIAnonymousContentCreator callers of
-  // SetIsNativeAnonymousRoot also get this flag).
-  //
-  // One very important aspect here is that this node is not transitive over
-  // the subtree (if you want that, use NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE).
-  // If Gecko code somewhere attaches children to a node with this bit set,
-  // the children will not have the bit themselves unless the calling code sets
-  // it explicitly. This means that XBL content bound to NAC doesn't get this
-  // bit, nor do nodes inserted by editor.
-  //
-  // For now, this bit exists primarily to control style inheritance behavior,
-  // since the nodes for which we set it are often used to implement pseudo-
-  // elements, which need to inherit style from a script-visible element.
-  //
-  // A more general principle for this bit might be this: If the node is entirely
-  // a detail of layout, is not script-observable in any way, and other engines
-  // might accomplish the same task with a nodeless layout frame, then the node
-  // should have this bit set.
-  NODE_IS_NATIVE_ANONYMOUS =              NODE_FLAG_BIT(7),
+  // Free bit here.
 
   // Whether the node participates in a shadow tree.
   NODE_IS_IN_SHADOW_TREE =                NODE_FLAG_BIT(8),
@@ -586,8 +565,6 @@ public:
     return NodeType() == ATTRIBUTE_NODE;
   }
 
-  virtual nsIDOMNode* AsDOMNode() = 0;
-
   /**
    * Return if this node has any children.
    */
@@ -688,8 +665,14 @@ public:
   }
 
   /**
+   * Returns OwnerDoc() if the node is in uncomposed document and ShadowRoot if
+   * the node is in Shadow DOM and is in composed document.
+   */
+  mozilla::dom::DocumentOrShadowRoot* GetUncomposedDocOrConnectedShadowRoot() const;
+
+  /**
    * The values returned by this function are the ones defined for
-   * nsIDOMNode.nodeType
+   * Node.nodeType
    */
   uint16_t NodeType() const
   {
@@ -839,29 +822,6 @@ public:
                                      bool aNotify) = 0;
 
   /**
-   * Insert a content node at a particular index.  This method handles calling
-   * BindToTree on the child appropriately.
-   *
-   * @param aKid the content to insert
-   * @param aIndex the index it is being inserted at (the index it will have
-   *        after it is inserted)
-   * @param aNotify whether to notify the document (current document for
-   *        nsIContent, and |this| for nsIDocument) that the insert has
-   *        occurred
-   *
-   * @throws NS_ERROR_DOM_HIERARCHY_REQUEST_ERR if one attempts to have more
-   * than one element node as a child of a document.  Doing this will also
-   * assert -- you shouldn't be doing it!  Check with
-   * nsIDocument::GetRootElement() first if you're not sure.  Apart from this
-   * one constraint, this doesn't do any checking on whether aKid is a valid
-   * child of |this|.
-   *
-   * @throws NS_ERROR_OUT_OF_MEMORY in some cases (from BindToTree).
-   */
-  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
-                                            bool aNotify) = 0;
-
-  /**
    * Append a content node to the end of the child list.  This method handles
    * calling BindToTree on the child appropriately.
    *
@@ -881,24 +841,8 @@ public:
    */
   nsresult AppendChildTo(nsIContent* aKid, bool aNotify)
   {
-    return InsertChildAt_Deprecated(aKid, GetChildCount(), aNotify);
+    return InsertChildBefore(aKid, nullptr, aNotify);
   }
-
-  /**
-   * NOTE: this function is going to be removed soon (hopefully!) Don't use it
-   * in new code.
-   *
-   * Remove a child from this node.  This method handles calling UnbindFromTree
-   * on the child appropriately.
-   *
-   * @param aIndex the index of the child to remove
-   * @param aNotify whether to notify the document (current document for
-   *        nsIContent, and |this| for nsIDocument) that the remove has
-   *        occurred
-   *
-   * Note: If there is no child at aIndex, this method will simply do nothing.
-   */
-  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) = 0;
 
   /**
    * Remove a child from this node.  This method handles calling UnbindFromTree
@@ -1266,16 +1210,7 @@ public:
     }
   }
 
-  bool IsEditable() const;
-
-  /**
-   * Returns true if |this| is native anonymous (i.e. created by
-   * nsIAnonymousContentCreator);
-   */
-  bool IsNativeAnonymous() const
-  {
-    return HasFlag(NODE_IS_NATIVE_ANONYMOUS);
-  }
+  inline bool IsEditable() const;
 
   /**
    * Returns true if |this| or any of its ancestors is native anonymous.
@@ -2118,11 +2053,6 @@ protected:
   nsSlots* mSlots;
 };
 
-inline nsIDOMNode* GetAsDOMNode(nsINode* aNode)
-{
-  return aNode ? aNode->AsDOMNode() : nullptr;
-}
-
 // Useful inline function for getting a node given an nsIContent and an
 // nsIDocument.  Returns the first argument cast to nsINode if it is non-null,
 // otherwise returns the second (which may be null).  We use type variables
@@ -2140,12 +2070,6 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsINode, NS_INODE_IID)
 
 inline nsISupports*
 ToSupports(nsINode* aPointer)
-{
-  return aPointer;
-}
-
-inline nsISupports*
-ToCanonicalSupports(nsINode* aPointer)
 {
   return aPointer;
 }

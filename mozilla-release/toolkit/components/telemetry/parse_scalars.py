@@ -92,6 +92,10 @@ class ScalarType:
         if not self._strict_type_checks:
             return
 
+        def validate_notification_email(notification_email):
+            # Perform simple email validation to make sure it doesn't contain spaces or commas.
+            return not any(c in notification_email for c in [',', ' '])
+
         # The required and optional fields in a scalar type definition.
         REQUIRED_FIELDS = {
             'bug_numbers': list,  # This contains ints. See LIST_FIELDS_CONTENT.
@@ -106,6 +110,7 @@ class ScalarType:
             'cpp_guard': basestring,
             'release_channel_collection': basestring,
             'keyed': bool,
+            'products': list,
         }
 
         # The types for the data within the fields that hold lists.
@@ -113,6 +118,7 @@ class ScalarType:
             'bug_numbers': int,
             'notification_emails': basestring,
             'record_in_processes': basestring,
+            'products': basestring,
         }
 
         # Concatenate the required and optional field definitions.
@@ -139,6 +145,13 @@ class ScalarType:
         if len(wrong_type_names) > 0:
             ParserError(self._name + ' - ' + ', '.join(wrong_type_names) +
                         '.\nSee: {}#required-fields'.format(BASE_DOC_URL)).handle_later()
+
+        # Check that the email addresses doesn't contain spaces or commas
+        notification_emails = definition.get('notification_emails')
+        for notification_email in notification_emails:
+            if not validate_notification_email(notification_email):
+                ParserError(self._name + ' - invalid email address: ' + notification_email +
+                            '.\nSee: {}'.format(BASE_DOC_URL)).handle_later()
 
         # Check that the lists are not empty and that data in the lists
         # have the correct types.
@@ -191,6 +204,13 @@ class ScalarType:
         for proc in record_in_processes:
             if not utils.is_valid_process_name(proc):
                 ParserError(self._name + ' - unknown value in record_in_processes: ' + proc +
+                            '.\nSee: {}'.format(BASE_DOC_URL)).handle_later()
+
+        # Validate product.
+        products = definition.get('products', [])
+        for product in products:
+            if not utils.is_valid_product(product):
+                ParserError(self._name + ' - unknown value in products: ' + product +
                             '.\nSee: {}'.format(BASE_DOC_URL)).handle_later()
 
         # Validate the expiration version.
@@ -273,6 +293,16 @@ class ScalarType:
     def record_in_processes_enum(self):
         """Get the non-empty list of flags representing the processes to record data in"""
         return [utils.process_name_to_enum(p) for p in self.record_in_processes]
+
+    @property
+    def products(self):
+        """Get the non-empty list of products to record data on"""
+        return self._definition.get('products', ["all"])
+
+    @property
+    def products_enum(self):
+        """Get the non-empty list of flags representing products to record data on"""
+        return [utils.product_name_to_enum(p) for p in self.products]
 
     @property
     def dataset(self):

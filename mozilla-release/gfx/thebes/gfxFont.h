@@ -631,14 +631,20 @@ protected:
 };
 
 struct gfxTextRange {
-    enum {
-        // flags for recording the kind of font-matching that was used
-        kFontGroup      = 0x0001,
-        kPrefsFallback  = 0x0002,
-        kSystemFallback = 0x0004
+    enum class MatchType : uint16_t {
+        // The CSS generic that mapped to this font, if any. This field of
+        // the MatchType stores a FontFamilyType value as defined in the enum
+        // in gfxFontFamilyList.h.
+        kGenericMask    = 0x00ff,
+
+        // Flags for recording the kind of font-matching that was used.
+        // Note that multiple flags may be set on a single range.
+        kFontGroup      = 0x0100,
+        kPrefsFallback  = 0x0200,
+        kSystemFallback = 0x0400
     };
     gfxTextRange(uint32_t aStart, uint32_t aEnd,
-                 gfxFont* aFont, uint8_t aMatchType,
+                 gfxFont* aFont, MatchType aMatchType,
                  mozilla::gfx::ShapedTextFlags aOrientation)
         : start(aStart),
           end(aEnd),
@@ -649,9 +655,11 @@ struct gfxTextRange {
     uint32_t Length() const { return end - start; }
     uint32_t start, end;
     RefPtr<gfxFont> font;
-    uint8_t matchType;
+    MatchType matchType;
     mozilla::gfx::ShapedTextFlags orientation;
 };
+
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(gfxTextRange::MatchType)
 
 /**
  * gfxFontShaper
@@ -1465,7 +1473,7 @@ public:
     typedef mozilla::FontSlantStyle FontSlantStyle;
 
     nsrefcnt AddRef(void) {
-        NS_PRECONDITION(int32_t(mRefCnt) >= 0, "illegal refcnt");
+        MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");
         if (mExpirationState.IsTracked()) {
             gfxFontCache::GetCache()->RemoveObject(this);
         }
@@ -1474,7 +1482,7 @@ public:
         return mRefCnt;
     }
     nsrefcnt Release(void) {
-        NS_PRECONDITION(0 != mRefCnt, "dup release");
+        MOZ_ASSERT(0 != mRefCnt, "dup release");
         --mRefCnt;
         NS_LOG_RELEASE(this, mRefCnt, "gfxFont");
         if (mRefCnt == 0) {
@@ -1820,13 +1828,9 @@ public:
 
     virtual bool AllowSubpixelAA() { return true; }
 
-    bool IsSyntheticBold() { return mApplySyntheticBold; }
+    bool IsSyntheticBold() const { return mApplySyntheticBold; }
 
-    bool IsSyntheticOblique() {
-        return mFontEntry->IsUpright() &&
-               mStyle.style != FontSlantStyle::Normal() &&
-               mStyle.allowSyntheticStyle;
-    }
+    float SkewForSyntheticOblique() const;
 
     // Amount by which synthetic bold "fattens" the glyphs:
     // For size S up to a threshold size T, we use (0.25 + 3S / 4T),
@@ -1869,7 +1873,7 @@ public:
                               const T    *aText,
                               uint32_t    aOffset,
                               uint32_t    aLength,
-                              uint8_t     aMatchType,
+                              gfxTextRange::MatchType aMatchType,
                               mozilla::gfx::ShapedTextFlags aOrientation,
                               Script      aScript,
                               bool        aSyntheticLower,
@@ -2374,13 +2378,13 @@ struct MOZ_STACK_CLASS FontDrawParams {
     RefPtr<mozilla::gfx::ScaledFont>            scaledFont;
     mozilla::SVGContextPaint *contextPaint;
     mozilla::gfx::Float       synBoldOnePixelOffset;
+    mozilla::gfx::Float       obliqueSkew;
     int32_t                   extraStrikes;
     mozilla::gfx::DrawOptions drawOptions;
     gfxFloat                  advanceDirection;
     bool                      isVerticalFont;
     bool                      haveSVGGlyphs;
     bool                      haveColorGlyphs;
-    bool                      needsOblique;
 };
 
 struct MOZ_STACK_CLASS EmphasisMarkDrawParams {

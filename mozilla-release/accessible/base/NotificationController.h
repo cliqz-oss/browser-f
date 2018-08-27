@@ -259,6 +259,18 @@ public:
       ScheduleProcessing();
   }
 
+  template<class Class, class Arg>
+  inline void ScheduleNotification(Class* aInstance,
+                                   typename TNotification<Class, Arg>::Callback aMethod,
+                                   Arg* aArg)
+  {
+    RefPtr<Notification> notification =
+      new TNotification<Class, Arg>(aInstance, aMethod, aArg);
+    if (notification && mNotifications.AppendElement(notification)) {
+      ScheduleProcessing();
+    }
+  }
+
 #ifdef DEBUG
   bool IsUpdating() const
     { return mObservingState == eRefreshProcessingForUpdate; }
@@ -294,7 +306,7 @@ private:
   void WithdrawPrecedingEvents(nsTArray<RefPtr<AccHideEvent>>* aEvs)
   {
     if (mPrecedingEvents.Length() > 0) {
-      aEvs->AppendElements(mozilla::Move(mPrecedingEvents));
+      aEvs->AppendElements(std::move(mPrecedingEvents));
     }
   }
   void StorePrecedingEvent(AccHideEvent* aEv)

@@ -59,6 +59,7 @@ nsBaseChannel::nsBaseChannel()
   , mAllowThreadRetargeting(true)
   , mWaitingOnAsyncRedirect(false)
   , mOpenRedirectChannel(false)
+  , mRedirectFlags{ 0 }
   , mStatus(NS_OK)
   , mContentDispositionHint(UINT32_MAX)
   , mContentLength(-1)
@@ -91,7 +92,7 @@ nsBaseChannel::Redirect(nsIChannel *newChannel, uint32_t redirectFlags,
     nsSecurityFlags secFlags = mLoadInfo->GetSecurityFlags() &
                                ~nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
     nsCOMPtr<nsILoadInfo> newLoadInfo =
-      static_cast<mozilla::LoadInfo*>(mLoadInfo.get())->CloneWithNewSecFlags(secFlags);
+      static_cast<mozilla::net::LoadInfo*>(mLoadInfo.get())->CloneWithNewSecFlags(secFlags);
 
     nsCOMPtr<nsIPrincipal> uriPrincipal;
     nsIScriptSecurityManager *sm = nsContentUtils::GetSecurityManager();

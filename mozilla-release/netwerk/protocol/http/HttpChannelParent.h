@@ -170,6 +170,7 @@ protected:
               const uint32_t&            aCorsMode,
               const uint32_t&            aRedirectMode,
               const uint64_t&            aChannelId,
+              const nsString&            aIntegrityMetadata,
               const uint64_t&            aContentWindowId,
               const nsCString&           aPreferredAlternativeType,
               const uint64_t&            aTopLevelOuterContentWindowId,
@@ -189,6 +190,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvCancel(const nsresult& status) override;
   virtual mozilla::ipc::IPCResult RecvRedirect2Verify(const nsresult& result,
                                                       const RequestHeaderTuples& changedHeaders,
+                                                      const ChildLoadInfoForwarderArgs& aLoadInfoForwarder,
                                                       const uint32_t& loadFlags,
                                                       const uint32_t& referrerPolicy,
                                                       const OptionalURIParams& aReferrerURI,
@@ -220,7 +222,7 @@ protected:
   MOZ_MUST_USE nsresult
   ReportSecurityMessage(const nsAString& aMessageTag,
                         const nsAString& aMessageCategory) override;
-  nsresult LogBlockedCORSRequest(const nsAString& aMessage) override;
+  nsresult LogBlockedCORSRequest(const nsAString& aMessage, const nsACString& aCategory) override;
 
   // Calls SendDeleteSelf and sets mIPCClosed to true because we should not
   // send any more messages after that. Bug 1274886

@@ -9,15 +9,11 @@ profileDir.append("extensions");
 profileDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
-startupManager();
 
 async function testSimpleIconsetParsing(manifest) {
   await promiseWriteWebManifestForExtension(manifest, profileDir);
 
-  await Promise.all([
-    promiseRestartManager(),
-    manifest.theme || promiseWebExtensionStartup(ID),
-  ]);
+  await promiseRestartManager();
 
   let uri = do_get_addon_root_uri(profileDir, ID);
 
@@ -48,26 +44,20 @@ async function testSimpleIconsetParsing(manifest) {
   check_icons(addon);
 
   // check if icons are persisted through a restart
-  await Promise.all([
-    promiseRestartManager(),
-    manifest.theme || promiseWebExtensionStartup(ID),
-  ]);
+  await promiseRestartManager();
 
   addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);
 
   check_icons(addon);
 
-  addon.uninstall();
+  await addon.uninstall();
 }
 
 async function testRetinaIconsetParsing(manifest) {
   await promiseWriteWebManifestForExtension(manifest, profileDir);
 
-  await Promise.all([
-    promiseRestartManager(),
-    manifest.theme || promiseWebExtensionStartup(ID),
-  ]);
+  await promiseRestartManager();
 
   let addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);
@@ -87,16 +77,13 @@ async function testRetinaIconsetParsing(manifest) {
     devicePixelRatio: 2
   }), uri + "icon128.png");
 
-  addon.uninstall();
+  await addon.uninstall();
 }
 
 async function testNoIconsParsing(manifest) {
   await promiseWriteWebManifestForExtension(manifest, profileDir);
 
-  await Promise.all([
-    promiseRestartManager(),
-    manifest.theme || promiseWebExtensionStartup(ID),
-  ]);
+  await promiseRestartManager();
 
   let addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);
@@ -108,11 +95,12 @@ async function testNoIconsParsing(manifest) {
 
   equal(AddonManager.getPreferredIconURL(addon, 128), null);
 
-  addon.uninstall();
+  await addon.uninstall();
 }
 
 // Test simple icon set parsing
 add_task(async function() {
+  await promiseStartupManager();
   await testSimpleIconsetParsing({
     name: "Web Extension Name",
     version: "1.0",

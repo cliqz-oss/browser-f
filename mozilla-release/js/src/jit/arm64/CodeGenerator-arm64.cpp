@@ -11,12 +11,12 @@
 #include "jsnum.h"
 
 #include "jit/CodeGenerator.h"
-#include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "vm/Shape.h"
 #include "vm/TraceLogging.h"
 
@@ -343,6 +343,18 @@ void
 CodeGenerator::visitRoundF(LRoundF* lir)
 {
     MOZ_CRASH("visitRoundF");
+}
+
+void
+CodeGenerator::visitTrunc(LTrunc* lir)
+{
+    MOZ_CRASH("visitTrunc");
+}
+
+void
+CodeGenerator::visitTruncF(LTruncF* lir)
+{
+    MOZ_CRASH("visitTruncF");
 }
 
 void

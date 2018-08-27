@@ -37,7 +37,7 @@ async function enableApplicationPanel() {
 }
 
 function getWorkerContainers(doc) {
-  return doc.querySelectorAll(".service-worker-container");
+  return doc.querySelectorAll(".js-sw-container");
 }
 
 function navigate(target, url, waitForTargetEvent = "navigate") {
@@ -46,11 +46,30 @@ function navigate(target, url, waitForTargetEvent = "navigate") {
 }
 
 async function openNewTabAndApplicationPanel(url) {
-  let tab = await addTab(url);
-  let target = TargetFactory.forTab(tab);
+  const tab = await addTab(url);
+  const target = TargetFactory.forTab(tab);
   await target.makeRemote();
 
-  let toolbox = await gDevTools.showToolbox(target, "application");
-  let panel = toolbox.getCurrentPanel();
+  const toolbox = await gDevTools.showToolbox(target, "application");
+  const panel = toolbox.getCurrentPanel();
   return { panel, tab, target, toolbox };
+}
+
+async function unregisterAllWorkers(client) {
+  info("Wait until all workers have a valid registrationActor");
+  let workers;
+  await asyncWaitUntil(async function() {
+    workers = await client.mainRoot.listAllWorkers();
+    const allWorkersRegistered =
+      workers.service.every(worker => !!worker.registrationActor);
+    return allWorkersRegistered;
+  });
+
+  info("Unregister all service workers");
+  for (const worker of workers.service) {
+    await client.request({
+      to: worker.registrationActor,
+      type: "unregister"
+    });
+  }
 }

@@ -23,6 +23,8 @@
 #include "nsStreamUtils.h"
 #include "nsStringStream.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/CycleCollectedJSContext.h" // for MicroTaskRunnable
+#include "mozilla/JSObjectHolder.h"
 #include "mozilla/dom/Client.h"
 #include "mozilla/dom/ClientIPCTypes.h"
 #include "mozilla/dom/DOMPrefs.h"
@@ -33,10 +35,12 @@
 #include "mozilla/dom/PromiseNativeHandler.h"
 #include "mozilla/dom/PushEventBinding.h"
 #include "mozilla/dom/RequestBinding.h"
+#include "mozilla/dom/StructuredCloneHolder.h"
 #include "mozilla/dom/WorkerDebugger.h"
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/dom/WorkerScope.h"
+#include "mozilla/dom/ipc/StructuredCloneData.h"
 #include "mozilla/Unused.h"
 
 using namespace mozilla;
@@ -50,7 +54,9 @@ using mozilla::ipc::PrincipalInfo;
 NS_IMPL_CYCLE_COLLECTING_NATIVE_ADDREF(ServiceWorkerPrivate)
 NS_IMPL_CYCLE_COLLECTING_NATIVE_RELEASE(ServiceWorkerPrivate)
 NS_IMPL_CYCLE_COLLECTION(ServiceWorkerPrivate, mSupportsArray)
-
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(ServiceWorkerPrivate)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mSandbox)
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(ServiceWorkerPrivate, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(ServiceWorkerPrivate, Release)
 
@@ -109,6 +115,8 @@ ServiceWorkerPrivate::~ServiceWorkerPrivate()
   MOZ_ASSERT(mSupportsArray.IsEmpty());
 
   mIdleWorkerTimer->Cancel();
+
+  DropJSObjects(this);
 }
 
 namespace {
@@ -210,6 +218,26 @@ ServiceWorkerPrivate::CheckScriptEvaluation(LifeCycleEventCallback* aScriptEvalu
   }
 
   return NS_OK;
+}
+
+void
+ServiceWorkerPrivate::GetOrCreateSandbox(JSContext* aCx,
+                                         JS::MutableHandle<JSObject*> aSandbox)
+{
+  AssertIsOnMainThread();
+
+  if (!mSandbox) {
+    nsIXPConnect* xpc = nsContentUtils::XPConnect();
+
+    JS::Rooted<JSObject*> sandbox(aCx);
+    nsresult rv = xpc->CreateSandbox(aCx, mInfo->Principal(), sandbox.address());
+    NS_ENSURE_SUCCESS_VOID(rv);
+
+    mSandbox = sandbox;
+    HoldJSObjects(this);
+  }
+
+  aSandbox.set(mSandbox);
 }
 
 namespace {
@@ -510,7 +538,7 @@ public:
                            const ClientInfoAndState& aClientInfoAndState)
     : ExtendableEventWorkerRunnable(aWorkerPrivate, aKeepAliveToken)
     , StructuredCloneHolder(CloningSupported, TransferringSupported,
-                            StructuredCloneScope::SameProcessDifferentThread)
+                            JS::StructuredCloneScope::SameProcessDifferentThread)
     , mClientInfoAndState(aClientInfoAndState)
   {
     MOZ_ASSERT(NS_IsMainThread());
@@ -563,22 +591,61 @@ public:
 } // anonymous namespace
 
 nsresult
-ServiceWorkerPrivate::SendMessageEvent(JSContext* aCx,
-                                       JS::Handle<JS::Value> aMessage,
-                                       const Sequence<JSObject*>& aTransferable,
+ServiceWorkerPrivate::SendMessageEvent(ipc::StructuredCloneData&& aData,
                                        const ClientInfoAndState& aClientInfoAndState)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  ErrorResult rv(SpawnWorkerIfNeeded(MessageEvent));
-  if (NS_WARN_IF(rv.Failed())) {
+  ErrorResult rv;
+
+  // Ideally we would simply move the StructuredCloneData to the
+  // SendMessageEventRunnable, but we cannot because it uses non-threadsafe
+  // ref-counting.  The following gnarly code unpacks the IPC-friendly
+  // StructuredCloneData and re-packs it into the thread-friendly
+  // StructuredCloneHolder.  In the future we should remove this and make
+  // it easier to simple move the data to the other thread.  See bug 1458936.
+
+  AutoSafeJSContext cx;
+  JS::Rooted<JSObject*> global(cx);
+  GetOrCreateSandbox(cx, &global);
+  NS_ENSURE_TRUE(global, NS_ERROR_FAILURE);
+
+  // The CreateSandbox call returns a proxy to the actual sandbox object.  We
+  // don't need a proxy here.
+  global = js::UncheckedUnwrap(global);
+
+  JSAutoRealm ar(cx, global);
+
+  JS::Rooted<JS::Value> messageData(cx);
+  aData.Read(cx, &messageData, rv);
+  if (rv.Failed()) {
     return rv.StealNSResult();
   }
 
-  JS::Rooted<JS::Value> transferable(aCx, JS::UndefinedHandleValue);
+  Sequence<OwningNonNull<MessagePort>> ports;
+  if (!aData.TakeTransferredPortsAsSequence(ports)) {
+    return NS_ERROR_FAILURE;
+  }
 
-  rv = nsContentUtils::CreateJSValueFromSequenceOfObject(aCx, aTransferable,
-                                                         &transferable);
+  JS::Rooted<JSObject*> array(cx, JS_NewArrayObject(cx, ports.Length()));
+  NS_ENSURE_TRUE(array, NS_ERROR_OUT_OF_MEMORY);
+
+  for (uint32_t i = 0; i < ports.Length(); ++i) {
+    JS::Rooted<JS::Value> value(cx);
+    if (!GetOrCreateDOMReflector(cx, ports[i], &value)) {
+      JS_ClearPendingException(cx);
+      return NS_ERROR_FAILURE;
+    }
+
+    if (!JS_DefineElement(cx, array, i, value, JSPROP_ENUMERATE)) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+  }
+
+  JS::Rooted<JS::Value> transferable(cx);
+  transferable.setObject(*array);
+
+  rv = SpawnWorkerIfNeeded(MessageEvent);
   if (NS_WARN_IF(rv.Failed())) {
     return rv.StealNSResult();
   }
@@ -587,8 +654,8 @@ ServiceWorkerPrivate::SendMessageEvent(JSContext* aCx,
   RefPtr<SendMessageEventRunnable> runnable =
     new SendMessageEventRunnable(mWorkerPrivate, token, aClientInfoAndState);
 
-  runnable->Write(aCx, aMessage, transferable, JS::CloneDataPolicy(), rv);
-  if (NS_WARN_IF(rv.Failed())) {
+  runnable->Write(cx, messageData, transferable, JS::CloneDataPolicy(), rv);
+  if (rv.Failed()) {
     return rv.StealNSResult();
   }
 
@@ -1987,7 +2054,7 @@ ServiceWorkerPrivate::TerminateWorker()
     }
 
     Unused << NS_WARN_IF(!mWorkerPrivate->Terminate());
-    mWorkerPrivate = nullptr;
+    RefPtr<WorkerPrivate> workerPrivate(mWorkerPrivate.forget());
     mSupportsArray.Clear();
 
     // Any pending events are never going to fire on this worker.  Cancel

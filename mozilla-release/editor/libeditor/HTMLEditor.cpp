@@ -11,6 +11,7 @@
 #include "mozilla/EditorDOMPoint.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/mozInlineSpellChecker.h"
+#include "mozilla/Telemetry.h"
 #include "mozilla/TextEvents.h"
 
 #include "nsCRT.h"
@@ -26,7 +27,6 @@
 #include "TypeInState.h"
 
 #include "nsHTMLDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocumentInlines.h"
 #include "nsISelectionController.h"
 #include "nsILinkHandler.h"
@@ -75,6 +75,8 @@ namespace mozilla {
 using namespace dom;
 using namespace widget;
 
+const char16_t kNBSP = 160;
+
 // Some utilities to handle overloading of "A" tag for link and named anchor.
 static bool
 IsLinkTag(const nsString& s)
@@ -103,15 +105,18 @@ HTMLEditor::HTMLEditor()
   : mCRInParagraphCreatesParagraph(false)
   , mCSSAware(false)
   , mSelectedCellIndex(0)
+  , mHasShownResizers(false)
   , mIsObjectResizingEnabled(true)
   , mIsResizing(false)
   , mPreserveRatio(false)
   , mResizedObjectIsAnImage(false)
   , mIsAbsolutelyPositioningEnabled(true)
   , mResizedObjectIsAbsolutelyPositioned(false)
+  , mHasShownGrabber(false)
   , mGrabberClicked(false)
   , mIsMoving(false)
   , mSnapToGridEnabled(false)
+  , mHasShownInlineTableEditor(false)
   , mIsInlineTableEditingEnabled(true)
   , mOriginalX(0)
   , mOriginalY(0)
@@ -127,6 +132,9 @@ HTMLEditor::HTMLEditor()
   , mYIncrementFactor(0)
   , mWidthIncrementFactor(0)
   , mHeightIncrementFactor(0)
+  , mResizerUsedCount(0)
+  , mGrabberUsedCount(0)
+  , mInlineTableEditorUsedCount(0)
   , mInfoXIncrement(20)
   , mInfoYIncrement(20)
   , mPositionedObjectX(0)
@@ -148,7 +156,7 @@ HTMLEditor::HTMLEditor()
 HTMLEditor::~HTMLEditor()
 {
   if (mRules && mRules->AsHTMLEditRules()) {
-    mRules->AsHTMLEditRules()->EndListeningToEditActions();
+    mRules->AsHTMLEditRules()->EndListeningToEditSubActions();
   }
 
   mTypeInState = nullptr;
@@ -164,6 +172,31 @@ HTMLEditor::~HTMLEditor()
   RemoveEventListeners();
 
   HideAnonymousEditingUIs();
+
+  Telemetry::Accumulate(
+    Telemetry::HTMLEDITORS_WITH_RESIZERS,
+    mHasShownResizers ? 1 : 0);
+  if (mHasShownResizers) {
+    Telemetry::Accumulate(
+      Telemetry::HTMLEDITORS_WHOSE_RESIZERS_USED_BY_USER,
+      mResizerUsedCount);
+  }
+  Telemetry::Accumulate(
+    Telemetry::HTMLEDITORS_WITH_ABSOLUTE_POSITIONER,
+    mHasShownGrabber ? 1 : 0);
+  if (mHasShownGrabber) {
+    Telemetry::Accumulate(
+      Telemetry::HTMLEDITORS_WHOSE_ABSOLUTE_POSITIONER_USED_BY_USER,
+      mGrabberUsedCount);
+  }
+  Telemetry::Accumulate(
+    Telemetry::HTMLEDITORS_WITH_INLINE_TABLE_EDITOR,
+    mHasShownInlineTableEditor ? 1 : 0);
+  if (mHasShownInlineTableEditor) {
+    Telemetry::Accumulate(
+      Telemetry::HTMLEDITORS_WHOSE_INLINE_TABLE_EDITOR_USED_BY_USER,
+      mInlineTableEditorUsedCount);
+  }
 }
 
 void
@@ -301,11 +334,11 @@ HTMLEditor::Init(nsIDocument& aDoc,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 HTMLEditor::PreDestroy(bool aDestroyingFrames)
 {
   if (mDidPreDestroy) {
-    return NS_OK;
+    return;
   }
 
   nsCOMPtr<nsIDocument> document = GetDocument();
@@ -321,26 +354,21 @@ HTMLEditor::PreDestroy(bool aDestroyingFrames)
   // stay around (which they would, since the frames have an owning reference).
   HideAnonymousEditingUIs();
 
-  return TextEditor::PreDestroy(aDestroyingFrames);
+  EditorBase::PreDestroy(aDestroyingFrames);
 }
 
 NS_IMETHODIMP
-HTMLEditor::NotifySelectionChanged(nsIDOMDocument* aDOMDocument,
-                                   nsISelection* aSelection,
+HTMLEditor::NotifySelectionChanged(nsIDocument* aDocument,
+                                   Selection* aSelection,
                                    int16_t aReason)
 {
-  if (NS_WARN_IF(!aDOMDocument) || NS_WARN_IF(!aSelection)) {
+  if (NS_WARN_IF(!aDocument) || NS_WARN_IF(!aSelection)) {
     return NS_ERROR_INVALID_ARG;
-  }
-
-  RefPtr<Selection> selection = aSelection->AsSelection();
-  if (NS_WARN_IF(!selection)) {
-    return NS_ERROR_UNEXPECTED;
   }
 
   if (mTypeInState) {
     RefPtr<TypeInState> typeInState = mTypeInState;
-    typeInState->OnSelectionChange(*selection);
+    typeInState->OnSelectionChange(*aSelection);
 
     // We used a class which derived from nsISelectionListener to call
     // HTMLEditor::CheckSelectionStateForAnonymousButtons().  The lifetime of
@@ -354,7 +382,7 @@ HTMLEditor::NotifySelectionChanged(nsIDOMDocument* aDOMDocument,
       // FYI: This is an XPCOM method.  So, the caller, Selection, guarantees
       //      the lifetime of this instance.  So, don't need to grab this with
       //      local variable.
-      CheckSelectionStateForAnonymousButtons(selection);
+      CheckSelectionStateForAnonymousButtons(aSelection);
     }
   }
 
@@ -363,7 +391,7 @@ HTMLEditor::NotifySelectionChanged(nsIDOMDocument* aDOMDocument,
     updater->OnSelectionChange();
   }
 
-  return EditorBase::NotifySelectionChanged(aDOMDocument, aSelection, aReason);
+  return EditorBase::NotifySelectionChanged(aDocument, aSelection, aReason);
 }
 
 void
@@ -391,8 +419,8 @@ HTMLEditor::FindSelectionRoot(nsINode* aNode)
     return nullptr;
   }
 
-  NS_PRECONDITION(aNode->IsDocument() || aNode->IsContent(),
-                  "aNode must be content or document node");
+  MOZ_ASSERT(aNode->IsDocument() || aNode->IsContent(),
+             "aNode must be content or document node");
 
   nsCOMPtr<nsIDocument> doc = aNode->GetComposedDoc();
   if (!doc) {
@@ -508,7 +536,7 @@ HTMLEditor::SetFlags(uint32_t aFlags)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 HTMLEditor::InitRules()
 {
   if (!mRules) {
@@ -826,11 +854,10 @@ HTMLEditor::NodeIsBlockStatic(const nsINode* aElement)
 }
 
 NS_IMETHODIMP
-HTMLEditor::NodeIsBlock(nsIDOMNode* aNode,
+HTMLEditor::NodeIsBlock(nsINode* aNode,
                         bool* aIsBlock)
 {
-  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
-  *aIsBlock = IsBlockNode(node);
+  *aIsBlock = IsBlockNode(aNode);
   return NS_OK;
 }
 
@@ -1127,12 +1154,17 @@ nsresult
 HTMLEditor::InsertBrElementAtSelectionWithTransaction()
 {
   // calling it text insertion to trigger moz br treatment by rules
-  AutoRules beginRulesSniffing(this, EditAction::insertText, nsIEditor::eNext);
+  // XXX Why do we use EditSubAction::eInsertText here?  Looks like
+  //     EditSubAction::eInsertParagraphSeparator or EditSubAction::eInsertNode
+  //     is better.
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertText,
+                                      nsIEditor::eNext);
 
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_STATE(selection);
 
-  if (!selection->Collapsed()) {
+  if (!selection->IsCollapsed()) {
     nsresult rv = DeleteSelectionAsAction(eNone, eStrip);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
@@ -1194,14 +1226,19 @@ NS_IMETHODIMP
 HTMLEditor::ReplaceHeadContentsWithHTML(const nsAString& aSourceToInsert)
 {
   // don't do any post processing, rules get confused
-  AutoRules beginRulesSniffing(this, EditAction::ignore, nsIEditor::eNone);
+  AutoTopLevelEditSubActionNotifier
+    maybeTopLevelEditSubAction(*this,
+                               EditSubAction::eReplaceHeadWithHTMLSource,
+                               nsIEditor::eNone);
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
   CommitComposition();
 
-  // Do not use AutoRules -- rules code won't let us insert in <head>.  Use
-  // the head node as a parent and delete/insert directly.
+  // Do not use AutoTopLevelEditSubActionNotifier -- rules code won't let us
+  // insert in <head>.  Use the head node as a parent and delete/insert
+  // directly.
+  // XXX We're using AutoTopLevelEditSubActionNotifier above...
   nsCOMPtr<nsIDocument> document = GetDocument();
   if (NS_WARN_IF(!document)) {
     return NS_ERROR_NOT_INITIALIZED;
@@ -1408,7 +1445,7 @@ HTMLEditor::RebuildDocumentFromSource(const nsAString& aSourceString)
     }
     CloneAttributesWithTransaction(*rootElement, *divElement);
 
-    return BeginningOfDocument();
+    return MaybeCollapseSelectionAtFirstEditableNode(false);
   }
 
   rv = LoadHTML(Substring(beginbody, endtotal));
@@ -1448,7 +1485,7 @@ HTMLEditor::RebuildDocumentFromSource(const nsAString& aSourceString)
   CloneAttributesWithTransaction(*rootElement, *child->AsElement());
 
   // place selection at first editable content
-  return BeginningOfDocument();
+  return MaybeCollapseSelectionAtFirstEditableNode(false);
 }
 
 EditorRawDOMPoint
@@ -1527,8 +1564,9 @@ HTMLEditor::InsertElementAtSelection(Element* aElement,
 
   CommitComposition();
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, EditAction::insertElement,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertElement,
+                                      nsIEditor::eNext);
 
   RefPtr<Selection> selection = GetSelection();
   if (!selection) {
@@ -1537,8 +1575,9 @@ HTMLEditor::InsertElementAtSelection(Element* aElement,
 
   // hand off to the rules system, see if it has anything to say about this
   bool cancel, handled;
-  RulesInfo ruleInfo(EditAction::insertElement);
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  EditSubActionInfo subActionInfo(EditSubAction::eInsertElement);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
@@ -1567,9 +1606,9 @@ HTMLEditor::InsertElementAtSelection(Element* aElement,
       // We collapse to insert element BEFORE the selection
       // For all other tags, we insert AFTER the selection
       if (HTMLEditUtils::IsNamedAnchor(aElement)) {
-        selection->CollapseToStart();
+        selection->CollapseToStart(IgnoreErrors());
       } else {
-        selection->CollapseToEnd();
+        selection->CollapseToEnd(IgnoreErrors());
       }
     }
 
@@ -1610,7 +1649,7 @@ HTMLEditor::InsertElementAtSelection(Element* aElement,
       }
     }
   }
-  rv = rules->DidDoAction(selection, &ruleInfo, rv);
+  rv = rules->DidDoAction(selection, subActionInfo, rv);
   return rv;
 }
 
@@ -1802,7 +1841,7 @@ HTMLEditor::GetCSSBackgroundColorState(bool* aMixed,
 
   // is the selection collapsed?
   nsCOMPtr<nsINode> nodeToExamine;
-  if (selection->Collapsed() || IsTextNode(parent)) {
+  if (selection->IsCollapsed() || IsTextNode(parent)) {
     // we want to look at the parent and ancestors
     nodeToExamine = parent;
   } else {
@@ -1983,22 +2022,25 @@ HTMLEditor::MakeOrChangeList(const nsAString& aListType,
   bool cancel, handled;
 
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, EditAction::makeList, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eCreateOrChangeList,
+                                      nsIEditor::eNext);
 
   // pre-process
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  RulesInfo ruleInfo(EditAction::makeList);
-  ruleInfo.blockType = &aListType;
-  ruleInfo.entireList = entireList;
-  ruleInfo.bulletType = &aBulletType;
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  EditSubActionInfo subActionInfo(EditSubAction::eCreateOrChangeList);
+  subActionInfo.blockType = &aListType;
+  subActionInfo.entireList = entireList;
+  subActionInfo.bulletType = &aBulletType;
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
 
-  if (!handled && selection->Collapsed()) {
+  if (!handled && selection->IsCollapsed()) {
     nsRange* firstRange = selection->GetRangeAt(0);
     if (NS_WARN_IF(!firstRange)) {
       return NS_ERROR_FAILURE;
@@ -2059,7 +2101,7 @@ HTMLEditor::MakeOrChangeList(const nsAString& aListType,
     }
   }
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 NS_IMETHODIMP
@@ -2075,26 +2117,29 @@ HTMLEditor::RemoveList(const nsAString& aListType)
   bool cancel, handled;
 
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, EditAction::removeList, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eRemoveList,
+                                      nsIEditor::eNext);
 
   // pre-process
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  RulesInfo ruleInfo(EditAction::removeList);
+  EditSubActionInfo subActionInfo(EditSubAction::eRemoveList);
   if (aListType.LowerCaseEqualsLiteral("ol")) {
-    ruleInfo.bOrdered = true;
+    subActionInfo.bOrdered = true;
   } else {
-    ruleInfo.bOrdered = false;
+    subActionInfo.bOrdered = false;
   }
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
 
   // no default behavior for this yet.  what would it mean?
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 nsresult
@@ -2113,7 +2158,9 @@ HTMLEditor::MakeDefinitionListItemWithTransaction(nsAtom& aTagName)
   bool cancel, handled;
 
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, EditAction::makeDefListItem,
+  AutoTopLevelEditSubActionNotifier
+    maybeTopLevelEditSubAction(*this,
+                               EditSubAction::eCreateOrChangeDefinitionList,
                                nsIEditor::eNext);
 
   // pre-process
@@ -2122,9 +2169,10 @@ HTMLEditor::MakeDefinitionListItemWithTransaction(nsAtom& aTagName)
     return NS_ERROR_FAILURE;
   }
   nsDependentAtomString tagName(&aTagName);
-  RulesInfo ruleInfo(EditAction::makeDefListItem);
-  ruleInfo.blockType = &tagName;
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  EditSubActionInfo subActionInfo(EditSubAction::eCreateOrChangeDefinitionList);
+  subActionInfo.blockType = &tagName;
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
@@ -2133,7 +2181,7 @@ HTMLEditor::MakeDefinitionListItemWithTransaction(nsAtom& aTagName)
     // todo: no default for now.  we count on rules to handle it.
   }
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 nsresult
@@ -2152,21 +2200,24 @@ HTMLEditor::InsertBasicBlockWithTransaction(nsAtom& aTagName)
   bool cancel, handled;
 
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, EditAction::makeBasicBlock,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this,
+                                      EditSubAction::eCreateOrRemoveBlock,
+                                      nsIEditor::eNext);
 
   // pre-process
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
   nsDependentAtomString tagName(&aTagName);
-  RulesInfo ruleInfo(EditAction::makeBasicBlock);
-  ruleInfo.blockType = &tagName;
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  EditSubActionInfo subActionInfo(EditSubAction::eCreateOrRemoveBlock);
+  subActionInfo.blockType = &tagName;
+  nsresult rv =
+   rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
 
-  if (!handled && selection->Collapsed()) {
+  if (!handled && selection->IsCollapsed()) {
     nsRange* firstRange = selection->GetRangeAt(0);
     if (NS_WARN_IF(!firstRange)) {
       return NS_ERROR_FAILURE;
@@ -2222,7 +2273,7 @@ HTMLEditor::InsertBasicBlockWithTransaction(nsAtom& aTagName)
     }
   }
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 NS_IMETHODIMP
@@ -2236,24 +2287,25 @@ HTMLEditor::Indent(const nsAString& aIndent)
   RefPtr<TextEditRules> rules(mRules);
 
   bool cancel, handled;
-  EditAction opID = EditAction::indent;
-  if (aIndent.LowerCaseEqualsLiteral("outdent")) {
-    opID = EditAction::outdent;
-  }
+  EditSubAction indentOrOutdent =
+    aIndent.LowerCaseEqualsLiteral("outdent") ? EditSubAction::eOutdent :
+                                                EditSubAction::eIndent;
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, opID, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, indentOrOutdent, nsIEditor::eNext);
 
   // pre-process
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  RulesInfo ruleInfo(opID);
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  EditSubActionInfo subActionInfo(indentOrOutdent);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
 
-  if (!handled && selection->Collapsed() && aIndent.EqualsLiteral("indent")) {
+  if (!handled && selection->IsCollapsed() && aIndent.EqualsLiteral("indent")) {
     nsRange* firstRange = selection->GetRangeAt(0);
     if (NS_WARN_IF(!firstRange)) {
       return NS_ERROR_FAILURE;
@@ -2323,7 +2375,7 @@ HTMLEditor::Indent(const nsAString& aIndent)
       return error.StealNSResult();
     }
   }
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 //TODO: IMPLEMENT ALIGNMENT!
@@ -2335,21 +2387,25 @@ HTMLEditor::Align(const nsAString& aAlignType)
   RefPtr<TextEditRules> rules(mRules);
 
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this, EditAction::align, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this,
+                                      EditSubAction::eSetOrClearAlignment,
+                                      nsIEditor::eNext);
 
   bool cancel, handled;
 
   // Find out if the selection is collapsed:
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
-  RulesInfo ruleInfo(EditAction::align);
-  ruleInfo.alignType = &aAlignType;
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  EditSubActionInfo subActionInfo(EditSubAction::eSetOrClearAlignment);
+  subActionInfo.alignType = &aAlignType;
+  nsresult rv =
+   rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 already_AddRefed<Element>
@@ -2468,7 +2524,7 @@ HTMLEditor::GetSelectedElement(const nsAString& aTagName,
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  bool isCollapsed = selection->Collapsed();
+  bool isCollapsed = selection->IsCollapsed();
 
   nsAutoString domTagName;
   nsAutoString TagName(aTagName);
@@ -2563,11 +2619,10 @@ HTMLEditor::GetSelectedElement(const nsAString& aTagName,
       iter->Init(currange);
       // loop through the content iterator for each content node
       while (!iter->IsDone()) {
-        // Query interface to cast nsIContent to nsIDOMNode
+        // Query interface to cast nsIContent to Element
         //  then get tagType to compare to  aTagName
         // Clone node of each desired type and append it to the aDomFrag
-        nsINode* currentNode = iter->GetCurrentNode();
-        selectedElement = do_QueryInterface(currentNode);
+        selectedElement = Element::FromNodeOrNull(iter->GetCurrentNode());
         if (selectedElement) {
           // If we already found a node, then we have another element,
           //  thus there's not just one element selected
@@ -2576,7 +2631,7 @@ HTMLEditor::GetSelectedElement(const nsAString& aTagName,
             break;
           }
 
-          domTagName = currentNode->NodeName();
+          domTagName = selectedElement->NodeName();
           ToLowerCase(domTagName);
 
           if (anyTag) {
@@ -2705,7 +2760,7 @@ HTMLEditor::InsertLinkAroundSelection(Element* aAnchorElement)
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  if (selection->Collapsed()) {
+  if (selection->IsCollapsed()) {
     NS_WARNING("InsertLinkAroundSelection called but there is no selection!!!");
     return NS_OK;
   }
@@ -2842,7 +2897,7 @@ HTMLEditor::GetLinkedObjects(nsIArray** aNodeList)
 
     // loop through the content iterator for each content node
     while (!iter->IsDone()) {
-      nsCOMPtr<nsIDOMNode> node (do_QueryInterface(iter->GetCurrentNode()));
+      nsCOMPtr<nsINode> node = iter->GetCurrentNode();
       if (node) {
         // Let nsURIRefObject make the hard decisions:
         nsCOMPtr<nsIURIRefObject> refObject;
@@ -2959,8 +3014,7 @@ HTMLEditor::AddOverrideStyleSheet(const nsAString& aURL)
   // Add the override style sheet
   // (This checks if already exists)
   ps->AddOverrideStyleSheet(sheet);
-
-  ps->RestyleForCSSRuleChanges();
+  ps->ApplicableStylesChanged();
 
   // Save as the last-loaded sheet
   mLastOverrideStyleSheetURL = aURL;
@@ -3007,7 +3061,7 @@ HTMLEditor::RemoveOverrideStyleSheet(const nsAString& aURL)
   NS_ENSURE_TRUE(ps, NS_ERROR_NOT_INITIALIZED);
 
   ps->RemoveOverrideStyleSheet(sheet);
-  ps->RestyleForCSSRuleChanges();
+  ps->ApplicableStylesChanged();
 
   // Remove it from our internal list
   return rv;
@@ -3022,7 +3076,8 @@ HTMLEditor::EnableStyleSheet(const nsAString& aURL,
 
   // Ensure the style sheet is owned by our document.
   nsCOMPtr<nsIDocument> document = GetDocument();
-  sheet->SetAssociatedDocument(document, StyleSheet::NotOwnedByDocument);
+  sheet->SetAssociatedDocumentOrShadowRoot(
+    document, StyleSheet::NotOwnedByDocumentOrShadowRoot);
 
   sheet->SetDisabled(!aEnable);
   return NS_OK;
@@ -3040,7 +3095,8 @@ HTMLEditor::EnableExistingStyleSheet(const nsAString& aURL)
 
   // Ensure the style sheet is owned by our document.
   nsCOMPtr<nsIDocument> document = GetDocument();
-  sheet->SetAssociatedDocument(document, StyleSheet::NotOwnedByDocument);
+  sheet->SetAssociatedDocumentOrShadowRoot(
+    document, StyleSheet::NotOwnedByDocumentOrShadowRoot);
 
   // FIXME: This used to do sheet->SetDisabled(false), figure out if we can
   // just remove all this code in bug 1449522, since it seems unused.
@@ -3143,8 +3199,7 @@ HTMLEditor::GetEmbeddedObjects(nsIArray** aNodeList)
                                        nsGkAtoms::a) ||
           (element->IsHTMLElement(nsGkAtoms::body) &&
            element->HasAttr(kNameSpaceID_None, nsGkAtoms::background))) {
-        nsCOMPtr<nsIDOMNode> domNode = do_QueryInterface(node);
-        nodes->AppendElement(domNode);
+        nodes->AppendElement(node);
        }
      }
      iter->Next();
@@ -3231,13 +3286,12 @@ HTMLEditor::DeleteNodeWithTransaction(nsINode& aNode)
 }
 
 NS_IMETHODIMP
-HTMLEditor::DeleteNode(nsIDOMNode* aDOMNode)
+HTMLEditor::DeleteNode(nsINode* aNode)
 {
-  nsCOMPtr<nsINode> node = do_QueryInterface(aDOMNode);
-  if (NS_WARN_IF(!node)) {
+  if (NS_WARN_IF(!aNode)) {
     return NS_ERROR_INVALID_ARG;
   }
-  nsresult rv = DeleteNodeWithTransaction(*node);
+  nsresult rv = DeleteNodeWithTransaction(*aNode);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -3334,7 +3388,7 @@ HTMLEditor::DoContentInserted(nsIContent* aChild,
                         &HTMLEditor::NotifyRootChanged));
   }
   // We don't need to handle our own modifications
-  else if (!mAction && container->IsEditable()) {
+  else if (!mTopLevelEditSubAction && container->IsEditable()) {
     if (IsMozEditorBogusNode(aChild)) {
       // Ignore insertion of the bogus node
       return;
@@ -3377,7 +3431,7 @@ HTMLEditor::ContentRemoved(nsIContent* aChild,
                         this,
                         &HTMLEditor::NotifyRootChanged));
   // We don't need to handle our own modifications
-  } else if (!mAction && aChild->GetParentNode()->IsEditable()) {
+  } else if (!mTopLevelEditSubAction && aChild->GetParentNode()->IsEditable()) {
     if (aChild && IsMozEditorBogusNode(aChild)) {
       // Ignore removal of the bogus node
       return;
@@ -3443,38 +3497,41 @@ HTMLEditor::StyleSheetLoaded(StyleSheet* aSheet,
   return NS_OK;
 }
 
-/**
- * All editor operations which alter the doc should be prefaced
- * with a call to StartOperation, naming the action and direction.
- */
-nsresult
-HTMLEditor::StartOperation(EditAction opID,
-                           nsIEditor::EDirection aDirection)
+void
+HTMLEditor::OnStartToHandleTopLevelEditSubAction(
+              EditSubAction aEditSubAction,
+              nsIEditor::EDirection aDirection)
 {
   // Protect the edit rules object from dying
   RefPtr<TextEditRules> rules(mRules);
 
-  EditorBase::StartOperation(opID, aDirection);  // will set mAction, mDirection
-  if (rules) {
-    return rules->BeforeEdit(mAction, mDirection);
+  EditorBase::OnStartToHandleTopLevelEditSubAction(aEditSubAction, aDirection);
+  if (!rules) {
+    return;
   }
-  return NS_OK;
+
+  MOZ_ASSERT(mTopLevelEditSubAction == aEditSubAction);
+  MOZ_ASSERT(mDirection == aDirection);
+  DebugOnly<nsresult> rv =
+    rules->BeforeEdit(mTopLevelEditSubAction, mDirection);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+    "HTMLEditRules::BeforeEdit() failed to handle something");
 }
 
-/**
- * All editor operations which alter the doc should be followed
- * with a call to EndOperation.
- */
-nsresult
-HTMLEditor::EndOperation()
+void
+HTMLEditor::OnEndHandlingTopLevelEditSubAction()
 {
   // Protect the edit rules object from dying
   RefPtr<TextEditRules> rules(mRules);
 
   // post processing
-  nsresult rv = rules ? rules->AfterEdit(mAction, mDirection) : NS_OK;
-  EditorBase::EndOperation();  // will clear mAction, mDirection
-  return rv;
+  DebugOnly<nsresult> rv =
+    rules ? rules->AfterEdit(mTopLevelEditSubAction, mDirection) : NS_OK;
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+    "HTMLEditRules::AfterEdit() failed to handle something");
+  EditorBase::OnEndHandlingTopLevelEditSubAction();
+  MOZ_ASSERT(!mTopLevelEditSubAction);
+  MOZ_ASSERT(mDirection == eNone);
 }
 
 bool
@@ -3531,13 +3588,24 @@ HTMLEditor::SelectEntireDocument(Selection* aSelection)
   return EditorBase::SelectEntireDocument(aSelection);
 }
 
-NS_IMETHODIMP
-HTMLEditor::SelectAll()
+nsresult
+HTMLEditor::SelectAllInternal()
 {
   CommitComposition();
+  if (NS_WARN_IF(Destroyed())) {
+    return NS_ERROR_EDITOR_DESTROYED;
+  }
+
+  // XXX Perhaps, we should check whether we still have focus since composition
+  //     event listener may have already moved focus to different editing
+  //     host or other element.  So, perhaps, we need to retrieve anchor node
+  //     before committing composition and check if selection is still in
+  //     same editing host.
 
   RefPtr<Selection> selection = GetSelection();
-  NS_ENSURE_STATE(selection);
+  if (NS_WARN_IF(!selection)) {
+    return NS_ERROR_FAILURE;
+  }
 
   nsINode* anchorNode = selection->GetAnchorNode();
   if (NS_WARN_IF(!anchorNode) || NS_WARN_IF(!anchorNode->IsContent())) {
@@ -3547,15 +3615,16 @@ HTMLEditor::SelectAll()
   nsIContent* anchorContent = anchorNode->AsContent();
   nsIContent* rootContent;
   if (anchorContent->HasIndependentSelection()) {
-    nsresult rv = selection->SetAncestorLimiter(nullptr);
-    NS_ENSURE_SUCCESS(rv, rv);
+    selection->SetAncestorLimiter(nullptr);
     rootContent = mRootElement;
   } else {
     nsCOMPtr<nsIPresShell> ps = GetPresShell();
     rootContent = anchorContent->GetSelectionRootContent(ps);
   }
 
-  NS_ENSURE_TRUE(rootContent, NS_ERROR_UNEXPECTED);
+  if (NS_WARN_IF(!rootContent)) {
+    return NS_ERROR_UNEXPECTED;
+  }
 
   Maybe<mozilla::dom::Selection::AutoUserInitiated> userSelection;
   if (!rootContent->IsEditable()) {
@@ -3563,6 +3632,7 @@ HTMLEditor::SelectAll()
   }
   ErrorResult errorResult;
   selection->SelectAllChildren(*rootContent, errorResult);
+  NS_WARNING_ASSERTION(!errorResult.Failed(), "SelectAllChildren() failed");
   return errorResult.StealNSResult();
 }
 
@@ -3645,18 +3715,6 @@ HTMLEditor::GetEnclosingTable(nsINode* aNode)
   }
   return nullptr;
 }
-
-nsIDOMNode*
-HTMLEditor::GetEnclosingTable(nsIDOMNode* aNode)
-{
-  NS_PRECONDITION(aNode, "null node passed to HTMLEditor::GetEnclosingTable");
-  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
-  NS_ENSURE_TRUE(node, nullptr);
-  nsCOMPtr<Element> table = GetEnclosingTable(node);
-  nsCOMPtr<nsIDOMNode> ret = do_QueryInterface(table);
-  return ret;
-}
-
 
 /**
  * This method scans the selection for adjacent text nodes
@@ -4326,18 +4384,24 @@ HTMLEditor::SetCSSBackgroundColorWithTransaction(const nsAString& aColor)
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_STATE(selection);
 
-  bool isCollapsed = selection->Collapsed();
+  bool isCollapsed = selection->IsCollapsed();
 
   AutoPlaceholderBatch batchIt(this);
-  AutoRules beginRulesSniffing(this, EditAction::insertElement,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertElement,
+                                      nsIEditor::eNext);
   AutoSelectionRestorer selectionRestorer(selection, this);
   AutoTransactionsConserveSelection dontChangeMySelection(this);
 
+  // XXX Although, this method may set background color of ancestor block
+  //     element, using EditSubAction::eSetTextProperty.
   bool cancel, handled;
-  RulesInfo ruleInfo(EditAction::setTextProperty);
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
-  NS_ENSURE_SUCCESS(rv, rv);
+  EditSubActionInfo subActionInfo(EditSubAction::eSetTextProperty);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
   if (!cancel && !handled) {
     // Loop through the ranges in the selection
     for (uint32_t i = 0; i < selection->RangeCount(); i++) {
@@ -4458,7 +4522,7 @@ HTMLEditor::SetCSSBackgroundColorWithTransaction(const nsAString& aColor)
   }
   if (!cancel) {
     // Post-process
-    rv = rules->DidDoAction(selection, &ruleInfo, rv);
+    rv = rules->DidDoAction(selection, subActionInfo, rv);
     NS_ENSURE_SUCCESS(rv, rv);
   }
   return NS_OK;
@@ -4677,7 +4741,7 @@ HTMLEditor::GetSelectionContainer()
 
   nsCOMPtr<nsINode> focusNode;
 
-  if (selection->Collapsed()) {
+  if (selection->IsCollapsed()) {
     focusNode = selection->GetFocusNode();
   } else {
     int32_t rangeCount = selection->RangeCount();
@@ -4914,7 +4978,7 @@ HTMLEditor::NotifyRootChanged()
     return;
   }
 
-  rv = BeginningOfDocument();
+  rv = MaybeCollapseSelectionAtFirstEditableNode(false);
   if (NS_FAILED(rv)) {
     return;
   }

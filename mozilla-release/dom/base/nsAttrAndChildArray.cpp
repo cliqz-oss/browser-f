@@ -28,14 +28,14 @@ using mozilla::CheckedUint32;
 CACHE_POINTER_SHIFT indicates how many steps to downshift the |this| pointer.
 It should be small enough to not cause collisions between adjecent arrays, and
 large enough to make sure that all indexes are used. The size below is based
-on the size of the smallest possible element (currently 24[*] bytes) which is
-the smallest distance between two nsAttrAndChildArray. 24/(2^_5_) is 0.75.
-This means that two adjacent nsAttrAndChildArrays will overlap one in 4 times.
+on the size of the smallest possible element (currently 20[*] bytes) which is
+the smallest distance between two nsAttrAndChildArray. 20/(2^_5_) is 0.625.
+This means that two adjacent nsAttrAndChildArrays will overlap one in 2.7 times.
 However not all elements will have enough children to get cached. And any
 allocator that doesn't return addresses aligned to 64 bytes will ensure that
 any index will get used.
 
-[*] sizeof(Element) + 4 bytes for nsIDOMNode vtable pointer.
+[*] sizeof(Element).  Except is that really 20 bytes?  Seems dubious!
 */
 
 #define CACHE_POINTER_SHIFT 5
@@ -614,7 +614,7 @@ nsAttrAndChildArray::SetAndSwapMappedAttr(nsAtom* aLocalName,
 nsresult
 nsAttrAndChildArray::DoSetMappedAttrStyleSheet(nsHTMLStyleSheet* aSheet)
 {
-  NS_PRECONDITION(mImpl && mImpl->mMappedAttrs,
+  MOZ_ASSERT(mImpl && mImpl->mMappedAttrs,
                   "Should have mapped attrs here!");
   if (aSheet == mImpl->mMappedAttrs->GetStyleSheet()) {
     return NS_OK;
@@ -800,7 +800,7 @@ nsAttrAndChildArray::GetMapped() const
 nsresult nsAttrAndChildArray::EnsureCapacityToClone(const nsAttrAndChildArray& aOther,
                                                     bool aAllocateChildren)
 {
-  NS_PRECONDITION(!mImpl, "nsAttrAndChildArray::EnsureCapacityToClone requires the array be empty when called");
+  MOZ_ASSERT(!mImpl, "nsAttrAndChildArray::EnsureCapacityToClone requires the array be empty when called");
 
   uint32_t attrCount = aOther.NonMappedAttrCount();
   uint32_t childCount = 0;
@@ -930,8 +930,8 @@ inline void
 nsAttrAndChildArray::SetChildAtPos(void** aPos, nsIContent* aChild,
                                    uint32_t aIndex, uint32_t aChildCount)
 {
-  NS_PRECONDITION(!aChild->GetNextSibling(), "aChild with next sibling?");
-  NS_PRECONDITION(!aChild->GetPreviousSibling(), "aChild with prev sibling?");
+  MOZ_ASSERT(!aChild->GetNextSibling(), "aChild with next sibling?");
+  MOZ_ASSERT(!aChild->GetPreviousSibling(), "aChild with prev sibling?");
 
   *aPos = aChild;
   NS_ADDREF(aChild);
@@ -965,4 +965,3 @@ nsAttrAndChildArray::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) co
 
   return n;
 }
-

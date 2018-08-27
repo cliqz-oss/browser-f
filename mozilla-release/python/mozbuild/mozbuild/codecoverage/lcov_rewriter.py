@@ -5,7 +5,11 @@
 from argparse import ArgumentParser
 import json
 import os
-import urlparse
+
+try:
+    import urlparse
+except ImportError:
+    import urllib.parse as urlparse
 
 from mozpack.chrome.manifest import parse_manifest
 import mozpack.path as mozpath
@@ -576,7 +580,6 @@ class UrlFinder(object):
                 dir_parts = parts[0].rsplit(app_name + '/', 1)
                 url = mozpath.normpath(mozpath.join(self.topobjdir, 'dist', 'bin', dir_parts[1].lstrip('/'), parts[1].lstrip('/')))
             elif '.xpi!' in url:
-                # e.g. file:///tmp/tmpMdo5gV.mozrunner/extensions/workerbootstrap-test@mozilla.org.xpi!/bootstrap.js
                 # This matching mechanism is quite brittle and based on examples seen in the wild.
                 # There's no rule to match the XPI name to the path in dist/xpi-stage.
                 parts = url_obj.path.split('.xpi!', 1)

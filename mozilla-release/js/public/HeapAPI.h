@@ -14,6 +14,8 @@
 #include "js/TraceKind.h"
 #include "js/Utility.h"
 
+struct JSStringFinalizer;
+
 /* These values are private to the JS engine. */
 namespace js {
 
@@ -201,6 +203,47 @@ struct Zone
     }
 };
 
+struct String
+{
+    static const uint32_t NON_ATOM_BIT     = JS_BIT(0);
+    static const uint32_t LINEAR_BIT       = JS_BIT(1);
+    static const uint32_t INLINE_CHARS_BIT = JS_BIT(3);
+    static const uint32_t LATIN1_CHARS_BIT = JS_BIT(6);
+    static const uint32_t EXTERNAL_FLAGS   = LINEAR_BIT | NON_ATOM_BIT | JS_BIT(5);
+    static const uint32_t TYPE_FLAGS_MASK  = JS_BIT(6) - 1;
+    static const uint32_t PERMANENT_ATOM_MASK    = NON_ATOM_BIT | JS_BIT(5);
+    static const uint32_t PERMANENT_ATOM_FLAGS   = JS_BIT(5);
+
+    uint32_t flags;
+    uint32_t length;
+    union {
+        const JS::Latin1Char* nonInlineCharsLatin1;
+        const char16_t* nonInlineCharsTwoByte;
+        JS::Latin1Char inlineStorageLatin1[1];
+        char16_t inlineStorageTwoByte[1];
+    };
+    const JSStringFinalizer* externalFinalizer;
+
+    static bool nurseryCellIsString(const js::gc::Cell* cell) {
+        MOZ_ASSERT(IsInsideNursery(cell));
+        return reinterpret_cast<const String*>(cell)->flags & NON_ATOM_BIT;
+    }
+
+    static bool isPermanentAtom(const js::gc::Cell* cell) {
+        uint32_t flags = reinterpret_cast<const String*>(cell)->flags;
+        return (flags & PERMANENT_ATOM_MASK) == PERMANENT_ATOM_FLAGS;
+    }
+};
+
+struct Symbol {
+    uint32_t code_;
+    static const uint32_t WellKnownAPILimit = 0x80000000;
+
+    static bool isWellKnownSymbol(const js::gc::Cell* cell) {
+        return reinterpret_cast<const Symbol*>(cell)->code_ < WellKnownAPILimit;
+    }
+};
+
 } /* namespace shadow */
 
 /**
@@ -272,9 +315,12 @@ class JS_FRIEND_API(GCCellPtr)
     }
 
     MOZ_ALWAYS_INLINE bool mayBeOwnedByOtherRuntime() const {
-        if (is<JSString>() || is<JS::Symbol>())
-            return mayBeOwnedByOtherRuntimeSlow();
-        return false;
+        if (!is<JSString>() && !is<JS::Symbol>())
+            return false;
+        if (is<JSString>())
+            return JS::shadow::String::isPermanentAtom(asCell());
+        MOZ_ASSERT(is<JS::Symbol>());
+        return JS::shadow::Symbol::isWellKnownSymbol(asCell());
     }
 
   private:
@@ -301,12 +347,12 @@ class JS_FRIEND_API(GCCellPtr)
 template <typename F, typename... Args>
 auto
 DispatchTyped(F f, GCCellPtr thing, Args&&... args)
-  -> decltype(f(static_cast<JSObject*>(nullptr), mozilla::Forward<Args>(args)...))
+  -> decltype(f(static_cast<JSObject*>(nullptr), std::forward<Args>(args)...))
 {
     switch (thing.kind()) {
 #define JS_EXPAND_DEF(name, type, _) \
       case JS::TraceKind::name: \
-          return f(&thing.as<type>(), mozilla::Forward<Args>(args)...);
+          return f(&thing.as<type>(), std::forward<Args>(args)...);
       JS_FOR_EACH_TRACEKIND(JS_EXPAND_DEF);
 #undef JS_EXPAND_DEF
       default:
@@ -545,10 +591,10 @@ IsIncrementalBarrierNeededOnTenuredGCThing(const JS::GCCellPtr thing)
     MOZ_ASSERT(thing);
     MOZ_ASSERT(!js::gc::IsInsideNursery(thing.asCell()));
 
-    // TODO: I'd like to assert !CurrentThreadIsHeapBusy() here but this gets
+    // TODO: I'd like to assert !RuntimeHeapIsBusy() here but this gets
     // called while we are tracing the heap, e.g. during memory reporting
     // (see bug 1313318).
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapCollecting());
+    MOZ_ASSERT(!JS::RuntimeHeapIsCollecting());
 
     JS::Zone* zone = JS::GetTenuredGCThingZone(thing);
     return JS::shadow::Zone::asShadowZone(zone)->needsIncrementalBarrier();
@@ -586,7 +632,7 @@ EdgeNeedsSweepUnbarriered(JSObject** objp)
     // This function does not handle updating nursery pointers. Raw JSObject
     // pointers should be updated separately or replaced with
     // JS::Heap<JSObject*> which handles this automatically.
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapMinorCollecting());
+    MOZ_ASSERT(!JS::RuntimeHeapIsMinorCollecting());
     if (IsInsideNursery(reinterpret_cast<Cell*>(*objp)))
         return false;
 

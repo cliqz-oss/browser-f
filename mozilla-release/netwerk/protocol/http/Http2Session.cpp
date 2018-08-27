@@ -68,7 +68,7 @@ do {                             \
   return NS_ERROR_ILLEGAL_VALUE; \
   } while (0)
 
-Http2Session::Http2Session(nsISocketTransport *aSocketTransport, uint32_t version, bool attemptingEarlyData)
+Http2Session::Http2Session(nsISocketTransport *aSocketTransport, enum SpdyVersion version, bool attemptingEarlyData)
   : mSocketTransport(aSocketTransport)
   , mSegmentReader(nullptr)
   , mSegmentWriter(nullptr)
@@ -114,6 +114,7 @@ Http2Session::Http2Session(nsISocketTransport *aSocketTransport, uint32_t versio
   , mLastReadEpoch(PR_IntervalNow())
   , mPingSentEpoch(0)
   , mPreviousUsed(false)
+  , mAggregatedHeaderSize(0)
   , mWaitingForSettingsAck(false)
   , mGoAwayOnPush(false)
   , mUseH2Deps(false)
@@ -639,10 +640,10 @@ Http2Session::DontReuse()
   }
 }
 
-uint32_t
+enum SpdyVersion
 Http2Session::SpdyVersion()
 {
-  return HTTP_VERSION_2;
+  return SpdyVersion::HTTP_2;
 }
 
 uint32_t

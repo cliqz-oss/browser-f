@@ -28,6 +28,8 @@ Library('updatecommon')
 DEFINES['NS_NO_XPCOM'] = True
 USE_STATIC_LIBS = True
 
+DisableStlWrapping()
+
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     SOURCES += [
         'pathhash.cpp',
@@ -41,6 +43,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
         ]
         OS_LIBS += [
             'crypt32',
+            'rpcrt4',
             'wintrust',
         ]
 

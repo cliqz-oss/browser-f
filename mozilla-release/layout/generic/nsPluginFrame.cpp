@@ -946,7 +946,7 @@ nsDisplayPlugin::Paint(nsDisplayListBuilder* aBuilder,
 {
   nsPluginFrame* f = static_cast<nsPluginFrame*>(mFrame);
   bool snap;
-  f->PaintPlugin(aBuilder, *aCtx, mVisibleRect, GetBounds(aBuilder, &snap));
+  f->PaintPlugin(aBuilder, *aCtx, GetPaintRect(), GetBounds(aBuilder, &snap));
 }
 
 static nsRect
@@ -1762,7 +1762,7 @@ nsPluginFrame::GetNextObjectFrame(nsPresContext* aPresContext, nsIFrame* aRoot)
 /*static*/ void
 nsPluginFrame::BeginSwapDocShells(nsISupports* aSupports, void*)
 {
-  NS_PRECONDITION(aSupports, "");
+  MOZ_ASSERT(aSupports, "null parameter");
   nsCOMPtr<nsIContent> content(do_QueryInterface(aSupports));
   if (!content) {
     return;
@@ -1783,7 +1783,7 @@ nsPluginFrame::BeginSwapDocShells(nsISupports* aSupports, void*)
 /*static*/ void
 nsPluginFrame::EndSwapDocShells(nsISupports* aSupports, void*)
 {
-  NS_PRECONDITION(aSupports, "");
+  MOZ_ASSERT(aSupports, "null parameter");
   nsCOMPtr<nsIContent> content(do_QueryInterface(aSupports));
   if (!content) {
     return;

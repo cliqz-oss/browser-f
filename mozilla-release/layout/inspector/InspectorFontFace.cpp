@@ -6,14 +6,16 @@
 
 #include "InspectorFontFace.h"
 
+#include "gfxPlatformFontList.h"
 #include "gfxTextRun.h"
 #include "gfxUserFontSet.h"
 #include "nsFontFaceLoader.h"
 #include "mozilla/gfx/2D.h"
 #include "brotli/decode.h"
 #include "zlib.h"
+#include "mozilla/dom/CSSFontFaceRule.h"
 #include "mozilla/dom/FontFaceSet.h"
-#include "mozilla/ServoFontFaceRule.h"
+#include "mozilla/ServoBindings.h"
 #include "mozilla/Unused.h"
 
 namespace mozilla {
@@ -22,19 +24,19 @@ namespace dom {
 bool
 InspectorFontFace::FromFontGroup()
 {
-  return mMatchType & gfxTextRange::kFontGroup;
+  return bool(mMatchType & gfxTextRange::MatchType::kFontGroup);
 }
 
 bool
 InspectorFontFace::FromLanguagePrefs()
 {
-  return mMatchType & gfxTextRange::kPrefsFallback;
+  return bool(mMatchType & gfxTextRange::MatchType::kPrefsFallback);
 }
 
 bool
 InspectorFontFace::FromSystemFallback()
 {
-  return mMatchType & gfxTextRange::kSystemFallback;
+  return bool(mMatchType & gfxTextRange::MatchType::kSystemFallback);
 }
 
 void
@@ -54,7 +56,20 @@ InspectorFontFace::GetCSSFamilyName(nsAString& aCSSFamilyName)
   aCSSFamilyName = mFontEntry->FamilyName();
 }
 
-ServoFontFaceRule*
+void
+InspectorFontFace::GetCSSGeneric(nsAString& aName)
+{
+  auto genericType =
+    FontFamilyType(mMatchType & gfxTextRange::MatchType::kGenericMask);
+  if (genericType >= FontFamilyType::eFamily_generic_first &&
+      genericType <= FontFamilyType::eFamily_generic_last) {
+    aName.AssignASCII(gfxPlatformFontList::GetGenericName(genericType));
+  } else {
+    aName.Truncate(0);
+  }
+}
+
+CSSFontFaceRule*
 InspectorFontFace::GetRule()
 {
   if (!mRule) {
@@ -79,7 +94,7 @@ InspectorFontFace::GetRule()
       // it's probably fine for now.
       uint32_t line, column;
       Servo_FontFaceRule_GetSourceLocation(rule, &line, &column);
-      mRule = new ServoFontFaceRule(do_AddRef(rule), line, column);
+      mRule = new CSSFontFaceRule(do_AddRef(rule), line, column);
     }
   }
   return mRule;

@@ -14,6 +14,8 @@
 #include "xpcprivate.h"
 #include "XPCWrapper.h"
 #include "jsfriendapi.h"
+#include "js/ProfilingStack.h"
+#include "GeckoProfiler.h"
 #include "nsJSEnvironment.h"
 #include "nsThreadUtils.h"
 #include "nsDOMJSUtils.h"
@@ -37,7 +39,6 @@
 #include "nsIScriptError.h"
 #include "nsContentUtils.h"
 #include "nsScriptError.h"
-#include "jsfriendapi.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -71,6 +72,10 @@ nsXPConnect::nsXPConnect()
     : mShuttingDown(false)
 {
     XPCJSContext::InitTLS();
+
+#ifdef MOZ_GECKO_PROFILER
+    JS::SetProfilingThreadCallbacks(profiler_register_thread, profiler_unregister_thread);
+#endif
 
     XPCJSContext* xpccx = XPCJSContext::NewXPCJSContext(nullptr);
     if (!xpccx) {
@@ -433,7 +438,7 @@ namespace xpc {
 
 JSObject*
 CreateGlobalObject(JSContext* cx, const JSClass* clasp, nsIPrincipal* principal,
-                   JS::CompartmentOptions& aOptions)
+                   JS::RealmOptions& aOptions)
 {
     MOZ_ASSERT(NS_IsMainThread(), "using a principal off the main thread?");
     MOZ_ASSERT(principal);
@@ -446,7 +451,7 @@ CreateGlobalObject(JSContext* cx, const JSClass* clasp, nsIPrincipal* principal,
                                            JS::DontFireOnNewGlobalHook, aOptions));
     if (!global)
         return nullptr;
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
     // The constructor automatically attaches the scope to the compartment private
     // of |global|.
@@ -480,7 +485,7 @@ CreateGlobalObject(JSContext* cx, const JSClass* clasp, nsIPrincipal* principal,
 }
 
 void
-InitGlobalObjectOptions(JS::CompartmentOptions& aOptions,
+InitGlobalObjectOptions(JS::RealmOptions& aOptions,
                         nsIPrincipal* aPrincipal)
 {
     bool shouldDiscardSystemSource = ShouldDiscardSystemSource();
@@ -509,9 +514,9 @@ InitGlobalObjectOptions(JS::CompartmentOptions& aOptions,
 bool
 InitGlobalObject(JSContext* aJSContext, JS::Handle<JSObject*> aGlobal, uint32_t aFlags)
 {
-    // Immediately enter the global's compartment so that everything we create
+    // Immediately enter the global's realm so that everything we create
     // ends up there.
-    JSAutoCompartment ac(aJSContext, aGlobal);
+    JSAutoRealm ar(aJSContext, aGlobal);
 
     // Stuff coming through this path always ends up as a DOM global.
     MOZ_ASSERT(js::GetObjectClass(aGlobal)->flags & JSCLASS_DOM_GLOBAL);
@@ -535,7 +540,7 @@ InitClassesWithNewWrappedGlobal(JSContext* aJSContext,
                                 nsISupports* aCOMObj,
                                 nsIPrincipal* aPrincipal,
                                 uint32_t aFlags,
-                                JS::CompartmentOptions& aOptions,
+                                JS::RealmOptions& aOptions,
                                 MutableHandleObject aNewGlobal)
 {
     MOZ_ASSERT(aJSContext, "bad param");
@@ -584,7 +589,7 @@ NativeInterface2JSObject(HandleObject aScope,
                          MutableHandleValue aVal)
 {
     AutoJSContext cx;
-    JSAutoCompartment ac(cx, aScope);
+    JSAutoRealm ar(cx, aScope);
 
     nsresult rv;
     xpcObjectHelper helper(aCOMObj, aCache);
@@ -653,7 +658,7 @@ nsXPConnect::WrapJS(JSContext * aJSContext,
     *result = nullptr;
 
     RootedObject aJSObj(aJSContext, aJSObjArg);
-    JSAutoCompartment ac(aJSContext, aJSObj);
+    JSAutoRealm ar(aJSContext, aJSObj);
 
     nsresult rv = NS_ERROR_UNEXPECTED;
     if (!XPCConvert::JSObject2NativeInterface(result, aJSObj,
@@ -667,7 +672,7 @@ nsXPConnect::JSValToVariant(JSContext* cx,
                             HandleValue aJSVal,
                             nsIVariant** aResult)
 {
-    NS_PRECONDITION(aResult, "bad param");
+    MOZ_ASSERT(aResult, "bad param");
 
     RefPtr<XPCVariant> variant = XPCVariant::newVariant(cx, aJSVal);
     variant.forget(aResult);
@@ -788,7 +793,7 @@ nsXPConnect::GetWrappedNativePrototype(JSContext* aJSContext,
                                        JSObject** aRetVal)
 {
     RootedObject aScope(aJSContext, aScopeArg);
-    JSAutoCompartment ac(aJSContext, aScope);
+    JSAutoRealm ar(aJSContext, aScope);
 
     XPCWrappedNativeScope* scope = ObjectScope(aScope);
     if (!scope)
@@ -879,9 +884,9 @@ NS_IMETHODIMP
 nsXPConnect::VariantToJS(JSContext* ctx, JSObject* scopeArg, nsIVariant* value,
                          MutableHandleValue _retval)
 {
-    NS_PRECONDITION(ctx, "bad param");
-    NS_PRECONDITION(scopeArg, "bad param");
-    NS_PRECONDITION(value, "bad param");
+    MOZ_ASSERT(ctx, "bad param");
+    MOZ_ASSERT(scopeArg, "bad param");
+    MOZ_ASSERT(value, "bad param");
 
     RootedObject scope(ctx, scopeArg);
     MOZ_ASSERT(js::IsObjectInContextCompartment(scope, ctx));
@@ -899,8 +904,8 @@ nsXPConnect::VariantToJS(JSContext* ctx, JSObject* scopeArg, nsIVariant* value,
 NS_IMETHODIMP
 nsXPConnect::JSToVariant(JSContext* ctx, HandleValue value, nsIVariant** _retval)
 {
-    NS_PRECONDITION(ctx, "bad param");
-    NS_PRECONDITION(_retval, "bad param");
+    MOZ_ASSERT(ctx, "bad param");
+    MOZ_ASSERT(_retval, "bad param");
 
     RefPtr<XPCVariant> variant = XPCVariant::newVariant(ctx, value);
     variant.forget(_retval);
@@ -964,14 +969,14 @@ void
 SetLocationForGlobal(JSObject* global, const nsACString& location)
 {
     MOZ_ASSERT(global);
-    CompartmentPrivate::Get(global)->SetLocation(location);
+    RealmPrivate::Get(global)->SetLocation(location);
 }
 
 void
 SetLocationForGlobal(JSObject* global, nsIURI* locationURI)
 {
     MOZ_ASSERT(global);
-    CompartmentPrivate::Get(global)->SetLocationURI(locationURI);
+    RealmPrivate::Get(global)->SetLocationURI(locationURI);
 }
 
 } // namespace xpc
@@ -1174,7 +1179,7 @@ IsChromeOrXBL(JSContext* cx, JSObject* /* unused */)
     MOZ_ASSERT(NS_IsMainThread());
     JS::Realm* realm = JS::GetCurrentRealmOrNull(cx);
     MOZ_ASSERT(realm);
-    JSCompartment* c = JS::GetCompartmentForRealm(realm);
+    JS::Compartment* c = JS::GetCompartmentForRealm(realm);
 
     // For remote XUL, we run XBL in the XUL scope. Given that we care about
     // compat and not security for remote XUL, we just always claim to be XBL.

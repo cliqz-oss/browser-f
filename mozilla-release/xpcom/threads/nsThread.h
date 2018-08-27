@@ -173,14 +173,9 @@ protected:
   mozilla::Atomic<bool> mShutdownRequired;
   MainThreadFlag mIsMainThread;
 
-  // The time when we last ran an unlabeled runnable (one not associated with a
-  // SchedulerGroup).
-  mozilla::TimeStamp mLastUnlabeledRunnable;
-
   // Set to true if this thread creates a JSRuntime.
   bool mCanInvokeJS;
 
-  bool GetSchedulerLoggingEnabled();
   mozilla::TimeStamp mNextIdleDeadline;
   // Used to track which event is being executed by ProcessNextEvent
   nsCOMPtr<nsIRunnable> mCurrentEvent;

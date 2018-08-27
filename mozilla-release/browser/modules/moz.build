@@ -65,10 +65,22 @@ with Files("ContentWebRTC.jsm"):
     BUG_COMPONENT = ("Firefox", "Device Permissions")
 
 with Files("ExtensionsUI.jsm"):
-    BUG_COMPONENT = ("Toolkit", "WebExtensions: General")
+    BUG_COMPONENT = ("WebExtensions", "General")
 
 with Files("LaterRun.jsm"):
     BUG_COMPONENT = ("Firefox", "Tours")
+
+with Files("LightWeightThemeWebInstallListener.jsm"):
+    BUG_COMPONENT = ("Firefox", "Theme")
+
+with Files("OpenInTabsUtils.jsm"):
+    BUG_COMPONENT = ("Firefox", "Tabbed Browser")
+
+with Files("PageInfoListener.jsm"):
+    BUG_COMPONENT = ("Firefox", "Page Info Window")
+
+with Files("PageStyleHandler.jsm"):
+    BUG_COMPONENT = ("Firefox", "Menus")
 
 with Files("PermissionUI.jsm"):
    BUG_COMPONENT = ("Firefox", "Site Identity and Permission Panels")
@@ -91,11 +103,11 @@ with Files("SiteDataManager.jsm"):
 with Files("SitePermissions.jsm"):
     BUG_COMPONENT = ("Firefox", "Site Identity and Permission Panels")
 
-with Files("OpenInTabsUtils.jsm"):
+with Files("TabsList.jsm"):
     BUG_COMPONENT = ("Firefox", "Tabbed Browser")
 
 with Files("ThemeVariableMap.jsm"):
-    BUG_COMPONENT = ("Toolkit", "WebExtensions: Themes")
+    BUG_COMPONENT = ("WebExtensions", "Themes")
 
 with Files("TransientPrefs.jsm"):
     BUG_COMPONENT = ("Firefox", "Preferences")
@@ -123,12 +135,11 @@ BROWSER_CHROME_MANIFESTS += [
 XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
 EXTRA_JS_MODULES += [
-    'AboutHome.jsm',
     'AboutNewTab.jsm',
     'AsyncTabSwitcher.jsm',
     'AttributionCode.jsm',
+    'BlockedSiteContent.jsm',
     'BrowserErrorReporter.jsm',
-    'BrowserUITelemetry.jsm',
     'BrowserUsageTelemetry.jsm',
     'BrowserWindowTracker.jsm',
     'ContentClick.jsm',
@@ -144,8 +155,12 @@ EXTRA_JS_MODULES += [
     'FormSubmitObserver.jsm',
     'FormValidationHandler.jsm',
     'LaterRun.jsm',
+    'LightWeightThemeWebInstallListener.jsm',
+    'NetErrorContent.jsm',
     'OpenInTabsUtils.jsm',
     'PageActions.jsm',
+    'PageInfoListener.jsm',
+    'PageStyleHandler.jsm',
     'PermissionUI.jsm',
     'PingCentre.jsm',
     'PluginContent.jsm',
@@ -157,6 +172,7 @@ EXTRA_JS_MODULES += [
     'SchedulePressure.jsm',
     'SiteDataManager.jsm',
     'SitePermissions.jsm',
+    'TabsList.jsm',
     'ThemeVariableMap.jsm',
     'TransientPrefs.jsm',
     'webrtcUI.jsm',

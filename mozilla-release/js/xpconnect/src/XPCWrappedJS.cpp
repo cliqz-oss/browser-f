@@ -183,7 +183,7 @@ NS_IMETHODIMP
 nsXPCWrappedJS::QueryInterface(REFNSIID aIID, void** aInstancePtr)
 {
     if (nullptr == aInstancePtr) {
-        NS_PRECONDITION(false, "null pointer");
+        MOZ_ASSERT(false, "null pointer");
         return NS_ERROR_NULL_POINTER;
     }
 
@@ -438,7 +438,7 @@ XPCJSRuntime::RemoveWrappedJS(nsXPCWrappedJS* wrapper)
         return;
 
     // It is possible for the same JS XPCOM implementation object to be wrapped
-    // with a different interface in multiple JSCompartments. In this case, the
+    // with a different interface in multiple JS::Compartments. In this case, the
     // wrapper chain will contain references to multiple compartments. While we
     // always store single-compartment chains in the per-compartment wrapped-js
     // table, chains in the multi-compartment wrapped-js table may contain
@@ -455,7 +455,7 @@ XPCJSRuntime::RemoveWrappedJS(nsXPCWrappedJS* wrapper)
 
 #ifdef DEBUG
 static void
-NotHasWrapperAssertionCallback(JSContext* cx, void* data, JSCompartment* comp)
+NotHasWrapperAssertionCallback(JSContext* cx, void* data, JS::Compartment* comp)
 {
     auto wrapper = static_cast<nsXPCWrappedJS*>(data);
     auto xpcComp = xpc::CompartmentPrivate::Get(comp);
@@ -544,7 +544,7 @@ bool
 nsXPCWrappedJS::IsMultiCompartment() const
 {
     MOZ_ASSERT(IsRootWrapper());
-    JSCompartment* compartment = Compartment();
+    JS::Compartment* compartment = Compartment();
     nsXPCWrappedJS* next = mNext;
     while (next) {
         if (next->Compartment() != compartment)
@@ -614,7 +614,7 @@ nsXPCWrappedJS::CallMethod(uint16_t methodIndex,
 NS_IMETHODIMP
 nsXPCWrappedJS::GetInterfaceIID(nsIID** iid)
 {
-    NS_PRECONDITION(iid, "bad param");
+    MOZ_ASSERT(iid, "bad param");
 
     *iid = GetIID().Clone();
     return NS_OK;

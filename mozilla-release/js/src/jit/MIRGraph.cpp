@@ -17,11 +17,11 @@ using namespace js;
 using namespace js::jit;
 using mozilla::Swap;
 
-MIRGenerator::MIRGenerator(CompileCompartment* compartment, const JitCompileOptions& options,
+MIRGenerator::MIRGenerator(CompileRealm* realm, const JitCompileOptions& options,
                            TempAllocator* alloc, MIRGraph* graph, const CompileInfo* info,
                            const OptimizationInfo* optimizationInfo)
-  : compartment(compartment),
-    runtime(compartment ? compartment->runtime() : nullptr),
+  : realm(realm),
+    runtime(realm ? realm->runtime() : nullptr),
     info_(info),
     optimizationInfo_(optimizationInfo),
     alloc_(alloc),
@@ -38,7 +38,7 @@ MIRGenerator::MIRGenerator(CompileCompartment* compartment, const JitCompileOpti
     instrumentedProfiling_(false),
     instrumentedProfilingIsCached_(false),
     safeForMinorGC_(true),
-    stringsCanBeInNursery_(compartment ? compartment->zone()->canNurseryAllocateStrings() : false),
+    stringsCanBeInNursery_(realm ? realm->zone()->canNurseryAllocateStrings() : false),
     minWasmHeapLength_(0),
     options(options),
     gs_(alloc)
@@ -100,14 +100,14 @@ MIRGenerator::abort(AbortReason r)
             break;
         }
     }
-    return Err(mozilla::Move(r));
+    return Err(std::move(r));
 }
 
 mozilla::GenericErrorResult<AbortReason>
 MIRGenerator::abortFmt(AbortReason r, const char* message, va_list ap)
 {
     JitSpewVA(JitSpew_IonAbort, message, ap);
-    return Err(mozilla::Move(r));
+    return Err(std::move(r));
 }
 
 mozilla::GenericErrorResult<AbortReason>
@@ -489,6 +489,8 @@ MBasicBlock::MBasicBlock(MIRGraph& graph, const CompileInfo& info, BytecodeSite*
     info_(info),
     predecessors_(graph.alloc()),
     stackPosition_(info_.firstStackSlot()),
+    id_(0),
+    domIndex_(0),
     numDominated_(0),
     pc_(site->pc()),
     lir_(nullptr),

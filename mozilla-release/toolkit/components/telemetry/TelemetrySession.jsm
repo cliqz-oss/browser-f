@@ -801,7 +801,7 @@ var Impl = {
     }
 
     if (clearSubsession) {
-      this._subsessionStartActiveTicks = activeTicks;
+      this._subsessionStartActiveTicks = this._sessionActiveTicks;
     }
 
     ret.activeTicks = activeTicks;
@@ -809,57 +809,6 @@ var Impl = {
     ret.pingsOverdue = TelemetrySend.overduePingsCount;
 
     return ret;
-  },
-
-  /**
-   * When reflecting a histogram into JS, Telemetry hands us an object
-   * with the following properties:
-   *
-   * - min, max, histogram_type, sum, sum_squares_{lo,hi}: simple integers;
-   * - counts: array of counts for histogram buckets;
-   * - ranges: array of calculated bucket sizes.
-   *
-   * This format is not straightforward to read and potentially bulky
-   * with lots of zeros in the counts array.  Packing histograms makes
-   * raw histograms easier to read and compresses the data a little bit.
-   *
-   * Returns an object:
-   * { range: [min, max], bucket_count: <number of buckets>,
-   *   histogram_type: <histogram_type>, sum: <sum>,
-   *   values: { bucket1: count1, bucket2: count2, ... } }
-   */
-  packHistogram: function packHistogram(hgram) {
-    let r = hgram.ranges;
-    let c = hgram.counts;
-    let retgram = {
-      range: [r[1], r[r.length - 1]],
-      bucket_count: r.length,
-      histogram_type: hgram.histogram_type,
-      values: {},
-      sum: hgram.sum
-    };
-
-    let first = true;
-    let last = 0;
-
-    for (let i = 0; i < c.length; i++) {
-      let value = c[i];
-      if (!value)
-        continue;
-
-      // add a lower bound
-      if (i && first) {
-        retgram.values[r[i - 1]] = 0;
-      }
-      first = false;
-      last = i + 1;
-      retgram.values[r[i]] = value;
-    }
-
-    // add an upper bound
-    if (last && last < c.length)
-      retgram.values[r[last]] = 0;
-    return retgram;
   },
 
   /**
@@ -871,44 +820,14 @@ var Impl = {
                                        : Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT;
   },
 
-  getHistograms: function getHistograms(subsession, clearSubsession) {
-    let hls = Telemetry.snapshotHistograms(this.getDatasetType(), subsession, clearSubsession);
-    let ret = {};
-
-    for (let [process, histograms] of Object.entries(hls)) {
-      ret[process] = {};
-      for (let [name, value] of Object.entries(histograms)) {
-        if (this._testing || !name.startsWith("TELEMETRY_TEST_")) {
-          ret[process][name] = this.packHistogram(value);
-        }
-      }
-    }
-
-    return ret;
+  getHistograms: function getHistograms(clearSubsession) {
+    let hls = Telemetry.snapshotHistograms(this.getDatasetType(), clearSubsession);
+    return TelemetryUtils.packHistograms(hls, this._testing);
   },
 
-  getKeyedHistograms(subsession, clearSubsession) {
-    let khs = Telemetry.snapshotKeyedHistograms(this.getDatasetType(), subsession, clearSubsession);
-    let ret = {};
-
-    for (let [process, histograms] of Object.entries(khs)) {
-      ret[process] = {};
-      for (let [name, value] of Object.entries(histograms)) {
-        if (this._testing || !name.startsWith("TELEMETRY_TEST_")) {
-          let keys = Object.keys(value);
-          if (keys.length == 0) {
-            // Skip empty keyed histogram
-            continue;
-          }
-          ret[process][name] = {};
-          for (let [key, hgram] of Object.entries(value)) {
-            ret[process][name][key] = this.packHistogram(hgram);
-          }
-        }
-      }
-    }
-
-    return ret;
+  getKeyedHistograms(clearSubsession) {
+    let khs = Telemetry.snapshotKeyedHistograms(this.getDatasetType(), clearSubsession);
+    return TelemetryUtils.packKeyedHistograms(khs, this._testing);
   },
 
   /**
@@ -947,26 +866,6 @@ var Impl = {
     }
 
     return ret;
-  },
-
-  getEvents(isSubsession, clearSubsession) {
-    if (!isSubsession) {
-      // We only support scalars for subsessions.
-      this._log.trace("getEvents - We only support events in subsessions.");
-      return [];
-    }
-
-    let snapshot = Telemetry.snapshotEvents(this.getDatasetType(),
-                                            clearSubsession);
-
-    // Don't return the test events outside of test environments.
-    if (!this._testing) {
-      for (let proc of Object.keys(snapshot)) {
-        snapshot[proc] = snapshot[proc].filter(e => !e[1].startsWith("telemetry.test"));
-      }
-    }
-
-    return snapshot;
   },
 
   /**
@@ -1089,11 +988,12 @@ var Impl = {
     b("MEMORY_UNIQUE", "residentUnique");
     p("MEMORY_HEAP_OVERHEAD_FRACTION", "heapOverheadFraction");
     b("MEMORY_JS_GC_HEAP", "JSMainRuntimeGCHeap");
-    c("MEMORY_JS_COMPARTMENTS_SYSTEM", "JSMainRuntimeCompartmentsSystem");
-    c("MEMORY_JS_COMPARTMENTS_USER", "JSMainRuntimeCompartmentsUser");
+    c("MEMORY_JS_COMPARTMENTS_SYSTEM", "JSMainRuntimeRealmsSystem");
+    c("MEMORY_JS_COMPARTMENTS_USER", "JSMainRuntimeRealmsUser");
     b("MEMORY_IMAGES_CONTENT_USED_UNCOMPRESSED", "imagesContentUsedUncompressed");
     b("MEMORY_STORAGE_SQLITE", "storageSQLite");
     cc("LOW_MEMORY_EVENTS_VIRTUAL", "lowMemoryEventsVirtual");
+    cc("LOW_MEMORY_EVENTS_COMMIT_SPACE", "lowMemoryEventsCommitSpace");
     cc("LOW_MEMORY_EVENTS_PHYSICAL", "lowMemoryEventsPhysical");
     cc("PAGE_FAULTS_HARD", "pageFaultsHard");
 
@@ -1210,7 +1110,6 @@ var Impl = {
 
     // Add extended set measurements common to chrome & content processes
     if (Telemetry.canRecordExtended) {
-      payloadObj.chromeHangs = protect(() => Telemetry.chromeHangs);
       payloadObj.log = [];
       payloadObj.webrtc = protect(() => Telemetry.webrtcStats);
     }
@@ -1221,11 +1120,10 @@ var Impl = {
 
     // Additional payload for chrome process.
     let measurements = {
-      histograms: protect(() => this.getHistograms(isSubsession, clearSubsession), {}),
-      keyedHistograms: protect(() => this.getKeyedHistograms(isSubsession, clearSubsession), {}),
+      histograms: protect(() => this.getHistograms(clearSubsession), {}),
+      keyedHistograms: protect(() => this.getKeyedHistograms(clearSubsession), {}),
       scalars: protect(() => this.getScalars(isSubsession, clearSubsession), {}),
       keyedScalars: protect(() => this.getScalars(isSubsession, clearSubsession, true), {}),
-      events: protect(() => this.getEvents(isSubsession, clearSubsession)),
     };
 
     let measurementsContainGPU = Object
@@ -1249,14 +1147,13 @@ var Impl = {
         if (processType == "parent" && (key == "histograms" || key == "keyedHistograms")) {
           payloadLoc = payloadObj;
         }
-        // The Dynamic process only collects events and scalars.
-        if (processType == "dynamic" && !["events", "scalars"].includes(key)) {
+        // The Dynamic process only collects scalars.
+        if (processType == "dynamic" && key !== "scalars") {
           continue;
         }
 
         // Process measurements can be empty, set a default value.
-        let defaultValue = key == "events" ? [] : {};
-        payloadLoc[key] = measurements[key][processType] || defaultValue;
+        payloadLoc[key] = measurements[key][processType] || {};
       }
 
       // Add process measurements to payload.

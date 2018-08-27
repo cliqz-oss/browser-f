@@ -132,7 +132,10 @@ UNITTEST_PLATFORM_PRETTY_NAMES = {
         'linux64-asan',
         'linux64-stylo-sequential'
     ],
-    'Android 4.3': ['android-4.3-arm7-api-16'],
+    'Android 4.3 Emulator': ['android-em-4.3-arm7-api-16'],
+    'Android 7.0 Moto G5 32bit': ['android-hw-g5-7.0-arm7-api-16'],
+    'Android 8.0 Google Pixel 2 32bit': ['android-hw-p2-8.0-arm7-api-16'],
+    'Android 8.0 Google Pixel 2 64bit': ['android-hw-p2-8.0-android-aarch64'],
     '10.10': ['macosx64'],
     # other commonly-used substrings for platforms not yet supported with
     # in-tree taskgraphs:
@@ -201,6 +204,7 @@ def parse_message(message):
     parser.add_argument('-u', '--unittests', nargs='?',
                         dest='unittests', const='all', default='all')
     parser.add_argument('-t', '--talos', nargs='?', dest='talos', const='all', default='none')
+    parser.add_argument('-r', '--raptor', nargs='?', dest='raptor', const='all', default='none')
     parser.add_argument('-i', '--interactive',
                         dest='interactive', action='store_true', default=False)
     parser.add_argument('-e', '--all-emails',
@@ -209,6 +213,8 @@ def parse_message(message):
                         dest='notifications', action='store_const', const='failure')
     parser.add_argument('-j', '--job', dest='jobs', action='append')
     parser.add_argument('--rebuild-talos', dest='talos_trigger_tests', action='store',
+                        type=int, default=1)
+    parser.add_argument('--rebuild-raptor', dest='raptor_trigger_tests', action='store',
                         type=int, default=1)
     parser.add_argument('--setenv', dest='env', action='append')
     parser.add_argument('--geckoProfile', dest='profile', action='store_true')
@@ -263,10 +269,12 @@ class TryOptionSyntax(object):
         self.platforms = []
         self.unittests = []
         self.talos = []
+        self.raptor = []
         self.trigger_tests = 0
         self.interactive = False
         self.notifications = None
         self.talos_trigger_tests = 0
+        self.raptor_trigger_tests = 0
         self.env = []
         self.profile = False
         self.tag = None
@@ -281,10 +289,12 @@ class TryOptionSyntax(object):
         self.unittests = self.parse_test_option(
             "unittest_try_name", options['unittests'], full_task_graph)
         self.talos = self.parse_test_option("talos_try_name", options['talos'], full_task_graph)
+        self.raptor = self.parse_test_option("raptor_try_name", options['raptor'], full_task_graph)
         self.trigger_tests = options['trigger_tests']
         self.interactive = options['interactive']
         self.notifications = options['notifications']
         self.talos_trigger_tests = options['talos_trigger_tests']
+        self.raptor_trigger_tests = options['raptor_trigger_tests']
         self.env = options['env']
         self.profile = options['profile']
         self.tag = options['tag']
@@ -583,7 +593,8 @@ class TryOptionSyntax(object):
             return check_run_on_projects()
         elif attr('kind') == 'test':
             return match_test(self.unittests, 'unittest_try_name') \
-                 or match_test(self.talos, 'talos_try_name')
+                 or match_test(self.talos, 'talos_try_name') \
+                 or match_test(self.raptor, 'raptor_try_name')
         elif attr('kind') in BUILD_KINDS:
             if attr('build_type') not in self.build_types:
                 return False
@@ -608,11 +619,13 @@ class TryOptionSyntax(object):
             "platforms: " + none_for_all(self.platforms),
             "unittests: " + none_for_all(self.unittests),
             "talos: " + none_for_all(self.talos),
+            "raptor" + none_for_all(self.raptor),
             "jobs: " + none_for_all(self.jobs),
             "trigger_tests: " + str(self.trigger_tests),
             "interactive: " + str(self.interactive),
             "notifications: " + str(self.notifications),
             "talos_trigger_tests: " + str(self.talos_trigger_tests),
+            "raptor_trigger_tests: " + str(self.raptor_trigger_tests),
             "env: " + str(self.env),
             "profile: " + str(self.profile),
             "tag: " + str(self.tag),

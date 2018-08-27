@@ -6,11 +6,9 @@
 
 #include "nsISupports.idl"
 
-interface nsIDOMNode;
-interface nsIDOMRange;
-
 webidl Element;
 webidl Node;
+webidl Range;
 
 [scriptable, builtinclass, uuid(4805e684-49b9-11d3-9ce4-ed60bd6cb5bc)]
 interface nsITableEditor : nsISupports
@@ -259,13 +257,13 @@ interface nsITableEditor : nsISupports
     * @return
     *     0                        aCellElement was not a cell
     *                              (returned result = NS_ERROR_FAILURE)
-    *     TABLESELECTION_CELL      There are 1 or more cells selected but
+    *     TableSelection::Cell     There are 1 or more cells selected but
     *                              complete rows or columns are not selected
-    *     TABLESELECTION_ROW       All cells are in 1 or more rows
+    *     TableSelection::Row      All cells are in 1 or more rows
     *                              and in each row, all cells selected
     *                              Note: This is the value if all rows
     *                              (thus all cells) are selected
-    *     TABLESELECTION_COLUMN    All cells are in 1 or more columns
+    *     TableSelection::Column   All cells are in 1 or more columns
     *                              and in each column, all cells are selected
     */
   uint32_t getSelectedCellsType(in Element aElement);
@@ -282,7 +280,7 @@ interface nsITableEditor : nsISupports
     *   (in C++: returns NS_EDITOR_ELEMENT_NOT_FOUND if an element is not found
     *    passes NS_SUCCEEDED macro)
     */
-  Element getFirstSelectedCell(out nsIDOMRange aRange);
+  Element getFirstSelectedCell(out Range aRange);
 
   /** Get first selected element in the table
     *   This is the upper-left-most selected cell in table,
@@ -313,5 +311,5 @@ interface nsITableEditor : nsISupports
     *   (in C++: returns NS_EDITOR_ELEMENT_NOT_FOUND if an element is not found
     *    passes NS_SUCCEEDED macro)
     */
-  Element getNextSelectedCell(out nsIDOMRange aRange);
+  Element getNextSelectedCell(out Range aRange);
 };

@@ -8,7 +8,7 @@
 
 #include <time.h>
 
-#include "mozilla/HangMonitor.h"
+#include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/Move.h"
@@ -36,8 +36,6 @@ class nsAppShell :
 public:
     struct Event : mozilla::LinkedListElement<Event>
     {
-        typedef mozilla::HangMonitor::ActivityType Type;
-
         static uint64_t GetTime()
         {
             timespec time;
@@ -64,9 +62,9 @@ public:
             queue.insertBack(this);
         }
 
-        virtual Type ActivityType() const
+        virtual bool IsUIEvent() const
         {
-            return Type::kGeneralActivity;
+            return false;
         }
     };
 
@@ -77,7 +75,7 @@ public:
         T lambda;
 
     public:
-        explicit LambdaEvent(T&& l) : lambda(mozilla::Move(l)) {}
+        explicit LambdaEvent(T&& l) : lambda(std::move(l)) {}
         void Run() override { return lambda(); }
     };
 
@@ -88,7 +86,7 @@ public:
 
     public:
         explicit ProxyEvent(mozilla::UniquePtr<Event>&& event)
-            : baseEvent(mozilla::Move(event))
+            : baseEvent(std::move(event))
         {}
 
         void PostTo(mozilla::LinkedList<Event>& queue) override
@@ -127,7 +125,7 @@ public:
         if (!sAppShell) {
             return;
         }
-        sAppShell->mEventQueue.Post(mozilla::Move(event));
+        sAppShell->mEventQueue.Post(std::move(event));
     }
 
     // Post a event that will call a lambda
@@ -140,7 +138,7 @@ public:
             return;
         }
         sAppShell->mEventQueue.Post(mozilla::MakeUnique<LambdaEvent<T>>(
-                mozilla::Move(lambda)));
+                std::move(lambda)));
     }
 
     // Post a event and wait for it to finish running on the Gecko thread.
@@ -152,7 +150,7 @@ public:
     typename mozilla::EnableIf<!mozilla::IsBaseOf<Event, T>::value, void>::Type
     SyncRunEvent(T&& lambda)
     {
-        SyncRunEvent(LambdaEvent<T>(mozilla::Forward<T>(lambda)));
+        SyncRunEvent(LambdaEvent<T>(std::forward<T>(lambda)));
     }
 
     static already_AddRefed<nsIURI> ResolveURI(const nsCString& aUriStr);
@@ -244,18 +242,17 @@ protected:
             // Ownership of event object transfers to the return value.
             mozilla::UniquePtr<Event> event(mQueue.popFirst());
             if (!event || !event->mPostTime) {
-                return Move(event);
+                return event;
             }
 
 #ifdef EARLY_BETA_OR_EARLIER
-            const size_t latencyType = (event->ActivityType() ==
-                    Event::Type::kUIActivity) ? LATENCY_UI : LATENCY_OTHER;
+            const size_t latencyType = event->IsUIEvent() ? LATENCY_UI : LATENCY_OTHER;
             const uint64_t latency = Event::GetTime() - event->mPostTime;
 
             sLatencyCount[latencyType]++;
             sLatencyTime[latencyType] += latency;
 #endif
-            return Move(event);
+            return event;
         }
 
     } mEventQueue;

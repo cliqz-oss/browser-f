@@ -132,6 +132,7 @@ class ObjectBox;
     F(SuperBase) \
     F(SuperCall) \
     F(SetThis) \
+    F(ImportMeta) \
     \
     /* Unary operators. */ \
     F(TypeOfName) \
@@ -622,7 +623,6 @@ class ParseNode
 
     // include "ParseNode-inl.h" for these methods.
     inline PropertyName* name() const;
-    inline JSAtom* atom() const;
 
     ParseNode* expr() const {
         MOZ_ASSERT(pn_arity == PN_NAME || pn_arity == PN_CODE);

@@ -12,22 +12,46 @@ const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 loader.lazyRequireGetter(this, "clipboardHelper", "devtools/shared/platform/clipboard");
 
 const { getStr } = require("../utils/l10n");
+const Services = require("Services");
 const Types = require("../types");
+
+const FONT_HIGHLIGHTER_PREF = "devtools.inspector.fonthighlighter.enabled";
 
 class FontMeta extends PureComponent {
   static get propTypes() {
     return {
       font: PropTypes.shape(Types.font).isRequired,
+      onToggleFontHighlight: PropTypes.func.isRequired,
     };
   }
 
   constructor(props) {
     super(props);
     this.onCopyURL = this.onCopyURL.bind(this);
+    this.onNameMouseOver = this.onNameMouseOver.bind(this);
+    this.onNameMouseOut = this.onNameMouseOut.bind(this);
   }
 
   onCopyURL() {
     clipboardHelper.copyString(this.props.font.URI);
+  }
+
+  onNameMouseOver() {
+    const {
+      font,
+      onToggleFontHighlight,
+    } = this.props;
+
+    onToggleFontHighlight(font, true);
+  }
+
+  onNameMouseOut() {
+    const {
+      font,
+      onToggleFontHighlight,
+    } = this.props;
+
+    onToggleFontHighlight(font, false);
   }
 
   renderFontOrigin(url) {
@@ -61,24 +85,33 @@ class FontMeta extends PureComponent {
     );
   }
 
-  renderFontName(name) {
-    return dom.h1(
-      {
-        className: "font-name"
-      },
-      name
+  renderFontName(name, family) {
+    let options = {};
+
+    if (Services.prefs.getBoolPref(FONT_HIGHLIGHTER_PREF)) {
+      options = {
+        onMouseOver: this.onNameMouseOver,
+        onMouseOut: this.onNameMouseOut,
+      };
+    }
+
+    return dom.div(
+      options,
+      dom.div({ className: "font-family-name" }, family),
+      dom.div({ className: "font-name" }, name)
     );
   }
 
   render() {
     const {
+      CSSFamilyName,
       name,
       URI,
     } = this.props.font;
 
     return createElement(Fragment,
       null,
-      this.renderFontName(name),
+      this.renderFontName(name, CSSFamilyName),
       this.renderFontOrigin(URI)
     );
   }

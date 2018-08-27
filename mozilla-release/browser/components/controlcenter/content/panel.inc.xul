@@ -47,7 +47,7 @@
           </vbox>
         </vbox>
         <button id="identity-popup-security-expander"
-                class="identity-popup-expander"
+                class="identity-popup-expander subviewkeynav"
                 when-connection="not-secure secure secure-ev secure-cert-user-overridden"
                 oncommand="gIdentityHandler.showSecuritySubView();"/>
       </hbox>
@@ -55,30 +55,53 @@
       <!-- Tracking Protection Section -->
       <hbox id="tracking-protection-container"
             class="identity-popup-section"
-            when-connection="not-secure secure secure-ev secure-cert-user-overridden file">
+            when-connection="not-secure secure secure-ev secure-cert-user-overridden extension">
         <vbox id="tracking-protection-content" flex="1">
-          <label class="identity-popup-headline"
-                 crop="end"
-                 value="&trackingProtection.title;" />
+          <hbox>
+            <label id="tracking-protection-label-on"
+                   class="identity-popup-headline"
+                   flex="1">&trackingProtection.on;</label>
+            <label id="tracking-protection-label-off"
+                   class="identity-popup-headline"
+                   flex="1">&trackingProtection.off;</label>
+            <toolbarbutton id="tracking-protection-preferences-button"
+                           class="identity-popup-preferences-button subviewbutton"
+                           tooltiptext="&trackingProtection.tooltip;"
+                           oncommand="TrackingProtection.openPreferences('identityPopup-TP-preferencesButton');" />
+          </hbox>
 
           <description id="tracking-blocked"
-                       crop="end">&trackingProtection.detectedBlocked3;</description>
+                       crop="end">&trackingProtection.detectedBlocked4;</description>
           <description id="tracking-loaded"
-                       crop="end">&trackingProtection.detectedNotBlocked3;</description>
+                       crop="end">&trackingProtection.detectedNotBlocked5;</description>
           <description id="tracking-not-detected"
-                       crop="end">&trackingProtection.notDetected3;</description>
+                       crop="end">&trackingProtection.notDetected5;</description>
+          <description id="tracking-loaded-exception"
+                       crop="end">&trackingProtection.detectedException;</description>
+          <description id="tracking-not-detected-exception"
+                       crop="end">&trackingProtection.notDetectedException;</description>
+          <description id="tracking-reload-required"
+                       crop="end">&trackingProtection.reloadRequired2;</description>
 
+          <button id="tracking-action-reload"
+                  class="tracking-protection-button subviewkeynav"
+                  label="&trackingProtection.reload2.label;"
+                  accesskey="&trackingProtection.reload2.accesskey;"
+                  oncommand="TrackingProtection.hideIdentityPopupAndReload();" />
           <button id="tracking-action-unblock"
-                  label="&trackingProtection.unblock.label;"
-                  accesskey="&trackingProtection.unblock.accesskey;"
+                  class="tracking-protection-button subviewkeynav"
+                  label="&trackingProtection.unblock3.label;"
+                  accesskey="&trackingProtection.unblock3.accesskey;"
                   oncommand="TrackingProtection.disableForCurrentPage();" />
           <button id="tracking-action-unblock-private"
-                  label="&trackingProtection.unblockPrivate.label;"
-                  accesskey="&trackingProtection.unblockPrivate.accesskey;"
+                  class="tracking-protection-button subviewkeynav"
+                  label="&trackingProtection.unblockPrivate3.label;"
+                  accesskey="&trackingProtection.unblockPrivate3.accesskey;"
                   oncommand="TrackingProtection.disableForCurrentPage();" />
           <button id="tracking-action-block"
-                  label="&trackingProtection.block2.label;"
-                  accesskey="&trackingProtection.block2.accesskey;"
+                  class="tracking-protection-button subviewkeynav"
+                  label="&trackingProtection.block4.label;"
+                  accesskey="&trackingProtection.block4.accesskey;"
                   oncommand="TrackingProtection.enableForCurrentPage();" />
         </vbox>
       </hbox>
@@ -86,15 +109,33 @@
       <!-- Permissions Section -->
       <hbox class="identity-popup-section"
             when-connection="not-secure secure secure-ev secure-cert-user-overridden file extension">
-        <vbox id="identity-popup-permissions-content" flex="1">
-          <label id="identity-popup-permissions-headline"
-                 class="identity-popup-headline"
-                 value="&identity.permissions;"/>
+        <vbox id="identity-popup-permissions-content" flex="1" role="group"
+              aria-labelledby="identity-popup-permissions-headline">
+          <hbox>
+            <label id="identity-popup-permissions-headline"
+                   class="identity-popup-headline"
+                   flex="1"
+                   value="&identity.permissions;"/>
+            <toolbarbutton id="identity-popup-permission-preferences-button"
+                           class="identity-popup-preferences-button subviewbutton"
+                           tooltiptext="&identity.permissionsPreferences.tooltip;"
+                           oncommand="gIdentityHandler.openPermissionPreferences();" />
+          </hbox>
           <vbox id="identity-popup-permission-list"/>
           <description id="identity-popup-permission-reload-hint">&identity.permissionsReloadHint;</description>
           <description id="identity-popup-permission-empty-hint">&identity.permissionsEmpty;</description>
         </vbox>
       </hbox>
+
+      <!-- Clear Site Data Button -->
+      <vbox hidden="true"
+            id="identity-popup-clear-sitedata-footer"
+            class="identity-popup-footer">
+        <button class="subviewkeynav"
+                id="identity-popup-clear-sitedata-button"
+                label="&identity.clearSiteData;"
+                oncommand="gIdentityHandler.clearSiteData(event);"/>
+      </vbox>
     </panelview>
 
     <!-- Security SubView -->
@@ -126,6 +167,7 @@
 
         <!-- Remove Certificate Exception -->
         <button when-connection="secure-cert-user-overridden"
+                class="subviewkeynav"
                 label="&identity.removeCertException.label;"
                 accesskey="&identity.removeCertException.accesskey;"
                 oncommand="gIdentityHandler.removeCertException()"/>
@@ -167,19 +209,20 @@
                      and-when-loginforms="insecure">&identity.description.activeLoaded; <label observes="identity-popup-mcb-learn-more"/></description>
 
         <!-- Buttons to enable/disable mixed content blocking. -->
-        <button when-mixedcontent="active-blocked"
+        <button when-mixedcontent="active-blocked" class="subviewkeynav"
                 label="&identity.disableMixedContentBlocking.label;"
                 accesskey="&identity.disableMixedContentBlocking.accesskey;"
                 oncommand="gIdentityHandler.disableMixedContentProtection()"/>
-        <button when-mixedcontent="active-loaded"
+        <button when-mixedcontent="active-loaded" class="subviewkeynav"
                 label="&identity.enableMixedContentBlocking.label;"
                 accesskey="&identity.enableMixedContentBlocking.accesskey;"
                 oncommand="gIdentityHandler.enableMixedContentProtection()"/>
       </vbox>
 
-      <vbox id="identity-popup-securityView-footer">
+      <vbox id="identity-popup-more-info-footer" class="identity-popup-footer">
         <!-- More Security Information -->
-        <button label="&identity.moreInfoLinkText2;"
+        <button id="identity-popup-more-info"  class="subviewkeynav"
+                label="&identity.moreInfoLinkText2;"
                 oncommand="gIdentityHandler.handleMoreInfoClick(event);"/>
       </vbox>
 

@@ -34,7 +34,6 @@ class imgMemoryReporter;
 
 namespace mozilla {
 namespace image {
-class ImageURL;
 } // namespace image
 } // namespace mozilla
 
@@ -49,7 +48,7 @@ public:
 
   nsrefcnt AddRef()
   {
-    NS_PRECONDITION(int32_t(mRefCnt) >= 0, "illegal refcnt");
+    MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");
     NS_ASSERT_OWNINGTHREAD(imgCacheEntry);
     ++mRefCnt;
     NS_LOG_ADDREF(this, mRefCnt, "imgCacheEntry", sizeof(*this));
@@ -58,7 +57,7 @@ public:
 
   nsrefcnt Release()
   {
-    NS_PRECONDITION(0 != mRefCnt, "dup release");
+    MOZ_ASSERT(0 != mRefCnt, "dup release");
     NS_ASSERT_OWNINGTHREAD(imgCacheEntry);
     --mRefCnt;
     NS_LOG_RELEASE(this, mRefCnt, "imgCacheEntry");
@@ -234,7 +233,6 @@ class imgLoader final : public imgILoader,
 
 public:
   typedef mozilla::image::ImageCacheKey ImageCacheKey;
-  typedef mozilla::image::ImageURL ImageURL;
   typedef nsRefPtrHashtable<nsGenericHashKey<ImageCacheKey>,
                             imgCacheEntry> imgCacheTable;
   typedef nsTHashtable<nsPtrHashKey<imgRequest>> imgSet;

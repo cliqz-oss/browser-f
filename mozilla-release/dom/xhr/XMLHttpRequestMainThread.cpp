@@ -13,7 +13,6 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/BlobBinding.h"
-#include "mozilla/dom/BlobSet.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/DOMString.h"
 #include "mozilla/dom/File.h"
@@ -32,7 +31,6 @@
 #include "mozilla/LoadInfo.h"
 #include "mozilla/LoadContext.h"
 #include "mozilla/MemoryReporting.h"
-#include "nsIDOMDocument.h"
 #include "mozilla/dom/ProgressEvent.h"
 #include "nsIJARChannel.h"
 #include "nsIJARURI.h"
@@ -1540,20 +1538,6 @@ XMLHttpRequestMainThread::SetOriginAttributes(const OriginAttributesDictionary& 
   }
 }
 
-void
-XMLHttpRequestMainThread::PopulateNetworkInterfaceId()
-{
-  if (mNetworkInterfaceId.IsEmpty()) {
-    return;
-  }
-  nsCOMPtr<nsIHttpChannelInternal> channel(do_QueryInterface(mChannel));
-  if (!channel) {
-    return;
-  }
-  DebugOnly<nsresult> rv = channel->SetNetworkInterfaceId(mNetworkInterfaceId);
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-}
-
 /*
  * "Copy" from a stream.
  */
@@ -2002,7 +1986,6 @@ XMLHttpRequestMainThread::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 
     // Create an empty document from it.
     const nsAString& emptyStr = EmptyString();
-    nsCOMPtr<nsIDOMDocument> responseDoc;
     nsIGlobalObject* global = DOMEventTargetHelper::GetParentObject();
 
     nsCOMPtr<nsIPrincipal> requestingPrincipal;
@@ -2010,13 +1993,12 @@ XMLHttpRequestMainThread::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
        GetChannelResultPrincipal(channel, getter_AddRefs(requestingPrincipal));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = NS_NewDOMDocument(getter_AddRefs(responseDoc),
+    rv = NS_NewDOMDocument(getter_AddRefs(mResponseXML),
                            emptyStr, emptyStr, nullptr, docURI,
                            baseURI, requestingPrincipal, true, global,
                            mIsHtml ? DocumentFlavorHTML :
                                      DocumentFlavorLegacyGuess);
     NS_ENSURE_SUCCESS(rv, rv);
-    mResponseXML = do_QueryInterface(responseDoc);
     mResponseXML->SetChromeXHRDocURI(chromeXHRDocURI);
     mResponseXML->SetChromeXHRDocBaseURI(chromeXHRDocBaseURI);
 
@@ -2458,7 +2440,7 @@ XMLHttpRequestMainThread::InitiateFetch(already_AddRefed<nsIInputStream> aUpload
                                         nsACString& aUploadContentType)
 {
   nsresult rv;
-  nsCOMPtr<nsIInputStream> uploadStream = Move(aUploadStream);
+  nsCOMPtr<nsIInputStream> uploadStream = std::move(aUploadStream);
 
   // nsIRequest::LOAD_BACKGROUND prevents throbber from becoming active, which
   // in turn keeps STOP button from becoming active.  If the consumer passed in
@@ -2792,8 +2774,6 @@ XMLHttpRequestMainThread::SendInternal(const BodyExtractorBase* aBody)
     return MaybeSilentSendFailure(NS_ERROR_DOM_NETWORK_ERR);
   }
 
-  PopulateNetworkInterfaceId();
-
   // XXX We should probably send a warning to the JS console
   //     if there are no event listeners set and we are doing
   //     an asynchronous call.
@@ -3072,10 +3052,10 @@ XMLHttpRequestMainThread::DispatchToMainThread(already_AddRefed<nsIRunnable> aRu
     nsCOMPtr<nsIEventTarget> target = global->EventTargetFor(TaskCategory::Other);
     MOZ_ASSERT(target);
 
-    return target->Dispatch(Move(aRunnable), NS_DISPATCH_NORMAL);
+    return target->Dispatch(std::move(aRunnable), NS_DISPATCH_NORMAL);
   }
 
-  return NS_DispatchToMainThread(Move(aRunnable));
+  return NS_DispatchToMainThread(std::move(aRunnable));
 }
 
 void
@@ -3217,7 +3197,7 @@ XMLHttpRequestMainThread::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
                                                  uint32_t    aFlags,
                                                  nsIAsyncVerifyRedirectCallback *callback)
 {
-  NS_PRECONDITION(aNewChannel, "Redirect without a channel?");
+  MOZ_ASSERT(aNewChannel, "Redirect without a channel?");
 
   // Prepare to receive callback
   mRedirectCallback = callback;

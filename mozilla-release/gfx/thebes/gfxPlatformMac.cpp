@@ -81,19 +81,11 @@ gfxPlatformMac::gfxPlatformMac()
 
     InitBackendPrefs(GetBackendPrefs());
 
-    // XXX: Bug 1036682 - we run out of fds on Mac when using tiled layers because
-    // with 256x256 tiles we can easily hit the soft limit of 800 when using double
-    // buffered tiles in e10s, so let's bump the soft limit to the hard limit for the OS
-    // up to a new cap of OPEN_MAX.
-    struct rlimit limits;
-    if (getrlimit(RLIMIT_NOFILE, &limits) == 0) {
-        limits.rlim_cur = std::min(rlim_t(OPEN_MAX), limits.rlim_max);
-        if (setrlimit(RLIMIT_NOFILE, &limits) != 0) {
-            NS_WARNING("Unable to bump RLIMIT_NOFILE to the maximum number on this OS");
-        }
-    }
-
     MacIOSurfaceLib::LoadLibrary();
+
+    if (nsCocoaFeatures::OnHighSierraOrLater()) {
+        mHasNativeColrFontSupport = true;
+    }
 }
 
 gfxPlatformMac::~gfxPlatformMac()
@@ -111,7 +103,7 @@ gfxPlatformMac::GetBackendPrefs() const
   data.mCanvasDefault = BackendType::SKIA;
   data.mContentDefault = BackendType::SKIA;
 
-  return mozilla::Move(data);
+  return data;
 }
 
 bool

@@ -94,8 +94,8 @@ public:
     , mTimeStamp(JS_Now() / PR_USEC_PER_MSEC)
     , mStartTimerValue(0)
     , mStartTimerStatus(Console::eTimerUnknown)
-    , mStopTimerDuration(0)
-    , mStopTimerStatus(Console::eTimerUnknown)
+    , mLogTimerDuration(0)
+    , mLogTimerStatus(Console::eTimerUnknown)
     , mCountValue(MAX_PAGE_COUNTERS)
     , mIDType(eUnknown)
     , mOuterIDNumber(0)
@@ -221,17 +221,18 @@ public:
   Console::TimerStatus mStartTimerStatus;
 
   // These values are set in the owning thread and they contain the duration,
-  // the name and the status of the StopTimer method. If status is false,
+  // the name and the status of the LogTimer method. If status is false,
   // something went wrong. They will be set on the owning thread and never
   // touched again on that thread. They will be used in order to create a
-  // ConsoleTimerEnd dictionary. This members are set when
-  // console.timeEnd() is called.
-  double mStopTimerDuration;
-  nsString mStopTimerLabel;
-  Console::TimerStatus mStopTimerStatus;
+  // ConsoleTimerLogOrEnd dictionary. This members are set when
+  // console.timeEnd() or console.timeLog() are called.
+  double mLogTimerDuration;
+  nsString mLogTimerLabel;
+  Console::TimerStatus mLogTimerStatus;
 
-  // These 2 values are set by IncreaseCounter on the owning thread and they are
-  // used CreateCounterValue. These members are set when console.count() is
+  // These 2 values are set by IncreaseCounter or ResetCounter on the owning
+  // thread and they are used by CreateCounterOrResetCounterValue.
+  // These members are set when console.count() or console.countReset() are
   // called.
   nsString mCountLabel;
   uint32_t mCountValue;
@@ -643,7 +644,7 @@ private:
     // don't need a proxy here.
     global = js::UncheckedUnwrap(global);
 
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
     // We don't need to set a parent object in mCallData bacause there are not
     // DOM objects exposed to worklet.
@@ -666,8 +667,7 @@ class ConsoleWorkerRunnable : public WorkerProxyToMainThreadRunnable
 {
 public:
   explicit ConsoleWorkerRunnable(Console* aConsole)
-    : WorkerProxyToMainThreadRunnable(GetCurrentThreadWorkerPrivate())
-    , mConsole(aConsole)
+    : mConsole(aConsole)
   {}
 
   ~ConsoleWorkerRunnable() override = default;
@@ -675,14 +675,15 @@ public:
   bool
   Dispatch(JSContext* aCx)
   {
-    mWorkerPrivate->AssertIsOnWorkerThread();
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_ASSERT(workerPrivate);
 
     if (NS_WARN_IF(!PreDispatch(aCx))) {
-      RunBackOnWorkerThreadForCleanup();
+      RunBackOnWorkerThreadForCleanup(workerPrivate);
       return false;
     }
 
-    if (NS_WARN_IF(!WorkerProxyToMainThreadRunnable::Dispatch())) {
+    if (NS_WARN_IF(!WorkerProxyToMainThreadRunnable::Dispatch(workerPrivate))) {
       // RunBackOnWorkerThreadForCleanup() will be called by
       // WorkerProxyToMainThreadRunnable::Dispatch().
       return false;
@@ -693,27 +694,29 @@ public:
 
 protected:
   void
-  RunOnMainThread() override
+  RunOnMainThread(WorkerPrivate* aWorkerPrivate) override
   {
+    MOZ_ASSERT(aWorkerPrivate);
     AssertIsOnMainThread();
 
     // Walk up to our containing page
-    WorkerPrivate* wp = mWorkerPrivate;
+    WorkerPrivate* wp = aWorkerPrivate;
     while (wp->GetParent()) {
       wp = wp->GetParent();
     }
 
     nsPIDOMWindowInner* window = wp->GetWindow();
     if (!window) {
-      RunWindowless();
+      RunWindowless(aWorkerPrivate);
     } else {
-      RunWithWindow(window);
+      RunWithWindow(aWorkerPrivate, window);
     }
   }
 
   void
-  RunWithWindow(nsPIDOMWindowInner* aWindow)
+  RunWithWindow(WorkerPrivate* aWorkerPrivate, nsPIDOMWindowInner* aWindow)
   {
+    MOZ_ASSERT(aWorkerPrivate);
     AssertIsOnMainThread();
 
     AutoJSAPI jsapi;
@@ -729,15 +732,16 @@ protected:
       return;
     }
 
-    RunConsole(jsapi.cx(), outerWindow, aWindow);
+    RunConsole(jsapi.cx(), aWorkerPrivate, outerWindow, aWindow);
   }
 
   void
-  RunWindowless()
+  RunWindowless(WorkerPrivate* aWorkerPrivate)
   {
+    MOZ_ASSERT(aWorkerPrivate);
     AssertIsOnMainThread();
 
-    WorkerPrivate* wp = mWorkerPrivate;
+    WorkerPrivate* wp = aWorkerPrivate;
     while (wp->GetParent()) {
       wp = wp->GetParent();
     }
@@ -758,15 +762,16 @@ protected:
     // We don't need a proxy here.
     global = js::UncheckedUnwrap(global);
 
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
-    RunConsole(cx, nullptr, nullptr);
+    RunConsole(cx, aWorkerPrivate, nullptr, nullptr);
   }
 
   void
-  RunBackOnWorkerThreadForCleanup() override
+  RunBackOnWorkerThreadForCleanup(WorkerPrivate* aWorkerPrivate) override
   {
-    mWorkerPrivate->AssertIsOnWorkerThread();
+    MOZ_ASSERT(aWorkerPrivate);
+    aWorkerPrivate->AssertIsOnWorkerThread();
     ReleaseData();
     mConsole = nullptr;
   }
@@ -777,7 +782,8 @@ protected:
 
   // This method is called in the main-thread.
   virtual void
-  RunConsole(JSContext* aCx, nsPIDOMWindowOuter* aOuterWindow,
+  RunConsole(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
+             nsPIDOMWindowOuter* aOuterWindow,
              nsPIDOMWindowInner* aInnerWindow) = 0;
 
   // This method is called in the owning thread of the Console object.
@@ -801,7 +807,6 @@ public:
     , mCallData(aCallData)
   {
     MOZ_ASSERT(aCallData);
-    mWorkerPrivate->AssertIsOnWorkerThread();
     mCallData->AssertIsOnOwningThread();
 
     // Marking this CallData as in use.
@@ -821,9 +826,11 @@ private:
   }
 
   void
-  RunConsole(JSContext* aCx, nsPIDOMWindowOuter* aOuterWindow,
+  RunConsole(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
+             nsPIDOMWindowOuter* aOuterWindow,
              nsPIDOMWindowInner* aInnerWindow) override
   {
+    MOZ_ASSERT(aWorkerPrivate);
     AssertIsOnMainThread();
 
     // The windows have to run in parallel.
@@ -839,13 +846,13 @@ private:
 
       nsString id = frame.mFilename;
       nsString innerID;
-      if (mWorkerPrivate->IsSharedWorker()) {
+      if (aWorkerPrivate->IsSharedWorker()) {
         innerID = NS_LITERAL_STRING("SharedWorker");
-      } else if (mWorkerPrivate->IsServiceWorker()) {
+      } else if (aWorkerPrivate->IsServiceWorker()) {
         innerID = NS_LITERAL_STRING("ServiceWorker");
         // Use scope as ID so the webconsole can decide if the message should
         // show up per tab
-        CopyASCIItoUTF16(mWorkerPrivate->ServiceWorkerScope(), id);
+        CopyASCIItoUTF16(aWorkerPrivate->ServiceWorkerScope(), id);
       } else {
         innerID = NS_LITERAL_STRING("Worker");
       }
@@ -921,7 +928,7 @@ private:
     // don't need a proxy here.
     global = js::UncheckedUnwrap(global);
 
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
     // We don't need to set a parent object in mCallData bacause there are not
     // DOM objects exposed to worklet.
@@ -960,7 +967,8 @@ private:
   }
 
   void
-  RunConsole(JSContext* aCx, nsPIDOMWindowOuter* aOuterWindow,
+  RunConsole(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
+             nsPIDOMWindowOuter* aOuterWindow,
              nsPIDOMWindowInner* aInnerWindow) override
   {
     AssertIsOnMainThread();
@@ -1231,30 +1239,42 @@ Console::GroupEnd(const GlobalObject& aGlobal)
 /* static */ void
 Console::Time(const GlobalObject& aGlobal, const nsAString& aLabel)
 {
-  StringMethod(aGlobal, aLabel, MethodTime, NS_LITERAL_STRING("time"));
+  StringMethod(aGlobal, aLabel, Sequence<JS::Value>(), MethodTime,
+               NS_LITERAL_STRING("time"));
 }
 
 /* static */ void
 Console::TimeEnd(const GlobalObject& aGlobal, const nsAString& aLabel)
 {
-  StringMethod(aGlobal, aLabel, MethodTimeEnd, NS_LITERAL_STRING("timeEnd"));
+  StringMethod(aGlobal, aLabel, Sequence<JS::Value>(), MethodTimeEnd,
+               NS_LITERAL_STRING("timeEnd"));
+}
+
+/* static */ void
+Console::TimeLog(const GlobalObject& aGlobal, const nsAString& aLabel,
+                 const Sequence<JS::Value>& aData)
+{
+  StringMethod(aGlobal, aLabel, aData, MethodTimeLog,
+               NS_LITERAL_STRING("timeLog"));
 }
 
 /* static */ void
 Console::StringMethod(const GlobalObject& aGlobal, const nsAString& aLabel,
-                      MethodName aMethodName, const nsAString& aMethodString)
+                      const Sequence<JS::Value>& aData, MethodName aMethodName,
+                      const nsAString& aMethodString)
 {
   RefPtr<Console> console = GetConsole(aGlobal);
   if (!console) {
     return;
   }
 
-  console->StringMethodInternal(aGlobal.Context(), aLabel, aMethodName,
+  console->StringMethodInternal(aGlobal.Context(), aLabel, aData, aMethodName,
                                 aMethodString);
 }
 
 void
 Console::StringMethodInternal(JSContext* aCx, const nsAString& aLabel,
+                              const Sequence<JS::Value>& aData,
                               MethodName aMethodName,
                               const nsAString& aMethodString)
 {
@@ -1270,6 +1290,12 @@ Console::StringMethodInternal(JSContext* aCx, const nsAString& aLabel,
 
   if (!data.AppendElement(value, fallible)) {
     return;
+  }
+
+  for (uint32_t i = 0; i < aData.Length(); ++i) {
+    if (!data.AppendElement(aData[i], fallible)) {
+      return;
+    }
   }
 
   MethodInternal(aCx, aMethodName, aMethodString, data);
@@ -1422,7 +1448,15 @@ Console::Assert(const GlobalObject& aGlobal, bool aCondition,
 /* static */ void
 Console::Count(const GlobalObject& aGlobal, const nsAString& aLabel)
 {
-  StringMethod(aGlobal, aLabel, MethodCount, NS_LITERAL_STRING("count"));
+  StringMethod(aGlobal, aLabel, Sequence<JS::Value>(), MethodCount,
+               NS_LITERAL_STRING("count"));
+}
+
+/* static */ void
+Console::CountReset(const GlobalObject& aGlobal, const nsAString& aLabel)
+{
+  StringMethod(aGlobal, aLabel, Sequence<JS::Value>(), MethodCountReset,
+               NS_LITERAL_STRING("countReset"));
 }
 
 namespace {
@@ -1555,7 +1589,7 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
   JS::StackCapture captureMode = ShouldIncludeStackTrace(aMethodName) ?
     JS::StackCapture(JS::MaxFrames(DEFAULT_MAX_STACKTRACE_DEPTH)) :
     JS::StackCapture(JS::FirstSubsumedFrame(aCx));
-  nsCOMPtr<nsIStackFrame> stack = CreateStack(aCx, mozilla::Move(captureMode));
+  nsCOMPtr<nsIStackFrame> stack = CreateStack(aCx, std::move(captureMode));
 
   if (stack) {
     callData->mTopStackFrame.emplace();
@@ -1573,8 +1607,9 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
 
   DOMHighResTimeStamp monotonicTimer;
 
-  // Monotonic timer for 'time' and 'timeEnd'
+  // Monotonic timer for 'time', 'timeLog' and 'timeEnd'
   if ((aMethodName == MethodTime ||
+       aMethodName == MethodTimeLog ||
        aMethodName == MethodTimeEnd ||
        aMethodName == MethodTimeStamp) &&
       !MonotonicTimer(aCx, aMethodName, aData, &monotonicTimer)) {
@@ -1589,15 +1624,31 @@ Console::MethodInternal(JSContext* aCx, MethodName aMethodName,
   }
 
   else if (aMethodName == MethodTimeEnd && !aData.IsEmpty()) {
-    callData->mStopTimerStatus = StopTimer(aCx, aData[0],
-                                           monotonicTimer,
-                                           callData->mStopTimerLabel,
-                                           &callData->mStopTimerDuration);
+    callData->mLogTimerStatus = LogTimer(aCx, aData[0],
+                                         monotonicTimer,
+                                         callData->mLogTimerLabel,
+                                         &callData->mLogTimerDuration,
+                                         true /* Cancel timer */);
+  }
+
+  else if (aMethodName == MethodTimeLog && !aData.IsEmpty()) {
+    callData->mLogTimerStatus = LogTimer(aCx, aData[0],
+                                         monotonicTimer,
+                                         callData->mLogTimerLabel,
+                                         &callData->mLogTimerDuration,
+                                         false /* Cancel timer */);
   }
 
   else if (aMethodName == MethodCount) {
     callData->mCountValue = IncreaseCounter(aCx, aData, callData->mCountLabel);
     if (!callData->mCountValue) {
+      return;
+    }
+  }
+
+  else if (aMethodName == MethodCountReset) {
+    callData->mCountValue = ResetCounter(aCx, aData, callData->mCountLabel);
+    if (callData->mCountLabel.IsEmpty()) {
       return;
     }
   }
@@ -1863,18 +1914,20 @@ Console::PopulateConsoleNotificationInTheTargetScope(JSContext* aCx,
                                          aData->mStartTimerStatus);
   }
 
-  else if (aData->mMethodName == MethodTimeEnd && !aArguments.IsEmpty()) {
-    event.mTimer = CreateStopTimerValue(aCx, aData->mStopTimerLabel,
-                                        aData->mStopTimerDuration,
-                                        aData->mStopTimerStatus);
+  else if ((aData->mMethodName == MethodTimeEnd ||
+            aData->mMethodName == MethodTimeLog) && !aArguments.IsEmpty()) {
+    event.mTimer = CreateLogOrEndTimerValue(aCx, aData->mLogTimerLabel,
+                                            aData->mLogTimerDuration,
+                                            aData->mLogTimerStatus);
   }
 
-  else if (aData->mMethodName == MethodCount) {
-    event.mCounter = CreateCounterValue(aCx, aData->mCountLabel,
-                                        aData->mCountValue);
+  else if (aData->mMethodName == MethodCount ||
+           aData->mMethodName == MethodCountReset) {
+    event.mCounter = CreateCounterOrResetCounterValue(aCx, aData->mCountLabel,
+                                                      aData->mCountValue);
   }
 
-  JSAutoCompartment ac2(aCx, targetScope);
+  JSAutoRealm ar2(aCx, targetScope);
 
   if (NS_WARN_IF(!ToJSValue(aCx, event, aEventValue))) {
     return false;
@@ -1921,8 +1974,7 @@ Console::PopulateConsoleNotificationInTheTargetScope(JSContext* aCx,
                                     JS::PrivateValue(aData->mStack.get()));
 
       if (NS_WARN_IF(!JS_DefineProperty(aCx, eventObj, "stacktrace",
-                                        JS_DATA_TO_FUNC_PTR(JSNative, funObj.get()),
-                                        nullptr,
+                                        funObj, nullptr,
                                         JSPROP_ENUMERATE |
                                         JSPROP_GETTER | JSPROP_SETTER))) {
         return false;
@@ -2321,10 +2373,11 @@ Console::CreateStartTimerValue(JSContext* aCx, const nsAString& aTimerLabel,
 }
 
 Console::TimerStatus
-Console::StopTimer(JSContext* aCx, const JS::Value& aName,
-                   DOMHighResTimeStamp aTimestamp,
-                   nsAString& aTimerLabel,
-                   double* aTimerDuration)
+Console::LogTimer(JSContext* aCx, const JS::Value& aName,
+                  DOMHighResTimeStamp aTimestamp,
+                  nsAString& aTimerLabel,
+                  double* aTimerDuration,
+                  bool aCancelTimer)
 {
   AssertIsOnOwningThread();
   MOZ_ASSERT(aTimerDuration);
@@ -2345,9 +2398,17 @@ Console::StopTimer(JSContext* aCx, const JS::Value& aName,
   aTimerLabel = key;
 
   DOMHighResTimeStamp value = 0;
-  if (!mTimerRegistry.Remove(key, &value)) {
-    NS_WARNING("mTimerRegistry entry not found");
-    return eTimerDoesntExist;
+
+  if (aCancelTimer) {
+    if (!mTimerRegistry.Remove(key, &value)) {
+      NS_WARNING("mTimerRegistry entry not found");
+      return eTimerDoesntExist;
+    }
+  } else {
+    if (!mTimerRegistry.Get(key, &value)) {
+      NS_WARNING("mTimerRegistry entry not found");
+      return eTimerDoesntExist;
+    }
   }
 
   *aTimerDuration = aTimestamp - value;
@@ -2355,14 +2416,14 @@ Console::StopTimer(JSContext* aCx, const JS::Value& aName,
 }
 
 JS::Value
-Console::CreateStopTimerValue(JSContext* aCx, const nsAString& aLabel,
-                              double aDuration, TimerStatus aStatus) const
+Console::CreateLogOrEndTimerValue(JSContext* aCx, const nsAString& aLabel,
+                                  double aDuration, TimerStatus aStatus) const
 {
   if (aStatus != eTimerDone) {
     return CreateTimerError(aCx, aLabel, aStatus);
   }
 
-  RootedDictionary<ConsoleTimerEnd> timer(aCx);
+  RootedDictionary<ConsoleTimerLogOrEnd> timer(aCx);
   timer.mName = aLabel;
   timer.mDuration = aDuration;
 
@@ -2465,14 +2526,48 @@ Console::IncreaseCounter(JSContext* aCx, const Sequence<JS::Value>& aArguments,
   return entry.Data();
 }
 
+uint32_t
+Console::ResetCounter(JSContext* aCx, const Sequence<JS::Value>& aArguments,
+                      nsAString& aCountLabel)
+{
+  AssertIsOnOwningThread();
+
+  ConsoleCommon::ClearException ce(aCx);
+
+  MOZ_ASSERT(!aArguments.IsEmpty());
+
+  JS::Rooted<JS::Value> labelValue(aCx, aArguments[0]);
+  JS::Rooted<JSString*> jsString(aCx, JS::ToString(aCx, labelValue));
+  if (!jsString) {
+    return 0; // We cannot continue.
+  }
+
+  nsAutoJSString string;
+  if (!string.init(aCx, jsString)) {
+    return 0; // We cannot continue.
+  }
+
+  aCountLabel = string;
+
+  if (mCounterRegistry.Remove(aCountLabel)) {
+    return 0;
+  }
+
+  // Let's return something different than 0 if the key doesn't exist.
+  return MAX_PAGE_COUNTERS;
+}
+
 JS::Value
-Console::CreateCounterValue(JSContext* aCx, const nsAString& aCountLabel,
-                            uint32_t aCountValue) const
+Console::CreateCounterOrResetCounterValue(JSContext* aCx,
+                                          const nsAString& aCountLabel,
+                                          uint32_t aCountValue) const
 {
   ConsoleCommon::ClearException ce(aCx);
 
   if (aCountValue == MAX_PAGE_COUNTERS) {
     RootedDictionary<ConsoleCounterError> error(aCx);
+    error.mLabel = aCountLabel;
+    error.mError.AssignLiteral("counterDoesntExist");
 
     JS::Rooted<JS::Value> value(aCx);
     if (!ToJSValue(aCx, error, &value)) {
@@ -2631,7 +2726,7 @@ Console::RetrieveConsoleEvents(JSContext* aCx, nsTArray<JS::Value>& aEvents,
     JS::Rooted<JS::Value> value(aCx);
 
     JS::Rooted<JSObject*> sequenceScope(aCx, mCallDataStorage[i]->mGlobal);
-    JSAutoCompartment ac(aCx, sequenceScope);
+    JSAutoRealm ar(aCx, sequenceScope);
 
     Sequence<JS::Value> sequence;
     SequenceRooter<JS::Value> arguments(aCx, &sequence);
@@ -2798,8 +2893,8 @@ Console::MonotonicTimer(JSContext* aCx, MethodName aMethodName,
         return false;
       }
 
-      timelines->AddMarkerForDocShell(docShell, Move(
-        MakeUnique<TimestampTimelineMarker>(key)));
+      timelines->AddMarkerForDocShell(docShell,
+        MakeUnique<TimestampTimelineMarker>(key));
     }
     // For `console.time(foo)` and `console.timeEnd(foo)`.
     else if (isTimelineRecording && aData.Length() == 1) {
@@ -2814,10 +2909,10 @@ Console::MonotonicTimer(JSContext* aCx, MethodName aMethodName,
         return false;
       }
 
-      timelines->AddMarkerForDocShell(docShell, Move(
+      timelines->AddMarkerForDocShell(docShell,
         MakeUnique<ConsoleTimelineMarker>(
           key, aMethodName == MethodTime ? MarkerTracingType::START
-                                         : MarkerTracingType::END)));
+                                         : MarkerTracingType::END));
     }
 
     return true;
@@ -2996,6 +3091,7 @@ Console::WebIDLLogLevelToInteger(ConsoleLogLevel aLevel) const
     case ConsoleLogLevel::Info: return 3;
     case ConsoleLogLevel::Clear: return 3;
     case ConsoleLogLevel::Trace: return 3;
+    case ConsoleLogLevel::TimeLog: return 3;
     case ConsoleLogLevel::TimeEnd: return 3;
     case ConsoleLogLevel::Time: return 3;
     case ConsoleLogLevel::Group: return 3;
@@ -3033,10 +3129,12 @@ Console::InternalLogLevelToInteger(MethodName aName) const
     case MethodGroupCollapsed: return 3;
     case MethodGroupEnd: return 3;
     case MethodTime: return 3;
+    case MethodTimeLog: return 3;
     case MethodTimeEnd: return 3;
     case MethodTimeStamp: return 3;
     case MethodAssert: return 3;
     case MethodCount: return 3;
+    case MethodCountReset: return 3;
     case MethodClear: return 3;
     case MethodProfile: return 3;
     case MethodProfileEnd: return 3;

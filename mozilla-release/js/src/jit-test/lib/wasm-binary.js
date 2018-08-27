@@ -94,11 +94,11 @@ const I64DivUCode      = 0x80;
 const I64RemSCode      = 0x81;
 const I64RemUCode      = 0x82;
 
-const FirstInvalidOpcode = wasmThreadsSupported() ? 0xc5 : 0xc0;
+const FirstInvalidOpcode = 0xc5;
 const LastInvalidOpcode = 0xfb;
-const NumericPrefix = 0xfc;
+const MiscPrefix = 0xfc;
 const SimdPrefix = 0xfd;
-const AtomicPrefix = 0xfe;
+const ThreadPrefix = 0xfe;
 const MozPrefix = 0xff;
 
 // DefinitionKind

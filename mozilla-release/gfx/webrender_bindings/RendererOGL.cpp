@@ -45,9 +45,9 @@ RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
                          UniquePtr<RenderCompositor> aCompositor,
                          wr::WindowId aWindowId,
                          wr::Renderer* aRenderer,
-                         layers::CompositorBridgeParentBase* aBridge)
+                         layers::CompositorBridgeParent* aBridge)
   : mThread(aThread)
-  , mCompositor(Move(aCompositor))
+  , mCompositor(std::move(aCompositor))
   , mRenderer(aRenderer)
   , mBridge(aBridge)
   , mWindowId(aWindowId)
@@ -204,7 +204,7 @@ RendererOGL::GetRenderTexture(wr::WrExternalImageId aExternalImageId)
 }
 
 static void
-DoNotifyWebRenderError(layers::CompositorBridgeParentBase* aBridge, WebRenderError aError)
+DoNotifyWebRenderError(layers::CompositorBridgeParent* aBridge, WebRenderError aError)
 {
   aBridge->NotifyWebRenderError(aError);
 }

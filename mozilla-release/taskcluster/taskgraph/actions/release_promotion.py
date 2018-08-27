@@ -28,86 +28,6 @@ from taskgraph.decision import taskgraph_decision
 from taskgraph.parameters import Parameters
 from taskgraph.util.attributes import RELEASE_PROMOTION_PROJECTS
 
-RELEASE_PROMOTION_CONFIG = {
-    'promote_fennec': {
-        'target_tasks_method': 'promote_fennec',
-        'product': 'fennec',
-    },
-    'ship_fennec': {
-        'target_tasks_method': 'ship_fennec',
-        'product': 'fennec',
-    },
-    'ship_fennec_rc': {
-        'target_tasks_method': 'ship_fennec',
-        'product': 'fennec',
-        'release_type': 'rc',
-    },
-    'promote_firefox': {
-        'target_tasks_method': 'promote_firefox',
-        'product': 'firefox',
-    },
-    'push_firefox': {
-        'target_tasks_method': 'push_firefox',
-        'product': 'firefox',
-    },
-    'ship_firefox': {
-        'target_tasks_method': 'ship_firefox',
-        'product': 'firefox',
-    },
-    'promote_firefox_rc': {
-        'target_tasks_method': 'promote_firefox',
-        'product': 'firefox',
-        'release_type': 'rc',
-    },
-    'ship_firefox_rc': {
-        'target_tasks_method': 'ship_firefox',
-        'product': 'firefox',
-        'release_type': 'rc',
-    },
-    'promote_firefox_partners': {
-        'target_tasks_method': 'promote_firefox',
-        'product': 'firefox',
-        'rebuild_kinds': [
-            'release-partner-repack',
-            'release-partner-beetmover',
-            'release-partner-repack-chunking-dummy',
-            'release-partner-repackage-signing',
-            'release-partner-repackage',
-            'release-partner-signing',
-        ],
-    },
-    'promote_devedition': {
-        'target_tasks_method': 'promote_devedition',
-        'product': 'devedition',
-    },
-    'push_devedition': {
-        'target_tasks_method': 'push_devedition',
-        'product': 'devedition',
-    },
-    'ship_devedition': {
-        'target_tasks_method': 'ship_devedition',
-        'product': 'devedition',
-    },
-}
-
-VERSION_BUMP_FLAVORS = (
-    'ship_fennec',
-    'ship_firefox',
-    'ship_devedition',
-)
-
-PARTIAL_UPDATES_FLAVORS = (
-    'promote_firefox',
-    'promote_firefox_rc',
-    'promote_devedition',
-    'push_firefox',
-    'push_firefox_rc',
-    'push_devedition',
-    'ship_firefox',
-    'ship_firefox_rc',
-    'ship_devedition',
-)
-
 
 def is_release_promotion_available(parameters):
     return parameters['project'] in RELEASE_PROMOTION_PROJECTS
@@ -120,6 +40,17 @@ def get_partner_config(partner_url_config, github_token):
     return partner_config
 
 
+def get_flavors(graph_config, param):
+    """
+    Get all flavors with the given parameter enabled.
+    """
+    promotion_flavors = graph_config['release-promotion']['flavors']
+    return sorted([
+        flavor for (flavor, config) in promotion_flavors.items()
+        if config.get(param, False)
+    ])
+
+
 @register_callback_action(
     name='release-promotion',
     title='Release Promotion',
@@ -128,7 +59,7 @@ def get_partner_config(partner_url_config, github_token):
     order=10000,
     context=[],
     available=is_release_promotion_available,
-    schema={
+    schema=lambda graph_config: {
         'type': 'object',
         'properties': {
             'build_number': {
@@ -159,7 +90,7 @@ def get_partner_config(partner_url_config, github_token):
             'release_promotion_flavor': {
                 'type': 'string',
                 'description': 'The flavor of release promotion to perform.',
-                'enum': sorted(RELEASE_PROMOTION_CONFIG.keys()),
+                'enum': sorted(graph_config['release-promotion']['flavors'].keys()),
             },
             'rebuild_kinds': {
                 'type': 'array',
@@ -190,7 +121,7 @@ def get_partner_config(partner_url_config, github_token):
             'next_version': {
                 'type': 'string',
                 'description': ('Next version. Required in the following flavors: '
-                                '{}'.format(sorted(VERSION_BUMP_FLAVORS))),
+                                '{}'.format(get_flavors(graph_config, 'version-bump'))),
                 'default': '',
             },
 
@@ -208,7 +139,7 @@ def get_partner_config(partner_url_config, github_token):
             'partial_updates': {
                 'type': 'object',
                 'description': ('Partial updates. Required in the following flavors: '
-                                '{}'.format(sorted(PARTIAL_UPDATES_FLAVORS))),
+                                '{}'.format(get_flavors(graph_config, 'partial-updates'))),
                 'default': {},
                 'additionalProperties': {
                     'type': 'object',
@@ -272,44 +203,41 @@ def get_partner_config(partner_url_config, github_token):
 )
 def release_promotion_action(parameters, graph_config, input, task_group_id, task_id, task):
     release_promotion_flavor = input['release_promotion_flavor']
-    promotion_config = RELEASE_PROMOTION_CONFIG[release_promotion_flavor]
+    promotion_config = graph_config['release-promotion']['flavors'][release_promotion_flavor]
     release_history = {}
     product = promotion_config['product']
 
     next_version = str(input.get('next_version') or '')
-    if release_promotion_flavor in VERSION_BUMP_FLAVORS:
+    if promotion_config.get('version-bump', False):
         # We force str() the input, hence the 'None'
         if next_version in ['', 'None']:
             raise Exception(
-                "`next_version` property needs to be provided for %s "
-                "targets." % ', '.join(VERSION_BUMP_FLAVORS)
+                "`next_version` property needs to be provided for `{}` "
+                "target.".format(release_promotion_flavor)
             )
 
-    if product in ('firefox', 'devedition'):
-        if release_promotion_flavor in PARTIAL_UPDATES_FLAVORS:
-            partial_updates = json.dumps(input.get('partial_updates', {}))
-            if partial_updates == "{}":
-                raise Exception(
-                    "`partial_updates` property needs to be provided for %s "
-                    "targets." % ', '.join(PARTIAL_UPDATES_FLAVORS)
-                )
-            balrog_prefix = product.title()
-            os.environ['PARTIAL_UPDATES'] = partial_updates
-            release_history = populate_release_history(
-                balrog_prefix, parameters['project'],
-                partial_updates=input['partial_updates']
+    if promotion_config.get('partial-updates', False):
+        partial_updates = json.dumps(input.get('partial_updates', {}))
+        if partial_updates == "{}":
+            raise Exception(
+                "`partial_updates` property needs to be provided for `{}`"
+                "target.".format(release_promotion_flavor)
             )
+        balrog_prefix = product.title()
+        os.environ['PARTIAL_UPDATES'] = partial_updates
+        release_history = populate_release_history(
+            balrog_prefix, parameters['project'],
+            partial_updates=input['partial_updates']
+        )
 
-    promotion_config = RELEASE_PROMOTION_CONFIG[release_promotion_flavor]
-
-    target_tasks_method = promotion_config['target_tasks_method'].format(
+    target_tasks_method = promotion_config['target-tasks-method'].format(
         project=parameters['project']
     )
     rebuild_kinds = input.get(
-        'rebuild_kinds', promotion_config.get('rebuild_kinds', [])
+        'rebuild_kinds', promotion_config.get('rebuild-kinds', [])
     )
     do_not_optimize = input.get(
-        'do_not_optimize', promotion_config.get('do_not_optimize', [])
+        'do_not_optimize', promotion_config.get('do-not-optimize', [])
     )
     release_enable_partners = input.get(
         'release_enable_partners',
@@ -351,11 +279,15 @@ def release_promotion_action(parameters, graph_config, input, task_group_id, tas
     parameters['build_number'] = int(input['build_number'])
     parameters['next_version'] = next_version
     parameters['release_history'] = release_history
-    parameters['release_type'] = promotion_config.get('release_type', '')
+    parameters['release_type'] = promotion_config.get('release-type', '')
     parameters['release_eta'] = input.get('release_eta', '')
     parameters['release_enable_partners'] = release_enable_partners
     parameters['release_partners'] = input.get('release_partners')
     parameters['release_enable_emefree'] = release_enable_emefree
+    parameters['release_product'] = product
+    # When doing staging releases on try, we still want to re-use tasks from
+    # previous graphs.
+    parameters['optimize_target_tasks'] = True
 
     partner_config = input.get('release_partner_config')
     if not partner_config and (release_enable_emefree or release_enable_partners):

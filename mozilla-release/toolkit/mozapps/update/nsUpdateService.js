@@ -12,7 +12,7 @@ ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 ChromeUtils.import("resource://gre/modules/ctypes.jsm", this);
 ChromeUtils.import("resource://gre/modules/UpdateTelemetry.jsm", this);
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm", this);
-Cu.importGlobalProperties(["DOMParser", "XMLHttpRequest"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["DOMParser", "XMLHttpRequest"]);
 
 const UPDATESERVICE_CID = Components.ID("{B3C290A6-3943-4B89-8BBE-C01EB7B3B311}");
 const UPDATESERVICE_CONTRACTID = "@mozilla.org/updates/update-service;1";
@@ -338,7 +338,7 @@ function hasUpdateMutex() {
 function areDirectoryEntriesWriteable(aDir) {
   let items = aDir.directoryEntries;
   while (items.hasMoreElements()) {
-    let item = items.getNext().QueryInterface(Ci.nsIFile);
+    let item = items.nextFile;
     if (!item.isWritable()) {
       LOG("areDirectoryEntriesWriteable - unable to write to " + item.path);
       return false;
@@ -815,7 +815,7 @@ function cleanUpUpdatesDir(aRemovePatchFiles = true) {
   if (aRemovePatchFiles) {
     let dirEntries = updateDir.directoryEntries;
     while (dirEntries.hasMoreElements()) {
-      let file = dirEntries.getNext().QueryInterface(Ci.nsIFile);
+      let file = dirEntries.nextFile;
       // Now, recursively remove this file.  The recursive removal is needed for
       // Mac OSX because this directory will contain a copy of updater.app,
       // which is itself a directory and the MozUpdater directory on platforms
@@ -1257,11 +1257,10 @@ function Update(update) {
     return;
   }
 
-  const ELEMENT_NODE = Ci.nsIDOMNode.ELEMENT_NODE;
   let patch;
   for (let i = 0; i < update.childNodes.length; ++i) {
     let patchElement = update.childNodes.item(i);
-    if (patchElement.nodeType != ELEMENT_NODE ||
+    if (patchElement.nodeType != patchElement.ELEMENT_NODE ||
         patchElement.localName != "patch") {
       continue;
     }
@@ -2589,11 +2588,10 @@ UpdateManager.prototype = {
       var doc = parser.parseFromStream(fileStream, "UTF-8",
                                        fileStream.available(), "text/xml");
 
-      const ELEMENT_NODE = Ci.nsIDOMNode.ELEMENT_NODE;
       var updateCount = doc.documentElement.childNodes.length;
       for (var i = 0; i < updateCount; ++i) {
         var updateElement = doc.documentElement.childNodes.item(i);
-        if (updateElement.nodeType != ELEMENT_NODE ||
+        if (updateElement.nodeType != updateElement.ELEMENT_NODE ||
             updateElement.localName != "update")
           continue;
 
@@ -3022,11 +3020,10 @@ Checker.prototype = {
                       updatesElement.nodeName);
     }
 
-    const ELEMENT_NODE = Ci.nsIDOMNode.ELEMENT_NODE;
     var updates = [];
     for (var i = 0; i < updatesElement.childNodes.length; ++i) {
       var updateElement = updatesElement.childNodes.item(i);
-      if (updateElement.nodeType != ELEMENT_NODE ||
+      if (updateElement.nodeType != updateElement.ELEMENT_NODE ||
           updateElement.localName != "update")
         continue;
 

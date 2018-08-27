@@ -35,13 +35,13 @@ XULColumAccessible::
 }
 
 role
-XULColumAccessible::NativeRole()
+XULColumAccessible::NativeRole() const
 {
   return roles::LIST;
 }
 
 uint64_t
-XULColumAccessible::NativeState()
+XULColumAccessible::NativeState() const
 {
   return states::READONLY;
 }
@@ -58,19 +58,19 @@ XULColumnItemAccessible::
 }
 
 role
-XULColumnItemAccessible::NativeRole()
+XULColumnItemAccessible::NativeRole() const
 {
   return roles::COLUMNHEADER;
 }
 
 uint64_t
-XULColumnItemAccessible::NativeState()
+XULColumnItemAccessible::NativeState() const
 {
   return states::READONLY;
 }
 
 uint8_t
-XULColumnItemAccessible::ActionCount()
+XULColumnItemAccessible::ActionCount() const
 {
   return 1;
 }
@@ -83,7 +83,7 @@ XULColumnItemAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
 }
 
 bool
-XULColumnItemAccessible::DoAction(uint8_t aIndex)
+XULColumnItemAccessible::DoAction(uint8_t aIndex) const
 {
   if (aIndex != eAction_Click)
     return false;
@@ -116,7 +116,7 @@ XULListboxAccessible::
 // XULListboxAccessible: Accessible
 
 uint64_t
-XULListboxAccessible::NativeState()
+XULListboxAccessible::NativeState() const
 {
   // As a XULListboxAccessible we can have the following states:
   //   FOCUSED, READONLY, FOCUSABLE
@@ -138,7 +138,7 @@ XULListboxAccessible::NativeState()
   * Our value is the label of our ( first ) selected child.
   */
 void
-XULListboxAccessible::Value(nsString& aValue)
+XULListboxAccessible::Value(nsString& aValue) const
 {
   aValue.Truncate();
 
@@ -152,7 +152,7 @@ XULListboxAccessible::Value(nsString& aValue)
 }
 
 role
-XULListboxAccessible::NativeRole()
+XULListboxAccessible::NativeRole() const
 {
   // A richlistbox is used with the new autocomplete URL bar, and has a parent
   // popup <panel>.
@@ -166,7 +166,7 @@ XULListboxAccessible::NativeRole()
 // XULListboxAccessible: Table
 
 uint32_t
-XULListboxAccessible::ColCount()
+XULListboxAccessible::ColCount() const
 {
   nsIContent* headContent = nullptr;
   for (nsIContent* childContent = mContent->GetFirstChild(); childContent;
@@ -501,15 +501,11 @@ XULListboxAccessible::ContainerWidget() const
     nsCOMPtr<nsIDOMXULMenuListElement> menuListElm =
       do_QueryInterface(mContent->GetParent());
     if (menuListElm) {
-      nsCOMPtr<nsIDOMNode> inputElm;
+      RefPtr<mozilla::dom::Element> inputElm;
       menuListElm->GetInputField(getter_AddRefs(inputElm));
       if (inputElm) {
-        nsCOMPtr<nsINode> inputNode = do_QueryInterface(inputElm);
-        if (inputNode) {
-          Accessible* input =
-            mDoc->GetAccessible(inputNode);
+          Accessible* input = mDoc->GetAccessible(inputElm);
           return input ? input->ContainerWidget() : nullptr;
-        }
       }
     }
   }
@@ -577,7 +573,7 @@ XULListitemAccessible::Description(nsString& aDesc)
   *   default to getting the name from GetXULName
   */
 ENameValueFlag
-XULListitemAccessible::NativeName(nsString& aName)
+XULListitemAccessible::NativeName(nsString& aName) const
 {
   nsIContent* childContent = mContent->GetFirstChild();
   if (childContent) {
@@ -592,7 +588,7 @@ XULListitemAccessible::NativeName(nsString& aName)
 }
 
 role
-XULListitemAccessible::NativeRole()
+XULListitemAccessible::NativeRole() const
 {
   Accessible* list = GetListAccessible();
   if (!list) {
@@ -613,7 +609,7 @@ XULListitemAccessible::NativeRole()
 }
 
 uint64_t
-XULListitemAccessible::NativeState()
+XULListitemAccessible::NativeState() const
 {
   if (mIsCheckbox)
     return XULMenuitemAccessible::NativeState();
@@ -784,7 +780,7 @@ XULListCellAccessible::Selected()
 // XULListCellAccessible. Accessible implementation
 
 role
-XULListCellAccessible::NativeRole()
+XULListCellAccessible::NativeRole() const
 {
   return roles::CELL;
 }

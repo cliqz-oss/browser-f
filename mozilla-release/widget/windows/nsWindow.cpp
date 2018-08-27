@@ -182,7 +182,7 @@
 
 #include "nsIContent.h"
 
-#include "mozilla/HangMonitor.h"
+#include "mozilla/BackgroundHangMonitor.h"
 #include "WinIMEHandler.h"
 
 #include "npapi.h"
@@ -351,6 +351,9 @@ static NS_DEFINE_CID(kCClipboardCID, NS_CLIPBOARD_CID);
 
 // General purpose user32.dll hook object
 static WindowsDllInterceptor sUser32Intercept;
+
+// AddHook success checks
+static mozilla::Maybe<bool> sHookedGetWindowInfo;
 
 // 2 pixel offset for eTransparencyBorderlessGlass which equals the size of
 // the default window border Windows paints. Glass will be extended inward
@@ -1274,7 +1277,7 @@ nsWindow::SetParent(nsIWidget *aNewParent)
 void
 nsWindow::ReparentNativeWidget(nsIWidget* aNewParent)
 {
-  NS_PRECONDITION(aNewParent, "");
+  MOZ_ASSERT(aNewParent, "null widget");
 
   mParent = aNewParent;
   if (mWindowType == eWindowType_popup) {
@@ -2497,11 +2500,15 @@ nsWindow::UpdateGetWindowInfoCaptionStatus(bool aActiveCaption)
   if (!mWnd)
     return;
 
-  if (!sGetWindowInfoPtrStub) {
+  if (sHookedGetWindowInfo.isNothing()) {
     sUser32Intercept.Init("user32.dll");
-    if (!sUser32Intercept.AddHook("GetWindowInfo", reinterpret_cast<intptr_t>(GetWindowInfoHook),
-                                  (void**) &sGetWindowInfoPtrStub))
+    sHookedGetWindowInfo =
+      Some(sUser32Intercept.AddHook("GetWindowInfo",
+                                    reinterpret_cast<intptr_t>(GetWindowInfoHook),
+                                    (void**) &sGetWindowInfoPtrStub));
+    if (!sHookedGetWindowInfo.value()) {
       return;
+    }
   }
   // Update our internally tracked caption status
   SetPropW(mWnd, kManageWindowInfoProperty, 
@@ -4091,7 +4098,7 @@ nsWindow::AddWindowOverlayWebRenderCommands(layers::WebRenderBridgeChild* aWrBri
       RoundedRect(ThebesRect(mWindowButtonsRect->ToUnknownRect()),
                   RectCornerRadii(0, 0, 3, 3))));
     wr::WrClipId clipId =
-      aBuilder.DefineClip(Nothing(), Nothing(), rect, &roundedClip);
+      aBuilder.DefineClip(Nothing(), rect, &roundedClip);
     aBuilder.PushClip(clipId);
     aBuilder.PushClearRect(rect);
     aBuilder.PopClip();
@@ -4480,8 +4487,8 @@ nsWindow::DispatchMouseEvent(EventMessage aEventMessage, WPARAM wParam,
   // XXX Should we allow to block web page to prevent its default with
   //     Ctrl+Shift+F10 or Alt+Shift+F10 instead?
   if (aEventMessage == eContextMenu && aIsContextMenuKey && event.IsShift() &&
-      NativeKey::LastKeyMSG().message == WM_SYSKEYDOWN &&
-      NativeKey::LastKeyMSG().wParam == VK_F10) {
+      NativeKey::LastKeyOrCharMSG().message == WM_SYSKEYDOWN &&
+      NativeKey::LastKeyOrCharMSG().wParam == VK_F10) {
     event.mModifiers &= ~MODIFIER_SHIFT;
   }
 
@@ -4950,20 +4957,6 @@ DisplaySystemMenu(HWND hWnd, nsSizeMode sizeMode, bool isRtl, int32_t x, int32_t
   return false;
 }
 
-inline static mozilla::HangMonitor::ActivityType ActivityTypeForMessage(UINT msg)
-{
-  if ((msg >= WM_KEYFIRST && msg <= WM_IME_KEYLAST) ||
-      (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) ||
-      (msg >= MOZ_WM_MOUSEWHEEL_FIRST && msg <= MOZ_WM_MOUSEWHEEL_LAST) ||
-      (msg >= NS_WM_IMEFIRST && msg <= NS_WM_IMELAST)) {
-    return mozilla::HangMonitor::kUIActivity;
-  }
-
-  // This may not actually be right, but we don't want to reset the timer if
-  // we're not actually processing a UI message.
-  return mozilla::HangMonitor::kActivityUIAVail;
-}
-
 // The WndProc procedure for all nsWindows in this toolkit. This merely catches
 // exceptions and passes the real work to WindowProcInternal. See bug 587406
 // and http://msdn.microsoft.com/en-us/library/ms633573%28VS.85%29.aspx
@@ -4971,7 +4964,7 @@ LRESULT CALLBACK nsWindow::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 {
   mozilla::ipc::CancelCPOWs();
 
-  HangMonitor::NotifyActivity(ActivityTypeForMessage(msg));
+  BackgroundHangMonitor().NotifyActivity();
 
   return mozilla::CallWindowProcCrashProtected(WindowProcInternal, hWnd, msg, wParam, lParam);
 }
@@ -8374,6 +8367,23 @@ nsWindow::DefaultProcOfPluginEvent(const WidgetPluginEvent& aEvent)
 
   CallWindowProcW(GetPrevWindowProc(), mWnd, pPluginEvent->event,
                   pPluginEvent->wParam, pPluginEvent->lParam);
+}
+
+void
+nsWindow::EnableIMEForPlugin(bool aEnable)
+{
+  // Current IME state isn't plugin, ignore this call
+  if (NS_WARN_IF(mInputContext.mIMEState.mEnabled != IMEState::PLUGIN)) {
+    return;
+  }
+
+  InputContext inputContext = GetInputContext();
+  if (aEnable) {
+    inputContext.mHTMLInputType.AssignLiteral("text");
+  } else {
+    inputContext.mHTMLInputType.AssignLiteral("password");
+  }
+  SetInputContext(inputContext, InputContextAction());
 }
 
 nsresult

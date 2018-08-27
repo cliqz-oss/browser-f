@@ -6,7 +6,7 @@
 
 
 with Files('**'):
-    BUG_COMPONENT = ('Toolkit', 'WebExtensions: General')
+    BUG_COMPONENT = ('WebExtensions', 'General')
 
 EXTRA_JS_MODULES += [
     'Extension.jsm',
@@ -20,6 +20,7 @@ EXTRA_JS_MODULES += [
     'ExtensionPreferencesManager.jsm',
     'ExtensionSettingsStore.jsm',
     'ExtensionStorage.jsm',
+    'ExtensionStorageIDB.jsm',
     'ExtensionStorageSync.jsm',
     'ExtensionUtils.jsm',
     'FindContent.jsm',

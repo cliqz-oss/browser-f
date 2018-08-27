@@ -142,6 +142,26 @@ Preferences
   Set the maximum number of keys per process of the :ref:`Event Summary <events.event-summary>`
   :ref:`keyed scalars <scalars.keyed-scalars>`. Default is 500. Change requires restart.
 
+``toolkit.telemetry.eventping.enabled``
+
+  Whether the :doc:`../data/event-ping` is enabled.
+  Default is true except for GeckoView where it defaults to false. Change requires restart.
+
+``toolkit.telemetry.eventping.eventLimit``
+
+  The maximum number of event records permitted in the :doc:`../data/event-ping`.
+  Default is 1000.
+
+``toolkit.telemetry.eventping.minimumFrequency``
+
+  The minimum frequency at which an :doc:`../data/event-ping` will be sent.
+  Default is 60 (minutes).
+
+``toolkit.telemetry.eventping.maximumFrequency``
+
+  The maximum frequency at which an :doc:`../data/event-ping` will be sent.
+  Default is 10 (minutes).
+
 Data-choices notification
 -------------------------
 
@@ -180,6 +200,17 @@ Data-choices notification
 ``datareporting.policy.minimumPolicyVersion.channel-NAME``
 
   This is the only channel-specific version that we currently use for the minimum policy version.
+
+GeckoView
+---------
+
+``toolkit.telemetry.isGeckoViewMode``
+
+   Whether or not Telemetry needs to run in :doc:`GeckoView <../internals/geckoview>` mode. If true, measurements persistence is enabled. Defaults to false on all products except GeckoView.
+
+``toolkit.telemetry.geckoPersistenceTimeout``
+
+   The interval that governs how frequently measurements are saved to disk, in milliseconds. Defaults to 60000 (60 seconds).
 
 Testing
 -------

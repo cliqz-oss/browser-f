@@ -220,6 +220,16 @@ Section "-InstallStartCleanup"
     ${EndIf}
   ${EndUnless}
 
+  ${GetParameters} $R8
+  ${InstallGetOption} $R8 "RemoveDistributionDir" $R9
+  ${If} $R9 == "0"
+    StrCpy $R9 "false"
+  ${EndIf}
+  ${InstallGetOption} $R8 "PreventRebootRequired" $PreventRebootRequired
+  ${If} $PreventRebootRequired == "1"
+    StrCpy $PreventRebootRequired "true"
+  ${EndIf}
+
   ; Remove directories and files we always control before parsing the uninstall
   ; log so empty directories can be removed.
   ${If} ${FileExists} "$INSTDIR\updates"
@@ -231,9 +241,6 @@ Section "-InstallStartCleanup"
   ${If} ${FileExists} "$INSTDIR\defaults\shortcuts"
     RmDir /r "$INSTDIR\defaults\shortcuts"
   ${EndIf}
-  ; Only remove the distribution directory if it exists and if the installer
-  ; isn't launched with an ini file that has RemoveDistributionDir=false in the
-  ; install section.
   ${If} ${FileExists} "$INSTDIR\distribution"
   ${AndIf} $R9 != "false"
     RmDir /r "$INSTDIR\distribution"
@@ -886,7 +893,7 @@ Function LaunchApp
   ${GetParameters} $0
   ${GetOptions} "$0" "/UAC:" $1
   ${If} ${Errors}
-    Exec "$\"$INSTDIR\${FileMainEXE}$\""
+    ${ExecAndWaitForInputIdle} "$\"$INSTDIR\${FileMainEXE}$\""
   ${Else}
     GetFunctionAddress $0 LaunchAppFromElevatedProcess
     UAC::ExecCodeSegment $0
@@ -897,7 +904,7 @@ Function LaunchAppFromElevatedProcess
   ; Set our current working directory to the application's install directory
   ; otherwise the 7-Zip temp directory will be in use and won't be deleted.
   SetOutPath "$INSTDIR"
-  Exec "$\"$INSTDIR\${FileMainEXE}$\""
+  ${ExecAndWaitForInputIdle} "$\"$INSTDIR\${FileMainEXE}$\""
 FunctionEnd
 
 ################################################################################

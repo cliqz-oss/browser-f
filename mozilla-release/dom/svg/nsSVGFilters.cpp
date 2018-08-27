@@ -66,11 +66,7 @@ NS_IMPL_ADDREF_INHERITED(nsSVGFE,nsSVGFEBase)
 NS_IMPL_RELEASE_INHERITED(nsSVGFE,nsSVGFEBase)
 
 NS_INTERFACE_MAP_BEGIN(nsSVGFE)
-   // nsISupports is an ambiguous base of nsSVGFE so we have to work
-   // around that
-   if ( aIID.Equals(NS_GET_IID(nsSVGFE)) )
-     foundInterface = static_cast<nsISupports*>(static_cast<void*>(this));
-   else
+   NS_INTERFACE_MAP_ENTRY_CONCRETE(nsSVGFE)
 NS_INTERFACE_MAP_END_INHERITING(nsSVGFEBase)
 
 //----------------------------------------------------------------------
@@ -245,11 +241,7 @@ NS_IMPL_ADDREF_INHERITED(SVGComponentTransferFunctionElement,SVGComponentTransfe
 NS_IMPL_RELEASE_INHERITED(SVGComponentTransferFunctionElement,SVGComponentTransferFunctionElementBase)
 
 NS_INTERFACE_MAP_BEGIN(SVGComponentTransferFunctionElement)
-   // nsISupports is an ambiguous base of nsSVGFE so we have to work
-   // around that
-   if ( aIID.Equals(NS_GET_IID(SVGComponentTransferFunctionElement)) )
-     foundInterface = static_cast<nsISupports*>(static_cast<void*>(this));
-   else
+   NS_INTERFACE_MAP_ENTRY_CONCRETE(SVGComponentTransferFunctionElement)
 NS_INTERFACE_MAP_END_INHERITING(SVGComponentTransferFunctionElementBase)
 
 
@@ -503,8 +495,8 @@ nsSVGFELightingElement::AddLightingAttributes(const FilterPrimitiveDescription& 
     return FilterPrimitiveDescription(PrimitiveType::Empty);
   }
 
-  ComputedStyle* style = frame->Style();
-  Color color(Color::FromABGR(style->StyleSVGReset()->mLightingColor));
+  const nsStyleSVGReset* styleSVGReset = frame->Style()->StyleSVGReset();
+  Color color(Color::FromABGR(styleSVGReset->mLightingColor.CalcColor(frame)));
   color.a = 1.f;
   float surfaceScale = mNumberAttributes[SURFACE_SCALE].GetAnimValue();
   Size kernelUnitLength =

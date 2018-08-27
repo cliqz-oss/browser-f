@@ -34,6 +34,7 @@ loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/de
 loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
 loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
+loader.lazyRequireGetter(this, "openDocLink", "devtools/client/shared/link", true);
 
 loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/framework/ToolboxProcess.jsm");
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
@@ -42,7 +43,7 @@ exports.menuitems = [
   { id: "menu_devToolbox",
     l10nKey: "devToolboxMenuItem",
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
+      const window = event.target.ownerDocument.defaultView;
       gDevToolsBrowser.toggleToolboxCommand(window.gBrowser, Cu.now());
     },
     keyId: "toggleToolbox",
@@ -50,23 +51,6 @@ exports.menuitems = [
   },
   { id: "menu_devtools_separator",
     separator: true },
-  { id: "menu_devToolbar",
-    l10nKey: "devToolbarMenu",
-    disabled: true,
-    oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
-      // Distinguish events when selecting a menuitem, where we either open
-      // or close the toolbar and when hitting the key shortcut where we just
-      // focus the toolbar if it doesn't already has it.
-      if (event.target.tagName.toLowerCase() == "menuitem") {
-        gDevToolsBrowser.getDeveloperToolbar(window).toggle();
-      } else {
-        gDevToolsBrowser.getDeveloperToolbar(window).focusToggle();
-      }
-    },
-    keyId: "toggleToolbar",
-    checkbox: true
-  },
   { id: "menu_webide",
     l10nKey: "webide",
     disabled: true,
@@ -87,14 +71,14 @@ exports.menuitems = [
     l10nKey: "browserContentToolboxMenu",
     disabled: true,
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
+      const window = event.target.ownerDocument.defaultView;
       gDevToolsBrowser.openContentProcessToolbox(window.gBrowser);
     }
   },
   { id: "menu_browserConsole",
     l10nKey: "browserConsoleCmd",
     oncommand() {
-      let {HUDService} = require("devtools/client/webconsole/hudservice");
+      const {HUDService} = require("devtools/client/webconsole/hudservice");
       HUDService.openBrowserConsoleOrFocus();
     },
     keyId: "browserConsole",
@@ -102,7 +86,7 @@ exports.menuitems = [
   { id: "menu_responsiveUI",
     l10nKey: "responsiveDesignMode",
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
+      const window = event.target.ownerDocument.defaultView;
       ResponsiveUIManager.toggle(window, window.gBrowser.selectedTab, {
         trigger: "menu"
       });
@@ -113,8 +97,8 @@ exports.menuitems = [
   { id: "menu_eyedropper",
     l10nKey: "eyedropper",
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
-      let target = TargetFactory.forTab(window.gBrowser.selectedTab);
+      const window = event.target.ownerDocument.defaultView;
+      const target = TargetFactory.forTab(window.gBrowser.selectedTab);
 
       CommandUtils.executeOnTarget(target, "eyedropper --frommenu");
     },
@@ -131,7 +115,7 @@ exports.menuitems = [
     l10nKey: "devtoolsServiceWorkers",
     disabled: true,
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
+      const window = event.target.ownerDocument.defaultView;
       gDevToolsBrowser.openAboutDebugging(window.gBrowser, "workers");
     }
   },
@@ -139,7 +123,7 @@ exports.menuitems = [
     l10nKey: "devtoolsConnect",
     disabled: true,
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
+      const window = event.target.ownerDocument.defaultView;
       gDevToolsBrowser.openConnectScreen(window.gBrowser);
     }
   },
@@ -149,8 +133,7 @@ exports.menuitems = [
   { id: "getMoreDevtools",
     l10nKey: "getMoreDevtoolsCmd",
     oncommand(event) {
-      let window = event.target.ownerDocument.defaultView;
-      window.openTrustedLinkIn("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/", "tab");
+      openDocLink("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/");
     }
   },
 ];

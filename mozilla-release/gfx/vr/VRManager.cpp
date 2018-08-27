@@ -26,9 +26,6 @@
 #include "gfxVROpenVR.h"
 #include "gfxVROSVR.h"
 #endif
-#if defined(MOZ_ANDROID_GOOGLE_VR)
-#include "gfxVRGVR.h"
-#endif // MOZ_ANDROID_GOOGLE_VR
 
 #include "gfxVRPuppet.h"
 #include "ipc/VRLayerParent.h"
@@ -103,13 +100,6 @@ VRManager::VRManager()
       mManagers.AppendElement(mgr);
   }
 #endif
-
-#if defined(MOZ_ANDROID_GOOGLE_VR)
-   mgr = VRSystemManagerGVR::Create();
-   if (mgr) {
-     mManagers.AppendElement(mgr);
-   }
-#endif // defined(MOZ_ANDROID_GOOGLE_VR)
 
   // Enable gamepad extensions while VR is enabled.
   // Preference only can be set at the Parent process.
@@ -241,6 +231,12 @@ VRManager::CheckForInactiveTimeout()
     TimeDuration duration = TimeStamp::Now() - mLastActiveTime;
     if (duration.ToMilliseconds() > gfxPrefs::VRInactiveTimeout()) {
       Shutdown();
+      // We must not throttle the next enumeration request
+      // after an idle timeout, as it may result in the
+      // user needing to refresh the browser to detect
+      // VR hardware when leaving and returning to a VR
+      // site.
+      mLastDisplayEnumerationTime = TimeStamp();
     }
   }
 }

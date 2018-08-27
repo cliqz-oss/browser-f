@@ -23,7 +23,13 @@ activity_stream:
       "PREVIEW_REQUEST",
       "SAVE_TO_POCKET",
       "SEARCH",
+      "SEARCH_EDIT_ADD",
+      "SEARCH_EDIT_CLOSE",
+      "SEARCH_EDIT_DELETE",
+      "SKIPPED_SIGNIN",
+      "SUBMIT_EMAIL",
       "DISCLAIMER_ACKED",
+      "MENU_ADD_SEARCH",
       "MENU_ADD_TOPSITE",
       "MENU_COLLAPSE",
       "MENU_EXPAND",
@@ -348,6 +354,37 @@ telemetry.test:
     record_in_processes: ["main", "content"]
     description: This event is used to test main and content process recording.
     expiry_version: never
+  default_products:
+    objects: ["object1"]
+    bug_numbers: [1452552]
+    notification_emails: ["telemetry-client-dev@mozilla.com"]
+    record_in_processes: ["main"]
+    description: This event is used to test default products main recording.
+    expiry_version: never
+  desktop_only:
+    objects: ["object1"]
+    bug_numbers: [1452552]
+    notification_emails: ["telemetry-client-dev@mozilla.com"]
+    record_in_processes: ["main"]
+    description: This event is used to test desktop-only main recording.
+    expiry_version: never
+    products: ["firefox"]
+  multiproduct:
+    objects: ["object1"]
+    bug_numbers: [1452552]
+    notification_emails: ["telemetry-client-dev@mozilla.com"]
+    record_in_processes: ["main"]
+    description: This event is used to test multiproduct main recording.
+    expiry_version: never
+    products: ["firefox", "fennec", "geckoview"]
+  mobile_only:
+    objects: ["object1"]
+    bug_numbers: [1452552]
+    notification_emails: ["telemetry-client-dev@mozilla.com"]
+    record_in_processes: ["main"]
+    description: This event is used to test mobile-only main recording.
+    expiry_version: never
+    products: ["fennec", "geckoview"]
 
 # This is a secondary category used for Telemetry tests.
 # The events here will not be sent out with any pings.
@@ -365,7 +402,7 @@ telemetry.test.second:
 devtools.main:
   open:
     objects: ["tools"]
-    bug_numbers: [1416024]
+    bug_numbers: [1416024, 1456984]
     notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
     record_in_processes: ["main"]
     description: User opens devtools toolbox.
@@ -377,6 +414,8 @@ devtools.main:
       host: "Toolbox host (positioning): bottom, side, window or other."
       splitconsole: Indicates whether the split console was open.
       width: Toolbox width rounded up to the nearest 50px.
+      shortcut: The key combination pressed. Used only in the case that entrypoint === KeyShortcut.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
   close:
     objects: ["tools"]
     bug_numbers: [1453312]
@@ -388,6 +427,7 @@ devtools.main:
     extra_keys:
       host: "Toolbox host (positioning): bottom, side, window or other."
       width: Toolbox width rounded up to the nearest 50px.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
   enter:
     objects: ["webconsole", "inspector", "jsdebugger", "styleeditor", "netmonitor", "storage", "other"]
     bug_numbers: [1441070]
@@ -403,6 +443,7 @@ devtools.main:
       start_state: debuggerStatement, breakpoint, exception, tab_switch, toolbox_show, initial_panel, toggle_settings_off, toggle_settings_on, key_shortcut, select_next_key, select_prev_key, tool_unloaded, inspect_dom, unknown etc.
       panel_name: The name of the panel opened, webconsole, inspector, jsdebugger, styleeditor, netmonitor, storage or other
       cold: Is this the first time the current panel has been opened in this toolbox?
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
   exit:
     objects: ["webconsole", "inspector", "jsdebugger", "styleeditor", "netmonitor", "storage", "other"]
     bug_numbers: [1455270]
@@ -417,6 +458,7 @@ devtools.main:
       next_panel: The name of the panel closed, webconsole, inspector, jsdebugger, styleeditor, netmonitor, storage or other.
       panel_name: The name of the panel opened, webconsole, inspector, jsdebugger, styleeditor, netmonitor, storage or other
       reason: debuggerStatement, breakpoint, exception, tab_switch, toolbox_show, initial_panel, toggle_settings_off, toggle_settings_on, key_shortcut, select_next_key, select_prev_key, tool_unloaded, inspect_dom, toolbox_closed, unknown etc.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
   activate:
     objects: ["responsive_design", "split_console"]
     bug_numbers: [1455273]
@@ -428,6 +470,7 @@ devtools.main:
     extra_keys:
       host: "Toolbox host (positioning): bottom, side, window or other."
       width: Toolbox width rounded up to the nearest 50px.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
   deactivate:
     objects: ["responsive_design", "split_console"]
     bug_numbers: [1455275]
@@ -439,3 +482,49 @@ devtools.main:
     extra_keys:
       host: "Toolbox host (positioning): bottom, side, window or other."
       width: Toolbox width rounded up to the nearest 50px.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
+  edit_html:
+    objects: ["inspector"]
+    bug_numbers: [1463080]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User is editing HTML via the context menu item in the markup view.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      made_changes: Indicates whether changes were made.
+      time_open: The amount of time in ms that the HTML editor was open.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
+  edit_rule:
+    objects: ["ruleview"]
+    bug_numbers: [1463081]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User is editing a CSS rule by clicking on or next to a CSS property, enabling / disabling a rule or creating a new property.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
+  sidepanel_changed:
+    objects: ["inspector"]
+    bug_numbers: [1463083]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User has switched sidepanel tabs.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      oldpanel: The panel the user is switching from
+      newpanel: The panel the user is switching to
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.
+  execute_js:
+    objects: ["webconsole"]
+    bug_numbers: [1463083]
+    notification_emails: ["dev-developer-tools@lists.mozilla.org", "hkirschner@mozilla.com"]
+    record_in_processes: ["main"]
+    description: User has executed some JS in the Web Console.
+    release_channel_collection: opt-out
+    expiry_version: never
+    extra_keys:
+      lines: The number of lines contained in the command.
+      session_id: The start time of the session in milliseconds since epoch (Unix Timestamp) e.g. 1396381378123.

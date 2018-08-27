@@ -696,8 +696,8 @@ history-private-browsing-permanent =
     .label = Always use private browsing mode
     .accesskey = p
 
-history-remember-option =
-    .label = Remember my browsing and download history
+history-remember-browser-option =
+    .label = Remember browsing and download history
     .accesskey = b
 
 history-remember-search-option =
@@ -719,6 +719,13 @@ history-clear-button =
 ## Privacy Section - Site Data
 
 sitedata-header = Cookies and Site Data
+
+sitedata-total-size-calculating = Calculating site data and cache size…
+
+# Variables:
+#   $value (Number) - Value of the unit (for example: 4.6, 500)
+#   $unit (String) - Name of the unit (for example: "bytes", "KB")
+sitedata-total-size = Your stored cookies, site data and cache are currently using { $value } { $unit } of disk space.
 
 sitedata-learn-more = Learn more
 
@@ -838,6 +845,14 @@ permissions-notification-pause =
     .label = Pause notifications until { -brand-short-name } restarts
     .accesskey = n
 
+permissions-block-autoplay-media =
+    .label = Block websites from automatically playing media with sound
+    .accesskey = B
+
+permissions-block-autoplay-media-exceptions =
+    .label = Exceptions…
+    .accesskey = E
+
 permissions-block-popups =
     .label = Block pop-up windows
     .accesskey = B
@@ -871,6 +886,10 @@ collection-health-report =
     .label = Allow { -brand-short-name } to send technical and interaction data to { -vendor-short-name }
     .accesskey = r
 collection-health-report-link = Learn more
+
+collection-studies =
+    .label = Allow { -brand-short-name } to install and run studies
+collection-studies-link = View { -brand-short-name } studies
 
 # This message is displayed above disabled data sharing options in developer builds
 # or builds with no Telemetry support available.

@@ -332,7 +332,7 @@ txStylesheetCompiler::endElement()
         txInScopeVariable* var = mInScopeVariables[i];
         if (!--(var->mLevel)) {
             nsAutoPtr<txInstruction> instr(new txRemoveVariable(var->mName));
-            rv = addInstruction(Move(instr));
+            rv = addInstruction(std::move(instr));
             NS_ENSURE_SUCCESS(rv, rv);
 
             mInScopeVariables.RemoveElementAt(i);
@@ -480,7 +480,7 @@ txStylesheetCompiler::ensureNewElementContext()
     NS_ENSURE_SUCCESS(rv, rv);
 
     mElementContext.forget();
-    mElementContext = Move(context);
+    mElementContext = std::move(context);
 
     return NS_OK;
 }
@@ -523,9 +523,11 @@ txStylesheetCompilerState::txStylesheetCompilerState(txACompileObserver* aObserv
       mDisAllowed(0),
       mObserver(aObserver),
       mEmbedStatus(eNoEmbed),
+      mIsTopCompiler(false),
       mDoneWithThisStylesheet(false),
       mNextInstrPtr(nullptr),
-      mToplevelIterator(nullptr)
+      mToplevelIterator(nullptr),
+      mReferrerPolicy(mozilla::net::RP_Unset)
 {
     // Embedded stylesheets have another handler, which is set in
     // txStylesheetCompiler::init if the baseURI has a fragment identifier.
@@ -703,7 +705,7 @@ txStylesheetCompilerState::addToplevelItem(txToplevelItem* aItem)
 nsresult
 txStylesheetCompilerState::openInstructionContainer(txInstructionContainer* aContainer)
 {
-    NS_PRECONDITION(!mNextInstrPtr, "can't nest instruction-containers");
+    MOZ_ASSERT(!mNextInstrPtr, "can't nest instruction-containers");
 
     mNextInstrPtr = aContainer->mFirstInstruction.StartAssignment();
     return NS_OK;
@@ -720,7 +722,7 @@ txStylesheetCompilerState::closeInstructionContainer()
 nsresult
 txStylesheetCompilerState::addInstruction(nsAutoPtr<txInstruction>&& aInstruction)
 {
-    NS_PRECONDITION(mNextInstrPtr, "adding instruction outside container");
+    MOZ_ASSERT(mNextInstrPtr, "adding instruction outside container");
 
     txInstruction* newInstr = aInstruction;
 

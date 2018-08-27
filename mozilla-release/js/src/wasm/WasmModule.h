@@ -43,11 +43,11 @@ struct CompileArgs;
 
 struct LinkDataTierCacheablePod
 {
-    uint32_t outOfBoundsOffset;
-    uint32_t unalignedAccessOffset;
-    uint32_t trapOffset;
+    uint32_t outOfBoundsOffset = 0;
+    uint32_t unalignedAccessOffset = 0;
+    uint32_t trapOffset = 0;
 
-    LinkDataTierCacheablePod() { mozilla::PodZero(this); }
+    LinkDataTierCacheablePod() = default;
 };
 
 struct LinkDataTier : LinkDataTierCacheablePod
@@ -82,15 +82,15 @@ typedef UniquePtr<LinkDataTier> UniqueLinkDataTier;
 
 class LinkData
 {
-    UniqueLinkDataTier         linkData1_; // Always present
-    mutable UniqueLinkDataTier linkData2_; // Access only if hasTier2() is true
+    UniqueLinkDataTier         tier1_; // Always present
+    mutable UniqueLinkDataTier tier2_; // Access only if hasTier2() is true
 
   public:
     LinkData() {}
-    explicit LinkData(UniqueLinkDataTier linkData) : linkData1_(Move(linkData)) {}
+    explicit LinkData(UniqueLinkDataTier tier) : tier1_(std::move(tier)) {}
 
     void setTier2(UniqueLinkDataTier linkData) const;
-    const LinkDataTier& linkData(Tier tier) const;
+    const LinkDataTier& tier(Tier tier) const;
 
     WASM_DECLARE_SERIALIZABLE(LinkData)
 };
@@ -135,6 +135,7 @@ class Module : public JS::WasmModule
     const ExportVector      exports_;
     const DataSegmentVector dataSegments_;
     const ElemSegmentVector elemSegments_;
+    const StructTypeVector  structTypes_;
     const SharedBytes       bytecode_;
     ExclusiveTiering        tiering_;
 
@@ -170,15 +171,17 @@ class Module : public JS::WasmModule
            ExportVector&& exports,
            DataSegmentVector&& dataSegments,
            ElemSegmentVector&& elemSegments,
+           StructTypeVector&& structTypes,
            const ShareableBytes& bytecode)
-      : assumptions_(Move(assumptions)),
+      : assumptions_(std::move(assumptions)),
         code_(&code),
-        unlinkedCodeForDebugging_(Move(unlinkedCodeForDebugging)),
-        linkData_(Move(linkData)),
-        imports_(Move(imports)),
-        exports_(Move(exports)),
-        dataSegments_(Move(dataSegments)),
-        elemSegments_(Move(elemSegments)),
+        unlinkedCodeForDebugging_(std::move(unlinkedCodeForDebugging)),
+        linkData_(std::move(linkData)),
+        imports_(std::move(imports)),
+        exports_(std::move(exports)),
+        dataSegments_(std::move(dataSegments)),
+        elemSegments_(std::move(elemSegments)),
+        structTypes_(std::move(structTypes)),
         bytecode_(&bytecode),
         tiering_(mutexid::WasmModuleTieringLock),
         codeIsBusy_(false)
@@ -192,7 +195,7 @@ class Module : public JS::WasmModule
     const Metadata& metadata() const { return code_->metadata(); }
     const MetadataTier& metadata(Tier t) const { return code_->metadata(t); }
     const LinkData& linkData() const { return linkData_; }
-    const LinkDataTier& linkData(Tier t) const { return linkData_.linkData(t); }
+    const LinkDataTier& linkData(Tier t) const { return linkData_.tier(t); }
     const ImportVector& imports() const { return imports_; }
     const ExportVector& exports() const { return exports_; }
     const ShareableBytes& bytecode() const { return *bytecode_; }
@@ -257,7 +260,7 @@ CompiledModuleAssumptionsMatch(PRFileDesc* compiled, JS::BuildIdCharVector&& bui
 
 SharedModule
 DeserializeModule(PRFileDesc* bytecode, PRFileDesc* maybeCompiled, JS::BuildIdCharVector&& buildId,
-                  UniqueChars filename, unsigned line, unsigned column);
+                  UniqueChars filename, unsigned line);
 
 } // namespace wasm
 } // namespace js

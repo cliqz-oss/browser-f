@@ -26,9 +26,9 @@ WithDeinterlacingFilter(const IntSize& aSize,
   RefPtr<Decoder> decoder = CreateTrivialDecoder();
   ASSERT_TRUE(bool(decoder));
 
-  WithFilterPipeline(decoder, Forward<Func>(aFunc),
+  WithFilterPipeline(decoder, std::forward<Func>(aFunc),
                      DeinterlacingConfig<uint32_t> { aProgressiveDisplay },
-                     SurfaceConfig { decoder, 0, aSize,
+                     SurfaceConfig { decoder, aSize,
                                      SurfaceFormat::B8G8R8A8, false });
 }
 
@@ -39,9 +39,9 @@ WithPalettedDeinterlacingFilter(const IntSize& aSize,
   RefPtr<Decoder> decoder = CreateTrivialDecoder();
   ASSERT_TRUE(decoder != nullptr);
 
-  WithFilterPipeline(decoder, Forward<Func>(aFunc),
+  WithFilterPipeline(decoder, std::forward<Func>(aFunc),
                      DeinterlacingConfig<uint8_t> { /* mProgressiveDisplay = */ true },
-                     PalettedSurfaceConfig { decoder, 0, aSize,
+                     PalettedSurfaceConfig { decoder, aSize,
                                              IntRect(0, 0, 100, 100),
                                              SurfaceFormat::B8G8R8A8, 8,
                                              false });
@@ -55,7 +55,7 @@ AssertConfiguringDeinterlacingFilterFails(const IntSize& aSize)
 
   AssertConfiguringPipelineFails(decoder,
                                  DeinterlacingConfig<uint32_t> { /* mProgressiveDisplay = */ true},
-                                 SurfaceConfig { decoder, 0, aSize,
+                                 SurfaceConfig { decoder, aSize,
                                                  SurfaceFormat::B8G8R8A8, false });
 }
 

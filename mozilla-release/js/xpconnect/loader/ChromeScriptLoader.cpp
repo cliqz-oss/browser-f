@@ -20,6 +20,7 @@
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/SystemGroup.h"
+#include "nsCCUncollectableMarker.h"
 #include "nsCycleCollectionParticipant.h"
 
 using namespace JS;
@@ -48,6 +49,8 @@ public:
       , mGlobalObject(aGlobal)
       , mPromise(aPromise)
       , mCharset(aOptions.mCharset)
+      , mToken(nullptr)
+      , mScriptLength(0)
     {
         mOptions.setNoScriptRval(!aOptions.mHasReturnValue)
                 .setCanLazilyParse(aOptions.mLazilyParse)
@@ -57,7 +60,7 @@ public:
     nsresult Start(nsIPrincipal* aPrincipal);
 
     inline void
-    SetToken(void* aToken)
+    SetToken(JS::OffThreadToken* aToken)
     {
         mToken = aToken;
     }
@@ -82,7 +85,7 @@ private:
     nsCOMPtr<nsIGlobalObject>   mGlobalObject;
     RefPtr<Promise>             mPromise;
     nsString                    mCharset;
-    void*                       mToken;
+    JS::OffThreadToken*         mToken;
     UniqueTwoByteChars          mScriptText;
     size_t                      mScriptLength;
 };
@@ -113,7 +116,7 @@ AsyncScriptCompiler::Start(nsIPrincipal* aPrincipal)
 }
 
 static void
-OffThreadScriptLoaderCallback(void* aToken, void* aCallbackData)
+OffThreadScriptLoaderCallback(JS::OffThreadToken* aToken, void* aCallbackData)
 {
     RefPtr<AsyncScriptCompiler> scriptCompiler = dont_AddRef(
         static_cast<AsyncScriptCompiler*>(aCallbackData));
@@ -308,7 +311,7 @@ PrecompiledScript::ExecuteInGlobal(JSContext* aCx, HandleObject aGlobal,
 {
     {
         RootedObject targetObj(aCx, JS_FindCompilationScope(aCx, aGlobal));
-        JSAutoCompartment ac(aCx, targetObj);
+        JSAutoRealm ar(aCx, targetObj);
 
         Rooted<JSScript*> script(aCx, mScript);
         if (!JS::CloneAndExecuteScript(aCx, script, aRval)) {
@@ -338,6 +341,14 @@ PrecompiledScript::WrapObject(JSContext* aCx, HandleObject aGivenProto)
     return PrecompiledScriptBinding::Wrap(aCx, this, aGivenProto);
 }
 
+bool
+PrecompiledScript::IsBlackForCC(bool aTracingNeeded)
+{
+    return (nsCCUncollectableMarker::sGeneration &&
+            HasKnownLiveWrapper() &&
+            (!aTracingNeeded || HasNothingToTrace(this)));
+}
+
 NS_IMPL_CYCLE_COLLECTION_CLASS(PrecompiledScript)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PrecompiledScript)
@@ -360,6 +371,21 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(PrecompiledScript)
     NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mScript)
     NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(PrecompiledScript)
+    if (tmp->IsBlackForCC(false)) {
+        tmp->mScript.exposeToActiveJS();
+        return true;
+    }
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(PrecompiledScript)
+    return tmp->IsBlackForCC(true);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_END
+
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(PrecompiledScript)
+    return tmp->IsBlackForCC(false);
+NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(PrecompiledScript)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(PrecompiledScript)

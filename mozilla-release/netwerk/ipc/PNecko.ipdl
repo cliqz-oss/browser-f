@@ -80,7 +80,7 @@ parent:
   async PUDPSocket(Principal principal, nsCString filter);
 
   async PDNSRequest(nsCString hostName, OriginAttributes originAttributes,
-                    uint32_t flags, nsCString networkInterface);
+                    uint32_t flags);
 
   async PWebSocketEventListener(uint64_t aInnerWindowID);
 
@@ -146,6 +146,10 @@ child:
   async PredOnPredictDNS(URIParams uri);
 
   async SpeculativeConnectRequest();
+
+  // Using high priority to deliver this notification possibly sooner than we
+  // enter poll() on the child process with infinite timeout.
+  prio(high) async NetworkChangeNotification(nsCString type);
 
   async PTransportProvider();
 

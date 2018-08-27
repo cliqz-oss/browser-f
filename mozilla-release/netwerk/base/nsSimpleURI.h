@@ -11,7 +11,6 @@
 #include "nsISerializable.h"
 #include "nsString.h"
 #include "nsIClassInfo.h"
-#include "nsIMutable.h"
 #include "nsISizeOf.h"
 #include "nsIIPCSerializableURI.h"
 #include "nsIURIMutator.h"
@@ -31,7 +30,6 @@ class nsSimpleURI
     : public nsIURI
     , public nsISerializable
     , public nsIClassInfo
-    , public nsIMutable
     , public nsISizeOf
     , public nsIIPCSerializableURI
 {
@@ -44,7 +42,6 @@ public:
     NS_DECL_NSIURI
     NS_DECL_NSISERIALIZABLE
     NS_DECL_NSICLASSINFO
-    NS_DECL_NSIMUTABLE
     NS_DECL_NSIIPCSERIALIZABLEURI
 
     static already_AddRefed<nsSimpleURI> From(nsIURI* aURI);
@@ -74,6 +71,7 @@ protected:
         eReplaceRef
     };
 
+    virtual nsresult Clone(nsIURI** aURI);
     virtual nsresult SetSpecInternal(const nsACString &input);
     virtual nsresult SetScheme(const nsACString &input);
     virtual nsresult SetUserPass(const nsACString &input);

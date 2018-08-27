@@ -9,8 +9,8 @@
 
 #include "builtin/String.h"
 #include "jsapi-tests/tests.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 
 #include "vm/StringType-inl.h"
 
@@ -56,7 +56,7 @@ BEGIN_TEST(testIndexToString)
         CHECK(str);
 
         if (!js::StaticStrings::hasUint(u))
-            CHECK(cx->compartment()->dtoaCache.lookup(10, u) == str);
+            CHECK(cx->realm()->dtoaCache.lookup(10, u) == str);
 
         bool match = false;
         CHECK(JS_StringEqualsAscii(cx, str, tests[i].expected, &match));

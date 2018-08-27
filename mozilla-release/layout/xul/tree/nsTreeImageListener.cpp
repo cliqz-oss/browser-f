@@ -9,6 +9,7 @@
 #include "imgIRequest.h"
 #include "imgIContainer.h"
 #include "nsIContent.h"
+#include "nsTreeColumns.h"
 
 NS_IMPL_ISUPPORTS(nsTreeImageListener, imgINotificationObserver)
 
@@ -46,7 +47,7 @@ nsTreeImageListener::Notify(imgIRequest *aRequest, int32_t aType, const nsIntRec
 }
 
 void
-nsTreeImageListener::AddCell(int32_t aIndex, nsITreeColumn* aCol)
+nsTreeImageListener::AddCell(int32_t aIndex, nsTreeColumn* aCol)
 {
   if (!mInvalidationArea) {
     mInvalidationArea = new InvalidationArea(aCol);
@@ -89,7 +90,7 @@ nsTreeImageListener::Invalidate()
   }
 }
 
-nsTreeImageListener::InvalidationArea::InvalidationArea(nsITreeColumn* aCol)
+nsTreeImageListener::InvalidationArea::InvalidationArea(nsTreeColumn* aCol)
   : mCol(aCol),
     mMin(-1), // min should start out "undefined"
     mMax(0),

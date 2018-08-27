@@ -73,7 +73,7 @@ Besides the third party modules, here are modules required for the WebConsole
 * [devtools-launchpad](https://github.com/devtools-html/devtools-core/blob/master/packages/devtools-launchpad/#readme) provide the dev server, landing page and the bootstrap functions to run devtools in the browser tab.
 * [devtools-modules](https://github.com/devtools-html/devtools-core/blob/master/packages/devtools-modules/#readme) Devtools shared and shim modules.
 * [devtools-source-editor](https://github.com/devtools-html/devtools-core/blob/master/packages/devtools-source-editor/#readme) Source Editor component.
-* [devtools-reps](https://github.com/devtools-html/devtools-core/blob/master/packages/devtools-reps/#readme) remote object formatter for variables representation.
+* [devtools-reps](https://github.com/devtools-html/debugger.html/blob/master/packages/devtools-reps/#readme) remote object formatter for variables representation.
 
 Changes to those modules need to be done on Github, using the Pull Request workflow.
 Then, a new version of the modified package need to be released on npm so the version number
@@ -113,7 +113,7 @@ into actual modules used by the WebConsole and other Devtools.
 The WebConsole UI is built using [React](http://docs.firefox-dev.tools/frontend/react.html)
 components (in `components/`).
 
-The React application is rendered from `new-console-output-wrapper.js`.
+The React application is rendered from `webconsole-output-wrapper.js`.
 It contains 3 top components:
 * **ConsoleOutput** (in `ConsoleOutput.js`) is the component where messages are rendered.
 * **FilterBar** (in `FilterBar.js`) is the component for the filter bars (filter input and toggle buttons).

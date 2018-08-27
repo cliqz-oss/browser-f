@@ -10,6 +10,7 @@
 #ifdef MOZ_WAYLAND
 #include <gdk/gdkx.h>
 #include <gdk/gdkwayland.h>
+#include <wayland-egl.h>
 #endif
 #include <stdio.h>
 #include <dlfcn.h>
@@ -207,6 +208,12 @@ moz_container_init (MozContainer *container)
 
 #if defined(MOZ_WAYLAND)
     {
+      container->subcompositor = nullptr;
+      container->surface = nullptr;
+      container->subsurface = nullptr;
+      container->eglwindow = nullptr;
+      container->committed = false;
+
       GdkDisplay *gdk_display = gtk_widget_get_display(GTK_WIDGET(container));
       if (GDK_IS_WAYLAND_DISPLAY (gdk_display)) {
           // Available as of GTK 3.8+
@@ -225,12 +232,20 @@ moz_container_init (MozContainer *container)
 }
 
 #if defined(MOZ_WAYLAND)
+static void
+moz_container_after_paint(GdkFrameClock *clock, MozContainer *container)
+{
+    container->committed = true;
+    g_signal_handlers_disconnect_by_func(clock,
+         reinterpret_cast<gpointer>(moz_container_after_paint), container);
+}
+
 /* We want to draw to GdkWindow owned by mContainer from Compositor thread but
  * Gtk+ can be used in main thread only. So we create wayland wl_surface
  * and attach it as an overlay to GdkWindow.
  *
  * see gtk_clutter_embed_ensure_subsurface() at gtk-clutter-embed.c
-*  for reference.
+ * for reference.
  */
 static gboolean
 moz_container_map_surface(MozContainer *container)
@@ -242,6 +257,9 @@ moz_container_map_surface(MozContainer *container)
     static auto sGdkWaylandWindowGetWlSurface =
         (wl_surface *(*)(GdkWindow *))
         dlsym(RTLD_DEFAULT, "gdk_wayland_window_get_wl_surface");
+    static auto sGdkWindowGetFrameClock =
+        (GdkFrameClock *(*)(GdkWindow *))
+        dlsym(RTLD_DEFAULT, "gdk_window_get_frame_clock");
 
     GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(container));
     if (GDK_IS_X11_DISPLAY(display))
@@ -266,6 +284,11 @@ moz_container_map_surface(MozContainer *container)
           return false;
         }
 
+        GdkFrameClock *clock = sGdkWindowGetFrameClock(window);
+        g_signal_connect_after(clock, "after-paint",
+                               G_CALLBACK(moz_container_after_paint),
+                               container);
+
         container->subsurface =
           wl_subcompositor_get_subsurface (container->subcompositor,
                                            container->surface,
@@ -289,8 +312,10 @@ moz_container_map_surface(MozContainer *container)
 static void
 moz_container_unmap_surface(MozContainer *container)
 {
+    g_clear_pointer(&container->eglwindow, wl_egl_window_destroy);
     g_clear_pointer(&container->subsurface, wl_subsurface_destroy);
     g_clear_pointer(&container->surface, wl_surface_destroy);
+    container->committed = false;
 }
 
 #endif
@@ -434,6 +459,11 @@ moz_container_size_allocate (GtkWidget     *widget,
         gdk_window_get_position(gtk_widget_get_window(widget), &x, &y);
         wl_subsurface_set_position(container->subsurface, x, y);
     }
+    if (container->eglwindow) {
+        wl_egl_window_resize(container->eglwindow,
+                             allocation->width, allocation->height,
+                             0, 0);
+    }
 #endif
 }
 
@@ -557,6 +587,29 @@ moz_container_get_wl_surface(MozContainer *container)
         moz_container_map_surface(container);
     }
 
-    return container->surface;
+    return container->committed ? container->surface : nullptr;
+}
+
+struct wl_egl_window *
+moz_container_get_wl_egl_window(MozContainer *container)
+{
+    if (!container->eglwindow) {
+        struct wl_surface *wlsurf = moz_container_get_wl_surface(container);
+        if (!wlsurf)
+            return nullptr;
+
+      GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(container));
+      container->eglwindow
+            = wl_egl_window_create(wlsurf,
+                                   gdk_window_get_width(window),
+                                   gdk_window_get_height(window));
+    }
+    return container->eglwindow;
+}
+
+gboolean
+moz_container_has_wl_egl_window(MozContainer *container)
+{
+    return container->eglwindow ? true : false;
 }
 #endif

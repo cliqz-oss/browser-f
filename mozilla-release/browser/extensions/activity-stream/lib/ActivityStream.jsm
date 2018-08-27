@@ -139,9 +139,17 @@ const PREFS_CONFIG = new Map([
     title: "Boolean flag that decides whether or not to show saved recent Downloads in highlights.",
     value: true
   }],
+  ["section.highlights.rows", {
+    title: "Number of rows of Highlights to display",
+    value: 2
+  }],
   ["section.topstories.showDisclaimer", {
     title: "Boolean flag that decides whether or not to show the topstories disclaimer.",
     value: true
+  }],
+  ["section.topstories.rows", {
+    title: "Number of rows of Top Stories to display",
+    value: 1
   }],
   ["tippyTop.service.endpoint", {
     title: "Tippy Top service manifest url",
@@ -151,9 +159,46 @@ const PREFS_CONFIG = new Map([
     title: "The rendering order for the sections",
     value: "topsites,topstories,highlights"
   }],
+  ["improvesearch.noDefaultSearchTile", {
+    title: "Experiment to remove tiles that are the same as the default search",
+    value: true
+  }],
+  ["improvesearch.topSiteSearchShortcuts", {
+    title: "Experiment to show special top sites that perform keyword searches",
+    value: AppConstants.MOZ_UPDATE_CHANNEL !== "release"
+  }],
+  ["improvesearch.topSiteSearchShortcuts.searchEngines", {
+    title: "An ordered, comma-delimited list of search shortcuts that we should try and pin",
+    // This pref is dynamic as the shortcuts vary depending on the region
+    getValue: ({geo}) => {
+      if (!geo) {
+        return "";
+      }
+      const searchShortcuts = [];
+      if (geo === "CN") {
+        searchShortcuts.push("baidu");
+      } else if (["BY", "KZ", "RU", "TR"].includes(geo)) {
+        searchShortcuts.push("yandex");
+      } else {
+        searchShortcuts.push("google");
+      }
+      if (["DE", "FR", "GB", "IT", "JP", "US"].includes(geo)) {
+        searchShortcuts.push("amazon");
+      }
+      return searchShortcuts.join(",");
+    }
+  }],
+  ["improvesearch.topSiteSearchShortcuts.havePinned", {
+    title: "A comma-delimited list of search shortcuts that have previously been pinned",
+    value: ""
+  }],
   ["asrouterExperimentEnabled", {
     title: "Is the message center experiment on?",
     value: false
+  }],
+  ["asrouterOnboardingCohort", {
+    title: "What cohort is the user in?",
+    value: 0
   }],
   ["asrouter.snippetsUrl", {
     title: "A custom URL for the AS router snippets",

@@ -39,7 +39,6 @@ class nsIInputStream;
 class nsIInputStreamPump;
 class nsIInterfaceRequestor;
 class nsINestedURI;
-class nsINetworkInterface;
 class nsIOutputStream;
 class nsIParentChannel;
 class nsIPersistentProperties;
@@ -605,7 +604,7 @@ NS_QueryNotificationCallbacks(T            *channel,
                               const nsIID  &iid,
                               void        **result)
 {
-    NS_PRECONDITION(channel, "null channel");
+    MOZ_ASSERT(channel, "null channel");
     *result = nullptr;
 
     nsCOMPtr<nsIInterfaceRequestor> cbs;
@@ -794,26 +793,6 @@ nsresult NS_DoImplGetInnermostURI(nsINestedURI *nestedURI, nsIURI **result);
 nsresult NS_ImplGetInnermostURI(nsINestedURI *nestedURI, nsIURI **result);
 
 /**
- * Helper function that ensures that |result| is a URI that's safe to
- * return.  If |uri| is immutable, just returns it, otherwise returns
- * a clone.  |uri| must not be null.
- */
-nsresult NS_EnsureSafeToReturn(nsIURI *uri, nsIURI **result);
-
-/**
- * Helper function that tries to set the argument URI to be immutable
- */
-void NS_TryToSetImmutable(nsIURI *uri);
-
-/**
- * Helper function for calling ToImmutableURI.  If all else fails, returns
- * the input URI.  The optional second arg indicates whether we had to fall
- * back to the input URI.  Passing in a null URI is ok.
- */
-already_AddRefed<nsIURI> NS_TryToMakeImmutable(nsIURI *uri,
-                                               nsresult *outRv = nullptr);
-
-/**
  * Helper function for testing whether the given URI, or any of its
  * inner URIs, has all the given protocol flags.
  */
@@ -870,12 +849,6 @@ nsresult NS_LinkRedirectChannels(uint32_t channelId,
                                  nsIChannel **_result);
 
 /**
- * Helper function to create a random URL string that's properly formed
- * but guaranteed to be invalid.
- */
-nsresult NS_MakeRandomInvalidURLString(nsCString &result);
-
-/**
  * Helper function which checks whether the channel can be
  * openend using Open2() or has to fall back to opening
  * the channel using Open().
@@ -890,15 +863,6 @@ nsresult NS_MaybeOpenChannelUsingOpen2(nsIChannel* aChannel,
  */
 nsresult NS_MaybeOpenChannelUsingAsyncOpen2(nsIChannel* aChannel,
                                             nsIStreamListener *aListener);
-
-/**
- * Helper function to determine whether urlString is Java-compatible --
- * whether it can be passed to the Java URL(String) constructor without the
- * latter throwing a MalformedURLException, or without Java otherwise
- * mishandling it.  This function (in effect) implements a scheme whitelist
- * for Java.
- */
-nsresult NS_CheckIsJavaCompatibleURLString(nsCString& urlString, bool *result);
 
 /** Given the first (disposition) token from a Content-Disposition header,
  * tell whether it indicates the content is inline or attachment

@@ -8,8 +8,9 @@
 
 ChromeUtils.import("resource://gre/modules/ctypes.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://ppapi.js/opengles2-utils.jsm");
-Cu.importGlobalProperties(['URL']);
+XPCOMUtils.defineLazyGlobalGetters(this, ['URL']);
 
 const PP_OK = 0;
 const PP_OK_COMPLETIONPENDING = -1;
@@ -2848,7 +2849,7 @@ dump(`callFromJSON: < ${JSON.stringify(call)}\n`);
       let entries = [];
       let enumerator = directory.directoryEntries;
       while (enumerator.hasMoreElements()) {
-        let file = enumerator.getNext().QueryInterface(Ci.nsIFile);
+        let file = enumerator.nextFile;
         entries.push({ name: file.leafName, is_dir: file.isDirectory() });
       }
       return [PP_OK, { contents: { count: entries.length, entries } }];

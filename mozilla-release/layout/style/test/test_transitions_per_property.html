@@ -59,9 +59,6 @@ function any_unit_to_num(str)
 var FUNC_NEGATIVE = "cubic-bezier(0.25, -2, 0.75, 1)";
 var FUNC_OVERONE = "cubic-bezier(0.25, 0, 0.75, 3)";
 
-// After resolving Bug 1387080, we can remove this variable.
-const isServo = SpecialPowers.DOMWindowUtils.isStyledByServo;
-
 var supported_properties = {
     "border-bottom-left-radius": [ test_radius_transition ],
     "border-bottom-right-radius": [ test_radius_transition ],
@@ -87,10 +84,7 @@ var supported_properties = {
     "background-color": [ test_color_transition,
                           test_true_currentcolor_transition ],
     "background-position": [ test_background_position_transition,
-                             // FIXME: We don't currently test clamping,
-                             // since background-position uses calc() as
-                             // an intermediate form.
-                             /* test_length_percent_pair_unclamped */ ],
+                             test_length_percent_pair_unclamped ],
     "background-position-x": [ test_background_position_coord_transition,
                                test_length_transition,
                                test_percent_transition,
@@ -106,10 +100,7 @@ var supported_properties = {
                              // an intermediate form.
                              /* test_length_percent_pair_unclamped */ ],
     "background-size": [ test_background_size_transition,
-                         // FIXME: We don't currently test clamping,
-                         // since background-size uses calc() as an
-                         // intermediate form.
-                         /* test_length_percent_pair_clamped */ ],
+                         test_length_percent_pair_clamped ],
     "border-bottom-color": [ test_color_transition,
                              test_true_currentcolor_transition ],
     "border-bottom-width": [ test_length_transition,
@@ -153,7 +144,7 @@ var supported_properties = {
     "flex-shrink": [ test_float_zeroToOne_transition,
                      test_float_aboveOne_transition ],
     "flood-color": [ test_color_transition,
-                     test_currentcolor_transition ],
+                     test_true_currentcolor_transition ],
     "flood-opacity" : [ test_float_zeroToOne_transition,
                         // opacity is clamped in computed style
                         // (not parsing/interpolation)
@@ -177,7 +168,7 @@ var supported_properties = {
               test_length_unclamped, test_percent_unclamped ],
     "letter-spacing": [ test_length_transition, test_length_unclamped ],
     "lighting-color": [ test_color_transition,
-                        test_currentcolor_transition ],
+                        test_true_currentcolor_transition ],
     // NOTE: when calc() is supported on 'line-height', we should add
     // test_length_percent_calc_transition.
     "line-height": [ test_length_transition, test_percent_transition,
@@ -195,10 +186,7 @@ var supported_properties = {
                     test_length_percent_calc_transition,
                     test_length_unclamped, test_percent_unclamped ],
     "mask-position": [ test_background_position_transition,
-                       // FIXME: We don't currently test clamping,
-                       // since mask-position uses calc() as
-                       // an intermediate form.
-                       /* test_length_percent_pair_unclamped */ ],
+                       test_length_percent_pair_unclamped ],
     "mask-position-x": [ test_background_position_coord_transition,
                          test_length_transition,
                          test_percent_transition,
@@ -214,10 +202,7 @@ var supported_properties = {
                          // an intermediate form.
                          /* test_length_percent_pair_unclamped */ ],
     "mask-size": [ test_background_size_transition,
-                   // FIXME: We don't currently test clamping,
-                   // since mask-size uses calc() as an
-                   // intermediate form.
-                   /* test_length_percent_pair_clamped */ ],
+                   test_length_percent_pair_clamped ],
     "max-height": [ test_length_transition, test_percent_transition,
                     test_length_clamped, test_percent_clamped ],
     "max-width": [ test_length_transition, test_percent_transition,
@@ -256,7 +241,7 @@ var supported_properties = {
                test_length_percent_calc_transition,
                test_length_unclamped, test_percent_unclamped ],
     "stop-color": [ test_color_transition,
-                    test_currentcolor_transition ],
+                    test_true_currentcolor_transition ],
     "stop-opacity" : [ test_float_zeroToOne_transition,
                        // opacity is clamped in computed style
                        // (not parsing/interpolation)
@@ -329,11 +314,23 @@ if (IsCSSPropertyPrefEnabled("layout.css.font-variations.enabled")) {
   supported_properties["font-variation-settings"] = [ test_font_variations_transition ];
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled") &&
-    SpecialPowers.DOMWindowUtils.isStyledByServo) {
+if (IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled")) {
   supported_properties["rotate"] = [ test_rotate_transition ];
   supported_properties["scale"] = [ test_scale_transition ];
   supported_properties["translate"] = [ test_translate_transition ];
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.scrollbar-colors.enabled")) {
+  supported_properties["scrollbar-face-color"] = [
+    test_color_transition,
+    test_true_currentcolor_transition,
+    test_auto_color_transition,
+  ];
+  supported_properties["scrollbar-track-color"] = [
+    test_color_transition,
+    test_true_currentcolor_transition,
+    test_auto_color_transition,
+  ];
 }
 
 var div = document.getElementById("display");
@@ -517,8 +514,7 @@ var transformTests = [
     expected: 'matrix(1, 0, ' + 3 * 0.75 + ', 1, 0, 0)',
     round_error_ok: true },
   { start: 'skewX(0)', end: 'skewX(-45deg) translate(0)',
-    expected: 'matrix(1, 0, -0.25, 1, 0, 0)',
-    round_error_ok: true },
+    expected_uncomputed: 'skewX(-11.25deg) translate(0)' },
   // matrix : rotate
   { start: 'rotate(-30deg)', end: 'matrix(0, 1, -1, 0, 0, 0)',
     expected: 'matrix(1, 0, 0, 1, 0, 0)',
@@ -527,11 +523,9 @@ var transformTests = [
     end: 'translateX(0) rotate(-90deg)',
     expected: computeMatrix('rotate(-45deg)'),
     round_error_ok: true },
-  // matrix decomposition of skewY
+  // extended shorter transform list
   { start: 'skewY(60deg)', end: 'skewY(-60deg) translateX(0)',
-    /* rotate(30deg) skewX(60deg)/2 scale(2, 0.5) */
-    expected: computeMatrix('rotate(30deg) skewX(' + Math.atan(Math.tan(Math.PI * 60/180) / 2) + 'rad) scale(2, 0.5)'),
-    round_error_ok: true },
+    expected_uncomputed: 'skewY(30deg) translateX(0)' },
 
 
   // matrix decomposition
@@ -629,24 +623,24 @@ var transformTests = [
     expected: computeMatrix('rotate(22.5deg) matrix(1, 0, ' + 0.5 * 0.25 + ', 1, 0, 0) scaleX(0.5)'),
     round_error_ok: true },
 
-  // lists vs. matrix decomposition
+  // lists
   { start: 'translate(10px) skewY(45deg)',
     end: 'translate(30px) skewY(-45deg)',
     expected_uncomputed: 'translate(15px) skewY(22.5deg)' },
   { start: 'skewY(45deg) rotate(90deg)',
     end: 'skewY(-45deg) rotate(90deg)',
     expected_uncomputed: 'skewY(22.5deg) rotate(90deg)' },
-  { start: 'skewY(45deg) rotate(90deg) translate(0)',
-    end: 'skewY(-45deg) rotate(90deg)',
-    expected: 'matrix(0, 1, -1, -0.5, 0, 0)',
-    round_error_ok: true },
   { start: 'skewX(45deg) rotate(90deg)',
     end: 'skewX(-45deg) rotate(90deg)',
     expected_uncomputed: 'skewX(22.5deg) rotate(90deg)' },
+
+  // extended lists
+  { start: 'skewY(45deg) rotate(90deg) translate(0)',
+    end: 'skewY(-45deg) rotate(90deg)',
+    expected_uncomputed: 'skewY(22.5deg) rotate(90deg) translate(0)' },
   { start: 'skewX(-60deg) rotate(90deg) translate(0)',
     end: 'skewX(60deg) rotate(90deg)',
-    expected: computeMatrix('rotate(120deg) skewX(' + Math.atan(Math.tan(Math.PI * 60/180) / 2) + 'rad) scale(2, 0.5)'),
-    round_error_ok: true },
+    expected_uncomputed: 'skewX(-30deg) rotate(90deg) translate(0)' },
 ];
 
 // Even if the default reference-box of shape-outside is margin-box, which is
@@ -661,15 +655,11 @@ const basicShapesTests = [
   // none to shape
   { start: "none",
     end: "circle(500px at 500px 500px) border-box",
-    expected:
-      isServo ? ["circle", ["500px at 500px 500px"], "border-box"]
-              : ["circle", ["500px at calc(500px + 0%) calc(500px + 0%)"], "border-box"]
+    expected: ["circle", ["500px at 500px 500px"], "border-box"]
   },
   { start: "none",
     end: "ellipse(500px 500px at 500px 500px) border-box",
-    expected:
-      isServo ? ["ellipse", ["500px 500px at 500px 500px"], "border-box"]
-              : ["ellipse", ["500px 500px at calc(500px + 0%) calc(500px + 0%)"], "border-box"]
+    expected: ["ellipse", ["500px 500px at 500px 500px"], "border-box"]
   },
   { start: "none",
     end: "polygon(evenodd, 500px 500px, 500px 500px) border-box",
@@ -686,15 +676,11 @@ const basicShapesTests = [
     expected: ["ellipse", ["200px 200px at 50% 50%"]] },
   { start: "circle(100px at 100px 100px) border-box",
     end: "circle(500px at 500px 500px) border-box",
-    expected:
-      isServo ? ["circle", ["200px at 200px 200px"], "border-box"]
-              : ["circle", ["200px at calc(200px + 0%) calc(200px + 0%)"], "border-box"]
+    expected: ["circle", ["200px at 200px 200px"], "border-box"]
   },
   { start: "ellipse(100px 100px at 100px 100px) border-box",
     end: "ellipse(500px 500px at 500px 500px) border-box",
-    expected:
-      isServo ? ["ellipse", ["200px 200px at 200px 200px"], "border-box"]
-              : ["ellipse", ["200px 200px at calc(200px + 0%) calc(200px + 0%)"], "border-box"]
+    expected: ["ellipse", ["200px 200px at 200px 200px"], "border-box"]
   },
   { start: "polygon(evenodd, 100px 100px, 100px 100px) border-box",
     end: "polygon(evenodd, 500px 500px, 500px 500px) border-box",
@@ -765,15 +751,11 @@ const basicShapesTests = [
   // mismatching boxes
   { start: "circle(100px at 100px 100px) border-box",
     end: "circle(500px at 500px 500px) content-box",
-    expected:
-      isServo ? ["circle", ["500px at 500px 500px"], "content-box"]
-              : ["circle", ["500px at calc(500px + 0%) calc(500px + 0%)"], "content-box"]
+    expected: ["circle", ["500px at 500px 500px"], "content-box"]
   },
   { start: "ellipse(100px 100px at 100px 100px) border-box",
     end: "ellipse(500px 500px at 500px 500px) content-box",
-    expected:
-      isServo ? ["ellipse", ["500px 500px at 500px 500px"], "content-box"]
-              : ["ellipse", ["500px 500px at calc(500px + 0%) calc(500px + 0%)"], "content-box"]
+    expected: ["ellipse", ["500px 500px at 500px 500px"], "content-box"]
   },
   { start: "polygon(evenodd, 100px 100px, 100px 100px) border-box",
     end: "polygon(evenodd, 500px 500px, 500px 500px) content-box",
@@ -786,9 +768,7 @@ const basicShapesTests = [
   // mismatching functions
   { start: "circle(100px at 100px 100px) border-box",
     end: "ellipse(500px 500px at 500px 500px) border-box",
-    expected:
-      isServo ? ["ellipse", ["500px 500px at 500px 500px"], "border-box"]
-              : ["ellipse", ["500px 500px at calc(500px + 0%) calc(500px + 0%)"], "border-box"]
+    expected: ["ellipse", ["500px 500px at 500px 500px"], "border-box"]
   },
   { start: "inset(0px round 20px)", end: "ellipse(500px 500px)",
     expected: ["ellipse", ["500px 500px at 50% 50%"]]
@@ -2119,11 +2099,18 @@ function test_length_percent_pair_clamped_or_unclamped(prop, is_clamped) {
   div.style.setProperty("transition-timing-function", FUNC_NEGATIVE, "");
   div.style.setProperty("transition-property", "none", "");
   div.style.setProperty(prop, "0px 0%", "");
-  is(cs.getPropertyValue(prop), "0px 0px",
+  var is_zero = function(val) {
+    if (prop == "transform-origin" || prop == "perspective-origin") {
+      // These two properties resolve percentages to pixels.
+      return val == "0px 0px";
+    }
+    return val == "0px 0%";
+  }
+  ok(is_zero(cs.getPropertyValue(prop)),
      "length+percent-valued property " + prop + ": flush before clamping test");
   div.style.setProperty("transition-property", prop, "");
   div.style.setProperty(prop, "30px 25%", "");
-  (is_clamped ? is : isnot)(cs.getPropertyValue(prop), "0px 0px",
+  is(is_zero(cs.getPropertyValue(prop)), is_clamped,
      "length+percent-valued property " + prop + ": clamping of negatives");
   div.style.setProperty("transition-timing-function", "linear", "");
 }

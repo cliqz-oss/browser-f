@@ -76,7 +76,6 @@ class AboutDebuggingApp extends Component {
   componentWillUnmount() {
     window.removeEventListener("hashchange", this.onHashChange);
     this.props.telemetry.toolClosed("aboutdebugging");
-    this.props.telemetry.destroy();
   }
 
   onHashChange() {
@@ -90,10 +89,10 @@ class AboutDebuggingApp extends Component {
   }
 
   render() {
-    let { client, connect } = this.props;
-    let { selectedPanelId } = this.state;
-    let selectPanel = this.selectPanel;
-    let selectedPanel = panels.find(p => p.id == selectedPanelId);
+    const { client, connect } = this.props;
+    const { selectedPanelId } = this.state;
+    const selectPanel = this.selectPanel;
+    const selectedPanel = panels.find(p => p.id == selectedPanelId);
     let panel;
 
     if (selectedPanel) {

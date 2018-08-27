@@ -34,7 +34,6 @@
 # and when possible we should avoid doing so. We don't generate bindings for
 # these methods here currently.
 
-import sys
 import os.path
 import re
 import xpidl
@@ -207,6 +206,7 @@ pub unsafe fn %(name)s(&self, %(params)s) -> %(ret_ty)s {
 }
 """
 
+
 def methodAsWrapper(iface, m):
     try:
         param_list = methodRawParamList(iface, m)
@@ -235,6 +235,7 @@ pub unsafe fn %(name)s(&self) -> %(realtype)s {
 }
 """
 
+
 def attrAsWrapper(iface, m, getter):
     try:
         if m.implicit_jscontext:
@@ -245,7 +246,8 @@ def attrAsWrapper(iface, m, getter):
 
         name = attributeParamName(m)
 
-        if getter and m.infallible:
+        if getter and m.infallible and m.realtype.kind == 'builtin':
+            # NOTE: We don't support non-builtin infallible getters in Rust code.
             return infallible_impl_tmpl % {
                 'name': attributeNativeName(m, getter),
                 'realtype': m.realtype.rustType('in'),
@@ -303,7 +305,7 @@ def print_rust_bindings(idl, fd, filename):
 
                 if printdoccomments:
                     fd.write("/// `typedef %s %s;`\n///\n" %
-                        (p.realtype.nativeType('in'), p.name))
+                             (p.realtype.nativeType('in'), p.name))
                     fd.write(doccomments(p.doccomments))
                 fd.write("pub type %s = %s;\n\n" % (p.name, p.realtype.rustType('in')))
             except xpidl.RustNoncompat as reason:
@@ -480,10 +482,10 @@ def write_interface(iface, fd):
     if printdoccomments:
         if iface.base is not None:
             fd.write("/// `interface %s : %s`\n///\n" %
-                (iface.name, iface.base))
+                     (iface.name, iface.base))
         else:
             fd.write("/// `interface %s`\n///\n" %
-                iface.name)
+                     iface.name)
     printComments(fd, iface.doccomments, '')
     fd.write(struct_tmpl % names)
 

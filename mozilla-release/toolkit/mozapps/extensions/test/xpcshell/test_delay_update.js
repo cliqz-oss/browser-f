@@ -25,10 +25,40 @@ createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 // Create and configure the HTTP server.
 var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
 testserver.registerDirectory("/data/", do_get_file("data"));
-testserver.registerDirectory("/addons/", do_get_file("addons"));
 
-function createIgnoreAddon() {
-  writeInstallRDFToDir({
+
+const ADDONS = {
+  test_delay_update_complete_v2: {
+    "install.rdf": {
+      "id": "test_delay_update_complete@tests.mozilla.org",
+      "version": "2.0",
+      "name": "Test Delay Update Complete",
+    },
+  },
+  test_delay_update_defer_v2: {
+    "install.rdf": {
+      "id": "test_delay_update_defer@tests.mozilla.org",
+      "version": "2.0",
+      "name": "Test Delay Update Defer",
+    },
+  },
+  test_delay_update_ignore_v2: {
+    "install.rdf": {
+      "id": "test_delay_update_ignore@tests.mozilla.org",
+      "version": "2.0",
+      "name": "Test Delay Update Ignore",
+    },
+  },
+};
+
+const XPIS = {};
+for (let [name, files] of Object.entries(ADDONS)) {
+  XPIS[name] = AddonTestUtils.createTempXPIFile(files);
+  testserver.registerFile(`/addons/${name}.xpi`, XPIS[name]);
+}
+
+async function createIgnoreAddon() {
+  await promiseWriteInstallRDFToXPI({
     id: IGNORE_ID,
     version: "1.0",
     bootstrap: true,
@@ -40,16 +70,40 @@ function createIgnoreAddon() {
       maxVersion: "1"
     }],
     name: "Test Delay Update Ignore",
-  }, profileDir, IGNORE_ID, "bootstrap.js");
+  }, profileDir, IGNORE_ID, {
+    "bootstrap.js": String.raw`
+      ChromeUtils.import("resource://gre/modules/Services.jsm");
+      ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
-  let unpacked_addon = profileDir.clone();
-  unpacked_addon.append(IGNORE_ID);
-  do_get_file("data/test_delay_update_ignore/bootstrap.js")
-    .copyTo(unpacked_addon, "bootstrap.js");
+      const ADDON_ID = "test_delay_update_ignore@tests.mozilla.org";
+      const TEST_IGNORE_PREF = "delaytest.ignore";
+
+      function install(data, reason) {}
+
+      // normally we would use BootstrapMonitor here, but we need a reference to
+      // the symbol inside XPIProvider.jsm.
+      function startup(data, reason) {
+        Services.prefs.setBoolPref(TEST_IGNORE_PREF, false);
+
+        // explicitly ignore update, will be queued for next restart
+        if (data.hasOwnProperty("instanceID") && data.instanceID) {
+          AddonManager.addUpgradeListener(data.instanceID, (upgrade) => {
+            Services.prefs.setBoolPref(TEST_IGNORE_PREF, true);
+          });
+        } else {
+          throw Error("no instanceID passed to bootstrap startup");
+        }
+      }
+
+      function shutdown(data, reason) {}
+
+      function uninstall(data, reason) {}
+    `,
+  });
 }
 
-function createCompleteAddon() {
-  writeInstallRDFToDir({
+async function createCompleteAddon() {
+  await promiseWriteInstallRDFToXPI({
     id: COMPLETE_ID,
     version: "1.0",
     bootstrap: true,
@@ -61,16 +115,38 @@ function createCompleteAddon() {
       maxVersion: "1"
     }],
     name: "Test Delay Update Complete",
-  }, profileDir, COMPLETE_ID, "bootstrap.js");
+  }, profileDir, COMPLETE_ID, {
+    "bootstrap.js": String.raw`
+      ChromeUtils.import("resource://gre/modules/Services.jsm");
+      ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
-  let unpacked_addon = profileDir.clone();
-  unpacked_addon.append(COMPLETE_ID);
-  do_get_file("data/test_delay_update_complete/bootstrap.js")
-    .copyTo(unpacked_addon, "bootstrap.js");
+      const ADDON_ID = "test_delay_update_complete@tests.mozilla.org";
+      const INSTALL_COMPLETE_PREF = "bootstraptest.install_complete_done";
+
+      function install(data, reason) {}
+
+      // normally we would use BootstrapMonitor here, but we need a reference to
+      // the symbol inside XPIProvider.jsm.
+      function startup(data, reason) {
+        // apply update immediately
+        if (data.hasOwnProperty("instanceID") && data.instanceID) {
+          AddonManager.addUpgradeListener(data.instanceID, (upgrade) => {
+            upgrade.install();
+          });
+        } else {
+          throw Error("no instanceID passed to bootstrap startup");
+        }
+      }
+
+      function shutdown(data, reason) {}
+
+      function uninstall(data, reason) {}
+    `,
+  });
 }
 
-function createDeferAddon() {
-  writeInstallRDFToDir({
+async function createDeferAddon() {
+  await promiseWriteInstallRDFToXPI({
     id: DEFER_ID,
     version: "1.0",
     bootstrap: true,
@@ -82,12 +158,44 @@ function createDeferAddon() {
       maxVersion: "1"
     }],
     name: "Test Delay Update Defer",
-  }, profileDir, DEFER_ID, "bootstrap.js");
+  }, profileDir, DEFER_ID, {
+    "bootstrap.js": String.raw`
+      ChromeUtils.import("resource://gre/modules/Services.jsm");
+      ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
-  let unpacked_addon = profileDir.clone();
-  unpacked_addon.append(DEFER_ID);
-  do_get_file("data/test_delay_update_defer/bootstrap.js")
-    .copyTo(unpacked_addon, "bootstrap.js");
+      const ADDON_ID = "test_delay_update_complete@tests.mozilla.org";
+      const INSTALL_COMPLETE_PREF = "bootstraptest.install_complete_done";
+
+      // global reference to hold upgrade object
+      let gUpgrade;
+
+      function install(data, reason) {}
+
+      // normally we would use BootstrapMonitor here, but we need a reference to
+      // the symbol inside XPIProvider.jsm.
+      function startup(data, reason) {
+        // do not apply update immediately, hold on to for later
+        if (data.hasOwnProperty("instanceID") && data.instanceID) {
+          AddonManager.addUpgradeListener(data.instanceID, (upgrade) => {
+            gUpgrade = upgrade;
+          });
+        } else {
+          throw Error("no instanceID passed to bootstrap startup");
+        }
+
+        // add a listener so the test can pass control back
+        AddonManager.addAddonListener({
+          onFakeEvent: () => {
+            gUpgrade.install();
+          }
+        });
+      }
+
+      function shutdown(data, reason) {}
+
+      function uninstall(data, reason) {}
+    `,
+  });
 }
 
 // add-on registers upgrade listener, and ignores update.
@@ -95,7 +203,7 @@ add_task(async function() {
 
   await createIgnoreAddon();
 
-  startupManager();
+  await promiseStartupManager();
 
   let addon = await promiseAddonByID(IGNORE_ID);
   Assert.notEqual(addon, null);
@@ -136,7 +244,7 @@ add_task(async function() {
   Assert.ok(addon_upgraded.isActive);
   Assert.equal(addon_upgraded.type, "extension");
 
-  await shutdownManager();
+  await promiseShutdownManager();
 });
 
 // add-on registers upgrade listener, and allows update.
@@ -144,7 +252,7 @@ add_task(async function() {
 
   await createCompleteAddon();
 
-  startupManager();
+  await promiseStartupManager();
 
   let addon = await promiseAddonByID(COMPLETE_ID);
   Assert.notEqual(addon, null);
@@ -192,7 +300,7 @@ add_task(async function() {
   Assert.ok(addon_upgraded.isActive);
   Assert.equal(addon_upgraded.type, "extension");
 
-  await shutdownManager();
+  await promiseShutdownManager();
 });
 
 // add-on registers upgrade listener, initially defers update then allows upgrade
@@ -200,7 +308,7 @@ add_task(async function() {
 
   await createDeferAddon();
 
-  startupManager();
+  await promiseStartupManager();
 
   let addon = await promiseAddonByID(DEFER_ID);
   Assert.notEqual(addon, null);
@@ -251,5 +359,5 @@ add_task(async function() {
   Assert.ok(addon_upgraded.isActive);
   Assert.equal(addon_upgraded.type, "extension");
 
-  await shutdownManager();
+  await promiseShutdownManager();
 });

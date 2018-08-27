@@ -18,7 +18,6 @@
 #include "nsHTMLParts.h"
 #include "nsIPresShell.h"
 #include "nsIServiceManager.h"
-#include "nsIDOMNode.h"
 #include "nsDisplayList.h"
 #include "nsLayoutUtils.h"
 #include "nsIFrameInlines.h"
@@ -155,7 +154,7 @@ nsTableWrapperFrame::RemoveFrame(ChildListID  aListID,
 {
   // We only have two child frames: the inner table and one caption frame.
   // The inner frame can't be removed so this should be the caption
-  NS_PRECONDITION(kCaptionList == aListID, "can't remove inner frame");
+  MOZ_ASSERT(kCaptionList == aListID, "can't remove inner frame");
 
   if (HasSideCaption()) {
     // The old caption isize had an effect on the inner table isize, so

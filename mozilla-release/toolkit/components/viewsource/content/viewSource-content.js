@@ -10,7 +10,7 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "DeferredTask",
   "resource://gre/modules/DeferredTask.jsm");
 
-Cu.importGlobalProperties(["NodeFilter"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["NodeFilter"]);
 
 const NS_XHTML = "http://www.w3.org/1999/xhtml";
 const BUNDLE_URL = "chrome://global/locale/viewSource.properties";
@@ -430,8 +430,7 @@ var ViewSourceContent = {
     // In our case, the range's startOffset is after "\n" on the previous line.
     // Tune the selection at the beginning of the next line and do some tweaking
     // to position the focusNode and the caret at the beginning of the line.
-    selection.QueryInterface(Ci.nsISelectionPrivate)
-      .interlinePosition = true;
+    selection.interlinePosition = true;
 
     selection.addRange(result.range);
 

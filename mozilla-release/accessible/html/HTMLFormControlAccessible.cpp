@@ -40,13 +40,13 @@ using namespace mozilla::a11y;
 ////////////////////////////////////////////////////////////////////////////////
 
 role
-HTMLCheckboxAccessible::NativeRole()
+HTMLCheckboxAccessible::NativeRole() const
 {
   return roles::CHECKBUTTON;
 }
 
 uint8_t
-HTMLCheckboxAccessible::ActionCount()
+HTMLCheckboxAccessible::ActionCount() const
 {
   return 1;
 }
@@ -66,7 +66,7 @@ HTMLCheckboxAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
 }
 
 bool
-HTMLCheckboxAccessible::DoAction(uint8_t aIndex)
+HTMLCheckboxAccessible::DoAction(uint8_t aIndex) const
 {
   if (aIndex != 0)
     return false;
@@ -76,7 +76,7 @@ HTMLCheckboxAccessible::DoAction(uint8_t aIndex)
 }
 
 uint64_t
-HTMLCheckboxAccessible::NativeState()
+HTMLCheckboxAccessible::NativeState() const
 {
   uint64_t state = LeafAccessible::NativeState();
 
@@ -109,7 +109,7 @@ HTMLCheckboxAccessible::IsWidget() const
 ////////////////////////////////////////////////////////////////////////////////
 
 uint64_t
-HTMLRadioButtonAccessible::NativeState()
+HTMLRadioButtonAccessible::NativeState() const
 {
   uint64_t state = AccessibleWrap::NativeState();
 
@@ -180,7 +180,7 @@ HTMLButtonAccessible::
 }
 
 uint8_t
-HTMLButtonAccessible::ActionCount()
+HTMLButtonAccessible::ActionCount() const
 {
   return 1;
 }
@@ -193,7 +193,7 @@ HTMLButtonAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
 }
 
 bool
-HTMLButtonAccessible::DoAction(uint8_t aIndex)
+HTMLButtonAccessible::DoAction(uint8_t aIndex) const
 {
   if (aIndex != eAction_Click)
     return false;
@@ -222,7 +222,7 @@ HTMLButtonAccessible::State()
 }
 
 uint64_t
-HTMLButtonAccessible::NativeState()
+HTMLButtonAccessible::NativeState() const
 {
   uint64_t state = HyperTextAccessibleWrap::NativeState();
 
@@ -234,13 +234,13 @@ HTMLButtonAccessible::NativeState()
 }
 
 role
-HTMLButtonAccessible::NativeRole()
+HTMLButtonAccessible::NativeRole() const
 {
   return roles::PUSHBUTTON;
 }
 
 ENameValueFlag
-HTMLButtonAccessible::NativeName(nsString& aName)
+HTMLButtonAccessible::NativeName(nsString& aName) const
 {
   // No need to check @value attribute for buttons since this attribute results
   // in native anonymous text node and the name is calculated from subtree.
@@ -289,7 +289,7 @@ HTMLTextFieldAccessible::
 }
 
 role
-HTMLTextFieldAccessible::NativeRole()
+HTMLTextFieldAccessible::NativeRole() const
 {
   if (mType == eHTMLTextPasswordFieldType) {
     return roles::PASSWORD_TEXT;
@@ -319,7 +319,7 @@ HTMLTextFieldAccessible::NativeAttributes()
 }
 
 ENameValueFlag
-HTMLTextFieldAccessible::NativeName(nsString& aName)
+HTMLTextFieldAccessible::NativeName(nsString& aName) const
 {
   ENameValueFlag nameFlag = Accessible::NativeName(aName);
   if (!aName.IsEmpty())
@@ -339,7 +339,7 @@ HTMLTextFieldAccessible::NativeName(nsString& aName)
 }
 
 void
-HTMLTextFieldAccessible::Value(nsString& aValue)
+HTMLTextFieldAccessible::Value(nsString& aValue) const
 {
   aValue.Truncate();
   if (NativeState() & states::PROTECTED)    // Don't return password text!
@@ -373,7 +373,7 @@ HTMLTextFieldAccessible::ApplyARIAState(uint64_t* aState) const
 }
 
 uint64_t
-HTMLTextFieldAccessible::NativeState()
+HTMLTextFieldAccessible::NativeState() const
 {
   uint64_t state = HyperTextAccessibleWrap::NativeState();
 
@@ -438,7 +438,7 @@ HTMLTextFieldAccessible::NativeState()
 }
 
 uint8_t
-HTMLTextFieldAccessible::ActionCount()
+HTMLTextFieldAccessible::ActionCount() const
 {
   return 1;
 }
@@ -451,7 +451,7 @@ HTMLTextFieldAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
 }
 
 bool
-HTMLTextFieldAccessible::DoAction(uint8_t aIndex)
+HTMLTextFieldAccessible::DoAction(uint8_t aIndex) const
 {
   if (aIndex != 0)
     return false;
@@ -503,7 +503,7 @@ HTMLFileInputAccessible(nsIContent* aContent, DocAccessible* aDoc) :
 }
 
 role
-HTMLFileInputAccessible::NativeRole()
+HTMLFileInputAccessible::NativeRole() const
 {
   // JAWS wants a text container, others don't mind. No specific role in
   // AT APIs.
@@ -543,13 +543,13 @@ HTMLFileInputAccessible::HandleAccEvent(AccEvent* aEvent)
 ////////////////////////////////////////////////////////////////////////////////
 
 role
-HTMLSpinnerAccessible::NativeRole()
+HTMLSpinnerAccessible::NativeRole() const
 {
   return roles::SPINBUTTON;
 }
 
 void
-HTMLSpinnerAccessible::Value(nsString& aValue)
+HTMLSpinnerAccessible::Value(nsString& aValue) const
 {
   AccessibleWrap::Value(aValue);
   if (!aValue.IsEmpty())
@@ -615,7 +615,7 @@ HTMLSpinnerAccessible::SetCurValue(double aValue)
 ////////////////////////////////////////////////////////////////////////////////
 
 role
-HTMLRangeAccessible::NativeRole()
+HTMLRangeAccessible::NativeRole() const
 {
   return roles::SLIDER;
 }
@@ -627,7 +627,7 @@ HTMLRangeAccessible::IsWidget() const
 }
 
 void
-HTMLRangeAccessible::Value(nsString& aValue)
+HTMLRangeAccessible::Value(nsString& aValue) const
 {
   LeafAccessible::Value(aValue);
   if (!aValue.IsEmpty())
@@ -699,7 +699,7 @@ HTMLGroupboxAccessible::
 }
 
 role
-HTMLGroupboxAccessible::NativeRole()
+HTMLGroupboxAccessible::NativeRole() const
 {
   return roles::GROUPING;
 }
@@ -720,7 +720,7 @@ HTMLGroupboxAccessible::GetLegend() const
 }
 
 ENameValueFlag
-HTMLGroupboxAccessible::NativeName(nsString& aName)
+HTMLGroupboxAccessible::NativeName(nsString& aName) const
 {
   ENameValueFlag nameFlag = Accessible::NativeName(aName);
   if (!aName.IsEmpty())
@@ -734,7 +734,7 @@ HTMLGroupboxAccessible::NativeName(nsString& aName)
 }
 
 Relation
-HTMLGroupboxAccessible::RelationByType(RelationType aType)
+HTMLGroupboxAccessible::RelationByType(RelationType aType) const
 {
   Relation rel = HyperTextAccessibleWrap::RelationByType(aType);
     // No override for label, so use <legend> for this <fieldset>
@@ -755,7 +755,7 @@ HTMLLegendAccessible::
 }
 
 Relation
-HTMLLegendAccessible::RelationByType(RelationType aType)
+HTMLLegendAccessible::RelationByType(RelationType aType) const
 {
   Relation rel = HyperTextAccessibleWrap::RelationByType(aType);
   if (aType != RelationType::LABEL_FOR)
@@ -779,7 +779,7 @@ HTMLFigureAccessible::
 }
 
 ENameValueFlag
-HTMLFigureAccessible::NativeName(nsString& aName)
+HTMLFigureAccessible::NativeName(nsString& aName) const
 {
   ENameValueFlag nameFlag = HyperTextAccessibleWrap::NativeName(aName);
   if (!aName.IsEmpty())
@@ -793,7 +793,7 @@ HTMLFigureAccessible::NativeName(nsString& aName)
 }
 
 Relation
-HTMLFigureAccessible::RelationByType(RelationType aType)
+HTMLFigureAccessible::RelationByType(RelationType aType) const
 {
   Relation rel = HyperTextAccessibleWrap::RelationByType(aType);
   if (aType == RelationType::LABELLED_BY)
@@ -827,7 +827,7 @@ HTMLFigcaptionAccessible::
 }
 
 Relation
-HTMLFigcaptionAccessible::RelationByType(RelationType aType)
+HTMLFigcaptionAccessible::RelationByType(RelationType aType) const
 {
   Relation rel = HyperTextAccessibleWrap::RelationByType(aType);
   if (aType != RelationType::LABEL_FOR)

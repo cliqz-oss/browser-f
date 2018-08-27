@@ -14,14 +14,12 @@
 #include "nsTArray.h"
 #include "nscore.h"
 
+class nsComposeTxtSrvFilter;
 class nsIContent;
 class nsIContentIterator;
-class nsIDOMNode;
 class nsIEditor;
 class nsINode;
-class nsISelection;
 class nsISelectionController;
-class nsITextServicesFilter;
 class nsRange;
 
 namespace mozilla {
@@ -60,7 +58,7 @@ private:
   nsCOMPtr<nsIContent> mNextTextBlock;
   nsTArray<OffsetEntry*> mOffsetTable;
   RefPtr<nsRange> mExtent;
-  nsCOMPtr<nsITextServicesFilter> mTxtSvcFilter;
+  RefPtr<nsComposeTxtSrvFilter> mTxtSvcFilter;
 
   int32_t mSelStartIndex;
   int32_t mSelStartOffset;
@@ -112,7 +110,7 @@ public:
    * @param aFilter             The filter to be used while iterating over
    *                            content.
    */
-  nsresult SetFilter(nsITextServicesFilter* aFilter);
+  nsresult SetFilter(nsComposeTxtSrvFilter* aFilter);
 
   /**
    * Returns the text in the current text block.
@@ -263,7 +261,6 @@ private:
 
   static bool IsBlockNode(nsIContent* aContent);
   static bool IsTextNode(nsIContent* aContent);
-  static bool IsTextNode(nsIDOMNode* aNode);
 
   static bool DidSkip(nsIContentIterator* aFilteredIter);
   static void ClearDidSkip(nsIContentIterator* aFilteredIter);

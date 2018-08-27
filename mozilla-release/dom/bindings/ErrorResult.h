@@ -78,7 +78,7 @@ inline bool
 ThrowErrorMessage(JSContext* aCx, const ErrNum aErrorNumber, Ts&&... aArgs)
 {
   binding_detail::ThrowErrorMessage(aCx, static_cast<unsigned>(aErrorNumber),
-                                    mozilla::Forward<Ts>(aArgs)...);
+                                    std::forward<Ts>(aArgs)...);
   return false;
 }
 
@@ -97,7 +97,7 @@ struct StringArrayAppender
       return;
     }
     aArgs.AppendElement(aFirst);
-    Append(aArgs, aCount - 1, Forward<Ts>(aOtherArgs)...);
+    Append(aArgs, aCount - 1, std::forward<Ts>(aOtherArgs)...);
   }
 };
 
@@ -154,7 +154,7 @@ public:
     // (nothing).
     : TErrorResult()
   {
-    *this = Move(aRHS);
+    *this = std::move(aRHS);
   }
   TErrorResult& operator=(TErrorResult&& aRHS);
 
@@ -293,14 +293,14 @@ public:
   void ThrowTypeError(Ts&&... messageArgs)
   {
     ThrowErrorWithMessage<errorNumber>(NS_ERROR_INTERNAL_ERRORRESULT_TYPEERROR,
-                                       Forward<Ts>(messageArgs)...);
+                                       std::forward<Ts>(messageArgs)...);
   }
 
   template<dom::ErrNum errorNumber, typename... Ts>
   void ThrowRangeError(Ts&&... messageArgs)
   {
     ThrowErrorWithMessage<errorNumber>(NS_ERROR_INTERNAL_ERRORRESULT_RANGEERROR,
-                                       Forward<Ts>(messageArgs)...);
+                                       std::forward<Ts>(messageArgs)...);
   }
 
   bool IsErrorWithMessage() const
@@ -434,7 +434,7 @@ private:
     nsTArray<nsString>& messageArgsArray = CreateErrorMessageHelper(errorNumber, errorType);
     uint16_t argCount = dom::GetErrorArgCount(errorNumber);
     dom::StringArrayAppender::Append(messageArgsArray, argCount,
-                                     Forward<Ts>(messageArgs)...);
+                                     std::forward<Ts>(messageArgs)...);
 #ifdef DEBUG
     mUnionState = HasMessage;
 #endif // DEBUG
@@ -566,7 +566,7 @@ private:
   // reference, not by value.
   TErrorResult(const TErrorResult&) = delete;
   void operator=(const TErrorResult&) = delete;
-};
+} JS_HAZ_ROOTED;
 
 struct JustAssertCleanupPolicy {
   static const bool assertHandled = true;
@@ -607,7 +607,7 @@ public:
   {}
 
   ErrorResult(ErrorResult&& aRHS)
-    : BaseErrorResult(Move(aRHS))
+    : BaseErrorResult(std::move(aRHS))
   {}
 
   explicit ErrorResult(nsresult aRv)
@@ -621,7 +621,7 @@ public:
 
   ErrorResult& operator=(ErrorResult&& aRHS)
   {
-    BaseErrorResult::operator=(Move(aRHS));
+    BaseErrorResult::operator=(std::move(aRHS));
     return *this;
   }
 
@@ -704,7 +704,7 @@ public:
   }
 
   CopyableErrorResult(CopyableErrorResult&& aRHS)
-    : BaseErrorResult(Move(aRHS))
+    : BaseErrorResult(std::move(aRHS))
   {}
 
   explicit CopyableErrorResult(nsresult aRv)
@@ -718,7 +718,7 @@ public:
 
   CopyableErrorResult& operator=(CopyableErrorResult&& aRHS)
   {
-    BaseErrorResult::operator=(Move(aRHS));
+    BaseErrorResult::operator=(std::move(aRHS));
     return *this;
   }
 
@@ -838,7 +838,7 @@ private:
   // to SuppressException (one from us, one from the ErrorResult destructor
   // after asserting).
   binding_danger::TErrorResult<binding_danger::JustSuppressCleanupPolicy> mInner;
-};
+} JS_HAZ_ROOTED;
 
 /******************************************************************************
  ** Macros for checking results

@@ -17,7 +17,6 @@
 #include "nsContentPolicy.h"
 #include "nsIURI.h"
 #include "nsIDocShell.h"
-#include "nsIDOMNode.h"
 #include "nsIDOMWindow.h"
 #include "nsITabChild.h"
 #include "nsIContent.h"
@@ -88,13 +87,13 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
     }
 
     //sanity-check passed-through parameters
-    NS_PRECONDITION(decision, "Null out pointer");
+    MOZ_ASSERT(decision, "Null out pointer");
     WARN_IF_URI_UNINITIALIZED(contentLocation, "Request URI");
     WARN_IF_URI_UNINITIALIZED(requestingLocation, "Requesting URI");
 
 #ifdef DEBUG
     {
-        nsCOMPtr<nsIDOMNode> node(do_QueryInterface(requestingContext));
+        nsCOMPtr<nsINode> node(do_QueryInterface(requestingContext));
         nsCOMPtr<nsIDOMWindow> window(do_QueryInterface(requestingContext));
         nsCOMPtr<nsITabChild> tabChild(do_QueryInterface(requestingContext));
         NS_ASSERTION(!requestingContext || node || window || tabChild,
@@ -208,7 +207,7 @@ nsContentPolicy::ShouldLoad(nsIURI           *contentLocation,
                             int16_t          *decision)
 {
     // ShouldProcess does not need a content location, but we do
-    NS_PRECONDITION(contentLocation, "Must provide request location");
+    MOZ_ASSERT(contentLocation, "Must provide request location");
     nsresult rv = CheckPolicy(&nsIContentPolicy::ShouldLoad,
                               contentLocation, loadInfo,
                               mimeType, decision);

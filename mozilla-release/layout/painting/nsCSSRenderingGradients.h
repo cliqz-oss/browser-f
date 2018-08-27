@@ -41,6 +41,7 @@ public:
    * aIntrinsicSize - the size of the source gradient.
    */
   static nsCSSGradientRenderer Create(nsPresContext* aPresContext,
+                                      ComputedStyle* aComputedStyle,
                                       nsStyleGradient* aGradient,
                                       const nsSize& aIntrinsiceSize);
 
@@ -90,7 +91,12 @@ public:
                                   float aOpacity = 1.0);
 
 private:
-  nsCSSGradientRenderer() {}
+  nsCSSGradientRenderer()
+    : mPresContext(nullptr)
+    , mGradient(nullptr)
+    , mRadiusX(0.0)
+    , mRadiusY(0.0)
+  {}
 
   /**
    * Attempts to paint the tiles for a gradient by painting it once to an

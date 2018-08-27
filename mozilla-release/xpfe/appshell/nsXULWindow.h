@@ -34,12 +34,15 @@
 #include "nsIWeakReference.h"
 #include "nsIWidgetListener.h"
 #include "nsITabParent.h"
+#include "nsIXULStore.h"
 
 namespace mozilla {
 namespace dom {
 class Element;
 } // namespace dom
 } // namespace mozilla
+
+class nsAtom;
 
 // nsXULWindow
 
@@ -142,6 +145,12 @@ protected:
    void       PersistentAttributesDirty(uint32_t aDirtyFlags);
    nsresult   GetTabCount(uint32_t* aResult);
 
+   void       LoadPersistentWindowState();
+   nsresult   GetPersistentValue(const nsAtom* aAttr,
+                                 nsAString& aValue);
+   nsresult   SetPersistentValue(const nsAtom* aAttr,
+                                 const nsAString& aValue);
+
    nsChromeTreeOwner*      mChromeTreeOwner;
    nsContentTreeOwner*     mContentTreeOwner;
    nsContentTreeOwner*     mPrimaryContentTreeOwner;
@@ -186,6 +195,7 @@ private:
    MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult GetPrimaryTabParentSize(int32_t* aWidth, int32_t* aHeight);
    nsresult GetPrimaryContentShellSize(int32_t* aWidth, int32_t* aHeight);
    nsresult SetPrimaryTabParentSize(int32_t aWidth, int32_t aHeight);
+   nsCOMPtr<nsIXULStore> mLocalStore;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsXULWindow, NS_XULWINDOW_IMPL_CID)

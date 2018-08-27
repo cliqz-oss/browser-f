@@ -473,7 +473,7 @@ class SrcNoteLineScanner
 
   public:
     SrcNoteLineScanner(jssrcnote* sn, uint32_t lineno)
-        : offset(0), sn(sn), lineno(lineno)
+        : offset(0), sn(sn), lineno(lineno), lineHeader(false)
     {
     }
 
@@ -609,7 +609,7 @@ DecompileValueGenerator(JSContext* cx, int spindex, HandleValue v,
  * Decompile the formal argument at formalIndex in the nearest non-builtin
  * stack frame, falling back with converting v to source.
  */
-char*
+UniqueChars
 DecompileArgument(JSContext* cx, int formalIndex, HandleValue v);
 
 extern bool
@@ -926,7 +926,7 @@ Disassemble1(JSContext* cx, JS::Handle<JSScript*> script, jsbytecode* pc, unsign
 #endif
 
 extern MOZ_MUST_USE bool
-DumpCompartmentPCCounts(JSContext* cx);
+DumpRealmPCCounts(JSContext* cx);
 
 } // namespace js
 

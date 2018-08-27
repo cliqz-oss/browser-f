@@ -22,6 +22,12 @@ if test "$OS_ARCH" = "WINNT"; then
             "$MOZ_UPDATE_CHANNEL" = "beta" -o \
             "$MOZ_UPDATE_CHANNEL" = "release"; then
       if ! test "$MOZ_DEBUG"; then
+        if ! test "$USE_STUB_INSTALLER"; then
+          # Expect USE_STUB_INSTALLER from taskcluster for downstream task consistency
+          echo "ERROR: STUB installer expected to be enabled but"
+          echo "ERROR: USE_STUB_INSTALLER is not specified in the environment"
+          exit 1
+        fi
         MOZ_STUB_INSTALLER=1
       fi
     fi
@@ -50,8 +56,8 @@ if test "$MOZ_UPDATE_CHANNEL" = "aurora"; then
   ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-aurora
   MAR_CHANNEL_ID=firefox-mozilla-aurora
 else
-  ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-release
-  MAR_CHANNEL_ID=firefox-mozilla-release
+  ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-beta,firefox-mozilla-release
+  MAR_CHANNEL_ID=firefox-mozilla-beta
 fi
 # ASan reporter builds should have different channel ids
 if [ "${MOZ_ASAN_REPORTER}" = "1" ]; then
@@ -60,9 +66,6 @@ if [ "${MOZ_ASAN_REPORTER}" = "1" ]; then
 fi
 
 MOZ_PROFILE_MIGRATOR=1
-
-# Enable checking that add-ons are signed by the trusted root
-MOZ_ADDON_SIGNING=1
 
 # Include the DevTools client, not just the server (which is the default)
 MOZ_DEVTOOLS=all

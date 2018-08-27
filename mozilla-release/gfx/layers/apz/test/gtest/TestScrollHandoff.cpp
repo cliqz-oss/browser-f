@@ -164,7 +164,7 @@ TEST_F(APZScrollHandoffTester, DeferredInputEventProcessing) {
   // Set up the APZC tree.
   CreateScrollHandoffLayerTree1();
 
-  TestAsyncPanZoomController* childApzc = ApzcOf(layers[1]);
+  RefPtr<TestAsyncPanZoomController> childApzc = ApzcOf(layers[1]);
 
   // Enable touch-listeners so that we can separate the queueing of input
   // events from them being processed.
@@ -172,7 +172,7 @@ TEST_F(APZScrollHandoffTester, DeferredInputEventProcessing) {
 
   // Queue input events for a pan.
   uint64_t blockId = 0;
-  ApzcPanNoFling(childApzc, 90, 30, &blockId);
+  Pan(childApzc, 90, 30, PanOptions::NoFling, nullptr, nullptr, &blockId);
 
   // Allow the pan to be processed.
   childApzc->ContentReceivedInputBlock(blockId, false);
@@ -192,7 +192,7 @@ TEST_F(APZScrollHandoffTester, LayerStructureChangesWhileEventsArePending) {
   // Set up an initial APZC tree.
   CreateScrollHandoffLayerTree1();
 
-  TestAsyncPanZoomController* childApzc = ApzcOf(layers[1]);
+  RefPtr<TestAsyncPanZoomController> childApzc = ApzcOf(layers[1]);
 
   // Enable touch-listeners so that we can separate the queueing of input
   // events from them being processed.
@@ -200,7 +200,7 @@ TEST_F(APZScrollHandoffTester, LayerStructureChangesWhileEventsArePending) {
 
   // Queue input events for a pan.
   uint64_t blockId = 0;
-  ApzcPanNoFling(childApzc, 90, 30, &blockId);
+  Pan(childApzc, 90, 30, PanOptions::NoFling, nullptr, nullptr, &blockId);
 
   // Modify the APZC tree to insert a new APZC 'middle' into the handoff chain
   // between the child and the root.
@@ -211,7 +211,7 @@ TEST_F(APZScrollHandoffTester, LayerStructureChangesWhileEventsArePending) {
 
   // Queue input events for another pan.
   uint64_t secondBlockId = 0;
-  ApzcPanNoFling(childApzc, 30, 90, &secondBlockId);
+  Pan(childApzc, 30, 90, PanOptions::NoFling, nullptr, nullptr, &secondBlockId);
 
   // Allow the first pan to be processed.
   childApzc->ContentReceivedInputBlock(blockId, false);
@@ -240,7 +240,7 @@ TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1073250) {
   // Enable overscrolling.
   SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -279,7 +279,7 @@ TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1231228) {
   // Enable overscrolling.
   SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -347,7 +347,7 @@ TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1240202a) {
 TEST_F(APZScrollHandoffTester, StuckInOverscroll_Bug1240202b) {
   // Enable overscrolling.
   SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -411,7 +411,7 @@ TEST_F(APZScrollHandoffTester, OpposingConstrainedAxes_Bug1201098) {
 // handed off to the parent, while the original APZC continues flinging in the
 // other direction.
 TEST_F(APZScrollHandoffTester, PartialFlingHandoff) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateScrollHandoffLayerTree1();
 
@@ -499,14 +499,14 @@ TEST_F(APZScrollHandoffTester, ScrollgrabFling) {
 
 TEST_F(APZScrollHandoffTester, ScrollgrabFlingAcceleration1) {
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
   CreateScrollgrabLayerTree(true /* make parent scrollable */);
   TestFlingAcceleration();
 }
 
 TEST_F(APZScrollHandoffTester, ScrollgrabFlingAcceleration2) {
   SCOPED_GFX_PREF(APZFlingMinVelocityThreshold, float, 0.0f);
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
   CreateScrollgrabLayerTree(false /* do not make parent scrollable */);
   TestFlingAcceleration();
 }

@@ -18,8 +18,6 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                                "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
-Cu.importGlobalProperties(["URLSearchParams"]);
-
 // The upper bound for the count of the visited unique domain names.
 const MAX_UNIQUE_VISITED_DOMAINS = 100;
 
@@ -271,7 +269,7 @@ let URICountListener = {
       case "google":
       case "google-2018":
         let type;
-        let queries = new URLSearchParams(url.split("?")[1]);
+        let queries = new URLSearchParams(url.split("#")[0].split("?")[1]);
         let code = queries.get("client");
         if (code) {
           // Detecting follow-on searches for sap is a little tricky.
@@ -281,7 +279,7 @@ let URICountListener = {
         } else {
           type = "organic";
         }
-        let payload = `google.in-content.${type}:${code || "none"}`;
+        let payload = `google.in-content:${type}:${code || "none"}`;
 
         let histogram = Services.telemetry.getKeyedHistogramById("SEARCH_COUNTS");
         histogram.add(payload);

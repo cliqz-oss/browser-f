@@ -13,6 +13,7 @@ import org.mozilla.geckoview.test.rule.GeckoSessionTestRule
 
 import org.hamcrest.Matcher
 import org.hamcrest.Matchers
+import org.junit.Assume.assumeThat
 import org.junit.Rule
 import org.junit.rules.ErrorCollector
 
@@ -24,20 +25,31 @@ import kotlin.reflect.KClass
  */
 open class BaseSessionTest(noErrorCollector: Boolean = false) {
     companion object {
-        const val INVALID_URI = "http://www.test.invalid/"
+        const val CLICK_TO_RELOAD_HTML_PATH = "/assets/www/clickToReload.html"
+        const val CONTENT_CRASH_URL = "about:crashcontent"
+        const val DOWNLOAD_HTML_PATH = "/assets/www/download.html"
         const val HELLO_HTML_PATH = "/assets/www/hello.html"
         const val HELLO2_HTML_PATH = "/assets/www/hello2.html"
-        const val NEW_SESSION_HTML_PATH = "/assets/www/newSession.html";
+        const val INPUTS_PATH = "/assets/www/inputs.html"
+        const val INVALID_URI = "http://www.test.invalid/"
+        const val LOREM_IPSUM_HTML_PATH = "/assets/www/loremIpsum.html"
+        const val NEW_SESSION_HTML_PATH = "/assets/www/newSession.html"
         const val NEW_SESSION_CHILD_HTML_PATH = "/assets/www/newSession_child.html"
-        const val CLICK_TO_RELOAD_HTML_PATH = "/assets/www/clickToReload.html"
+        const val SAVE_STATE_PATH = "/assets/www/saveState.html"
         const val TITLE_CHANGE_HTML_PATH = "/assets/www/titleChange.html"
-        const val DOWNLOAD_HTML_PATH = "/assets/www/download.html"
+        const val TRACKERS_PATH = "/assets/www/trackers.html"
     }
 
     @get:Rule val sessionRule = GeckoSessionTestRule()
 
     @get:Rule val errors = ErrorCollector()
+
+    val mainSession get() = sessionRule.session
+
     fun <T> assertThat(reason: String, v: T, m: Matcher<in T>) = sessionRule.checkThat(reason, v, m)
+    fun <T> assertInAutomationThat(reason: String, v: T, m: Matcher<in T>) =
+            if (sessionRule.env.isAutomation) assertThat(reason, v, m)
+            else assumeThat(reason, v, m)
 
     init {
         if (!noErrorCollector) {
@@ -54,8 +66,11 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
     val GeckoSession.isRemote
         get() = this.settings.getBoolean(GeckoSessionSettings.USE_MULTIPROCESS)
 
+    fun createTestUrl(path: String) =
+            GeckoSessionTestRule.APK_URI_PREFIX + path.removePrefix("/")
+
     fun GeckoSession.loadTestPath(path: String) =
-            this.loadUri(GeckoSessionTestRule.APK_URI_PREFIX + path.removePrefix("/"))
+            this.loadUri(createTestUrl(path))
 
     inline fun GeckoSession.toParcel(lambda: (Parcel) -> Unit) {
         val parcel = Parcel.obtain()
@@ -73,6 +88,7 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
             parcel.recycle()
         }
     }
+
 
     fun GeckoSession.open() =
             sessionRule.openSession(this)
@@ -101,8 +117,11 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
     fun GeckoSession.synthesizeTap(x: Int, y: Int) =
             sessionRule.synthesizeTap(this, x, y)
 
-    fun GeckoSession.evaluateJS(js: String) =
+    fun GeckoSession.evaluateJS(js: String): Any? =
             sessionRule.evaluateJS(this, js)
+
+    fun GeckoSession.waitForJS(js: String): Any? =
+            sessionRule.waitForJS(this, js)
 
     infix fun Any?.dot(prop: Any): Any? =
             if (prop is Int) this.asJSList<Any>()[prop] else this.asJSMap<Any>()[prop]
@@ -112,4 +131,7 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
 
     @Suppress("UNCHECKED_CAST")
     fun <T> Any?.asJSList(): List<T> = this as List<T>
+
+    fun Any?.asJSPromise(): GeckoSessionTestRule.PromiseWrapper =
+            this as GeckoSessionTestRule.PromiseWrapper
 }

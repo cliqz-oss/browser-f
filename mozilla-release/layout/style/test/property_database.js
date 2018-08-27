@@ -227,7 +227,13 @@ var validGradientAndElementValues = [
   "radial-gradient(at calc(100px + -25%) top, red, blue)",
   "radial-gradient(at left calc(100px + -25%), red, blue)",
   "radial-gradient(at calc(100px + -25px) top, red, blue)",
-  "radial-gradient(at left calc(100px + -25px), red, blue)"
+  "radial-gradient(at left calc(100px + -25px), red, blue)",
+
+  "-webkit-linear-gradient(top, red, blue)",
+  "-moz-linear-gradient(top, red, blue)",
+  "-moz-linear-gradient(center 0%, red, blue)",
+  "-moz-linear-gradient(50% top, red, blue)",
+  "-moz-linear-gradient(50% 0%, red, blue)",
 ];
 var invalidGradientAndElementValues = [
   "-moz-element(#a:1)",
@@ -318,7 +324,8 @@ var invalidGradientAndElementValues = [
   "radial-gradient(top left 99deg, cover, red, blue)",
   "radial-gradient(15% 20% -1.2345rad, circle, red, blue)",
   "radial-gradient(45px 399grad, ellipse closest-corner, red, blue)",
-  "radial-gradient(45px 399grad, farthest-side circle, red, blue)"
+  "radial-gradient(45px 399grad, farthest-side circle, red, blue)",
+  "radial-gradient(circle red, blue)",
 ];
 var unbalancedGradientAndElementValues = [
   "-moz-element(#a()",
@@ -501,32 +508,6 @@ var basicShapeUnbalancedValues = [
   "inset(1px 2px 3px 4px round 5px / 6px",
 ];
 
-
-// Gradient values that are incorrectly accepted in Gecko, but are correctly
-// rejected with Servo's style-system backend (stylo):
-let gradientsNewlyRejectedInStylo = [
-  "radial-gradient(circle red, blue)",
-];
-
-// Gradient values that are consistently serialized in Stylo but not
-// in Gecko. Gecko drops the prefix during roundtrip.
-let gradientsValidInStyloBrokenInGecko = [
-  "-webkit-linear-gradient(top, red, blue)",
-  "-moz-linear-gradient(top, red, blue)",
-  "-moz-linear-gradient(center 0%, red, blue)",
-  "-moz-linear-gradient(50% top, red, blue)",
-  "-moz-linear-gradient(50% 0%, red, blue)",
-];
-
-if (SpecialPowers.DOMWindowUtils.isStyledByServo) {
-  invalidGradientAndElementValues.push(...gradientsNewlyRejectedInStylo);
-  validGradientAndElementValues.push(...gradientsValidInStyloBrokenInGecko);
-} else {
-  // NOTE: These are technically invalid, but Gecko's CSS parser thinks they're
-  // valid. So, if we're using Gecko's style system, we add them to the
-  // "valid" list, so we can at least detect if the behavior changes.
-  validGradientAndElementValues.push(...gradientsNewlyRejectedInStylo);
-}
 
 if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
   // Extend gradient lists with valid/invalid webkit-prefixed expressions:
@@ -1205,7 +1186,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "0s", "0ms" ],
-    other_values: [ "1s", "250ms", "-100ms", "-1s", "1s, 250ms, 2.3s"],
+    other_values: [ "1s", "250ms", "-100ms", "-1s", "1s, 250ms, 2.3s", "calc(1s + 2ms)" ],
     invalid_values: [ "0", "0px" ]
   },
   "animation-direction": {
@@ -1221,7 +1202,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "0s", "0ms" ],
-    other_values: [ "1s", "250ms", "1s, 250ms, 2.3s"],
+    other_values: [ "1s", "250ms", "1s, 250ms, 2.3s", "calc(1s + 2ms)" ],
     invalid_values: [ "0", "0px", "-1ms", "-2s" ]
   },
   "animation-fill-mode": {
@@ -1237,7 +1218,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "1" ],
-    other_values: [ "infinite", "0", "0.5", "7.75", "-0.0", "1, 2, 3", "infinite, 2", "1, infinite" ],
+    other_values: [ "infinite", "0", "0.5", "7.75", "-0.0", "1, 2, 3", "infinite, 2", "1, infinite", "calc(1 + 2.0)" ],
     // negatives forbidden per
     // http://lists.w3.org/Archives/Public/www-style/2011Mar/0355.html
     invalid_values: [ "none", "-1", "-0.5", "-1, infinite", "infinite, -3" ]
@@ -1263,7 +1244,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "ease" ],
-    other_values: [ "cubic-bezier(0.25, 0.1, 0.25, 1.0)", "linear", "ease-in", "ease-out", "ease-in-out", "linear, ease-in, cubic-bezier(0.1, 0.2, 0.8, 0.9)", "cubic-bezier(0.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.25, 1.5, 0.75, -0.5)", "step-start", "step-end", "steps(1)", "steps(2, start)", "steps(386)", "steps(3, end)" ],
+    other_values: [ "cubic-bezier(0.25, 0.1, 0.25, 1.0)", "linear", "ease-in", "ease-out", "ease-in-out", "linear, ease-in, cubic-bezier(0.1, 0.2, 0.8, 0.9)", "cubic-bezier(0.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.25, 1.5, 0.75, -0.5)", "step-start", "step-end", "steps(1)", "steps(2, start)", "steps(386)", "steps(3, end)", "steps(calc(2 + 1))" ],
     invalid_values: [ "none", "auto", "cubic-bezier(0.25, 0.1, 0.25)", "cubic-bezier(0.25, 0.1, 0.25, 0.25, 1.0)", "cubic-bezier(-0.5, 0.5, 0.5, 0.5)", "cubic-bezier(1.5, 0.5, 0.5, 0.5)", "cubic-bezier(0.5, 0.5, -0.5, 0.5)", "cubic-bezier(0.5, 0.5, 1.5, 0.5)", "steps(2, step-end)", "steps(0)", "steps(-2)", "steps(0, step-end, 1)" ]
   },
   "-moz-appearance": {
@@ -3519,7 +3500,7 @@ var gCSSProperties = {
       '"cswh", "smcp" off, "salt" 4', '"cswh" 1, "smcp" off, "salt" 4',
       '"cswh" 0, \'blah\', "liga", "smcp" off, "salt" 4',
       '"liga"        ,"smcp" 0         , "blah"',
-      '"ab\\"c"', '"ab\\\\c"'
+      '"ab\\"c"', '"ab\\\\c"', "'vert' calc(2)"
     ],
     invalid_values: [
       'liga', 'liga 1', 'liga normal', '"liga" normal', 'normal liga',
@@ -6247,8 +6228,7 @@ function get_computed_value(cs, property)
   return cs.getPropertyValue(property);
 }
 
-if (SpecialPowers.DOMWindowUtils.isStyledByServo &&
-    IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled")) {
+if (IsCSSPropertyPrefEnabled("layout.css.individual-transform.enabled")) {
   gCSSProperties.rotate = {
     domProp: "rotate",
     inherited: false,
@@ -6320,11 +6300,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.touch_action.enabled")) {
     };
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.text-combine-upright-digits.enabled")) {
-  gCSSProperties["text-combine-upright"].other_values.push(
-    "digits", "digits 2", "digits 3", "digits 4", "digits     3");
-}
-
 if (IsCSSPropertyPrefEnabled("layout.css.text-justify.enabled")) {
   gCSSProperties["text-justify"] = {
     domProp: "textJustify",
@@ -6376,14 +6351,8 @@ if (IsCSSPropertyPrefEnabled("layout.css.font-variations.enabled")) {
     invalid_values: [ "on" ]
   };
   gCSSProperties["font"].subproperties.push("font-optical-sizing");
-  if (SpecialPowers.DOMWindowUtils.isStyledByServo) {
-    gCSSProperties["font-variation-settings"].other_values
-      .push("'vert' calc(2.5)");
-  }
-}
-
-if (SpecialPowers.DOMWindowUtils.isStyledByServo) {
-  gCSSProperties["font-feature-settings"].other_values.push("'vert' calc(2)");
+  gCSSProperties["font-variation-settings"].other_values
+    .push("'vert' calc(2.5)");
 }
 
 if (IsCSSPropertyPrefEnabled("layout.css.frames-timing.enabled")) {
@@ -6527,6 +6496,7 @@ if (IsCSSPropertyPrefEnabled("layout.css.filters.enabled")) {
       "grayscale(350%)",
       "grayscale(4.567)",
 
+      "hue-rotate(0)",
       "hue-rotate(0deg)",
       "hue-rotate(90deg)",
       "hue-rotate(540deg)",
@@ -6683,15 +6653,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.filters.enabled")) {
       "sepia(-1)",
     ]
   };
-
-  // See https://github.com/w3c/fxtf-drafts/issues/228.
-  //
-  // This is updated in Stylo but not Gecko.
-  if (SpecialPowers.DOMWindowUtils.isStyledByServo) {
-    gCSSProperties["filter"].other_values.push("hue-rotate(0)");
-  } else {
-    gCSSProperties["filter"].invalid_values.push("hue-rotate(0)");
-  }
 }
 
 var isGridTemplateSubgridValueEnabled =
@@ -7278,6 +7239,8 @@ if (IsCSSPropertyPrefEnabled("layout.css.contain.enabled")) {
       "strict",
       "layout",
       "style",
+      "size",
+      "content",
       "layout style",
       "style layout",
       "paint",
@@ -7285,6 +7248,9 @@ if (IsCSSPropertyPrefEnabled("layout.css.contain.enabled")) {
       "paint layout",
       "style paint",
       "paint style",
+      "size layout",
+      "style size",
+      "paint size",
       "layout style paint",
       "layout paint style",
       "style paint layout",
@@ -7295,11 +7261,18 @@ if (IsCSSPropertyPrefEnabled("layout.css.contain.enabled")) {
       "strict layout",
       "strict layout style",
       "layout strict",
+      "layout content",
+      "strict content",
       "layout style strict",
       "layout style paint strict",
       "paint strict",
       "style strict",
       "paint paint",
+      "content content",
+      "size content",
+      "content strict size",
+      "paint layout content",
+      "layout size content",
       "strict strict",
       "auto",
       "10px",
@@ -8106,6 +8079,15 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
   };
 }
 
+if (IsCSSPropertyPrefEnabled("layout.css.webkit-appearance.enabled")) {
+  gCSSProperties["-webkit-appearance"] = {
+    domProp: "WebkitAppearance",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    alias_for: "-moz-appearance",
+  };
+}
+
 if (IsCSSPropertyPrefEnabled("layout.css.prefixes.gradients")) {
   gCSSProperties["background"].other_values.push(
     "-moz-radial-gradient(10% bottom, #ffffff, black) scroll no-repeat",
@@ -8362,4 +8344,23 @@ if (IsCSSPropertyPrefEnabled("layout.css.unset-value.enabled")) {
       "-moz-repeating-linear-gradient(unset, 10px 10px, blue 0)",
     );
   }
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.scrollbar-colors.enabled")) {
+  gCSSProperties["scrollbar-face-color"] = {
+    domProp: "scrollbarFaceColor",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto" ],
+    other_values: [ "red", "blue", "#ffff00" ],
+    invalid_values: [ "ffff00" ]
+  };
+  gCSSProperties["scrollbar-track-color"] = {
+    domProp: "scrollbarTrackColor",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto" ],
+    other_values: [ "red", "blue", "#ffff00" ],
+    invalid_values: [ "ffff00" ]
+  };
 }

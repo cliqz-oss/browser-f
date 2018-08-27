@@ -63,7 +63,7 @@ NormalizeDefaultFont(nsFont& aFont, float aFontSizeInflation)
     names.AppendElements(aFont.fontlist.GetFontlist()->mNames);
     names.AppendElement(FontFamilyName(aFont.fontlist.GetDefaultFontType()));
 
-    aFont.fontlist.SetFontlist(Move(names));
+    aFont.fontlist.SetFontlist(std::move(names));
     aFont.fontlist.SetDefaultFontType(eFamily_none);
   }
   aFont.size = NSToCoordRound(aFont.size * aFontSizeInflation);
@@ -460,8 +460,10 @@ private:
   uint32_t mGlyphID;
 
   explicit nsOpenTypeTable(gfxFont* aFont)
-    : mFont(aFont),
-    mFontFamilyName(aFont->GetFontEntry()->FamilyName(), eUnquotedName) {
+    : mFont(aFont)
+    , mFontFamilyName(aFont->GetFontEntry()->FamilyName(), eUnquotedName)
+    , mGlyphID(0)
+  {
     MOZ_COUNT_CTOR(nsOpenTypeTable);
   }
 
@@ -578,7 +580,7 @@ nsOpenTypeTable::MakeTextRun(DrawTarget*        aDrawTarget,
     gfxTextRun::Create(&params, 1, aFontGroup,
                        gfx::ShapedTextFlags(), nsTextFrameUtils::Flags());
   textRun->AddGlyphRun(aFontGroup->GetFirstValidFont(),
-                       gfxTextRange::kFontGroup, 0,
+                       gfxTextRange::MatchType::kFontGroup, 0,
                        false, gfx::ShapedTextFlags::TEXT_ORIENT_HORIZONTAL);
                               // We don't care about CSS writing mode here;
                               // math runs are assumed to be horizontal.
@@ -980,7 +982,7 @@ nsMathMLChar::SetFontFamily(nsPresContext*          aPresContext,
   if (aGlyphCode.font) {
     nsTArray<FontFamilyName> names;
     names.AppendElement(aGlyphTable->FontNameFor(aGlyphCode));
-    glyphCodeFont.SetFontlist(Move(names));
+    glyphCodeFont.SetFontlist(std::move(names));
   }
 
   const FontFamilyList& familyList =
@@ -1207,7 +1209,7 @@ StretchEnumContext::TryVariants(nsGlyphTable* aGlyphTable,
         mBoundingMetrics = bm;
         haveBetter = true;
         bestSize = charSize;
-        mChar->mGlyphs[0] = Move(textRun);
+        mChar->mGlyphs[0] = std::move(textRun);
         mChar->mDraw = DRAW_VARIANT;
       }
 #ifdef NOISY_SEARCH
@@ -1397,7 +1399,7 @@ nsMathMLChar::StretchEnumContext::TryParts(nsGlyphTable* aGlyphTable,
   // reset
   mChar->mDraw = DRAW_PARTS;
   for (int32_t i = 0; i < 4; i++) {
-    mChar->mGlyphs[i] = Move(textRun[i]);
+    mChar->mGlyphs[i] = std::move(textRun[i]);
     mChar->mBmData[i] = bmdata[i];
   }
 
@@ -1502,7 +1504,7 @@ InsertMathFallbacks(FontFamilyList& aFamilyList,
   if (!inserted) {
     AppendFallbacks(mergedList, aFallbacks);
   }
-  aFamilyList.SetFontlist(Move(mergedList));
+  aFamilyList.SetFontlist(std::move(mergedList));
 }
 
 nsresult
@@ -1955,11 +1957,11 @@ void nsDisplayMathMLCharDebug::Paint(nsDisplayListBuilder* aBuilder,
   // Since this is used only for debugging, we don't need to worry about
   // tracking the ImgDrawResult.
   Unused <<
-    nsCSSRendering::PaintBorder(presContext, *aCtx, mFrame, mVisibleRect,
+    nsCSSRendering::PaintBorder(presContext, *aCtx, mFrame, GetPaintRect(),
                                 rect, computedStyle, flags, skipSides);
 
   nsCSSRendering::PaintOutline(presContext, *aCtx, mFrame,
-                               mVisibleRect, rect, computedStyle);
+                               GetPaintRect(), rect, computedStyle);
 }
 #endif
 

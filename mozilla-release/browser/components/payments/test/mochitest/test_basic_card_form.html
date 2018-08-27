@@ -30,7 +30,6 @@ Test the basic-card-form element
 /** Test the basic-card-form element **/
 
 /* global sinon */
-/* import-globals-from payments_common.js */
 
 import BasicCardForm from "../../res/containers/basic-card-form.js";
 
@@ -66,10 +65,12 @@ add_task(async function test_initialState() {
 add_task(async function test_backButton() {
   let form = new BasicCardForm();
   form.dataset.backButtonLabel = "Back";
+  form.dataset.addBasicCardTitle = "Sample page title 2";
   await form.requestStore.setState({
     page: {
-      id: "test-page",
-      title: "Sample page title 2",
+      id: "basic-card-page",
+    },
+    "basic-card-page": {
     },
   });
   await form.promiseReady;
@@ -128,7 +129,7 @@ add_task(async function test_saveButton() {
       "cc-name": "J. Smith",
       "cc-number": "4111111111111111",
     },
-    selectedStateKey: "selectedPaymentCard",
+    selectedStateKey: ["selectedPaymentCard"],
     successStateChange: {
       page: {
         id: "payment-summary",
@@ -217,14 +218,18 @@ add_task(async function test_add_noSelectedShippingAddress() {
     selectedShippingAddress: null,
   });
   await asyncElementRendered();
-  checkCCForm(form, {});
+  checkCCForm(form, {
+    billingAddressGUID: address1.guid,
+  });
 
   info("now test with a missing selectedShippingAddress");
   await form.requestStore.setState({
     selectedShippingAddress: "some-missing-guid",
   });
   await asyncElementRendered();
-  checkCCForm(form, {});
+  checkCCForm(form, {
+    billingAddressGUID: address1.guid,
+  });
 
   form.remove();
   await form.requestStore.reset();
@@ -244,6 +249,8 @@ add_task(async function test_edit() {
   await form.requestStore.setState({
     page: {
       id: "basic-card-page",
+    },
+    "basic-card-page": {
       guid: card1.guid,
     },
     savedBasicCards: {
@@ -273,6 +280,8 @@ add_task(async function test_edit() {
   await form.requestStore.setState({
     page: {
       id: "basic-card-page",
+    },
+    "basic-card-page": {
       guid: minimalCard.guid,
     },
     savedBasicCards: {
@@ -286,6 +295,9 @@ add_task(async function test_edit() {
   await form.requestStore.setState({
     page: {
       id: "basic-card-page",
+    },
+    "basic-card-page": {
+      guid: null,
     },
   });
   await asyncElementRendered();

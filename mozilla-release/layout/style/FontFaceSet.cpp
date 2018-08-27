@@ -10,6 +10,7 @@
 #include "gfxFontSrcPrincipal.h"
 #include "gfxFontSrcURI.h"
 #include "mozilla/css/Loader.h"
+#include "mozilla/dom/CSSFontFaceRule.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/FontFaceSetBinding.h"
 #include "mozilla/dom/FontFaceSetIterator.h"
@@ -22,7 +23,6 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ServoCSSParser.h"
-#include "mozilla/ServoFontFaceRule.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/ServoUtils.h"
 #include "mozilla/Sprintf.h"
@@ -122,13 +122,6 @@ FontFaceSet::FontFaceSet(nsPIDOMWindowInner* aWindow, nsIDocument* aDocument)
   mStandardFontLoadPrincipal =
     new gfxFontSrcPrincipal(mDocument->NodePrincipal());
 
-  // If the pref is not set, don't create the Promise (which the page wouldn't
-  // be able to get to anyway) as it causes the window.FontFaceSet constructor
-  // to be created.
-  if (aWindow && PrefEnabled()) {
-    mResolveLazilyCreatedReadyPromise = true;
-  }
-
   // Record the state of the "bypass cache" flags from the docshell now,
   // since we want to look at them from style worker threads, and we can
   // only get to the docshell through a weak pointer (which is only
@@ -155,6 +148,12 @@ FontFaceSet::FontFaceSet(nsPIDOMWindowInner* aWindow, nsIDocument* aDocument)
   if (!mDocument->DidFireDOMContentLoaded()) {
     mDocument->AddSystemEventListener(NS_LITERAL_STRING("DOMContentLoaded"),
                                       this, false, false);
+  } else {
+    // In some cases we can't rely on CheckLoadingFinished being called from
+    // the refresh driver.  For example, documents in display:none iframes.
+    // Or if the document has finished loading and painting at the time that
+    // script requests document.fonts and causes us to get here.
+    CheckLoadingFinished();
   }
 
   mDocument->CSSLoader()->AddObserver(this);
@@ -390,10 +389,26 @@ FontFaceSet::Check(const nsAString& aFont,
   return true;
 }
 
+bool
+FontFaceSet::ReadyPromiseIsPending() const
+{
+  return mReady
+    ? mReady->State() == Promise::PromiseState::Pending
+    : !mResolveLazilyCreatedReadyPromise;
+}
+
 Promise*
 FontFaceSet::GetReady(ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  // There may be outstanding style changes that will trigger the loading of
+  // new fonts.  We need to flush layout to initiate any such loads so that
+  // if mReady is currently resolved we replace it with a new pending Promise.
+  // (That replacement will happen under this flush call.)
+  if (!ReadyPromiseIsPending() && mDocument) {
+    mDocument->FlushPendingNotifications(FlushType::Layout);
+  }
 
   if (!mReady) {
     nsCOMPtr<nsIGlobalObject> global = GetParentObject();
@@ -408,7 +423,6 @@ FontFaceSet::GetReady(ErrorResult& aRv)
     }
   }
 
-  FlushUserFontSet();
   return mReady;
 }
 
@@ -1678,15 +1692,19 @@ FontFaceSet::DispatchLoadingEventAndReplaceReadyPromise()
                             false))->PostDOMEvent();
 
   if (PrefEnabled()) {
-    if (mReady) {
+    if (mReady &&
+        mReady->State() != Promise::PromiseState::Pending) {
       if (GetParentObject()) {
         ErrorResult rv;
         mReady = Promise::Create(GetParentObject(), rv);
       }
     }
-    if (!mReady) {
-      mResolveLazilyCreatedReadyPromise = false;
-    }
+
+    // We may previously have been in a state where all fonts had finished
+    // loading and we'd set mResolveLazilyCreatedReadyPromise to make sure that
+    // if we lazily create mReady for a consumer that we resolve it before
+    // returning it.  We're now loading fonts, so we need to clear that flag.
+    mResolveLazilyCreatedReadyPromise = false;
   }
 }
 
@@ -1760,9 +1778,9 @@ FontFaceSet::CheckLoadingFinished()
     return;
   }
 
-  if (mStatus == FontFaceSetLoadStatus::Loaded) {
-    // We've already resolved mReady and dispatched the loadingdone/loadingerror
-    // events.
+  if (!ReadyPromiseIsPending()) {
+    // We've already resolved mReady (or set the flag to do that lazily) and
+    // dispatched the loadingdone/loadingerror events.
     return;
   }
 
@@ -1811,11 +1829,11 @@ FontFaceSet::CheckLoadingFinished()
   }
 
   DispatchLoadingFinishedEvent(NS_LITERAL_STRING("loadingdone"),
-                               Move(loaded));
+                               std::move(loaded));
 
   if (!failed.IsEmpty()) {
     DispatchLoadingFinishedEvent(NS_LITERAL_STRING("loadingerror"),
-                                 Move(failed));
+                                 std::move(failed));
   }
 }
 

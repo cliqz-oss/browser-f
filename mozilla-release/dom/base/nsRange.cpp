@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /*
- * Implementation of the DOM nsIDOMRange object.
+ * Implementation of the DOM Range object.
  */
 
 #include "nscore.h"
@@ -13,7 +13,6 @@
 
 #include "nsString.h"
 #include "nsReadableUtils.h"
-#include "nsIDOMNode.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsError.h"
@@ -60,7 +59,7 @@ nsRange::GetDocGroup() const
 
 static void InvalidateAllFrames(nsINode* aNode)
 {
-  NS_PRECONDITION(aNode, "bad arg");
+  MOZ_ASSERT(aNode, "bad arg");
 
   nsIFrame* frame = nullptr;
   switch (aNode->NodeType()) {
@@ -199,7 +198,7 @@ struct IsItemInRangeComparator
 nsRange::IsNodeSelected(nsINode* aNode, uint32_t aStartOffset,
                         uint32_t aEndOffset)
 {
-  NS_PRECONDITION(aNode, "bad arg");
+  MOZ_ASSERT(aNode, "bad arg");
 
   nsINode* n = GetNextRangeCommonAncestor(aNode);
   NS_ASSERTION(n || !aNode->IsSelectionDescendant(),
@@ -328,31 +327,6 @@ nsRange::CreateRange(nsINode* aStartContainer, uint32_t aStartOffset,
 
 /* static */
 nsresult
-nsRange::CreateRange(nsIDOMNode* aStartContainer, uint32_t aStartOffset,
-                     nsIDOMNode* aEndParent, uint32_t aEndOffset,
-                     nsRange** aRange)
-{
-  nsCOMPtr<nsINode> startContainer = do_QueryInterface(aStartContainer);
-  nsCOMPtr<nsINode> endContainer = do_QueryInterface(aEndParent);
-  return CreateRange(startContainer, aStartOffset,
-                     endContainer, aEndOffset, aRange);
-}
-
-/* static */
-nsresult
-nsRange::CreateRange(nsIDOMNode* aStartContainer, uint32_t aStartOffset,
-                     nsIDOMNode* aEndParent, uint32_t aEndOffset,
-                     nsIDOMRange** aRange)
-{
-  RefPtr<nsRange> range;
-  nsresult rv = nsRange::CreateRange(aStartContainer, aStartOffset, aEndParent,
-                                     aEndOffset, getter_AddRefs(range));
-  range.forget(aRange);
-  return rv;
-}
-
-/* static */
-nsresult
 nsRange::CreateRange(const RawRangeBoundary& aStart,
                      const RawRangeBoundary& aEnd,
                      nsRange** aRange)
@@ -377,9 +351,8 @@ NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(
 // QueryInterface implementation for nsRange
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsRange)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsIDOMRange)
   NS_INTERFACE_MAP_ENTRY(nsIMutationObserver)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMRange)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsRange)
@@ -461,7 +434,7 @@ static void UnmarkDescendants(nsINode* aNode)
 void
 nsRange::RegisterCommonAncestor(nsINode* aNode)
 {
-  NS_PRECONDITION(aNode, "bad arg");
+  MOZ_ASSERT(aNode, "bad arg");
 
   MOZ_DIAGNOSTIC_ASSERT(IsInSelection(), "registering range not in selection");
 
@@ -482,7 +455,7 @@ nsRange::RegisterCommonAncestor(nsINode* aNode)
 void
 nsRange::UnregisterCommonAncestor(nsINode* aNode, bool aIsUnlinking)
 {
-  NS_PRECONDITION(aNode, "bad arg");
+  MOZ_ASSERT(aNode, "bad arg");
   NS_ASSERTION(aNode->IsCommonAncestorForRangeInSelection(), "wrong node");
   MOZ_DIAGNOSTIC_ASSERT(aNode == mRegisteredCommonAncestor, "wrong node");
   LinkedList<nsRange>* ranges = aNode->GetExistingCommonAncestorRanges();
@@ -964,29 +937,32 @@ nsRange::DoSetRange(const RawRangeBoundary& aStart,
                     const RawRangeBoundary& aEnd,
                     nsINode* aRoot, bool aNotInsertedYet)
 {
-  NS_PRECONDITION((aStart.IsSet() && aEnd.IsSet() && aRoot) ||
-                  (!aStart.IsSet() && !aEnd.IsSet() && !aRoot),
-                  "Set all or none");
-  NS_PRECONDITION(!aRoot || aNotInsertedYet ||
-                  (nsContentUtils::ContentIsDescendantOf(aStart.Container(), aRoot) &&
-                   nsContentUtils::ContentIsDescendantOf(aEnd.Container(), aRoot) &&
-                   aRoot == IsValidBoundary(aStart.Container()) &&
-                   aRoot == IsValidBoundary(aEnd.Container())),
-                  "Wrong root");
-  NS_PRECONDITION(!aRoot ||
-                  (aStart.Container()->IsContent() &&
-                   aEnd.Container()->IsContent() &&
-                   aRoot ==
-                    static_cast<nsIContent*>(aStart.Container())->GetBindingParent() &&
-                   aRoot ==
-                    static_cast<nsIContent*>(aEnd.Container())->GetBindingParent()) ||
-                  (!aRoot->GetParentNode() &&
-                   (aRoot->IsDocument() ||
-                    aRoot->IsAttr() ||
-                    aRoot->IsDocumentFragment() ||
-                     /*For backward compatibility*/
-                    aRoot->IsContent())),
-                  "Bad root");
+  MOZ_ASSERT((aStart.IsSet() && aEnd.IsSet() && aRoot) ||
+             (!aStart.IsSet() && !aEnd.IsSet() && !aRoot),
+             "Set all or none");
+
+  MOZ_ASSERT(!aRoot || aNotInsertedYet ||
+             (nsContentUtils::ContentIsDescendantOf(aStart.Container(), aRoot) &&
+              nsContentUtils::ContentIsDescendantOf(aEnd.Container(), aRoot) &&
+              aRoot == IsValidBoundary(aStart.Container()) &&
+              aRoot == IsValidBoundary(aEnd.Container())),
+             "Wrong root");
+
+  MOZ_ASSERT(!aRoot ||
+             (aStart.Container()->IsContent() &&
+              aEnd.Container()->IsContent() &&
+              aRoot ==
+               static_cast<nsIContent*>(aStart.Container())->GetBindingParent() &&
+              aRoot ==
+               static_cast<nsIContent*>(aEnd.Container())->GetBindingParent()) ||
+             (!aRoot->GetParentNode() &&
+              (aRoot->IsDocument() ||
+               aRoot->IsAttr() ||
+               aRoot->IsDocumentFragment() ||
+                /*For backward compatibility*/
+               aRoot->IsContent())),
+             "Bad root");
+
   if (mRoot != aRoot) {
     if (mRoot) {
       mRoot->RemoveMutationObserver(this);
@@ -3153,8 +3129,7 @@ nsRange::GetClientRects(bool aClampToEdge, bool aFlushLayout)
     return nullptr;
   }
 
-  RefPtr<DOMRectList> rectList =
-    new DOMRectList(static_cast<nsIDOMRange*>(this));
+  RefPtr<DOMRectList> rectList = new DOMRectList(this);
 
   nsLayoutUtils::RectListBuilder builder(rectList);
 
@@ -3172,7 +3147,7 @@ nsRange::GetClientRectsAndTexts(
     return;
   }
 
-  aResult.mRectList = new DOMRectList(static_cast<nsIDOMRange*>(this));
+  aResult.mRectList = new DOMRectList(this);
 
   nsLayoutUtils::RectListBuilder builder(aResult.mRectList);
 
@@ -3182,7 +3157,7 @@ nsRange::GetClientRectsAndTexts(
 
 nsresult
 nsRange::GetUsedFontFaces(nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
-                          uint32_t aMaxRanges)
+                          uint32_t aMaxRanges, bool aSkipCollapsedWhitespace)
 {
   NS_ENSURE_TRUE(mStart.Container(), NS_ERROR_UNEXPECTED);
 
@@ -3226,23 +3201,26 @@ nsRange::GetUsedFontFaces(nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
          int32_t offset = startContainer == endContainer ?
            mEnd.Offset() : content->GetText()->GetLength();
          nsLayoutUtils::GetFontFacesForText(frame, mStart.Offset(), offset,
-                                            true, fontFaces, aMaxRanges);
+                                            true, fontFaces, aMaxRanges,
+                                            aSkipCollapsedWhitespace);
          continue;
        }
        if (node == endContainer) {
          nsLayoutUtils::GetFontFacesForText(frame, 0, mEnd.Offset(),
-                                            true, fontFaces, aMaxRanges);
+                                            true, fontFaces, aMaxRanges,
+                                            aSkipCollapsedWhitespace);
          continue;
        }
     }
 
-    nsLayoutUtils::GetFontFacesForFrames(frame, fontFaces, aMaxRanges);
+    nsLayoutUtils::GetFontFacesForFrames(frame, fontFaces, aMaxRanges,
+                                         aSkipCollapsedWhitespace);
   }
 
   // Take ownership of the InspectorFontFaces in the table and move them into
   // the aResult outparam.
   for (auto iter = fontFaces.Iter(); !iter.Done(); iter.Next()) {
-    aResult.AppendElement(Move(iter.Data()));
+    aResult.AppendElement(std::move(iter.Data()));
   }
 
   return NS_OK;

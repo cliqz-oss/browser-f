@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
+use std::sync::Arc;
 use std::thread;
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, Eq, PartialOrd)]
@@ -43,6 +44,8 @@ impl Add<usize> for FrameId {
         FrameId(self.0 + other)
     }
 }
+
+const GL_FORMAT_RGBA: gl::GLuint = gl::RGBA;
 
 const GL_FORMAT_BGRA_GL: gl::GLuint = gl::BGRA;
 
@@ -133,11 +136,8 @@ pub fn get_gl_target(target: TextureTarget) -> gl::GLuint {
     }
 }
 
-pub fn get_gl_format_bgra(gl: &gl::Gl) -> gl::GLuint {
-    match gl.get_type() {
-        gl::GlType::Gl => GL_FORMAT_BGRA_GL,
-        gl::GlType::Gles => GL_FORMAT_BGRA_GLES,
-    }
+fn supports_extension(extensions: &[String], extension: &str) -> bool {
+    extensions.iter().any(|s| s == extension)
 }
 
 fn get_shader_version(gl: &gl::Gl) -> &'static str {
@@ -576,7 +576,8 @@ pub struct VBOId(gl::GLuint);
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 struct IBOId(gl::GLuint);
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serialize_program", derive(Deserialize, Serialize))]
 pub struct ProgramSources {
     renderer_name: String,
     vs_source: String,
@@ -593,31 +594,57 @@ impl ProgramSources {
     }
 }
 
+#[cfg_attr(feature = "serialize_program", derive(Deserialize, Serialize))]
 pub struct ProgramBinary {
     binary: Vec<u8>,
     format: gl::GLenum,
+    #[cfg(feature = "serialize_program")]
+    sources: ProgramSources,
 }
 
 impl ProgramBinary {
-    fn new(binary: Vec<u8>, format: gl::GLenum) -> Self {
+    #[allow(unused_variables)]
+    fn new(binary: Vec<u8>,
+           format: gl::GLenum,
+           sources: &ProgramSources) -> Self {
         ProgramBinary {
             binary,
-            format
+            format,
+            #[cfg(feature = "serialize_program")]
+            sources: sources.clone(),
         }
     }
 }
 
+/// The interfaces that an application can implement to handle ProgramCache update
+pub trait ProgramCacheObserver {
+    fn notify_binary_added(&self, program_binary: &Arc<ProgramBinary>);
+    fn notify_program_binary_failed(&self, program_binary: &Arc<ProgramBinary>);
+}
+
 pub struct ProgramCache {
-    pub binaries: RefCell<FastHashMap<ProgramSources, ProgramBinary>>,
+    binaries: RefCell<FastHashMap<ProgramSources, Arc<ProgramBinary>>>,
+
+    /// Optional trait object that allows the client
+    /// application to handle ProgramCache updating
+    program_cache_handler: Option<Box<ProgramCacheObserver>>,
 }
 
 impl ProgramCache {
-    pub fn new() -> Rc<Self> {
+    pub fn new(program_cache_observer: Option<Box<ProgramCacheObserver>>) -> Rc<Self> {
         Rc::new(
             ProgramCache {
                 binaries: RefCell::new(FastHashMap::default()),
+                program_cache_handler: program_cache_observer,
             }
         )
+    }
+    /// Load ProgramBinary to ProgramCache.
+    /// The function is typically used to load ProgramBinary from disk.
+    #[cfg(feature = "serialize_program")]
+    pub fn load_program_binary(&self, program_binary: Arc<ProgramBinary>) {
+        let sources = program_binary.sources.clone();
+        self.binaries.borrow_mut().insert(sources, program_binary);
     }
 }
 
@@ -675,6 +702,8 @@ pub struct Device {
     #[cfg(feature = "debug_renderer")]
     capabilities: Capabilities,
 
+    bgra_format: gl::GLuint,
+
     // debug
     inside_frame: bool,
 
@@ -701,14 +730,32 @@ impl Device {
         _file_changed_handler: Box<FileWatcherHandler>,
         cached_programs: Option<Rc<ProgramCache>>,
     ) -> Device {
-        let max_texture_size = gl.get_integer_v(gl::MAX_TEXTURE_SIZE) as u32;
+        let mut max_texture_size = [0];
+        unsafe {
+            gl.get_integer_v(gl::MAX_TEXTURE_SIZE, &mut max_texture_size);
+        }
+        let max_texture_size = max_texture_size[0] as u32;
         let renderer_name = gl.get_string(gl::RENDERER);
 
+        let mut extension_count = [0];
+        unsafe {
+            gl.get_integer_v(gl::NUM_EXTENSIONS, &mut extension_count);
+        }
+        let extension_count = extension_count[0] as gl::GLuint;
         let mut extensions = Vec::new();
-        let extension_count = gl.get_integer_v(gl::NUM_EXTENSIONS) as gl::GLuint;
         for i in 0 .. extension_count {
             extensions.push(gl.get_string_i(gl::EXTENSIONS, i));
         }
+
+        let supports_bgra = supports_extension(&extensions, "GL_EXT_texture_format_BGRA8888");
+        let bgra_format = match gl.get_type() {
+            gl::GlType::Gl => GL_FORMAT_BGRA_GL,
+            gl::GlType::Gles => if supports_bgra {
+                GL_FORMAT_BGRA_GLES
+            } else {
+                GL_FORMAT_RGBA
+            }
+        };
 
         Device {
             gl,
@@ -723,6 +770,8 @@ impl Device {
             capabilities: Capabilities {
                 supports_multisampling: false, //TODO
             },
+
+            bgra_format,
 
             bound_textures: [0; 16],
             bound_program: 0,
@@ -803,7 +852,11 @@ impl Device {
         gl.shader_source(id, &[source.as_bytes()]);
         gl.compile_shader(id);
         let log = gl.get_shader_info_log(id);
-        if gl.get_shader_iv(id, gl::COMPILE_STATUS) == (0 as gl::GLint) {
+        let mut status = [0];
+        unsafe {
+            gl.get_shader_iv(id, gl::COMPILE_STATUS, &mut status);
+        }
+        if status[0] == 0 {
             error!("Failed to compile shader: {}\n{}", name, log);
             #[cfg(debug_assertions)]
             Self::print_shader_errors(source, &log);
@@ -821,10 +874,16 @@ impl Device {
         self.inside_frame = true;
 
         // Retrieve the currently set FBO.
-        let default_read_fbo = self.gl.get_integer_v(gl::READ_FRAMEBUFFER_BINDING);
-        self.default_read_fbo = default_read_fbo as gl::GLuint;
-        let default_draw_fbo = self.gl.get_integer_v(gl::DRAW_FRAMEBUFFER_BINDING);
-        self.default_draw_fbo = default_draw_fbo as gl::GLuint;
+        let mut default_read_fbo = [0];
+        unsafe {
+            self.gl.get_integer_v(gl::READ_FRAMEBUFFER_BINDING, &mut default_read_fbo);
+        }
+        self.default_read_fbo = default_read_fbo[0] as gl::GLuint;
+        let mut default_draw_fbo = [0];
+        unsafe {
+            self.gl.get_integer_v(gl::DRAW_FRAMEBUFFER_BINDING, &mut default_draw_fbo);
+        }
+        self.default_draw_fbo = default_draw_fbo[0] as gl::GLuint;
 
         // Texture state
         for i in 0 .. self.bound_textures.len() {
@@ -1096,7 +1155,7 @@ impl Device {
         let allocate_color = needed_layer_count != 0 || is_resized || pixels.is_some();
 
         if allocate_color {
-            let desc = gl_describe_format(self.gl(), texture.format);
+            let desc = self.gl_describe_format(texture.format);
             match texture.target {
                 gl::TEXTURE_2D_ARRAY => {
                     self.gl.tex_image_3d(
@@ -1207,7 +1266,7 @@ impl Device {
     }
 
     fn update_texture_storage<T: Texel>(&mut self, texture: &Texture, pixels: Option<&[T]>) {
-        let desc = gl_describe_format(self.gl(), texture.format);
+        let desc = self.gl_describe_format(texture.format);
         match texture.target {
             gl::TEXTURE_2D_ARRAY => {
                 self.gl.tex_image_3d(
@@ -1297,7 +1356,7 @@ impl Device {
         }
 
         self.bind_texture(DEFAULT_TEXTURE, texture);
-        let desc = gl_describe_format(self.gl(), texture.format);
+        let desc = self.gl_describe_format(texture.format);
 
         self.free_texture_storage_impl(texture.target, desc);
 
@@ -1379,7 +1438,11 @@ impl Device {
             {
                 self.gl.program_binary(pid, binary.format, &binary.binary);
 
-                if self.gl.get_program_iv(pid, gl::LINK_STATUS) == (0 as gl::GLint) {
+                let mut link_status = [0];
+                unsafe {
+                    self.gl.get_program_iv(pid, gl::LINK_STATUS, &mut link_status);
+                }
+                if link_status[0] == 0 {
                     let error_log = self.gl.get_program_info_log(pid);
                     error!(
                       "Failed to load a program object with a program binary: {} renderer {}\n{}",
@@ -1387,6 +1450,9 @@ impl Device {
                       self.renderer_name,
                       error_log
                     );
+                    if let Some(ref program_cache_handler) = cached_programs.program_cache_handler {
+                        program_cache_handler.notify_program_binary_failed(&binary);
+                    }
                 } else {
                     loaded = true;
                 }
@@ -1441,7 +1507,11 @@ impl Device {
             self.gl.delete_shader(vs_id);
             self.gl.delete_shader(fs_id);
 
-            if self.gl.get_program_iv(pid, gl::LINK_STATUS) == (0 as gl::GLint) {
+            let mut link_status = [0];
+            unsafe {
+                self.gl.get_program_iv(pid, gl::LINK_STATUS, &mut link_status);
+            }
+            if link_status[0] == 0 {
                 let error_log = self.gl.get_program_info_log(pid);
                 error!(
                     "Failed to link shader program: {}\n{}",
@@ -1457,7 +1527,11 @@ impl Device {
             if !cached_programs.binaries.borrow().contains_key(&sources) {
                 let (buffer, format) = self.gl.get_program_binary(pid);
                 if buffer.len() > 0 {
-                  cached_programs.binaries.borrow_mut().insert(sources, ProgramBinary::new(buffer, format));
+                    let program_binary = Arc::new(ProgramBinary::new(buffer, format, &sources));
+                    if let Some(ref program_cache_handler) = cached_programs.program_cache_handler {
+                        program_cache_handler.notify_binary_added(&program_binary);
+                    }
+                    cached_programs.binaries.borrow_mut().insert(sources, program_binary);
                 }
             }
         }
@@ -1553,6 +1627,7 @@ impl Device {
         TextureUploader {
             target: UploadTarget {
                 gl: &*self.gl,
+                bgra_format: self.bgra_format,
                 texture,
             },
             buffer,
@@ -1562,11 +1637,11 @@ impl Device {
 
     #[cfg(any(feature = "debug_renderer", feature = "capture"))]
     pub fn read_pixels(&mut self, img_desc: &ImageDescriptor) -> Vec<u8> {
-        let desc = gl_describe_format(self.gl(), img_desc.format);
+        let desc = self.gl_describe_format(img_desc.format);
         self.gl.read_pixels(
             0, 0,
-            img_desc.width as i32,
-            img_desc.height as i32,
+            img_desc.size.width as i32,
+            img_desc.size.height as i32,
             desc.external,
             desc.pixel_type,
         )
@@ -1581,7 +1656,7 @@ impl Device {
     ) {
         let (bytes_per_pixel, desc) = match format {
             ReadPixelsFormat::Standard(imf) => {
-                (imf.bytes_per_pixel(), gl_describe_format(self.gl(), imf))
+                (imf.bytes_per_pixel(), self.gl_describe_format(imf))
             }
             ReadPixelsFormat::Rgba8 => {
                 (4, FormatDesc {
@@ -1615,7 +1690,7 @@ impl Device {
         output: &mut [u8],
     ) {
         self.bind_texture(DEFAULT_TEXTURE, texture);
-        let desc = gl_describe_format(self.gl(), format);
+        let desc = self.gl_describe_format(format);
         self.gl.get_tex_image_into_buffer(
             texture.target,
             0,
@@ -1963,7 +2038,13 @@ impl Device {
         }
 
         if let Some(depth) = depth {
-            debug_assert_ne!(self.gl.get_boolean_v(gl::DEPTH_WRITEMASK), 0);
+            if cfg!(debug_assertions) {
+                let mut mask = [0];
+                unsafe {
+                    self.gl.get_boolean_v(gl::DEPTH_WRITEMASK, &mut mask);
+                }
+                assert_ne!(mask[0], 0);
+            }
             self.gl.clear_depth(depth as f64);
             clear_bits |= gl::DEPTH_BUFFER_BIT;
         }
@@ -2102,7 +2183,7 @@ impl Device {
     }
 
     pub fn supports_extension(&self, extension: &str) -> bool {
-        self.extensions.iter().any(|s| s == extension)
+        supports_extension(&self.extensions, extension)
     }
 
     pub fn echo_driver_messages(&self) {
@@ -2129,43 +2210,43 @@ impl Device {
             log!(level, "({}) {}", ty, msg.message);
         }
     }
+
+    fn gl_describe_format(&self, format: ImageFormat) -> FormatDesc {
+        match format {
+            ImageFormat::R8 => FormatDesc {
+                internal: gl::RED as _,
+                external: gl::RED,
+                pixel_type: gl::UNSIGNED_BYTE,
+            },
+            ImageFormat::BGRA8 => {
+                let external = self.bgra_format;
+                FormatDesc {
+                    internal: match self.gl.get_type() {
+                        gl::GlType::Gl => gl::RGBA as _,
+                        gl::GlType::Gles => external as _,
+                    },
+                    external,
+                    pixel_type: gl::UNSIGNED_BYTE,
+                }
+            },
+            ImageFormat::RGBAF32 => FormatDesc {
+                internal: gl::RGBA32F as _,
+                external: gl::RGBA,
+                pixel_type: gl::FLOAT,
+            },
+            ImageFormat::RG8 => FormatDesc {
+                internal: gl::RG8 as _,
+                external: gl::RG,
+                pixel_type: gl::UNSIGNED_BYTE,
+            },
+        }
+    }
 }
 
 struct FormatDesc {
     internal: gl::GLint,
     external: gl::GLuint,
     pixel_type: gl::GLuint,
-}
-
-fn gl_describe_format(gl: &gl::Gl, format: ImageFormat) -> FormatDesc {
-    match format {
-        ImageFormat::R8 => FormatDesc {
-            internal: gl::RED as _,
-            external: gl::RED,
-            pixel_type: gl::UNSIGNED_BYTE,
-        },
-        ImageFormat::BGRA8 => {
-            let external = get_gl_format_bgra(gl);
-            FormatDesc {
-                internal: match gl.get_type() {
-                    gl::GlType::Gl => gl::RGBA as _,
-                    gl::GlType::Gles => external as _,
-                },
-                external,
-                pixel_type: gl::UNSIGNED_BYTE,
-            }
-        },
-        ImageFormat::RGBAF32 => FormatDesc {
-            internal: gl::RGBA32F as _,
-            external: gl::RGBA,
-            pixel_type: gl::FLOAT,
-        },
-        ImageFormat::RG8 => FormatDesc {
-            internal: gl::RG8 as _,
-            external: gl::RG,
-            pixel_type: gl::UNSIGNED_BYTE,
-        },
-    }
 }
 
 struct UploadChunk {
@@ -2199,6 +2280,7 @@ impl PixelBuffer {
 
 struct UploadTarget<'a> {
     gl: &'a gl::Gl,
+    bgra_format: gl::GLuint,
     texture: &'a Texture,
 }
 
@@ -2275,7 +2357,7 @@ impl<'a> UploadTarget<'a> {
     fn update_impl(&mut self, chunk: UploadChunk) {
         let (gl_format, bpp, data_type) = match self.texture.format {
             ImageFormat::R8 => (gl::RED, 1, gl::UNSIGNED_BYTE),
-            ImageFormat::BGRA8 => (get_gl_format_bgra(self.gl), 4, gl::UNSIGNED_BYTE),
+            ImageFormat::BGRA8 => (self.bgra_format, 4, gl::UNSIGNED_BYTE),
             ImageFormat::RG8 => (gl::RG, 2, gl::UNSIGNED_BYTE),
             ImageFormat::RGBAF32 => (gl::RGBA, 16, gl::FLOAT),
         };

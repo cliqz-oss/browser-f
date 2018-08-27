@@ -1,14 +1,13 @@
 job-defaults:
     suite: marionette
     mozharness:
-        no-read-buildbot-config: true
         script:
             by-test-platform:
-                android.*: android_emulator_unittest.py
+                android-em.*: android_emulator_unittest.py
                 default: marionette.py
         config:
             by-test-platform:
-                android.*:
+                android-em.*:
                     - android/android_common.py
                     - android/androidarm_4_3.py
                 macosx.*:
@@ -23,22 +22,25 @@ job-defaults:
 marionette:
     description: "Marionette unittest run"
     treeherder-symbol: Mn
+    run-on-projects:
+        by-test-platform:
+            android-em.*: ["trunk", "try"]
+            default: built-projects
     max-run-time:
         by-test-platform:
-            android.*: 3600
+            android-em.*: 3600
             default: 5400
     instance-size:
         by-test-platform:
-            android.*: xlarge
+            android-em.*: xlarge
             default: default
     tier:
         by-test-platform:
-            android.*: 2
-            windows10-64-asan.*: 3
+            android-em.*: 2
             default: default
     chunks:
         by-test-platform:
-            android.*: 10
+            android-em.*: 10
             default: 1
 
 marionette-headless:
@@ -49,7 +51,3 @@ marionette-headless:
     mozharness:
         extra-options:
             - --headless
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: default

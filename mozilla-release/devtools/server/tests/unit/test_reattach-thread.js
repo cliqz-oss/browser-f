@@ -14,7 +14,7 @@ function run_test() {
   gDebuggee = testGlobal("test-reattach");
   DebuggerServer.addTestGlobal(gDebuggee);
 
-  let transport = DebuggerServer.connectPipe();
+  const transport = DebuggerServer.connectPipe();
   gClient = new DebuggerClient(transport);
   gClient.connect().then(() => {
     attachTestTab(gClient, "test-reattach", (reply, tabClient) => {
@@ -26,7 +26,7 @@ function run_test() {
 }
 
 function test_attach() {
-  gTabClient.attachThread({}, (response, threadClient) => {
+  gTabClient.attachThread({}).then(([response, threadClient]) => {
     Assert.equal(threadClient.state, "paused");
     gThreadClient = threadClient;
     threadClient.resume(test_detach);
@@ -42,7 +42,7 @@ function test_detach() {
 }
 
 function test_reattach() {
-  gTabClient.attachThread({}, (response, threadClient) => {
+  gTabClient.attachThread({}).then(([response, threadClient]) => {
     Assert.notEqual(gThreadClient, threadClient);
     Assert.equal(threadClient.state, "paused");
     Assert.equal(gTabClient.thread, threadClient);

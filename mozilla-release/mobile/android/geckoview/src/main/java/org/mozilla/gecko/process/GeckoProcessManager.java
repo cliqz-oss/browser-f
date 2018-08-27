@@ -89,6 +89,11 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
         }
 
         public synchronized void unbind() {
+            if (mChild != null) {
+                final Context context = GeckoAppShell.getApplicationContext();
+                context.unbindService(this);
+            }
+
             final int pid = getPid();
             if (pid != 0) {
                 Process.killProcess(pid);
@@ -136,6 +141,7 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
             Log.i(LOGTAG, "Binder died for " + mType);
             if (mChild != null) {
                 mChild = null;
+                mPid = 0;
                 GeckoAppShell.getApplicationContext().unbindService(this);
             }
         }
@@ -181,6 +187,11 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
         return INSTANCE.start(type, args, prefsFd, ipcFd, crashFd, crashAnnotationFd, /* retry */ false);
     }
 
+    private int filterFlagsForChild(int flags) {
+        return flags & (GeckoThread.FLAG_ENABLE_JAVA_CRASHREPORTER |
+                GeckoThread.FLAG_ENABLE_NATIVE_CRASHREPORTER);
+    }
+
     private int start(final String type, final String[] args, final int prefsFd,
                       final int ipcFd, final int crashFd,
                       final int crashAnnotationFd, final boolean retry) {
@@ -196,7 +207,7 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
         final ParcelFileDescriptor crashPfd;
         final ParcelFileDescriptor crashAnnotationPfd;
         try {
-            prefsPfd = ParcelFileDescriptor.fromFd(prefsFd);
+            prefsPfd = (prefsFd >= 0) ? ParcelFileDescriptor.fromFd(prefsFd) : null;
             ipcPfd = ParcelFileDescriptor.fromFd(ipcFd);
             crashPfd = (crashFd >= 0) ? ParcelFileDescriptor.fromFd(crashFd) : null;
             crashAnnotationPfd = (crashAnnotationFd >= 0) ? ParcelFileDescriptor.fromFd(crashAnnotationFd) : null;
@@ -205,9 +216,11 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
             return 0;
         }
 
+        final int flags = filterFlagsForChild(GeckoThread.getActiveFlags());
+
         boolean started = false;
         try {
-            started = child.start(this, args, extras, prefsPfd, ipcPfd, crashPfd,
+            started = child.start(this, args, extras, flags, prefsPfd, ipcPfd, crashPfd,
                                   crashAnnotationPfd);
         } catch (final RemoteException e) {
         }

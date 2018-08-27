@@ -162,6 +162,7 @@ private:
     * EndUpdate must be called before the end of the transaction to complete the update.
     */
   void BeginUpdate(layers::Layer* aLayer, LayerState aState,
+                   bool aFirstUpdate,
                    nsDisplayItem* aItem = nullptr);
   void BeginUpdate(layers::Layer* aLayer, LayerState aState,
                    nsDisplayItem* aItem, bool aIsReused, bool aIsMerged);
@@ -220,17 +221,17 @@ public:
 struct AssignedDisplayItem
 {
   AssignedDisplayItem(nsDisplayItem* aItem,
-                      const DisplayItemClip& aClip,
                       LayerState aLayerState,
                       DisplayItemData* aData,
+                      const nsRect& aContentRect,
                       DisplayItemEntryType aType,
                       const bool aHasOpacity);
   ~AssignedDisplayItem();
 
   nsDisplayItem* mItem;
-  DisplayItemClip mClip;
   LayerState mLayerState;
   DisplayItemData* mDisplayItemData;
+  nsRect mContentRect;
 
   /**
    * If the display item is being rendered as an inactive
@@ -239,11 +240,11 @@ struct AssignedDisplayItem
    */
   RefPtr<layers::LayerManager> mInactiveLayerManager;
 
+  DisplayItemEntryType mType;
   bool mReused;
   bool mMerged;
-
-  DisplayItemEntryType mType;
   bool mHasOpacity;
+  bool mHasPaintRect;
 };
 
 
@@ -667,6 +668,7 @@ protected:
   static void RecomputeVisibilityForItems(nsTArray<AssignedDisplayItem>& aItems,
                                           nsDisplayListBuilder* aBuilder,
                                           const nsIntRegion& aRegionToDraw,
+                                          nsRect& aPreviousRectToDraw,
                                           const nsIntPoint& aOffset,
                                           int32_t aAppUnitsPerDevPixel,
                                           float aXScale,
@@ -699,6 +701,17 @@ public:
   const DisplayItemClip* GetInactiveLayerClip() const
   {
     return mInactiveLayerClip;
+  }
+
+  /*
+   * If we're building layers for an item with an inactive layer tree,
+   * this function saves the item's clip, which will later be applied
+   * to the event regions. The clip should be relative to
+   * mContainingPaintedLayer->mReferenceFrame.
+   */
+  void SetInactiveLayerClip(const DisplayItemClip* aClip)
+  {
+    mInactiveLayerClip = aClip;
   }
 
   bool IsBuildingRetainedLayers()

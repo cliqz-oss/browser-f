@@ -4,12 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* globals gSandbox */
+
 const nsILDAPURL = Ci.nsILDAPURL;
 const LDAPURLContractID = "@mozilla.org/network/ldap-url;1";
 const nsILDAPSyncQuery = Ci.nsILDAPSyncQuery;
 const LDAPSyncQueryContractID = "@mozilla.org/ldapsyncquery;1";
 const nsIPrefService = Ci.nsIPrefService;
 const PrefServiceContractID = "@mozilla.org/preferences-service;1";
+
+// ChromeUtils isn't available here, so we can't use Services.*
+/* eslint-disable mozilla/use-services */
 
 var gVersion;
 var gIsUTF8;
@@ -206,3 +211,25 @@ function getenv(name) {
     }
     return undefined;
 }
+
+var APIs = {
+    pref,
+    defaultPref,
+    lockPref,
+    unlockPref,
+    getPref,
+    clearPref,
+    setLDAPVersion,
+    getLDAPAttributes,
+    getLDAPValue,
+    displayError,
+    getenv,
+};
+
+for (let [defineAs, func] of Object.entries(APIs)) {
+    Cu.exportFunction(func, gSandbox, {defineAs});
+}
+
+Object.defineProperty(Cu.waiveXrays(gSandbox), "gIsUTF8", {
+  get: Cu.exportFunction(() => gIsUTF8, gSandbox),
+});

@@ -2,10 +2,15 @@
   "$schema": "http://json-schema.org/draft-04/schema#",
   "type": "object",
   "properties": {
+    "AppUpdateURL": {
+      "description": "Sets custom app update server URL.",
+      "machine_only": true,
+      "type": "URL"
+    },
+
     "Authentication": {
       "description": "Sites that support integrated authentication. See https://developer.mozilla.org/en-US/docs/Mozilla/Integrated_authentication",
       "first_available": "60.0",
-      "enterprise_only": true,
 
       "type": "object",
       "properties": {
@@ -25,6 +30,18 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "AllowNonFQDN": {
+          "type": "object",
+          "properties": {
+            "SPNEGO": {
+              "type": "boolean"
+            },
+
+            "NTLM": {
+              "type": "boolean"
+            }
           }
         }
       }
@@ -145,7 +162,7 @@
     "DisableAppUpdate": {
       "description": "Prevent the browser from updating.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "boolean"
     },
@@ -274,7 +291,7 @@
     "DisableSystemAddonUpdate": {
       "description": "Prevent the browser from installing and updating system addons.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "boolean"
     },
@@ -282,7 +299,7 @@
     "DisableTelemetry": {
       "description": "Turns off telemetry.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "boolean"
     },
@@ -327,7 +344,7 @@
     "Extensions": {
       "description": "Install, uninstall or lock extensions. The Install option takes URLs or paths as parameters. The Uninstall and Locked options take extension IDs.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "object",
       "properties": {
@@ -382,10 +399,17 @@
       }
     },
 
+    "HardwareAcceleration": {
+      "description": "If false, prevents ability to turn on hardware acceleration.",
+      "first_available": "60.0",
+
+      "type": "boolean"
+    },
+
     "Homepage": {
       "description": "Set and optionally lock the homepage.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "object",
       "properties": {
@@ -440,7 +464,7 @@
     "OverrideFirstRunPage": {
       "description": "Override the first run page. Set this policy to blank if you want to disable the first run page.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "URLorEmpty"
     },
@@ -448,9 +472,125 @@
     "OverridePostUpdatePage": {
       "description": "Override the post-update \"What's New\" page. Set this policy to blank if you want to disable the post-update page.",
       "first_available": "60.0",
-      "enterprise_only": true,
+      "machine_only": true,
 
       "type": "URLorEmpty"
+    },
+
+    "Permissions": {
+      "description": "Configure permissions for camera, microphone, location and notifications.",
+      "first_available": "60.0",
+
+      "type": "object",
+      "properties": {
+        "Camera": {
+          "type": "object",
+          "properties": {
+            "Allow": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "Block": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "BlockNewRequests": {
+              "type": "boolean"
+            },
+
+            "Locked": {
+              "type": "boolean"
+            }
+          }
+        },
+
+        "Microphone": {
+          "type": "object",
+          "properties": {
+            "Allow": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "Block": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "BlockNewRequests": {
+              "type": "boolean"
+            },
+
+            "Locked": {
+              "type": "boolean"
+            }
+          }
+        },
+
+        "Location": {
+          "type": "object",
+          "properties": {
+            "Allow": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "Block": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "BlockNewRequests": {
+              "type": "boolean"
+            },
+
+            "Locked": {
+              "type": "boolean"
+            }
+          }
+        },
+
+        "Notifications": {
+          "type": "object",
+          "properties": {
+            "Allow": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "Block": {
+              "type": "array",
+              "items": {
+                "type": "origin"
+              }
+            },
+
+            "BlockNewRequests": {
+              "type": "boolean"
+            },
+
+            "Locked": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
     },
 
     "PopupBlocking": {
@@ -544,7 +684,6 @@
     "SearchBar": {
       "description": "Sets the default location of the search bar. Only applies on firtrun, but can be changed.",
       "first_available": "60.0",
-      "enterprise_only": true,
 
       "type": "string",
       "enum": ["unified", "separate"]
@@ -594,6 +733,12 @@
         },
         "PreventInstalls": {
           "type": "boolean"
+        },
+        "Remove": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -601,7 +746,7 @@
     "WebsiteFilter": {
       "description": "Blocks websites from being visited. The parameters take an array of Match Patterns, as documented in https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Match_patterns. Only http/https accesses are supported at the moment. The arrays are limited to 1000 entries each.",
       "first_available": "60.0",
-      "enterprise_only": "true",
+      "machine_only": "true",
 
       "type": "object",
       "properties": {

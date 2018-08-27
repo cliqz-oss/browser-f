@@ -26,7 +26,6 @@
 #include "nsNSSASN1Object.h"
 #include "nsNSSCertHelper.h"
 #include "nsNSSCertValidity.h"
-#include "nsNSSComponent.h" // for PIPNSS string bundle calls.
 #include "nsPK11TokenDB.h"
 #include "nsPKCS12Blob.h"
 #include "nsProxyRelease.h"
@@ -63,8 +62,6 @@ NS_IMPL_ISUPPORTS(nsNSSCertificate,
                   nsIX509Cert,
                   nsISerializable,
                   nsIClassInfo)
-
-static NS_DEFINE_CID(kNSSComponentCID, NS_NSSCOMPONENT_CID);
 
 /*static*/ nsNSSCertificate*
 nsNSSCertificate::Create(CERTCertificate* cert)
@@ -195,18 +192,16 @@ nsNSSCertificate::MarkForPermDeletion()
 /**
  * Appends a pipnss bundle string to the given string.
  *
- * @param nssComponent For accessing the string bundle.
  * @param bundleKey Key for the string to append.
  * @param currentText The text to append to, using commas as separators.
  */
 template<size_t N>
 void
-AppendBundleString(const NotNull<nsCOMPtr<nsINSSComponent>>& nssComponent,
-                   const char (&bundleKey)[N],
-        /*in/out*/ nsAString& currentText)
+AppendBundleStringCommaSeparated(const char (&bundleKey)[N],
+                      /*in/out*/ nsAString& currentText)
 {
   nsAutoString bundleString;
-  nsresult rv = nssComponent->GetPIPNSSBundleString(bundleKey, bundleString);
+  nsresult rv = GetPIPNSSBundleString(bundleKey, bundleString);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -221,11 +216,6 @@ NS_IMETHODIMP
 nsNSSCertificate::GetKeyUsages(nsAString& text)
 {
   text.Truncate();
-
-  nsCOMPtr<nsINSSComponent> nssComponent = do_GetService(kNSSComponentCID);
-  if (!nssComponent) {
-    return NS_ERROR_FAILURE;
-  }
 
   if (!mCert) {
     return NS_ERROR_FAILURE;
@@ -246,28 +236,26 @@ nsNSSCertificate::GetKeyUsages(nsAString& text)
     keyUsage = keyUsageItem.data[0];
   }
 
-  NotNull<nsCOMPtr<nsINSSComponent>> wrappedNSSComponent =
-    WrapNotNull(nssComponent);
   if (keyUsage & KU_DIGITAL_SIGNATURE) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUSign", text);
+    AppendBundleStringCommaSeparated("CertDumpKUSign", text);
   }
   if (keyUsage & KU_NON_REPUDIATION) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUNonRep", text);
+    AppendBundleStringCommaSeparated("CertDumpKUNonRep", text);
   }
   if (keyUsage & KU_KEY_ENCIPHERMENT) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUEnc", text);
+    AppendBundleStringCommaSeparated("CertDumpKUEnc", text);
   }
   if (keyUsage & KU_DATA_ENCIPHERMENT) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUDEnc", text);
+    AppendBundleStringCommaSeparated("CertDumpKUDEnc", text);
   }
   if (keyUsage & KU_KEY_AGREEMENT) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUKA", text);
+    AppendBundleStringCommaSeparated("CertDumpKUKA", text);
   }
   if (keyUsage & KU_KEY_CERT_SIGN) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUCertSign", text);
+    AppendBundleStringCommaSeparated("CertDumpKUCertSign", text);
   }
   if (keyUsage & KU_CRL_SIGN) {
-    AppendBundleString(wrappedNSSComponent, "CertDumpKUCRLSign", text);
+    AppendBundleStringCommaSeparated("CertDumpKUCRLSign", text);
   }
 
   return NS_OK;
@@ -362,12 +350,13 @@ nsNSSCertificate::GetDisplayName(nsAString& aDisplayName)
     mCert->emailAddr
   };
 
-  nsAutoCString nameOption;
-  for (auto nameOptionPtr : nameOptions) {
-    nameOption.Assign(nameOptionPtr);
-    if (nameOption.Length() > 0 && IsUTF8(nameOption)) {
-      CopyUTF8toUTF16(nameOption, aDisplayName);
-      return NS_OK;
+  for (auto nameOption : nameOptions) {
+    if (nameOption) {
+      size_t len = strlen(nameOption);
+      if (len > 0) {
+        LossyUTF8ToUTF16(nameOption, len, aDisplayName);
+        return NS_OK;
+      }
     }
   }
 
@@ -378,14 +367,9 @@ NS_IMETHODIMP
 nsNSSCertificate::GetEmailAddress(nsAString& aEmailAddress)
 {
   if (mCert->emailAddr) {
-    CopyUTF8toUTF16(mCert->emailAddr, aEmailAddress);
+    LossyUTF8ToUTF16(mCert->emailAddr, strlen(mCert->emailAddr), aEmailAddress);
   } else {
-    nsresult rv;
-    nsCOMPtr<nsINSSComponent> nssComponent(do_GetService(kNSSComponentCID, &rv));
-    if (NS_FAILED(rv) || !nssComponent) {
-      return NS_ERROR_FAILURE;
-    }
-    nssComponent->GetPIPNSSBundleString("CertNoEmailAddress", aEmailAddress);
+    GetPIPNSSBundleString("CertNoEmailAddress", aEmailAddress);
   }
   return NS_OK;
 }
@@ -398,28 +382,23 @@ nsNSSCertificate::GetEmailAddresses(uint32_t* aLength, char16_t*** aAddresses)
 
   *aLength = 0;
 
-  const char* aAddr;
-  for (aAddr = CERT_GetFirstEmailAddress(mCert.get())
-       ;
-       aAddr
-       ;
-       aAddr = CERT_GetNextEmailAddress(mCert.get(), aAddr))
-  {
+  for (const char* aAddr = CERT_GetFirstEmailAddress(mCert.get());
+       aAddr;
+       aAddr = CERT_GetNextEmailAddress(mCert.get(), aAddr)) {
     ++(*aLength);
   }
 
   *aAddresses = (char16_t**) moz_xmalloc(sizeof(char16_t*) * (*aLength));
-  if (!*aAddresses)
+  if (!*aAddresses) {
     return NS_ERROR_OUT_OF_MEMORY;
+  }
 
-  uint32_t iAddr;
-  for (aAddr = CERT_GetFirstEmailAddress(mCert.get()), iAddr = 0
-       ;
-       aAddr
-       ;
-       aAddr = CERT_GetNextEmailAddress(mCert.get(), aAddr), ++iAddr)
-  {
-    (*aAddresses)[iAddr] = ToNewUnicode(NS_ConvertUTF8toUTF16(aAddr));
+  uint32_t iAddr = 0;
+  for (const char* aAddr = CERT_GetFirstEmailAddress(mCert.get());
+       aAddr;
+       aAddr = CERT_GetNextEmailAddress(mCert.get(), aAddr)) {
+    (*aAddresses)[iAddr] = ToNewUnicode(nsDependentCString(aAddr));
+    iAddr++;
   }
 
   return NS_OK;
@@ -432,25 +411,20 @@ nsNSSCertificate::ContainsEmailAddress(const nsAString& aEmailAddress,
   NS_ENSURE_ARG(result);
   *result = false;
 
-  const char* aAddr = nullptr;
-  for (aAddr = CERT_GetFirstEmailAddress(mCert.get())
-       ;
-       aAddr
-       ;
-       aAddr = CERT_GetNextEmailAddress(mCert.get(), aAddr))
-  {
-    NS_ConvertUTF8toUTF16 certAddr(aAddr);
+  for (const char* aAddr = CERT_GetFirstEmailAddress(mCert.get());
+       aAddr;
+       aAddr = CERT_GetNextEmailAddress(mCert.get(), aAddr)) {
+    nsAutoString certAddr;
+    LossyUTF8ToUTF16(aAddr, strlen(aAddr), certAddr);
     ToLowerCase(certAddr);
 
     nsAutoString testAddr(aEmailAddress);
     ToLowerCase(testAddr);
 
-    if (certAddr == testAddr)
-    {
+    if (certAddr == testAddr) {
       *result = true;
       break;
     }
-
   }
 
   return NS_OK;
@@ -463,7 +437,7 @@ nsNSSCertificate::GetCommonName(nsAString& aCommonName)
   if (mCert) {
     UniquePORTString commonName(CERT_GetCommonName(&mCert->subject));
     if (commonName) {
-      aCommonName = NS_ConvertUTF8toUTF16(commonName.get());
+      LossyUTF8ToUTF16(commonName.get(), strlen(commonName.get()), aCommonName);
     }
   }
   return NS_OK;
@@ -476,7 +450,8 @@ nsNSSCertificate::GetOrganization(nsAString& aOrganization)
   if (mCert) {
     UniquePORTString organization(CERT_GetOrgName(&mCert->subject));
     if (organization) {
-      aOrganization = NS_ConvertUTF8toUTF16(organization.get());
+      LossyUTF8ToUTF16(organization.get(), strlen(organization.get()),
+                       aOrganization);
     }
   }
   return NS_OK;
@@ -489,7 +464,7 @@ nsNSSCertificate::GetIssuerCommonName(nsAString& aCommonName)
   if (mCert) {
     UniquePORTString commonName(CERT_GetCommonName(&mCert->issuer));
     if (commonName) {
-      aCommonName = NS_ConvertUTF8toUTF16(commonName.get());
+      LossyUTF8ToUTF16(commonName.get(), strlen(commonName.get()), aCommonName);
     }
   }
   return NS_OK;
@@ -502,7 +477,8 @@ nsNSSCertificate::GetIssuerOrganization(nsAString& aOrganization)
   if (mCert) {
     UniquePORTString organization(CERT_GetOrgName(&mCert->issuer));
     if (organization) {
-      aOrganization = NS_ConvertUTF8toUTF16(organization.get());
+      LossyUTF8ToUTF16(organization.get(), strlen(organization.get()),
+                       aOrganization);
     }
   }
   return NS_OK;
@@ -515,7 +491,8 @@ nsNSSCertificate::GetIssuerOrganizationUnit(nsAString& aOrganizationUnit)
   if (mCert) {
     UniquePORTString organizationUnit(CERT_GetOrgUnitName(&mCert->issuer));
     if (organizationUnit) {
-      aOrganizationUnit = NS_ConvertUTF8toUTF16(organizationUnit.get());
+      LossyUTF8ToUTF16(organizationUnit.get(), strlen(organizationUnit.get()),
+                       aOrganizationUnit);
     }
   }
   return NS_OK;
@@ -528,7 +505,8 @@ nsNSSCertificate::GetOrganizationalUnit(nsAString& aOrganizationalUnit)
   if (mCert) {
     UniquePORTString orgunit(CERT_GetOrgUnitName(&mCert->subject));
     if (orgunit) {
-      aOrganizationalUnit = NS_ConvertUTF8toUTF16(orgunit.get());
+      LossyUTF8ToUTF16(orgunit.get(), strlen(orgunit.get()),
+                       aOrganizationalUnit);
     }
   }
   return NS_OK;
@@ -539,7 +517,8 @@ nsNSSCertificate::GetSubjectName(nsAString& _subjectName)
 {
   _subjectName.Truncate();
   if (mCert->subjectName) {
-    _subjectName = NS_ConvertUTF8toUTF16(mCert->subjectName);
+    LossyUTF8ToUTF16(mCert->subjectName, strlen(mCert->subjectName),
+                     _subjectName);
   }
   return NS_OK;
 }
@@ -639,7 +618,7 @@ nsNSSCertificate::GetIssuerName(nsAString& _issuerName)
 {
   _issuerName.Truncate();
   if (mCert->issuerName) {
-    _issuerName = NS_ConvertUTF8toUTF16(mCert->issuerName);
+    LossyUTF8ToUTF16(mCert->issuerName, strlen(mCert->issuerName), _issuerName);
   }
   return NS_OK;
 }
@@ -692,31 +671,22 @@ nsNSSCertificate::GetSha1Fingerprint(nsAString& _sha1Fingerprint)
 NS_IMETHODIMP
 nsNSSCertificate::GetTokenName(nsAString& aTokenName)
 {
-  aTokenName.Truncate();
-  if (mCert) {
-    // HACK alert
-    // When the trust of a builtin cert is modified, NSS copies it into the
-    // cert db.  At this point, it is now "managed" by the user, and should
-    // not be listed with the builtins.  However, in the collection code
-    // used by PK11_ListCerts, the cert is found in the temp db, where it
-    // has been loaded from the token.  Though the trust is correct (grabbed
-    // from the cert db), the source is wrong.  I believe this is a safe
-    // way to work around this.
-    if (mCert->slot) {
-      char* token = PK11_GetTokenName(mCert->slot);
-      if (token) {
-        aTokenName = NS_ConvertUTF8toUTF16(token);
-      }
-    } else {
-      nsresult rv;
-      nsAutoString tok;
-      nsCOMPtr<nsINSSComponent> nssComponent(do_GetService(kNSSComponentCID, &rv));
-      if (NS_FAILED(rv)) return rv;
-      rv = nssComponent->GetPIPNSSBundleString("InternalToken", tok);
-      if (NS_SUCCEEDED(rv))
-        aTokenName = tok;
-    }
+  MOZ_ASSERT(mCert);
+  if (!mCert) {
+    return NS_ERROR_FAILURE;
   }
+  UniquePK11SlotInfo internalSlot(PK11_GetInternalSlot());
+  if (!internalSlot) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIPK11Token> token(
+    new nsPK11Token(mCert->slot ? mCert->slot : internalSlot.get()));
+  nsAutoCString tmp;
+  nsresult rv = token->GetTokenName(tmp);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  aTokenName.Assign(NS_ConvertUTF8toUTF16(tmp));
   return NS_OK;
 }
 
@@ -753,132 +723,6 @@ nsNSSCertificate::GetRawDER(uint32_t* aLength, uint8_t** aArray)
   }
   *aLength = 0;
   return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsNSSCertificate::ExportAsCMS(uint32_t chainMode,
-                              uint32_t* aLength, uint8_t** aArray)
-{
-  NS_ENSURE_ARG(aLength);
-  NS_ENSURE_ARG(aArray);
-
-  nsresult rv = BlockUntilLoadableRootsLoaded();
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  if (!mCert)
-    return NS_ERROR_FAILURE;
-
-  switch (chainMode) {
-    case nsIX509Cert::CMS_CHAIN_MODE_CertOnly:
-    case nsIX509Cert::CMS_CHAIN_MODE_CertChain:
-    case nsIX509Cert::CMS_CHAIN_MODE_CertChainWithRoot:
-      break;
-    default:
-      return NS_ERROR_INVALID_ARG;
-  }
-
-  UniqueNSSCMSMessage cmsg(NSS_CMSMessage_Create(nullptr));
-  if (!cmsg) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("nsNSSCertificate::ExportAsCMS - can't create CMS message\n"));
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  // first, create SignedData with the certificate only (no chain)
-  UniqueNSSCMSSignedData sigd(
-    NSS_CMSSignedData_CreateCertsOnly(cmsg.get(), mCert.get(), false));
-  if (!sigd) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("nsNSSCertificate::ExportAsCMS - can't create SignedData\n"));
-    return NS_ERROR_FAILURE;
-  }
-
-  // Calling NSS_CMSSignedData_CreateCertsOnly() will not allow us
-  // to specify the inclusion of the root, but CERT_CertChainFromCert() does.
-  // Since CERT_CertChainFromCert() also includes the certificate itself,
-  // we have to start at the issuing cert (to avoid duplicate certs
-  // in the SignedData).
-  if (chainMode == nsIX509Cert::CMS_CHAIN_MODE_CertChain ||
-      chainMode == nsIX509Cert::CMS_CHAIN_MODE_CertChainWithRoot) {
-    UniqueCERTCertificate issuerCert(
-      CERT_FindCertIssuer(mCert.get(), PR_Now(), certUsageAnyCA));
-    // the issuerCert of a self signed root is the cert itself,
-    // so make sure we're not adding duplicates, again
-    if (issuerCert && issuerCert != mCert) {
-      bool includeRoot =
-        (chainMode == nsIX509Cert::CMS_CHAIN_MODE_CertChainWithRoot);
-      UniqueCERTCertificateList certChain(
-        CERT_CertChainFromCert(issuerCert.get(), certUsageAnyCA, includeRoot));
-      if (certChain) {
-        if (NSS_CMSSignedData_AddCertList(sigd.get(), certChain.get())
-              == SECSuccess) {
-          Unused << certChain.release();
-        }
-        else {
-          MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-                 ("nsNSSCertificate::ExportAsCMS - can't add chain\n"));
-          return NS_ERROR_FAILURE;
-        }
-      }
-      else {
-        // try to add the issuerCert, at least
-        if (NSS_CMSSignedData_AddCertificate(sigd.get(), issuerCert.get())
-              == SECSuccess) {
-          Unused << issuerCert.release();
-        }
-        else {
-          MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-                 ("nsNSSCertificate::ExportAsCMS - can't add issuer cert\n"));
-          return NS_ERROR_FAILURE;
-        }
-      }
-    }
-  }
-
-  NSSCMSContentInfo* cinfo = NSS_CMSMessage_GetContentInfo(cmsg.get());
-  if (NSS_CMSContentInfo_SetContent_SignedData(cmsg.get(), cinfo, sigd.get())
-       == SECSuccess) {
-    Unused << sigd.release();
-  }
-  else {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("nsNSSCertificate::ExportAsCMS - can't attach SignedData\n"));
-    return NS_ERROR_FAILURE;
-  }
-
-  UniquePLArenaPool arena(PORT_NewArena(1024));
-  if (!arena) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("nsNSSCertificate::ExportAsCMS - out of memory\n"));
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  SECItem certP7 = { siBuffer, nullptr, 0 };
-  NSSCMSEncoderContext* ecx = NSS_CMSEncoder_Start(cmsg.get(), nullptr, nullptr,
-                                                   &certP7, arena.get(), nullptr,
-                                                   nullptr, nullptr, nullptr,
-                                                   nullptr, nullptr);
-  if (!ecx) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("nsNSSCertificate::ExportAsCMS - can't create encoder context\n"));
-    return NS_ERROR_FAILURE;
-  }
-
-  if (NSS_CMSEncoder_Finish(ecx) != SECSuccess) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-           ("nsNSSCertificate::ExportAsCMS - failed to add encoded data\n"));
-    return NS_ERROR_FAILURE;
-  }
-
-  *aArray = (uint8_t*)moz_xmalloc(certP7.len);
-  if (!*aArray)
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  memcpy(*aArray, certP7.data, certP7.len);
-  *aLength = certP7.len;
-  return NS_OK;
 }
 
 CERTCertificate*
@@ -973,7 +817,7 @@ NS_IMPL_ISUPPORTS_CI(nsNSSCertList,
 nsNSSCertList::nsNSSCertList(UniqueCERTCertList certList)
 {
   if (certList) {
-    mCertList = Move(certList);
+    mCertList = std::move(certList);
   } else {
     mCertList = UniqueCERTCertList(CERT_NewCertList());
   }
@@ -1044,6 +888,86 @@ CERTCertList*
 nsNSSCertList::GetRawCertList()
 {
   return mCertList.get();
+}
+
+NS_IMETHODIMP
+nsNSSCertList::AsPKCS7Blob(/*out*/ nsACString& result)
+{
+  MOZ_ASSERT(mCertList);
+  if (!mCertList) {
+    return NS_ERROR_FAILURE;
+  }
+
+  UniqueNSSCMSMessage cmsg(NSS_CMSMessage_Create(nullptr));
+  if (!cmsg) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("nsNSSCertList::AsPKCS7Blob - can't create CMS message"));
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  UniqueNSSCMSSignedData sigd(nullptr);
+  nsresult rv = ForEachCertificateInChain(
+    [&cmsg, &sigd] (nsCOMPtr<nsIX509Cert> aCert, bool /*unused*/,
+            /*out*/ bool& /*unused*/) {
+      // We need an owning handle when calling nsIX509Cert::GetCert().
+      UniqueCERTCertificate nssCert(aCert->GetCert());
+      if (!sigd) {
+        sigd.reset(NSS_CMSSignedData_CreateCertsOnly(cmsg.get(), nssCert.get(),
+                                                     false));
+        if (!sigd) {
+          MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+                  ("nsNSSCertList::AsPKCS7Blob - can't create SignedData"));
+          return NS_ERROR_FAILURE;
+        }
+      } else if (NSS_CMSSignedData_AddCertificate(sigd.get(), nssCert.get())
+                   != SECSuccess) {
+        MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+                ("nsNSSCertList::AsPKCS7Blob - can't add cert"));
+        return NS_ERROR_FAILURE;
+      }
+      return NS_OK;
+  });
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  NSSCMSContentInfo* cinfo = NSS_CMSMessage_GetContentInfo(cmsg.get());
+  if (NSS_CMSContentInfo_SetContent_SignedData(cmsg.get(), cinfo, sigd.get())
+        != SECSuccess) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("nsNSSCertList::AsPKCS7Blob - can't attach SignedData"));
+    return NS_ERROR_FAILURE;
+  }
+  // cmsg owns sigd now.
+  Unused << sigd.release();
+
+  UniquePLArenaPool arena(PORT_NewArena(1024));
+  if (!arena) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("nsNSSCertList::AsPKCS7Blob - out of memory"));
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  SECItem certP7 = { siBuffer, nullptr, 0 };
+  NSSCMSEncoderContext* ecx = NSS_CMSEncoder_Start(cmsg.get(), nullptr, nullptr,
+                                                   &certP7, arena.get(), nullptr,
+                                                   nullptr, nullptr, nullptr,
+                                                   nullptr, nullptr);
+  if (!ecx) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("nsNSSCertList::AsPKCS7Blob - can't create encoder"));
+    return NS_ERROR_FAILURE;
+  }
+
+  if (NSS_CMSEncoder_Finish(ecx) != SECSuccess) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("nsNSSCertList::AsPKCS7Blob - failed to add encoded data"));
+    return NS_ERROR_FAILURE;
+  }
+
+  result.Assign(nsDependentCSubstring(reinterpret_cast<const char*>(certP7.data),
+                                      certP7.len));
+  return NS_OK;
 }
 
 NS_IMETHODIMP

@@ -142,7 +142,7 @@ nsMathMLContainerFrame::GetReflowAndBoundingMetricsFor(nsIFrame*            aFra
                                                        nsBoundingMetrics&   aBoundingMetrics,
                                                        eMathMLFrameType*    aMathMLFrameType)
 {
-  NS_PRECONDITION(aFrame, "null arg");
+  MOZ_ASSERT(aFrame, "null arg");
 
   ReflowOutput* reflowOutput =
     aFrame->GetProperty(HTMLReflowOutputProperty());
@@ -882,8 +882,7 @@ nsMathMLContainerFrame::Reflow(nsPresContext*           aPresContext,
   nsReflowStatus childStatus;
   nsIFrame* childFrame = mFrames.FirstChild();
   while (childFrame) {
-    ReflowOutput childDesiredSize(aReflowInput, // ???
-                                         aDesiredSize.mFlags);
+    ReflowOutput childDesiredSize(aReflowInput);
     WritingMode wm = childFrame->GetWritingMode();
     LogicalSize availSize = aReflowInput.ComputedSize(wm);
     availSize.BSize(wm) = NS_UNCONSTRAINEDSIZE;
@@ -1164,13 +1163,14 @@ static nscoord GetThinSpace(const nsStyleFont* aStyleFont)
 
 class nsMathMLContainerFrame::RowChildFrameIterator {
 public:
-  explicit RowChildFrameIterator(nsMathMLContainerFrame* aParentFrame) :
-    mParentFrame(aParentFrame),
-    mReflowOutput(aParentFrame->GetWritingMode()),
-    mX(0),
-    mCarrySpace(0),
-    mFromFrameType(eMathMLFrameType_UNKNOWN),
-    mRTL(aParentFrame->StyleVisibility()->mDirection)
+  explicit RowChildFrameIterator(nsMathMLContainerFrame* aParentFrame)
+    : mParentFrame(aParentFrame)
+    , mReflowOutput(aParentFrame->GetWritingMode())
+    , mX(0)
+    , mChildFrameType(eMathMLFrameType_UNKNOWN)
+    , mCarrySpace(0)
+    , mFromFrameType(eMathMLFrameType_UNKNOWN)
+    , mRTL(aParentFrame->StyleVisibility()->mDirection)
   {
     if (!mRTL) {
       mChildFrame = aParentFrame->mFrames.FirstChild();

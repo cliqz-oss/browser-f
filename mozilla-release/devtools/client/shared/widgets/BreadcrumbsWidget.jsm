@@ -19,7 +19,7 @@ this.EXPORTED_SYMBOLS = ["BreadcrumbsWidget"];
  * Note: this widget should be used in tandem with the WidgetMethods in
  * view-helpers.js.
  *
- * @param nsIDOMNode aNode
+ * @param Node aNode
  *        The element associated with the widget.
  * @param Object aOptions
  *        - smoothScroll: specifies if smooth scrolling on selection is enabled.
@@ -62,14 +62,14 @@ BreadcrumbsWidget.prototype = {
    *
    * @param number aIndex
    *        The position in the container intended for this item.
-   * @param nsIDOMNode aContents
+   * @param Node aContents
    *        The node displayed in the container.
-   * @return nsIDOMNode
+   * @return Node
    *         The element associated with the displayed item.
    */
   insertItemAt: function(aIndex, aContents) {
-    let list = this._list;
-    let breadcrumb = new Breadcrumb(this, aContents);
+    const list = this._list;
+    const breadcrumb = new Breadcrumb(this, aContents);
     return list.insertBefore(breadcrumb._target, list.childNodes[aIndex]);
   },
 
@@ -78,7 +78,7 @@ BreadcrumbsWidget.prototype = {
    *
    * @param number aIndex
    *        The position in the container intended for this item.
-   * @return nsIDOMNode
+   * @return Node
    *         The element associated with the displayed item.
    */
   getItemAtIndex: function(aIndex) {
@@ -88,7 +88,7 @@ BreadcrumbsWidget.prototype = {
   /**
    * Removes the specified child node from this container.
    *
-   * @param nsIDOMNode aChild
+   * @param Node aChild
    *        The element associated with the displayed item.
    */
   removeChild: function(aChild) {
@@ -103,7 +103,7 @@ BreadcrumbsWidget.prototype = {
    * Removes all of the child nodes from this container.
    */
   removeAllItems: function() {
-    let list = this._list;
+    const list = this._list;
 
     while (list.hasChildNodes()) {
       list.firstChild.remove();
@@ -114,7 +114,7 @@ BreadcrumbsWidget.prototype = {
 
   /**
    * Gets the currently selected child node in this container.
-   * @return nsIDOMNode
+   * @return Node
    */
   get selectedItem() {
     return this._selectedItem;
@@ -122,15 +122,15 @@ BreadcrumbsWidget.prototype = {
 
   /**
    * Sets the currently selected child node in this container.
-   * @param nsIDOMNode aChild
+   * @param Node aChild
    */
   set selectedItem(aChild) {
-    let childNodes = this._list.childNodes;
+    const childNodes = this._list.childNodes;
 
     if (!aChild) {
       this._selectedItem = null;
     }
-    for (let node of childNodes) {
+    for (const node of childNodes) {
       if (node == aChild) {
         node.setAttribute("checked", "");
         this._selectedItem = node;
@@ -161,7 +161,7 @@ BreadcrumbsWidget.prototype = {
   /**
    * Ensures the specified element is visible.
    *
-   * @param nsIDOMNode aElement
+   * @param Node aElement
    *        The element to make visible.
    */
   ensureElementIsVisible: function(aElement) {
@@ -214,7 +214,7 @@ BreadcrumbsWidget.prototype = {
  *
  * @param BreadcrumbsWidget aWidget
  *        The widget to contain this breadcrumb.
- * @param nsIDOMNode aContents
+ * @param Node aContents
  *        The node displayed in the container.
  */
 function Breadcrumb(aWidget, aContents) {
@@ -232,7 +232,7 @@ Breadcrumb.prototype = {
   /**
    * Sets the contents displayed in this item's view.
    *
-   * @param string | nsIDOMNode aContents
+   * @param string | Node aContents
    *        The string or node displayed in the container.
    */
   set contents(aContents) {

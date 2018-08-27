@@ -204,18 +204,17 @@ nsNativeThemeAndroid::DrawWidgetBackground(gfxContext* aContext,
   return NS_OK;
 }
 
-NS_IMETHODIMP
+LayoutDeviceIntMargin
 nsNativeThemeAndroid::GetWidgetBorder(nsDeviceContext* aContext, nsIFrame* aFrame,
-                                      uint8_t aWidgetType, nsIntMargin* aResult)
+                                      uint8_t aWidgetType)
 {
-  *aResult = nsIntMargin();
-  return NS_OK;
+  return LayoutDeviceIntMargin();
 }
 
 bool
 nsNativeThemeAndroid::GetWidgetPadding(nsDeviceContext* aContext,
                                        nsIFrame* aFrame, uint8_t aWidgetType,
-                                       nsIntMargin* aResult)
+                                       LayoutDeviceIntMargin* aResult)
 {
   switch (aWidgetType) {
     // Radios and checkboxes return a fixed size in GetMinimumWidgetSize

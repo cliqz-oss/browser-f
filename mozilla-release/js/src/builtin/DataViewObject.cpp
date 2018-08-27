@@ -225,7 +225,7 @@ DataViewObject::constructWrapped(JSContext* cx, HandleObject bufobj, const CallA
     if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto))
         return false;
 
-    Rooted<GlobalObject*> global(cx, cx->compartment()->maybeGlobal());
+    Rooted<GlobalObject*> global(cx, cx->realm()->maybeGlobal());
     if (!proto) {
         proto = GlobalObject::getOrCreateDataViewPrototype(cx, global);
         if (!proto)
@@ -234,7 +234,7 @@ DataViewObject::constructWrapped(JSContext* cx, HandleObject bufobj, const CallA
 
     RootedObject dv(cx);
     {
-        JSAutoCompartment ac(cx, unwrapped);
+        JSAutoRealm ar(cx, unwrapped);
 
         Rooted<ArrayBufferObjectMaybeShared*> buffer(cx);
         buffer = &unwrapped->as<ArrayBufferObjectMaybeShared>();

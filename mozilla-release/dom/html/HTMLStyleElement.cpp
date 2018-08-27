@@ -194,47 +194,30 @@ HTMLStyleElement::SetTextContentInternal(const nsAString& aTextContent,
   Unused << UpdateStyleSheetInternal(nullptr, nullptr);
 }
 
-already_AddRefed<nsIURI>
-HTMLStyleElement::GetStyleSheetURL(bool* aIsInline, nsIPrincipal** aTriggeringPrincipal)
+Maybe<nsStyleLinkElement::SheetInfo>
+HTMLStyleElement::GetStyleSheetInfo()
 {
-  *aIsInline = true;
-  *aTriggeringPrincipal = do_AddRef(mTriggeringPrincipal).take();
-  return nullptr;
-}
-
-void
-HTMLStyleElement::GetStyleSheetInfo(nsAString& aTitle,
-                                    nsAString& aType,
-                                    nsAString& aMedia,
-                                    bool* aIsAlternate)
-{
-  aTitle.Truncate();
-  aType.Truncate();
-  aMedia.Truncate();
-  *aIsAlternate = false;
-
-  nsAutoString title;
-  GetAttr(kNameSpaceID_None, nsGkAtoms::title, title);
-  title.CompressWhitespace();
-  aTitle.Assign(title);
-
-  GetAttr(kNameSpaceID_None, nsGkAtoms::media, aMedia);
-  // The HTML5 spec is formulated in terms of the CSSOM spec, which specifies
-  // that media queries should be ASCII lowercased during serialization.
-  nsContentUtils::ASCIIToLower(aMedia);
-
-  GetAttr(kNameSpaceID_None, nsGkAtoms::type, aType);
-
-  nsAutoString mimeType;
-  nsAutoString notUsed;
-  nsContentUtils::SplitMimeType(aType, mimeType, notUsed);
-  if (!mimeType.IsEmpty() && !mimeType.LowerCaseEqualsLiteral("text/css")) {
-    return;
+  if (!IsCSSMimeTypeAttribute(*this)) {
+    return Nothing();
   }
 
-  // If we get here we assume that we're loading a css file, so set the
-  // type to 'text/css'
-  aType.AssignLiteral("text/css");
+  nsAutoString title;
+  nsAutoString media;
+  GetTitleAndMediaForElement(*this, title, media);
+
+  nsCOMPtr<nsIPrincipal> prin = mTriggeringPrincipal;
+  return Some(SheetInfo {
+    *OwnerDoc(),
+    this,
+    nullptr,
+    prin.forget(),
+    net::ReferrerPolicy::RP_Unset,
+    CORS_NONE,
+    title,
+    media,
+    HasAlternateRel::No,
+    IsInline::Yes,
+  });
 }
 
 JSObject*

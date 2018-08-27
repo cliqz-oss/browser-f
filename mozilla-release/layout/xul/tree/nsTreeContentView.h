@@ -12,7 +12,6 @@
 #include "nsStubDocumentObserver.h"
 #include "nsITreeBoxObject.h"
 #include "nsITreeView.h"
-#include "nsITreeContentView.h"
 #include "nsITreeSelection.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/UniquePtr.h"
@@ -25,6 +24,7 @@ class Row;
 namespace mozilla {
 namespace dom {
 class DataTransfer;
+class Element;
 class TreeBoxObject;
 } // namespace dom
 } // namespace mozilla
@@ -32,10 +32,10 @@ class TreeBoxObject;
 nsresult NS_NewTreeContentView(nsITreeView** aResult);
 
 class nsTreeContentView final : public nsITreeView,
-                                public nsITreeContentView,
                                 public nsStubDocumentObserver,
                                 public nsWrapperCache
 {
+  typedef mozilla::dom::Element Element;
   public:
     nsTreeContentView(void);
 
@@ -112,13 +112,10 @@ class nsTreeContentView final : public nsITreeView,
                              nsTreeColumn& aColumn)
     {
     }
-    mozilla::dom::Element* GetItemAtIndex(int32_t aRow,
-                                          mozilla::ErrorResult& aError);
-    int32_t GetIndexOfItem(mozilla::dom::Element* aItem);
+    Element* GetItemAtIndex(int32_t aRow, mozilla::ErrorResult& aError);
+    int32_t GetIndexOfItem(Element* aItem);
 
     NS_DECL_NSITREEVIEW
-
-    NS_DECL_NSITREECONTENTVIEW
 
     // nsIDocumentObserver
     NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
@@ -172,14 +169,14 @@ class nsTreeContentView final : public nsITreeView,
     void Drop(int32_t aRow, int32_t aOrientation, mozilla::ErrorResult& aError);
 
     // Content helpers.
-    mozilla::dom::Element* GetCell(nsIContent* aContainer, nsTreeColumn& aCol);
+    Element* GetCell(nsIContent* aContainer, nsTreeColumn& aCol);
 
   private:
     bool IsValidRowIndex(int32_t aRowIndex);
 
     nsCOMPtr<nsITreeBoxObject>          mBoxObject;
     nsCOMPtr<nsITreeSelection>          mSelection;
-    nsCOMPtr<nsIContent>                mRoot;
+    nsCOMPtr<Element>                   mRoot;
     nsCOMPtr<nsIContent>                mBody;
     nsIDocument*                        mDocument;      // WEAK
     nsTArray<mozilla::UniquePtr<Row>>   mRows;

@@ -306,6 +306,12 @@ impl RootKind for *mut JS::Symbol {
     fn rootKind() -> JS::RootKind { JS::RootKind::Symbol }
 }
 
+#[cfg(feature = "bigint")]
+impl RootKind for *mut JS::BigInt {
+    #[inline(always)]
+    fn rootKind() -> JS::RootKind { JS::RootKind::BigInt }
+}
+
 impl RootKind for *mut JSScript {
     #[inline(always)]
     fn rootKind() -> JS::RootKind { JS::RootKind::Script }
@@ -551,7 +557,7 @@ impl Default for JS::Value {
     fn default() -> JS::Value { jsval::UndefinedValue() }
 }
 
-impl Default for JS::CompartmentOptions {
+impl Default for JS::RealmOptions {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 
@@ -609,9 +615,9 @@ impl GCMethods for JS::Value {
 // ___________________________________________________________________________
 // Implementations for various things in jsapi.rs
 
-impl Drop for JSAutoCompartment {
+impl Drop for JSAutoRealm {
     fn drop(&mut self) {
-        unsafe { JS_LeaveCompartment(self.cx_, self.oldCompartment_); }
+        unsafe { JS::LeaveRealm(self.cx_, self.oldRealm_); }
     }
 }
 
@@ -1048,8 +1054,9 @@ pub unsafe fn get_object_class(obj: *mut JSObject) -> *const JSClass {
 }
 
 #[inline]
-pub unsafe fn get_object_compartment(obj: *mut JSObject) -> *mut JSCompartment {
-    (*get_object_group(obj)).compartment
+pub unsafe fn get_object_compartment(obj: *mut JSObject) -> *mut JS::Compartment {
+    let realm = (*get_object_group(obj)).realm as *const JS::shadow::Realm;
+    (*realm).compartment_
 }
 
 #[inline]
