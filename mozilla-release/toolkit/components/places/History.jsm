@@ -78,7 +78,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "asyncHistory",
                                    "@mozilla.org/browser/history;1",
                                    "mozIAsyncHistory");
 
-Cu.importGlobalProperties(["URL"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
 /**
  * Whenever we update or remove numerous pages, it is preferable
@@ -441,9 +441,10 @@ var History = Object.freeze({
    * @param filter: An object containing a non empty subset of the following
    * properties:
    * - host: (string)
-   *     Hostname with subhost wildcard (at most one *), or empty for local files.
-   *     The * can be used only if it is the first character in the url, and not the host.
-   *     For example, *.mozilla.org is allowed, *.org, www.*.org or * is not allowed.
+   *     Hostname with or without subhost. Examples:
+   *       "mozilla.org" removes pages from mozilla.org but not its subdomains
+   *       ".mozilla.org" removes pages from mozilla.org and its subdomains
+   *       "." removes local files
    * - beginDate: (Date)
    *     The first time the page was visited (inclusive)
    * - endDate: (Date)
@@ -467,12 +468,21 @@ var History = Object.freeze({
       throw new TypeError("Expected a filter object");
     }
 
-    let hasHost = "host" in filter;
+    let hasHost = filter.host;
     if (hasHost) {
       if (typeof filter.host !== "string") {
         throw new TypeError("`host` should be a string");
       }
       filter.host = filter.host.toLowerCase();
+      if (filter.host.length > 1 && filter.host.lastIndexOf(".") == 0) {
+        // The input contains only an initial period, thus it may be a
+        // wildcarded local host, like ".localhost". Ideally the consumer should
+        // pass just "localhost", because there is no concept of subhosts for
+        // it, but we are being more lenient to allow for simpler input.
+        // Anyway, in this case we remove the wildcard to avoid clearing too
+        // much if the consumer wrongly passes in things like ".com".
+        filter.host = filter.host.slice(1);
+      }
     }
 
     let hasBeginDate = "beginDate" in filter;
@@ -493,14 +503,11 @@ var History = Object.freeze({
       throw new TypeError("Expected a non-empty filter");
     }
 
-    // Host should follow one of these formats
-    // The first one matches `localhost` or any other custom set in hostsfile
-    // The second one matches *.mozilla.org or mozilla.com etc
-    // The third one is for local files
+    // Check the host format.
+    // Either it has no dots, or has multiple dots, or it's a single dot char.
     if (hasHost &&
-        !((/^[a-z0-9-]+$/).test(filter.host)) &&
-        !((/^(\*\.)?([a-z0-9-]+)(\.[a-z0-9-]+)+$/).test(filter.host)) &&
-        (filter.host !== "")) {
+        (!/^(\.?([.a-z0-9-]+\.[a-z0-9-]+)?|[a-z0-9-]+)$/.test(filter.host) ||
+         filter.host.includes(".."))) {
       throw new TypeError("Expected well formed hostname string for `host` with atmost 1 wildcard.");
     }
 
@@ -758,6 +765,8 @@ var invalidateFrecencies = async function(db, idList) {
      WHERE id in (${ ids })
      AND frecency <> 0`
   );
+  // Trigger frecency updates for all affected origins.
+  await db.execute(`DELETE FROM moz_updateoriginsupdate_temp`);
 };
 
 // Inner implementation of History.clear().
@@ -766,7 +775,7 @@ var clear = async function(db) {
     // Remove all non-bookmarked places entries first, this will speed up the
     // triggers work.
     await db.execute(`DELETE FROM moz_places WHERE foreign_count = 0`);
-    await db.execute(`DELETE FROM moz_updatehostsdelete_temp`);
+    await db.execute(`DELETE FROM moz_updateoriginsdelete_temp`);
 
     // Expire orphan icons.
     await db.executeCached(`DELETE FROM moz_pages_w_icons
@@ -776,6 +785,10 @@ var clear = async function(db) {
                               EXCEPT
                               SELECT icon_id FROM moz_icons_to_pages
                             )`);
+    await db.executeCached(`DELETE FROM moz_icons
+                            WHERE root = 1
+                              AND get_host_and_port(icon_url) NOT IN (SELECT host FROM moz_origins)
+                              AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)`);
 
     // Expire annotations.
     await db.execute(`DELETE FROM moz_items_annos WHERE expiration = :expire_session`,
@@ -817,6 +830,9 @@ var clear = async function(db) {
   notify(observers, "onClearHistory");
   // Notify frecency change observers.
   notify(observers, "onManyFrecenciesChanged");
+
+  // Trigger frecency updates for all affected origins.
+  await db.execute(`DELETE FROM moz_updateoriginsupdate_temp`);
 };
 
 /**
@@ -855,7 +871,7 @@ var cleanupPages = async function(db, pages) {
                     AND foreign_count = 0 AND last_visit_date ISNULL`);
   // Hosts accumulated during the places delete are updated through a trigger
   // (see nsPlacesTriggers.h).
-  await db.executeCached(`DELETE FROM moz_updatehostsdelete_temp`);
+  await db.executeCached(`DELETE FROM moz_updateoriginsdelete_temp`);
 
   // Expire orphans.
   let hashesToRemove = pagesToRemove.map(p => p.hash);
@@ -866,6 +882,10 @@ var cleanupPages = async function(db, pages) {
                             EXCEPT
                             SELECT icon_id FROM moz_icons_to_pages
                           )`);
+  await db.executeCached(`DELETE FROM moz_icons
+                          WHERE root = 1
+                            AND get_host_and_port(icon_url) NOT IN (SELECT host FROM moz_origins)
+                            AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)`);
 
   await db.execute(`DELETE FROM moz_annos
                     WHERE place_id IN ( ${ idsList } )`);
@@ -1145,24 +1165,24 @@ var removeByFilter = async function(db, filter, onResult = null) {
 
   // 2. Create fragment for host and subhost filtering
   let hostFilterSQLFragment = "";
-  if (filter.host || filter.host === "") {
-    // There are four cases that we need to consider,
-    // mozilla.org, *.mozilla.org, localhost, and local files
-
-    if (filter.host.indexOf("*") === 0) {
-      // Case 1: subhost wildcard is specified (*.mozilla.org)
-      let revHost = filter.host.slice(2).split("").reverse().join("");
+  if (filter.host) {
+    // There are four cases that we need to consider:
+    // mozilla.org, .mozilla.org, localhost, and local files
+    let revHost = filter.host.split("").reverse().join("");
+    if (filter.host == ".") {
+      // Local files.
+      hostFilterSQLFragment = `h.rev_host = :revHost`;
+    } else if (filter.host.startsWith(".")) {
+      // Remove the subhost wildcard.
+      revHost = revHost.slice(0, -1);
       hostFilterSQLFragment =
-        `h.rev_host between :revHostStart and :revHostEnd`;
-      params.revHostStart = revHost + ".";
-      params.revHostEnd = revHost + "/";
+        `h.rev_host between :revHost || "." and :revHost || "/"`;
     } else {
-      // This covers the rest (mozilla.org, localhost and local files)
-      let revHost = filter.host.split("").reverse().join("") + ".";
+      // This covers non-wildcarded hosts (e.g.: mozilla.org, localhost)
       hostFilterSQLFragment =
-        `h.rev_host = :hostName`;
-      params.hostName = revHost;
+        `h.rev_host = :revHost || "."`;
     }
+    params.revHost = revHost;
   }
 
   // 3. Find out what needs to be removed

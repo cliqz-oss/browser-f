@@ -6,11 +6,9 @@ config = {
         'clobber',
         'build',
     ],
-    "buildbot_json_path": "buildprops.json",
     'app_ini_path': '%(obj_dir)s/dist/bin/application.ini',
     # decides whether we want to use moz_sign_cmd in env
     'vcs_share_base': '/builds/hg-shared',
-    'perfherder_extra_options': ['static-analysis'],
     #########################################################################
 
 

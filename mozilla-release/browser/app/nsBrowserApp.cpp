@@ -23,6 +23,8 @@
 #include "nsIFile.h"
 
 #ifdef XP_WIN
+#include "LauncherProcessWin.h"
+
 #define XRE_WANT_ENVIRON
 #define strcasecmp _stricmp
 #ifdef MOZ_SANDBOX
@@ -252,6 +254,11 @@ InitXPCOMGlue()
   return NS_OK;
 }
 
+#ifdef HAS_DLL_BLOCKLIST
+// NB: This must be extern, as this value is checked elsewhere
+uint32_t gBlocklistInitFlags = eDllBlocklistInitFlagDefault;
+#endif
+
 int main(int argc, char* argv[], char* envp[])
 {
   mozilla::TimeStamp start = mozilla::TimeStamp::Now();
@@ -287,7 +294,7 @@ int main(int argc, char* argv[], char* envp[])
 #endif
 
 #ifdef HAS_DLL_BLOCKLIST
-  DllBlocklist_Initialize();
+  DllBlocklist_Initialize(gBlocklistInitFlags);
 #endif
 
   nsresult rv = InitXPCOMGlue();

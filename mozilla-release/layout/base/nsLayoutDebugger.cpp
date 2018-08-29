@@ -44,7 +44,7 @@ protected:
 nsresult
 NS_NewLayoutDebugger(nsILayoutDebugger** aResult)
 {
-  NS_PRECONDITION(aResult, "null OUT ptr");
+  MOZ_ASSERT(aResult, "null OUT ptr");
   if (!aResult) {
     return NS_ERROR_NULL_POINTER;
   }
@@ -138,7 +138,7 @@ PrintDisplayItemTo(nsDisplayListBuilder* aBuilder, nsDisplayItem* aItem,
   bool snap;
   nsRect rect = aItem->GetBounds(aBuilder, &snap);
   nsRect layerRect = rect - (*aItem->GetAnimatedGeometryRoot())->GetOffsetToCrossDoc(aItem->ReferenceFrame());
-  nsRect vis = aItem->GetVisibleRect();
+  nsRect vis = aItem->GetPaintRect();
   nsRect component = aItem->GetComponentAlphaBounds(aBuilder);
   nsDisplayList* list = aItem->GetChildren();
   const DisplayItemClip& clip = aItem->GetClip();

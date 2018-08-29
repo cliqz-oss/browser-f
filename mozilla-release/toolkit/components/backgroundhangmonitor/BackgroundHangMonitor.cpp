@@ -202,9 +202,9 @@ public:
   // Stack of current hang
   HangStack mHangStack;
   // Annotations for the current hang
-  HangMonitor::HangAnnotations mAnnotations;
+  BackgroundHangAnnotations mAnnotations;
   // Annotators registered for this thread
-  HangMonitor::Observer::Annotators mAnnotators;
+  BackgroundHangAnnotators mAnnotators;
   // The name of the runnable which is hanging the current process
   nsCString mRunnableName;
   // The name of the thread which is being monitored
@@ -488,20 +488,14 @@ BackgroundHangThread::ReportHang(TimeDuration aHangTime)
   // Recovered from a hang; called on the monitor thread
   // mManager->mLock IS locked
 
-  nsTArray<HangAnnotation> annotations;
-  for (auto& annotation : mAnnotations) {
-    HangAnnotation annot(annotation.mName, annotation.mValue);
-    annotations.AppendElement(mozilla::Move(annot));
-  }
-
   HangDetails hangDetails(
     aHangTime,
     nsDependentCString(XRE_ChildProcessTypeToString(XRE_GetProcessType())),
     VoidString(),
     mThreadName,
     mRunnableName,
-    Move(mHangStack),
-    Move(annotations)
+    std::move(mHangStack),
+    std::move(mAnnotations)
   );
 
   // If the hang processing thread exists, we can process the native stack
@@ -509,12 +503,12 @@ BackgroundHangThread::ReportHang(TimeDuration aHangTime)
   // report without one.
   if (mManager->mHangProcessingThread) {
     nsCOMPtr<nsIRunnable> processHangStackRunnable =
-      new ProcessHangStackRunnable(Move(hangDetails));
+      new ProcessHangStackRunnable(std::move(hangDetails));
     mManager->mHangProcessingThread
             ->Dispatch(processHangStackRunnable.forget());
   } else {
     NS_WARNING("Unable to report native stack without a BHR processing thread");
-    RefPtr<nsHangDetails> hd = new nsHangDetails(Move(hangDetails));
+    RefPtr<nsHangDetails> hd = new nsHangDetails(std::move(hangDetails));
     hd->Submit();
   }
 
@@ -767,7 +761,7 @@ BackgroundHangMonitor::NotifyWait()
 }
 
 bool
-BackgroundHangMonitor::RegisterAnnotator(HangMonitor::Annotator& aAnnotator)
+BackgroundHangMonitor::RegisterAnnotator(BackgroundHangAnnotator& aAnnotator)
 {
 #ifdef MOZ_ENABLE_BACKGROUND_HANG_MONITOR
   BackgroundHangThread* thisThread = BackgroundHangThread::FindThread();
@@ -781,7 +775,7 @@ BackgroundHangMonitor::RegisterAnnotator(HangMonitor::Annotator& aAnnotator)
 }
 
 bool
-BackgroundHangMonitor::UnregisterAnnotator(HangMonitor::Annotator& aAnnotator)
+BackgroundHangMonitor::UnregisterAnnotator(BackgroundHangAnnotator& aAnnotator)
 {
 #ifdef MOZ_ENABLE_BACKGROUND_HANG_MONITOR
   BackgroundHangThread* thisThread = BackgroundHangThread::FindThread();

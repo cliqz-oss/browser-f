@@ -72,6 +72,8 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS(nsIContent)
 
+  NS_IMPL_FROMNODE_HELPER(nsIContent, IsContent())
+
   /**
    * Bind this content node to a tree.  If this method throws, the caller must
    * call UnbindFromTree() on the node.  In the typical case of a node being
@@ -200,7 +202,7 @@ public:
   void SetIsNativeAnonymousRoot()
   {
     SetFlags(NODE_IS_ANONYMOUS_ROOT | NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE |
-             NODE_IS_NATIVE_ANONYMOUS_ROOT | NODE_IS_NATIVE_ANONYMOUS);
+             NODE_IS_NATIVE_ANONYMOUS_ROOT);
   }
 
   /**
@@ -449,7 +451,7 @@ public:
   virtual nsIContent* GetBindingParent() const
   {
     const nsExtendedContentSlots* slots = GetExistingExtendedContentSlots();
-    return slots ? slots->mBindingParent : nullptr;
+    return slots ? slots->mBindingParent.get() : nullptr;
   }
 
   /**
@@ -740,14 +742,6 @@ public:
     return false;
   }
 
-  // Returns true if this element is native-anonymous scrollbar content.
-  bool IsNativeScrollbarContent() const {
-    return IsNativeAnonymous() &&
-           IsAnyOfXULElements(nsGkAtoms::scrollbar,
-                              nsGkAtoms::resizer,
-                              nsGkAtoms::scrollcorner);
-  }
-
   // Overloaded from nsINode
   virtual already_AddRefed<nsIURI> GetBaseURI(bool aTryUseXHRDocBaseURI = false) const override;
 
@@ -806,7 +800,7 @@ protected:
      *
      * @see nsIContent::GetBindingParent
      */
-    nsIContent* mBindingParent;  // [Weak]
+    nsCOMPtr<nsIContent> mBindingParent;
 
     /**
      * @see nsIContent::GetXBLInsertionPoint

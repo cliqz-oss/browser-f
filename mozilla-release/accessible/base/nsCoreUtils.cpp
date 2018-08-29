@@ -19,7 +19,6 @@
 #include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsIScrollableFrame.h"
-#include "nsISelectionPrivate.h"
 #include "nsISelectionController.h"
 #include "nsISimpleEnumerator.h"
 #include "mozilla/dom/TouchEvent.h"
@@ -34,7 +33,7 @@
 #include "nsComponentManagerUtils.h"
 
 #include "nsITreeBoxObject.h"
-#include "nsITreeColumns.h"
+#include "nsTreeColumns.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLLabelElement.h"
 #include "mozilla/dom/MouseEventBinding.h"
@@ -71,7 +70,7 @@ nsCoreUtils::HasClickListener(nsIContent *aContent)
 
 void
 nsCoreUtils::DispatchClickEvent(nsITreeBoxObject *aTreeBoxObj,
-                                int32_t aRowIndex, nsITreeColumn *aColumn,
+                                int32_t aRowIndex, nsTreeColumn *aColumn,
                                 const nsAString& aPseudoElt)
 {
   RefPtr<dom::Element> tcElm;
@@ -170,7 +169,7 @@ nsCoreUtils::DispatchTouchEvent(EventMessage aMessage, int32_t aX, int32_t aY,
   // XXX: Touch has an identifier of -1 to hint that it is synthesized.
   RefPtr<dom::Touch> t = new dom::Touch(-1, LayoutDeviceIntPoint(aX, aY),
                                         LayoutDeviceIntPoint(1, 1), 0.0f, 1.0f);
-  t->SetTarget(aContent);
+  t->SetTouchTarget(aContent);
   event.mTouches.AppendElement(t);
   nsEventStatus status = nsEventStatus_eIgnore;
   aPresShell->HandleEventWithTarget(&event, aFrame, aContent, &status);
@@ -269,17 +268,16 @@ nsCoreUtils::ScrollSubstringTo(nsIFrame* aFrame, nsRange* aRange,
   NS_ENSURE_TRUE(selCon, NS_ERROR_FAILURE);
 
   RefPtr<dom::Selection> selection =
-    selCon->GetDOMSelection(nsISelectionController::SELECTION_ACCESSIBILITY);
+    selCon->GetSelection(nsISelectionController::SELECTION_ACCESSIBILITY);
 
-  nsCOMPtr<nsISelectionPrivate> privSel(do_QueryObject(selection));
   selection->RemoveAllRanges(IgnoreErrors());
   selection->AddRange(*aRange, IgnoreErrors());
 
-  privSel->ScrollIntoViewInternal(
-    nsISelectionController::SELECTION_ANCHOR_REGION,
-    true, aVertical, aHorizontal);
+  selection->ScrollIntoView(nsISelectionController::SELECTION_ANCHOR_REGION,
+                            aVertical, aHorizontal,
+                            Selection::SCROLL_SYNCHRONOUS);
 
-  selection->CollapseToStart();
+  selection->CollapseToStart(IgnoreErrors());
 
   return NS_OK;
 }
@@ -521,16 +519,15 @@ nsCoreUtils::GetTreeBoxObject(nsIContent *aContent)
   return nullptr;
 }
 
-already_AddRefed<nsITreeColumn>
+already_AddRefed<nsTreeColumn>
 nsCoreUtils::GetFirstSensibleColumn(nsITreeBoxObject *aTree)
 {
-  nsCOMPtr<nsITreeColumns> cols;
+  RefPtr<nsTreeColumns> cols;
   aTree->GetColumns(getter_AddRefs(cols));
   if (!cols)
     return nullptr;
 
-  nsCOMPtr<nsITreeColumn> column;
-  cols->GetFirstColumn(getter_AddRefs(column));
+  RefPtr<nsTreeColumn> column = cols->GetFirstColumn();
   if (column && IsColumnHidden(column))
     return GetNextSensibleColumn(column);
 
@@ -542,32 +539,29 @@ nsCoreUtils::GetSensibleColumnCount(nsITreeBoxObject *aTree)
 {
   uint32_t count = 0;
 
-  nsCOMPtr<nsITreeColumns> cols;
+  RefPtr<nsTreeColumns> cols;
   aTree->GetColumns(getter_AddRefs(cols));
   if (!cols)
     return count;
 
-  nsCOMPtr<nsITreeColumn> column;
-  cols->GetFirstColumn(getter_AddRefs(column));
+  nsTreeColumn* column = cols->GetFirstColumn();
 
   while (column) {
     if (!IsColumnHidden(column))
       count++;
 
-    nsCOMPtr<nsITreeColumn> nextColumn;
-    column->GetNext(getter_AddRefs(nextColumn));
-    column.swap(nextColumn);
+    column = column->GetNext();
   }
 
   return count;
 }
 
-already_AddRefed<nsITreeColumn>
+already_AddRefed<nsTreeColumn>
 nsCoreUtils::GetSensibleColumnAt(nsITreeBoxObject *aTree, uint32_t aIndex)
 {
   uint32_t idx = aIndex;
 
-  nsCOMPtr<nsITreeColumn> column = GetFirstSensibleColumn(aTree);
+  nsCOMPtr<nsTreeColumn> column = GetFirstSensibleColumn(aTree);
   while (column) {
     if (idx == 0)
       return column.forget();
@@ -579,41 +573,34 @@ nsCoreUtils::GetSensibleColumnAt(nsITreeBoxObject *aTree, uint32_t aIndex)
   return nullptr;
 }
 
-already_AddRefed<nsITreeColumn>
-nsCoreUtils::GetNextSensibleColumn(nsITreeColumn *aColumn)
+already_AddRefed<nsTreeColumn>
+nsCoreUtils::GetNextSensibleColumn(nsTreeColumn* aColumn)
 {
-  nsCOMPtr<nsITreeColumn> nextColumn;
-  aColumn->GetNext(getter_AddRefs(nextColumn));
+  RefPtr<nsTreeColumn> nextColumn = aColumn->GetNext();
 
   while (nextColumn && IsColumnHidden(nextColumn)) {
-    nsCOMPtr<nsITreeColumn> tempColumn;
-    nextColumn->GetNext(getter_AddRefs(tempColumn));
-    nextColumn.swap(tempColumn);
+    nextColumn = nextColumn->GetNext();
   }
 
   return nextColumn.forget();
 }
 
-already_AddRefed<nsITreeColumn>
-nsCoreUtils::GetPreviousSensibleColumn(nsITreeColumn *aColumn)
+already_AddRefed<nsTreeColumn>
+nsCoreUtils::GetPreviousSensibleColumn(nsTreeColumn* aColumn)
 {
-  nsCOMPtr<nsITreeColumn> prevColumn;
-  aColumn->GetPrevious(getter_AddRefs(prevColumn));
+  RefPtr<nsTreeColumn> prevColumn = aColumn->GetPrevious();
 
   while (prevColumn && IsColumnHidden(prevColumn)) {
-    nsCOMPtr<nsITreeColumn> tempColumn;
-    prevColumn->GetPrevious(getter_AddRefs(tempColumn));
-    prevColumn.swap(tempColumn);
+    prevColumn = prevColumn->GetPrevious();
   }
 
   return prevColumn.forget();
 }
 
 bool
-nsCoreUtils::IsColumnHidden(nsITreeColumn *aColumn)
+nsCoreUtils::IsColumnHidden(nsTreeColumn* aColumn)
 {
-  RefPtr<Element> element;
-  aColumn->GetElement(getter_AddRefs(element));
+  Element* element = aColumn->Element();
   return element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
                               nsGkAtoms::_true, eCaseMatters);
 }

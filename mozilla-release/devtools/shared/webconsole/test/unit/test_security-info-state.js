@@ -7,7 +7,6 @@
 // different cases.
 
 const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 Object.defineProperty(this, "NetworkHelper", {
   get: function() {
@@ -20,8 +19,8 @@ Object.defineProperty(this, "NetworkHelper", {
 
 const wpl = Ci.nsIWebProgressListener;
 const MockSecurityInfo = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsITransportSecurityInfo,
-                                         Ci.nsISSLStatusProvider]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITransportSecurityInfo,
+                                          Ci.nsISSLStatusProvider]),
   securityState: wpl.STATE_IS_BROKEN,
   errorCode: 0,
   SSLStatus: {
@@ -43,7 +42,7 @@ function run_test() {
  * Test that undefined security information is returns "insecure".
  */
 function test_nullSecurityInfo() {
-  let result = NetworkHelper.parseSecurityInfo(null, {});
+  const result = NetworkHelper.parseSecurityInfo(null, {});
   equal(result.state, "insecure",
     "state == 'insecure' when securityInfo was undefined");
 }
@@ -57,7 +56,7 @@ function test_insecureSecurityInfoWithNSSError() {
   // Taken from security/manager/ssl/tests/unit/head_psm.js.
   MockSecurityInfo.errorCode = -8180;
 
-  let result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
+  const result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
   equal(result.state, "broken",
     "state == 'broken' if securityState contains STATE_IS_INSECURE flag AND " +
     "errorCode is NSS error.");
@@ -71,7 +70,7 @@ function test_insecureSecurityInfoWithNSSError() {
 function test_insecureSecurityInfoWithoutNSSError() {
   MockSecurityInfo.securityState = wpl.STATE_IS_INSECURE;
 
-  let result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
+  const result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
   equal(result.state, "insecure",
     "state == 'insecure' if securityState contains STATE_IS_INSECURE flag BUT " +
     "errorCode is not NSS error.");
@@ -83,7 +82,7 @@ function test_insecureSecurityInfoWithoutNSSError() {
 function test_secureSecurityInfo() {
   MockSecurityInfo.securityState = wpl.STATE_IS_SECURE;
 
-  let result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
+  const result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
   equal(result.state, "secure",
     "state == 'secure' if securityState contains STATE_IS_SECURE flag");
 }
@@ -94,7 +93,7 @@ function test_secureSecurityInfo() {
 function test_brokenSecurityInfo() {
   MockSecurityInfo.securityState = wpl.STATE_IS_BROKEN;
 
-  let result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
+  const result = NetworkHelper.parseSecurityInfo(MockSecurityInfo, {});
   equal(result.state, "weak",
     "state == 'weak' if securityState contains STATE_IS_BROKEN flag");
 }

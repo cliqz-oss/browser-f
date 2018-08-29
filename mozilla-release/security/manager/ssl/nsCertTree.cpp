@@ -10,20 +10,19 @@
 #include "nsArrayUtils.h"
 #include "nsHashKeys.h"
 #include "nsISupportsPrimitives.h"
-#include "nsITreeColumns.h"
 #include "nsIX509CertDB.h"
 #include "nsIX509Cert.h"
 #include "nsIX509CertValidity.h"
 #include "nsNSSCertHelper.h"
 #include "nsNSSCertificate.h"
 #include "nsNSSCertificateDB.h"
-#include "nsNSSComponent.h" // for PIPNSS string bundle calls.
 #include "nsNSSHelper.h"
 #include "nsReadableUtils.h"
 #include "nsTHashtable.h"
 #include "nsUnicharUtils.h"
 #include "nsXPCOMCID.h"
 #include "nsString.h"
+#include "nsTreeColumns.h"
 #include "pkix/pkixtypes.h"
 
 using namespace mozilla;
@@ -159,9 +158,6 @@ nsCertTree::nsCertTree()
   , mCompareCache(&gMapOps, sizeof(CompareCacheHashEntryPtr),
                   kInitialCacheLength)
 {
-  static NS_DEFINE_CID(kNSSComponentCID, NS_NSSCOMPONENT_CID);
-
-  mNSSComponent = do_GetService(kNSSComponentCID);
   mOverrideService = do_GetService("@mozilla.org/security/certoverride;1");
   // Might be a different service if someone is overriding the contract
   nsCOMPtr<nsICertOverrideService> origCertOverride =
@@ -686,7 +682,7 @@ if (count) {
   for (int32_t i=0; i<mNumOrgs; i++) {
     nsString &orgNameRef = mTreeArray[i].orgName;
     if (!orgCert) {
-      mNSSComponent->GetPIPNSSBundleString("CertOrgUnknown", orgNameRef);
+      GetPIPNSSBundleString("CertOrgUnknown", orgNameRef);
     }
     else {
       orgCert->GetIssuerOrganization(orgNameRef);
@@ -885,14 +881,14 @@ nsCertTree::GetRowProperties(int32_t index, nsAString& aProps)
 }
 
 NS_IMETHODIMP
-nsCertTree::GetCellProperties(int32_t row, nsITreeColumn* col,
+nsCertTree::GetCellProperties(int32_t row, nsTreeColumn* col,
                               nsAString& aProps)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCertTree::GetColumnProperties(nsITreeColumn* col, nsAString& aProps)
+nsCertTree::GetColumnProperties(nsTreeColumn* col, nsAString& aProps)
 {
   return NS_OK;
 }
@@ -993,7 +989,7 @@ nsCertTree::GetLevel(int32_t index, int32_t *_retval)
 }
 
 NS_IMETHODIMP
-nsCertTree::GetImageSrc(int32_t row, nsITreeColumn* col,
+nsCertTree::GetImageSrc(int32_t row, nsTreeColumn* col,
                         nsAString& _retval)
 {
   _retval.Truncate();
@@ -1001,7 +997,7 @@ nsCertTree::GetImageSrc(int32_t row, nsITreeColumn* col,
 }
 
 NS_IMETHODIMP
-nsCertTree::GetCellValue(int32_t row, nsITreeColumn* col,
+nsCertTree::GetCellValue(int32_t row, nsTreeColumn* col,
                          nsAString& _retval)
 {
   _retval.Truncate();
@@ -1009,7 +1005,7 @@ nsCertTree::GetCellValue(int32_t row, nsITreeColumn* col,
 }
 
 NS_IMETHODIMP
-nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
+nsCertTree::GetCellText(int32_t row, nsTreeColumn* col,
                         nsAString& _retval)
 {
   if (!mTreeArray)
@@ -1018,8 +1014,7 @@ nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
   nsresult rv = NS_OK;
   _retval.Truncate();
 
-  const char16_t* colID;
-  col->GetIdConst(&colID);
+  const nsAString& colID = col->GetId();
 
   treeArrayEl *el = GetThreadDescAtIndex(row);
   if (el) {
@@ -1040,8 +1035,7 @@ nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
     cert = certdi->mAddonInfo->mCert;
   }
 
-  int32_t colIndex;
-  col->GetIndex(&colIndex);
+  int32_t colIndex = col->Index();
   uint32_t arrayIndex=absoluteCertOffset+colIndex*(mNumRows-mNumOrgs);
   uint32_t arrayLength=0;
   if (mCellText) {
@@ -1057,7 +1051,7 @@ nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
 
   if (NS_LITERAL_STRING("certcol").Equals(colID)) {
     if (!cert) {
-      rv = mNSSComponent->GetPIPNSSBundleString("CertNotStored", _retval);
+      rv = GetPIPNSSBundleString("CertNotStored", _retval);
     } else {
       rv = cert->GetDisplayName(_retval);
     }
@@ -1093,7 +1087,7 @@ nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
   } else if (NS_LITERAL_STRING("lifetimecol").Equals(colID)) {
     const char *stringID =
       (certdi->mIsTemporary) ? "CertExceptionTemporary" : "CertExceptionPermanent";
-    rv = mNSSComponent->GetPIPNSSBundleString(stringID, _retval);
+    rv = GetPIPNSSBundleString(stringID, _retval);
   } else {
     return NS_ERROR_FAILURE;
   }
@@ -1128,7 +1122,7 @@ nsCertTree::ToggleOpenState(int32_t index)
 }
 
 NS_IMETHODIMP
-nsCertTree::CycleHeader(nsITreeColumn* col)
+nsCertTree::CycleHeader(nsTreeColumn* col)
 {
   return NS_OK;
 }
@@ -1140,34 +1134,34 @@ nsCertTree::SelectionChanged()
 }
 
 NS_IMETHODIMP
-nsCertTree::CycleCell(int32_t row, nsITreeColumn* col)
+nsCertTree::CycleCell(int32_t row, nsTreeColumn* col)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCertTree::IsEditable(int32_t row, nsITreeColumn* col, bool *_retval)
-{
-  *_retval = false;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsCertTree::IsSelectable(int32_t row, nsITreeColumn* col, bool *_retval)
+nsCertTree::IsEditable(int32_t row, nsTreeColumn* col, bool *_retval)
 {
   *_retval = false;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCertTree::SetCellValue(int32_t row, nsITreeColumn* col,
+nsCertTree::IsSelectable(int32_t row, nsTreeColumn* col, bool *_retval)
+{
+  *_retval = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsCertTree::SetCellValue(int32_t row, nsTreeColumn* col,
                          const nsAString& value)
 {
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsCertTree::SetCellText(int32_t row, nsITreeColumn* col,
+nsCertTree::SetCellText(int32_t row, nsTreeColumn* col,
                         const nsAString& value)
 {
   return NS_OK;
@@ -1187,7 +1181,7 @@ nsCertTree::PerformActionOnRow(const char16_t *action, int32_t row)
 
 NS_IMETHODIMP
 nsCertTree::PerformActionOnCell(const char16_t *action, int32_t row,
-                                nsITreeColumn* col)
+                                nsTreeColumn* col)
 {
   return NS_OK;
 }

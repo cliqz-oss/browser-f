@@ -2,21 +2,29 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
+ChromeUtils.import("resource://testing-common/CustomizableUITestUtils.jsm", this);
+let gCUITestUtils = new CustomizableUITestUtils(window);
+
 registerCleanupFunction(() => {
   Services.prefs.clearUserPref("browser.policies.runonce.setDefaultSearchEngine");
   Services.prefs.clearUserPref("browser.policies.runOncePerModification.addSearchEngines");
 });
 
+add_task(async function test_setup() {
+  await gCUITestUtils.addSearchBar();
+  registerCleanupFunction(() => {
+    gCUITestUtils.removeSearchBar();
+  });
+});
+
 // |shouldWork| should be true if opensearch is expected to work and false if
 // it is not.
 async function test_opensearch(shouldWork) {
-  await SpecialPowers.pushPrefEnv({ set: [
-    ["browser.search.widget.inNavBar", true],
-  ]});
+  let searchBar = BrowserSearch.searchBar;
+
   let rootDir = getRootDirectory(gTestPath);
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, rootDir + "opensearch.html");
   let searchPopup = document.getElementById("PopupSearchAutoComplete");
-  let searchBar = document.getElementById("searchbar");
   let promiseSearchPopupShown = BrowserTestUtils.waitForEvent(searchPopup, "popupshown");
   let searchBarButton = document.getAnonymousElementByAttribute(searchBar,
                                                                 "anonid",
@@ -183,4 +191,40 @@ add_task(async function test_AddSearchProvider() {
      "Engine should not have been added successfully.");
   is(mockPrompter.promptCount, 1,
      "Should have alerted the user of an error when installing new search engine");
+});
+
+add_task(async function test_install_and_remove() {
+  is(Services.search.getEngineByName("Foo"), null,
+     "Engine \"Foo\" should not be present when test starts");
+
+  await setupPolicyEngineWithJson({
+  "policies": {
+      "SearchEngines": {
+        "Add": [
+          {
+            "Name": "Foo",
+            "URLTemplate": "http://example.com/?q={searchTerms}"
+          }
+        ]
+      }
+    }
+  });
+
+  // If this passes, it means that the new search engine was properly installed
+  isnot(Services.search.getEngineByName("Foo"), null,
+     "Specified search engine should be installed");
+
+  await setupPolicyEngineWithJson({
+  "policies": {
+      "SearchEngines": {
+        "Remove": ["Foo"]
+      }
+    }
+  });
+
+  // If this passes, it means that the specified engine was properly removed
+  is(Services.search.getEngineByName("Foo"), null,
+     "Specified search engine should not be installed");
+
+  EnterprisePolicyTesting.resetRunOnceState();
 });

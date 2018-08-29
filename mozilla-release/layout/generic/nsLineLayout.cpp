@@ -45,8 +45,6 @@ using namespace mozilla;
 
 //----------------------------------------------------------------------
 
-#define FIX_BUG_50257
-
 nsLineLayout::nsLineLayout(nsPresContext* aPresContext,
                            nsFloatManager* aFloatManager,
                            const ReflowInput* aOuterReflowInput,
@@ -460,8 +458,8 @@ nsLineLayout::EndSpan(nsIFrame* aFrame)
 void
 nsLineLayout::AttachFrameToBaseLineLayout(PerFrameData* aFrame)
 {
-  NS_PRECONDITION(mBaseLineLayout,
-                  "This method must not be called in a base line layout.");
+  MOZ_ASSERT(mBaseLineLayout,
+             "This method must not be called in a base line layout.");
 
   PerFrameData* baseFrame = mBaseLineLayout->LastFrame();
   MOZ_ASSERT(aFrame && baseFrame);
@@ -904,7 +902,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
   // Note that we don't bother positioning the frame yet, because we're probably
   // going to end up moving it when we do the block-direction alignment.
 
-  // Adjust spacemanager coordinate system for the frame.
+  // Adjust float manager coordinate system for the frame.
   ReflowOutput reflowOutput(lineWM);
 #ifdef DEBUG
   reflowOutput.ISize(lineWM) = nscoord(0xdeadbeef);
@@ -1259,7 +1257,7 @@ nsLineLayout::CanPlaceFrame(PerFrameData* pfd,
                             nsReflowStatus& aStatus,
                             bool* aOptionalBreakAfterFits)
 {
-  NS_PRECONDITION(pfd && pfd->mFrame, "bad args, null pointers for frame data");
+  MOZ_ASSERT(pfd && pfd->mFrame, "bad args, null pointers for frame data");
 
   *aOptionalBreakAfterFits = true;
 
@@ -1336,7 +1334,6 @@ nsLineLayout::CanPlaceFrame(PerFrameData* pfd,
     return true;
   }
 
-#ifdef FIX_BUG_50257
   // another special case:  always place a BR
   if (pfd->mFrame->IsBrFrame()) {
 #ifdef NOISY_CAN_PLACE_FRAME
@@ -1344,7 +1341,6 @@ nsLineLayout::CanPlaceFrame(PerFrameData* pfd,
 #endif
     return true;
   }
-#endif
 
   if (aNotSafeToBreak) {
     // There are no frames on the line that take up width and the line is

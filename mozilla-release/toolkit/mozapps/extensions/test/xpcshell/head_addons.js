@@ -13,14 +13,12 @@ Cu.importGlobalProperties(["TextEncoder"]);
 
 const PREF_EM_CHECK_UPDATE_SECURITY   = "extensions.checkUpdateSecurity";
 const PREF_EM_STRICT_COMPATIBILITY    = "extensions.strictCompatibility";
-const PREF_EM_MIN_COMPAT_APP_VERSION      = "extensions.minCompatibleAppVersion";
-const PREF_EM_MIN_COMPAT_PLATFORM_VERSION = "extensions.minCompatiblePlatformVersion";
 const PREF_GETADDONS_BYIDS               = "extensions.getAddons.get.url";
 const PREF_COMPAT_OVERRIDES              = "extensions.getAddons.compatOverides.url";
 const PREF_XPI_SIGNATURES_REQUIRED    = "xpinstall.signatures.required";
 const PREF_SYSTEM_ADDON_SET           = "extensions.systemAddonSet";
 const PREF_SYSTEM_ADDON_UPDATE_URL    = "extensions.systemAddon.update.url";
-const PREF_APP_UPDATE_ENABLED         = "app.update.enabled";
+const PREF_SYSTEM_ADDON_UPDATE_ENABLED = "extensions.systemAddon.update.enabled";
 const PREF_DISABLE_SECURITY = ("security.turn_off_all_security_so_that_" +
                                "viruses_can_take_over_this_computer");
 
@@ -72,13 +70,13 @@ XPCOMUtils.defineLazyServiceGetter(this, "aomStartup",
                                    "amIAddonManagerStartup");
 
 const {
-  awaitPromise,
   createAppInfo,
   createHttpServer,
   createInstallRDF,
   createTempWebExtensionFile,
   createUpdateRDF,
   getFileForAddon,
+  manuallyInstall,
   manuallyUninstall,
   overrideBuiltIns,
   promiseAddonEvent,
@@ -99,16 +97,24 @@ const {
   writeFilesToZip
 } = AddonTestUtils;
 
-function manuallyInstall(...args) {
-  return AddonTestUtils.awaitPromise(
-    AddonTestUtils.manuallyInstall(...args));
-}
-
 // WebExtension wrapper for ease of testing
 ExtensionTestUtils.init(this);
 
 AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();
+
+XPCOMUtils.defineLazyGetter(this, "BOOTSTRAP_REASONS",
+                            () => AddonManagerPrivate.BOOTSTRAP_REASONS);
+
+function getReasonName(reason) {
+  for (let key of Object.keys(BOOTSTRAP_REASONS)) {
+    if (BOOTSTRAP_REASONS[key] == reason) {
+      return key;
+    }
+  }
+  throw new Error("This shouldn't happen.");
+}
+
 
 Object.defineProperty(this, "gAppInfo", {
   get() {
@@ -164,7 +170,6 @@ var { AddonManager, AddonManagerInternal, AddonManagerPrivate } = AMscope;
 
 const promiseAddonByID = AddonManager.getAddonByID;
 const promiseAddonsByIDs = AddonManager.getAddonsByIDs;
-const promiseAddonsWithOperationsByTypes = AddonManager.getAddonsWithOperationsByTypes;
 
 var gPort = null;
 var gUrlToFileMap = {};
@@ -196,6 +201,18 @@ function isManifestRegistered(file) {
   }
   return false;
 }
+
+const BOOTSTRAP_MONITOR_BOOTSTRAP_JS = `
+  ChromeUtils.import("resource://xpcshell-data/BootstrapMonitor.jsm").monitor(this);
+`;
+
+
+const EMPTY_BOOTSTRAP_JS = `
+  function startup() {}
+  function shutdown() {}
+  function install() {}
+  function uninstall() {}
+`;
 
 // Listens to messages from bootstrap.js telling us what add-ons were started
 // and stopped etc. and performs some sanity checks that only installed add-ons
@@ -251,7 +268,8 @@ this.BootstrapMonitor = {
     Assert.notEqual(cached, undefined);
     Assert.equal(current.data.version, cached.data.version);
     Assert.equal(current.data.installPath, cached.data.installPath);
-    Assert.equal(current.data.resourceURI, cached.data.resourceURI);
+    Assert.ok(Services.io.newURI(current.data.resourceURI).equals(Services.io.newURI(cached.data.resourceURI)),
+              `Resource URIs match: "${current.data.resourceURI}" == "${cached.data.resourceURI}"`);
   },
 
   checkAddonStarted(id, version = undefined) {
@@ -358,12 +376,143 @@ this.BootstrapMonitor = {
 
 AddonTestUtils.on("addon-manager-shutdown", () => BootstrapMonitor.shutdownCheck());
 
+var SlightlyLessDodgyBootstrapMonitor = {
+  started: new Map(),
+  stopped: new Map(),
+  installed: new Map(),
+  uninstalled: new Map(),
+
+  init() {
+    this.onEvent = this.onEvent.bind(this);
+
+    AddonTestUtils.on("addon-manager-shutdown", this.onEvent);
+    AddonTestUtils.on("bootstrap-method", this.onEvent);
+  },
+
+  shutdownCheck() {
+    equal(this.started.size, 0,
+          "Should have no add-ons that were started but not shutdown");
+  },
+
+  onEvent(msg, data) {
+    switch (msg) {
+      case "addon-manager-shutdown":
+        this.shutdownCheck();
+        break;
+      case "bootstrap-method":
+        this.onBootstrapMethod(data.method, data.params, data.reason);
+        break;
+    }
+  },
+
+  onBootstrapMethod(method, params, reason) {
+    let {id} = params;
+
+    info(`Bootstrap method ${method} for ${params.id} version ${params.version}`);
+
+    if (method !== "install") {
+      this.checkInstalled(id);
+    }
+
+    switch (method) {
+      case "install":
+        this.checkNotInstalled(id);
+        this.installed.set(id, {reason, params});
+        this.uninstalled.delete(id);
+        break;
+      case "startup":
+        this.checkNotStarted(id);
+        this.started.set(id, {reason, params});
+        this.stopped.delete(id);
+        break;
+      case "shutdown":
+        this.checkMatches("shutdown", "startup", params, this.started.get(id));
+        this.checkStarted(id);
+        this.stopped.set(id, {reason, params});
+        this.started.delete(id);
+        break;
+      case "uninstall":
+        this.checkMatches("uninstall", "install", params, this.installed.get(id));
+        this.uninstalled.set(id, {reason, params});
+        this.installed.delete(id);
+        break;
+      case "update":
+        this.checkMatches("update", "install", params, this.installed.get(id));
+        this.installed.set(id, {reason, params});
+        break;
+    }
+  },
+
+  clear(id) {
+    this.installed.delete(id);
+    this.started.delete(id);
+    this.stopped.delete(id);
+    this.uninstalled.delete(id);
+  },
+
+  checkMatches(method, lastMethod, params, {params: lastParams} = {}) {
+    ok(lastParams,
+       `Expecting matching ${lastMethod} call for add-on ${params.id} ${method} call`);
+
+    if (method == "update") {
+      equal(params.oldVersion, lastParams.version,
+            "params.version should match last call");
+    } else {
+      equal(params.version, lastParams.version,
+            "params.version should match last call");
+    }
+
+    if (method !== "update" && method !== "uninstall") {
+      equal(params.installPath.path, lastParams.installPath.path,
+            `params.installPath should match last call`);
+
+      ok(params.resourceURI.equals(lastParams.resourceURI),
+         `params.resourceURI should match: "${params.resourceURI.spec}" == "${lastParams.resourceURI.spec}"`);
+    }
+  },
+
+  checkStarted(id, version = undefined) {
+    let started = this.started.get(id);
+    ok(started, `Should have seen startup method call for ${id}`);
+
+    if (version !== undefined)
+      equal(started.params.version, version,
+            "Expected version number");
+  },
+
+  checkNotStarted(id) {
+    ok(!this.started.has(id),
+       `Should not have seen startup method call for ${id}`);
+  },
+
+  checkInstalled(id, version = undefined) {
+    const installed = this.installed.get(id);
+    ok(installed, `Should have seen install call for ${id}`);
+
+    if (version !== undefined)
+      equal(installed.params.version, version,
+            "Expected version number");
+
+    return installed;
+  },
+
+  checkNotInstalled(id) {
+    ok(!this.installed.has(id),
+       `Should not have seen install method call for ${id}`);
+  },
+};
+
 function isNightlyChannel() {
   var channel = Services.prefs.getCharPref("app.update.channel", "default");
 
   return channel != "aurora" && channel != "beta" && channel != "release" && channel != "esr";
 }
 
+
+async function restartWithLocales(locales) {
+  Services.locale.setRequestedLocales(locales);
+  await promiseRestartManager();
+}
 
 /**
  * Returns a map of Addon objects for installed add-ons with the given
@@ -458,22 +607,6 @@ function do_check_not_in_crash_annotation(aId, aVersion) {
 
   let addons = gAppInfo.annotations["Add-ons"].split(",");
   Assert.ok(!addons.includes(`${encodeURIComponent(aId)}:${encodeURIComponent(aVersion)}`));
-}
-
-/**
- * Returns a testcase xpi
- *
- * @param  aName
- *         The name of the testcase (without extension)
- * @return an nsIFile pointing to the testcase xpi
- */
-function do_get_addon(aName) {
-  return do_get_file("addons/" + aName + ".xpi");
-}
-
-function do_get_addon_hash(aName, aAlgorithm) {
-  let file = do_get_addon(aName);
-  return do_get_file_hash(file);
 }
 
 function do_get_file_hash(aFile, aAlgorithm) {
@@ -671,36 +804,12 @@ function do_check_icons(aActual, aExpected) {
   }
 }
 
-function startupManager(aAppChanged) {
-  promiseStartupManager(aAppChanged);
-}
-
-/**
- * Restarts the add-on manager as if the host application was restarted.
- *
- * @param  aNewVersion
- *         An optional new version to use for the application. Passing this
- *         will change nsIXULAppInfo.version and make the startup appear as if
- *         the application version has changed.
- */
-function restartManager(aNewVersion) {
-  awaitPromise(promiseRestartManager(aNewVersion));
-}
-
-function shutdownManager() {
-  awaitPromise(promiseShutdownManager());
-}
-
 function isThemeInAddonsList(aDir, aId) {
   return AddonTestUtils.addonsList.hasTheme(aDir, aId);
 }
 
-function isExtensionInAddonsList(aDir, aId) {
-  return AddonTestUtils.addonsList.hasExtension(aDir, aId);
-}
-
 function isExtensionInBootstrappedList(aDir, aId) {
-  return AddonTestUtils.addonsList.hasBootstrapped(aDir, aId);
+  return AddonTestUtils.addonsList.hasExtension(aDir, aId);
 }
 
 function check_startup_changes(aType, aIds) {
@@ -730,9 +839,6 @@ function check_startup_changes(aType, aIds) {
  *          An optional dummy file to create in the directory
  * @return  An nsIFile for the directory in which the add-on is installed.
  */
-function writeInstallRDFToDir(aData, aDir, aId = aData.id, aExtraFile = null) {
-  return awaitPromise(promiseWriteInstallRDFToDir(aData, aDir, aId, aExtraFile));
-}
 async function promiseWriteInstallRDFToDir(aData, aDir, aId = aData.id, aExtraFile = null) {
   let files = {
     "install.rdf": AddonTestUtils.createInstallRDF(aData),
@@ -766,7 +872,7 @@ async function promiseWriteInstallRDFToDir(aData, aDir, aId = aData.id, aExtraFi
  *          An optional dummy file to create in the extension
  * @return  A file pointing to where the extension was installed
  */
-function writeInstallRDFToXPI(aData, aDir, aId = aData.id, aExtraFile = null) {
+async function promiseWriteInstallRDFToXPI(aData, aDir, aId = aData.id, aExtraFile = null) {
   let files = {
     "install.rdf": AddonTestUtils.createInstallRDF(aData),
   };
@@ -786,9 +892,6 @@ function writeInstallRDFToXPI(aData, aDir, aId = aData.id, aExtraFile = null) {
 
   return file;
 }
-async function promiseWriteInstallRDFToXPI(aData, aDir, aId = aData.id, aExtraFile = null) {
-  return writeInstallRDFToXPI(aData, aDir, aId, aExtraFile);
-}
 
 /**
  * Writes an install.rdf manifest into an extension using the properties passed
@@ -807,13 +910,6 @@ async function promiseWriteInstallRDFToXPI(aData, aDir, aId = aData.id, aExtraFi
  *          An optional dummy file to create in the extension
  * @return  A file pointing to where the extension was installed
  */
-function writeInstallRDFForExtension(aData, aDir, aId, aExtraFile) {
-  if (TEST_UNPACKED) {
-    return writeInstallRDFToDir(aData, aDir, aId, aExtraFile);
-  }
-  return writeInstallRDFToXPI(aData, aDir, aId, aExtraFile);
-}
-
 function promiseWriteInstallRDFForExtension(aData, aDir, aId, aExtraFile) {
   if (TEST_UNPACKED) {
     return promiseWriteInstallRDFToDir(aData, aDir, aId, aExtraFile);
@@ -1112,7 +1208,7 @@ function check_test_completed(aArgs) {
 function ensure_test_completed() {
   for (let i in gExpectedEvents) {
     if (gExpectedEvents[i].length > 0)
-      do_throw(`Didn't see all the expected events for ${i}: Still expecting ${gExpectedEvents[i].map(([k]) => k)}`);
+      do_throw(`Didn't see all the expected events for ${i}: Still expecting ${gExpectedEvents[i]}`);
   }
   gExpectedEvents = {};
   if (gExpectedInstalls)
@@ -1152,25 +1248,15 @@ const EXTENSIONS_DB = "extensions.json";
 var gExtensionsJSON = gProfD.clone();
 gExtensionsJSON.append(EXTENSIONS_DB);
 
-function promiseInstallWebExtension(aData) {
+async function promiseInstallWebExtension(aData) {
   let addonFile = createTempWebExtensionFile(aData);
 
-  let promise = promiseWebExtensionStartup();
-  return promiseInstallAllFiles([addonFile]).then(installs => {
-    Services.obs.notifyObservers(addonFile, "flush-cache-entry");
-    // Since themes are disabled by default, it won't start up.
-    if (aData.manifest.theme)
-      return installs[0].addon;
-    return promise.then(() => installs[0].addon);
-  });
+  let {addon} = await promiseInstallFile(addonFile);
+  return addon;
 }
 
 // By default use strict compatibility
 Services.prefs.setBoolPref("extensions.strictCompatibility", true);
-
-// By default, set min compatible versions to 0
-Services.prefs.setCharPref(PREF_EM_MIN_COMPAT_APP_VERSION, "0");
-Services.prefs.setCharPref(PREF_EM_MIN_COMPAT_PLATFORM_VERSION, "0");
 
 // Ensure signature checks are enabled by default
 Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, true);
@@ -1270,14 +1356,6 @@ function callback_soon(aFunction) {
   };
 }
 
-function writeProxyFileToDir(aDir, aAddon, aId) {
-  awaitPromise(promiseWriteProxyFileToDir(aDir, aAddon, aId));
-
-  let file = aDir.clone();
-  file.append(aId);
-  return file;
-}
-
 async function serveSystemUpdate(xml, perform_update, testserver) {
   testserver.registerPathHandler("/data/update.xml", (request, response) => {
     response.write(xml);
@@ -1327,8 +1405,6 @@ function buildSystemAddonUpdates(addons, root) {
     xml += `  <addons>\n`;
     for (let addon of addons) {
       xml += `    <addon id="${addon.id}" URL="${root + addon.path}" version="${addon.version}"`;
-      if (addon.size)
-        xml += ` size="${addon.size}"`;
       if (addon.hashFunction)
         xml += ` hashFunction="${addon.hashFunction}"`;
       if (addon.hashValue)
@@ -1504,8 +1580,8 @@ async function setupSystemAddonConditions(setup, distroDir) {
   distroDir.leafName = "empty";
 
   let updateList = [];
-  awaitPromise(overrideBuiltIns({ "system": updateList }));
-  startupManager(false);
+  await overrideBuiltIns({ "system": updateList });
+  await promiseStartupManager();
   await promiseShutdownManager();
 
   info("Setting up conditions.");
@@ -1518,8 +1594,8 @@ async function setupSystemAddonConditions(setup, distroDir) {
       updateList = ["system2@tests.mozilla.org", "system3@tests.mozilla.org"];
     }
   }
-  awaitPromise(overrideBuiltIns({ "system": updateList }));
-  startupManager(false);
+  await overrideBuiltIns({ "system": updateList });
+  await promiseStartupManager();
 
   // Make sure the initial state is correct
   info("Checking initial state.");
@@ -1575,8 +1651,8 @@ async function verifySystemAddonState(initialState, finalState = undefined, alre
       updateList = ["system2@tests.mozilla.org", "system3@tests.mozilla.org"];
     }
   }
-  awaitPromise(overrideBuiltIns({ "system": updateList }));
-  startupManager();
+  await overrideBuiltIns({ "system": updateList });
+  await promiseStartupManager();
   await checkInstalledSystemAddons(finalState, distroDir);
 }
 
@@ -1677,4 +1753,12 @@ function mockPluginHost(plugins) {
   };
 
   MockRegistrar.register("@mozilla.org/plugin/host;1", PluginHost);
+}
+
+async function setInitialState(addon, initialState) {
+  if (initialState.userDisabled) {
+    await addon.disable();
+  } else if (initialState.userDisabled === false) {
+    await addon.enable();
+  }
 }

@@ -37,8 +37,6 @@ class ToolboxTabsOrderManager {
     Services.prefs.setCharPref(PREFERENCE_NAME, pref);
 
     this.onMouseUp();
-
-    this.telemetry.destroy();
   }
 
   setCurrentPanelDefinitions(currentPanelDefinitions) {
@@ -144,7 +142,7 @@ class ToolboxTabsOrderManager {
       // Log which tabs reordered. The question we want to answer is:
       // "How frequently are the tabs re-ordered, also which tabs get re-ordered?"
       const toolId = this.dragTarget.dataset.extensionId || this.dragTarget.dataset.id;
-      this.telemetry.logKeyedScalar(TABS_REORDERED_SCALAR, toolId, 1);
+      this.telemetry.keyedScalarAdd(TABS_REORDERED_SCALAR, toolId, 1);
     }
 
     this.dragTarget.ownerDocument.removeEventListener("mousemove", this.onMouseMove);
@@ -161,16 +159,6 @@ class ToolboxTabsOrderManager {
 
 function sortPanelDefinitions(definitions) {
   const pref = Services.prefs.getCharPref(PREFERENCE_NAME, "");
-
-  if (!pref) {
-    definitions.sort(definition => {
-      return -1 * (definition.ordinal == undefined || definition.ordinal < 0
-        ? Number.MAX_VALUE
-        : definition.ordinal
-      );
-    });
-  }
-
   const toolIds = pref.split(",");
 
   return definitions.sort((a, b) => {

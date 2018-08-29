@@ -1,6 +1,6 @@
 # 468496-1 will also detect bugs in video drivers.
 == 468496-1.html 468496-1-ref.html
-fuzzy(175,443) == 611498-1.html 611498-ref.html
+fuzzy(175,443) random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == 611498-1.html 611498-ref.html # Bug 1392106
 fuzzy-if(Android,8,1000) == 709477-1.html 709477-1-ref.html
 skip-if(!asyncPan) == 1086723.html 1086723-ref.html
 == 853889-1.html 853889-1-ref.html
@@ -13,3 +13,5 @@ fuzzy(100,30) == 1149923.html 1149923-ref.html # use fuzzy due to few distorted 
 == 1435143.html 1435143-ref.html
 == 1444904.html 1444904-ref.html
 == 1451168.html 1451168-ref.html
+fuzzy(5-32,21908-26354) fuzzy-if(webrender,0-1,0-3) == 1463802.html 1463802-ref.html
+fuzzy(11,4) == 1474722.html 1474722-ref.html

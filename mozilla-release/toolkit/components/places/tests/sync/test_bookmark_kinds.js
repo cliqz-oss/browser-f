@@ -309,7 +309,7 @@ add_task(async function test_queries() {
   await storeRecords(buf, shuffle([{
     id: "toolbar",
     type: "folder",
-    children: ["queryEEEEEEE", "queryFFFFFFF", "queryGGGGGGG"],
+    children: ["queryEEEEEEE", "queryFFFFFFF", "queryGGGGGGG", "queryHHHHHHH"],
   }, {
     // Legacy tag query.
     id: "queryEEEEEEE",
@@ -331,6 +331,12 @@ add_task(async function test_queries() {
     title: "G",
     bmkUri: "place:type=7&folder=111&something=else",
     folderName: "a-tag",
+  }, {
+    // Legacy folder lookup query.
+    id: "queryHHHHHHH",
+    type: "query",
+    title: "H",
+    bmkUri: "place:folder=1",
   }]));
 
   info("Create records to upload");
@@ -363,8 +369,14 @@ add_task(async function test_queries() {
       index: 2,
       title: "G",
       url: "place:tag=a-tag",
+    }, {
+      guid: "queryHHHHHHH",
+      type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
+      index: 3,
+      title: "H",
+      url: "place:folder=1&excludeItems=1",
     }],
-  }, "Should rewrite legacy remote tag queries");
+  }, "Should rewrite legacy remote queries");
 
   await buf.finalize();
   await PlacesUtils.bookmarks.eraseEverything();
@@ -418,15 +430,12 @@ add_task(async function test_mismatched_but_compatible_folder_types() {
 });
 
 add_task(async function test_mismatched_but_incompatible_folder_types() {
-  let sawMismatchEvent = false;
+  let sawMismatchError = false;
   let recordTelemetryEvent = (object, method, value, extra) => {
-    // expecting to see a kind-mismatch event.
-    if (value == "kind-mismatch" &&
-        extra.local && typeof extra.local == "string" &&
-        extra.local == "livemark" &&
-        extra.remote && typeof extra.remote == "string" &&
-        extra.remote == "folder") {
-      sawMismatchEvent = true;
+    // expecting to see an error for kind mismatches.
+    if (method == "apply" && value == "error" &&
+        extra && extra.why == "Can't merge different item kinds") {
+      sawMismatchError = true;
     }
   };
   let buf = await openMirror("mismatched_incompatible_types",
@@ -458,7 +467,7 @@ add_task(async function test_mismatched_but_incompatible_folder_types() {
 
     info("Apply remote, should fail");
     await Assert.rejects(buf.apply(), /Can't merge different item kinds/);
-    Assert.ok(sawMismatchEvent, "saw the correct mismatch event");
+    Assert.ok(sawMismatchError, "saw the correct mismatch event");
   } finally {
     await buf.finalize();
     await PlacesUtils.bookmarks.eraseEverything();
@@ -539,15 +548,12 @@ add_task(async function test_different_but_compatible_bookmark_types() {
 });
 
 add_task(async function test_incompatible_types() {
-  let sawMismatchEvent = false;
+  let sawMismatchError = false;
   let recordTelemetryEvent = (object, method, value, extra) => {
-    // expecting to see a kind-mismatch event.
-    if (value == "kind-mismatch" &&
-        extra.local && typeof extra.local == "string" &&
-        extra.local == "bookmark" &&
-        extra.remote && typeof extra.remote == "string" &&
-        extra.remote == "folder") {
-      sawMismatchEvent = true;
+    // expecting to see an error for kind mismatches.
+    if (method == "apply" && value == "error" &&
+        extra && extra.why == "Can't merge different item kinds") {
+      sawMismatchError = true;
     }
   };
   try {
@@ -582,7 +588,7 @@ add_task(async function test_incompatible_types() {
     await PlacesTestUtils.markBookmarksAsSynced();
 
     await Assert.rejects(buf.apply(), /Can't merge different item kinds/);
-    Assert.ok(sawMismatchEvent, "saw expected mismatch event");
+    Assert.ok(sawMismatchError, "saw expected mismatch event");
   } finally {
     await PlacesUtils.bookmarks.eraseEverything();
     await PlacesSyncUtils.bookmarks.reset();

@@ -619,11 +619,7 @@ nsWebBrowserPersist::SerializeNextFile()
             }
 
             // Make a URI to save the data to.
-            nsCOMPtr<nsIURI> fileAsURI;
-            rv = data->mDataPath->Clone(getter_AddRefs(fileAsURI));
-            if (NS_WARN_IF(NS_FAILED(rv))) {
-                break;
-            }
+            nsCOMPtr<nsIURI> fileAsURI = data->mDataPath;
             rv = AppendPathToURI(fileAsURI, data->mFilename, fileAsURI);
             if (NS_WARN_IF(NS_FAILED(rv))) {
                 break;
@@ -1799,7 +1795,7 @@ nsWebBrowserPersist::FinishSaveDocumentInternal(nsIURI* aFile,
           "nsWebBrowserPersist::FinishSaveDocumentInternal",
           this,
           saveMethod,
-          mozilla::Move(toWalk));
+          std::move(toWalk));
         NS_DispatchToCurrentThread(saveLater);
     } else {
         // Done walking DOMs; on to the serialization phase.
@@ -1886,43 +1882,31 @@ void nsWebBrowserPersist::CleanupLocalFiles()
                 // recursed through to ensure they are actually empty.
 
                 bool isEmptyDirectory = true;
-                nsCOMArray<nsISimpleEnumerator> dirStack;
+                nsCOMArray<nsIDirectoryEnumerator> dirStack;
                 int32_t stackSize = 0;
 
                 // Push the top level enum onto the stack
-                nsCOMPtr<nsISimpleEnumerator> pos;
+                nsCOMPtr<nsIDirectoryEnumerator> pos;
                 if (NS_SUCCEEDED(file->GetDirectoryEntries(getter_AddRefs(pos))))
                     dirStack.AppendObject(pos);
 
                 while (isEmptyDirectory && (stackSize = dirStack.Count()))
                 {
                     // Pop the last element
-                    nsCOMPtr<nsISimpleEnumerator> curPos;
+                    nsCOMPtr<nsIDirectoryEnumerator> curPos;
                     curPos = dirStack[stackSize-1];
                     dirStack.RemoveObjectAt(stackSize - 1);
 
-                    // Test if the enumerator has any more files in it
-                    bool hasMoreElements = false;
-                    curPos->HasMoreElements(&hasMoreElements);
-                    if (!hasMoreElements)
+                    nsCOMPtr<nsIFile> child;
+                    if (NS_FAILED(curPos->GetNextFile(getter_AddRefs(child))) || !child)
                     {
                         continue;
                     }
 
-                    // Child files automatically make this code drop out,
-                    // while child dirs keep the loop going.
-                    nsCOMPtr<nsISupports> child;
-                    curPos->GetNext(getter_AddRefs(child));
-                    NS_ASSERTION(child, "No child element, but hasMoreElements says otherwise");
-                    if (!child)
-                        continue;
-                    nsCOMPtr<nsIFile> childAsFile = do_QueryInterface(child);
-                    NS_ASSERTION(childAsFile, "This should be a file but isn't");
-
                     bool childIsSymlink = false;
-                    childAsFile->IsSymlink(&childIsSymlink);
+                    child->IsSymlink(&childIsSymlink);
                     bool childIsDir = false;
-                    childAsFile->IsDirectory(&childIsDir);
+                    child->IsDirectory(&childIsDir);
                     if (!childIsDir || childIsSymlink)
                     {
                         // Some kind of file or symlink which means dir
@@ -1931,8 +1915,8 @@ void nsWebBrowserPersist::CleanupLocalFiles()
                         break;
                     }
                     // Push parent enumerator followed by child enumerator
-                    nsCOMPtr<nsISimpleEnumerator> childPos;
-                    childAsFile->GetDirectoryEntries(getter_AddRefs(childPos));
+                    nsCOMPtr<nsIDirectoryEnumerator> childPos;
+                    child->GetDirectoryEntries(getter_AddRefs(childPos));
                     dirStack.AppendObject(curPos);
                     if (childPos)
                         dirStack.AppendObject(childPos);
@@ -2540,11 +2524,9 @@ nsWebBrowserPersist::URIData::GetLocalURI(nsIURI *targetBaseURI, nsCString& aSpe
     nsresult rv;
     nsCOMPtr<nsIURI> fileAsURI;
     if (mFile) {
-        rv = mFile->Clone(getter_AddRefs(fileAsURI));
-        NS_ENSURE_SUCCESS(rv, rv);
+        fileAsURI = mFile;
     } else {
-        rv = mDataPath->Clone(getter_AddRefs(fileAsURI));
-        NS_ENSURE_SUCCESS(rv, rv);
+        fileAsURI = mDataPath;
         rv = AppendPathToURI(fileAsURI, mFilename, fileAsURI);
         NS_ENSURE_SUCCESS(rv, rv);
     }
@@ -2667,16 +2649,12 @@ nsWebBrowserPersist::SaveSubframeContent(
     filenameWithExt.Append(aData->mSubFrameExt);
 
     // Work out the path for the subframe
-    nsCOMPtr<nsIURI> frameURI;
-    rv = mCurrentDataPath->Clone(getter_AddRefs(frameURI));
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIURI> frameURI = mCurrentDataPath;
     rv = AppendPathToURI(frameURI, filenameWithExt, frameURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Work out the path for the subframe data
-    nsCOMPtr<nsIURI> frameDataURI;
-    rv = mCurrentDataPath->Clone(getter_AddRefs(frameDataURI));
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIURI> frameDataURI = mCurrentDataPath;
     nsAutoString newFrameDataPath(aData->mFilename);
 
     // Append _data
@@ -2703,7 +2681,7 @@ nsWebBrowserPersist::SaveSubframeContent(
         toWalk->mDocument = aFrameContent;
         toWalk->mFile = frameURI;
         toWalk->mDataPath = frameDataURI;
-        mWalkStack.AppendElement(mozilla::Move(toWalk));
+        mWalkStack.AppendElement(std::move(toWalk));
     } else {
         rv = StoreURI(aURISpec.get());
     }

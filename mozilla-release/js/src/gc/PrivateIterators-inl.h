@@ -63,11 +63,11 @@ class GCZonesIter
 
   public:
     explicit GCZonesIter(JSRuntime* rt, ZoneSelector selector = WithAtoms) : zone(rt, selector) {
-        MOZ_ASSERT(JS::CurrentThreadIsHeapBusy());
+        MOZ_ASSERT(JS::RuntimeHeapIsBusy());
         MOZ_ASSERT_IF(rt->gc.atomsZone->isCollectingFromAnyThread(),
                       !rt->hasHelperThreadZones());
 
-        if (!zone->isCollectingFromAnyThread())
+        if (!done() && !zone->isCollectingFromAnyThread())
             next();
     }
 
@@ -89,16 +89,28 @@ class GCZonesIter
     JS::Zone* operator->() const { return get(); }
 };
 
-typedef CompartmentsIterT<GCZonesIter> GCCompartmentsIter;
+using GCCompartmentsIter = CompartmentsOrRealmsIterT<GCZonesIter, CompartmentsInZoneIter>;
+using GCRealmsIter = CompartmentsOrRealmsIterT<GCZonesIter, RealmsInZoneIter>;
 
 /* Iterates over all zones in the current sweep group. */
 class SweepGroupZonesIter {
     JS::Zone* current;
+    ZoneSelector selector;
 
   public:
-    explicit SweepGroupZonesIter(JSRuntime* rt) {
+    explicit SweepGroupZonesIter(JSRuntime* rt, ZoneSelector selector = WithAtoms)
+      : selector(selector)
+    {
         MOZ_ASSERT(CurrentThreadIsPerformingGC());
         current = rt->gc.getCurrentSweepGroup();
+        maybeSkipAtomsZone();
+    }
+
+    void maybeSkipAtomsZone() {
+        if (selector == SkipAtoms && current && current->isAtomsZone()) {
+            current = current->nextNodeInGroup();
+            MOZ_ASSERT_IF(current, !current->isAtomsZone());
+        }
     }
 
     bool done() const { return !current; }
@@ -106,6 +118,7 @@ class SweepGroupZonesIter {
     void next() {
         MOZ_ASSERT(!done());
         current = current->nextNodeInGroup();
+        maybeSkipAtomsZone();
     }
 
     JS::Zone* get() const {
@@ -117,7 +130,8 @@ class SweepGroupZonesIter {
     JS::Zone* operator->() const { return get(); }
 };
 
-typedef CompartmentsIterT<SweepGroupZonesIter> SweepGroupCompartmentsIter;
+using SweepGroupCompartmentsIter = CompartmentsOrRealmsIterT<SweepGroupZonesIter, CompartmentsInZoneIter>;
+using SweepGroupRealmsIter = CompartmentsOrRealmsIterT<SweepGroupZonesIter, RealmsInZoneIter>;
 
 // Iterate the free cells in an arena. See also ArenaCellIterImpl which iterates
 // the allocated cells.

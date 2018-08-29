@@ -17,13 +17,12 @@ namespace mozilla {
 namespace dom {
 
 class XMLStylesheetProcessingInstruction final
-: public ProcessingInstruction
-, public nsStyleLinkElement
+  : public ProcessingInstruction
 {
 public:
   XMLStylesheetProcessingInstruction(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                                      const nsAString& aData)
-    : ProcessingInstruction(Move(aNodeInfo), aData)
+    : ProcessingInstruction(std::move(aNodeInfo), aData)
   {
   }
 
@@ -37,8 +36,6 @@ public:
   {
   }
 
-  virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
-
   // nsISupports
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -46,7 +43,7 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(XMLStylesheetProcessingInstruction,
                                            ProcessingInstruction)
 
-  // nsIDOMNode
+  // nsINode
   virtual void SetNodeValueInternal(const nsAString& aNodeValue,
                                     mozilla::ErrorResult& aError) override;
 
@@ -77,12 +74,8 @@ protected:
 
   nsCOMPtr<nsIURI> mOverriddenBaseURI;
 
-  already_AddRefed<nsIURI>
-    GetStyleSheetURL(bool* aIsInline, nsIPrincipal** aTriggeringPrincipal) final;
-  void GetStyleSheetInfo(nsAString& aTitle,
-                         nsAString& aType,
-                         nsAString& aMedia,
-                         bool* aIsAlternate) final;
+  Maybe<SheetInfo> GetStyleSheetInfo() final;
+
   already_AddRefed<CharacterData>
     CloneDataNode(mozilla::dom::NodeInfo* aNodeInfo,
                   bool aCloneText) const final;

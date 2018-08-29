@@ -24,8 +24,23 @@ const Types = exports.__TypesForTests = [
   },
   {
     types: ["addons"],
-    spec: "devtools/shared/specs/addons",
-    front: "devtools/shared/fronts/addons",
+    spec: "devtools/shared/specs/addon/addons",
+    front: "devtools/shared/fronts/addon/addons",
+  },
+  {
+    types: ["addonConsole"],
+    spec: "devtools/shared/specs/addon/console",
+    front: null,
+  },
+  {
+    types: ["webExtension"],
+    spec: "devtools/shared/specs/addon/webextension",
+    front: null,
+  },
+  {
+    types: ["webExtensionInspectedWindow"],
+    spec: "devtools/shared/specs/addon/webextension-inspected-window",
+    front: "devtools/shared/fronts/addon/webextension-inspected-window",
   },
   {
     types: ["animationplayer", "animations"],
@@ -115,6 +130,11 @@ const Types = exports.__TypesForTests = [
     types: ["memory"],
     spec: "devtools/shared/specs/memory",
     front: "devtools/shared/fronts/memory",
+  },
+  {
+    types: ["netEvent"],
+    spec: "devtools/shared/specs/network-event",
+    front: null,
   },
   /* imageData isn't an actor but just a DictType */
   {
@@ -210,8 +230,33 @@ const Types = exports.__TypesForTests = [
     front: null,
   },
   {
-    types: ["tab"],
-    spec: "devtools/shared/specs/tab",
+    types: ["browsingContextTarget"],
+    spec: "devtools/shared/specs/targets/browsing-context",
+    front: null,
+  },
+  {
+    types: ["chromeWindowTarget"],
+    spec: "devtools/shared/specs/targets/chrome-window",
+    front: null,
+  },
+  {
+    types: ["frameTarget"],
+    spec: "devtools/shared/specs/targets/frame",
+    front: null,
+  },
+  {
+    types: ["parentProcessTarget"],
+    spec: "devtools/shared/specs/targets/parent-process",
+    front: null,
+  },
+  {
+    types: ["webExtensionTarget"],
+    spec: "devtools/shared/specs/targets/webextension",
+    front: null,
+  },
+  {
+    types: ["workerTarget"],
+    spec: "devtools/shared/specs/targets/worker",
     front: null,
   },
   {
@@ -225,13 +270,8 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/webaudio",
   },
   {
-    types: ["webExtensionInspectedWindow"],
-    spec: "devtools/shared/specs/webextension-inspected-window",
-    front: "devtools/shared/fronts/webextension-inspected-window",
-  },
-  {
-    types: ["webExtensionAddon"],
-    spec: "devtools/shared/specs/webextension-parent",
+    types: ["console"],
+    spec: "devtools/shared/specs/webconsole",
     front: null,
   },
   {
@@ -240,8 +280,8 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/webgl",
   },
   {
-    types: ["worker", "pushSubscription", "serviceWorkerRegistration", "serviceWorker"],
-    spec: "devtools/shared/specs/worker",
+    types: ["pushSubscription", "serviceWorkerRegistration", "serviceWorker"],
+    spec: "devtools/shared/specs/worker/service-worker",
     front: null,
   },
 ];
@@ -266,7 +306,7 @@ Types.forEach(item => {
  * @returns true, if it matched a lazy loaded type and tried to load it.
  */
 function lazyLoadSpec(type) {
-  let modulePath = lazySpecs.get(type);
+  const modulePath = lazySpecs.get(type);
   if (modulePath) {
     try {
       require(modulePath);
@@ -290,7 +330,7 @@ exports.lazyLoadSpec = lazyLoadSpec;
  * @returns true, if it matched a lazy loaded type and tried to load it.
  */
 function lazyLoadFront(type) {
-  let modulePath = lazyFronts.get(type);
+  const modulePath = lazyFronts.get(type);
   if (modulePath) {
     try {
       require(modulePath);

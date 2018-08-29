@@ -12,7 +12,7 @@
 #include "mozilla/ComputedTiming.h"
 #include "mozilla/EffectCompositor.h" // For EffectCompositor::CascadeLevel
 #include "mozilla/dom/Animation.h"
-#include "mozilla/dom/KeyframeEffectReadOnly.h"
+#include "mozilla/dom/KeyframeEffect.h"
 #include "AnimationCommon.h"
 #include "nsISupportsImpl.h"
 
@@ -33,7 +33,7 @@ struct StyleTransition;
 
 namespace mozilla {
 
-struct ElementPropertyTransition : public dom::KeyframeEffectReadOnly
+struct ElementPropertyTransition : public dom::KeyframeEffect
 {
   ElementPropertyTransition(nsIDocument* aDocument,
                             Maybe<OwningAnimationTarget>& aTarget,
@@ -41,7 +41,7 @@ struct ElementPropertyTransition : public dom::KeyframeEffectReadOnly
                             AnimationValue aStartForReversingTest,
                             double aReversePortion,
                             const KeyframeEffectParams& aEffectOptions)
-    : dom::KeyframeEffectReadOnly(aDocument, aTarget, aTiming, aEffectOptions)
+    : dom::KeyframeEffect(aDocument, aTarget, aTiming, aEffectOptions)
     , mStartForReversingTest(aStartForReversingTest)
     , mReversePortion(aReversePortion)
   { }
@@ -170,7 +170,7 @@ public:
     mOwningElement = OwningElementRef();
   }
 
-  void SetEffectFromStyle(AnimationEffectReadOnly* aEffect);
+  void SetEffectFromStyle(AnimationEffect* aEffect);
 
   void Tick() override;
 
@@ -339,7 +339,8 @@ protected:
                            const mozilla::ComputedStyle& aOldStyle,
                            const mozilla::ComputedStyle& aNewStyle);
 
-  void ConsiderInitiatingTransition(nsCSSPropertyID aProperty,
+  // Returns whether the transition actually started.
+  bool ConsiderInitiatingTransition(nsCSSPropertyID aProperty,
                                     const nsStyleDisplay& aStyleDisplay,
                                     uint32_t transitionIdx,
                                     mozilla::dom::Element* aElement,
@@ -347,9 +348,7 @@ protected:
                                     CSSTransitionCollection*& aElementTransitions,
                                     const mozilla::ComputedStyle& aOldStyle,
                                     const mozilla::ComputedStyle& aNewStyle,
-                                    bool* aStartedAny,
-                                    nsCSSPropertyIDSet* aWhichStarted);
-
+                                    nsCSSPropertyIDSet& aPropertiesChecked);
 };
 
 #endif /* !defined(nsTransitionManager_h_) */

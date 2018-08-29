@@ -211,13 +211,13 @@ SetFromTanRadians(double left, double right, double bottom, double top)
 VRDisplayOSVR::VRDisplayOSVR(OSVR_ClientContext* context,
                          OSVR_ClientInterface* iface,
                          OSVR_DisplayConfig* display)
-  : VRDisplayHost(VRDeviceType::OSVR)
+  : VRDisplayLocal(VRDeviceType::OSVR)
   , m_ctx(context)
   , m_iface(iface)
   , m_display(display)
 {
 
-  MOZ_COUNT_CTOR_INHERITED(VRDisplayOSVR, VRDisplayHost);
+  MOZ_COUNT_CTOR_INHERITED(VRDisplayOSVR, VRDisplayLocal);
 
   VRDisplayState& state = mDisplayInfo.mDisplayState;
   state.mIsConnected = true;
@@ -357,18 +357,6 @@ VRDisplayOSVR::SubmitFrame(ID3D11Texture2D* aSource,
 bool
 VRDisplayOSVR::SubmitFrame(MacIOSurface* aMacIOSurface,
                            const IntSize& aSize,
-                           const gfx::Rect& aLeftEyeRect,
-                           const gfx::Rect& aRightEyeRect)
-{
-  // XXX Add code to submit frame
-  MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
-  return false;
-}
-
-#elif defined(MOZ_ANDROID_GOOGLE_VR)
-
-bool
-VRDisplayOSVR::SubmitFrame(const mozilla::layers::EGLImageDescriptor*,
                            const gfx::Rect& aLeftEyeRect,
                            const gfx::Rect& aRightEyeRect)
 {

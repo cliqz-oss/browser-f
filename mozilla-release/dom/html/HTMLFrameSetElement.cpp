@@ -74,8 +74,8 @@ nsresult
 HTMLFrameSetElement::GetRowSpec(int32_t *aNumValues,
                                 const nsFramesetSpec** aSpecs)
 {
-  NS_PRECONDITION(aNumValues, "Must have a pointer to an integer here!");
-  NS_PRECONDITION(aSpecs, "Must have a pointer to an array of nsFramesetSpecs");
+  MOZ_ASSERT(aNumValues, "Must have a pointer to an integer here!");
+  MOZ_ASSERT(aSpecs, "Must have a pointer to an array of nsFramesetSpecs");
   *aNumValues = 0;
   *aSpecs = nullptr;
 
@@ -104,8 +104,8 @@ nsresult
 HTMLFrameSetElement::GetColSpec(int32_t *aNumValues,
                                 const nsFramesetSpec** aSpecs)
 {
-  NS_PRECONDITION(aNumValues, "Must have a pointer to an integer here!");
-  NS_PRECONDITION(aSpecs, "Must have a pointer to an array of nsFramesetSpecs");
+  MOZ_ASSERT(aNumValues, "Must have a pointer to an integer here!");
+  MOZ_ASSERT(aSpecs, "Must have a pointer to an array of nsFramesetSpecs");
   *aNumValues = 0;
   *aSpecs = nullptr;
 
@@ -295,7 +295,7 @@ HTMLFrameSetElement::ParseRowCol(const nsAString & aValue,
 
   aNumSpecs = count;
   // Transfer ownership to caller here
-  *aSpecs = Move(specs);
+  *aSpecs = std::move(specs);
 
   return NS_OK;
 }

@@ -108,14 +108,14 @@ SimpleGlobalObject::Create(GlobalType globalType, JS::Handle<JS::Value> proto)
     jsapi.Init();
     JSContext* cx = jsapi.cx();
 
-    JS::CompartmentOptions options;
+    JS::RealmOptions options;
     options.creationOptions()
            .setInvisibleToDebugger(true)
            // Put our SimpleGlobalObjects in the system zone, so we won't create
            // lots of zones for what are probably very short-lived
            // compartments.  This should help them be GCed quicker and take up
            // less memory before they're GCed.
-           .setSystemZone();
+           .setNewCompartmentInSystemZone();
 
     if (NS_IsMainThread()) {
       nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
@@ -134,7 +134,7 @@ SimpleGlobalObject::Create(GlobalType globalType, JS::Handle<JS::Value> proto)
       return nullptr;
     }
 
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
     // It's important to create the nsIGlobalObject for our new global before we
     // start trying to wrap things like the prototype into its compartment,

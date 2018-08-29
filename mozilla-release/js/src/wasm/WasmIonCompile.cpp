@@ -170,7 +170,7 @@ class FunctionCompiler
     const ModuleEnvironment&   env() const   { return env_; }
     IonOpIter&                 iter()        { return iter_; }
     TempAllocator&             alloc() const { return alloc_; }
-    const Sig&                 sig() const   { return *env_.funcSigs[func_.index]; }
+    const FuncType&            funcType() const   { return *env_.funcTypes[func_.index]; }
 
     BytecodeOffset bytecodeOffset() const {
         return iter_.bytecodeOffset();
@@ -183,7 +183,7 @@ class FunctionCompiler
     {
         // Prepare the entry block for MIR generation:
 
-        const ValTypeVector& args = sig().args();
+        const ValTypeVector& args = funcType().args();
 
         if (!mirGen_.ensureBallast())
             return false;
@@ -206,7 +206,7 @@ class FunctionCompiler
 
         for (size_t i = args.length(); i < locals_.length(); i++) {
             MInstruction* ins = nullptr;
-            switch (locals_[i]) {
+            switch (locals_[i].code()) {
               case ValType::I32:
                 ins = MConstant::New(alloc(), Int32Value(0), MIRType::Int32);
                 break;
@@ -862,7 +862,7 @@ class FunctionCompiler
         return ins;
     }
 
-    bool checkWaitWakeResult(MDefinition* value) {
+    bool checkI32NegativeMeansFailedResult(MDefinition* value) {
         if (inDeadCode())
             return true;
 
@@ -1184,7 +1184,7 @@ class FunctionCompiler
         return true;
     }
 
-    bool callDirect(const Sig& sig, uint32_t funcIndex, const CallCompileState& call,
+    bool callDirect(const FuncType& funcType, uint32_t funcIndex, const CallCompileState& call,
                     MDefinition** def)
     {
         if (inDeadCode()) {
@@ -1193,7 +1193,7 @@ class FunctionCompiler
         }
 
         CallSiteDesc desc(call.lineOrBytecode_, CallSiteDesc::Func);
-        MIRType ret = ToMIRType(sig.ret());
+        MIRType ret = ToMIRType(funcType.ret());
         auto callee = CalleeDesc::function(funcIndex);
         auto* ins = MWasmCall::New(alloc(), desc, callee, call.regArgs_, ret, call.spIncrement_);
         if (!ins)
@@ -1204,7 +1204,7 @@ class FunctionCompiler
         return true;
     }
 
-    bool callIndirect(uint32_t sigIndex, MDefinition* index, const CallCompileState& call,
+    bool callIndirect(uint32_t funcTypeIndex, MDefinition* index, const CallCompileState& call,
                       MDefinition** def)
     {
         if (inDeadCode()) {
@@ -1212,12 +1212,12 @@ class FunctionCompiler
             return true;
         }
 
-        const SigWithId& sig = env_.sigs[sigIndex];
+        const FuncTypeWithId& funcType = env_.types[funcTypeIndex].funcType();
 
         CalleeDesc callee;
         if (env_.isAsmJS()) {
-            MOZ_ASSERT(sig.id.kind() == SigIdDesc::Kind::None);
-            const TableDesc& table = env_.tables[env_.asmJSSigToTableIndex[sigIndex]];
+            MOZ_ASSERT(funcType.id.kind() == FuncTypeIdDesc::Kind::None);
+            const TableDesc& table = env_.tables[env_.asmJSSigToTableIndex[funcTypeIndex]];
             MOZ_ASSERT(IsPowerOfTwo(table.limits.initial));
             MOZ_ASSERT(!table.external);
 
@@ -1229,14 +1229,14 @@ class FunctionCompiler
             index = maskedIndex;
             callee = CalleeDesc::asmJSTable(table);
         } else {
-            MOZ_ASSERT(sig.id.kind() != SigIdDesc::Kind::None);
+            MOZ_ASSERT(funcType.id.kind() != FuncTypeIdDesc::Kind::None);
             MOZ_ASSERT(env_.tables.length() == 1);
             const TableDesc& table = env_.tables[0];
-            callee = CalleeDesc::wasmTable(table, sig.id);
+            callee = CalleeDesc::wasmTable(table, funcType.id);
         }
 
         CallSiteDesc desc(call.lineOrBytecode_, CallSiteDesc::Dynamic);
-        auto* ins = MWasmCall::New(alloc(), desc, callee, call.regArgs_, ToMIRType(sig.ret()),
+        auto* ins = MWasmCall::New(alloc(), desc, callee, call.regArgs_, ToMIRType(funcType.ret()),
                                    call.spIncrement_, index);
         if (!ins)
             return false;
@@ -2138,7 +2138,7 @@ EmitReturn(FunctionCompiler& f)
     if (!f.iter().readReturn(&value))
         return false;
 
-    if (IsVoid(f.sig().ret())) {
+    if (IsVoid(f.funcType().ret())) {
         f.returnVoid();
         return true;
     }
@@ -2160,15 +2160,16 @@ EmitUnreachable(FunctionCompiler& f)
 typedef IonOpIter::ValueVector DefVector;
 
 static bool
-EmitCallArgs(FunctionCompiler& f, const Sig& sig, const DefVector& args, CallCompileState* call)
+EmitCallArgs(FunctionCompiler& f, const FuncType& funcType, const DefVector& args,
+             CallCompileState* call)
 {
     if (!f.startCall(call))
         return false;
 
-    for (size_t i = 0, n = sig.args().length(); i < n; ++i) {
+    for (size_t i = 0, n = funcType.args().length(); i < n; ++i) {
         if (!f.mirGen().ensureBallast())
             return false;
-        if (!f.passArg(args[i], sig.args()[i], call))
+        if (!f.passArg(args[i], funcType.args()[i], call))
             return false;
     }
 
@@ -2193,23 +2194,23 @@ EmitCall(FunctionCompiler& f, bool asmJSFuncDef)
     if (f.inDeadCode())
         return true;
 
-    const Sig& sig = *f.env().funcSigs[funcIndex];
+    const FuncType& funcType = *f.env().funcTypes[funcIndex];
 
     CallCompileState call(f, lineOrBytecode);
-    if (!EmitCallArgs(f, sig, args, &call))
+    if (!EmitCallArgs(f, funcType, args, &call))
         return false;
 
     MDefinition* def;
     if (f.env().funcIsImport(funcIndex)) {
         uint32_t globalDataOffset = f.env().funcImportGlobalDataOffsets[funcIndex];
-        if (!f.callImport(globalDataOffset, call, sig.ret(), &def))
+        if (!f.callImport(globalDataOffset, call, funcType.ret(), &def))
             return false;
     } else {
-        if (!f.callDirect(sig, funcIndex, call, &def))
+        if (!f.callDirect(funcType, funcIndex, call, &def))
             return false;
     }
 
-    if (IsVoid(sig.ret()))
+    if (IsVoid(funcType.ret()))
         return true;
 
     f.iter().setResult(def);
@@ -2221,31 +2222,31 @@ EmitCallIndirect(FunctionCompiler& f, bool oldStyle)
 {
     uint32_t lineOrBytecode = f.readCallSiteLineOrBytecode();
 
-    uint32_t sigIndex;
+    uint32_t funcTypeIndex;
     MDefinition* callee;
     DefVector args;
     if (oldStyle) {
-        if (!f.iter().readOldCallIndirect(&sigIndex, &callee, &args))
+        if (!f.iter().readOldCallIndirect(&funcTypeIndex, &callee, &args))
             return false;
     } else {
-        if (!f.iter().readCallIndirect(&sigIndex, &callee, &args))
+        if (!f.iter().readCallIndirect(&funcTypeIndex, &callee, &args))
             return false;
     }
 
     if (f.inDeadCode())
         return true;
 
-    const Sig& sig = f.env().sigs[sigIndex];
+    const FuncType& funcType = f.env().types[funcTypeIndex].funcType();
 
     CallCompileState call(f, lineOrBytecode);
-    if (!EmitCallArgs(f, sig, args, &call))
+    if (!EmitCallArgs(f, funcType, args, &call))
         return false;
 
     MDefinition* def;
-    if (!f.callIndirect(sigIndex, callee, call, &def))
+    if (!f.callIndirect(funcTypeIndex, callee, call, &def))
         return false;
 
-    if (IsVoid(sig.ret()))
+    if (IsVoid(funcType.ret()))
         return true;
 
     f.iter().setResult(def);
@@ -2305,7 +2306,7 @@ EmitGetGlobal(FunctionCompiler& f)
     MIRType mirType = ToMIRType(value.type());
 
     MDefinition* result;
-    switch (value.type()) {
+    switch (value.type().code()) {
       case ValType::I32:
         result = f.constant(Int32Value(value.i32()), mirType);
         break;
@@ -2442,7 +2443,6 @@ EmitTruncate(FunctionCompiler& f, ValType operandType, ValType resultType,
     return true;
 }
 
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
 static bool
 EmitSignExtend(FunctionCompiler& f, uint32_t srcSize, uint32_t targetSize)
 {
@@ -2454,7 +2454,6 @@ EmitSignExtend(FunctionCompiler& f, uint32_t srcSize, uint32_t targetSize)
     f.iter().setResult(f.signExtend(input, srcSize, targetSize));
     return true;
 }
-#endif
 
 static bool
 EmitExtendI32(FunctionCompiler& f, bool isUnsigned)
@@ -2971,7 +2970,7 @@ EmitSimdShift(FunctionCompiler& f, ValType operandType, MSimdShift::Operation op
 static ValType
 SimdToLaneType(ValType type)
 {
-    switch (type) {
+    switch (type.code()) {
       case ValType::I8x16:
       case ValType::I16x8:
       case ValType::I32x4:  return ValType::I32;
@@ -3077,7 +3076,7 @@ EmitSimdShuffle(FunctionCompiler& f, ValType simdType)
 static inline Scalar::Type
 SimdExprTypeToViewType(ValType type, unsigned* defaultNumElems)
 {
-    switch (type) {
+    switch (type.code()) {
         case ValType::I8x16: *defaultNumElems = 16; return Scalar::Int8x16;
         case ValType::I16x8: *defaultNumElems = 8; return Scalar::Int16x8;
         case ValType::I32x4: *defaultNumElems = 4; return Scalar::Int32x4;
@@ -3220,7 +3219,7 @@ EmitSimdBooleanChainedCtor(FunctionCompiler& f, ValType valType, MIRType type,
 static bool
 EmitSimdCtor(FunctionCompiler& f, ValType type)
 {
-    switch (type) {
+    switch (type.code()) {
       case ValType::I8x16:
         return EmitSimdChainedCtor(f, type, MIRType::Int8x16, SimdConstant::SplatX16(0));
       case ValType::I16x8:
@@ -3529,7 +3528,7 @@ EmitWait(FunctionCompiler& f, ValType type, uint32_t byteSize)
     if (!f.builtinInstanceMethodCall(callee, args, ValType::I32, &ret))
         return false;
 
-    if (!f.checkWaitWakeResult(ret))
+    if (!f.checkI32NegativeMeansFailedResult(ret))
         return false;
 
     f.iter().setResult(ret);
@@ -3571,7 +3570,7 @@ EmitWake(FunctionCompiler& f)
     if (!f.builtinInstanceMethodCall(SymbolicAddress::Wake, args, ValType::I32, &ret))
         return false;
 
-    if (!f.checkWaitWakeResult(ret))
+    if (!f.checkI32NegativeMeansFailedResult(ret))
         return false;
 
     f.iter().setResult(ret);
@@ -3598,10 +3597,90 @@ EmitAtomicXchg(FunctionCompiler& f, ValType type, Scalar::Type viewType)
 
 #endif // ENABLE_WASM_THREAD_OPS
 
+#ifdef ENABLE_WASM_BULKMEM_OPS
+static bool
+EmitMemCopy(FunctionCompiler& f)
+{
+    MDefinition *dest, *src, *len;
+    if (!f.iter().readMemCopy(&dest, &src, &len))
+        return false;
+
+    if (f.inDeadCode())
+        return false;
+
+    uint32_t lineOrBytecode = f.readCallSiteLineOrBytecode();
+
+    CallCompileState args(f, lineOrBytecode);
+    if (!f.startCall(&args))
+        return false;
+
+    if (!f.passInstance(&args))
+        return false;
+
+    if (!f.passArg(dest, ValType::I32, &args))
+        return false;
+    if (!f.passArg(src, ValType::I32, &args))
+        return false;
+    if (!f.passArg(len, ValType::I32, &args))
+        return false;
+
+    if (!f.finishCall(&args))
+        return false;
+
+    MDefinition* ret;
+    if (!f.builtinInstanceMethodCall(SymbolicAddress::MemCopy, args, ValType::I32, &ret))
+        return false;
+
+    if (!f.checkI32NegativeMeansFailedResult(ret))
+        return false;
+
+    return true;
+}
+
+static bool
+EmitMemFill(FunctionCompiler& f)
+{
+    MDefinition *start, *val, *len;
+    if (!f.iter().readMemFill(&start, &val, &len))
+        return false;
+
+    if (f.inDeadCode())
+        return false;
+
+    uint32_t lineOrBytecode = f.readCallSiteLineOrBytecode();
+
+    CallCompileState args(f, lineOrBytecode);
+    if (!f.startCall(&args))
+        return false;
+
+    if (!f.passInstance(&args))
+        return false;
+
+    if (!f.passArg(start, ValType::I32, &args))
+        return false;
+    if (!f.passArg(val, ValType::I32, &args))
+        return false;
+    if (!f.passArg(len, ValType::I32, &args))
+        return false;
+
+    if (!f.finishCall(&args))
+        return false;
+
+    MDefinition* ret;
+    if (!f.builtinInstanceMethodCall(SymbolicAddress::MemFill, args, ValType::I32, &ret))
+        return false;
+
+    if (!f.checkI32NegativeMeansFailedResult(ret))
+        return false;
+
+    return true;
+}
+#endif // ENABLE_WASM_BULKMEM_OPS
+
 static bool
 EmitBodyExprs(FunctionCompiler& f)
 {
-    if (!f.iter().readFunctionStart(f.sig().ret()))
+    if (!f.iter().readFunctionStart(f.funcType().ret()))
         return false;
 
 #define CHECK(c)                                                              \
@@ -3623,7 +3702,7 @@ EmitBodyExprs(FunctionCompiler& f)
                 return false;
 
             if (f.iter().controlStackEmpty()) {
-                if (f.inDeadCode() || IsVoid(f.sig().ret()))
+                if (f.inDeadCode() || IsVoid(f.funcType().ret()))
                     f.returnVoid();
                 else
                     f.returnExpr(f.iter().getResult());
@@ -3984,7 +4063,6 @@ EmitBodyExprs(FunctionCompiler& f)
             return f.iter().unrecognizedOpcode(&op);
 
           // Sign extensions
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
           case uint16_t(Op::I32Extend8S):
             CHECK(EmitSignExtend(f, 1, 4));
           case uint16_t(Op::I32Extend16S):
@@ -3995,35 +4073,38 @@ EmitBodyExprs(FunctionCompiler& f)
             CHECK(EmitSignExtend(f, 2, 8));
           case uint16_t(Op::I64Extend32S):
             CHECK(EmitSignExtend(f, 4, 8));
-#endif
 
-          // Numeric operations
-          case uint16_t(Op::NumericPrefix): {
-#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+          // Miscellaneous operations
+          case uint16_t(Op::MiscPrefix): {
             switch (op.b1) {
-              case uint16_t(NumericOp::I32TruncSSatF32):
-              case uint16_t(NumericOp::I32TruncUSatF32):
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+              case uint16_t(MiscOp::I32TruncSSatF32):
+              case uint16_t(MiscOp::I32TruncUSatF32):
                 CHECK(EmitTruncate(f, ValType::F32, ValType::I32,
-                                   NumericOp(op.b1) == NumericOp::I32TruncUSatF32, true));
-              case uint16_t(NumericOp::I32TruncSSatF64):
-              case uint16_t(NumericOp::I32TruncUSatF64):
+                                   MiscOp(op.b1) == MiscOp::I32TruncUSatF32, true));
+              case uint16_t(MiscOp::I32TruncSSatF64):
+              case uint16_t(MiscOp::I32TruncUSatF64):
                 CHECK(EmitTruncate(f, ValType::F64, ValType::I32,
-                                   NumericOp(op.b1) == NumericOp::I32TruncUSatF64, true));
-              case uint16_t(NumericOp::I64TruncSSatF32):
-              case uint16_t(NumericOp::I64TruncUSatF32):
+                                   MiscOp(op.b1) == MiscOp::I32TruncUSatF64, true));
+              case uint16_t(MiscOp::I64TruncSSatF32):
+              case uint16_t(MiscOp::I64TruncUSatF32):
                 CHECK(EmitTruncate(f, ValType::F32, ValType::I64,
-                                   NumericOp(op.b1) == NumericOp::I64TruncUSatF32, true));
-              case uint16_t(NumericOp::I64TruncSSatF64):
-              case uint16_t(NumericOp::I64TruncUSatF64):
+                                   MiscOp(op.b1) == MiscOp::I64TruncUSatF32, true));
+              case uint16_t(MiscOp::I64TruncSSatF64):
+              case uint16_t(MiscOp::I64TruncUSatF64):
                 CHECK(EmitTruncate(f, ValType::F64, ValType::I64,
-                                   NumericOp(op.b1) == NumericOp::I64TruncUSatF64, true));
+                                   MiscOp(op.b1) == MiscOp::I64TruncUSatF64, true));
+#endif
+#ifdef ENABLE_WASM_BULKMEM_OPS
+              case uint16_t(MiscOp::MemCopy):
+                CHECK(EmitMemCopy(f));
+              case uint16_t(MiscOp::MemFill):
+                CHECK(EmitMemFill(f));
+#endif
               default:
                 return f.iter().unrecognizedOpcode(&op);
             }
             break;
-#else
-            return f.iter().unrecognizedOpcode(&op);
-#endif
           }
 
           // Thread operations
@@ -4394,7 +4475,7 @@ wasm::IonCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo,
         // Build the local types vector.
 
         ValTypeVector locals;
-        if (!locals.appendAll(env.funcSigs[func.index]->args()))
+        if (!locals.appendAll(env.funcTypes[func.index]->args()))
             return false;
         if (!DecodeLocalEntries(d, env.kind, env.gcTypesEnabled, &locals))
             return false;
@@ -4435,13 +4516,13 @@ wasm::IonCompileFunctions(const ModuleEnvironment& env, LifoAlloc& lifo,
             if (!lir)
                 return false;
 
-            SigIdDesc sigId = env.funcSigs[func.index]->id;
+            FuncTypeIdDesc funcTypeId = env.funcTypes[func.index]->id;
 
             CodeGenerator codegen(&mir, lir, &masm);
 
             BytecodeOffset prologueTrapOffset(func.lineOrBytecode);
             FuncOffsets offsets;
-            if (!codegen.generateWasm(sigId, prologueTrapOffset, &offsets))
+            if (!codegen.generateWasm(funcTypeId, prologueTrapOffset, &offsets))
                 return false;
 
             if (!code->codeRanges.emplaceBack(func.index, func.lineOrBytecode, offsets))

@@ -798,7 +798,7 @@ SSLServerCertVerificationJob::SSLServerCertVerificationJob(
   , mFdForLogging(fdForLogging)
   , mInfoObject(infoObject)
   , mCert(CERT_DupCertificate(cert.get()))
-  , mPeerCertChain(Move(peerCertChain))
+  , mPeerCertChain(std::move(peerCertChain))
   , mProviderFlags(providerFlags)
   , mTime(time)
   , mPRTime(prtime)
@@ -1431,7 +1431,8 @@ AuthCertificate(CertVerifier& certVerifier,
   }
 
   if (pinningTelemetryInfo.accumulateResult) {
-    Telemetry::Accumulate(pinningTelemetryInfo.certPinningResultHistogram,
+    MOZ_ASSERT(pinningTelemetryInfo.certPinningResultHistogram.isSome());
+    Telemetry::Accumulate(pinningTelemetryInfo.certPinningResultHistogram.value(),
                           pinningTelemetryInfo.certPinningResultBucket);
   }
 
@@ -1465,7 +1466,7 @@ AuthCertificate(CertVerifier& certVerifier,
     RefPtr<nsNSSCertificate> nsc = nsNSSCertificate::Create(cert.get());
     status->SetServerCert(nsc, evStatus);
 
-    status->SetSucceededCertChain(Move(builtCertChain));
+    status->SetSucceededCertChain(std::move(builtCertChain));
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
             ("AuthCertificate setting NEW cert %p", nsc.get()));
 
@@ -1475,7 +1476,7 @@ AuthCertificate(CertVerifier& certVerifier,
   if (rv != Success) {
     // Certificate validation failed; store the peer certificate chain on
     // infoObject so it can be used for error reporting.
-    infoObject->SetFailedCertChain(Move(peerCertChain));
+    infoObject->SetFailedCertChain(std::move(peerCertChain));
     PR_SetError(MapResultToPRErrorCode(rv), 0);
   }
 
@@ -1518,7 +1519,7 @@ SSLServerCertVerificationJob::Dispatch(
 
   RefPtr<SSLServerCertVerificationJob> job(
     new SSLServerCertVerificationJob(certVerifier, fdForLogging, infoObject,
-                                     serverCert, Move(peerCertChainCopy),
+                                     serverCert, std::move(peerCertChainCopy),
                                      stapledOCSPResponse, sctsFromTLSExtension,
                                      providerFlags, time, prtime));
 

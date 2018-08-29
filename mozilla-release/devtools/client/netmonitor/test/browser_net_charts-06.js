@@ -8,27 +8,27 @@
  */
 
 add_task(async function() {
-  let { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
+  const { L10N } = require("devtools/client/netmonitor/src/utils/l10n");
 
-  let { monitor, tab } = await initNetMonitor(SIMPLE_URL);
+  const { monitor, tab } = await initNetMonitor(SIMPLE_URL);
   info("Starting test... ");
 
-  let { document, windowRequire } = monitor.panelWin;
-  let { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
+  const { document, windowRequire } = monitor.panelWin;
+  const { Chart } = windowRequire("devtools/client/shared/widgets/Chart");
 
-  let wait = waitForNetworkEvents(monitor, 1);
+  const wait = waitForNetworkEvents(monitor, 1);
   tab.linkedBrowser.loadURI(SIMPLE_URL);
   await wait;
 
-  let pie = Chart.Pie(document, {
+  const pie = Chart.Pie(document, {
     data: [],
     width: 100,
     height: 100
   });
 
-  let node = pie.node;
-  let slices = node.querySelectorAll(".pie-chart-slice.chart-colored-blob");
-  let labels = node.querySelectorAll(".pie-chart-label");
+  const node = pie.node;
+  const slices = node.querySelectorAll(".pie-chart-slice.chart-colored-blob");
+  const labels = node.querySelectorAll(".pie-chart-label");
 
   is(slices.length, 1,
     "There should be 1 pie chart slice created.");
@@ -40,7 +40,7 @@ add_task(async function() {
     "The slice should be the largest one.");
   ok(slices[0].hasAttribute("smallest"),
     "The slice should also be the smallest one.");
-  ok(slices[0].getAttribute("name"), L10N.getStr("pieChart.unavailable"),
+  is(slices[0].getAttribute("name"), L10N.getStr("pieChart.unavailable"),
     "The slice's name is correct.");
 
   is(labels.length, 1,

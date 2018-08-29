@@ -8,6 +8,7 @@
 
 #include "nsJSPrincipals.h"
 #include "BasePrincipal.h"
+#include "nsDOMWindowList.h"
 #include "nsGlobalWindow.h"
 
 #include "XPCWrapper.h"
@@ -20,7 +21,6 @@
 #include "mozilla/dom/LocationBinding.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
-#include "nsIDOMWindowCollection.h"
 #include "nsJSUtils.h"
 #include "xpcprivate.h"
 
@@ -31,9 +31,15 @@ using namespace js;
 namespace xpc {
 
 nsIPrincipal*
-GetCompartmentPrincipal(JSCompartment* compartment)
+GetCompartmentPrincipal(JS::Compartment* compartment)
 {
     return nsJSPrincipals::get(JS_GetCompartmentPrincipals(compartment));
+}
+
+nsIPrincipal*
+GetRealmPrincipal(JS::Realm* realm)
+{
+    return nsJSPrincipals::get(JS::GetRealmPrincipals(realm));
 }
 
 nsIPrincipal*
@@ -44,7 +50,7 @@ GetObjectPrincipal(JSObject* obj)
 
 // Does the principal of compartment a subsume the principal of compartment b?
 bool
-AccessCheck::subsumes(JSCompartment* a, JSCompartment* b)
+AccessCheck::subsumes(JS::Compartment* a, JS::Compartment* b)
 {
     nsIPrincipal* aprin = GetCompartmentPrincipal(a);
     nsIPrincipal* bprin = GetCompartmentPrincipal(b);
@@ -59,7 +65,7 @@ AccessCheck::subsumes(JSObject* a, JSObject* b)
 
 // Same as above, but considering document.domain.
 bool
-AccessCheck::subsumesConsideringDomain(JSCompartment* a, JSCompartment* b)
+AccessCheck::subsumesConsideringDomain(JS::Compartment* a, JS::Compartment* b)
 {
     MOZ_ASSERT(OriginAttributes::IsRestrictOpenerAccessForFPI());
     nsIPrincipal* aprin = GetCompartmentPrincipal(a);
@@ -68,8 +74,8 @@ AccessCheck::subsumesConsideringDomain(JSCompartment* a, JSCompartment* b)
 }
 
 bool
-AccessCheck::subsumesConsideringDomainIgnoringFPD(JSCompartment* a,
-                                                  JSCompartment* b)
+AccessCheck::subsumesConsideringDomainIgnoringFPD(JS::Compartment* a,
+                                                  JS::Compartment* b)
 {
     MOZ_ASSERT(!OriginAttributes::IsRestrictOpenerAccessForFPI());
     nsIPrincipal* aprin = GetCompartmentPrincipal(a);
@@ -88,7 +94,7 @@ AccessCheck::wrapperSubsumes(JSObject* wrapper)
 }
 
 bool
-AccessCheck::isChrome(JSCompartment* compartment)
+AccessCheck::isChrome(JS::Compartment* compartment)
 {
     nsIPrincipal* principal = GetCompartmentPrincipal(compartment);
     return nsXPConnect::SystemPrincipal() == principal;
@@ -101,7 +107,7 @@ AccessCheck::isChrome(JSObject* obj)
 }
 
 nsIPrincipal*
-AccessCheck::getPrincipal(JSCompartment* compartment)
+AccessCheck::getPrincipal(JS::Compartment* compartment)
 {
     return GetCompartmentPrincipal(compartment);
 }
@@ -134,20 +140,20 @@ IsFrameId(JSContext* cx, JSObject* obj, jsid idArg)
         return false;
     }
 
-    nsCOMPtr<nsIDOMWindowCollection> col = win->GetFrames();
+    nsDOMWindowList* col = win->GetFrames();
     if (!col) {
         return false;
     }
 
     nsCOMPtr<mozIDOMWindowProxy> domwin;
     if (JSID_IS_INT(id)) {
-        col->Item(JSID_TO_INT(id), getter_AddRefs(domwin));
+        domwin = col->IndexedGetter(JSID_TO_INT(id));
     } else if (JSID_IS_STRING(id)) {
         nsAutoJSString idAsString;
         if (!idAsString.init(cx, JSID_TO_STRING(id))) {
             return false;
         }
-        col->NamedItem(idAsString, getter_AddRefs(domwin));
+        domwin = col->NamedItem(idAsString);
     }
 
     return domwin != nullptr;
@@ -158,7 +164,6 @@ IdentifyCrossOriginObject(JSObject* obj)
 {
     obj = js::UncheckedUnwrap(obj, /* stopAtWindowProxy = */ false);
     const js::Class* clasp = js::GetObjectClass(obj);
-    MOZ_ASSERT(!XrayUtils::IsXPCWNHolderClass(Jsvalify(clasp)), "shouldn't have a holder here");
 
     if (clasp->name[0] == 'L' && !strcmp(clasp->name, "Location"))
         return CrossOriginLocation;

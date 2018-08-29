@@ -40,7 +40,8 @@ WasmFrameIter::WasmFrameIter(JitActivation* activation, wasm::Frame* fp)
     lineOrBytecode_(0),
     fp_(fp ? fp : activation->wasmExitFP()),
     unwoundIonCallerFP_(nullptr),
-    unwind_(Unwind::False)
+    unwind_(Unwind::False),
+    unwoundAddressOfReturnAddress_(nullptr)
 {
     MOZ_ASSERT(fp_);
 
@@ -187,7 +188,7 @@ WasmFrameIter::functionDisplayAtom() const
     MOZ_ASSERT(!done());
 
     JSContext* cx = activation_->cx();
-    JSAtom* atom = instance()->getFuncAtom(cx, codeRange_->funcIndex());
+    JSAtom* atom = instance()->getFuncDisplayAtom(cx, codeRange_->funcIndex());
     if (!atom) {
         cx->clearPendingException();
         return cx->names().empty;
@@ -200,6 +201,40 @@ unsigned
 WasmFrameIter::lineOrBytecode() const
 {
     MOZ_ASSERT(!done());
+    return lineOrBytecode_;
+}
+
+uint32_t
+WasmFrameIter::funcIndex() const
+{
+    MOZ_ASSERT(!done());
+    return codeRange_->funcIndex();
+}
+
+unsigned
+WasmFrameIter::computeLine(uint32_t* column) const
+{
+    if (instance()->isAsmJS()) {
+        if (column)
+            *column = 1;
+        return lineOrBytecode_;
+    }
+
+    // As a terrible hack to avoid changing the tons of places that pass around
+    // (url, line, column) tuples to instead passing around a Variant that
+    // stores a (url, func-index, bytecode-offset) tuple for wasm frames,
+    // wasm stuffs its tuple into the existing (url, line, column) tuple,
+    // tagging the high bit of the column to indicate "this is a wasm frame".
+    // When knowing clients see this bit, they shall render the tuple
+    // (url, line, column|bit) as "url:wasm-function[column]:0xline" according
+    // to the WebAssembly Web API's Developer-Facing Display Conventions.
+    //   https://webassembly.github.io/spec/web-api/index.html#conventions
+    // The wasm bytecode offset continues to be passed as the JS line to avoid
+    // breaking existing devtools code written when this used to be the case.
+
+    MOZ_ASSERT(!(codeRange_->funcIndex() & ColumnBit));
+    if (column)
+        *column = codeRange_->funcIndex() | ColumnBit;
     return lineOrBytecode_;
 }
 
@@ -477,7 +512,7 @@ GenerateCallableEpilogue(MacroAssembler& masm, unsigned framePushed, ExitReason 
 }
 
 void
-wasm::GenerateFunctionPrologue(MacroAssembler& masm, const SigIdDesc& sigId,
+wasm::GenerateFunctionPrologue(MacroAssembler& masm, const FuncTypeIdDesc& funcTypeId,
                                const Maybe<uint32_t>& tier1FuncIndex, FuncOffsets* offsets)
 {
     // Flush pending pools so they do not get dumped between the 'begin' and
@@ -493,22 +528,22 @@ wasm::GenerateFunctionPrologue(MacroAssembler& masm, const SigIdDesc& sigId,
     // Generate table entry. The BytecodeOffset of the trap is fixed up to be
     // the bytecode offset of the callsite by JitActivation::startWasmTrap.
     offsets->begin = masm.currentOffset();
-    switch (sigId.kind()) {
-      case SigIdDesc::Kind::Global: {
+    switch (funcTypeId.kind()) {
+      case FuncTypeIdDesc::Kind::Global: {
         Register scratch = WasmTableCallScratchReg;
-        masm.loadWasmGlobalPtr(sigId.globalDataOffset(), scratch);
+        masm.loadWasmGlobalPtr(funcTypeId.globalDataOffset(), scratch);
         masm.branchPtr(Assembler::Condition::Equal, WasmTableCallSigReg, scratch,
                        &normalEntry);
         masm.wasmTrap(Trap::IndirectCallBadSig, BytecodeOffset(0));
         break;
       }
-      case SigIdDesc::Kind::Immediate: {
-        masm.branch32(Assembler::Condition::Equal, WasmTableCallSigReg, Imm32(sigId.immediate()),
-                      &normalEntry);
+      case FuncTypeIdDesc::Kind::Immediate: {
+        masm.branch32(Assembler::Condition::Equal, WasmTableCallSigReg,
+                      Imm32(funcTypeId.immediate()), &normalEntry);
         masm.wasmTrap(Trap::IndirectCallBadSig, BytecodeOffset(0));
         break;
       }
-      case SigIdDesc::Kind::None:
+      case FuncTypeIdDesc::Kind::None:
         break;
     }
 
@@ -1228,6 +1263,10 @@ ThunkedNativeToDescription(SymbolicAddress func)
         return "out-of-line coercion for jit entry arguments (in wasm)";
       case SymbolicAddress::ReportInt64JSCall:
         return "jit call to int64 wasm function";
+      case SymbolicAddress::MemCopy:
+        return "call to native memory.copy function";
+      case SymbolicAddress::MemFill:
+        return "call to native memory.fill function";
 #if defined(JS_CODEGEN_MIPS32)
       case SymbolicAddress::js_jit_gAtomic64Lock:
         MOZ_CRASH();

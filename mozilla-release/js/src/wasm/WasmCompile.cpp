@@ -95,7 +95,7 @@ CompileArgs::initFromContext(JSContext* cx, ScriptedCaller&& scriptedCaller)
 
     baselineEnabled = cx->options().wasmBaseline() || gcEnabled;
     ionEnabled = cx->options().wasmIon() && !gcEnabled;
-    sharedMemoryEnabled = cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled();
+    sharedMemoryEnabled = cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled();
     gcTypesEnabled = gcEnabled ? HasGcTypes::True : HasGcTypes::False;
     testTiering = (cx->options().testWasmAwaitTier2() || JitOptions.wasmDelayTier2) && !gcEnabled;
 
@@ -103,9 +103,9 @@ CompileArgs::initFromContext(JSContext* cx, ScriptedCaller&& scriptedCaller)
     // additional memory and permanently stay in baseline code, so we try to
     // only enable it when a developer actually cares: when the debugger tab
     // is open.
-    debugEnabled = cx->compartment()->debuggerObservesAsmJS();
+    debugEnabled = cx->realm()->debuggerObservesAsmJS();
 
-    this->scriptedCaller = Move(scriptedCaller);
+    this->scriptedCaller = std::move(scriptedCaller);
     return assumptions.initBuildIdFromContext(cx);
 }
 

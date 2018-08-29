@@ -12,6 +12,7 @@
 #include "mozilla/AtomArray.h"
 #include "mozilla/ServoTypes.h"
 #include "mozilla/ServoBindingTypes.h"
+#include "mozilla/ServoComputedDataInlines.h"
 #include "mozilla/ServoElementSnapshot.h"
 #include "mozilla/css/SheetLoadData.h"
 #include "mozilla/css/SheetParsingMode.h"
@@ -20,7 +21,6 @@
 #include "mozilla/ComputedTimingFunction.h"
 #include "nsChangeHint.h"
 #include "nsIDocument.h"
-#include "nsStyleStruct.h"
 
 /*
  * API for Servo to access Gecko data structures.
@@ -36,7 +36,7 @@ struct nsFont;
 namespace mozilla {
   class FontFamilyList;
   struct FontFamilyName;
-  enum FontFamilyType : uint32_t;
+  enum FontFamilyType : uint8_t;
   class SharedFontList;
   enum class CSSPseudoElementType : uint8_t;
   struct Keyframe;
@@ -77,17 +77,6 @@ const bool GECKO_IS_NIGHTLY = true;
 #else
 const bool GECKO_IS_NIGHTLY = false;
 #endif
-
-namespace mozilla {
-  #define STYLE_STRUCT(name_) struct Gecko##name_ {nsStyle##name_ gecko;};
-  #include "nsStyleStructList.h"
-  #undef STYLE_STRUCT
-}
-
-#define STYLE_STRUCT(name_) \
-  const nsStyle##name_* ServoComputedData::GetStyle##name_() const { return &name_.mPtr->gecko; }
-#include "nsStyleStructList.h"
-#undef STYLE_STRUCT
 
 #define NS_DECL_THREADSAFE_FFI_REFCOUNTING(class_, name_)                     \
   void Gecko_AddRef##name_##ArbitraryThread(class_* aPtr);                    \
@@ -155,6 +144,7 @@ RawGeckoNodeBorrowedOrNull Gecko_GetLastChild(RawGeckoNodeBorrowed node);
 RawGeckoNodeBorrowedOrNull Gecko_GetFlattenedTreeParentNode(RawGeckoNodeBorrowed node);
 RawGeckoElementBorrowedOrNull Gecko_GetBeforeOrAfterPseudo(RawGeckoElementBorrowed element, bool is_before);
 nsTArray<nsIContent*>* Gecko_GetAnonymousContentForElement(RawGeckoElementBorrowed element);
+const nsTArray<RefPtr<nsINode>>* Gecko_GetAssignedNodes(RawGeckoElementBorrowed element);
 void Gecko_DestroyAnonymousContentList(nsTArray<nsIContent*>* anon_content);
 
 void Gecko_ComputedStyle_Init(mozilla::ComputedStyle* context,
@@ -267,6 +257,7 @@ void Gecko_UpdateAnimations(RawGeckoElementBorrowed aElementOrPseudo,
                             ComputedStyleBorrowedOrNull aOldComputedValues,
                             ComputedStyleBorrowedOrNull aComputedValues,
                             mozilla::UpdateAnimationsTasks aTasks);
+size_t Gecko_GetAnimationEffectCount(RawGeckoElementBorrowed aElementOrPseudo);
 bool Gecko_ElementHasAnimations(RawGeckoElementBorrowed aElementOrPseudo);
 bool Gecko_ElementHasCSSAnimations(RawGeckoElementBorrowed aElementOrPseudo);
 bool Gecko_ElementHasCSSTransitions(RawGeckoElementBorrowed aElementOrPseudo);
@@ -371,7 +362,7 @@ nsStyleGradient* Gecko_CreateGradient(uint8_t shape,
                                       bool moz_legacy_syntax,
                                       uint32_t stops);
 
-const mozilla::css::URLValueData* Gecko_GetURLValue(const nsStyleImage* image);
+const nsStyleImageRequest* Gecko_GetImageRequest(const nsStyleImage* image);
 nsAtom* Gecko_GetImageElement(const nsStyleImage* image);
 const nsStyleGradient* Gecko_GetGradientImageValue(const nsStyleImage* image);
 
@@ -545,6 +536,9 @@ void Gecko_nsStyleSVG_CopyContextProperties(nsStyleSVG* dst, const nsStyleSVG* s
 
 mozilla::css::URLValue* Gecko_NewURLValue(ServoBundledURI uri);
 size_t Gecko_URLValue_SizeOfIncludingThis(mozilla::css::URLValue* url);
+void Gecko_GetComputedURLSpec(const mozilla::css::URLValueData* url, nsCString* spec);
+void Gecko_nsIURI_Debug(nsIURI*, nsCString* spec);
+
 NS_DECL_THREADSAFE_FFI_REFCOUNTING(mozilla::css::URLValue, CSSURLValue);
 NS_DECL_THREADSAFE_FFI_REFCOUNTING(RawGeckoURLExtraData, URLExtraData);
 
@@ -696,11 +690,11 @@ void Gecko_AnnotateCrashReport(const char* key_str, const char* value_str);
 #include "mozilla/ServoBindingList.h"
 #undef SERVO_BINDING_FUNC
 
-mozilla::css::ErrorReporter* Gecko_CreateCSSErrorReporter(mozilla::StyleSheet* sheet,
-                                                          mozilla::css::Loader* loader,
-                                                          nsIURI* uri);
-void Gecko_DestroyCSSErrorReporter(mozilla::css::ErrorReporter* reporter);
-void Gecko_ReportUnexpectedCSSError(mozilla::css::ErrorReporter* reporter,
+bool Gecko_ErrorReportingEnabled(const mozilla::StyleSheet* sheet,
+                                 const mozilla::css::Loader* loader);
+void Gecko_ReportUnexpectedCSSError(const mozilla::StyleSheet* sheet,
+                                    const mozilla::css::Loader* loader,
+                                    nsIURI* uri,
                                     const char* message,
                                     const char* param,
                                     uint32_t paramLen,
@@ -718,8 +712,15 @@ void Gecko_ContentList_AppendAll(nsSimpleContentList* aContentList,
                                  const RawGeckoElement** aElements,
                                  size_t aLength);
 
-const nsTArray<mozilla::dom::Element*>* Gecko_GetElementsWithId(
+// FIXME(emilio): These two below should be a single function that takes a
+// `const DocumentOrShadowRoot*`, but that doesn't make MSVC builds happy for a
+// reason I haven't really dug into.
+const nsTArray<mozilla::dom::Element*>* Gecko_Document_GetElementsWithId(
     const nsIDocument* aDocument,
+    nsAtom* aId);
+
+const nsTArray<mozilla::dom::Element*>* Gecko_ShadowRoot_GetElementsWithId(
+    const mozilla::dom::ShadowRoot* aDocument,
     nsAtom* aId);
 
 // Check the value of the given bool preference. The pref name needs to

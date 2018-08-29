@@ -16,9 +16,8 @@
 #include "nsCSSValue.h"
 #include "nsColor.h"
 #include "nsPresContext.h"
-#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/DeclarationBlock.h"
 #include "mozilla/ServoBindings.h"
-#include "mozilla/ServoDeclarationBlock.h"
 #include "mozilla/StyleAnimationValue.h" // For AnimationValue
 #include "mozilla/ServoCSSParser.h"
 #include "mozilla/ServoStyleSet.h"
@@ -427,7 +426,7 @@ InterpolateForServo(const ValueWrapper* aStartWrapper,
     }
     results.AppendElement(result);
   }
-  aResult.mU.mPtr = new ValueWrapper(aEndWrapper.mPropID, Move(results));
+  aResult.mU.mPtr = new ValueWrapper(aEndWrapper.mPropID, std::move(results));
 
   return NS_OK;
 }
@@ -545,7 +544,7 @@ nsSMILCSSValueType::ValueFromString(nsCSSPropertyID aPropID,
 
   if (!parsedValues.IsEmpty()) {
     sSingleton.Init(aValue);
-    aValue.mU.mPtr = new ValueWrapper(aPropID, Move(parsedValues));
+    aValue.mU.mPtr = new ValueWrapper(aPropID, std::move(parsedValues));
   }
 }
 
@@ -594,7 +593,7 @@ nsSMILCSSValueType::SetPropertyValues(const nsSMILValue& aValue,
   for (const auto& value : wrapper->mServoValues) {
     changed |=
       Servo_DeclarationBlock_SetPropertyToAnimationValue(
-        aDecl.AsServo()->Raw(), value);
+        aDecl.Raw(), value);
   }
 
   return changed;
@@ -646,8 +645,8 @@ nsSMILCSSValueType::FinalizeValue(nsSMILValue& aValue,
     if (!zeroValue) {
       return;
     }
-    zeroValues.AppendElement(Move(zeroValue));
+    zeroValues.AppendElement(std::move(zeroValue));
   }
   aValue.mU.mPtr = new ValueWrapper(valueToMatchWrapper->mPropID,
-                                    Move(zeroValues));
+                                    std::move(zeroValues));
 }

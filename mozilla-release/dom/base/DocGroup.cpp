@@ -5,9 +5,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/DocGroup.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/DOMTypes.h"
 #include "mozilla/dom/TabGroup.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
 #include "nsIDocShell.h"
 #include "nsDOMMutationObserver.h"
@@ -52,8 +52,8 @@ DocGroup::DocGroup(TabGroup* aTabGroup, const nsACString& aKey)
   : mKey(aKey), mTabGroup(aTabGroup)
 {
   // This method does not add itself to mTabGroup->mDocGroups as the caller does it for us.
-  if (mozilla::dom::DOMPrefs::SchedulerLoggingEnabled()) {
-    mPerformanceCounter = new mozilla::PerformanceCounter(aKey);
+  if (mozilla::StaticPrefs::dom_performance_enable_scheduler_timing()) {
+    mPerformanceCounter = new mozilla::PerformanceCounter(NS_LITERAL_CSTRING("DocGroup:") + aKey);
   }
 }
 
@@ -136,7 +136,7 @@ DocGroup::Dispatch(TaskCategory aCategory,
   if (mPerformanceCounter) {
     mPerformanceCounter->IncrementDispatchCounter(DispatchCategory(aCategory));
   }
-  return mTabGroup->DispatchWithDocGroup(aCategory, Move(aRunnable), this);
+  return mTabGroup->DispatchWithDocGroup(aCategory, std::move(aRunnable), this);
 }
 
 nsISerialEventTarget*
@@ -159,13 +159,10 @@ DocGroup::GetValidAccessPtr()
 }
 
 void
-DocGroup::SignalSlotChange(const HTMLSlotElement* aSlot)
+DocGroup::SignalSlotChange(HTMLSlotElement& aSlot)
 {
-  if (mSignalSlotList.Contains(aSlot)) {
-    return;
-  }
-
-  mSignalSlotList.AppendElement(const_cast<HTMLSlotElement*>(aSlot));
+  MOZ_ASSERT(!mSignalSlotList.Contains(&aSlot));
+  mSignalSlotList.AppendElement(&aSlot);
 
   if (!sPendingDocGroups) {
     // Queue a mutation observer compound microtask.
@@ -174,6 +171,17 @@ DocGroup::SignalSlotChange(const HTMLSlotElement* aSlot)
   }
 
   sPendingDocGroups->AppendElement(this);
+}
+
+void
+DocGroup::MoveSignalSlotListTo(nsTArray<RefPtr<HTMLSlotElement>>& aDest)
+{
+  aDest.SetCapacity(aDest.Length() + mSignalSlotList.Length());
+  for (RefPtr<HTMLSlotElement>& slot : mSignalSlotList) {
+    slot->RemovedFromSignalSlotList();
+    aDest.AppendElement(std::move(slot));
+  }
+  mSignalSlotList.Clear();
 }
 
 bool

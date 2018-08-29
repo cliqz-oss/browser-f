@@ -18,6 +18,26 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   Preferences: "resource://gre/modules/Preferences.jsm",
 });
 
+// The current platform as specified in the AMO API:
+// http://addons-server.readthedocs.io/en/latest/topics/api/addons.html#addon-detail-platform
+XPCOMUtils.defineLazyGetter(this, "PLATFORM", () => {
+  let platform = Services.appinfo.OS;
+  switch (platform) {
+    case "Darwin":
+      return "mac";
+
+    case "Linux":
+      return "linux";
+
+    case "Android":
+      return "android";
+
+    case "WINNT":
+      return "windows";
+  }
+  return platform;
+});
+
 var EXPORTED_SYMBOLS = [ "AddonRepository" ];
 
 const PREF_GETADDONS_CACHE_ENABLED       = "extensions.getAddons.cache.enabled";
@@ -222,12 +242,6 @@ AddonSearchResult.prototype = {
    * nsIURI storing where this add-on was installed from
    */
   sourceURI: null,
-
-  /**
-   * The size of the add-on's files in bytes. For an add-on that have not yet
-   * been downloaded this may be an estimated value.
-   */
-  size: null,
 
   /**
    * The Date that the add-on was most recently updated
@@ -588,11 +602,10 @@ var AddonRepository = {
       addon.version = String(aEntry.current_version.version);
       if (Array.isArray(aEntry.current_version.files)) {
         for (let file of aEntry.current_version.files) {
-          if (file.platform == "all" || file.platform == Services.appinfo.OS.toLowerCase()) {
+          if (file.platform == "all" || file.platform == PLATFORM) {
             if (file.url) {
               addon.sourceURI = NetUtil.newURI(file.url);
             }
-            addon.size = Number(file.size);
             break;
           }
         }

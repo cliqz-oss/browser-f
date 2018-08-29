@@ -24,10 +24,9 @@ pub mod supports_rule;
 pub mod viewport_rule;
 
 use cssparser::{parse_one_rule, Parser, ParserInput};
-use error_reporting::NullReporter;
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
-use parser::{ParserContext, ParserErrorContext};
+use parser::ParserContext;
 use servo_arc::Arc;
 use shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
 use shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
@@ -46,7 +45,7 @@ pub use self::media_rule::MediaRule;
 pub use self::namespace_rule::NamespaceRule;
 pub use self::origin::{Origin, OriginSet, OriginSetIterator, PerOrigin, PerOriginIter};
 pub use self::page_rule::PageRule;
-pub use self::rule_parser::{State, TopLevelRuleParser};
+pub use self::rule_parser::{State, TopLevelRuleParser, InsertRuleContext};
 pub use self::rule_list::{CssRules, CssRulesHelpers};
 pub use self::rules_iterator::{AllRules, EffectiveRules};
 pub use self::rules_iterator::{NestedRuleIterationCondition, RulesIterator};
@@ -62,22 +61,52 @@ pub type UrlExtraData = ::servo_url::ServoUrl;
 
 /// Extra data that the backend may need to resolve url values.
 #[cfg(feature = "gecko")]
-pub type UrlExtraData =
-    ::gecko_bindings::sugar::refptr::RefPtr<::gecko_bindings::structs::URLExtraData>;
+#[derive(Clone, PartialEq)]
+pub struct UrlExtraData(
+    pub ::gecko_bindings::sugar::refptr::RefPtr<::gecko_bindings::structs::URLExtraData>
+);
 
 #[cfg(feature = "gecko")]
 impl UrlExtraData {
-    /// Returns a string for the url.
-    ///
-    /// Unimplemented currently.
-    pub fn as_str(&self) -> &str {
-        // TODO
-        "(stylo: not supported)"
+    /// True if this URL scheme is chrome.
+    #[inline]
+    pub fn is_chrome(&self) -> bool {
+        self.0.mIsChrome
     }
 
-    /// True if this URL scheme is chrome.
-    pub fn is_chrome(&self) -> bool {
-        self.mIsChrome
+    /// Create a reference to this `UrlExtraData` from a reference to pointer.
+    ///
+    /// The pointer must be valid and non null.
+    ///
+    /// This method doesn't touch refcount.
+    #[inline]
+    pub unsafe fn from_ptr_ref(ptr: &*mut ::gecko_bindings::structs::URLExtraData) -> &Self {
+        ::std::mem::transmute(ptr)
+    }
+}
+
+#[cfg(feature = "gecko")]
+impl fmt::Debug for UrlExtraData {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        use gecko_bindings::{structs, bindings};
+
+        struct DebugURI(*mut structs::nsIURI);
+        impl fmt::Debug for DebugURI {
+            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                use nsstring::nsCString;
+                let mut spec = nsCString::new();
+                unsafe {
+                    bindings::Gecko_nsIURI_Debug(self.0, &mut spec);
+                }
+                spec.fmt(formatter)
+            }
+        }
+
+        formatter.debug_struct("URLExtraData")
+            .field("is_chrome", &self.is_chrome())
+            .field("base", &DebugURI(self.0.mBaseURI.raw::<structs::nsIURI>()))
+            .field("referrer", &DebugURI(self.0.mReferrer.raw::<structs::nsIURI>()))
+            .finish()
     }
 }
 
@@ -179,26 +208,11 @@ pub enum CssRuleType {
 }
 
 #[allow(missing_docs)]
-pub enum SingleRuleParseError {
-    Syntax,
-    Hierarchy,
-}
-
-#[allow(missing_docs)]
 pub enum RulesMutateError {
     Syntax,
     IndexSize,
     HierarchyRequest,
     InvalidState,
-}
-
-impl From<SingleRuleParseError> for RulesMutateError {
-    fn from(other: SingleRuleParseError) -> Self {
-        match other {
-            SingleRuleParseError::Syntax => RulesMutateError::Syntax,
-            SingleRuleParseError::Hierarchy => RulesMutateError::HierarchyRequest,
-        }
-    }
 }
 
 impl CssRule {
@@ -236,19 +250,20 @@ impl CssRule {
     /// Input state is None for a nested rule
     pub fn parse(
         css: &str,
+        insert_rule_context: InsertRuleContext,
         parent_stylesheet_contents: &StylesheetContents,
         shared_lock: &SharedRwLock,
-        state: Option<State>,
+        state: State,
         loader: Option<&StylesheetLoader>,
-    ) -> Result<(Self, State), SingleRuleParseError> {
+    ) -> Result<Self, RulesMutateError> {
         let url_data = parent_stylesheet_contents.url_data.read();
-        let error_reporter = NullReporter;
         let context = ParserContext::new(
             parent_stylesheet_contents.origin,
             &url_data,
             None,
             ParsingMode::DEFAULT,
             parent_stylesheet_contents.quirks_mode,
+            None,
         );
 
         let mut input = ParserInput::new(css);
@@ -257,28 +272,20 @@ impl CssRule {
         let mut guard = parent_stylesheet_contents.namespaces.write();
 
         // nested rules are in the body state
-        let state = state.unwrap_or(State::Body);
         let mut rule_parser = TopLevelRuleParser {
             stylesheet_origin: parent_stylesheet_contents.origin,
-            context: context,
-            error_context: ParserErrorContext {
-                error_reporter: &error_reporter,
-            },
+            context,
             shared_lock: &shared_lock,
-            loader: loader,
-            state: state,
-            had_hierarchy_error: false,
+            loader,
+            state,
+            dom_error: None,
             namespaces: &mut *guard,
+            insert_rule_context: Some(insert_rule_context),
         };
 
         parse_one_rule(&mut input, &mut rule_parser)
-            .map(|result| (result, rule_parser.state))
             .map_err(|_| {
-                if rule_parser.take_had_hierarchy_error() {
-                    SingleRuleParseError::Hierarchy
-                } else {
-                    SingleRuleParseError::Syntax
-                }
+                rule_parser.dom_error.unwrap_or(RulesMutateError::Syntax)
             })
     }
 }

@@ -14,6 +14,7 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Likely.h"
+#include "mozilla/Poison.h"
 
 // We normally have logging enabled everywhere, but measurements showed that
 // having logging enabled on Android is quite expensive (hundreds of kilobytes
@@ -174,6 +175,7 @@ public:
 
 private:
   const char* const mLogName;
+  const CorruptionCanaryForStatics mCanary;
   Atomic<LogModule*, ReleaseAcquire> mLog;
 };
 

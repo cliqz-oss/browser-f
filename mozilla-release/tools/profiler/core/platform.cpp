@@ -55,6 +55,7 @@
 #include "ThreadInfo.h"
 #include "nsIHttpProtocolHandler.h"
 #include "nsIObserverService.h"
+#include "nsIPropertyBag2.h"
 #include "nsIXULAppInfo.h"
 #include "nsIXULRuntime.h"
 #include "nsDirectoryServiceUtils.h"
@@ -71,6 +72,12 @@
 #include "shared-libraries.h"
 #include "prdtoa.h"
 #include "prtime.h"
+
+#if defined(XP_WIN)
+#include <processthreadsapi.h>  // for GetCurrentProcessId()
+#else
+#include <unistd.h> // for getpid()
+#endif // defined(XP_WIN)
 
 #ifdef MOZ_TASK_TRACER
 #include "GeckoTaskTracer.h"
@@ -111,9 +118,10 @@
 #endif
 
 // Linux builds use LUL, which uses DWARF info to unwind stacks.
-#if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux) || \
-    defined(GP_PLAT_mips64_linux) || defined(GP_PLAT_arm64_linux) || \
-    defined(GP_PLAT_arm64_android)
+#if defined(GP_PLAT_amd64_linux) || \
+    defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android) || \
+    defined(GP_PLAT_mips64_linux) || \
+    defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
 # define HAVE_NATIVE_UNWIND
 # define USE_LUL_STACKWALK
 # include "lul/LulMain.h"
@@ -269,7 +277,7 @@ public:
 
   static void AppendRegisteredThread(PSLockRef, UniquePtr<RegisteredThread>&& aRegisteredThread)
   {
-    sInstance->mRegisteredThreads.AppendElement(Move(aRegisteredThread));
+    sInstance->mRegisteredThreads.AppendElement(std::move(aRegisteredThread));
   }
 
   static void RemoveRegisteredThread(PSLockRef, RegisteredThread* aRegisteredThread)
@@ -285,7 +293,7 @@ public:
   static lul::LUL* Lul(PSLockRef) { return sInstance->mLul.get(); }
   static void SetLul(PSLockRef, UniquePtr<lul::LUL> aLul)
   {
-    sInstance->mLul = Move(aLul);
+    sInstance->mLul = std::move(aLul);
   }
 #endif
 
@@ -425,6 +433,20 @@ private:
       // Crude, non UTF-8 compatible, case insensitive substring search
       if (name.find(filter) != std::string::npos) {
         return true;
+      }
+
+      // If the filter starts with pid:, check for a pid match
+      if (filter.find("pid:") == 0) {
+        std::string mypid = std::to_string(
+#ifdef XP_WIN
+          GetCurrentProcessId()
+#else
+          getpid()
+#endif
+        );
+        if (filter.compare(4, std::string::npos, mypid) == 0) {
+          return true;
+        }
       }
     }
 
@@ -576,7 +598,7 @@ public:
                         UniquePtr<ProfiledThreadData>&& aProfiledThreadData)
   {
     sInstance->mLiveProfiledThreads.AppendElement(
-      LiveProfiledThreadData{ aRegisteredThread, Move(aProfiledThreadData) });
+      LiveProfiledThreadData{ aRegisteredThread, std::move(aProfiledThreadData) });
 
     // Return a weak pointer to the ProfiledThreadData object.
     return sInstance->mLiveProfiledThreads.LastElement().mProfiledThreadData.get();
@@ -594,7 +616,7 @@ public:
       LiveProfiledThreadData& thread = sInstance->mLiveProfiledThreads[i];
       if (thread.mRegisteredThread == aRegisteredThread) {
         thread.mProfiledThreadData->NotifyUnregistered(sInstance->mBuffer->mRangeEnd);
-        sInstance->mDeadProfiledThreads.AppendElement(Move(thread.mProfiledThreadData));
+        sInstance->mDeadProfiledThreads.AppendElement(std::move(thread.mProfiledThreadData));
         sInstance->mLiveProfiledThreads.RemoveElementAt(i);
         return;
       }
@@ -696,7 +718,7 @@ uint32_t ActivePS::sNextGeneration = 0;
 // The mutex that guards accesses to CorePS and ActivePS.
 static PSMutex gPSMutex;
 
-Atomic<uint32_t> RacyFeatures::sActiveAndFeatures(0);
+Atomic<uint32_t, MemoryOrdering::Relaxed> RacyFeatures::sActiveAndFeatures(0);
 
 // Each live thread has a RegisteredThread, and we store a reference to it in TLS.
 // This class encapsulates that TLS.
@@ -706,7 +728,7 @@ public:
   static bool Init(PSLockRef)
   {
     bool ok1 = sRegisteredThread.init();
-    bool ok2 = AutoProfilerLabel::sPseudoStack.init();
+    bool ok2 = AutoProfilerLabel::sProfilingStack.init();
     return ok1 && ok2;
   }
 
@@ -724,18 +746,18 @@ public:
                             : nullptr;
   }
 
-  // Get only the PseudoStack. Accesses are not guarded by gPSMutex.
-  // RacyRegisteredThread() can also be used to get the PseudoStack, but that
+  // Get only the ProfilingStack. Accesses are not guarded by gPSMutex.
+  // RacyRegisteredThread() can also be used to get the ProfilingStack, but that
   // is marginally slower because it requires an extra pointer indirection.
-  static PseudoStack* Stack() { return AutoProfilerLabel::sPseudoStack.get(); }
+  static ProfilingStack* Stack() { return AutoProfilerLabel::sProfilingStack.get(); }
 
   static void SetRegisteredThread(PSLockRef,
                                   class RegisteredThread* aRegisteredThread)
   {
     sRegisteredThread.set(aRegisteredThread);
-    AutoProfilerLabel::sPseudoStack.set(
+    AutoProfilerLabel::sProfilingStack.set(
       aRegisteredThread
-        ? &aRegisteredThread->RacyRegisteredThread().PseudoStack()
+        ? &aRegisteredThread->RacyRegisteredThread().ProfilingStack()
         : nullptr);
   }
 
@@ -749,11 +771,11 @@ private:
 
 MOZ_THREAD_LOCAL(RegisteredThread*) TLSRegisteredThread::sRegisteredThread;
 
-// Although you can access a thread's PseudoStack via
+// Although you can access a thread's ProfilingStack via
 // TLSRegisteredThread::sRegisteredThread, we also have a second TLS pointer
-// directly to the PseudoStack. Here's why.
+// directly to the ProfilingStack. Here's why.
 //
-// - We need to be able to push to and pop from the PseudoStack in
+// - We need to be able to push to and pop from the ProfilingStack in
 //   AutoProfilerLabel.
 //
 // - The class functions are hot and must be defined in GeckoProfiler.h so they
@@ -764,7 +786,7 @@ MOZ_THREAD_LOCAL(RegisteredThread*) TLSRegisteredThread::sRegisteredThread;
 //
 // This second pointer isn't ideal, but does provide a way to satisfy those
 // constraints. TLSRegisteredThread is responsible for updating it.
-MOZ_THREAD_LOCAL(PseudoStack*) AutoProfilerLabel::sPseudoStack;
+MOZ_THREAD_LOCAL(ProfilingStack*) AutoProfilerLabel::sProfilingStack;
 
 // The name of the main thread.
 static const char* const kMainThreadName = "GeckoMain";
@@ -802,8 +824,6 @@ public:
 
 // Setting MAX_NATIVE_FRAMES too high risks the unwinder wasting a lot of time
 // looping on corrupted stacks.
-//
-// The PseudoStack frame size is found in PseudoStack::MaxEntries.
 static const size_t MAX_NATIVE_FRAMES = 1024;
 static const size_t MAX_JS_FRAMES     = 1024;
 
@@ -811,7 +831,7 @@ struct NativeStack
 {
   void* mPCs[MAX_NATIVE_FRAMES];
   void* mSPs[MAX_NATIVE_FRAMES];
-  size_t mCount;  // Number of entries filled.
+  size_t mCount;  // Number of frames filled.
 
   NativeStack()
     : mPCs(), mSPs(), mCount(0)
@@ -835,8 +855,8 @@ struct AutoWalkJSStack
   }
 };
 
-// Merges the pseudo-stack, native stack, and JS stack, outputting the details
-// to aCollector.
+// Merges the profiling stack, native stack, and JS stack, outputting the
+// details to aCollector.
 static void
 MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
             const RegisteredThread& aRegisteredThread, const Registers& aRegs,
@@ -847,19 +867,19 @@ MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
   // WARNING: this function might be called while the profiler is inactive, and
   //          cannot rely on ActivePS.
 
-  const PseudoStack& pseudoStack =
-    aRegisteredThread.RacyRegisteredThread().PseudoStack();
-  const js::ProfileEntry* pseudoEntries = pseudoStack.entries;
-  uint32_t pseudoCount = pseudoStack.stackSize();
+  const ProfilingStack& profilingStack =
+    aRegisteredThread.RacyRegisteredThread().ProfilingStack();
+  const js::ProfilingStackFrame* profilingStackFrames = profilingStack.frames;
+  uint32_t profilingStackFrameCount = profilingStack.stackSize();
   JSContext* context = aRegisteredThread.GetJSContext();
 
   // Make a copy of the JS stack into a JSFrame array. This is necessary since,
   // like the native stack, the JS stack is iterated youngest-to-oldest and we
-  // need to iterate oldest-to-youngest when adding entries to aInfo.
+  // need to iterate oldest-to-youngest when adding frames to aInfo.
 
   // Non-periodic sampling passes Nothing() as the buffer write position to
   // ProfilingFrameIterator to avoid incorrectly resetting the buffer position
-  // of sampled JIT entries inside the JS engine.
+  // of sampled JIT frames inside the JS engine.
   Maybe<uint64_t> samplePosInBuffer;
   if (!aIsSynchronous) {
     // aCollector.SamplePositionInBuffer() will return Nothing() when
@@ -902,86 +922,95 @@ MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
     }
   }
 
-  // While the pseudo-stack array is ordered oldest-to-youngest, the JS and
+  // While the profiling stack array is ordered oldest-to-youngest, the JS and
   // native arrays are ordered youngest-to-oldest. We must add frames to aInfo
-  // oldest-to-youngest. Thus, iterate over the pseudo-stack forwards and JS
+  // oldest-to-youngest. Thus, iterate over the profiling stack forwards and JS
   // and native arrays backwards. Note: this means the terminating condition
   // jsIndex and nativeIndex is being < 0.
-  uint32_t pseudoIndex = 0;
+  uint32_t profilingStackIndex = 0;
   int32_t jsIndex = jsCount - 1;
   int32_t nativeIndex = aNativeStack.mCount - 1;
 
-  uint8_t* lastPseudoCppStackAddr = nullptr;
+  uint8_t* lastLabelFrameStackAddr = nullptr;
+  uint8_t* jitEndStackAddr = nullptr;
 
   // Iterate as long as there is at least one frame remaining.
-  while (pseudoIndex != pseudoCount || jsIndex >= 0 || nativeIndex >= 0) {
+  while (profilingStackIndex != profilingStackFrameCount || jsIndex >= 0 ||
+         nativeIndex >= 0) {
     // There are 1 to 3 frames available. Find and add the oldest.
-    uint8_t* pseudoStackAddr = nullptr;
+    uint8_t* profilingStackAddr = nullptr;
     uint8_t* jsStackAddr = nullptr;
     uint8_t* nativeStackAddr = nullptr;
+    uint8_t* jsActivationAddr = nullptr;
 
-    if (pseudoIndex != pseudoCount) {
-      const js::ProfileEntry& pseudoEntry = pseudoEntries[pseudoIndex];
+    if (profilingStackIndex != profilingStackFrameCount) {
+      const js::ProfilingStackFrame& profilingStackFrame =
+        profilingStackFrames[profilingStackIndex];
 
-      if (pseudoEntry.isCpp()) {
-        lastPseudoCppStackAddr = (uint8_t*) pseudoEntry.stackAddress();
+      if (profilingStackFrame.isLabelFrame() ||
+          profilingStackFrame.isSpMarkerFrame()) {
+        lastLabelFrameStackAddr = (uint8_t*) profilingStackFrame.stackAddress();
       }
 
       // Skip any JS_OSR frames. Such frames are used when the JS interpreter
       // enters a jit frame on a loop edge (via on-stack-replacement, or OSR).
-      // To avoid both the pseudoframe and jit frame being recorded (and
-      // showing up twice), the interpreter marks the interpreter pseudostack
-      // frame as JS_OSR to ensure that it doesn't get counted.
-      if (pseudoEntry.kind() == js::ProfileEntry::Kind::JS_OSR) {
-          pseudoIndex++;
+      // To avoid both the profiling stack frame and jit frame being recorded
+      // (and showing up twice), the interpreter marks the interpreter
+      // profiling stack frame as JS_OSR to ensure that it doesn't get counted.
+      if (profilingStackFrame.kind() == js::ProfilingStackFrame::Kind::JS_OSR) {
+          profilingStackIndex++;
           continue;
       }
 
-      MOZ_ASSERT(lastPseudoCppStackAddr);
-      pseudoStackAddr = lastPseudoCppStackAddr;
+      MOZ_ASSERT(lastLabelFrameStackAddr);
+      profilingStackAddr = lastLabelFrameStackAddr;
     }
 
     if (jsIndex >= 0) {
       jsStackAddr = (uint8_t*) jsFrames[jsIndex].stackAddress;
+      jsActivationAddr = (uint8_t*) jsFrames[jsIndex].activation;
     }
 
     if (nativeIndex >= 0) {
       nativeStackAddr = (uint8_t*) aNativeStack.mSPs[nativeIndex];
     }
 
-    // If there's a native stack entry which has the same SP as a pseudo stack
-    // entry, pretend we didn't see the native stack entry.  Ditto for a native
-    // stack entry which has the same SP as a JS stack entry.  In effect this
-    // means pseudo or JS entries trump conflicting native entries.
-    if (nativeStackAddr && (pseudoStackAddr == nativeStackAddr ||
+    // If there's a native stack frame which has the same SP as a profiling
+    // stack frame, pretend we didn't see the native stack frame.  Ditto for a
+    // native stack frame which has the same SP as a JS stack frame.  In effect
+    // this means profiling stack frames or JS frames trump conflicting native
+    // frames.
+    if (nativeStackAddr && (profilingStackAddr == nativeStackAddr ||
                             jsStackAddr == nativeStackAddr)) {
       nativeStackAddr = nullptr;
       nativeIndex--;
-      MOZ_ASSERT(pseudoStackAddr || jsStackAddr);
+      MOZ_ASSERT(profilingStackAddr || jsStackAddr);
     }
 
     // Sanity checks.
-    MOZ_ASSERT_IF(pseudoStackAddr, pseudoStackAddr != jsStackAddr &&
-                                   pseudoStackAddr != nativeStackAddr);
-    MOZ_ASSERT_IF(jsStackAddr, jsStackAddr != pseudoStackAddr &&
+    MOZ_ASSERT_IF(profilingStackAddr, profilingStackAddr != jsStackAddr &&
+                                      profilingStackAddr != nativeStackAddr);
+    MOZ_ASSERT_IF(jsStackAddr, jsStackAddr != profilingStackAddr &&
                                jsStackAddr != nativeStackAddr);
-    MOZ_ASSERT_IF(nativeStackAddr, nativeStackAddr != pseudoStackAddr &&
+    MOZ_ASSERT_IF(nativeStackAddr, nativeStackAddr != profilingStackAddr &&
                                    nativeStackAddr != jsStackAddr);
 
-    // Check to see if pseudoStack frame is top-most.
-    if (pseudoStackAddr > jsStackAddr && pseudoStackAddr > nativeStackAddr) {
-      MOZ_ASSERT(pseudoIndex < pseudoCount);
-      const js::ProfileEntry& pseudoEntry = pseudoEntries[pseudoIndex];
+    // Check to see if profiling stack frame is top-most.
+    if (profilingStackAddr > jsStackAddr && profilingStackAddr > nativeStackAddr) {
+      MOZ_ASSERT(profilingStackIndex < profilingStackFrameCount);
+      const js::ProfilingStackFrame& profilingStackFrame =
+        profilingStackFrames[profilingStackIndex];
 
-      // Pseudo-frames with the CPP_MARKER_FOR_JS kind are just annotations and
-      // should not be recorded in the profile.
-      if (pseudoEntry.kind() != js::ProfileEntry::Kind::CPP_MARKER_FOR_JS) {
-        // The JIT only allows the top-most entry to have a nullptr pc.
-        MOZ_ASSERT_IF(pseudoEntry.isJs() && pseudoEntry.script() && !pseudoEntry.pc(),
-                      &pseudoEntry == &pseudoStack.entries[pseudoStack.stackSize() - 1]);
-        aCollector.CollectPseudoEntry(pseudoEntry);
+      // Sp marker frames are just annotations and should not be recorded in
+      // the profile.
+      if (!profilingStackFrame.isSpMarkerFrame()) {
+        // The JIT only allows the top-most frame to have a nullptr pc.
+        MOZ_ASSERT_IF(profilingStackFrame.isJsFrame() &&
+                      profilingStackFrame.script() && !profilingStackFrame.pc(),
+                      &profilingStackFrame == &profilingStack.frames[profilingStack.stackSize() - 1]);
+        aCollector.CollectProfilingStackFrame(profilingStackFrame);
       }
-      pseudoIndex++;
+      profilingStackIndex++;
       continue;
     }
 
@@ -989,7 +1018,7 @@ MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
     if (jsStackAddr > nativeStackAddr) {
       MOZ_ASSERT(jsIndex >= 0);
       const JS::ProfilingFrameIterator::Frame& jsFrame = jsFrames[jsIndex];
-
+      jitEndStackAddr = (uint8_t*) jsFrame.endStackAddress;
       // Stringifying non-wasm JIT frames is delayed until streaming time. To
       // re-lookup the entry in the JitcodeGlobalTable, we need to store the
       // JIT code address (OptInfoAddr) in the circular buffer.
@@ -1016,9 +1045,18 @@ MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
       continue;
     }
 
-    // If we reach here, there must be a native stack entry and it must be the
-    // greatest entry.
-    if (nativeStackAddr) {
+    // If we reach here, there must be a native stack frame and it must be the
+    // greatest frame.
+    if (nativeStackAddr &&
+        // If the latest JS frame was JIT, this could be the native frame that
+        // corresponds to it. In that case, skip the native frame, because there's
+        // no need for the same frame to be present twice in the stack. The JS
+        // frame can be considered the symbolicated version of the native frame.
+        (!jitEndStackAddr || nativeStackAddr < jitEndStackAddr ) &&
+        // This might still be a JIT operation, check to make sure that is not in range
+        // of the NEXT JavaScript's stacks' activation address.
+        (!jsActivationAddr || nativeStackAddr > jsActivationAddr)
+      ) {
       MOZ_ASSERT(nativeIndex >= 0);
       void* addr = (void*)aNativeStack.mPCs[nativeIndex];
       aCollector.CollectNativeLeafAddr(addr);
@@ -1117,23 +1155,23 @@ DoEHABIBacktrace(PSLockRef aLock, const RegisteredThread& aRegisteredThread,
 
   const mcontext_t* mcontext = &aRegs.mContext->uc_mcontext;
   mcontext_t savedContext;
-  const PseudoStack& pseudoStack =
-    aRegisteredThread.RacyRegisteredThread().PseudoStack();
+  const ProfilingStack& profilingStack =
+    aRegisteredThread.RacyRegisteredThread().ProfilingStack();
 
-  // The pseudostack contains an "EnterJIT" frame whenever we enter
+  // The profiling stack contains an "EnterJIT" frame whenever we enter
   // JIT code with profiling enabled; the stack pointer value points
   // the saved registers.  We use this to unwind resume unwinding
   // after encounting JIT code.
-  for (uint32_t i = pseudoStack.stackSize(); i > 0; --i) {
-    // The pseudostack grows towards higher indices, so we iterate
+  for (uint32_t i = profilingStack.stackSize(); i > 0; --i) {
+    // The profiling stack grows towards higher indices, so we iterate
     // backwards (from callee to caller).
-    const js::ProfileEntry& entry = pseudoStack.entries[i - 1];
-    if (!entry.isJs() && strcmp(entry.label(), "EnterJIT") == 0) {
+    const js::ProfilingStackFrame& frame = profilingStack.frames[i - 1];
+    if (!frame.isJsFrame() && strcmp(frame.label(), "EnterJIT") == 0) {
       // Found JIT entry frame.  Unwind up to that point (i.e., force
       // the stack walk to stop before the block of saved registers;
       // note that it yields nondecreasing stack pointers), then restore
       // the saved state.
-      uint32_t* vSP = reinterpret_cast<uint32_t*>(entry.stackAddress());
+      uint32_t* vSP = reinterpret_cast<uint32_t*>(frame.stackAddress());
 
       aNativeStack.mCount +=
         EHABIStackWalk(*mcontext, /* stackBase = */ vSP,
@@ -1543,12 +1581,52 @@ StreamTaskTracer(PSLockRef aLock, SpliceableJSONWriter& aWriter)
 }
 
 static void
+StreamCategories(SpliceableJSONWriter& aWriter)
+{
+  // Same order as ProfilingStackFrame::Category.
+  // The list of available color names is:
+  // transparent, grey, purple, yellow, orange, lightblue, green, blue, magenta
+  aWriter.Start();
+  aWriter.StringProperty("name", "Idle");
+  aWriter.StringProperty("color", "transparent");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "Other");
+  aWriter.StringProperty("color", "grey");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "Layout");
+  aWriter.StringProperty("color", "purple");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "JavaScript");
+  aWriter.StringProperty("color", "yellow");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "GC / CC");
+  aWriter.StringProperty("color", "orange");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "Network");
+  aWriter.StringProperty("color", "lightblue");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "Graphics");
+  aWriter.StringProperty("color", "green");
+  aWriter.EndObject();
+  aWriter.Start();
+  aWriter.StringProperty("name", "DOM");
+  aWriter.StringProperty("color", "blue");
+  aWriter.EndObject();
+}
+
+static void
 StreamMetaJSCustomObject(PSLockRef aLock, SpliceableJSONWriter& aWriter,
                          bool aIsShuttingDown)
 {
   MOZ_RELEASE_ASSERT(CorePS::Exists() && ActivePS::Exists(aLock));
 
-  aWriter.IntProperty("version", 9);
+  aWriter.IntProperty("version", 11);
 
   // The "startTime" field holds the number of milliseconds since midnight
   // January 1, 1970 GMT. This grotty code computes (Now - (Now -
@@ -1565,6 +1643,10 @@ StreamMetaJSCustomObject(PSLockRef aLock, SpliceableJSONWriter& aWriter,
   } else {
     aWriter.NullProperty("shutdownTime");
   }
+
+  aWriter.StartArrayProperty("categories");
+  StreamCategories(aWriter);
+  aWriter.EndArray();
 
   if (!NS_IsMainThread()) {
     // Leave the rest of the properties out if we're not on the main thread.
@@ -1636,40 +1718,66 @@ StreamMetaJSCustomObject(PSLockRef aLock, SpliceableJSONWriter& aWriter,
     res = appInfo->GetName(string);
     if (!NS_FAILED(res))
       aWriter.StringProperty("product", string.Data());
+
+    res = appInfo->GetAppBuildID(string);
+    if (!NS_FAILED(res))
+      aWriter.StringProperty("appBuildID", string.Data());
+
+    res = appInfo->GetSourceURL(string);
+    if (!NS_FAILED(res))
+      aWriter.StringProperty("sourceURL", string.Data());
   }
 
-  aWriter.StartObjectProperty("extensions");
-  {
-    {
-      JSONSchemaWriter schema(aWriter);
-      schema.WriteField("id");
-      schema.WriteField("name");
-      schema.WriteField("baseURL");
+  nsCOMPtr<nsIPropertyBag2> systemInfo =
+    do_GetService("@mozilla.org/system-info;1");
+  if (systemInfo) {
+    int32_t cpus;
+    res = systemInfo->GetPropertyAsInt32(NS_LITERAL_STRING("cpucores"), &cpus);
+    if (!NS_FAILED(res)) {
+      aWriter.IntProperty("physicalCPUs", cpus);
     }
+    res = systemInfo->GetPropertyAsInt32(NS_LITERAL_STRING("cpucount"), &cpus);
+    if (!NS_FAILED(res)) {
+      aWriter.IntProperty("logicalCPUs", cpus);
+    }
+  }
 
-    aWriter.StartArrayProperty("data");
+  // We should avoid collecting extension metadata for profiler while XPCOM is
+  // shutting down since it cannot create a new ExtensionPolicyService.
+  if (!gXPCOMShuttingDown) {
+    aWriter.StartObjectProperty("extensions");
     {
-      nsTArray<RefPtr<WebExtensionPolicy>> exts;
-      ExtensionPolicyService::GetSingleton().GetAll(exts);
-
-      for (auto& ext : exts) {
-        aWriter.StartArrayElement(JSONWriter::SingleLineStyle);
-
-        nsAutoString id;
-        ext->GetId(id);
-        aWriter.StringElement(NS_ConvertUTF16toUTF8(id).get());
-
-        aWriter.StringElement(NS_ConvertUTF16toUTF8(ext->Name()).get());
-
-        auto url = ext->GetURL(NS_LITERAL_STRING(""));
-        if (url.isOk()) {
-          aWriter.StringElement(NS_ConvertUTF16toUTF8(url.unwrap()).get());
-        }
-
-        aWriter.EndArray();
+      {
+        JSONSchemaWriter schema(aWriter);
+        schema.WriteField("id");
+        schema.WriteField("name");
+        schema.WriteField("baseURL");
       }
+
+      aWriter.StartArrayProperty("data");
+      {
+        nsTArray<RefPtr<WebExtensionPolicy>> exts;
+        ExtensionPolicyService::GetSingleton().GetAll(exts);
+
+        for (auto& ext : exts) {
+          aWriter.StartArrayElement(JSONWriter::SingleLineStyle);
+
+          nsAutoString id;
+          ext->GetId(id);
+          aWriter.StringElement(NS_ConvertUTF16toUTF8(id).get());
+
+          aWriter.StringElement(NS_ConvertUTF16toUTF8(ext->Name()).get());
+
+          auto url = ext->GetURL(NS_LITERAL_STRING(""));
+          if (url.isOk()) {
+            aWriter.StringElement(NS_ConvertUTF16toUTF8(url.unwrap()).get());
+          }
+
+          aWriter.EndArray();
+        }
+      }
+      aWriter.EndArray();
     }
-    aWriter.EndArray();
   }
   aWriter.EndObject();
 }
@@ -1704,7 +1812,7 @@ CollectJavaThreadProfileData()
     }
     sampleId++;
   }
-  return Move(buffer);
+  return buffer;
 }
 #endif
 
@@ -1765,8 +1873,9 @@ locked_profiler_stream_json_for_this_process(PSLockRef aLock,
      // Thread id of java Main thread is 0, if we support profiling of other
      // java thread, we have to get thread id and name via JNI.
      RefPtr<ThreadInfo> threadInfo =
-       new ThreadInfo("Java Main Thread", 0, false);
-     ProfiledThreadData profiledThreadData(threadInfo, nullptr);
+       new ThreadInfo("Java Main Thread", 0, false, CorePS::ProcessStartTime());
+     ProfiledThreadData profiledThreadData(threadInfo, nullptr,
+                                           ActivePS::FeatureResponsiveness(aLock));
      profiledThreadData.StreamJSON(*javaBuffer.get(), nullptr, aWriter,
                                    CorePS::ProcessStartTime(), aSinceTime);
 
@@ -2061,7 +2170,10 @@ SamplerThread::Run()
             }
           }
 
-          profiledThreadData->GetThreadResponsiveness()->Update();
+          ThreadResponsiveness* resp = profiledThreadData->GetThreadResponsiveness();
+          if (resp) {
+            resp->Update();
+          }
 
           TimeStamp now = TimeStamp::Now();
           SuspendAndSampleAndResumeThread(lock, *registeredThread,
@@ -2241,7 +2353,8 @@ locked_register_thread(PSLockRef aLock, const char* aName, void* aStackTop)
     nsCOMPtr<nsIEventTarget> eventTarget = registeredThread->GetEventTarget();
     ProfiledThreadData* profiledThreadData =
       ActivePS::AddLiveProfiledThread(aLock, registeredThread.get(),
-        MakeUnique<ProfiledThreadData>(info, eventTarget));
+        MakeUnique<ProfiledThreadData>(info, eventTarget,
+                                       ActivePS::FeatureResponsiveness(aLock)));
 
     if (ActivePS::FeatureJS(aLock)) {
       // This StartJSSampling() call is on-thread, so we can poll manually to
@@ -2255,7 +2368,7 @@ locked_register_thread(PSLockRef aLock, const char* aName, void* aStackTop)
     }
   }
 
-  CorePS::AppendRegisteredThread(aLock, Move(registeredThread));
+  CorePS::AppendRegisteredThread(aLock, std::move(registeredThread));
 }
 
 static void
@@ -2302,25 +2415,24 @@ locked_profiler_start(PSLockRef aLock, uint32_t aEntries, double aInterval,
                       const char** aFilters, uint32_t aFilterCount);
 
 // This basically duplicates AutoProfilerLabel's constructor.
-PseudoStack*
+ProfilingStack*
 MozGlueLabelEnter(const char* aLabel, const char* aDynamicString, void* aSp,
                   uint32_t aLine)
 {
-  PseudoStack* pseudoStack = AutoProfilerLabel::sPseudoStack.get();
-  if (pseudoStack) {
-    pseudoStack->pushCppFrame(aLabel, aDynamicString, aSp, aLine,
-                              js::ProfileEntry::Kind::CPP_NORMAL,
-                              js::ProfileEntry::Category::OTHER);
+  ProfilingStack* profilingStack = AutoProfilerLabel::sProfilingStack.get();
+  if (profilingStack) {
+    profilingStack->pushLabelFrame(aLabel, aDynamicString, aSp, aLine,
+                                js::ProfilingStackFrame::Category::OTHER);
   }
-  return pseudoStack;
+  return profilingStack;
 }
 
 // This basically duplicates AutoProfilerLabel's destructor.
 void
-MozGlueLabelExit(PseudoStack* aPseudoStack)
+MozGlueLabelExit(ProfilingStack* sProfilingStack)
 {
-  if (aPseudoStack) {
-    aPseudoStack->pop();
+  if (sProfilingStack) {
+    sProfilingStack->pop();
   }
 }
 
@@ -2372,6 +2484,7 @@ profiler_init(void* aStackTop)
                       ProfilerFeature::StackWalk |
 #endif
                       ProfilerFeature::Threads |
+                      ProfilerFeature::Responsiveness |
                       0;
 
   UniquePtr<char[]> filterStorage;
@@ -2844,7 +2957,8 @@ locked_profiler_start(PSLockRef aLock, uint32_t aEntries, double aInterval,
       nsCOMPtr<nsIEventTarget> eventTarget = registeredThread->GetEventTarget();
       ProfiledThreadData* profiledThreadData =
         ActivePS::AddLiveProfiledThread(aLock, registeredThread.get(),
-          MakeUnique<ProfiledThreadData>(info, eventTarget));
+          MakeUnique<ProfiledThreadData>(info, eventTarget,
+                                         ActivePS::FeatureResponsiveness(aLock)));
       if (ActivePS::FeatureJS(aLock)) {
         registeredThread->StartJSSampling(
           ActivePS::FeatureTrackOptimizations(aLock));
@@ -2994,10 +3108,16 @@ locked_profiler_stop(PSLockRef aLock)
     RegisteredThread* registeredThread = thread.mRegisteredThread;
     if (ActivePS::FeatureJS(aLock)) {
       registeredThread->StopJSSampling();
-      if (registeredThread->Info()->ThreadId() == tid) {
+      RefPtr<ThreadInfo> info = registeredThread->Info();
+      if (info->ThreadId() == tid) {
         // We can manually poll the current thread so it stops profiling
         // immediately.
         registeredThread->PollJSSampling();
+      } else if (info->IsMainThread()) {
+        // Dispatch a runnable to the main thread to call PollJSSampling(),
+        // so that we don't have wait for the next JS interrupt callback in
+        // order to start profiling JS.
+        TriggerPollJSSamplingOnMainThread();
       }
     }
   }
@@ -3277,7 +3397,7 @@ profiler_get_backtrace()
   DoSyncSample(lock, *registeredThread, now, regs, *buffer.get());
 
   return UniqueProfilerBacktrace(
-    new ProfilerBacktrace("SyncProfile", tid, Move(buffer)));
+    new ProfilerBacktrace("SyncProfile", tid, std::move(buffer)));
 }
 
 void
@@ -3309,7 +3429,7 @@ racy_profiler_add_marker(const char* aMarkerName,
                        ? aPayload->GetStartTime()
                        : TimeStamp::Now();
   TimeDuration delta = origin - CorePS::ProcessStartTime();
-  racyRegisteredThread->AddPendingMarker(aMarkerName, Move(aPayload),
+  racyRegisteredThread->AddPendingMarker(aMarkerName, std::move(aPayload),
                                          delta.ToMilliseconds());
 }
 
@@ -3324,13 +3444,52 @@ profiler_add_marker(const char* aMarkerName,
     return;
   }
 
-  racy_profiler_add_marker(aMarkerName, Move(aPayload));
+  racy_profiler_add_marker(aMarkerName, std::move(aPayload));
 }
 
 void
 profiler_add_marker(const char* aMarkerName)
 {
   profiler_add_marker(aMarkerName, nullptr);
+}
+
+void
+profiler_add_network_marker(nsIURI* aURI,
+                            int32_t aPriority,
+                            uint64_t aChannelId,
+                            NetworkLoadType aType,
+                            mozilla::TimeStamp aStart,
+                            mozilla::TimeStamp aEnd,
+                            int64_t aCount,
+                            const mozilla::net::TimingStruct* aTimings,
+                            nsIURI* aRedirectURI)
+{
+  if (!profiler_is_active()) {
+    return;
+  }
+  // These do allocations/frees/etc; avoid if not active
+  nsAutoCString spec;
+  nsAutoCString redirect_spec;
+  if (aURI) {
+    aURI->GetAsciiSpec(spec);
+  }
+  if (aRedirectURI) {
+    aRedirectURI->GetAsciiSpec(redirect_spec);
+  }
+  // top 32 bits are process id of the load
+  uint32_t id = static_cast<uint32_t>(aChannelId & 0xFFFFFFFF);
+  char name[2048];
+  SprintfLiteral(name, "Load %d: %s", id, PromiseFlatCString(spec).get());
+  profiler_add_marker(name,
+                      MakeUnique<NetworkMarkerPayload>(static_cast<int64_t>(aChannelId),
+                                                       PromiseFlatCString(spec).get(),
+                                                       aType,
+                                                       aStart,
+                                                       aEnd,
+                                                       aPriority,
+                                                       aCount,
+                                                       aTimings,
+                                                       PromiseFlatCString(redirect_spec).get()));
 }
 
 // This logic needs to add a marker for a different thread, so we actually need
@@ -3353,7 +3512,7 @@ profiler_add_marker_for_thread(int aThreadId,
                    : TimeStamp::Now();
   TimeDuration delta = origin - CorePS::ProcessStartTime();
   ProfilerMarker* marker =
-    new ProfilerMarker(aMarkerName, aThreadId, Move(aPayload),
+    new ProfilerMarker(aMarkerName, aThreadId, std::move(aPayload),
                        delta.ToMilliseconds());
 
 #ifdef DEBUG
@@ -3391,7 +3550,7 @@ profiler_tracing(const char* aCategory, const char* aMarkerName,
   }
 
   auto payload = MakeUnique<TracingMarkerPayload>(aCategory, aKind);
-  racy_profiler_add_marker(aMarkerName, Move(payload));
+  racy_profiler_add_marker(aMarkerName, std::move(payload));
 }
 
 void
@@ -3408,14 +3567,8 @@ profiler_tracing(const char* aCategory, const char* aMarkerName,
   }
 
   auto payload =
-    MakeUnique<TracingMarkerPayload>(aCategory, aKind, Move(aCause));
-  racy_profiler_add_marker(aMarkerName, Move(payload));
-}
-
-PseudoStack*
-profiler_get_pseudo_stack()
-{
-  return TLSRegisteredThread::Stack();
+    MakeUnique<TracingMarkerPayload>(aCategory, aKind, std::move(aCause));
+  racy_profiler_add_marker(aMarkerName, std::move(payload));
 }
 
 void

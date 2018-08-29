@@ -1,7 +1,6 @@
-# Ideally we'd use LTS here, but 16.04 doesn't have a new enough
-# p7zip-full for us. We should change this to the next LTS
-# (18.04), once available
-FROM ubuntu:17.10
+# This is an LTS! We should upgrade after the next LTS is released, unless
+# we've switched to the in-tree debian base images by then.
+FROM ubuntu:18.04
 
 MAINTAINER release@mozilla.com
 
@@ -30,24 +29,13 @@ ADD topsrcdir/testing/mozharness/external_tools/robustcheckout.py /usr/local/mer
 # %include taskcluster/docker/recipes/hgrc
 COPY topsrcdir/taskcluster/docker/recipes/hgrc /etc/mercurial/hgrc.d/mozilla.rc
 
-# %include taskcluster/docker/recipes/install-node.sh
-ADD topsrcdir/taskcluster/docker/recipes/install-node.sh /build/install-node.sh
-
 # %include taskcluster/docker/recipes/install-mercurial.sh
 ADD topsrcdir/taskcluster/docker/recipes/install-mercurial.sh /build/install-mercurial.sh
 ADD system-setup.sh /tmp/system-setup.sh
-# %include tools/lint/eslint/manifest.tt
-ADD topsrcdir/tools/lint/eslint/manifest.tt /tmp/eslint.tt
-# %include tools/lint/eslint/eslint-plugin-mozilla/manifest.tt
-ADD topsrcdir/tools/lint/eslint/eslint-plugin-mozilla/manifest.tt /tmp/eslint-plugin-mozilla.tt
-# %include tools/lint/python/flake8_requirements.txt
-ADD topsrcdir/tools/lint/python/flake8_requirements.txt /tmp/flake8_requirements.txt
-# %include tools/lint/tox/tox_requirements.txt
-ADD topsrcdir/tools/lint/tox/tox_requirements.txt /tmp/tox_requirements.txt
 RUN bash /tmp/system-setup.sh
 
-# %include taskcluster/docker/recipes/run-task
-ADD topsrcdir/taskcluster/docker/recipes/run-task /builds/worker/bin/run-task
+# %include taskcluster/scripts/run-task
+ADD topsrcdir/taskcluster/scripts/run-task /builds/worker/bin/run-task
 RUN chown -R worker:worker /builds/worker/bin && chmod 755 /builds/worker/bin/*
 
 # Set variable normally configured at login, by the shells parent process, these

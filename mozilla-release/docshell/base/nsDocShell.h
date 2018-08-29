@@ -80,7 +80,6 @@ class nsIContentViewer;
 class nsIController;
 class nsIDocShellTreeOwner;
 class nsIDocument;
-class nsIDOMNode;
 class nsIGlobalHistory2;
 class nsIHttpChannel;
 class nsIMutableArray;
@@ -208,7 +207,6 @@ public:
                          const char16_t* aTargetSpec,
                          const nsAString& aFileName,
                          nsIInputStream* aPostDataStream,
-                         int64_t aPostDataStreamLength,
                          nsIInputStream* aHeadersDataStream,
                          bool aIsUserTriggered,
                          bool aIsTrusted,
@@ -218,7 +216,6 @@ public:
                              const char16_t* aTargetSpec,
                              const nsAString& aFileName,
                              nsIInputStream* aPostDataStream = 0,
-                             int64_t aPostDataStreamLength = -1,
                              nsIInputStream* aHeadersDataStream = 0,
                              bool aNoOpenerImplied = false,
                              nsIDocShell** aDocShell = 0,
@@ -323,7 +320,7 @@ public:
   void SetAncestorPrincipals(
     nsTArray<nsCOMPtr<nsIPrincipal>>&& aAncestorPrincipals)
   {
-    mAncestorPrincipals = mozilla::Move(aAncestorPrincipals);
+    mAncestorPrincipals = std::move(aAncestorPrincipals);
   }
 
   /**
@@ -345,7 +342,7 @@ public:
    */
   void SetAncestorOuterWindowIDs(nsTArray<uint64_t>&& aAncestorOuterWindowIDs)
   {
-    mAncestorOuterWindowIDs = mozilla::Move(aAncestorOuterWindowIDs);
+    mAncestorOuterWindowIDs = std::move(aAncestorOuterWindowIDs);
   }
 
   const mozilla::OriginAttributes& GetOriginAttributes()
@@ -521,6 +518,7 @@ private: // member functions
   nsresult DoURILoad(nsIURI* aURI,
                      nsIURI* aOriginalURI,
                      mozilla::Maybe<nsCOMPtr<nsIURI>> const& aResultPrincipalURI,
+                     bool aKeepResultPrincipalURIIfSet,
                      bool aLoadReplace,
                      bool aLoadFromExternal,
                      bool aForceAllowDataURI,
@@ -533,7 +531,6 @@ private: // member functions
                      const char* aTypeHint,
                      const nsAString& aFileName,
                      nsIInputStream* aPostData,
-                     int64_t aPostDataLength,
                      nsIInputStream* aHeadersData,
                      bool aFirstParty,
                      nsIDocShell** aDocShell,

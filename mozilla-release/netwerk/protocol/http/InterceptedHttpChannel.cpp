@@ -185,7 +185,7 @@ InterceptedHttpChannel::FollowSyntheticRedirect()
 
   // make sure non-ASCII characters in the location header are escaped.
   nsAutoCString locationBuf;
-  if (NS_EscapeURL(location.get(), -1, esc_OnlyNonASCII, locationBuf)) {
+  if (NS_EscapeURL(location.get(), -1, esc_OnlyNonASCII | esc_Spaces, locationBuf)) {
     location = locationBuf;
   }
 
@@ -593,7 +593,8 @@ InterceptedHttpChannel::AsyncOpen2(nsIStreamListener* aListener)
 }
 
 NS_IMETHODIMP
-InterceptedHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage)
+InterceptedHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage,
+                                              const nsACString& aCategory)
 {
   // Synthetic responses should not trigger CORS blocking.
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -605,13 +606,6 @@ InterceptedHttpChannel::SetupFallbackChannel(const char*  aFallbackKey)
   // AppCache should not be used with service worker intercepted channels.
   // This should never be called.
   return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-InterceptedHttpChannel::GetResponseSynthesized(bool* aResponseSynthesized)
-{
-  *aResponseSynthesized = mResponseHead || mBodyReader;
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -661,6 +655,12 @@ InterceptedHttpChannel::DoNotifyListenerCleanup()
   // more consistently in necko.
 }
 
+void
+InterceptedHttpChannel::DoAsyncAbort(nsresult aStatus)
+{
+  Unused << AsyncAbort(aStatus);
+}
+
 
 NS_IMETHODIMP
 InterceptedHttpChannel::ResetInterception(void)
@@ -685,6 +685,16 @@ InterceptedHttpChannel::ResetInterception(void)
 
   rv = SetupReplacementChannel(mURI, newChannel, true, flags);
   NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsITimedChannel> newTimedChannel = do_QueryInterface(newChannel);
+  if (newTimedChannel) {
+    if (!mAsyncOpenTime.IsNull()) {
+      newTimedChannel->SetAsyncOpen(mAsyncOpenTime);
+    }
+    if (!mChannelCreationTimestamp.IsNull()) {
+      newTimedChannel->SetChannelCreation(mChannelCreationTimestamp);
+    }
+  }
 
   if (mRedirectMode != nsIHttpChannelInternal::REDIRECT_MODE_MANUAL) {
     nsLoadFlags loadFlags = nsIRequest::LOAD_NORMAL;

@@ -19,10 +19,12 @@ class FontsApp extends PureComponent {
     return {
       fontData: PropTypes.shape(Types.fontData).isRequired,
       fontEditor: PropTypes.shape(Types.fontEditor).isRequired,
+      fontEditorEnabled: PropTypes.bool.isRequired,
       fontOptions: PropTypes.shape(Types.fontOptions).isRequired,
-      onAxisUpdate: PropTypes.func.isRequired,
       onInstanceChange: PropTypes.func.isRequired,
       onPreviewFonts: PropTypes.func.isRequired,
+      onPropertyChange: PropTypes.func.isRequired,
+      onToggleFontHighlight: PropTypes.func.isRequired,
     };
   }
 
@@ -30,10 +32,12 @@ class FontsApp extends PureComponent {
     const {
       fontData,
       fontEditor,
+      fontEditorEnabled,
       fontOptions,
-      onAxisUpdate,
       onInstanceChange,
       onPreviewFonts,
+      onPropertyChange,
+      onToggleFontHighlight,
     } = this.props;
 
     return dom.div(
@@ -41,18 +45,18 @@ class FontsApp extends PureComponent {
         className: "theme-sidebar inspector-tabpanel",
         id: "sidebar-panel-fontinspector"
       },
-      fontEditor.isVisible ?
-        FontEditor({
-          fontEditor,
-          onAxisUpdate,
-          onInstanceChange,
-        })
-        :
-        FontOverview({
-          fontData,
-          fontOptions,
-          onPreviewFonts,
-        })
+      fontEditorEnabled && FontEditor({
+        fontEditor,
+        onInstanceChange,
+        onPropertyChange,
+        onToggleFontHighlight,
+      }),
+      FontOverview({
+        fontData,
+        fontOptions,
+        onPreviewFonts,
+        onToggleFontHighlight,
+      })
     );
   }
 }

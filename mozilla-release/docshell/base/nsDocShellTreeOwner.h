@@ -39,28 +39,11 @@ class EventTarget;
 class nsWebBrowser;
 class ChromeTooltipListener;
 
-// {6D10C180-6888-11d4-952B-0020183BF181}
-#define NS_ICDOCSHELLTREEOWNER_IID \
-  { 0x6d10c180, 0x6888, 0x11d4, { 0x95, 0x2b, 0x0, 0x20, 0x18, 0x3b, 0xf1, 0x81 } }
-
-// This is a fake 'hidden' interface that nsDocShellTreeOwner implements.
-// Classes can QI for this interface to be sure that
-// they're dealing with a valid nsDocShellTreeOwner and not some other object
-// that implements nsIDocShellTreeOwner.
-class nsICDocShellTreeOwner : public nsISupports
-{
-public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICDOCSHELLTREEOWNER_IID)
-};
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsICDocShellTreeOwner, NS_ICDOCSHELLTREEOWNER_IID)
-
 class nsDocShellTreeOwner final : public nsIDocShellTreeOwner,
                                   public nsIBaseWindow,
                                   public nsIInterfaceRequestor,
                                   public nsIWebProgressListener,
                                   public nsIDOMEventListener,
-                                  public nsICDocShellTreeOwner,
                                   public nsSupportsWeakReference
 {
   friend class nsWebBrowser;
@@ -165,6 +148,7 @@ private:
                          const nsAString& aInTipText,
                          const nsAString& aDirText);
   NS_IMETHOD HideTooltip();
+  nsITooltipTextProvider* GetTooltipTextProvider();
 
   nsWebBrowser* mWebBrowser;
   nsCOMPtr<mozilla::dom::EventTarget> mEventTarget;
@@ -199,7 +183,7 @@ private:
   // detect that. It's set only when the tooltip timer is created and launched.
   // The timer must either fire or be cancelled (or possibly released?), and we
   // release this reference in each of those cases. So we don't leak.
-  nsCOMPtr<nsIDOMNode> mPossibleTooltipNode;
+  nsCOMPtr<nsINode> mPossibleTooltipNode;
 };
 
 #endif /* nsDocShellTreeOwner_h__ */

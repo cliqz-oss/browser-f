@@ -133,6 +133,7 @@ public:
     , mCapEngine(aEngine)
     , mStreamId(aStreamId)
     , mProperties(aProperties)
+    , mResult(0)
   {
     // No ShmemBuffer (of the right size) was available, so make an
     // extra buffer here.  We have no idea when we are going to run and
@@ -154,8 +155,9 @@ public:
     , mParent(aParent)
     , mCapEngine(aEngine)
     , mStreamId(aStreamId)
-    , mBuffer(Move(aBuffer))
-    , mProperties(aProperties){};
+    , mBuffer(std::move(aBuffer))
+    , mProperties(aProperties)
+    , mResult(0) {};
 
   NS_IMETHOD Run() override {
     if (mParent->IsShuttingDown()) {
@@ -163,7 +165,7 @@ public:
       mResult = 0;
       return NS_OK;
     }
-    if (!mParent->DeliverFrameOverIPC(mCapEngine, mStreamId, Move(mBuffer),
+    if (!mParent->DeliverFrameOverIPC(mCapEngine, mStreamId, std::move(mBuffer),
                                       mAlternateBuffer.get(), mProperties)) {
       mResult = -1;
     } else {
@@ -337,7 +339,7 @@ CallbackHelper::OnFrame(const webrtc::VideoFrame& aVideoFrame)
     VideoFrameUtils::CopyVideoFrameBuffers(shMemBuffer.GetBytes(),
                                            properties.bufferSize(), aVideoFrame);
     runnable = new DeliverFrameRunnable(mParent, mCapEngine, mStreamId,
-                                        Move(shMemBuffer), properties);
+                                        std::move(shMemBuffer), properties);
   }
   if (!runnable) {
     runnable = new DeliverFrameRunnable(mParent, mCapEngine, mStreamId,
@@ -393,7 +395,7 @@ CamerasParent::SetupEngine(CaptureEngine aCapEngine)
     }
 
     config->Set<webrtc::CaptureDeviceInfo>(captureDeviceInfo.release());
-    engine = VideoEngine::Create(Move(config));
+    engine = VideoEngine::Create(std::move(config));
 
     if (!engine) {
       LOG(("VideoEngine::Create failed"));
@@ -973,6 +975,43 @@ CamerasParent::RecvStartCapture(const CaptureEngine& aCapEngine,
       self->mPBackgroundEventTarget->Dispatch(ipc_runnable, NS_DISPATCH_NORMAL);
       return NS_OK;
     });
+  DispatchToVideoCaptureThread(webrtc_runnable);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+CamerasParent::RecvFocusOnSelectedSource(const CaptureEngine& aCapEngine,
+                                         const int& aCapNum)
+{
+  LOG((__PRETTY_FUNCTION__));
+  RefPtr<Runnable> webrtc_runnable =
+    media::NewRunnableFrom([self = RefPtr<CamerasParent>(this),
+                            aCapEngine, aCapNum]() -> nsresult {
+      if (auto engine = self->EnsureInitialized(aCapEngine)) {
+        engine->WithEntry(aCapNum, [self](VideoEngine::CaptureEntry& cap){
+          if (cap.VideoCapture()) {
+            bool result = cap.VideoCapture()->FocusOnSelectedSource();
+            RefPtr<nsIRunnable> ipc_runnable =
+              media::NewRunnableFrom([self, result]() -> nsresult {
+                if (!self->mChildIsAlive) {
+                  return NS_ERROR_FAILURE;
+                }
+
+                if (result) {
+                  Unused << self->SendReplySuccess();
+                  return NS_OK;
+                }
+
+                Unused << self->SendReplyFailure();
+                return NS_ERROR_FAILURE;
+              });
+            self->mPBackgroundEventTarget->Dispatch(ipc_runnable,
+                                                    NS_DISPATCH_NORMAL);
+          }
+        });
+      }
+      return NS_ERROR_FAILURE;
+  });
   DispatchToVideoCaptureThread(webrtc_runnable);
   return IPC_OK();
 }

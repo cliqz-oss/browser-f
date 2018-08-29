@@ -74,9 +74,13 @@ Tools.inspector = {
   label: l10n("inspector.label"),
   panelLabel: l10n("inspector.panelLabel"),
   get tooltip() {
-    return l10n("inspector.tooltip2",
-    (osString == "Darwin" ? "Cmd+Opt+" : "Ctrl+Shift+") +
-    l10n("inspector.commandkey"));
+    if (osString == "Darwin") {
+      const cmdShiftC = "Cmd+Shift+" + l10n("inspector.commandkey");
+      const cmdOptC = "Cmd+Opt+" + l10n("inspector.commandkey");
+      return l10n("inspector.mac.tooltip", cmdShiftC, cmdOptC);
+    }
+
+    return l10n("inspector.tooltip2", "Ctrl+Shift+") + l10n("inspector.commandkey");
   },
   inMenu: true,
   commands: [
@@ -464,9 +468,9 @@ Tools.application = {
   visibilityswitch: "devtools.application.enabled",
   icon: "chrome://devtools/skin/images/tool-application.svg",
   url: "chrome://devtools/content/application/index.html",
-  label: "Application",
-  panelLabel: "Application",
-  tooltip: "Application",
+  label: l10n("application.label"),
+  panelLabel: l10n("application.panellabel"),
+  tooltip: l10n("application.tooltip"),
   inMenu: false,
   hiddenInOptions: true,
 
@@ -553,8 +557,8 @@ exports.ToolboxButtons = [
                       osString == "Darwin" ? "Cmd+Opt+M" : "Ctrl+Shift+M"),
     isTargetSupported: target => target.isLocalTab,
     onClick(event, toolbox) {
-      let tab = toolbox.target.tab;
-      let browserWindow = tab.ownerDocument.defaultView;
+      const tab = toolbox.target.tab;
+      const browserWindow = tab.ownerDocument.defaultView;
       ResponsiveUIManager.handleGcliCommand(browserWindow, tab,
         "resize toggle", null);
     },
@@ -626,13 +630,13 @@ exports.ToolboxButtons = [
  *
  * @param {string} name
  *        The key to lookup.
- * @param {string} arg
+ * @param {...string} args
  *        Optional format argument.
  * @returns A localized version of the given key.
  */
-function l10n(name, arg) {
+function l10n(name, ...args) {
   try {
-    return arg ? L10N.getFormatStr(name, arg) : L10N.getStr(name);
+    return args ? L10N.getFormatStr(name, ...args) : L10N.getStr(name);
   } catch (ex) {
     console.log("Error reading '" + name + "'");
     throw new Error("l10n error with " + name);

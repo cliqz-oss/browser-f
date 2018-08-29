@@ -31,11 +31,6 @@
 
 #ifdef WEBRTC_MAC
 #include <AvailabilityMacros.h>
-#endif
-
-#if defined(MAC_OS_X_VERSION_10_8) && \
-  (MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_8)
-// XXX not available in Mac 10.7 SDK
 #include "webrtc/common_video/include/corevideo_frame_buffer.h"
 #endif
 
@@ -1189,9 +1184,7 @@ WebrtcVideoConduit::InitMain()
     }
   }
 #ifdef MOZ_WIDGET_ANDROID
-  JavaVM* jvm = mozilla::jni::GetVM();
-
-  if (mozilla::camera::VideoEngine::SetAndroidObjects(jvm) != 0) {
+  if (mozilla::camera::VideoEngine::SetAndroidObjects() != 0) {
     CSFLogError(LOGTAG,  "%s: could not set Android objects", __FUNCTION__);
     return kMediaConduitSessionNotInited;
   }
@@ -1909,16 +1902,12 @@ WebrtcVideoConduit::SendVideoFrame(const webrtc::VideoFrame& frame)
       buffer = frame.video_frame_buffer();
       // XXX Bug 1367651 - Use nativehandles where possible instead of software scaling
 #ifdef WEBRTC_MAC
-#if defined(MAC_OS_X_VERSION_10_8) && \
-  (MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_8)
-      // XXX not available in Mac 10.7 SDK
       // code adapted from objvideotracksource.mm
     } else if (frame.video_frame_buffer()->native_handle()) {
       // Adapted CVPixelBuffer frame.
       buffer = new rtc::RefCountedObject<webrtc::CoreVideoFrameBuffer>(
         static_cast<CVPixelBufferRef>(frame.video_frame_buffer()->native_handle()), adapted_width, adapted_height,
         crop_width, crop_height, crop_x, crop_y);
-#endif
 #elif WEBRTC_WIN
       // XX FIX
 #elif WEBRTC_LINUX
@@ -2002,14 +1991,14 @@ WebrtcVideoConduit::ReceivedRTPPacket(const void* data, int len, uint32_t ssrc)
       CSFLogDebug(LOGTAG, "queuing packet: seq# %u, Len %d ",
                   (uint16_t)ntohs(((uint16_t*) packet->mData)[1]), packet->mLen);
       if (queue) {
-        mQueuedPackets.AppendElement(Move(packet));
+        mQueuedPackets.AppendElement(std::move(packet));
         return kMediaConduitNoError;
       }
       // a new switch needs to be done
       // any queued packets are from a previous switch that hasn't completed
       // yet; drop them and only process the latest SSRC
       mQueuedPackets.Clear();
-      mQueuedPackets.AppendElement(Move(packet));
+      mQueuedPackets.AppendElement(std::move(packet));
 
       CSFLogDebug(LOGTAG, "%s: switching from SSRC %u to %u", __FUNCTION__,
                   mRecvSSRC, ssrc);

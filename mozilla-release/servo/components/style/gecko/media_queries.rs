@@ -7,7 +7,7 @@
 use app_units::AU_PER_PX;
 use app_units::Au;
 use context::QuirksMode;
-use cssparser::{BasicParseErrorKind, Parser, Token, RGBA};
+use cssparser::{BasicParseErrorKind, Parser, RGBA};
 use euclid::Size2D;
 use euclid::TypedScale;
 use gecko::values::{convert_nscolor_to_rgba, convert_rgba_to_nscolor};
@@ -32,7 +32,7 @@ use stylesheets::Origin;
 use values::{serialize_atom_identifier, CSSFloat, CustomIdent, KeyframesName};
 use values::computed::{self, ToComputedValue};
 use values::computed::font::FontSize;
-use values::specified::{Integer, Length, Number};
+use values::specified::{Integer, Length, Number, Resolution};
 
 /// The `Device` in Gecko wraps a pres context, has a default values computed,
 /// and contains all the viewport rule state.
@@ -62,6 +62,27 @@ pub struct Device {
     /// Whether any styles computed in the document relied on the viewport size
     /// by using vw/vh/vmin/vmax units.
     used_viewport_size: AtomicBool,
+}
+
+impl fmt::Debug for Device {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use nsstring::nsCString;
+
+        let mut doc_uri = nsCString::new();
+        unsafe {
+            let doc =
+                &*self.pres_context().mDocument.raw::<structs::nsIDocument>();
+
+            bindings::Gecko_nsIURI_Debug(
+                doc.mDocumentURI.raw::<structs::nsIURI>(),
+                &mut doc_uri,
+            )
+        };
+
+        f.debug_struct("Device")
+            .field("document_url", &doc_uri)
+            .finish()
+    }
 }
 
 unsafe impl Sync for Device {}
@@ -118,8 +139,7 @@ impl Device {
 
     /// Set the font size of the root element (for rem)
     pub fn set_root_font_size(&self, size: Au) {
-        self.root_font_size
-            .store(size.0 as isize, Ordering::Relaxed)
+        self.root_font_size.store(size.0 as isize, Ordering::Relaxed)
     }
 
     /// Sets the body text color for the "inherit color from body" quirk.
@@ -229,7 +249,7 @@ impl Device {
 }
 
 /// The kind of matching that should be performed on a media feature value.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq)]
 pub enum Range {
     /// At least the specified value.
     Min,
@@ -241,7 +261,7 @@ pub enum Range {
 
 /// A expression for gecko contains a reference to the media feature, the value
 /// the media query contained, and the range to evaluate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, MallocSizeOf)]
 pub struct Expression {
     feature: &'static nsMediaFeature,
     value: Option<MediaExpressionValue>,
@@ -286,53 +306,6 @@ impl PartialEq for Expression {
     }
 }
 
-/// A resolution.
-#[derive(Clone, Debug, PartialEq, ToCss)]
-pub enum Resolution {
-    /// Dots per inch.
-    #[css(dimension)]
-    Dpi(CSSFloat),
-    /// Dots per pixel.
-    #[css(dimension)]
-    Dppx(CSSFloat),
-    /// Dots per centimeter.
-    #[css(dimension)]
-    Dpcm(CSSFloat),
-}
-
-impl Resolution {
-    fn to_dpi(&self) -> CSSFloat {
-        match *self {
-            Resolution::Dpi(f) => f,
-            Resolution::Dppx(f) => f * 96.0,
-            Resolution::Dpcm(f) => f * 2.54,
-        }
-    }
-
-    fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Self, ParseError<'i>> {
-        let location = input.current_source_location();
-        let (value, unit) = match *input.next()? {
-            Token::Dimension {
-                value, ref unit, ..
-            } => (value, unit),
-            ref t => return Err(location.new_unexpected_token_error(t.clone())),
-        };
-
-        if value <= 0. {
-            return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
-        }
-
-        (match_ignore_ascii_case! { &unit,
-            "dpi" => Ok(Resolution::Dpi(value)),
-            "dppx" => Ok(Resolution::Dppx(value)),
-            "dpcm" => Ok(Resolution::Dpcm(value)),
-            _ => Err(())
-        }).map_err(|()| {
-            location.new_custom_error(StyleParseErrorKind::UnexpectedDimension(unit.clone()))
-        })
-    }
-}
-
 /// A value found or expected in a media expression.
 ///
 /// FIXME(emilio): How should calc() serialize in the Number / Integer /
@@ -341,7 +314,7 @@ impl Resolution {
 /// If the first, this would need to store the relevant values.
 ///
 /// See: https://github.com/w3c/csswg-drafts/issues/1968
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, MallocSizeOf, PartialEq)]
 pub enum MediaExpressionValue {
     /// A length.
     Length(Length),
@@ -535,7 +508,7 @@ fn parse_feature_value<'i, 't>(
             MediaExpressionValue::IntRatio(a.value() as u32, b.value() as u32)
         },
         nsMediaFeature_ValueType::eResolution => {
-            MediaExpressionValue::Resolution(Resolution::parse(input)?)
+            MediaExpressionValue::Resolution(Resolution::parse(context, input)?)
         },
         nsMediaFeature_ValueType::eEnumerated => {
             let location = input.current_source_location();

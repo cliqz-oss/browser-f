@@ -260,7 +260,7 @@ ReadExpires(JSContext* aCx, const ObjectOrString& aOptions,
 already_AddRefed<Promise>
 RTCCertificate::GenerateCertificate(
     const GlobalObject& aGlobal, const ObjectOrString& aOptions,
-    ErrorResult& aRv, JSCompartment* aCompartment)
+    ErrorResult& aRv, JS::Compartment* aCompartment)
 {
   nsIGlobalObject* global = xpc::NativeGlobal(aGlobal.Get());
   RefPtr<Promise> p = Promise::Create(global, aRv);
@@ -314,7 +314,7 @@ RTCCertificate::CreateDtlsIdentity() const
   }
   UniqueSECKEYPrivateKey key(SECKEY_CopyPrivateKey(mPrivateKey.get()));
   UniqueCERTCertificate cert(CERT_DupCertificate(mCertificate.get()));
-  RefPtr<DtlsIdentity> id = new DtlsIdentity(Move(key), Move(cert), mAuthType);
+  RefPtr<DtlsIdentity> id = new DtlsIdentity(std::move(key), std::move(cert), mAuthType);
   return id;
 }
 

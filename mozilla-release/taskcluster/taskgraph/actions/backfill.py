@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 @register_callback_action(
     title='Backfill',
     name='backfill',
+    kind='hook',
+    generic=True,
     symbol='Bk',
     description=('Take the label of the current task, '
                  'and trigger the task with that label '
@@ -42,6 +44,23 @@ logger = logging.getLogger(__name__)
                 'title': 'Depth',
                 'description': ('The number of previous pushes before the current '
                                 'push to attempt to trigger this task on.')
+            },
+            'inclusive': {
+                'type': 'boolean',
+                'default': False,
+                'title': 'Inclusive Range',
+                'description': ('If true, the backfill will also retrigger the task '
+                                'on the selected push.')
+            },
+            'addGeckoProfile': {
+                'type': 'boolean',
+                'default': False,
+                'title': 'Add Gecko Profile',
+                'description': 'If true, appends --geckoProfile to mozharness options.'
+            },
+            'testPath': {
+                'type': 'string',
+                'title': 'Test Path',
             }
         },
         'additionalProperties': False
@@ -51,8 +70,9 @@ logger = logging.getLogger(__name__)
 def backfill_action(parameters, graph_config, input, task_group_id, task_id, task):
     label = task['metadata']['name']
     pushes = []
-    depth = input.get('depth', 5)
-    end_id = int(parameters['pushlog_id']) - 1
+    inclusive_tweak = 1 if input.get('inclusive') else 0
+    depth = input.get('depth', 5) + inclusive_tweak
+    end_id = int(parameters['pushlog_id']) - (1 - inclusive_tweak)
 
     while True:
         start_id = max(end_id - depth, 0)
@@ -88,8 +108,22 @@ def backfill_action(parameters, graph_config, input, task_group_id, task_id, tas
             continue
 
         if label in full_task_graph.tasks.keys():
-            create_tasks(
-                    [label], full_task_graph, label_to_taskid,
-                    push_params, push_decision_task_id, push)
+            def modifier(task):
+                if task.label != label:
+                    return task
+                if input.get('addGeckoProfile'):
+                    mh = task.task['payload'].setdefault('env', {}) \
+                                                    .get('MOZHARNESS_OPTIONS', '')
+                    task.task['payload']['env']['MOZHARNESS_OPTIONS'] = mh + ' --geckoProfile'
+                    task.task['extra']['treeherder']['symbol'] += '-p'
+
+                if input.get('testPath'):
+                    env = task.task['payload'].setdefault('env', {})
+                    env['MOZHARNESS_TEST_PATHS'] = input.get('testPath')
+                    task.task['extra']['treeherder']['symbol'] += '-b'
+                return task
+
+            create_tasks([label], full_task_graph, label_to_taskid,
+                         push_params, push_decision_task_id, push, modifier=modifier)
         else:
             logging.info('Could not find {} on {}. Skipping.'.format(label, push))

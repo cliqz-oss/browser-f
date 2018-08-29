@@ -11,6 +11,7 @@
 /* global quit */
 
 /* import-globals-from ../../netwerk/test/httpserver/httpd.js */
+/* eslint-disable mozilla/use-chromeutils-generateqi */
 
 // Disable automatic network detection, so tests work correctly when
 // not connected to a network.
@@ -380,8 +381,7 @@ function serverDebug(metadata, response) {
 function* dirIter(dir) {
   var en = dir.directoryEntries;
   while (en.hasMoreElements()) {
-    var file = en.getNext();
-    yield file.QueryInterface(Ci.nsIFile);
+    yield en.nextFile;
   }
 }
 

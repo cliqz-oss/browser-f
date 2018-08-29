@@ -61,14 +61,14 @@ class Fifo
     { }
 
     Fifo(Fifo&& rhs)
-        : front_(mozilla::Move(rhs.front_))
-        , rear_(mozilla::Move(rhs.rear_))
+        : front_(std::move(rhs.front_))
+        , rear_(std::move(rhs.rear_))
     { }
 
     Fifo& operator=(Fifo&& rhs) {
         MOZ_ASSERT(&rhs != this, "self-move disallowed");
         this->~Fifo();
-        new (this) Fifo(mozilla::Move(rhs));
+        new (this) Fifo(std::move(rhs));
         return *this;
     }
 
@@ -124,7 +124,7 @@ class Fifo
     // |const T&| or a |T&&|.
     template <typename U>
     MOZ_MUST_USE bool pushBack(U&& u) {
-        if (!rear_.append(mozilla::Forward<U>(u)))
+        if (!rear_.append(std::forward<U>(u)))
             return false;
         fixup();
         return true;
@@ -133,7 +133,7 @@ class Fifo
     // Construct a T in-place at the back of the queue.
     template <typename... Args>
     MOZ_MUST_USE bool emplaceBack(Args&&... args) {
-        if (!rear_.emplaceBack(mozilla::Forward<Args>(args)...))
+        if (!rear_.emplaceBack(std::forward<Args>(args)...))
             return false;
         fixup();
         return true;

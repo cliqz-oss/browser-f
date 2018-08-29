@@ -115,14 +115,14 @@ jit::NewBaselineFrameInspector(TempAllocator* temp, BaselineFrame* frame)
     return inspector;
 }
 
-IonBuilder::IonBuilder(JSContext* analysisContext, CompileCompartment* comp,
+IonBuilder::IonBuilder(JSContext* analysisContext, CompileRealm* realm,
                        const JitCompileOptions& options, TempAllocator* temp,
                        MIRGraph* graph, CompilerConstraintList* constraints,
                        BaselineInspector* inspector, CompileInfo* info,
                        const OptimizationInfo* optimizationInfo,
                        BaselineFrameInspector* baselineFrame, size_t inliningDepth,
                        uint32_t loopDepth)
-  : MIRGenerator(comp, options, temp, graph, info, optimizationInfo),
+  : MIRGenerator(realm, options, temp, graph, info, optimizationInfo),
     backgroundCodegen_(nullptr),
     actionableAbortScript_(nullptr),
     actionableAbortPc_(nullptr),
@@ -136,6 +136,7 @@ IonBuilder::IonBuilder(JSContext* analysisContext, CompileCompartment* comp,
     typeArray(nullptr),
     typeArrayHint(0),
     bytecodeTypeMap(nullptr),
+    current(nullptr),
     loopDepth_(loopDepth),
     blockWorklist(*temp),
     cfgCurrent(nullptr),
@@ -325,7 +326,7 @@ IonBuilder::InliningDecision
 IonBuilder::DontInline(JSScript* targetScript, const char* reason)
 {
     if (targetScript) {
-        JitSpew(JitSpew_Inlining, "Cannot inline %s:%zu: %s",
+        JitSpew(JitSpew_Inlining, "Cannot inline %s:%u: %s",
                 targetScript->filename(), targetScript->lineno(), reason);
     } else {
         JitSpew(JitSpew_Inlining, "Cannot inline: %s", reason);
@@ -751,11 +752,11 @@ IonBuilder::build()
 
 #ifdef JS_JITSPEW
     if (info().isAnalysis()) {
-        JitSpew(JitSpew_IonScripts, "Analyzing script %s:%zu (%p) %s",
+        JitSpew(JitSpew_IonScripts, "Analyzing script %s:%u (%p) %s",
                 script()->filename(), script()->lineno(), (void*)script(),
                 AnalysisModeString(info().analysisMode()));
     } else {
-        JitSpew(JitSpew_IonScripts, "%sompiling script %s:%zu (%p) (warmup-counter=%" PRIu32 ", level=%s)",
+        JitSpew(JitSpew_IonScripts, "%sompiling script %s:%u (%p) (warmup-counter=%" PRIu32 ", level=%s)",
                 (script()->hasIonScript() ? "Rec" : "C"),
                 script()->filename(), script()->lineno(), (void*)script(),
                 script()->getWarmUpCount(), OptimizationLevelString(optimizationInfo().level()));
@@ -925,7 +926,7 @@ IonBuilder::buildInline(IonBuilder* callerBuilder, MResumePoint* callerResumePoi
 
     MOZ_TRY(init());
 
-    JitSpew(JitSpew_IonScripts, "Inlining script %s:%zu (%p)",
+    JitSpew(JitSpew_IonScripts, "Inlining script %s:%u (%p)",
             script()->filename(), script()->lineno(), (void*)script());
 
     callerBuilder_ = callerBuilder;
@@ -1214,12 +1215,12 @@ IonBuilder::initEnvironmentChain(MDefinition* callee)
 void
 IonBuilder::initArgumentsObject()
 {
-    JitSpew(JitSpew_IonMIR, "%s:%zu - Emitting code to initialize arguments object! block=%p",
+    JitSpew(JitSpew_IonMIR, "%s:%u - Emitting code to initialize arguments object! block=%p",
             script()->filename(), script()->lineno(), current);
     MOZ_ASSERT(info().needsArgsObj());
 
     bool mapped = script()->hasMappedArgsObj();
-    ArgumentsObject* templateObj = script()->compartment()->maybeArgumentsTemplateObject(mapped);
+    ArgumentsObject* templateObj = script()->realm()->maybeArgumentsTemplateObject(mapped);
 
     MCreateArgumentsObject* argsObj =
         MCreateArgumentsObject::New(alloc(), current->environmentChain(), templateObj);
@@ -1426,7 +1427,7 @@ GetOrCreateControlFlowGraph(TempAllocator& tempAlloc, JSScript* script,
     }
 
     if (JitSpewEnabled(JitSpew_CFG)) {
-        JitSpew(JitSpew_CFG, "Generating graph for %s:%zu",
+        JitSpew(JitSpew_CFG, "Generating graph for %s:%u",
                              script->filename(), script->lineno());
         Fprinter& print = JitSpewPrinter();
         cfg->dump(print, script);
@@ -1635,8 +1636,7 @@ IonBuilder::blockIsOSREntry(const CFGBlock* block, const CFGBlock* predecessor)
     }
 
     MOZ_ASSERT(*info().osrPc() == JSOP_LOOPENTRY);
-    // Skip over the LOOPENTRY to match.
-    return GetNextPc(info().osrPc()) == entryPc;
+    return info().osrPc() == entryPc;
 }
 
 AbortReasonOr<Ok>
@@ -1741,17 +1741,18 @@ IonBuilder::visitLoopEntry(CFGLoopEntry* loopEntry)
     setCurrent(header);
     pc = header->pc();
 
-    initLoopEntry();
     return Ok();
 }
 
-bool
-IonBuilder::initLoopEntry()
+AbortReasonOr<Ok>
+IonBuilder::jsop_loopentry()
 {
+    MOZ_ASSERT(*pc == JSOP_LOOPENTRY);
+
     current->add(MInterruptCheck::New(alloc()));
     insertRecompileCheck();
 
-    return true;
+    return Ok();
 }
 
 AbortReasonOr<Ok>
@@ -1809,7 +1810,6 @@ IonBuilder::inspectOpcode(JSOp op)
       case JSOP_THROW:
       case JSOP_GOTO:
       case JSOP_CONDSWITCH:
-      case JSOP_LOOPENTRY:
       case JSOP_TABLESWITCH:
       case JSOP_CASE:
       case JSOP_DEFAULT:
@@ -1876,7 +1876,7 @@ IonBuilder::inspectOpcode(JSOp op)
 
       case JSOP_SYMBOL: {
         unsigned which = GET_UINT8(pc);
-        JS::Symbol* sym = compartment->runtime()->wellKnownSymbols().get(which);
+        JS::Symbol* sym = realm->runtime()->wellKnownSymbols().get(which);
         pushConstant(SymbolValue(sym));
         return Ok();
       }
@@ -2376,6 +2376,12 @@ IonBuilder::inspectOpcode(JSOp op)
         return Ok();
       }
 
+      case JSOP_IMPORTMETA:
+        return jsop_importmeta();
+
+      case JSOP_LOOPENTRY:
+        return jsop_loopentry();
+
       // ===== NOT Yet Implemented =====
       // Read below!
 
@@ -2503,7 +2509,6 @@ IonBuilder::restartLoop(const CFGBlock* cfgHeader)
     setCurrent(header);
     pc = header->pc();
 
-    initLoopEntry();
     return Ok();
 }
 
@@ -3790,7 +3795,7 @@ IonBuilder::inlineScriptedCall(CallInfo& callInfo, JSFunction* target)
     AutoAccumulateReturns aar(graph(), returns);
 
     // Build the graph.
-    IonBuilder inlineBuilder(analysisContext, compartment, options, &alloc(), &graph(), constraints(),
+    IonBuilder inlineBuilder(analysisContext, realm, options, &alloc(), &graph(), constraints(),
                              &inspector, info, &optimizationInfo(), nullptr, inliningDepth_ + 1,
                              loopDepth_);
     AbortReasonOr<Ok> result = inlineBuilder.buildInline(this, outerResumePoint, callInfo);
@@ -4025,7 +4030,7 @@ IonBuilder::makeInliningDecision(JSObject* targetArg, CallInfo& callInfo)
         info().analysisMode() != Analysis_DefiniteProperties)
     {
         trackOptimizationOutcome(TrackedOutcome::CantInlineNotHot);
-        JitSpew(JitSpew_Inlining, "Cannot inline %s:%zu: callee is insufficiently hot.",
+        JitSpew(JitSpew_Inlining, "Cannot inline %s:%u: callee is insufficiently hot.",
                 targetScript->filename(), targetScript->lineno());
         return InliningDecision_WarmUpCountTooLow;
     }
@@ -4962,7 +4967,7 @@ IonBuilder::createThisScriptedBaseline(MDefinition* callee)
     if (!templateObject->is<PlainObject>() && !templateObject->is<UnboxedPlainObject>())
         return nullptr;
 
-    Shape* shape = target->lookupPure(compartment->runtime()->names().prototype);
+    Shape* shape = target->lookupPure(realm->runtime()->names().prototype);
     if (!shape || !shape->isDataProperty())
         return nullptr;
 
@@ -5450,7 +5455,7 @@ IonBuilder::testShouldDOMCall(TypeSet* inTypes, JSFunction* func, JSJitInfo::OpT
     // property, we can bake in a call to the bottom half of the DOM
     // accessor
     DOMInstanceClassHasProtoAtDepth instanceChecker =
-        compartment->runtime()->DOMcallbacks()->instanceClassMatchesProto;
+        realm->runtime()->DOMcallbacks()->instanceClassMatchesProto;
 
     const JSJitInfo* jinfo = func->jitInfo();
     if (jinfo->type() != opType)
@@ -6632,7 +6637,8 @@ AbortReasonOr<MBasicBlock*>
 IonBuilder::newOsrPreheader(MBasicBlock* predecessor, jsbytecode* loopEntry,
                             jsbytecode* beforeLoopEntry)
 {
-    MOZ_ASSERT(loopEntry == GetNextPc(info().osrPc()));
+    MOZ_ASSERT(JSOp(*loopEntry) == JSOP_LOOPENTRY);
+    MOZ_ASSERT(loopEntry == info().osrPc());
 
     // Create two blocks: one for the OSR entry with no predecessors, one for
     // the preheader, which has the OSR entry block as a predecessor. The
@@ -6975,21 +6981,21 @@ ClassHasEffectlessLookup(const Class* clasp)
 // Return whether an object might have a property for name which is not
 // accounted for by type information.
 static bool
-ObjectHasExtraOwnProperty(CompileCompartment* comp, TypeSet::ObjectKey* object, jsid id)
+ObjectHasExtraOwnProperty(CompileRealm* realm, TypeSet::ObjectKey* object, jsid id)
 {
     // Some typed object properties are not reflected in type information.
     if (object->isGroup() && object->group()->maybeTypeDescr())
-        return object->group()->typeDescr().hasProperty(comp->runtime()->names(), id);
+        return object->group()->typeDescr().hasProperty(realm->runtime()->names(), id);
 
     const Class* clasp = object->clasp();
 
     // Array |length| properties are not reflected in type information.
     if (clasp == &ArrayObject::class_)
-        return JSID_IS_ATOM(id, comp->runtime()->names().length);
+        return JSID_IS_ATOM(id, realm->runtime()->names().length);
 
     // Resolve hooks can install new properties on objects on demand.
     JSObject* singleton = object->isSingleton() ? object->singleton() : nullptr;
-    return ClassMayResolveId(comp->runtime()->names(), clasp, id, singleton);
+    return ClassMayResolveId(realm->runtime()->names(), clasp, id, singleton);
 }
 
 void
@@ -7051,7 +7057,7 @@ IonBuilder::testSingletonProperty(JSObject* obj, jsid id)
             return nullptr;
         }
 
-        if (ObjectHasExtraOwnProperty(compartment, objKey, id))
+        if (ObjectHasExtraOwnProperty(realm, objKey, id))
             return nullptr;
 
         obj = checkNurseryObject(obj->staticPrototype());
@@ -7113,7 +7119,7 @@ IonBuilder::testSingletonPropertyTypes(MDefinition* obj, jsid id)
                 key->ensureTrackedProperty(analysisContext, id);
 
             const Class* clasp = key->clasp();
-            if (!ClassHasEffectlessLookup(clasp) || ObjectHasExtraOwnProperty(compartment, key, id))
+            if (!ClassHasEffectlessLookup(clasp) || ObjectHasExtraOwnProperty(realm, key, id))
                 return nullptr;
             if (key->unknownProperties())
                 return nullptr;
@@ -7169,7 +7175,7 @@ IonBuilder::testNotDefinedProperty(MDefinition* obj, jsid id, bool ownProperty /
                 return false;
 
             const Class* clasp = key->clasp();
-            if (!ClassHasEffectlessLookup(clasp) || ObjectHasExtraOwnProperty(compartment, key, id))
+            if (!ClassHasEffectlessLookup(clasp) || ObjectHasExtraOwnProperty(realm, key, id))
                 return false;
 
             // If the object is a singleton, we can do a lookup now to avoid
@@ -7446,7 +7452,7 @@ IonBuilder::loadStaticSlot(JSObject* staticObject, BarrierKind barrier, Temporar
 bool
 IonBuilder::needsPostBarrier(MDefinition* value)
 {
-    CompileZone* zone = compartment->zone();
+    CompileZone* zone = realm->zone();
     if (!zone->nurseryExists())
         return false;
     if (value->mightBeType(MIRType::Object))
@@ -7573,11 +7579,11 @@ IonBuilder::jsop_getgname(PropertyName* name)
         return Ok();
     }
     if (name == names().NaN) {
-        pushConstant(compartment->runtime()->NaNValue());
+        pushConstant(realm->runtime()->NaNValue());
         return Ok();
     }
     if (name == names().Infinity) {
-        pushConstant(compartment->runtime()->positiveInfinityValue());
+        pushConstant(realm->runtime()->positiveInfinityValue());
         return Ok();
     }
 
@@ -7953,7 +7959,7 @@ IonBuilder::getElemTryReferenceElemOfTypedObject(bool* emitted,
 {
     MOZ_ASSERT(objPrediction.ofArrayKind());
 
-    ReferenceTypeDescr::Type elemType = elemPrediction.referenceType();
+    ReferenceType elemType = elemPrediction.referenceType();
     uint32_t elemSize = ReferenceTypeDescr::size(elemType);
 
     LinearSum indexAsByteOffset(alloc());
@@ -8011,7 +8017,7 @@ IonBuilder::pushScalarLoadFromTypedObject(MDefinition* obj,
 AbortReasonOr<Ok>
 IonBuilder::pushReferenceLoadFromTypedObject(MDefinition* typedObj,
                                              const LinearSum& byteOffset,
-                                             ReferenceTypeDescr::Type type,
+                                             ReferenceType type,
                                              PropertyName* name)
 {
     // Find location within the owner object.
@@ -8028,7 +8034,7 @@ IonBuilder::pushReferenceLoadFromTypedObject(MDefinition* typedObj,
                                                        typedObj, name, observedTypes);
 
     switch (type) {
-      case ReferenceTypeDescr::TYPE_ANY: {
+      case ReferenceType::TYPE_ANY: {
         // Make sure the barrier reflects the possibility of reading undefined.
         bool bailOnUndefined = barrier == BarrierKind::NoBarrier &&
                                !observedTypes->hasType(TypeSet::UndefinedType());
@@ -8037,7 +8043,7 @@ IonBuilder::pushReferenceLoadFromTypedObject(MDefinition* typedObj,
         load = MLoadElement::New(alloc(), elements, scaledOffset, false, false, adjustment);
         break;
       }
-      case ReferenceTypeDescr::TYPE_OBJECT: {
+      case ReferenceType::TYPE_OBJECT: {
         // Make sure the barrier reflects the possibility of reading null. When
         // there is no other barrier needed we include the null bailout with
         // MLoadUnboxedObjectOrNull, which avoids the need to box the result
@@ -8051,7 +8057,7 @@ IonBuilder::pushReferenceLoadFromTypedObject(MDefinition* typedObj,
                                              adjustment);
         break;
       }
-      case ReferenceTypeDescr::TYPE_STRING: {
+      case ReferenceType::TYPE_STRING: {
         load = MLoadUnboxedString::New(alloc(), elements, scaledOffset, adjustment);
         observedTypes->addType(TypeSet::StringType(), alloc().lifoAlloc());
         break;
@@ -8950,7 +8956,7 @@ IonBuilder::setElemTryReferenceElemOfTypedObject(bool* emitted,
                                                  MDefinition* value,
                                                  TypedObjectPrediction elemPrediction)
 {
-    ReferenceTypeDescr::Type elemType = elemPrediction.referenceType();
+    ReferenceType elemType = elemPrediction.referenceType();
     uint32_t elemSize = ReferenceTypeDescr::size(elemType);
 
     LinearSum indexAsByteOffset(alloc());
@@ -9144,13 +9150,19 @@ IonBuilder::initOrSetElemDense(TemporaryTypeSet::DoubleConversion conversion,
     bool hasExtraIndexedProperty;
     MOZ_TRY_VAR(hasExtraIndexedProperty, ElementAccessHasExtraIndexedProperty(this, obj));
 
-    bool mayBeFrozen = ElementAccessMightBeFrozen(constraints(), obj);
+    bool mayBeNonExtensible = ElementAccessMightBeNonExtensible(constraints(), obj);
 
-    if (mayBeFrozen && hasExtraIndexedProperty) {
+    if (mayBeNonExtensible) {
         // FallibleStoreElement does not know how to deal with extra indexed
         // properties on the prototype. This case should be rare so we fall back
         // to an IC.
-        return Ok();
+        if (hasExtraIndexedProperty)
+            return Ok();
+
+        // Don't optimize INITELEM (DefineProperty) on potentially non-extensible
+        // objects: when the array is sealed, we have to throw an exception.
+        if (IsPropertyInitOp(JSOp(*pc)))
+            return Ok();
     }
 
     *emitted = true;
@@ -9199,23 +9211,23 @@ IonBuilder::initOrSetElemDense(TemporaryTypeSet::DoubleConversion conversion,
     // Use MStoreElementHole if this SETELEM has written to out-of-bounds
     // indexes in the past. Otherwise, use MStoreElement so that we can hoist
     // the initialized length and bounds check.
-    // If an object may have been frozen, no previous expectation hold and we
-    // fallback to MFallibleStoreElement.
+    // If an object may have been made non-extensible, no previous expectations
+    // hold and we fallback to MFallibleStoreElement.
     MInstruction* store;
     MStoreElementCommon* common = nullptr;
-    if (writeHole && !hasExtraIndexedProperty && !mayBeFrozen) {
+    if (writeHole && !hasExtraIndexedProperty && !mayBeNonExtensible) {
         MStoreElementHole* ins = MStoreElementHole::New(alloc(), obj, elements, id, newValue);
         store = ins;
         common = ins;
 
         current->add(ins);
-    } else if (mayBeFrozen) {
+    } else if (mayBeNonExtensible) {
         MOZ_ASSERT(!hasExtraIndexedProperty,
                    "FallibleStoreElement codegen assumes no extra indexed properties");
 
-        bool strict = IsStrictSetPC(pc);
+        bool needsHoleCheck = !packed;
         MFallibleStoreElement* ins = MFallibleStoreElement::New(alloc(), obj, elements, id,
-                                                                newValue, strict);
+                                                                newValue, needsHoleCheck);
         store = ins;
         common = ins;
 
@@ -9773,7 +9785,7 @@ IonBuilder::commonPrototypeWithGetterSetter(TemporaryTypeSet* types, PropertyNam
             if (!ClassHasEffectlessLookup(clasp))
                 return nullptr;
             JSObject* singleton = key->isSingleton() ? key->singleton() : nullptr;
-            if (ObjectHasExtraOwnProperty(compartment, key, NameToId(name))) {
+            if (ObjectHasExtraOwnProperty(realm, key, NameToId(name))) {
                 if (!singleton || !singleton->is<GlobalObject>())
                     return nullptr;
                 *guardGlobal = true;
@@ -9980,7 +9992,7 @@ IonBuilder::annotateGetPropertyCache(MDefinition* obj, PropertyName* name,
         JSObject* proto = checkNurseryObject(key->proto().toObject());
 
         const Class* clasp = key->clasp();
-        if (!ClassHasEffectlessLookup(clasp) || ObjectHasExtraOwnProperty(compartment, key, NameToId(name)))
+        if (!ClassHasEffectlessLookup(clasp) || ObjectHasExtraOwnProperty(realm, key, NameToId(name)))
             continue;
 
         HeapTypeSetKey ownTypes = key->property(NameToId(name));
@@ -10598,7 +10610,7 @@ IonBuilder::getPropTryReferencePropOfTypedObject(bool* emitted, MDefinition* typ
                                                  TypedObjectPrediction fieldPrediction,
                                                  PropertyName* name)
 {
-    ReferenceTypeDescr::Type fieldType = fieldPrediction.referenceType();
+    ReferenceType fieldType = fieldPrediction.referenceType();
 
     TypeSet::ObjectKey* globalKey = TypeSet::ObjectKey::get(&script()->global());
     if (globalKey->hasFlags(constraints(), OBJECT_FLAG_TYPED_OBJECT_HAS_DETACHED_BUFFER))
@@ -11713,7 +11725,7 @@ IonBuilder::setPropTryReferencePropOfTypedObject(bool* emitted,
                                                  TypedObjectPrediction fieldPrediction,
                                                  PropertyName* name)
 {
-    ReferenceTypeDescr::Type fieldType = fieldPrediction.referenceType();
+    ReferenceType fieldType = fieldPrediction.referenceType();
 
     TypeSet::ObjectKey* globalKey = TypeSet::ObjectKey::get(&script()->global());
     if (globalKey->hasFlags(constraints(), OBJECT_FLAG_TYPED_OBJECT_HAS_DETACHED_BUFFER))
@@ -12115,7 +12127,7 @@ IonBuilder::jsop_object(JSObject* obj)
         return resumeAfter(clone);
     }
 
-    compartment->setSingletonsAsValues();
+    realm->setSingletonsAsValues();
     pushConstant(ObjectValue(*obj));
     return Ok();
 }
@@ -13039,7 +13051,7 @@ IonBuilder::jsop_instanceof()
         // If the user has supplied their own @@hasInstance method we shouldn't
         // clobber it.
         JSFunction* fun = &rhsObject->as<JSFunction>();
-        const WellKnownSymbols* symbols = &compartment->runtime()->wellKnownSymbols();
+        const WellKnownSymbols* symbols = &realm->runtime()->wellKnownSymbols();
         if (!js::FunctionHasDefaultHasInstance(fun, *symbols))
             break;
 
@@ -13140,6 +13152,21 @@ IonBuilder::jsop_implicitthis(PropertyName* name)
     current->push(implicitThis);
 
     return resumeAfter(implicitThis);
+}
+
+AbortReasonOr<Ok>
+IonBuilder::jsop_importmeta()
+{
+    ModuleObject* module = GetModuleObjectForScript(script());
+    MOZ_ASSERT(module);
+
+    // The object must have been created already when we compiled for baseline.
+    JSObject* metaObject = module->metaObject();
+    MOZ_ASSERT(metaObject);
+
+    pushConstant(ObjectValue(*metaObject));
+
+    return Ok();
 }
 
 MInstruction*
@@ -13543,7 +13570,7 @@ AbortReasonOr<Ok>
 IonBuilder::setPropTryReferenceTypedObjectValue(bool* emitted,
                                                 MDefinition* typedObj,
                                                 const LinearSum& byteOffset,
-                                                ReferenceTypeDescr::Type type,
+                                                ReferenceType type,
                                                 MDefinition* value,
                                                 PropertyName* name)
 {
@@ -13551,11 +13578,11 @@ IonBuilder::setPropTryReferenceTypedObjectValue(bool* emitted,
 
     // Make sure we aren't adding new type information for writes of object and value
     // references.
-    if (type != ReferenceTypeDescr::TYPE_STRING) {
-        MOZ_ASSERT(type == ReferenceTypeDescr::TYPE_ANY ||
-                   type == ReferenceTypeDescr::TYPE_OBJECT);
+    if (type != ReferenceType::TYPE_STRING) {
+        MOZ_ASSERT(type == ReferenceType::TYPE_ANY ||
+                   type == ReferenceType::TYPE_OBJECT);
         MIRType implicitType =
-            (type == ReferenceTypeDescr::TYPE_ANY) ? MIRType::Undefined : MIRType::Null;
+            (type == ReferenceType::TYPE_ANY) ? MIRType::Undefined : MIRType::Null;
 
         if (PropertyWriteNeedsTypeBarrier(alloc(), constraints(), current, &typedObj, name, &value,
                                           /* canModify = */ true, implicitType))
@@ -13575,20 +13602,20 @@ IonBuilder::setPropTryReferenceTypedObjectValue(bool* emitted,
 
     MInstruction* store = nullptr;  // initialize to silence GCC warning
     switch (type) {
-      case ReferenceTypeDescr::TYPE_ANY:
+      case ReferenceType::TYPE_ANY:
         if (needsPostBarrier(value))
             current->add(MPostWriteBarrier::New(alloc(), typedObj, value));
         store = MStoreElement::New(alloc(), elements, scaledOffset, value, false, adjustment);
         store->toStoreElement()->setNeedsBarrier();
         break;
-      case ReferenceTypeDescr::TYPE_OBJECT:
+      case ReferenceType::TYPE_OBJECT:
         // Note: We cannot necessarily tell at this point whether a post
         // barrier is needed, because the type policy may insert ToObjectOrNull
         // instructions later, and those may require a post barrier. Therefore,
         // defer the insertion of post barriers to the type policy.
         store = MStoreUnboxedObjectOrNull::New(alloc(), elements, scaledOffset, value, typedObj, adjustment);
         break;
-      case ReferenceTypeDescr::TYPE_STRING:
+      case ReferenceType::TYPE_STRING:
         // See previous comment. The StoreUnboxedString type policy may insert
         // ToString instructions that require a post barrier.
         store = MStoreUnboxedString::New(alloc(), elements, scaledOffset, value, typedObj, adjustment);
@@ -13611,7 +13638,7 @@ IonBuilder::checkNurseryObject(JSObject* obj)
     // GC. All constants used during compilation should either go through this
     // function or should come from a type set (which has a similar barrier).
     if (obj && IsInsideNursery(obj)) {
-        compartment->zone()->setMinorGCShouldCancelIonCompilations();
+        realm->zone()->setMinorGCShouldCancelIonCompilations();
         IonBuilder* builder = this;
         while (builder) {
             builder->setNotSafeForMinorGC();
@@ -13723,7 +13750,7 @@ IonBuilder::convertToBoolean(MDefinition* input)
 void
 IonBuilder::trace(JSTracer* trc)
 {
-    if (!compartment->runtime()->runtimeMatches(trc->runtime()))
+    if (!realm->runtime()->runtimeMatches(trc->runtime()))
         return;
 
     MOZ_ASSERT(rootList_);

@@ -22,10 +22,10 @@
 #include "vm/JSObject.h"
 
 #include "vm/Caches-inl.h"
-#include "vm/JSCompartment-inl.h"
 #include "vm/JSContext-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
+#include "vm/Realm-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -541,6 +541,21 @@ Shape::updateDictionaryTable(ShapeTable* table, ShapeTable::Entry* entry,
     parent->handoffTableTo(this);
 }
 
+static void
+AssertValidPropertyOp(NativeObject* obj, GetterOp getter, SetterOp setter, unsigned attrs)
+{
+    // We only support PropertyOp accessors on ArrayObject and ArgumentsObject
+    // and we don't want to add more of these properties (bug 1404885).
+
+#ifdef DEBUG
+    if ((getter && !(attrs & JSPROP_GETTER)) ||
+        (setter && !(attrs & JSPROP_SETTER)))
+    {
+        MOZ_ASSERT(obj->is<ArrayObject>() || obj->is<ArgumentsObject>());
+    }
+#endif
+}
+
 /* static */ Shape*
 NativeObject::addAccessorPropertyInternal(JSContext* cx,
                                           HandleNativeObject obj, HandleId id,
@@ -550,6 +565,8 @@ NativeObject::addAccessorPropertyInternal(JSContext* cx,
 {
     AutoCheckShapeConsistency check(obj);
     AutoRooterGetterSetter gsRoot(cx, attrs, &getter, &setter);
+
+    AssertValidPropertyOp(obj, getter, setter, attrs);
 
     if (!maybeConvertToOrGrowDictionaryForAdd(cx, obj, id, &table, &entry, keep))
         return nullptr;
@@ -881,7 +898,8 @@ NativeObject::putDataProperty(JSContext* cx, HandleNativeObject obj, HandleId id
         }
 
         if (!shape) {
-            MOZ_ASSERT(obj->nonProxyIsExtensible(),
+            MOZ_ASSERT(obj->isExtensible() ||
+                       (JSID_IS_INT(id) && obj->containsDenseElement(JSID_TO_INT(id))),
                        "Can't add new property to non-extensible object");
             return addDataPropertyInternal(cx, obj, id, SHAPE_INVALID_SLOT, attrs, table, entry,
                                            keep);
@@ -971,6 +989,7 @@ NativeObject::putAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleI
 
     AutoCheckShapeConsistency check(obj);
     AssertValidArrayIndex(obj, id);
+    AssertValidPropertyOp(obj, getter, setter, attrs);
 
     AutoRooterGetterSetter gsRoot(cx, attrs, &getter, &setter);
 
@@ -987,7 +1006,8 @@ NativeObject::putAccessorProperty(JSContext* cx, HandleNativeObject obj, HandleI
         }
 
         if (!shape) {
-            MOZ_ASSERT(obj->nonProxyIsExtensible(),
+            MOZ_ASSERT(obj->isExtensible() ||
+                       (JSID_IS_INT(id) && obj->containsDenseElement(JSID_TO_INT(id))),
                        "Can't add new property to non-extensible object");
             return addAccessorPropertyInternal(cx, obj, id, getter, setter, attrs, table, entry,
                                                keep);
@@ -2019,7 +2039,7 @@ Shape::dumpSubtree(int level, js::GenericPrinter& out) const
 #endif
 
 static bool
-IsOriginalProto(GlobalObject* global, JSProtoKey key, JSObject& proto)
+IsOriginalProto(GlobalObject* global, JSProtoKey key, NativeObject& proto)
 {
     if (global->getPrototype(key) != ObjectValue(proto))
         return false;
@@ -2049,9 +2069,9 @@ IsOriginalProto(GlobalObject* global, JSProtoKey key, JSObject& proto)
 static JSProtoKey
 GetInitialShapeProtoKey(TaggedProto proto, JSContext* cx)
 {
-    if (proto.isObject() && proto.toObject()->hasStaticPrototype()) {
+    if (proto.isObject() && proto.toObject()->isNative()) {
         GlobalObject* global = cx->global();
-        JSObject& obj = *proto.toObject();
+        NativeObject& obj = proto.toObject()->as<NativeObject>();
         MOZ_ASSERT(global == &obj.global());
 
         if (IsOriginalProto(global, JSProto_Object, obj))
@@ -2158,8 +2178,8 @@ NewObjectCache::invalidateEntriesForShape(JSContext* cx, HandleShape shape, Hand
     }
 
     EntryIndex entry;
-    for (CompartmentsInZoneIter comp(shape->zone()); !comp.done(); comp.next()) {
-        if (GlobalObject* global = comp->unsafeUnbarrieredMaybeGlobal()) {
+    for (RealmsInZoneIter realm(shape->zone()); !realm.done(); realm.next()) {
+        if (GlobalObject* global = realm->unsafeUnbarrieredMaybeGlobal()) {
             if (lookupGlobal(clasp, global, kind, &entry))
                 PodZero(&entries[entry]);
         }

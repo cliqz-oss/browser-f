@@ -134,7 +134,30 @@ AnimationSurfaceProvider::DrawableRef(size_t aFrame)
     return DrawableFrameRef();
   }
 
-  return mFrames.Get(aFrame);
+  imgFrame* frame = mFrames.Get(aFrame);
+  if (!frame) {
+    return DrawableFrameRef();
+  }
+
+  return frame->DrawableRef();
+}
+
+RawAccessFrameRef
+AnimationSurfaceProvider::RawAccessRef(size_t aFrame)
+{
+  MutexAutoLock lock(mFramesMutex);
+
+  if (Availability().IsPlaceholder()) {
+    MOZ_ASSERT_UNREACHABLE("Calling RawAccessRef() on a placeholder");
+    return RawAccessFrameRef();
+  }
+
+  imgFrame* frame = mFrames.Get(aFrame);
+  if (!frame) {
+    return RawAccessFrameRef();
+  }
+
+  return frame->RawAccessRef(/* aOnlyFinished */ true);
 }
 
 bool
@@ -288,7 +311,7 @@ AnimationSurfaceProvider::CheckForNewFrameAtYield()
                   mFrames.Frames().LastElement().get() != frame.get());
 
     // Append the new frame to the list.
-    continueDecoding = mFrames.Insert(Move(frame));
+    continueDecoding = mFrames.Insert(std::move(frame));
 
     // We only want to handle the first frame if it is the first pass for the
     // animation decoder. The owning image will be cleared after that.
@@ -338,7 +361,7 @@ AnimationSurfaceProvider::CheckForNewFrameAtTerminalState()
     }
 
     // Append the new frame to the list.
-    mFrames.Insert(Move(frame));
+    mFrames.Insert(std::move(frame));
     continueDecoding = mFrames.MarkComplete();
 
     // We only want to handle the first frame if it is the first pass for the

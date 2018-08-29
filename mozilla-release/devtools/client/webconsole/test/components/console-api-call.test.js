@@ -33,7 +33,7 @@ describe("ConsoleAPICall component:", () => {
 
       expect(wrapper.find(".message-body").text()).toBe("foobar test");
       expect(wrapper.find(".objectBox-string").length).toBe(2);
-      let selector = "div.message.cm-s-mozilla span span.message-flex-body " +
+      const selector = "div.message.cm-s-mozilla span span.message-flex-body " +
         "span.message-body.devtools-monospace";
       expect(wrapper.find(selector).length).toBe(1);
 
@@ -130,7 +130,7 @@ describe("ConsoleAPICall component:", () => {
       expect(wrapper.find(".message-repeats").text()).toBe("107");
       expect(wrapper.find(".message-repeats").prop("title")).toBe("107 repeats");
 
-      let selector = "span > span.message-flex-body > " +
+      const selector = "span > span.message-flex-body > " +
         "span.message-body.devtools-monospace + span.message-repeats";
       expect(wrapper.find(selector).length).toBe(1);
     });
@@ -202,6 +202,12 @@ describe("ConsoleAPICall component:", () => {
       }, {
         key: "console.count | test counter: 3",
         expectedBodyText: "test counter: 3",
+      }, {
+        key: "console.countReset | test counter: 0",
+        expectedBodyText: "test counter: 0",
+      }, {
+        key: "console.countReset | counterDoesntExist",
+        expectedBodyText: "Counter “test counter” doesn’t exist.",
       }];
 
       for (const {key, expectedBodyText} of messages) {
@@ -239,6 +245,27 @@ describe("ConsoleAPICall component:", () => {
     });
   });
 
+  describe("console.timeLog", () => {
+    it("renders as expected", () => {
+      let message = stubPreparedMessages.get("console.timeLog('bar') - 1");
+      let wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+
+      expect(wrapper.find(".message-body").text()).toBe(message.parameters[0]);
+      expect(wrapper.find(".message-body").text()).toMatch(/^bar: \d+(\.\d+)?ms$/);
+
+      message = stubPreparedMessages.get("console.timeLog('bar') - 2");
+      wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+      expect(wrapper.find(".message-body").text())
+        .toMatch(/^bar: \d+(\.\d+)?ms second call Object \{ state\: 1 \}$/);
+    });
+    it("shows an error if the timer doesn't exist", () => {
+      const message = stubPreparedMessages.get("timeLog.timerDoesntExist");
+      const wrapper = render(ConsoleApiCall({ message, serviceContainer }));
+
+      expect(wrapper.find(".message-body").text()).toBe("Timer “bar” doesn’t exist.");
+    });
+  });
+
   describe("console.timeEnd", () => {
     it("renders as expected", () => {
       const message = stubPreparedMessages.get("console.timeEnd('bar')");
@@ -248,7 +275,7 @@ describe("ConsoleAPICall component:", () => {
       expect(wrapper.find(".message-body").text()).toMatch(/^bar: \d+(\.\d+)?ms$/);
     });
     it("shows an error if the timer doesn't exist", () => {
-      const message = stubPreparedMessages.get("timerDoesntExist");
+      const message = stubPreparedMessages.get("timeEnd.timerDoesntExist");
       const wrapper = render(ConsoleApiCall({ message, serviceContainer }));
 
       expect(wrapper.find(".message-body").text()).toBe("Timer “bar” doesn’t exist.");
@@ -399,7 +426,7 @@ describe("ConsoleAPICall component:", () => {
       store.dispatch = sinon.spy();
       const message = stubPreparedMessages.get("console.group('bar')");
 
-      let wrapper = mount(Provider({store},
+      const wrapper = mount(Provider({store},
         ConsoleApiCall({
           message,
           open: true,
@@ -408,7 +435,7 @@ describe("ConsoleAPICall component:", () => {
         })
       ));
       wrapper.find(".frame-link-source").simulate("click");
-      let call = store.dispatch.getCall(0);
+      const call = store.dispatch.getCall(0);
       expect(call).toNotExist();
     });
   });

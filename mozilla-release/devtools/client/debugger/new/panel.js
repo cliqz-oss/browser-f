@@ -8,6 +8,7 @@ const { LocalizationHelper } = require("devtools/shared/l10n");
 const { gDevTools } = require("devtools/client/framework/devtools");
 const { TargetFactory } = require("devtools/client/framework/target");
 const { Toolbox } = require("devtools/client/framework/toolbox");
+loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
 
 const DBG_STRINGS_URI = "devtools/client/locales/debugger.properties";
 const L10N = new LocalizationHelper(DBG_STRINGS_URI);
@@ -63,38 +64,15 @@ DebuggerPanel.prototype = {
   },
 
   openLink: function(url) {
-    const parentDoc = this.toolbox.doc;
-    if (!parentDoc) {
-      return;
-    }
-
-    const win = parentDoc.querySelector("window");
-    if (!win) {
-      return;
-    }
-
-    const top = win.ownerDocument.defaultView.top;
-    if (!top || typeof top.openWebLink !== "function") {
-      return;
-    }
-
-    top.openWebLinkIn(url, "tab", {
-      triggeringPrincipal: win.document.nodePrincipal
-    });
+    openContentLink(url);
   },
 
-  openWorkerToolbox: function(worker) {
-    this.toolbox.target.client.attachWorker(
-      worker.actor,
-      (response, workerClient) => {
-        const workerTarget = TargetFactory.forWorker(workerClient);
-        gDevTools
-          .showToolbox(workerTarget, "jsdebugger", Toolbox.HostType.WINDOW)
-          .then(toolbox => {
-            toolbox.once("destroy", () => workerClient.detach());
-          });
-      }
-    );
+  openWorkerToolbox: async function(worker) {
+    const [response, workerClient] =
+      await this.toolbox.target.client.attachWorker(worker.actor);
+    const workerTarget = TargetFactory.forWorker(workerClient);
+    const toolbox = await gDevTools.showToolbox(workerTarget, "jsdebugger", Toolbox.HostType.WINDOW);
+    toolbox.once("destroy", () => workerClient.detach());
   },
 
   getFrames: function() {

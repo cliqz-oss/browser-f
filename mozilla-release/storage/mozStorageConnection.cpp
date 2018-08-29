@@ -570,7 +570,7 @@ NS_INTERFACE_MAP_END
 // extra |1 == count| case.
 NS_IMETHODIMP_(MozExternalRefCountType) Connection::Release(void)
 {
-  NS_PRECONDITION(0 != mRefCnt, "dup release");
+  MOZ_ASSERT(0 != mRefCnt, "dup release");
   nsrefcnt count = --mRefCnt;
   NS_LOG_RELEASE(this, count, "Connection");
   if (1 == count) {
@@ -672,7 +672,7 @@ Connection::initialize()
 {
   NS_ASSERTION (!mDBConn, "Initialize called on already opened database!");
   MOZ_ASSERT(!mIgnoreLockingMode, "Can't ignore locking on an in-memory db.");
-  AUTO_PROFILER_LABEL("Connection::initialize", STORAGE);
+  AUTO_PROFILER_LABEL("Connection::initialize", OTHER);
 
   // in memory database requested, sqlite uses a magic file name
   int srv = ::sqlite3_open_v2(":memory:", &mDBConn, mFlags, GetVFSName());
@@ -695,7 +695,7 @@ Connection::initialize(nsIFile *aDatabaseFile)
 {
   NS_ASSERTION (aDatabaseFile, "Passed null file!");
   NS_ASSERTION (!mDBConn, "Initialize called on already opened database!");
-  AUTO_PROFILER_LABEL("Connection::initialize", STORAGE);
+  AUTO_PROFILER_LABEL("Connection::initialize", OTHER);
 
   mDatabaseFile = aDatabaseFile;
 
@@ -732,7 +732,7 @@ Connection::initialize(nsIFileURL *aFileURL)
 {
   NS_ASSERTION (aFileURL, "Passed null file URL!");
   NS_ASSERTION (!mDBConn, "Initialize called on already opened database!");
-  AUTO_PROFILER_LABEL("Connection::initialize", STORAGE);
+  AUTO_PROFILER_LABEL("Connection::initialize", OTHER);
 
   nsCOMPtr<nsIFile> databaseFile;
   nsresult rv = aFileURL->GetFile(getter_AddRefs(databaseFile));
@@ -1166,6 +1166,10 @@ int
 Connection::stepStatement(sqlite3 *aNativeConnection, sqlite3_stmt *aStatement)
 {
   MOZ_ASSERT(aStatement);
+
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("Connection::stepStatement", OTHER,
+                                   ::sqlite3_sql(aStatement));
+
   bool checkedMainThread = false;
   TimeStamp startTime = TimeStamp::Now();
 
@@ -1278,6 +1282,8 @@ Connection::executeSql(sqlite3 *aNativeConnection, const char *aSqlString)
 {
   if (!isConnectionReadyOnThisThread())
     return SQLITE_MISUSE;
+
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("Connection::executeSql", OTHER, aSqlString);
 
   TimeStamp startTime = TimeStamp::Now();
   int srv = ::sqlite3_exec(aNativeConnection, aSqlString, nullptr, nullptr,
@@ -1489,7 +1495,7 @@ NS_IMETHODIMP
 Connection::AsyncClone(bool aReadOnly,
                        mozIStorageCompletionCallback *aCallback)
 {
-  AUTO_PROFILER_LABEL("Connection::AsyncClone", STORAGE);
+  AUTO_PROFILER_LABEL("Connection::AsyncClone", OTHER);
 
   NS_ENSURE_TRUE(NS_IsMainThread(), NS_ERROR_NOT_SAME_THREAD);
   if (!mDBConn)
@@ -1677,7 +1683,7 @@ Connection::Clone(bool aReadOnly,
 {
   MOZ_ASSERT(threadOpenedOn == NS_GetCurrentThread());
 
-  AUTO_PROFILER_LABEL("Connection::Clone", STORAGE);
+  AUTO_PROFILER_LABEL("Connection::Clone", OTHER);
 
   if (!mDBConn)
     return NS_ERROR_NOT_INITIALIZED;

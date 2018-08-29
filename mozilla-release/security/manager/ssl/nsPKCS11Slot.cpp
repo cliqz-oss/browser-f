@@ -27,6 +27,9 @@ nsPKCS11Slot::nsPKCS11Slot(PK11SlotInfo* slot)
 {
   MOZ_ASSERT(slot);
   mSlot.reset(PK11_ReferenceSlot(slot));
+  mIsInternalCryptoSlot = PK11_IsInternal(mSlot.get()) &&
+                          !PK11_IsInternalKeySlot(mSlot.get());
+  mIsInternalKeySlot = PK11_IsInternalKeySlot(mSlot.get());
   mSeries = PK11_GetSlotSeries(slot);
   Unused << refreshSlotInfo();
 }
@@ -41,18 +44,42 @@ nsPKCS11Slot::refreshSlotInfo()
   }
 
   // Set the Description field
-  const char* ccDesc =
-    mozilla::BitwiseCast<char*, CK_UTF8CHAR*>(slotInfo.slotDescription);
-  mSlotDesc.Assign(ccDesc, strnlen(ccDesc, sizeof(slotInfo.slotDescription)));
-  mSlotDesc.Trim(" ", false, true);
+  if (mIsInternalCryptoSlot) {
+    nsresult rv;
+    if (PK11_IsFIPS()) {
+      rv = GetPIPNSSBundleString("Fips140SlotDescription", mSlotDesc);
+    } else {
+      rv = GetPIPNSSBundleString("SlotDescription", mSlotDesc);
+    }
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  } else if (mIsInternalKeySlot) {
+    rv = GetPIPNSSBundleString("PrivateSlotDescription", mSlotDesc);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  } else {
+    const char* ccDesc =
+      mozilla::BitwiseCast<char*, CK_UTF8CHAR*>(slotInfo.slotDescription);
+    mSlotDesc.Assign(ccDesc, strnlen(ccDesc, sizeof(slotInfo.slotDescription)));
+    mSlotDesc.Trim(" ", false, true);
+  }
 
   // Set the Manufacturer field
-  const char* ccManID =
-    mozilla::BitwiseCast<char*, CK_UTF8CHAR*>(slotInfo.manufacturerID);
-  mSlotManufacturerID.Assign(
-    ccManID,
-    strnlen(ccManID, sizeof(slotInfo.manufacturerID)));
-  mSlotManufacturerID.Trim(" ", false, true);
+  if (mIsInternalCryptoSlot || mIsInternalKeySlot) {
+    rv = GetPIPNSSBundleString("ManufacturerID", mSlotManufacturerID);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  } else {
+    const char* ccManID =
+      mozilla::BitwiseCast<char*, CK_UTF8CHAR*>(slotInfo.manufacturerID);
+    mSlotManufacturerID.Assign(
+      ccManID,
+      strnlen(ccManID, sizeof(slotInfo.manufacturerID)));
+    mSlotManufacturerID.Trim(" ", false, true);
+  }
 
   // Set the Hardware Version field
   mSlotHWVersion.Truncate();
@@ -87,19 +114,16 @@ nsPKCS11Slot::GetAttributeHelper(const nsACString& attribute,
 NS_IMETHODIMP
 nsPKCS11Slot::GetName(/*out*/ nsACString& name)
 {
-  // |csn| is non-owning.
-  char* csn = PK11_GetSlotName(mSlot.get());
-  if (csn && *csn) {
-    name = csn;
-  } else if (PK11_HasRootCerts(mSlot.get())) {
-    // This is a workaround to an Root Module bug - the root certs module has
-    // no slot name.  Not bothering to localize, because this is a workaround
-    // and for now all the slot names returned by NSS are char * anyway.
-    name = NS_LITERAL_CSTRING("Root Certificates");
-  } else {
-    // same as above, this is a catch-all
-    name = NS_LITERAL_CSTRING("Unnamed Slot");
+  if (mIsInternalCryptoSlot) {
+    if (PK11_IsFIPS()) {
+      return GetPIPNSSBundleString("Fips140TokenDescription", name);
+    }
+    return GetPIPNSSBundleString("TokenDescription", name);
   }
+  if (mIsInternalKeySlot) {
+    return GetPIPNSSBundleString("PrivateTokenDescription", name);
+  }
+  name.Assign(PK11_GetSlotName(mSlot.get()));
 
   return NS_OK;
 }
@@ -152,7 +176,17 @@ nsPKCS11Slot::GetTokenName(/*out*/ nsACString& tokenName)
     }
   }
 
-  tokenName = PK11_GetTokenName(mSlot.get());
+  if (mIsInternalCryptoSlot) {
+    if (PK11_IsFIPS()) {
+      return GetPIPNSSBundleString("Fips140TokenDescription", tokenName);
+    }
+    return GetPIPNSSBundleString("TokenDescription", tokenName);
+  }
+  if (mIsInternalKeySlot) {
+    return GetPIPNSSBundleString("PrivateTokenDescription", tokenName);
+  }
+
+  tokenName.Assign(PK11_GetTokenName(mSlot.get()));
   return NS_OK;
 }
 
@@ -185,11 +219,34 @@ nsPKCS11Module::nsPKCS11Module(SECMODModule* module)
   mModule.reset(SECMOD_ReferenceModule(module));
 }
 
+// Convert the UTF8 internal name of the module to how it should appear to the
+// user. In most cases this involves simply passing back the module's name.
+// However, the builtin roots module has a non-localized name internally that we
+// must map to the localized version when we display it to the user.
+static nsresult
+NormalizeModuleNameOut(const char* moduleNameIn, nsACString& moduleNameOut)
+{
+  // Easy case: this isn't the builtin roots module.
+  if (strnlen(moduleNameIn, kRootModuleNameLen + 1) != kRootModuleNameLen ||
+      strncmp(kRootModuleName, moduleNameIn, kRootModuleNameLen) != 0) {
+    moduleNameOut.Assign(moduleNameIn);
+    return NS_OK;
+  }
+
+  nsAutoString localizedRootModuleName;
+  nsresult rv = GetPIPNSSBundleString("RootCertModuleName",
+                                      localizedRootModuleName);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  moduleNameOut.Assign(NS_ConvertUTF16toUTF8(localizedRootModuleName));
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsPKCS11Module::GetName(/*out*/ nsACString& name)
 {
-  name = mModule->commonName;
-  return NS_OK;
+  return NormalizeModuleNameOut(mModule->commonName, name);
 }
 
 NS_IMETHODIMP
@@ -200,42 +257,6 @@ nsPKCS11Module::GetLibName(/*out*/ nsACString& libName)
   } else {
     libName.SetIsVoid(true);
   }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsPKCS11Module::FindSlotByName(const nsACString& name,
-                       /*out*/ nsIPKCS11Slot** _retval)
-{
-  NS_ENSURE_ARG_POINTER(_retval);
-
-  const nsCString& flatName = PromiseFlatCString(name);
-  MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("Getting \"%s\"", flatName.get()));
-  UniquePK11SlotInfo slotInfo;
-  UniquePK11SlotList slotList(PK11_FindSlotsByNames(mModule->dllName,
-                                                    flatName.get() /*slotName*/,
-                                                    nullptr /*tokenName*/,
-                                                    false));
-  if (!slotList) {
-    /* name must be the token name */
-    slotList.reset(PK11_FindSlotsByNames(mModule->dllName, nullptr /*slotName*/,
-                                         flatName.get() /*tokenName*/, false));
-  }
-  if (slotList && slotList->head && slotList->head->slot) {
-    slotInfo.reset(PK11_ReferenceSlot(slotList->head->slot));
-  }
-  if (!slotInfo) {
-    // workaround - the builtin module has no name
-    if (!flatName.EqualsLiteral("Root Certificates")) {
-      // Give up.
-      return NS_ERROR_FAILURE;
-    }
-
-    slotInfo.reset(PK11_ReferenceSlot(mModule->slots[0]));
-  }
-
-  nsCOMPtr<nsIPKCS11Slot> slot = new nsPKCS11Slot(slotInfo.get());
-  slot.forget(_retval);
   return NS_OK;
 }
 

@@ -15,6 +15,8 @@
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/StaticPtr.h"
 
+#include <thread>
+
 #if defined(XP_WIN)
 #include "mozilla/audio/AudioNotificationReceiver.h"
 #endif
@@ -135,6 +137,8 @@ public:
 
   /* Return whether we are switching or not. */
   bool Switching();
+  /* Implement the switching of the driver and the necessary updates */
+  void SwitchToNextDriver();
 
   // Those are simply or setting the associated pointer, but assert that the
   // lock is held.
@@ -207,10 +211,8 @@ protected:
   // Time of the end of this graph iteration. This must be accessed while having
   // the monitor.
   GraphTime mIterationEnd;
-  // The MediaStreamGraphImpl that owns this driver. This has a lifetime longer
-  // than the driver, and will never be null. Hence, it can be accesed without
-  // monitor.
-  MediaStreamGraphImpl* mGraphImpl;
+  // The MediaStreamGraphImpl associated with this driver.
+  const RefPtr<MediaStreamGraphImpl> mGraphImpl;
 
   // This is used on the main thread (during initialization), and the graph
   // thread. No monitor needed because we know the graph thread does not run
@@ -421,7 +423,7 @@ public:
 
   // These are invoked on the MSG thread (we don't call this if not LIFECYCLE_RUNNING)
   virtual void SetInputListener(AudioDataListener *aListener) {
-    MOZ_ASSERT(OnThread());
+    MOZ_ASSERT(!IsStarted());
     mAudioInput = aListener;
   }
   // XXX do we need the param?  probably no
@@ -446,12 +448,10 @@ public:
                                          void* aPromise,
                                          dom::AudioContextOperation aOperation);
 
-  /**
-   * Whether the audio callback is processing. This is for asserting only.
-   */
-  bool InCallback();
-
-  bool OnThread() override { return !mStarted || InCallback(); }
+  bool OnThread() override
+  {
+    return mAudioThreadId.load() == std::this_thread::get_id();
+  }
 
   /* Whether the underlying cubeb stream has been started. See comment for
    * mStarted for details. */
@@ -527,7 +527,7 @@ private:
    * driver back to a SystemClockDriver).
    * This is synchronized by the Graph's monitor.
    * */
-  bool mStarted;
+  Atomic<bool> mStarted;
   /* Listener for mic input, if any. */
   RefPtr<AudioDataListener> mAudioInput;
 
@@ -546,9 +546,9 @@ private:
   /* Used to queue us to add the mixer callback on first run. */
   bool mAddedMixer;
 
-  /* This is atomic and is set by the audio callback thread. It can be read by
-   * any thread safely. */
-  Atomic<bool> mInCallback;
+  /* Contains the id of the audio thread for as long as the callback
+   * is taking place, after that it is reseted to an invalid value. */
+  std::atomic<std::thread::id> mAudioThreadId;
   /**
    * True if microphone is being used by this process. This is synchronized by
    * the graph's monitor. */

@@ -19,7 +19,7 @@ BEGIN_TEST(testStructuredClone_object)
     JS::RootedValue v1(cx);
 
     {
-        JSAutoCompartment ac(cx, g1);
+        JSAutoRealm ar(cx, g1);
         JS::RootedValue prop(cx, JS::Int32Value(1337));
 
         JS::RootedObject obj(cx, JS_NewPlainObject(cx));
@@ -29,7 +29,7 @@ BEGIN_TEST(testStructuredClone_object)
     }
 
     {
-        JSAutoCompartment ac(cx, g2);
+        JSAutoRealm ar(cx, g2);
         JS::RootedValue v2(cx);
 
         CHECK(JS_StructuredClone(cx, v1, &v2, nullptr, nullptr));
@@ -57,7 +57,7 @@ BEGIN_TEST(testStructuredClone_string)
     JS::RootedValue v1(cx);
 
     {
-        JSAutoCompartment ac(cx, g1);
+        JSAutoRealm ar(cx, g1);
         JS::RootedValue prop(cx, JS::Int32Value(1337));
 
         v1 = JS::StringValue(JS_NewStringCopyZ(cx, "Hello World!"));
@@ -66,7 +66,7 @@ BEGIN_TEST(testStructuredClone_string)
     }
 
     {
-        JSAutoCompartment ac(cx, g2);
+        JSAutoRealm ar(cx, g2);
         JS::RootedValue v2(cx);
 
         CHECK(JS_StructuredClone(cx, v1, &v2, nullptr, nullptr));
@@ -84,7 +84,7 @@ END_TEST(testStructuredClone_string)
 
 BEGIN_TEST(testStructuredClone_externalArrayBuffer)
 {
-    RefCountedData data("One two three four");
+    ExternalData data("One two three four");
     JS::RootedObject g1(cx, createGlobal());
     JS::RootedObject g2(cx, createGlobal());
     CHECK(g1);
@@ -93,19 +93,18 @@ BEGIN_TEST(testStructuredClone_externalArrayBuffer)
     JS::RootedValue v1(cx);
 
     {
-        JSAutoCompartment ac(cx, g1);
+        JSAutoRealm ar(cx, g1);
 
         JS::RootedObject obj(cx, JS_NewExternalArrayBuffer(cx, data.len(), data.contents(),
-            &RefCountedData::incCallback, &RefCountedData::decCallback, &data));
-        data.decref();
-        CHECK_EQUAL(data.refcount(), size_t(1));
+            &ExternalData::freeCallback, &data));
+        CHECK(!data.wasFreed());
 
         v1 = JS::ObjectOrNullValue(obj);
         CHECK(v1.isObject());
     }
 
     {
-        JSAutoCompartment ac(cx, g2);
+        JSAutoRealm ar(cx, g2);
         JS::RootedValue v2(cx);
 
         CHECK(JS_StructuredClone(cx, v1, &v2, nullptr, nullptr));
@@ -120,11 +119,11 @@ BEGIN_TEST(testStructuredClone_externalArrayBuffer)
         js::GetArrayBufferLengthAndData(obj, &len, &isShared, &clonedData);
 
         // The contents of the two array buffers should be equal, but not the
-        // same pointer, and an extra reference should not be taken.
+        // same pointer.
         CHECK_EQUAL(len, data.len());
         CHECK(clonedData != data.contents());
         CHECK(strcmp(reinterpret_cast<char*>(clonedData), data.asString()) == 0);
-        CHECK_EQUAL(data.refcount(), size_t(1));
+        CHECK(!data.wasFreed());
     }
 
     // GC the array buffer before data goes out of scope
@@ -132,11 +131,66 @@ BEGIN_TEST(testStructuredClone_externalArrayBuffer)
     JS_GC(cx);
     JS_GC(cx); // Trigger another to wait for background finalization to end
 
-    CHECK_EQUAL(data.refcount(), size_t(0));
+    CHECK(data.wasFreed());
 
     return true;
 }
 END_TEST(testStructuredClone_externalArrayBuffer)
+
+BEGIN_TEST(testStructuredClone_externalArrayBufferDifferentThreadOrProcess)
+{
+    // SameProcessSameThread is tested above.
+    CHECK(testStructuredCloneCopy(JS::StructuredCloneScope::SameProcessDifferentThread));
+    CHECK(testStructuredCloneCopy(JS::StructuredCloneScope::DifferentProcess));
+    return true;
+}
+
+bool testStructuredCloneCopy(JS::StructuredCloneScope scope)
+{
+    ExternalData data("One two three four");
+    JS::RootedObject buffer(cx, JS_NewExternalArrayBuffer(cx, data.len(), data.contents(),
+        &ExternalData::freeCallback, &data));
+    CHECK(buffer);
+    CHECK(!data.wasFreed());
+
+    JS::RootedValue v1(cx, JS::ObjectValue(*buffer));
+    JS::RootedValue v2(cx);
+    CHECK(clone(scope, v1, &v2));
+    JS::RootedObject bufferOut(cx, v2.toObjectOrNull());
+    CHECK(bufferOut);
+    CHECK(JS_IsArrayBufferObject(bufferOut));
+
+    uint32_t len;
+    bool isShared;
+    uint8_t* clonedData;
+    js::GetArrayBufferLengthAndData(bufferOut, &len, &isShared, &clonedData);
+
+    // Cloning should copy the data, so the contents of the two array buffers
+    // should be equal, but not the same pointer.
+    CHECK_EQUAL(len, data.len());
+    CHECK(clonedData != data.contents());
+    CHECK(strcmp(reinterpret_cast<char*>(clonedData), data.asString()) == 0);
+    CHECK(!data.wasFreed());
+
+    buffer = nullptr;
+    bufferOut = nullptr;
+    v1.setNull();
+    v2.setNull();
+    JS_GC(cx);
+    JS_GC(cx);
+    CHECK(data.wasFreed());
+
+    return true;
+}
+
+bool clone(JS::StructuredCloneScope scope, JS::HandleValue v1, JS::MutableHandleValue v2)
+{
+    JSAutoStructuredCloneBuffer clonedBuffer(scope, nullptr, nullptr);
+    CHECK(clonedBuffer.write(cx, v1));
+    CHECK(clonedBuffer.read(cx, v2));
+    return true;
+}
+END_TEST(testStructuredClone_externalArrayBufferDifferentThreadOrProcess)
 
 struct StructuredCloneTestPrincipals final : public JSPrincipals {
     uint32_t rank;
@@ -211,11 +265,11 @@ BEGIN_TEST(testStructuredClone_SavedFrame)
     for (auto* pp = principalsToTest; pp->principals != DONE; pp++) {
         fprintf(stderr, "Testing with principals '%s'\n", pp->name);
 
-	JS::CompartmentOptions options;
+        JS::RealmOptions options;
         JS::RootedObject g(cx, JS_NewGlobalObject(cx, getGlobalClass(), pp->principals,
                                                   JS::FireOnNewGlobalHook, options));
         CHECK(g);
-        JSAutoCompartment ac(cx, g);
+        JSAutoRealm ar(cx, g);
 
         CHECK(js::DefineTestingFunctions(cx, g, false, false));
 

@@ -12,6 +12,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/FilePreferences.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -84,12 +85,13 @@ using namespace mozilla;
     do {                                        \
         if (mPath.IsEmpty())                    \
             return NS_ERROR_NOT_INITIALIZED;    \
+        if (!FilePreferences::IsAllowedPath(mPath)) \
+            return NS_ERROR_FILE_ACCESS_DENIED; \
     } while(0)
 
 /* directory enumerator */
 class nsDirEnumeratorUnix final
-  : public nsISimpleEnumerator
-  , public nsIDirectoryEnumerator
+  : public nsIDirectoryEnumerator
 {
 public:
   nsDirEnumeratorUnix();
@@ -138,6 +140,13 @@ nsDirEnumeratorUnix::Init(nsLocalFile* aParent,
   if (NS_FAILED(aParent->GetNativePath(dirPath)) ||
       dirPath.IsEmpty()) {
     return NS_ERROR_FILE_INVALID_PATH;
+  }
+
+  // When enumerating the directory, the paths must have a slash at the end.
+  nsAutoCString dirPathWithSlash(dirPath);
+  dirPathWithSlash.Append('/');
+  if (!FilePreferences::IsAllowedPath(dirPathWithSlash)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
   }
 
   if (NS_FAILED(aParent->GetNativePath(mParentPath))) {
@@ -224,10 +233,12 @@ nsDirEnumeratorUnix::Close()
 }
 
 nsLocalFile::nsLocalFile()
+  : mCachedStat()
 {
 }
 
 nsLocalFile::nsLocalFile(const nsACString& aFilePath)
+  : mCachedStat()
 {
   InitWithNativePath(aFilePath);
 }
@@ -269,6 +280,11 @@ nsLocalFile::nsLocalFileConstructor(nsISupports* aOuter,
 bool
 nsLocalFile::FillStatCache()
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    errno = EACCES;
+    return false;
+  }
+
   if (STAT(mPath.get(), &mCachedStat) == -1) {
     // try lstat it may be a symlink
     if (LSTAT(mPath.get(), &mCachedStat) == -1) {
@@ -311,6 +327,11 @@ nsLocalFile::InitWithNativePath(const nsACString& aFilePath)
     mPath = aFilePath;
   }
 
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    mPath.Truncate();
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
+
   // trim off trailing slashes
   ssize_t len = mPath.Length();
   while ((len > 1) && (mPath[len - 1] == '/')) {
@@ -324,6 +345,10 @@ nsLocalFile::InitWithNativePath(const nsACString& aFilePath)
 NS_IMETHODIMP
 nsLocalFile::CreateAllAncestors(uint32_t aPermissions)
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
+
   // <jband> I promise to play nice
   char* buffer = mPath.BeginWriting();
   char* slashp = buffer;
@@ -395,6 +420,9 @@ NS_IMETHODIMP
 nsLocalFile::OpenNSPRFileDesc(int32_t aFlags, int32_t aMode,
                               PRFileDesc** aResult)
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
   *aResult = PR_Open(mPath.get(), aFlags, aMode);
   if (!*aResult) {
     return NS_ErrorAccordingToNSPR();
@@ -416,6 +444,9 @@ nsLocalFile::OpenNSPRFileDesc(int32_t aFlags, int32_t aMode,
 NS_IMETHODIMP
 nsLocalFile::OpenANSIFileDesc(const char* aMode, FILE** aResult)
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
   *aResult = fopen(mPath.get(), aMode);
   if (!*aResult) {
     return NS_ERROR_FAILURE;
@@ -442,6 +473,10 @@ nsresult
 nsLocalFile::CreateAndKeepOpen(uint32_t aType, int aFlags,
                                uint32_t aPermissions, PRFileDesc** aResult)
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
+
   if (aType != NORMAL_FILE_TYPE && aType != DIRECTORY_TYPE) {
     return NS_ERROR_FILE_UNKNOWN_TYPE;
   }
@@ -491,6 +526,10 @@ nsLocalFile::CreateAndKeepOpen(uint32_t aType, int aFlags,
 NS_IMETHODIMP
 nsLocalFile::Create(uint32_t aType, uint32_t aPermissions)
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
+
   PRFileDesc* junk = nullptr;
   nsresult rv = CreateAndKeepOpen(aType,
                                   PR_WRONLY | PR_CREATE_FILE | PR_TRUNCATE |
@@ -545,6 +584,10 @@ nsLocalFile::Normalize()
 {
   char resolved_path[PATH_MAX] = "";
   char* resolved_path_ptr = nullptr;
+
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
 
   resolved_path_ptr = realpath(mPath.get(), resolved_path);
 
@@ -730,20 +773,13 @@ nsLocalFile::CopyDirectoryTo(nsIFile* aNewParent)
     }
   }
 
-  nsCOMPtr<nsISimpleEnumerator> dirIterator;
+  nsCOMPtr<nsIDirectoryEnumerator> dirIterator;
   if (NS_FAILED(rv = GetDirectoryEntries(getter_AddRefs(dirIterator)))) {
     return rv;
   }
 
-  bool hasMore = false;
-  while (NS_SUCCEEDED(dirIterator->HasMoreElements(&hasMore)) && hasMore) {
-    nsCOMPtr<nsISupports> supports;
-    nsCOMPtr<nsIFile> entry;
-    rv = dirIterator->GetNext(getter_AddRefs(supports));
-    entry = do_QueryInterface(supports);
-    if (NS_FAILED(rv) || !entry) {
-      continue;
-    }
+  nsCOMPtr<nsIFile> entry;
+  while (NS_SUCCEEDED(dirIterator->GetNextFile(getter_AddRefs(entry))) && entry) {
     if (NS_FAILED(rv = entry->IsSymlink(&isSymlink))) {
       return rv;
     }
@@ -1015,6 +1051,10 @@ nsLocalFile::MoveToNative(nsIFile* aNewParent, const nsACString& aNewName)
   rv = GetNativeTargetPathName(aNewParent, aNewName, newPathName);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+
+  if (!FilePreferences::IsAllowedPath(newPathName)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
   }
 
   // try for atomic rename, falling back to copy/delete
@@ -1850,7 +1890,7 @@ nsLocalFile::SetFollowLinks(bool aFollowLinks)
 }
 
 NS_IMETHODIMP
-nsLocalFile::GetDirectoryEntries(nsISimpleEnumerator** aEntries)
+nsLocalFile::GetDirectoryEntriesImpl(nsIDirectoryEnumerator** aEntries)
 {
   RefPtr<nsDirEnumeratorUnix> dir = new nsDirEnumeratorUnix();
 
@@ -1959,6 +1999,10 @@ nsLocalFile::SetPersistentDescriptor(const nsACString& aPersistentDescriptor)
 NS_IMETHODIMP
 nsLocalFile::Reveal()
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
+
 #ifdef MOZ_WIDGET_GTK
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (!giovfs) {
@@ -2002,6 +2046,10 @@ nsLocalFile::Reveal()
 NS_IMETHODIMP
 nsLocalFile::Launch()
 {
+  if (!FilePreferences::IsAllowedPath(mPath)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
+  }
+
 #ifdef MOZ_WIDGET_GTK
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (!giovfs) {
@@ -2154,6 +2202,10 @@ nsLocalFile::RenameToNative(nsIFile* aNewParentDir, const nsACString& aNewName)
   rv = GetNativeTargetPathName(aNewParentDir, aNewName, newPathName);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+
+  if (!FilePreferences::IsAllowedPath(newPathName)) {
+    return NS_ERROR_FILE_ACCESS_DENIED;
   }
 
   // try for atomic rename

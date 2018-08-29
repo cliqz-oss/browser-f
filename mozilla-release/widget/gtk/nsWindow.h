@@ -66,6 +66,21 @@ extern mozilla::LazyLogModule gWidgetDrawLog;
 
 #endif /* MOZ_LOGGING */
 
+#ifdef MOZ_WAYLAND
+class nsWaylandDragContext;
+
+gboolean
+WindowDragMotionHandler(GtkWidget *aWidget, GdkDragContext *aDragContext,
+                        nsWaylandDragContext *aWaylandDragContext,
+                        gint aX, gint aY, guint aTime);
+gboolean
+WindowDragDropHandler(GtkWidget *aWidget, GdkDragContext *aDragContext,
+                      nsWaylandDragContext *aWaylandDragContext, gint aX, gint aY,
+                      guint aTime);
+void
+WindowDragLeaveHandler(GtkWidget *aWidget);
+#endif
+
 class gfxPattern;
 
 namespace mozilla {
@@ -116,8 +131,7 @@ public:
                                          int32_t *aX,
                                          int32_t *aY) override;
     virtual void       SetSizeConstraints(const SizeConstraints& aConstraints) override;
-    virtual void       Move(double aX,
-                            double aY) override;
+    virtual void       Move(double aX, double aY) override;
     virtual void       Show             (bool aState) override;
     virtual void       Resize           (double aWidth,
                                          double aHeight,

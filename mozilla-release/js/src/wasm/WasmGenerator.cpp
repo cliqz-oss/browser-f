@@ -129,7 +129,7 @@ ModuleGenerator::~ModuleGenerator()
 
     // Propagate error state.
     if (error_ && !*error_)
-        *error_ = Move(taskState_.lock()->errorMessage);
+        *error_ = std::move(taskState_.lock()->errorMessage);
 }
 
 bool
@@ -169,16 +169,14 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
         metadata_->filename = DuplicateString(compileArgs_->scriptedCaller.filename.get());
         if (!metadata_->filename)
             return false;
+
+        metadata_->filenameIsURL = compileArgs_->scriptedCaller.filenameIsURL;
+    } else {
+        MOZ_ASSERT(!compileArgs_->scriptedCaller.filenameIsURL);
     }
 
-    if (compileArgs_->responseURLs.baseURL) {
-        metadata_->baseURL = DuplicateString(compileArgs_->responseURLs.baseURL.get());
-        if (!metadata_->baseURL)
-            return false;
-    }
-
-    if (compileArgs_->responseURLs.sourceMapURL) {
-        metadata_->sourceMapURL = DuplicateString(compileArgs_->responseURLs.sourceMapURL.get());
+    if (compileArgs_->sourceMapURL) {
+        metadata_->sourceMapURL = DuplicateString(compileArgs_->sourceMapURL.get());
         if (!metadata_->sourceMapURL)
             return false;
     }
@@ -197,7 +195,7 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
     // The funcToCodeRange_ maps function indices to code-range indices and all
     // elements will be initialized by the time module generation is finished.
 
-    if (!funcToCodeRange_.appendN(BAD_CODE_RANGE, env_->funcSigs.length()))
+    if (!funcToCodeRange_.appendN(BAD_CODE_RANGE, env_->funcTypes.length()))
         return false;
 
     // Pre-reserve space for large Vectors to avoid the significant cost of the
@@ -232,10 +230,10 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
 
         env_->funcImportGlobalDataOffsets[i] = globalDataOffset;
 
-        Sig copy;
-        if (!copy.clone(*env_->funcSigs[i]))
+        FuncType copy;
+        if (!copy.clone(*env_->funcTypes[i]))
             return false;
-        if (!metadataTier_->funcImports.emplaceBack(Move(copy), globalDataOffset))
+        if (!metadataTier_->funcImports.emplaceBack(std::move(copy), globalDataOffset))
             return false;
     }
 
@@ -245,22 +243,26 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
     }
 
     if (!isAsmJS()) {
-        for (SigWithId& sig : env_->sigs) {
-            if (SigIdDesc::isGlobal(sig)) {
+        for (TypeDef& td : env_->types) {
+            if (!td.isFuncType())
+                continue;
+
+            FuncTypeWithId& funcType = td.funcType();
+            if (FuncTypeIdDesc::isGlobal(funcType)) {
                 uint32_t globalDataOffset;
                 if (!allocateGlobalBytes(sizeof(void*), sizeof(void*), &globalDataOffset))
                     return false;
 
-                sig.id = SigIdDesc::global(sig, globalDataOffset);
+                funcType.id = FuncTypeIdDesc::global(funcType, globalDataOffset);
 
-                Sig copy;
-                if (!copy.clone(sig))
+                FuncType copy;
+                if (!copy.clone(funcType))
                     return false;
 
-                if (!metadata_->sigIds.emplaceBack(Move(copy), sig.id))
+                if (!metadata_->funcTypeIds.emplaceBack(std::move(copy), funcType.id))
                     return false;
             } else {
-                sig.id = SigIdDesc::immediate(sig);
+                funcType.id = FuncTypeIdDesc::immediate(funcType);
             }
         }
     }
@@ -325,10 +327,10 @@ ModuleGenerator::init(Metadata* maybeAsmJSMetadata)
         return false;
 
     for (const ExportedFunc& funcIndex : exportedFuncs) {
-        Sig sig;
-        if (!sig.clone(*env_->funcSigs[funcIndex.index()]))
+        FuncType funcType;
+        if (!funcType.clone(*env_->funcTypes[funcIndex.index()]))
             return false;
-        metadataTier_->funcExports.infallibleEmplaceBack(Move(sig), funcIndex.index(),
+        metadataTier_->funcExports.infallibleEmplaceBack(std::move(funcType), funcIndex.index(),
                                                          funcIndex.isExplicit());
     }
 
@@ -649,7 +651,7 @@ wasm::ExecuteCompileTaskFromHelperThread(CompileTask* task)
     if (!ok || !taskState->finished.append(task)) {
         taskState->numFailed++;
         if (!taskState->errorMessage)
-            taskState->errorMessage = Move(error);
+            taskState->errorMessage = std::move(error);
     }
 
     taskState.notify_one(/* failed or finished */);
@@ -749,7 +751,7 @@ ModuleGenerator::compileFuncDef(uint32_t funcIndex, uint32_t lineOrBytecode,
     uint32_t funcBytecodeLength = end - begin;
 
     FuncCompileInputVector& inputs = currentTask_->inputs;
-    if (!inputs.emplaceBack(funcIndex, lineOrBytecode, begin, end, Move(lineNums)))
+    if (!inputs.emplaceBack(funcIndex, lineOrBytecode, begin, end, std::move(lineNums)))
         return false;
 
     uint32_t threshold;
@@ -844,10 +846,11 @@ ModuleGenerator::finishMetadata(const ShareableBytes& bytecode)
     metadata_->minMemoryLength = env_->minMemoryLength;
     metadata_->maxMemoryLength = env_->maxMemoryLength;
     metadata_->startFuncIndex = env_->startFuncIndex;
-    metadata_->tables = Move(env_->tables);
-    metadata_->globals = Move(env_->globals);
-    metadata_->funcNames = Move(env_->funcNames);
-    metadata_->customSections = Move(env_->customSections);
+    metadata_->moduleName = env_->moduleName;
+    metadata_->tables = std::move(env_->tables);
+    metadata_->globals = std::move(env_->globals);
+    metadata_->funcNames = std::move(env_->funcNames);
+    metadata_->customSections = std::move(env_->customSections);
 
     // Inflate the global bytes up to page size so that the total bytes are a
     // page size (as required by the allocator functions).
@@ -885,17 +888,17 @@ ModuleGenerator::finishMetadata(const ShareableBytes& bytecode)
     if (env_->debugEnabled()) {
         metadata_->debugEnabled = true;
 
-        const size_t numSigs = env_->funcSigs.length();
-        if (!metadata_->debugFuncArgTypes.resize(numSigs))
+        const size_t numFuncTypes = env_->funcTypes.length();
+        if (!metadata_->debugFuncArgTypes.resize(numFuncTypes))
             return false;
-        if (!metadata_->debugFuncReturnTypes.resize(numSigs))
+        if (!metadata_->debugFuncReturnTypes.resize(numFuncTypes))
             return false;
-        for (size_t i = 0; i < numSigs; i++) {
-            if (!metadata_->debugFuncArgTypes[i].appendAll(env_->funcSigs[i]->args()))
+        for (size_t i = 0; i < numFuncTypes; i++) {
+            if (!metadata_->debugFuncArgTypes[i].appendAll(env_->funcTypes[i]->args()))
                 return false;
-            metadata_->debugFuncReturnTypes[i] = env_->funcSigs[i]->ret();
+            metadata_->debugFuncReturnTypes[i] = env_->funcTypes[i]->ret();
         }
-        metadataTier_->debugFuncToCodeRange = Move(funcToCodeRange_);
+        metadataTier_->debugFuncToCodeRange = std::move(funcToCodeRange_);
 
         static_assert(sizeof(ModuleHash) <= sizeof(mozilla::SHA1Sum::Hash),
                       "The ModuleHash size shall not exceed the SHA1 hash size.");
@@ -944,8 +947,7 @@ ModuleGenerator::finish(const ShareableBytes& bytecode)
     if (!finishMetadata(bytecode))
         return nullptr;
 
-    return ModuleSegment::create(tier(), masm_, bytecode, *linkDataTier_, *metadata_,
-                                 metadataTier_->codeRanges);
+    return ModuleSegment::create(tier(), masm_, *linkDataTier_);
 }
 
 SharedModule
@@ -968,27 +970,34 @@ ModuleGenerator::finishModule(const ShareableBytes& bytecode)
         if (!bytes.resize(masm_.bytesNeeded()))
             return nullptr;
         masm_.executableCopy(bytes.begin(), /* flushICache = */ false);
-        maybeDebuggingBytes = js::MakeUnique<Bytes>(Move(bytes));
+        maybeDebuggingBytes = js::MakeUnique<Bytes>(std::move(bytes));
         if (!maybeDebuggingBytes)
             return nullptr;
     }
 
-    auto codeTier = js::MakeUnique<CodeTier>(tier(), Move(metadataTier_), Move(moduleSegment));
+    auto codeTier = js::MakeUnique<CodeTier>(std::move(metadataTier_), std::move(moduleSegment));
     if (!codeTier)
         return nullptr;
 
-    SharedCode code = js_new<Code>(Move(codeTier), *metadata_, Move(jumpTables));
-    if (!code)
+    MutableCode code = js_new<Code>(std::move(codeTier), *metadata_, std::move(jumpTables));
+    if (!code || !code->initialize(bytecode, *linkDataTier_))
         return nullptr;
 
-    SharedModule module(js_new<Module>(Move(assumptions_),
+    StructTypeVector structTypes;
+    for (TypeDef& td : env_->types) {
+        if (td.isStructType() && !structTypes.append(std::move(td.structType())))
+            return nullptr;
+    }
+
+    SharedModule module(js_new<Module>(std::move(assumptions_),
                                        *code,
-                                       Move(maybeDebuggingBytes),
-                                       LinkData(Move(linkDataTier_)),
-                                       Move(env_->imports),
-                                       Move(env_->exports),
-                                       Move(env_->dataSegments),
-                                       Move(env_->elemSegments),
+                                       std::move(maybeDebuggingBytes),
+                                       LinkData(std::move(linkDataTier_)),
+                                       std::move(env_->imports),
+                                       std::move(env_->exports),
+                                       std::move(env_->dataSegments),
+                                       std::move(env_->elemSegments),
+                                       std::move(structTypes),
                                        bytecode));
     if (!module)
         return nullptr;
@@ -1013,7 +1022,7 @@ ModuleGenerator::finishTier2(Module& module)
     if (!moduleSegment)
         return false;
 
-    auto tier2 = js::MakeUnique<CodeTier>(tier(), Move(metadataTier_), Move(moduleSegment));
+    auto tier2 = js::MakeUnique<CodeTier>(std::move(metadataTier_), std::move(moduleSegment));
     if (!tier2)
         return false;
 
@@ -1023,7 +1032,7 @@ ModuleGenerator::finishTier2(Module& module)
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-    return module.finishTier2(Move(linkDataTier_), Move(tier2), env_);
+    return module.finishTier2(std::move(linkDataTier_), std::move(tier2), env_);
 }
 
 size_t

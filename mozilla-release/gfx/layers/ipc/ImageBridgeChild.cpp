@@ -44,6 +44,10 @@
 #include "mozilla/layers/TextureClient.h"
 #include "SynchronousTask.h"
 
+#if defined(XP_WIN)
+#include "mozilla/gfx/DeviceManagerDx.h"
+#endif
+
 namespace mozilla {
 namespace ipc {
 class Shmem;
@@ -515,7 +519,7 @@ ImageBridgeChild::InitForContent(Endpoint<PImageBridgeChild>&& aEndpoint, uint32
     "layers::ImageBridgeChild::Bind",
     child,
     &ImageBridgeChild::Bind,
-    Move(aEndpoint));
+    std::move(aEndpoint));
   child->GetMessageLoop()->PostTask(runnable.forget());
 
   // Assign this after so other threads can't post messages before we connect to IPDL.
@@ -538,7 +542,7 @@ ImageBridgeChild::ReinitForContent(Endpoint<PImageBridgeChild>&& aEndpoint, uint
   // false result and a MsgDropped processing error. This is okay.
   ShutdownSingleton();
 
-  return InitForContent(Move(aEndpoint), aNamespace);
+  return InitForContent(std::move(aEndpoint), aNamespace);
 }
 
 void
@@ -667,7 +671,7 @@ ImageBridgeChild::InitWithGPUProcess(Endpoint<PImageBridgeChild>&& aEndpoint, ui
     "layers::ImageBridgeChild::Bind",
     child,
     &ImageBridgeChild::Bind,
-    Move(aEndpoint)));
+    std::move(aEndpoint)));
 
   // Assign this after so other threads can't post messages before we connect to IPDL.
   {
@@ -698,12 +702,25 @@ ImageBridgeChild::IdentifyCompositorTextureHost(const TextureFactoryIdentifier& 
 void
 ImageBridgeChild::UpdateTextureFactoryIdentifier(const TextureFactoryIdentifier& aIdentifier)
 {
+  // ImageHost is incompatible between WebRender enabled and WebRender disabled.
+  // Then drop all ImageContainers' ImageClients during disabling WebRender.
   bool disablingWebRender = GetCompositorBackendType() == LayersBackend::LAYERS_WR &&
                             aIdentifier.mParentBackend != LayersBackend::LAYERS_WR;
+  // D3DTexture might become obsolte. To prevent to use obsoleted D3DTexture,
+  // drop all ImageContainers' ImageClients.
+#if defined(XP_WIN)
+  RefPtr<ID3D11Device> device = gfx::DeviceManagerDx::Get()->GetImageDevice();
+  bool needsDrop = !!mImageDevice &&
+                   mImageDevice != device &&
+                   GetCompositorBackendType() == LayersBackend::LAYERS_D3D11 ||
+                   disablingWebRender;
+  mImageDevice = device;
+#else
+  bool needsDrop = disablingWebRender;
+#endif
+
   IdentifyTextureHost(aIdentifier);
-  if (disablingWebRender) {
-    // ImageHost is incompatible between WebRender enabled and WebRender disabled.
-    // Then drop all ImageContainers' ImageClients during disabling WebRender.
+  if (needsDrop) {
     nsTArray<RefPtr<ImageContainerListener> > listeners;
     {
       MutexAutoLock lock(mContainerMapLock);

@@ -24,6 +24,7 @@ win32/debug:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32/opt:
@@ -35,6 +36,12 @@ win32/opt:
         platform: windows2012-32/opt
         symbol: B
         tier: 1
+    stub-installer:
+        # Beta and release use a stub-requiring update channel
+        by-project:
+            default: false
+            mozilla-beta: true
+            mozilla-release: true
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
@@ -52,6 +59,7 @@ win32/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-dmd/opt:
@@ -83,6 +91,7 @@ win32-dmd/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32/pgo:
@@ -111,6 +120,7 @@ win32/pgo:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64/debug:
@@ -139,6 +149,7 @@ win64/debug:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-plain/debug:
@@ -196,6 +207,7 @@ win64/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-plain/opt:
@@ -256,6 +268,7 @@ win64-dmd/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-nightly/opt:
@@ -266,6 +279,13 @@ win32-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+    stub-installer:
+        by-project:
+            default: false
+            mozilla-central: true
+            try: true
+            mozilla-beta: true
+            mozilla-release: true
     shipping-phase: build
     shipping-product: firefox
     treeherder:
@@ -291,6 +311,7 @@ win32-nightly/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-nightly/opt:
@@ -326,6 +347,7 @@ win64-nightly/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64/pgo:
@@ -354,6 +376,7 @@ win64/pgo:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-add-on-devel/opt:
@@ -383,6 +406,7 @@ win32-add-on-devel/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-add-on-devel/opt:
@@ -412,6 +436,7 @@ win64-add-on-devel/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-noopt/debug:
@@ -441,6 +466,7 @@ win64-noopt/debug:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-noopt/debug:
@@ -470,6 +496,7 @@ win32-noopt/debug:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-rusttests/opt:
@@ -555,10 +582,11 @@ win64-ccov/debug:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/ccov_debug.py
-    run-on-projects: []
+    run-on-projects: ['mozilla-central', 'try']
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-asan/debug:
@@ -569,7 +597,7 @@ win64-asan/debug:
     treeherder:
         platform: windows2012-64/asan
         symbol: Bd
-        tier: 3
+        tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
@@ -585,10 +613,11 @@ win64-asan/debug:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/asan_debug.py
-    run-on-projects: []
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-asan/opt:
@@ -599,7 +628,7 @@ win64-asan/opt:
     treeherder:
         platform: windows2012-64/asan
         symbol: Bo
-        tier: 3
+        tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
@@ -615,10 +644,11 @@ win64-asan/opt:
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/asan_opt.py
-    run-on-projects: []
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-devedition-nightly/opt:
@@ -629,6 +659,13 @@ win32-devedition-nightly/opt:
         type: nightly
     attributes:
         nightly: true
+    stub-installer:
+        by-project:
+            default: false
+            mozilla-central: true
+            try: true
+            mozilla-beta: true
+            mozilla-release: true
     shipping-phase: build
     shipping-product: devedition
     treeherder:
@@ -655,6 +692,7 @@ win32-devedition-nightly/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win64-devedition-nightly/opt:
@@ -691,6 +729,7 @@ win64-devedition-nightly/opt:
     toolchains:
         - win64-clang-cl
         - win64-rust
+        - win64-rust-size
         - win64-sccache
 
 win32-mingw32/opt:

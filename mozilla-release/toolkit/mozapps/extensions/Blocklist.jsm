@@ -13,7 +13,7 @@ var EXPORTED_SYMBOLS = ["Blocklist"];
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-Cu.importGlobalProperties(["DOMParser"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["DOMParser"]);
 
 ChromeUtils.defineModuleGetter(this, "AddonManager",
                                "resource://gre/modules/AddonManager.jsm");
@@ -40,7 +40,7 @@ XPCOMUtils.defineLazyGetter(this, "RemoteSettings", function() {
   // Instantiate blocklist clients.
   BlocklistClients.initialize();
   // Import RemoteSettings for ``pollChanges()``
-  const { RemoteSettings } = ChromeUtils.import("resource://services-common/remote-settings.js", {});
+  const { RemoteSettings } = ChromeUtils.import("resource://services-settings/remote-settings.js", {});
   return RemoteSettings;
 });
 
@@ -128,16 +128,6 @@ XPCOMUtils.defineLazyGetter(this, "gABI", function() {
     abi = gApp.XPCOMABI;
   } catch (e) {
     LOG("BlockList Global gABI: XPCOM ABI unknown.");
-  }
-
-  if (AppConstants.platform == "macosx") {
-    // Mac universal build should report a different ABI than either macppc
-    // or mactel.
-    let macutils = Cc["@mozilla.org/xpcom/mac-utils;1"].
-                   getService(Ci.nsIMacUtils);
-
-    if (macutils.isUniversalBinary)
-      abi += "-u-" + macutils.architecturesInBinary;
   }
   return abi;
 });

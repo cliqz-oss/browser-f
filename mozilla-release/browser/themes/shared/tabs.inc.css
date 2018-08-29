@@ -535,6 +535,7 @@
   background-repeat: repeat-x;
 }
 
+.tab-line[multiselected],
 .tab-line[selected=true] {
   background-color: var(--tab-line-color);
 }
@@ -566,7 +567,7 @@
   background-color: rgba(255,255,255,.1);
 }
 
-.tab-line:not([selected=true]) {
+.tab-line:not([selected=true]):not([multiselected]) {
   opacity: 0;
   transform: scaleX(0);
   transition: transform 250ms var(--animation-easing-function), opacity 250ms var(--animation-easing-function);
@@ -580,6 +581,16 @@
 
 #TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true]) {
   background-color: rgba(255,255,255,.2);
+}
+
+/* Tab multi-selected */
+
+.tabbrowser-tab[multiselected] > .tab-stack > .tab-background:not([selected=true]) {
+  background-color: rgba(0,0,0,.1);
+}
+
+#TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab[multiselected] > .tab-stack > .tab-background:not([selected=true]) {
+  background-color: rgba(255,255,255,.1);
 }
 
 /* Pinned tabs */
@@ -636,13 +647,13 @@
 /* Tab separators */
 
 .titlebar-placeholder[type="pre-tabs"] {
-  border-inline-end: 1px solid;
+  border-inline-end: 1px solid var(--lwt-background-tab-separator-color, currentColor);
   opacity: 0.2;
 }
 
 .tabbrowser-tab::after,
 .tabbrowser-tab::before {
-  border-left: 1px solid;
+  border-left: 1px solid var(--lwt-background-tab-separator-color, currentColor);
   margin-top: 5px;
   margin-bottom: 4px;
   opacity: 0.3;
@@ -665,9 +676,11 @@
 %else
 :root[tabsintitlebar]:not([extradragspace]) .tabbrowser-tab::after,
 %endif
-/* Show full height tab separators on hover. */
+/* Show full height tab separators on hover and multiselection. */
 .tabbrowser-tab:hover::after,
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[beforehovered]::after {
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[beforehovered]::after,
+.tabbrowser-tab[multiselected]::after,
+.tabbrowser-tab[before-multiselected]::after {
   margin-top: var(--tabs-top-border-width);
   margin-bottom: 0;
 }
@@ -735,39 +748,82 @@
   min-height: 12px;
 }
 
-.alltabs-item > .menu-iconic-left > .menu-iconic-icon {
+#allTabsMenu-allTabsView {
+  --blue-40: #45a1ff;
+  max-width: 42em;
+}
+
+/* The list of tabs is in its own panel-subview-body which will scroll. We don't
+   want any padding above/below the scrollbars, so remove the padding/margin
+   from the separator and outer panel-subview-body. */
+#allTabsMenu-allTabsView > .panel-subview-body {
+  padding-bottom: 0;
+}
+
+#allTabsMenu-tabsSeparator {
+  margin-bottom: 0;
+}
+
+.all-tabs-item > .all-tabs-secondary-button {
+  padding: 0;
+  padding-inline-start: 6px;
+  opacity: .8;
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+
+.all-tabs-secondary-button:hover {
+  opacity: 1;
+}
+
+.all-tabs-item:hover {
+  background-color: var(--arrowpanel-dimmed)
+}
+
+.all-tabs-item:hover > .all-tabs-button,
+.all-tabs-item:hover > .all-tabs-secondary-button {
+  /* Since the background is set on the item, don't set it on the children. */
+  background-color: transparent !important;
+}
+
+.all-tabs-item > .all-tabs-button > .tab-throbber-fallback {
+  display: block;
+  margin-inline-end: 0;
+}
+
+.all-tabs-item[selected] {
+  box-shadow: inset 4px 0 var(--blue-40);
+}
+
+.all-tabs-item[selected]:-moz-locale-dir(rtl) {
+  box-shadow: inset -4px 0 var(--blue-40);
+}
+
+.all-tabs-item[selected] > .all-tabs-button {
+  font-weight: bold;
+}
+
+.all-tabs-button {
   list-style-image: url("chrome://mozapps/skin/places/defaultFavicon.svg");
-  -moz-context-properties: fill;
-  fill: currentColor;
 }
 
-.alltabs-item[busy] > .menu-iconic-left > .menu-iconic-icon {
-  list-style-image: url("chrome://global/skin/icons/loading.png");
+.all-tabs-secondary-button > label {
+  display: none;
+  margin: 0 5.5px;
 }
 
-@media (min-resolution: 1.1dppx) {
-  .alltabs-item[busy] > .menu-iconic-left > .menu-iconic-icon {
-    list-style-image: url("chrome://global/skin/icons/loading@2x.png");
-  }
-}
-
-.alltabs-item[tabIsVisible] {
-  /* box-shadow instead of background-color to work around native styling */
-  box-shadow: inset -5px 0 ThreeDShadow;
-}
-
-.alltabs-endimage[soundplaying],
-.alltabs-endimage[muted],
-.alltabs-endimage[activemedia-blocked] {
+.all-tabs-secondary-button[soundplaying] {
   list-style-image: url(chrome://browser/skin/tabbrowser/tab-audio-playing.svg);
-  -moz-context-properties: fill;
-  fill: currentColor;
 }
 
-.alltabs-endimage[muted] {
+.all-tabs-secondary-button[muted] {
   list-style-image: url(chrome://browser/skin/tabbrowser/tab-audio-muted.svg);
 }
 
-.alltabs-endimage[activemedia-blocked] {
-  list-style-image: url(chrome://browser/skin/tabbrowser/tab-audio-blocked.svg);
+.undo-close-tab {
+  list-style-image: url(chrome://browser/skin/undo.svg);
+}
+
+.undo-close-tab > .toolbarbutton-icon:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
 }

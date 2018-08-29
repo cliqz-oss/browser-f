@@ -29,7 +29,7 @@ XULColorPickerTileAccessible::
 // XULColorPickerTileAccessible: Accessible
 
 void
-XULColorPickerTileAccessible::Value(nsString& aValue)
+XULColorPickerTileAccessible::Value(nsString& aValue) const
 {
   aValue.Truncate();
 
@@ -37,13 +37,13 @@ XULColorPickerTileAccessible::Value(nsString& aValue)
 }
 
 role
-XULColorPickerTileAccessible::NativeRole()
+XULColorPickerTileAccessible::NativeRole() const
 {
   return roles::PUSHBUTTON;
 }
 
 uint64_t
-XULColorPickerTileAccessible::NativeState()
+XULColorPickerTileAccessible::NativeState() const
 {
   uint64_t state = AccessibleWrap::NativeState();
   if (mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::selected))
@@ -89,14 +89,14 @@ XULColorPickerAccessible::
 // XULColorPickerAccessible: Accessible
 
 uint64_t
-XULColorPickerAccessible::NativeState()
+XULColorPickerAccessible::NativeState() const
 {
   uint64_t state = AccessibleWrap::NativeState();
   return state | states::HASPOPUP;
 }
 
 role
-XULColorPickerAccessible::NativeRole()
+XULColorPickerAccessible::NativeRole() const
 {
   return roles::BUTTONDROPDOWNGRID;
 }

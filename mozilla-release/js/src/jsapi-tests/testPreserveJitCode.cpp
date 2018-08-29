@@ -7,10 +7,12 @@
 
 #include "jsapi-tests/tests.h"
 
+#include "vm/JSObject-inl.h"
+
 using namespace JS;
 
 static void
-ScriptCallback(JSRuntime* rt, void* data, JSScript* script)
+ScriptCallback(JSRuntime* rt, void* data, JSScript* script, const JS::AutoRequireNoGC& nogc)
 {
     unsigned& count = *static_cast<unsigned*>(data);
     if (script->hasIonScript())
@@ -28,7 +30,7 @@ unsigned
 countIonScripts(JSObject* global)
 {
     unsigned count = 0;
-    js::IterateScripts(cx, global->compartment(), &count, ScriptCallback);
+    js::IterateScripts(cx, global->nonCCWRealm(), &count, ScriptCallback);
     return count;
 }
 
@@ -41,7 +43,7 @@ testPreserveJitCode(bool preserveJitCode, unsigned remainingIonScripts)
 
     RootedObject global(cx, createTestGlobal(preserveJitCode));
     CHECK(global);
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
     // The Ion JIT may be unavailable due to --disable-ion or lack of support
     // for this platform.
@@ -73,10 +75,10 @@ testPreserveJitCode(bool preserveJitCode, unsigned remainingIonScripts)
     CHECK_EQUAL(value.toInt32(), 45);
     CHECK_EQUAL(countIonScripts(global), 1u);
 
-    GCForReason(cx, GC_NORMAL, gcreason::API);
+    NonIncrementalGC(cx, GC_NORMAL, gcreason::API);
     CHECK_EQUAL(countIonScripts(global), remainingIonScripts);
 
-    GCForReason(cx, GC_SHRINK, gcreason::API);
+    NonIncrementalGC(cx, GC_SHRINK, gcreason::API);
     CHECK_EQUAL(countIonScripts(global), 0u);
 
     return true;
@@ -85,7 +87,7 @@ testPreserveJitCode(bool preserveJitCode, unsigned remainingIonScripts)
 JSObject*
 createTestGlobal(bool preserveJitCode)
 {
-    JS::CompartmentOptions options;
+    JS::RealmOptions options;
     options.creationOptions().setPreserveJitCode(preserveJitCode);
     return JS_NewGlobalObject(cx, getGlobalClass(), nullptr, JS::FireOnNewGlobalHook, options);
 }

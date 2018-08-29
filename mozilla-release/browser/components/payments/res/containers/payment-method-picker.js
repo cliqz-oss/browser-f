@@ -24,10 +24,12 @@ export default class PaymentMethodPicker extends PaymentStateSubscriberMixin(HTM
     this.securityCodeInput.size = 3;
     this.securityCodeInput.addEventListener("change", this);
     this.addLink = document.createElement("a");
+    this.addLink.className = "add-link";
     this.addLink.href = "javascript:void(0)";
     this.addLink.textContent = this.dataset.addLinkLabel;
     this.addLink.addEventListener("click", this);
     this.editLink = document.createElement("a");
+    this.editLink.className = "edit-link";
     this.editLink.href = "javascript:void(0)";
     this.editLink.textContent = this.dataset.editLinkLabel;
     this.editLink.addEventListener("click", this);
@@ -131,19 +133,18 @@ export default class PaymentMethodPicker extends PaymentStateSubscriberMixin(HTM
       page: {
         id: "basic-card-page",
       },
+      "basic-card-page": {},
     };
 
     switch (target) {
       case this.addLink: {
-        nextState.page.guid = null;
-        nextState.page.title = this.dataset.addBasicCardTitle;
+        nextState["basic-card-page"].guid = null;
         break;
       }
       case this.editLink: {
         let state = this.requestStore.getState();
         let selectedPaymentCardGUID = state[this.selectedStateKey];
-        nextState.page.guid = selectedPaymentCardGUID;
-        nextState.page.title = this.dataset.editBasicCardTitle;
+        nextState["basic-card-page"].guid = selectedPaymentCardGUID;
         break;
       }
       default: {

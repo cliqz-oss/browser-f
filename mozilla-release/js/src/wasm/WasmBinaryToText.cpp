@@ -191,6 +191,7 @@ RenderExprType(WasmRenderContext& c, ExprType type)
       case ExprType::I64: return c.buffer.append("i64");
       case ExprType::F32: return c.buffer.append("f32");
       case ExprType::F64: return c.buffer.append("f64");
+      case ExprType::AnyRef: return c.buffer.append("anyref");
       default:;
     }
 
@@ -207,6 +208,12 @@ static bool
 RenderName(WasmRenderContext& c, const AstName& name)
 {
     return c.buffer.append(name.begin(), name.end());
+}
+
+static bool
+RenderNonemptyName(WasmRenderContext& c, const AstName& name)
+{
+    return name.empty() || (RenderName(c, name) && c.buffer.append(' '));
 }
 
 static bool
@@ -330,7 +337,7 @@ RenderCallIndirect(WasmRenderContext& c, AstCallIndirect& call)
     MAP_AST_EXPR(c, call);
     if (!c.buffer.append("call_indirect "))
         return false;
-    return RenderRef(c, call.sig());
+    return RenderRef(c, call.funcType());
 }
 
 static bool
@@ -735,13 +742,11 @@ RenderConversionOperator(WasmRenderContext& c, AstConversionOperator& conv)
       case Op::F64ConvertUI64:    opStr = "f64.convert_u/i64"; break;
       case Op::F64ReinterpretI64: opStr = "f64.reinterpret/i64"; break;
       case Op::F64PromoteF32:     opStr = "f64.promote/f32"; break;
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
       case Op::I32Extend8S:       opStr = "i32.extend8_s"; break;
       case Op::I32Extend16S:      opStr = "i32.extend16_s"; break;
       case Op::I64Extend8S:       opStr = "i64.extend8_s"; break;
       case Op::I64Extend16S:      opStr = "i64.extend16_s"; break;
       case Op::I64Extend32S:      opStr = "i64.extend32_s"; break;
-#endif
       case Op::I32Eqz:            opStr = "i32.eqz"; break;
       case Op::I64Eqz:            opStr = "i64.eqz"; break;
       default:                      return Fail(c, "unexpected conversion operator");
@@ -762,14 +767,14 @@ RenderExtraConversionOperator(WasmRenderContext& c, AstExtraConversionOperator& 
     MAP_AST_EXPR(c, conv);
     const char* opStr;
     switch (conv.op()) {
-      case NumericOp::I32TruncSSatF32:   opStr = "i32.trunc_s:sat/f32"; break;
-      case NumericOp::I32TruncUSatF32:   opStr = "i32.trunc_u:sat/f32"; break;
-      case NumericOp::I32TruncSSatF64:   opStr = "i32.trunc_s:sat/f64"; break;
-      case NumericOp::I32TruncUSatF64:   opStr = "i32.trunc_u:sat/f64"; break;
-      case NumericOp::I64TruncSSatF32:   opStr = "i64.trunc_s:sat/f32"; break;
-      case NumericOp::I64TruncUSatF32:   opStr = "i64.trunc_u:sat/f32"; break;
-      case NumericOp::I64TruncSSatF64:   opStr = "i64.trunc_s:sat/f64"; break;
-      case NumericOp::I64TruncUSatF64:   opStr = "i64.trunc_u:sat/f64"; break;
+      case MiscOp::I32TruncSSatF32:   opStr = "i32.trunc_s:sat/f32"; break;
+      case MiscOp::I32TruncUSatF32:   opStr = "i32.trunc_u:sat/f32"; break;
+      case MiscOp::I32TruncSSatF64:   opStr = "i32.trunc_s:sat/f64"; break;
+      case MiscOp::I32TruncUSatF64:   opStr = "i32.trunc_u:sat/f64"; break;
+      case MiscOp::I64TruncSSatF32:   opStr = "i64.trunc_s:sat/f32"; break;
+      case MiscOp::I64TruncUSatF32:   opStr = "i64.trunc_u:sat/f32"; break;
+      case MiscOp::I64TruncSSatF64:   opStr = "i64.trunc_s:sat/f64"; break;
+      case MiscOp::I64TruncUSatF64:   opStr = "i64.trunc_u:sat/f64"; break;
       default:                      return Fail(c, "unexpected extra conversion operator");
     }
     return c.buffer.append(opStr, strlen(opStr));
@@ -1277,6 +1282,46 @@ RenderWake(WasmRenderContext& c, AstWake& wake)
     return RenderLoadStoreAddress(c, wake.address(), 0);
 }
 
+#ifdef ENABLE_WASM_BULKMEM_OPS
+static bool
+RenderMemCopy(WasmRenderContext& c, AstMemCopy& mc)
+{
+    if (!RenderExpr(c, mc.dest()))
+        return false;
+    if (!RenderExpr(c, mc.src()))
+        return false;
+    if (!RenderExpr(c, mc.len()))
+        return false;
+
+    if (!RenderIndent(c))
+        return false;
+
+    MAP_AST_EXPR(c, mc);
+    const char* opStr = "memory.copy";
+
+    return c.buffer.append(opStr, strlen(opStr));
+}
+
+static bool
+RenderMemFill(WasmRenderContext& c, AstMemFill& mf)
+{
+    if (!RenderExpr(c, mf.start()))
+        return false;
+    if (!RenderExpr(c, mf.val()))
+        return false;
+    if (!RenderExpr(c, mf.len()))
+        return false;
+
+    if (!RenderIndent(c))
+        return false;
+
+    MAP_AST_EXPR(c, mf);
+    const char* opStr = "memory.fill";
+
+    return c.buffer.append(opStr, strlen(opStr));
+}
+#endif
+
 static bool
 RenderExpr(WasmRenderContext& c, AstExpr& expr, bool newLine /* = true */)
 {
@@ -1416,6 +1461,16 @@ RenderExpr(WasmRenderContext& c, AstExpr& expr, bool newLine /* = true */)
         if (!RenderWake(c, expr.as<AstWake>()))
             return false;
         break;
+#ifdef ENABLE_WASM_BULKMEM_OPS
+      case AstExprKind::MemCopy:
+        if (!RenderMemCopy(c, expr.as<AstMemCopy>()))
+            return false;
+        break;
+      case AstExprKind::MemFill:
+        if (!RenderMemFill(c, expr.as<AstMemFill>()))
+            return false;
+        break;
+#endif
       default:
         MOZ_CRASH("Bad AstExprKind");
     }
@@ -1424,22 +1479,19 @@ RenderExpr(WasmRenderContext& c, AstExpr& expr, bool newLine /* = true */)
 }
 
 static bool
-RenderSignature(WasmRenderContext& c, const AstSig& sig, const AstNameVector* maybeLocals = nullptr)
+RenderSignature(WasmRenderContext& c, const AstFuncType& funcType,
+                const AstNameVector* maybeLocals = nullptr)
 {
-    uint32_t paramsNum = sig.args().length();
+    uint32_t paramsNum = funcType.args().length();
 
     if (maybeLocals) {
         for (uint32_t i = 0; i < paramsNum; i++) {
             if (!c.buffer.append(" (param "))
                 return false;
             const AstName& name = (*maybeLocals)[i];
-            if (!name.empty()) {
-                if (!RenderName(c, name))
-                    return false;
-                if (!c.buffer.append(" "))
-                    return false;
-            }
-            ValType arg = sig.args()[i];
+            if (!RenderNonemptyName(c, name))
+                return false;
+            ValType arg = funcType.args()[i];
             if (!RenderValType(c, arg))
                 return false;
             if (!c.buffer.append(")"))
@@ -1451,17 +1503,17 @@ RenderSignature(WasmRenderContext& c, const AstSig& sig, const AstNameVector* ma
         for (uint32_t i = 0; i < paramsNum; i++) {
             if (!c.buffer.append(" "))
                 return false;
-            ValType arg = sig.args()[i];
+            ValType arg = funcType.args()[i];
             if (!RenderValType(c, arg))
                 return false;
         }
         if (!c.buffer.append(")"))
             return false;
     }
-    if (sig.ret() != ExprType::Void) {
+    if (funcType.ret() != ExprType::Void) {
         if (!c.buffer.append(" (result "))
             return false;
-        if (!RenderExprType(c, sig.ret()))
+        if (!RenderExprType(c, funcType.ret()))
             return false;
         if (!c.buffer.append(")"))
             return false;
@@ -1470,31 +1522,73 @@ RenderSignature(WasmRenderContext& c, const AstSig& sig, const AstNameVector* ma
 }
 
 static bool
-RenderTypeSection(WasmRenderContext& c, const AstModule::SigVector& sigs)
+RenderFields(WasmRenderContext& c, const AstStructType& st)
 {
-    uint32_t numSigs = sigs.length();
-    if (!numSigs)
-        return true;
+    const AstNameVector& fieldNames = st.fieldNames();
+    const AstValTypeVector& fieldTypes = st.fieldTypes();
 
-    for (uint32_t sigIndex = 0; sigIndex < numSigs; sigIndex++) {
-        const AstSig* sig = sigs[sigIndex];
+    for (uint32_t fieldIndex = 0; fieldIndex < fieldTypes.length(); fieldIndex++) {
+        if (!c.buffer.append("\n"))
+            return false;
         if (!RenderIndent(c))
             return false;
-        if (!c.buffer.append("(type"))
+        if (!c.buffer.append("(field "))
             return false;
-        if (!sig->name().empty()) {
-            if (!c.buffer.append(" "))
-                return false;
-            if (!RenderName(c, sig->name()))
-                return false;
-        }
-        if (!c.buffer.append(" (func"))
+        if (!RenderNonemptyName(c, fieldNames[fieldIndex]))
             return false;
-        if (!RenderSignature(c, *sig))
+        if (!RenderValType(c, fieldTypes[fieldIndex]))
             return false;
-        if (!c.buffer.append("))\n"))
+        if (!c.buffer.append(')'))
             return false;
     }
+    return true;
+}
+
+template<size_t ArrayLength>
+static bool
+RenderTypeStart(WasmRenderContext& c, const AstName& name, const char (&keyword)[ArrayLength])
+{
+    if (!RenderIndent(c))
+        return false;
+    if (!c.buffer.append("(type "))
+        return false;
+    if (!RenderNonemptyName(c, name))
+        return false;
+    if (!c.buffer.append("("))
+        return false;
+    return c.buffer.append(keyword);
+}
+
+static bool
+RenderTypeEnd(WasmRenderContext& c)
+{
+    return c.buffer.append("))\n");
+}
+
+static bool
+RenderTypeSection(WasmRenderContext& c, const AstModule::TypeDefVector& types)
+{
+    for (uint32_t typeIndex = 0; typeIndex < types.length(); typeIndex++) {
+        const AstTypeDef* type = types[typeIndex];
+        if (type->isFuncType()) {
+            const AstFuncType* funcType = &type->asFuncType();
+            if (!RenderTypeStart(c, funcType->name(), "func"))
+                return false;
+            if (!RenderSignature(c, *funcType))
+                return false;
+        } else {
+            const AstStructType* st = &type->asStructType();
+            if (!RenderTypeStart(c, st->name(), "struct"))
+                return false;
+            c.indent++;
+            if (!RenderFields(c, *st))
+                return false;
+            c.indent--;
+        }
+        if (!RenderTypeEnd(c))
+            return false;
+    }
+
     return true;
 }
 
@@ -1707,8 +1801,8 @@ RenderImport(WasmRenderContext& c, AstImport& import, const AstModule& module)
       case DefinitionKind::Function: {
         if (!c.buffer.append("(func"))
             return false;
-        const AstSig* sig = module.sigs()[import.funcSig().index()];
-        if (!RenderSignature(c, *sig))
+        const AstFuncType* funcType = &module.types()[import.funcType().index()]->asFuncType();
+        if (!RenderSignature(c, *funcType))
             return false;
         if (!c.buffer.append(")"))
             return false;
@@ -1810,11 +1904,11 @@ RenderExportSection(WasmRenderContext& c, const AstModule::ExportVector& exports
 }
 
 static bool
-RenderFunctionBody(WasmRenderContext& c, AstFunc& func, const AstModule::SigVector& sigs)
+RenderFunctionBody(WasmRenderContext& c, AstFunc& func, const AstModule::TypeDefVector& types)
 {
-    const AstSig* sig = sigs[func.sig().index()];
+    const AstFuncType* funcType = &types[func.funcType().index()]->asFuncType();
 
-    uint32_t argsNum = sig->args().length();
+    uint32_t argsNum = funcType->args().length();
     uint32_t localsNum = func.vars().length();
     if (localsNum > 0) {
         if (!RenderIndent(c))
@@ -1856,13 +1950,13 @@ RenderFunctionBody(WasmRenderContext& c, AstFunc& func, const AstModule::SigVect
 
 static bool
 RenderCodeSection(WasmRenderContext& c, const AstModule::FuncVector& funcs,
-                  const AstModule::SigVector& sigs)
+                  const AstModule::TypeDefVector& types)
 {
     uint32_t numFuncBodies = funcs.length();
     for (uint32_t funcIndex = 0; funcIndex < numFuncBodies; funcIndex++) {
         AstFunc* func = funcs[funcIndex];
-        uint32_t sigIndex = func->sig().index();
-        AstSig* sig = sigs[sigIndex];
+        uint32_t funcTypeIndex = func->funcType().index();
+        AstFuncType* funcType = &types[funcTypeIndex]->asFuncType();
 
         if (!RenderIndent(c))
             return false;
@@ -1873,7 +1967,7 @@ RenderCodeSection(WasmRenderContext& c, const AstModule::FuncVector& funcs,
                 return false;
         }
 
-        if (!RenderSignature(c, *sig, &(func->locals())))
+        if (!RenderSignature(c, *funcType, &(func->locals())))
             return false;
         if (!c.buffer.append("\n"))
             return false;
@@ -1881,7 +1975,7 @@ RenderCodeSection(WasmRenderContext& c, const AstModule::FuncVector& funcs,
         c.currentFuncIndex = funcIndex;
 
         c.indent++;
-        if (!RenderFunctionBody(c, *func, sigs))
+        if (!RenderFunctionBody(c, *func, types))
             return false;
         c.indent--;
         if (!RenderIndent(c))
@@ -1978,7 +2072,7 @@ RenderModule(WasmRenderContext& c, AstModule& module)
 
     c.indent++;
 
-    if (!RenderTypeSection(c, module.sigs()))
+    if (!RenderTypeSection(c, module.types()))
         return false;
 
     if (!RenderImportSection(c, module))
@@ -2002,7 +2096,7 @@ RenderModule(WasmRenderContext& c, AstModule& module)
     if (!RenderElemSection(c, module))
         return false;
 
-    if (!RenderCodeSection(c, module.funcs(), module.sigs()))
+    if (!RenderCodeSection(c, module.funcs(), module.types()))
         return false;
 
     if (!RenderDataSection(c, module))

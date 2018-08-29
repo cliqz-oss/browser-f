@@ -39,23 +39,15 @@ module.exports = {
     "env": {
       "mozilla/browser-window": true
     }
-  },{
-    // XXX Bug 1421969. These files/directories are still being fixed,
-    // so turn off mozilla/use-services for them for now.
-    "files": [
-      "extensions/pref/**",
-    ],
-    "rules": {
-      "mozilla/use-services": "off",
-    }
   }, {
-    // XXX Bug 1436303. These directories are still being fixed, so turn off
-    // mozilla/no-cc-etc for now.
+    // XXX Bug 1452706. These directories are still being fixed, so turn off
+    //  mozilla/require-expected-throws-or-rejects for now.
     "files": [
-      "devtools/**"
+      "services/fxaccounts/**",
+      "toolkit/components/**",
     ],
     "rules": {
-      "mozilla/no-define-cc-etc": "off",
+      "mozilla/rejects-requires-await": "off",
     }
   }]
 };

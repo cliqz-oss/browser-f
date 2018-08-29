@@ -20,7 +20,6 @@
 #include "nsAlertsService.h"
 
 #include "DownloadPlatform.h"
-#include "rdf.h"
 
 #include "nsTypeAheadFind.h"
 
@@ -59,6 +58,10 @@
 #if defined(MOZ_HAS_PERFSTATS)
 #include "nsPerformanceStats.h"
 #endif // defined (MOZ_HAS_PERFSTATS)
+
+#if defined(ENABLE_TESTS)
+#include "geckoview/TelemetryGeckoViewTesting.h"
+#endif
 
 using namespace mozilla;
 
@@ -129,6 +132,10 @@ NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(ExtensionPolicyService, ExtensionPolicy
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSessionStoreUtils)
 
+#if defined(ENABLE_TESTS)
+NS_GENERIC_FACTORY_CONSTRUCTOR(TelemetryGeckoViewTestingImpl)
+#endif
+
 NS_DEFINE_NAMED_CID(NS_TOOLKIT_APPSTARTUP_CID);
 #if defined(MOZ_HAS_PERFSTATS)
 NS_DEFINE_NAMED_CID(NS_TOOLKIT_PERFORMANCESTATSSERVICE_CID);
@@ -163,6 +170,9 @@ NS_DEFINE_NAMED_CID(NS_ADDON_MANAGER_STARTUP_CID);
 NS_DEFINE_NAMED_CID(NS_ADDON_POLICY_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_SESSIONSTOREUTILS_CID);
 NS_DEFINE_NAMED_CID(NATIVE_FILEWATCHER_SERVICE_CID);
+#if defined(ENABLE_TESTS)
+NS_DEFINE_NAMED_CID(NS_TELEMETRYGECKOVIEWTESTING_CID);
+#endif
 
 static const Module::CIDEntry kToolkitCIDs[] = {
   { &kNS_TOOLKIT_APPSTARTUP_CID, false, nullptr, nsAppStartupConstructor },
@@ -198,6 +208,9 @@ static const Module::CIDEntry kToolkitCIDs[] = {
   { &kNS_ADDON_POLICY_SERVICE_CID, false, nullptr, ExtensionPolicyServiceConstructor },
   { &kNS_SESSIONSTOREUTILS_CID, false, nullptr, nsSessionStoreUtilsConstructor },
   { &kNATIVE_FILEWATCHER_SERVICE_CID, false, nullptr, NativeFileWatcherServiceConstructor },
+#if defined(ENABLE_TESTS)
+  { &kNS_TELEMETRYGECKOVIEWTESTING_CID, false, nullptr, TelemetryGeckoViewTestingImplConstructor },
+#endif
   { nullptr }
 };
 
@@ -236,6 +249,9 @@ static const Module::ContractIDEntry kToolkitContracts[] = {
   { NS_ADDON_POLICY_SERVICE_CONTRACTID, &kNS_ADDON_POLICY_SERVICE_CID },
   { NS_SESSIONSTOREUTILS_CONTRACTID, &kNS_SESSIONSTOREUTILS_CID },
   { NATIVE_FILEWATCHER_SERVICE_CONTRACTID, &kNATIVE_FILEWATCHER_SERVICE_CID },
+#if defined(ENABLE_TESTS)
+  { NS_TELEMETRYGECKOVIEWTESTING_CONTRACTID, &kNS_TELEMETRYGECKOVIEWTESTING_CID },
+#endif
   { nullptr }
 };
 

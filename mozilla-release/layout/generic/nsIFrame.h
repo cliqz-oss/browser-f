@@ -114,6 +114,10 @@ class Layer;
 class LayerManager;
 } // namespace layers
 
+namespace dom {
+class Selection;
+} // namespace dom
+
 } // namespace mozilla
 
 /**
@@ -351,6 +355,10 @@ public:
   // completion of a first-letter.
   bool FirstLetterComplete() const { return mFirstLetterComplete; }
   void SetFirstLetterComplete() { mFirstLetterComplete = true; }
+
+#ifdef DEBUG
+  nsCString ToString() const;
+#endif
 
 private:
   StyleClear mBreakType;
@@ -776,6 +784,7 @@ public:
   void SetComputedStyle(ComputedStyle* aStyle)
   {
     if (aStyle != mComputedStyle) {
+      MOZ_DIAGNOSTIC_ASSERT(PresShell() == aStyle->PresContextForFrame()->PresShell());
       RefPtr<ComputedStyle> oldComputedStyle = mComputedStyle.forget();
       mComputedStyle = aStyle;
       DidSetComputedStyle(oldComputedStyle);
@@ -791,6 +800,7 @@ public:
   void SetComputedStyleWithoutNotification(ComputedStyle* aStyle)
   {
     if (aStyle != mComputedStyle) {
+      MOZ_DIAGNOSTIC_ASSERT(PresShell() == aStyle->PresContextForFrame()->PresShell());
       mComputedStyle = aStyle;
     }
   }
@@ -1405,6 +1415,7 @@ public:
   bool GetMarginBoxBorderRadii(nscoord aRadii[8]) const;
   bool GetPaddingBoxBorderRadii(nscoord aRadii[8]) const;
   bool GetContentBoxBorderRadii(nscoord aRadii[8]) const;
+  bool GetBoxBorderRadii(nscoord aRadii[8], nsMargin aOffset, bool aIsOutset) const;
   bool GetShapeBoxBorderRadii(nscoord aRadii[8]) const;
 
   /**
@@ -2821,7 +2832,7 @@ public:
   };
   Matrix4x4Flagged GetTransformMatrix(const nsIFrame* aStopAtAncestor,
                                       nsIFrame **aOutAncestor,
-                                      uint32_t aFlags = 0);
+                                      uint32_t aFlags = 0) const;
 
   /**
    * Bit-flags to pass to IsFrameOfType()
@@ -3487,7 +3498,7 @@ public:
    * Overridable function to determine whether this frame should be considered
    * "in" the given non-null aSelection for visibility purposes.
    */
-  virtual bool IsVisibleInSelection(nsISelection* aSelection);
+  virtual bool IsVisibleInSelection(mozilla::dom::Selection* aSelection);
 
   /**
    * Determines if this frame has a container effect that requires
@@ -3997,14 +4008,6 @@ public:
   bool FrameMaintainsOverflow() const {
     return !HasAllStateBits(NS_FRAME_SVG_LAYOUT | NS_FRAME_IS_NONDISPLAY);
   }
-
-  /**
-   * Returns the content node within the anonymous content that this frame
-   * generated and which corresponds to the specified pseudo-element type,
-   * or nullptr if there is no such anonymous content.
-   */
-  virtual mozilla::dom::Element*
-  GetPseudoElement(mozilla::CSSPseudoElementType aType);
 
   /*
    * @param aStyleDisplay:  If the caller has this->StyleDisplay(), providing
@@ -4805,7 +4808,7 @@ template<bool IsLessThanOrEqual(nsIFrame*, nsIFrame*)>
 /* static */ nsIFrame*
 nsIFrame::SortedMerge(nsIFrame *aLeft, nsIFrame *aRight)
 {
-  NS_PRECONDITION(aLeft && aRight, "SortedMerge must have non-empty lists");
+  MOZ_ASSERT(aLeft && aRight, "SortedMerge must have non-empty lists");
 
   nsIFrame *result;
   // Unroll first iteration to avoid null-check 'result' inside the loop.
@@ -4853,7 +4856,7 @@ template<bool IsLessThanOrEqual(nsIFrame*, nsIFrame*)>
 /* static */ nsIFrame*
 nsIFrame::MergeSort(nsIFrame *aSource)
 {
-  NS_PRECONDITION(aSource, "MergeSort null arg");
+  MOZ_ASSERT(aSource, "MergeSort null arg");
 
   nsIFrame *sorted[32] = { nullptr };
   nsIFrame **fill = &sorted[0];

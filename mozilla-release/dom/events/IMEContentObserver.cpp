@@ -22,8 +22,6 @@
 #include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
-#include "nsIDOMRange.h"
 #include "nsIFrame.h"
 #include "nsINode.h"
 #include "nsIPresShell.h"
@@ -31,6 +29,7 @@
 #include "nsISupports.h"
 #include "nsIWidget.h"
 #include "nsPresContext.h"
+#include "nsRange.h"
 #include "nsRefreshDriver.h"
 #include "nsWeakReference.h"
 #include "WritingModes.h"
@@ -199,6 +198,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(IMEContentObserver)
 IMEContentObserver::IMEContentObserver()
   : mESM(nullptr)
   , mIMENotificationRequests(nullptr)
+  , mPreAttrChangeLength(0)
   , mSuppressNotifications(0)
   , mPreCharacterDataChangeLength(-1)
   , mSendingNotification(NOTIFY_IME_OF_NOTHING)
@@ -349,7 +349,7 @@ IMEContentObserver::InitWithEditor(nsPresContext* aPresContext,
   }
 
   mSelection =
-    selCon->GetDOMSelection(nsISelectionController::SELECTION_NORMAL);
+    selCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
   if (NS_WARN_IF(!mSelection)) {
     return false;
   }
@@ -404,7 +404,7 @@ IMEContentObserver::InitWithPlugin(nsPresContext* aPresContext,
     return false;
   }
   mSelection =
-    selCon->GetDOMSelection(nsISelectionController::SELECTION_NORMAL);
+    selCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
   if (NS_WARN_IF(!mSelection)) {
     return false;
   }
@@ -696,7 +696,7 @@ IMEContentObserver::IsEditorComposing() const
 }
 
 nsresult
-IMEContentObserver::GetSelectionAndRoot(nsISelection** aSelection,
+IMEContentObserver::GetSelectionAndRoot(dom::Selection** aSelection,
                                         nsIContent** aRootContent) const
 {
   if (!mEditableNode || !mSelection) {
@@ -1644,7 +1644,7 @@ IMEContentObserver::IsSafeToNotifyIME() const
   }
 
   // If we're in handling an edit action, this method will be called later.
-  if (mEditorBase && mEditorBase->IsInEditAction()) {
+  if (mEditorBase && mEditorBase->IsInEditSubAction()) {
     return false;
   }
 
@@ -2293,13 +2293,9 @@ IMEContentObserver::DocumentObserver::Destroy()
 }
 
 void
-IMEContentObserver::DocumentObserver::BeginUpdate(nsIDocument* aDocument,
-                                                  nsUpdateType aUpdateType)
+IMEContentObserver::DocumentObserver::BeginUpdate(nsIDocument* aDocument)
 {
   if (NS_WARN_IF(Destroyed()) || NS_WARN_IF(!IsObserving())) {
-    return;
-  }
-  if (!(aUpdateType & UPDATE_CONTENT_MODEL)) {
     return;
   }
   mDocumentUpdating++;
@@ -2307,14 +2303,10 @@ IMEContentObserver::DocumentObserver::BeginUpdate(nsIDocument* aDocument,
 }
 
 void
-IMEContentObserver::DocumentObserver::EndUpdate(nsIDocument* aDocument,
-                                                nsUpdateType aUpdateType)
+IMEContentObserver::DocumentObserver::EndUpdate(nsIDocument* aDocument)
 {
   if (NS_WARN_IF(Destroyed()) || NS_WARN_IF(!IsObserving()) ||
       NS_WARN_IF(!IsUpdating())) {
-    return;
-  }
-  if (!(aUpdateType & UPDATE_CONTENT_MODEL)) {
     return;
   }
   mDocumentUpdating--;

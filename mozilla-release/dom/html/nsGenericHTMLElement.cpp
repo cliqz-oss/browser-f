@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ArrayUtils.h"
-#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/DeclarationBlock.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/EventStateManager.h"
@@ -26,7 +26,6 @@
 #include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMDocument.h"
 #include "nsMappedAttributes.h"
 #include "nsHTMLStyleSheet.h"
 #include "nsIHTMLDocument.h"
@@ -54,6 +53,7 @@
 #include "nsHTMLParts.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/DirectionalityUtils.h"
+#include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "nsString.h"
 #include "nsUnicharUtils.h"
 #include "nsGkAtoms.h"
@@ -103,13 +103,6 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-
-NS_IMPL_ADDREF_INHERITED(nsGenericHTMLElement, nsGenericHTMLElementBase)
-NS_IMPL_RELEASE_INHERITED(nsGenericHTMLElement, nsGenericHTMLElementBase)
-
-NS_INTERFACE_MAP_BEGIN(nsGenericHTMLElement)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMNode)
-NS_INTERFACE_MAP_END_INHERITING(nsGenericHTMLElementBase)
 
 nsresult
 nsGenericHTMLElement::CopyInnerTo(Element* aDst, bool aPreallocateChildren)
@@ -480,14 +473,13 @@ nsGenericHTMLElement::UnbindFromTree(bool aDeep, bool aNullParent)
     }
   }
 
-  // We need to consider a labels element is removed from tree,
-  // it needs to update labels list and its root as well.
+  nsStyledElement::UnbindFromTree(aDeep, aNullParent);
+
+  // Invalidate .labels list. It will be repopulated when used the next time.
   nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots();
   if (slots && slots->mLabelsList) {
     slots->mLabelsList->MaybeResetRoot(SubtreeRoot());
   }
-
-  nsStyledElement::UnbindFromTree(aDeep, aNullParent);
 }
 
 HTMLFormElement*
@@ -544,8 +536,8 @@ bool
 nsGenericHTMLElement::CheckHandleEventForAnchorsPreconditions(
                         EventChainVisitor& aVisitor)
 {
-  NS_PRECONDITION(nsCOMPtr<Link>(do_QueryObject(this)),
-                  "should be called only when |this| implements |Link|");
+  MOZ_ASSERT(nsCOMPtr<Link>(do_QueryObject(this)),
+             "should be called only when |this| implements |Link|");
 
   if (!aVisitor.mPresContext) {
     // We need a pres context to do link stuff. Some events (e.g. mutation
@@ -589,7 +581,7 @@ nsGenericHTMLElement::PostHandleEventForAnchors(EventChainPostVisitor& aVisitor)
 bool
 nsGenericHTMLElement::IsHTMLLink(nsIURI** aURI) const
 {
-  NS_PRECONDITION(aURI, "Must provide aURI out param");
+  MOZ_ASSERT(aURI, "Must provide aURI out param");
 
   *aURI = GetHrefURIForAnchors().take();
   // We promise out param is non-null if we return true, so base rv on it
@@ -1683,7 +1675,7 @@ nsGenericHTMLFormElement::SaveSubtreeState()
 void
 nsGenericHTMLFormElement::SetForm(HTMLFormElement* aForm)
 {
-  NS_PRECONDITION(aForm, "Don't pass null here");
+  MOZ_ASSERT(aForm, "Don't pass null here");
   NS_ASSERTION(!mForm,
                "We don't support switching from one non-null form to another.");
 
@@ -1779,13 +1771,13 @@ nsGenericHTMLFormElement::BindToTree(nsIDocument* aDocument,
     aDocument->SetAutoFocusElement(this);
   }
 
-  // If @form is set, the element *has* to be in a document, otherwise it
-  // wouldn't be possible to find an element with the corresponding id.
+  // If @form is set, the element *has* to be in a composed document, otherwise
+  // it wouldn't be possible to find an element with the corresponding id.
   // If @form isn't set, the element *has* to have a parent, otherwise it
   // wouldn't be possible to find a form ancestor.
   // We should not call UpdateFormOwner if none of these conditions are
   // fulfilled.
-  if (HasAttr(kNameSpaceID_None, nsGkAtoms::form) ? !!GetUncomposedDoc()
+  if (HasAttr(kNameSpaceID_None, nsGkAtoms::form) ? IsInComposedDoc()
                                                   : !!aParent) {
     UpdateFormOwner(true, nullptr);
   }
@@ -1924,9 +1916,9 @@ nsGenericHTMLFormElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 
     if (aName == nsGkAtoms::form) {
       // We need a new form id observer.
-      //XXXsmaug How should this work in Shadow DOM?
-      nsIDocument* doc = GetUncomposedDoc();
-      if (doc) {
+      DocumentOrShadowRoot* docOrShadow =
+        GetUncomposedDocOrConnectedShadowRoot();
+      if (docOrShadow) {
         Element* formIdElement = nullptr;
         if (aValue && !aValue->IsEmptyString()) {
           formIdElement = AddFormIdObserver();
@@ -2127,36 +2119,21 @@ nsGenericHTMLFormElement::FocusState()
 Element*
 nsGenericHTMLFormElement::AddFormIdObserver()
 {
-  NS_ASSERTION(GetUncomposedDoc(), "When adding a form id observer, "
-                                   "we should be in a document!");
-
   nsAutoString formId;
-  nsIDocument* doc = OwnerDoc();
+  DocumentOrShadowRoot* docOrShadow = GetUncomposedDocOrConnectedShadowRoot();
   GetAttr(kNameSpaceID_None, nsGkAtoms::form, formId);
   NS_ASSERTION(!formId.IsEmpty(),
                "@form value should not be the empty string!");
   RefPtr<nsAtom> atom = NS_Atomize(formId);
 
-  return doc->AddIDTargetObserver(atom, FormIdUpdated, this, false);
+  return docOrShadow->AddIDTargetObserver(atom, FormIdUpdated, this, false);
 }
 
 void
 nsGenericHTMLFormElement::RemoveFormIdObserver()
 {
-  /**
-   * We are using OwnerDoc() because we don't really care about having the
-   * element actually being in the tree. If it is not and @form value changes,
-   * this method will be called for nothing but removing an observer which does
-   * not exist doesn't cost so much (no entry in the hash table) so having a
-   * boolean for GetUncomposedDoc()/GetOwnerDoc() would make everything look
-   * more complex for nothing.
-   */
-
-  nsIDocument* doc = OwnerDoc();
-
-  // At this point, we may not have a document anymore. In that case, we can't
-  // remove the observer. The document did that for us.
-  if (!doc) {
+  DocumentOrShadowRoot* docOrShadow = GetUncomposedDocOrConnectedShadowRoot();
+  if (!docOrShadow) {
     return;
   }
 
@@ -2166,7 +2143,7 @@ nsGenericHTMLFormElement::RemoveFormIdObserver()
                "@form value should not be the empty string!");
   RefPtr<nsAtom> atom = NS_Atomize(formId);
 
-  doc->RemoveIDTargetObserver(atom, FormIdUpdated, this, false);
+  docOrShadow->RemoveIDTargetObserver(atom, FormIdUpdated, this, false);
 }
 
 
@@ -2223,8 +2200,8 @@ void
 nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
                                           Element* aFormIdElement)
 {
-  NS_PRECONDITION(!aBindToTree || !aFormIdElement,
-                  "aFormIdElement shouldn't be set if aBindToTree is true!");
+  MOZ_ASSERT(!aBindToTree || !aFormIdElement,
+             "aFormIdElement shouldn't be set if aBindToTree is true!");
 
   bool needStateUpdate = false;
   if (!aBindToTree) {
@@ -2247,10 +2224,9 @@ nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
           element = aFormIdElement;
         }
 
-        NS_ASSERTION(GetUncomposedDoc(), "The element should be in a document "
-                                         "when UpdateFormOwner is called!");
-        NS_ASSERTION(!GetUncomposedDoc() ||
-                     element == GetUncomposedDoc()->GetElementById(formId),
+        NS_ASSERTION(!IsInComposedDoc() ||
+                     element == GetUncomposedDocOrConnectedShadowRoot()->
+                       GetElementById(formId),
                      "element should be equals to the current element "
                      "associated with the id in @form!");
 
@@ -2788,7 +2764,7 @@ nsGenericHTMLFormElementWithState::GetPrimaryPresState()
   if (!result) {
     UniquePtr<PresState> newState = NewPresState();
     result = newState.get();
-    history->AddState(mStateKey, Move(newState));
+    history->AddState(mStateKey, std::move(newState));
   }
 
   return result;
@@ -2960,8 +2936,7 @@ nsGenericHTMLElement::SetInnerText(const nsAString& aValue)
 
   // Might as well stick a batch around this since we're performing several
   // mutations.
-  mozAutoDocUpdate updateBatch(GetComposedDoc(),
-    UPDATE_CONTENT_MODEL, true);
+  mozAutoDocUpdate updateBatch(GetComposedDoc(), true);
   nsAutoMutationBatch mb;
 
   mb.Init(this, true, false);

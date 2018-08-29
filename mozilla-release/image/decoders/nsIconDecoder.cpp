@@ -70,14 +70,15 @@ nsIconDecoder::ReadHeader(const char* aData)
 
   MOZ_ASSERT(!mImageData, "Already have a buffer allocated?");
   Maybe<SurfacePipe> pipe =
-    SurfacePipeFactory::CreateSurfacePipe(this, 0, Size(), OutputSize(),
+    SurfacePipeFactory::CreateSurfacePipe(this, Size(), OutputSize(),
                                           FullFrame(), SurfaceFormat::B8G8R8A8,
+                                          /* aAnimParams */ Nothing(),
                                           SurfacePipeFlags());
   if (!pipe) {
     return Transition::TerminateFailure();
   }
 
-  mPipe = Move(*pipe);
+  mPipe = std::move(*pipe);
 
   MOZ_ASSERT(mImageData, "Should have a buffer now");
 

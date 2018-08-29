@@ -365,6 +365,8 @@ public:
 
   void NoteCalledRegisterForServiceWorkerScope(const nsACString& aScope);
 
+  void NoteDOMContentLoaded();
+
   virtual nsresult FireDelayedDOMEvents() override;
 
   virtual nsresult SetNewDocument(nsIDocument *aDocument,
@@ -377,7 +379,7 @@ public:
   virtual void MaybeUpdateTouchState() override;
 
   // Inner windows only.
-  void RefreshCompartmentPrincipal();
+  void RefreshRealmPrincipal();
 
   // For accessing protected field mFullScreen
   friend class FullscreenTransitionTask;
@@ -650,7 +652,7 @@ public:
   void Focus(mozilla::ErrorResult& aError);
   nsresult Focus() override;
   void Blur(mozilla::ErrorResult& aError);
-  already_AddRefed<nsIDOMWindowCollection> GetFrames() override;
+  nsDOMWindowList* GetFrames() final;
   already_AddRefed<nsPIDOMWindowOuter> GetFrames(mozilla::ErrorResult& aError);
   uint32_t Length();
   already_AddRefed<nsPIDOMWindowOuter> GetTop(mozilla::ErrorResult& aError);
@@ -897,7 +899,8 @@ public:
              const nsAString& aOptions,
              const mozilla::dom::Sequence<JS::Value>& aExtraArgument,
              mozilla::ErrorResult& aError);
-  void UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason);
+  void UpdateCommands(const nsAString& anAction, mozilla::dom::Selection* aSel,
+                      int16_t aReason);
 
   void GetContent(JSContext* aCx,
                   JS::MutableHandle<JSObject*> aRetval,
@@ -977,6 +980,8 @@ public:
   already_AddRefed<nsWindowRoot> GetWindowRoot(mozilla::ErrorResult& aError);
 
   bool ShouldReportForServiceWorkerScope(const nsAString& aScope);
+
+  void PropagateClearSiteDataReload(const nsACString& aOrigin);
 
   already_AddRefed<mozilla::dom::InstallTriggerImpl> GetInstallTrigger();
 

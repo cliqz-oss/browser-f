@@ -18,8 +18,7 @@
 #include "nsIClassInfoImpl.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
-#include "nsIDOMDocument.h"
-#include "nsIDOMNode.h"
+#include "nsIDocument.h"
 #include "nsIHttpChannel.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIInterfaceRequestorUtils.h"
@@ -398,48 +397,6 @@ nsCSPContext::GetEnforcesFrameAncestors(bool *outEnforcesFrameAncestors)
 }
 
 NS_IMETHODIMP
-nsCSPContext::GetReferrerPolicy(uint32_t* outPolicy, bool* outIsSet)
-{
-  *outIsSet = false;
-  *outPolicy = mozilla::net::RP_Unset;
-  nsAutoString refpol;
-  mozilla::net::ReferrerPolicy previousPolicy = mozilla::net::RP_Unset;
-  for (uint32_t i = 0; i < mPolicies.Length(); i++) {
-    mPolicies[i]->getReferrerPolicy(refpol);
-    // only set the referrer policy if not delievered through a CSPRO and
-    // note that and an empty string in refpol means it wasn't set
-    // (that's the default in nsCSPPolicy).
-    if (!mPolicies[i]->getReportOnlyFlag() && !refpol.IsEmpty()) {
-      // Referrer Directive in CSP is no more used and going to be replaced by
-      // Referrer-Policy HTTP header. But we still keep using referrer directive,
-      // and would remove it later.
-      // Referrer Directive specs is not fully compliant with new referrer policy
-      // specs. What we are using here:
-      // - If the value of the referrer directive is invalid, the user agent
-      // should set the referrer policy to no-referrer.
-      // - If there are two policies that specify a referrer policy, then they
-      // must agree or the employed policy is no-referrer.
-      if (!mozilla::net::IsValidReferrerPolicy(refpol)) {
-        *outPolicy = mozilla::net::RP_No_Referrer;
-        *outIsSet = true;
-        return NS_OK;
-      }
-
-      uint32_t currentPolicy = mozilla::net::ReferrerPolicyFromString(refpol);
-      if (*outIsSet && previousPolicy != currentPolicy) {
-        *outPolicy = mozilla::net::RP_No_Referrer;
-        return NS_OK;
-      }
-
-      *outPolicy = currentPolicy;
-      *outIsSet = true;
-    }
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsCSPContext::AppendPolicy(const nsAString& aPolicyString,
                            bool aReportOnly,
                            bool aDeliveredViaMetaTag)
@@ -731,29 +688,28 @@ nsCSPContext::LogViolationDetails(uint16_t aViolationType,
 #undef CASE_CHECK_AND_REPORT
 
 NS_IMETHODIMP
-nsCSPContext::SetRequestContext(nsIDOMDocument* aDOMDocument,
+nsCSPContext::SetRequestContext(nsIDocument* aDocument,
                                 nsIPrincipal* aPrincipal)
 {
-  NS_PRECONDITION(aDOMDocument || aPrincipal,
-                  "Can't set context without doc or principal");
-  NS_ENSURE_ARG(aDOMDocument || aPrincipal);
+  MOZ_ASSERT(aDocument || aPrincipal,
+             "Can't set context without doc or principal");
+  NS_ENSURE_ARG(aDocument || aPrincipal);
 
-  if (aDOMDocument) {
-    nsCOMPtr<nsIDocument> doc = do_QueryInterface(aDOMDocument);
-    mLoadingContext = do_GetWeakReference(doc);
-    mSelfURI = doc->GetDocumentURI();
-    mLoadingPrincipal = doc->NodePrincipal();
-    doc->GetReferrer(mReferrer);
-    mInnerWindowID = doc->InnerWindowID();
+  if (aDocument) {
+    mLoadingContext = do_GetWeakReference(aDocument);
+    mSelfURI = aDocument->GetDocumentURI();
+    mLoadingPrincipal = aDocument->NodePrincipal();
+    aDocument->GetReferrer(mReferrer);
+    mInnerWindowID = aDocument->InnerWindowID();
     // the innerWindowID is not available for CSPs delivered through the
     // header at the time setReqeustContext is called - let's queue up
     // console messages until it becomes available, see flushConsoleMessages
     mQueueUpMessages = !mInnerWindowID;
-    mCallingChannelLoadGroup = doc->GetDocumentLoadGroup();
+    mCallingChannelLoadGroup = aDocument->GetDocumentLoadGroup();
 
     // set the flag on the document for CSP telemetry
-    doc->SetHasCSP(true);
-    mEventTarget = doc->EventTargetFor(TaskCategory::Other);
+    aDocument->SetHasCSP(true);
+    mEventTarget = aDocument->EventTargetFor(TaskCategory::Other);
   }
   else {
     CSPCONTEXTLOG(("No Document in SetRequestContext; can not query loadgroup; sending reports may fail."));
@@ -789,6 +745,7 @@ struct ConsoleMsgQueueElem {
   uint32_t      mLineNumber;
   uint32_t      mColumnNumber;
   uint32_t      mSeverityFlag;
+  nsCString     mCategory;
 };
 
 void
@@ -809,7 +766,7 @@ nsCSPContext::flushConsoleMessages()
     ConsoleMsgQueueElem &elem = mConsoleMsgQueue[i];
     CSP_LogMessage(elem.mMsg, elem.mSourceName, elem.mSourceLine,
                    elem.mLineNumber, elem.mColumnNumber,
-                   elem.mSeverityFlag, "CSP", mInnerWindowID,
+                   elem.mSeverityFlag, elem.mCategory, mInnerWindowID,
                    privateWindow);
   }
   mConsoleMsgQueue.Clear();
@@ -825,6 +782,10 @@ nsCSPContext::logToConsole(const char* aName,
                            uint32_t aColumnNumber,
                            uint32_t aSeverityFlag)
 {
+  // we are passing aName as the category so we can link to the
+  // appropriate MDN docs depending on the specific error.
+  nsDependentCString category(aName);
+
   // let's check if we have to queue up console messages
   if (mQueueUpMessages) {
     nsAutoString msg;
@@ -836,6 +797,7 @@ nsCSPContext::logToConsole(const char* aName,
     elem.mLineNumber = aLineNumber;
     elem.mColumnNumber = aColumnNumber;
     elem.mSeverityFlag = aSeverityFlag;
+    elem.mCategory = category;
     return;
   }
 
@@ -845,9 +807,10 @@ nsCSPContext::logToConsole(const char* aName,
     privateWindow = !!doc->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId;
   }
 
+
   CSP_LogLocalizedStr(aName, aParams, aParamsLength, aSourceName,
                       aSourceLine, aLineNumber, aColumnNumber,
-                      aSeverityFlag, "CSP", mInnerWindowID, privateWindow);
+                      aSeverityFlag, category, mInnerWindowID, privateWindow);
 }
 
 /**

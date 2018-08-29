@@ -227,7 +227,7 @@ already_AddRefed<PrintTarget> nsDeviceContextSpecWin::MakePrintTarget()
 
       nsAutoCString printFile(NS_ConvertUTF16toUTF8(filename).get());
       auto skStream = MakeUnique<SkFILEWStream>(printFile.get());
-      return PrintTargetSkPDF::CreateOrNull(Move(skStream), size);
+      return PrintTargetSkPDF::CreateOrNull(std::move(skStream), size);
     }
 
     if (mDevMode) {
@@ -319,6 +319,22 @@ nsDeviceContextSpecWin::GetPrintingScale()
   int32_t resolution;
   mPrintSettings->GetResolution(&resolution);
   return float(resolution) / GetDPI();
+}
+
+gfxPoint
+nsDeviceContextSpecWin::GetPrintingTranslate()
+{
+  // The underlying surface on windows is the size of the printable region. When
+  // the region is smaller than the actual paper size the (0, 0) coordinate
+  // refers top-left of that unwritable region. To instead have (0, 0) become
+  // the top-left of the actual paper, translate it's coordinate system by the
+  // unprintable region's width.
+  double marginTop, marginLeft;
+  mPrintSettings->GetUnwriteableMarginTop(&marginTop);
+  mPrintSettings->GetUnwriteableMarginLeft(&marginLeft);
+  int32_t resolution;
+  mPrintSettings->GetResolution(&resolution);
+  return gfxPoint(-marginLeft * resolution, -marginTop * resolution);
 }
 
 //----------------------------------------------------------------------------------

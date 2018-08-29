@@ -3,7 +3,6 @@ job-defaults:
     max-run-time: 5400
     mozharness:
         script: web_platform_tests.py
-        no-read-buildbot-config: true
         config:
             by-test-platform:
                 windows.*:
@@ -20,6 +19,7 @@ web-platform-tests:
     treeherder-symbol: W(wpt)
     chunks:
         by-test-platform:
+            linux.*/debug: 18
             macosx64/opt: 5
             macosx64/debug: 10
             windows10-64-ccov/debug: 15
@@ -34,7 +34,7 @@ web-platform-tests:
             default: true
     run-on-projects:
         by-test-platform:
-            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
+            linux64-qr/.*: ['release', 'try']
             default: built-projects
     mozharness:
         chunked: true
@@ -84,7 +84,7 @@ web-platform-tests-reftests:
             default: true
     run-on-projects:
         by-test-platform:
-            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
+            linux64-qr/.*: ['release', 'try']
             default: built-projects
     mozharness:
         extra-options:
@@ -124,7 +124,7 @@ web-platform-tests-wdspec:
             - --test-type=wdspec
     run-on-projects:
         by-test-platform:
-            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
+            linux64-qr/.*: ['release', 'try']
             default: built-projects
 
 web-platform-tests-wdspec-headless:
@@ -146,20 +146,18 @@ web-platform-tests-wdspec-headless:
 
 test-verify-wpt:
     description: "Extra verification of web-platform tests modified on this push"
-    suite: test-verify-wpt
+    suite: test-verify
     treeherder-symbol: TVw
     max-run-time: 10800
     run-on-projects:
         by-test-platform:
-            # do not run on ccov; see also the enable_code_coverage transform
-            linux64-ccov/.*: []
-            windows10-64-ccov/debug: []
+            # do not run on ccov or jsdcov
+            .*-ccov/.*: []
+            .*-jsdcov/.*: []
+            .*-asan/.*: []
             # do not run on beta or release: usually just confirms earlier results
             default: ['trunk', 'try']
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: 2
+    tier: 2
     mozharness:
         extra-options:
             - --verify
@@ -171,14 +169,9 @@ test-coverage-wpt:
     max-run-time: 10800
     run-on-projects:
         by-test-platform:
-            # only run on mozilla-central and try.
-            linux64-ccov/.*: ['mozilla-central', 'try']
-            windows10-64-ccov/debug: ['mozilla-central', 'try']
+            .*-ccov/.*: built-projects
             default: []
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: 2
+    tier: 2
     mozharness:
         extra-options:
             - --per-test-coverage

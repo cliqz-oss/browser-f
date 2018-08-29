@@ -68,6 +68,11 @@ var GeckoViewUtils = {
       observers.forEach(topic => Services.obs.addObserver(observer, topic));
     }
 
+    if (!this.IS_PARENT_PROCESS) {
+      // ppmm, mm, and ged are only available in the parent process.
+      return;
+    }
+
     let addMMListener = (target, names) => {
       let listener = msg => {
         target.removeMessageListener(msg.name, listener);
@@ -289,21 +294,22 @@ var GeckoViewUtils = {
     return null;
   },
 
-  getActiveDispatcher: function() {
-    let dispatcher = this.getDispatcherForWindow(Services.focus.activeWindow);
+  getActiveDispatcherAndWindow: function() {
+    let win = Services.focus.activeWindow;
+    let dispatcher = this.getDispatcherForWindow(win);
     if (dispatcher) {
-      return dispatcher;
+      return [dispatcher, win];
     }
 
     let iter = Services.wm.getEnumerator(/* windowType */ null);
     while (iter.hasMoreElements()) {
-      dispatcher = this.getDispatcherForWindow(
-          iter.getNext().QueryInterface(Ci.nsIDOMWindow));
+      win = iter.getNext().QueryInterface(Ci.nsIDOMWindow);
+      dispatcher = this.getDispatcherForWindow(win);
       if (dispatcher) {
-        return dispatcher;
+        return [dispatcher, win];
       }
     }
-    return null;
+    return [null, null];
   },
 
   /**

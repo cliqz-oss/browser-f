@@ -8,12 +8,16 @@ interface CustomElementRegistry {
   [CEReactions, Throws]
   void define(DOMString name, Function functionConstructor,
               optional ElementDefinitionOptions options);
+  [ChromeOnly, Throws]
+  void setElementCreationCallback(DOMString name, CustomElementCreationCallback callback);
   any get(DOMString name);
   [Throws]
   Promise<void> whenDefined(DOMString name);
+  [CEReactions] void upgrade(Node root);
 };
 
 dictionary ElementDefinitionOptions {
   DOMString extends;
 };
 
+callback CustomElementCreationCallback = void (DOMString name);

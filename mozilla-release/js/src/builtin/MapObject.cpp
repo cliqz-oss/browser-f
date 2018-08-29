@@ -57,7 +57,8 @@ HashableValue::setValue(JSContext* cx, HandleValue v)
     }
 
     MOZ_ASSERT(value.isUndefined() || value.isNull() || value.isBoolean() || value.isNumber() ||
-               value.isString() || value.isSymbol() || value.isObject());
+               value.isString() || value.isSymbol() || value.isObject() ||
+               IF_BIGINT(value.isBigInt(), false));
     return true;
 }
 
@@ -77,6 +78,10 @@ HashValue(const Value& v, const mozilla::HashCodeScrambler& hcs)
         return v.toString()->asAtom().hash();
     if (v.isSymbol())
         return v.toSymbol()->hash();
+#ifdef ENABLE_BIGINT
+    if (v.isBigInt())
+        return v.toBigInt()->hash();
+#endif
     if (v.isObject())
         return hcs.scramble(v.asRawBits());
 
@@ -96,12 +101,24 @@ HashableValue::operator==(const HashableValue& other) const
     // Two HashableValues are equal if they have equal bits.
     bool b = (value.asRawBits() == other.value.asRawBits());
 
+#ifdef ENABLE_BIGINT
+    // BigInt values are considered equal if they represent the same
+    // integer. This test should use a comparison function that doesn't
+    // require a JSContext once one is defined in the BigInt class.
+    if (!b && (value.isBigInt() && other.value.isBigInt())) {
+        JSContext* cx = TlsContext.get();
+        RootedValue valueRoot(cx, value);
+        RootedValue otherRoot(cx, other.value);
+        SameValue(cx, valueRoot, otherRoot, &b);
+    }
+#endif
+
 #ifdef DEBUG
     bool same;
     JSContext* cx = TlsContext.get();
     RootedValue valueRoot(cx, value);
     RootedValue otherRoot(cx, other.value);
-    MOZ_ASSERT(SameValue(nullptr, valueRoot, otherRoot, &same));
+    MOZ_ASSERT(SameValue(cx, valueRoot, otherRoot, &same));
     MOZ_ASSERT(same == b);
 #endif
     return b;
@@ -246,7 +263,7 @@ MapIteratorObject::create(JSContext* cx, HandleObject obj, ValueMap* data,
     bool insideNursery = IsInsideNursery(iterobj);
     MOZ_ASSERT(insideNursery == nursery.isInside(buffer));
     if (insideNursery && !HasNurseryMemory(mapobj.get())) {
-        if (!cx->compartment()->addMapWithNurseryMemory(mapobj)) {
+        if (!cx->nursery().addMapWithNurseryMemory(mapobj)) {
             ReportOutOfMemory(cx);
             return nullptr;
         }
@@ -359,7 +376,7 @@ MapIteratorObject::createResultPair(JSContext* cx)
         return nullptr;
 
     Rooted<TaggedProto> proto(cx, resultPairObj->taggedProto());
-    ObjectGroup* group = ObjectGroupCompartment::makeGroup(cx, resultPairObj->getClass(), proto);
+    ObjectGroup* group = ObjectGroupRealm::makeGroup(cx, resultPairObj->getClass(), proto);
     if (!group)
         return nullptr;
     resultPairObj->setGroup(group);
@@ -633,7 +650,7 @@ MapObject*
 MapObject::create(JSContext* cx, HandleObject proto /* = nullptr */)
 {
     auto map = cx->make_unique<ValueMap>(cx->zone(),
-                                         cx->compartment()->randomHashCodeScrambler());
+                                         cx->realm()->randomHashCodeScrambler());
     if (!map || !map->init()) {
         ReportOutOfMemory(cx);
         return nullptr;
@@ -644,7 +661,7 @@ MapObject::create(JSContext* cx, HandleObject proto /* = nullptr */)
         return nullptr;
 
     bool insideNursery = IsInsideNursery(mapObj);
-    if (insideNursery && !cx->compartment()->addMapWithNurseryMemory(mapObj)) {
+    if (insideNursery && !cx->nursery().addMapWithNurseryMemory(mapObj)) {
         ReportOutOfMemory(cx);
         return nullptr;
     }
@@ -1097,7 +1114,7 @@ SetIteratorObject::create(JSContext* cx, HandleObject obj, ValueSet* data,
     bool insideNursery = IsInsideNursery(iterobj);
     MOZ_ASSERT(insideNursery == nursery.isInside(buffer));
     if (insideNursery && !HasNurseryMemory(setobj.get())) {
-        if (!cx->compartment()->addSetWithNurseryMemory(setobj)) {
+        if (!cx->nursery().addSetWithNurseryMemory(setobj)) {
             ReportOutOfMemory(cx);
             return nullptr;
         }
@@ -1187,7 +1204,7 @@ SetIteratorObject::createResult(JSContext* cx)
         return nullptr;
 
     Rooted<TaggedProto> proto(cx, resultObj->taggedProto());
-    ObjectGroup* group = ObjectGroupCompartment::makeGroup(cx, resultObj->getClass(), proto);
+    ObjectGroup* group = ObjectGroupRealm::makeGroup(cx, resultObj->getClass(), proto);
     if (!group)
         return nullptr;
     resultObj->setGroup(group);
@@ -1316,7 +1333,7 @@ SetObject*
 SetObject::create(JSContext* cx, HandleObject proto /* = nullptr */)
 {
     auto set = cx->make_unique<ValueSet>(cx->zone(),
-                                         cx->compartment()->randomHashCodeScrambler());
+                                         cx->realm()->randomHashCodeScrambler());
     if (!set || !set->init()) {
         ReportOutOfMemory(cx);
         return nullptr;
@@ -1327,7 +1344,7 @@ SetObject::create(JSContext* cx, HandleObject proto /* = nullptr */)
         return nullptr;
 
     bool insideNursery = IsInsideNursery(obj);
-    if (insideNursery && !cx->compartment()->addSetWithNurseryMemory(obj)) {
+    if (insideNursery && !cx->nursery().addSetWithNurseryMemory(obj)) {
         ReportOutOfMemory(cx);
         return nullptr;
     }
@@ -1694,9 +1711,9 @@ CallObjFunc(RetT(*ObjFunc)(JSContext*, HandleObject), JSContext* cx, HandleObjec
     RootedObject unwrappedObj(cx);
     unwrappedObj = UncheckedUnwrap(obj);
 
-    // Enter the compartment of the backing object before calling functions on
+    // Enter the realm of the backing object before calling functions on
     // it.
-    JSAutoCompartment ac(cx, unwrappedObj);
+    JSAutoRealm ar(cx, unwrappedObj);
     return ObjFunc(cx, unwrappedObj);
 }
 
@@ -1711,7 +1728,7 @@ CallObjFunc(bool(*ObjFunc)(JSContext *cx, HandleObject obj, HandleValue key, boo
     // Always unwrap, in case this is an xray or cross-compartment wrapper.
     RootedObject unwrappedObj(cx);
     unwrappedObj = UncheckedUnwrap(obj);
-    JSAutoCompartment ac(cx, unwrappedObj);
+    JSAutoRealm ar(cx, unwrappedObj);
 
     // If we're working with a wrapped map/set, rewrap the key into the
     // compartment of the unwrapped map/set.
@@ -1739,7 +1756,7 @@ CallObjFunc(bool(*ObjFunc)(JSContext* cx, Iter kind,
     {
         // Retrieve the iterator while in the unwrapped map/set's compartment,
         // otherwise we'll crash on a compartment assert.
-        JSAutoCompartment ac(cx, unwrappedObj);
+        JSAutoRealm ar(cx, unwrappedObj);
         if (!ObjFunc(cx, iterType, unwrappedObj, rval))
             return false;
     }
@@ -1773,12 +1790,12 @@ JS::MapGet(JSContext* cx, HandleObject obj, HandleValue key, MutableHandleValue 
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, obj, key, rval);
 
-    // Unwrap the object, and enter its compartment. If object isn't wrapped,
+    // Unwrap the object, and enter its realm. If object isn't wrapped,
     // this is essentially a noop.
     RootedObject unwrappedObj(cx);
     unwrappedObj = UncheckedUnwrap(obj);
     {
-        JSAutoCompartment ac(cx, unwrappedObj);
+        JSAutoRealm ar(cx, unwrappedObj);
         RootedValue wrappedKey(cx, key);
 
         // If we passed in a wrapper, wrap our key into its compartment now.
@@ -1809,7 +1826,7 @@ JS::MapSet(JSContext *cx, HandleObject obj, HandleValue key, HandleValue val)
     RootedObject unwrappedObj(cx);
     unwrappedObj = UncheckedUnwrap(obj);
     {
-        JSAutoCompartment ac(cx, unwrappedObj);
+        JSAutoRealm ar(cx, unwrappedObj);
 
         // If we passed in a wrapper, wrap both key and value before adding to
         // the map
@@ -1890,7 +1907,7 @@ JS::SetAdd(JSContext *cx, HandleObject obj, HandleValue key)
     RootedObject unwrappedObj(cx);
     unwrappedObj = UncheckedUnwrap(obj);
     {
-        JSAutoCompartment ac(cx, unwrappedObj);
+        JSAutoRealm ar(cx, unwrappedObj);
 
         // If we passed in a wrapper, wrap key before adding to the set
         RootedValue wrappedKey(cx, key);

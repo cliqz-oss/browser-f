@@ -328,7 +328,7 @@ JitcodeGlobalEntry::createScriptString(JSContext* cx, JSScript* script, size_t* 
     size_t linenoLength = 0;
     char linenoStr[15];
     if (hasName || (script->functionNonDelazifying() || script->isForEval())) {
-        linenoLength = SprintfLiteral(linenoStr, "%zu", script->lineno());
+        linenoLength = SprintfLiteral(linenoStr, "%u", script->lineno());
         hasLineno = true;
     }
 
@@ -740,7 +740,7 @@ JitcodeGlobalTable::traceForMinorGC(JSTracer* trc)
     // Trace only entries that can directly contain nursery pointers.
 
     MOZ_ASSERT(trc->runtime()->geckoProfiler().enabled());
-    MOZ_ASSERT(JS::CurrentThreadIsHeapMinorCollecting());
+    MOZ_ASSERT(JS::RuntimeHeapIsMinorCollecting());
 
     JSContext* cx = trc->runtime()->mainContextFromOwnThread();
     AutoSuppressProfilerSampling suppressSampling(cx);
@@ -790,7 +790,7 @@ JitcodeGlobalTable::markIteratively(GCMarker* marker)
     // The approach above obviates the need for read barriers. The assumption
     // above is checked in JitcodeGlobalTable::lookupForSampler.
 
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapMinorCollecting());
+    MOZ_ASSERT(!JS::RuntimeHeapIsMinorCollecting());
 
     AutoSuppressProfilerSampling suppressSampling(TlsContext.get());
 
@@ -1547,13 +1547,13 @@ JitcodeIonTable::WriteIonTable(CompactBufferWriter& writer,
     MOZ_ASSERT(writer.length() == 0);
     MOZ_ASSERT(scriptListSize > 0);
 
-    JitSpew(JitSpew_Profiling, "Writing native to bytecode map for %s:%zu (%zu entries)",
+    JitSpew(JitSpew_Profiling, "Writing native to bytecode map for %s:%u (%zu entries)",
             scriptList[0]->filename(), scriptList[0]->lineno(),
             mozilla::PointerRangeSize(start, end));
 
     JitSpew(JitSpew_Profiling, "  ScriptList of size %d", int(scriptListSize));
     for (uint32_t i = 0; i < scriptListSize; i++) {
-        JitSpew(JitSpew_Profiling, "  Script %d - %s:%zu",
+        JitSpew(JitSpew_Profiling, "  Script %d - %s:%u",
                 int(i), scriptList[i]->filename(), scriptList[i]->lineno());
     }
 

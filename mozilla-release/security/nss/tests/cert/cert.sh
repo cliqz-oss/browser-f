@@ -1060,6 +1060,25 @@ cert_extended_ssl()
 #	  -d "${PROFILEDIR}" -i "${CLIENT_CADIR}/clientCA-ecmixed.ca.cert" \
 #	  2>&1
 
+  # Check that a repeated import with a different nickname doesn't change the
+  # nickname of the existing cert (bug 1458518).
+  # We want to search for the results using grep, to avoid subset matches,
+  # we'll use one of the longer nicknames for testing.
+  # (Because "grep -w hostname" matches "grep -w hostname-dsamixed")
+  MYDBPASS="-d ${PROFILEDIR} -f ${R_PWFILE}"
+  TESTNAME="Ensure there's exactly one match for ${CERTNAME}-dsamixed"
+  cert_check_nickname_exists "$MYDBPASS" "${CERTNAME}-dsamixed" 0 1 "${TESTNAME}"
+
+  CU_ACTION="Repeated import of $CERTNAME's mixed DSA Cert with different nickname"
+  certu -A -n "${CERTNAME}-repeated-dsamixed" -t "u,u,u" -d "${PROFILEDIR}" \
+        -f "${R_PWFILE}" -i "${CERTNAME}-dsamixed.cert" 2>&1
+
+  TESTNAME="Ensure there's still exactly one match for ${CERTNAME}-dsamixed"
+  cert_check_nickname_exists "$MYDBPASS" "${CERTNAME}-dsamixed" 0 1 "${TESTNAME}"
+
+  TESTNAME="Ensure there's zero matches for ${CERTNAME}-repeated-dsamixed"
+  cert_check_nickname_exists "$MYDBPASS" "${CERTNAME}-repeated-dsamixed" 0 0 "${TESTNAME}"
+
   echo "Importing all the server's own CA chain into the servers DB"
   for CA in `find ${SERVER_CADIR} -name "?*.ca.cert"` ;
   do
@@ -1529,6 +1548,37 @@ cert_make_with_param()
     fi
 
     html_passed "${TESTNAME} (${COUNT})"
+    return 0
+}
+
+cert_check_nickname_exists()
+{
+    MYDIRPASS="$1"
+    MYCERTNAME="$2"
+    EXPECT="$3"
+    EXPECTCOUNT="$4"
+    MYTESTNAME="$5"
+
+    echo certutil ${MYDIRPASS} -L
+    ${BINDIR}/certutil ${MYDIRPASS} -L
+
+    RET=$?
+    if [ "${RET}" -ne "${EXPECT}" ]; then
+        CERTFAILED=1
+        html_failed "${MYTESTNAME} - list"
+        cert_log "ERROR: ${MYTESTNAME} - list"
+        return 1
+    fi
+
+    LISTCOUNT=`${BINDIR}/certutil ${MYDIRPASS} -L | grep -wc ${MYCERTNAME}`
+    if [ "${LISTCOUNT}" -ne "${EXPECTCOUNT}" ]; then
+        CERTFAILED=1
+        html_failed "${MYTESTNAME} - list and count"
+        cert_log "ERROR: ${MYTESTNAME} - list and count failed"
+        return 1
+    fi
+
+    html_passed "${MYTESTNAME}"
     return 0
 }
 
@@ -2425,6 +2475,31 @@ EOF
   RETEXPECTED=0
 }
 
+cert_test_orphan_key_reuse()
+{
+  CU_ACTION="Create orphan key in serverdir"
+  certu -G -f "${R_PWFILE}" -z ${R_NOISE_FILE} -d ${PROFILEDIR}
+  # Let's get the key ID of the first orphan key.
+  # The output of certutil -K (list keys) isn't well formatted.
+  # The initial <key-number> part may or may not contain white space, which
+  # makes the use of awk to filter the column unreliable.
+  # To fix that, we remove the initial <number> field using sed, then select the
+  # column that contains the key ID.
+  ORPHAN=`${BINDIR}/certutil -d ${PROFILEDIR} -K -f ${R_PWFILE} | \
+          sed 's/^<.*>//g' | grep -w orphan | head -1 | awk '{print $2}'`
+  CU_ACTION="Create cert request for orphan key"
+  certu -R -f "${R_PWFILE}" -k ${ORPHAN} -s "CN=orphan" -d ${PROFILEDIR} \
+        -o ${SERVERDIR}/orphan.req
+  # Ensure that creating the request really works by listing it, and check
+  # if listing was successful.
+  ${BINDIR}/pp -t certificate-request -i ${SERVERDIR}/orphan.req
+  RET=$?
+  if [ "$RET" -ne 0 ]; then
+    html_failed "Listing cert request for orphan key ($RET)"
+    cert_log "ERROR: Listing cert request for orphan key failed $RET"
+  fi
+}
+
 ############################## cert_cleanup ############################
 # local shell function to finish this script (no exit since it might be
 # sourced)
@@ -2444,6 +2519,7 @@ cert_all_CA
 cert_test_implicit_db_init
 cert_extended_ssl
 cert_ssl
+cert_test_orphan_key_reuse
 cert_smime_client
 IS_FIPS_DISABLED=`certutil --build-flags |grep -cw NSS_FIPS_DISABLED`
 if [ $IS_FIPS_DISABLED -ne 0 ]; then

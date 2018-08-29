@@ -11,8 +11,9 @@ use lib::*;
 use ser::{self, Impossible, Serialize, SerializeMap, SerializeStruct, Serializer};
 
 #[cfg(any(feature = "std", feature = "alloc"))]
-use self::content::{Content, ContentSerializer, SerializeStructVariantAsMapValue,
-                    SerializeTupleVariantAsMapValue};
+use self::content::{
+    Content, ContentSerializer, SerializeStructVariantAsMapValue, SerializeTupleVariantAsMapValue,
+};
 
 /// Used to check that serde(getter) attributes return the expected type.
 /// Not public API.
@@ -946,7 +947,8 @@ mod content {
         where
             T: Serialize,
         {
-            let key = self.key
+            let key = self
+                .key
                 .take()
                 .expect("serialize_value called before serialize_key");
             let value = try!(value.serialize(ContentSerializer::<E>::new()));
@@ -1121,14 +1123,14 @@ where
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        Err(self.bad_type(Unsupported::Optional))
+        Ok(())
     }
 
-    fn serialize_some<T: ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: Serialize,
     {
-        Err(self.bad_type(Unsupported::Optional))
+        value.serialize(self)
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {

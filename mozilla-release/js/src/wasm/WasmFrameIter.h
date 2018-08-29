@@ -35,13 +35,14 @@ namespace wasm {
 
 class Code;
 class CodeRange;
-class ModuleSegment;
 class DebugFrame;
+class FuncTypeIdDesc;
 class Instance;
-class SigIdDesc;
-struct Frame;
-struct FuncOffsets;
+class ModuleSegment;
+
 struct CallableOffsets;
+struct FuncOffsets;
+struct Frame;
 
 // Iterates over a linear group of wasm frames of a single wasm JitActivation,
 // called synchronously from C++ in the wasm thread. It will stop at the first
@@ -54,6 +55,7 @@ class WasmFrameIter
 {
   public:
     enum class Unwind { True, False };
+    static constexpr uint32_t ColumnBit = 1u << 31;
 
   private:
     jit::JitActivation* activation_;
@@ -79,6 +81,8 @@ class WasmFrameIter
     bool mutedErrors() const;
     JSAtom* functionDisplayAtom() const;
     unsigned lineOrBytecode() const;
+    uint32_t funcIndex() const;
+    unsigned computeLine(uint32_t* column) const;
     const CodeRange* codeRange() const { return codeRange_; }
     Instance* instance() const;
     void** unwoundAddressOfReturnAddress() const;
@@ -95,10 +99,6 @@ enum class SymbolicAddress;
 // function that is used for better display in the profiler.
 class ExitReason
 {
-    uint32_t payload_;
-
-    ExitReason() {}
-
   public:
     enum class Fixed : uint32_t
     {
@@ -110,6 +110,13 @@ class ExitReason
         Trap,            // call to trap handler
         DebugTrap        // call to debug trap handler
     };
+
+  private:
+    uint32_t payload_;
+
+    ExitReason() : ExitReason(Fixed::None) {}
+
+  public:
 
     MOZ_IMPLICIT ExitReason(Fixed exitReason)
       : payload_(0x0 | (uint32_t(exitReason) << 1))
@@ -212,7 +219,7 @@ void
 GenerateJitEntryPrologue(jit::MacroAssembler& masm, Offsets* offsets);
 
 void
-GenerateFunctionPrologue(jit::MacroAssembler& masm, const SigIdDesc& sigId,
+GenerateFunctionPrologue(jit::MacroAssembler& masm, const FuncTypeIdDesc& funcTypeId,
                          const mozilla::Maybe<uint32_t>& tier1FuncIndex,
                          FuncOffsets* offsets);
 void

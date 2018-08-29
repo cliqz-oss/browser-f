@@ -101,13 +101,6 @@ nsCSSValue::nsCSSValue(mozilla::css::URLValue* aValue)
   mValue.mURL->AddRef();
 }
 
-nsCSSValue::nsCSSValue(mozilla::css::ImageValue* aValue)
-  : mUnit(eCSSUnit_Image)
-{
-  mValue.mImage = aValue;
-  mValue.mImage->AddRef();
-}
-
 nsCSSValue::nsCSSValue(mozilla::css::GridTemplateAreasValue* aValue)
   : mUnit(eCSSUnit_GridTemplateAreas)
 {
@@ -164,10 +157,6 @@ nsCSSValue::nsCSSValue(const nsCSSValue& aCopy)
   else if (eCSSUnit_URL == mUnit) {
     mValue.mURL = aCopy.mValue.mURL;
     mValue.mURL->AddRef();
-  }
-  else if (eCSSUnit_Image == mUnit) {
-    mValue.mImage = aCopy.mValue.mImage;
-    mValue.mImage->AddRef();
   }
   else if (eCSSUnit_Pair == mUnit) {
     mValue.mPair = aCopy.mValue.mPair;
@@ -264,9 +253,6 @@ bool nsCSSValue::operator==(const nsCSSValue& aOther) const
     else if (eCSSUnit_URL == mUnit) {
       return mValue.mURL->Equals(*aOther.mValue.mURL);
     }
-    else if (eCSSUnit_Image == mUnit) {
-      return mValue.mImage->Equals(*aOther.mValue.mImage);
-    }
     else if (eCSSUnit_Pair == mUnit) {
       return *mValue.mPair == *aOther.mValue.mPair;
     }
@@ -340,23 +326,6 @@ nsCSSValue::GetAngleValueInDegrees() const
   }
 }
 
-imgRequestProxy* nsCSSValue::GetImageValue(nsIDocument* aDocument) const
-{
-  MOZ_ASSERT(mUnit == eCSSUnit_Image, "not an Image value");
-  return mValue.mImage->mRequests.GetWeak(aDocument);
-}
-
-already_AddRefed<imgRequestProxy>
-nsCSSValue::GetPossiblyStaticImageValue(nsIDocument* aDocument,
-                                        nsPresContext* aPresContext) const
-{
-  imgRequestProxy* req = GetImageValue(aDocument);
-  if (aPresContext->IsDynamic()) {
-    return do_AddRef(req);
-  }
-  return nsContentUtils::GetStaticRequest(aDocument, req);
-}
-
 nscoord nsCSSValue::GetPixelLength() const
 {
   MOZ_ASSERT(IsPixelLengthUnit(), "not a fixed length unit");
@@ -396,8 +365,6 @@ void nsCSSValue::DoReset()
     DO_RELEASE(mArray);
   } else if (eCSSUnit_URL == mUnit) {
     DO_RELEASE(mURL);
-  } else if (eCSSUnit_Image == mUnit) {
-    DO_RELEASE(mImage);
   } else if (eCSSUnit_Pair == mUnit) {
     DO_RELEASE(mPair);
   } else if (eCSSUnit_List == mUnit) {
@@ -489,14 +456,6 @@ void nsCSSValue::SetURLValue(mozilla::css::URLValue* aValue)
   mUnit = eCSSUnit_URL;
   mValue.mURL = aValue;
   mValue.mURL->AddRef();
-}
-
-void nsCSSValue::SetImageValue(mozilla::css::ImageValue* aValue)
-{
-  Reset();
-  mUnit = eCSSUnit_Image;
-  mValue.mImage = aValue;
-  mValue.mImage->AddRef();
 }
 
 void nsCSSValue::SetGridTemplateAreas(mozilla::css::GridTemplateAreasValue* aValue)
@@ -604,7 +563,7 @@ nsCSSValue::AdoptListValue(UniquePtr<nsCSSValueList> aValue)
   // We have to copy the first element since for owned lists the first
   // element should be an nsCSSValueList_heap object.
   SetListValue();
-  mValue.mList->mValue = Move(aValue->mValue);
+  mValue.mList->mValue = std::move(aValue->mValue);
   mValue.mList->mNext  = aValue->mNext;
   aValue->mNext = nullptr;
   aValue.reset();
@@ -634,8 +593,8 @@ nsCSSValue::AdoptPairListValue(UniquePtr<nsCSSValuePairList> aValue)
   // We have to copy the first element, since for owned pair lists, the first
   // element should be an nsCSSValuePairList_heap object.
   SetPairListValue();
-  mValue.mPairList->mXValue = Move(aValue->mXValue);
-  mValue.mPairList->mYValue = Move(aValue->mYValue);
+  mValue.mPairList->mXValue = std::move(aValue->mXValue);
+  mValue.mPairList->mYValue = std::move(aValue->mYValue);
   mValue.mPairList->mNext   = aValue->mNext;
   aValue->mNext = nullptr;
   aValue.reset();
@@ -902,11 +861,6 @@ nsCSSValue::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
     // URL
     case eCSSUnit_URL:
       n += mValue.mURL->SizeOfIncludingThis(aMallocSizeOf);
-      break;
-
-    // Image
-    case eCSSUnit_Image:
-      n += mValue.mImage->SizeOfIncludingThis(aMallocSizeOf);
       break;
 
     // Pair
@@ -1207,8 +1161,8 @@ nsCSSValue::Array::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) cons
 css::URLValueData::URLValueData(already_AddRefed<nsIURI> aURI,
                                 ServoRawOffsetArc<RustString> aString,
                                 already_AddRefed<URLExtraData> aExtraData)
-  : mURI(Move(aURI))
-  , mExtraData(Move(aExtraData))
+  : mURI(std::move(aURI))
+  , mExtraData(std::move(aExtraData))
   , mURIResolved(true)
   , mString(aString)
 {
@@ -1218,7 +1172,7 @@ css::URLValueData::URLValueData(already_AddRefed<nsIURI> aURI,
 
 css::URLValueData::URLValueData(ServoRawOffsetArc<RustString> aString,
                                 already_AddRefed<URLExtraData> aExtraData)
-  : mExtraData(Move(aExtraData))
+  : mExtraData(std::move(aExtraData))
   , mURIResolved(false)
   , mString(aString)
 {
@@ -1355,9 +1309,10 @@ css::URLValueData::ResolveLocalRef(nsIURI* aURI) const
     nsresult rv = NS_MutateURI(aURI)
                     .SetRef(ref)
                     .Finalize(result);
+
     if (NS_FAILED(rv)) {
-      // If setting the ref failed, just return a clone.
-      aURI->Clone(getter_AddRefs(result));
+      // If setting the ref failed, just return the original URI.
+      result = aURI;
     }
   }
 
@@ -1439,7 +1394,7 @@ css::ImageValue::ImageValue(nsIURI* aURI,
                             already_AddRefed<URLExtraData> aExtraData,
                             nsIDocument* aDocument,
                             CORSMode aCORSMode)
-  : URLValueData(do_AddRef(aURI), aString, Move(aExtraData))
+  : URLValueData(do_AddRef(aURI), aString, std::move(aExtraData))
 {
   mCORSMode = aCORSMode;
   Initialize(aDocument);
@@ -1448,7 +1403,7 @@ css::ImageValue::ImageValue(nsIURI* aURI,
 css::ImageValue::ImageValue(ServoRawOffsetArc<RustString> aString,
                             already_AddRefed<URLExtraData> aExtraData,
                             CORSMode aCORSMode)
-  : URLValueData(aString, Move(aExtraData))
+  : URLValueData(aString, std::move(aExtraData))
 {
   mCORSMode = aCORSMode;
 }

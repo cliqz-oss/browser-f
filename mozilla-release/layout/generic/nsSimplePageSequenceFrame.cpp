@@ -147,8 +147,8 @@ nsSimplePageSequenceFrame::Reflow(nsPresContext*     aPresContext,
                                   nsReflowStatus&    aStatus)
 {
   MarkInReflow();
-  NS_PRECONDITION(aPresContext->IsRootPaginatedDocument(),
-                  "A Page Sequence is only for real pages");
+  MOZ_ASSERT(aPresContext->IsRootPaginatedDocument(),
+             "A Page Sequence is only for real pages");
   DO_GLOBAL_REFLOW_COUNT("nsSimplePageSequenceFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
@@ -751,7 +751,7 @@ nsSimplePageSequenceFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   }
 
   content.AppendToTop(
-      MakeDisplayItem<nsDisplayTransform>(aBuilder, this, &content, content.GetVisibleRect(),
+      MakeDisplayItem<nsDisplayTransform>(aBuilder, this, &content, content.GetBuildingRect(),
                                           ::ComputePageSequenceTransform));
 
   aLists.Content()->AppendToTop(&content);

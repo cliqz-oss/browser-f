@@ -107,7 +107,7 @@ NativeRegExpMacroAssembler::NativeRegExpMacroAssembler(JSContext* cx, LifoAlloc*
 RegExpCode
 NativeRegExpMacroAssembler::GenerateCode(JSContext* cx, bool match_only)
 {
-    if (!cx->compartment()->ensureJitCompartmentExists(cx))
+    if (!cx->realm()->ensureJitRealmExists(cx))
         return RegExpCode();
 
     JitSpew(SPEW_PREFIX "GenerateCode");
@@ -967,7 +967,7 @@ NativeRegExpMacroAssembler::CheckBitInTable(RegExpShared::JitCodeTable table, La
     // Transfer ownership of |table| to the |tables| Vector.
     {
         AutoEnterOOMUnsafeRegion oomUnsafe;
-        if (!tables.append(Move(table)))
+        if (!tables.append(std::move(table)))
             oomUnsafe.crash("RegExp table append");
     }
 }

@@ -511,32 +511,22 @@ ListInterestingFiles(nsString& aAnnotation, nsIFile* aFile,
     return;
   }
 
-  nsCOMPtr<nsISimpleEnumerator> entries;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   if (NS_FAILED(aFile->GetDirectoryEntries(getter_AddRefs(entries)))) {
     aAnnotation.AppendLiteral("  (failed to enumerated directory)\n");
     return;
   }
 
   for (;;) {
-    bool hasMore = false;
-    if (NS_FAILED(entries->HasMoreElements(&hasMore))) {
+    nsCOMPtr<nsIFile> file;
+    if (NS_FAILED(entries->GetNextFile(getter_AddRefs(file)))) {
       aAnnotation.AppendLiteral("  (failed during directory enumeration)\n");
       return;
     }
-    if (!hasMore) {
+    if (!file) {
       break;
     }
-
-    nsCOMPtr<nsISupports> entry;
-    if (NS_FAILED(entries->GetNext(getter_AddRefs(entry)))) {
-      aAnnotation.AppendLiteral("  (failed during directory enumeration)\n");
-      return;
-    }
-
-    nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
-    if (file) {
-      ListInterestingFiles(aAnnotation, file, aInterestingFilenames);
-    }
+    ListInterestingFiles(aAnnotation, file, aInterestingFilenames);
   }
 }
 
@@ -766,8 +756,8 @@ nsLayoutStylesheetCache::LoadSheet(nsIURI* aURI,
   nsZipArchive::sFileCorruptedReason = nullptr;
 
   // Note: The parallel parsing code assume that UA sheets are always loaded
-  // synchrously like they are here, and thus that we'll never attempt parallel
-  // parsing on them. If that ever changes, we'll either need to find a
+  // synchronously like they are here, and thus that we'll never attempt
+  // parallel parsing on them. If that ever changes, we'll either need to find a
   // different way to prohibit parallel parsing for UA sheets, or handle
   // -moz-bool-pref and various other things in the parallel parsing code.
   nsresult rv = gCSSLoader->LoadSheetSync(aURI, aParsingMode, true, aSheet);

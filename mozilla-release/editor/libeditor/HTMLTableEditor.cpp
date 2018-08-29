@@ -20,10 +20,10 @@
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
 #include "nsError.h"
+#include "nsFrameSelection.h"
 #include "nsGkAtoms.h"
 #include "nsAtom.h"
 #include "nsIContent.h"
-#include "nsIDOMNode.h"
 #include "nsIFrame.h"
 #include "nsINode.h"
 #include "nsIPresShell.h"
@@ -375,7 +375,9 @@ HTMLEditor::InsertTableColumn(int32_t aNumber,
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent auto insertion of BR in new cell until we're done
-  AutoRules beginRulesSniffing(this, EditAction::insertNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertNode,
+                                      nsIEditor::eNext);
 
   // Use column after current cell if requested
   if (aAfter) {
@@ -508,7 +510,9 @@ HTMLEditor::InsertTableRow(int32_t aNumber,
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent auto insertion of BR in new cell until we're done
-  AutoRules beginRulesSniffing(this, EditAction::insertNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertNode,
+                                      nsIEditor::eNext);
 
   if (aAfter) {
     // Use row after current cell
@@ -719,7 +723,9 @@ HTMLEditor::DeleteTableCell(int32_t aNumber)
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
 
   RefPtr<Element> firstCell;
   rv = GetFirstSelectedCell(nullptr, getter_AddRefs(firstCell));
@@ -903,7 +909,9 @@ HTMLEditor::DeleteTableCellContents()
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
   //Don't let Rules System change the selection
   AutoTransactionsConserveSelection dontChangeSelection(this);
 
@@ -940,7 +948,9 @@ nsresult
 HTMLEditor::DeleteCellContents(Element* aCell)
 {
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
 
   while (nsCOMPtr<nsINode> child = aCell->GetLastChild()) {
     nsresult rv = DeleteNodeWithTransaction(*child);
@@ -980,7 +990,9 @@ HTMLEditor::DeleteTableColumn(int32_t aNumber)
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
 
   // Test if deletion is controlled by selected cells
   RefPtr<Element> firstCell;
@@ -1143,7 +1155,9 @@ HTMLEditor::DeleteTableRow(int32_t aNumber)
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
 
   RefPtr<Element> firstCell;
   rv = GetFirstSelectedCell(nullptr, getter_AddRefs(firstCell));
@@ -1222,7 +1236,9 @@ HTMLEditor::DeleteRow(Element* aTable,
   int32_t colIndex = 0;
 
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(*
+                                      this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
 
   // The list of cells we will change rowspan in
   //  and the new rowspan values for each
@@ -1387,7 +1403,7 @@ HTMLEditor::SelectBlockOfCells(Element* aStartCell,
 
   RefPtr<Element> cell;
   int32_t currentRowIndex, currentColIndex;
-  nsCOMPtr<nsIDOMRange> range;
+  RefPtr<nsRange> range;
   rv = GetFirstSelectedCell(getter_AddRefs(range), getter_AddRefs(cell));
   NS_ENSURE_SUCCESS(rv, rv);
   if (rv == NS_SUCCESS_EDITOR_ELEMENT_NOT_FOUND) {
@@ -1400,7 +1416,7 @@ HTMLEditor::SelectBlockOfCells(Element* aStartCell,
 
     if (currentRowIndex < maxRow || currentRowIndex > maxRow ||
         currentColIndex < maxColumn || currentColIndex > maxColumn) {
-      selection->RemoveRange(*static_cast<nsRange*>(range.get()), IgnoreErrors());
+      selection->RemoveRange(*range, IgnoreErrors());
       // Since we've removed the range, decrement pointer to next range
       mSelectedCellIndex--;
     }
@@ -1662,7 +1678,9 @@ HTMLEditor::SplitTableCell()
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent auto insertion of BR in new cell until we're done
-  AutoRules beginRulesSniffing(this, EditAction::insertNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertNode,
+                                      nsIEditor::eNext);
 
   // We reset selection
   AutoSelectionSetterAfterTableEdit setCaret(*this, table, startRowIndex,
@@ -1895,7 +1913,9 @@ HTMLEditor::SwitchTableCellHeaderType(Element* aSourceCell,
   AutoPlaceholderBatch beginBatching(this);
   // Prevent auto insertion of BR in new cell created by
   // ReplaceContainerAndCloneAttributesWithTransaction().
-  AutoRules beginRulesSniffing(this, EditAction::insertNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertNode,
+                                      nsIEditor::eNext);
 
   // Save current selection to restore when done.
   // This is needed so ReplaceContainerAndCloneAttributesWithTransaction()
@@ -2136,8 +2156,9 @@ HTMLEditor::JoinTableCells(bool aMergeNonContiguousContents)
 
     // All cell contents are merged. Delete the empty cells we accumulated
     // Prevent rules testing until we're done
-    AutoRules beginRulesSniffing(this, EditAction::deleteNode,
-                                 nsIEditor::eNext);
+    AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                        *this, EditSubAction::eDeleteNode,
+                                        nsIEditor::eNext);
 
     for (uint32_t i = 0, n = deleteList.Length(); i < n; i++) {
       RefPtr<Element> nodeToBeRemoved = deleteList[i];
@@ -2251,7 +2272,9 @@ HTMLEditor::MergeCells(RefPtr<Element> aTargetCell,
   NS_ENSURE_TRUE(aTargetCell && aCellToMerge, NS_ERROR_NULL_POINTER);
 
   // Prevent rules testing until we're done
-  AutoRules beginRulesSniffing(this, EditAction::deleteNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eDeleteNode,
+                                      nsIEditor::eNext);
 
   // Don't need to merge if cell is empty
   if (!IsEmptyCell(aCellToMerge)) {
@@ -2460,7 +2483,9 @@ HTMLEditor::NormalizeTable(Element* aTable)
 
   AutoPlaceholderBatch beginBatching(this);
   // Prevent auto insertion of BR in new cell until we're done
-  AutoRules beginRulesSniffing(this, EditAction::insertNode, nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this, EditSubAction::eInsertNode,
+                                      nsIEditor::eNext);
 
   RefPtr<Element> cell;
   int32_t startRowIndex, startColIndex, rowSpan, colSpan, actualRowSpan, actualColSpan;
@@ -2893,7 +2918,7 @@ HTMLEditor::GetCellFromRange(nsRange* aRange,
 }
 
 NS_IMETHODIMP
-HTMLEditor::GetFirstSelectedCell(nsIDOMRange** aRange,
+HTMLEditor::GetFirstSelectedCell(nsRange** aRange,
                                  Element** aCell)
 {
   NS_ENSURE_TRUE(aCell, NS_ERROR_NULL_POINTER);
@@ -2922,8 +2947,7 @@ HTMLEditor::GetFirstSelectedCell(nsIDOMRange** aRange,
   }
 
   if (aRange) {
-    *aRange = range.get();
-    NS_ADDREF(*aRange);
+    range.forget(aRange);
   }
 
   // Setup for next cell
@@ -2933,7 +2957,7 @@ HTMLEditor::GetFirstSelectedCell(nsIDOMRange** aRange,
 }
 
 NS_IMETHODIMP
-HTMLEditor::GetNextSelectedCell(nsIDOMRange** aRange,
+HTMLEditor::GetNextSelectedCell(nsRange** aRange,
                                 Element** aCell)
 {
   NS_ENSURE_TRUE(aCell, NS_ERROR_NULL_POINTER);
@@ -2973,8 +2997,7 @@ HTMLEditor::GetNextSelectedCell(nsIDOMRange** aRange,
   NS_ENSURE_TRUE(*aCell, NS_SUCCESS_EDITOR_ELEMENT_NOT_FOUND);
 
   if (aRange) {
-    *aRange = range.get();
-    NS_ADDREF(*aRange);
+    range.forget(aRange);
   }
 
   // Setup for next cell
@@ -3207,7 +3230,7 @@ HTMLEditor::GetSelectedCellsType(Element* aElement,
   }
 
   // We have at least one selected cell, so set return value
-  *aSelectionType = nsISelectionPrivate::TABLESELECTION_CELL;
+  *aSelectionType = static_cast<uint32_t>(TableSelection::Cell);
 
   // Store indexes of each row/col to avoid duplication of searches
   nsTArray<int32_t> indexArray;
@@ -3234,7 +3257,7 @@ HTMLEditor::GetSelectedCellsType(Element* aElement,
   }
 
   if (allCellsInRowAreSelected) {
-    *aSelectionType = nsISelectionPrivate::TABLESELECTION_ROW;
+    *aSelectionType = static_cast<uint32_t>(TableSelection::Row);
     return NS_OK;
   }
   // Test for columns
@@ -3263,7 +3286,7 @@ HTMLEditor::GetSelectedCellsType(Element* aElement,
     rv = GetNextSelectedCell(nullptr, getter_AddRefs(selectedCell));
   }
   if (allCellsInColAreSelected) {
-    *aSelectionType = nsISelectionPrivate::TABLESELECTION_COLUMN;
+    *aSelectionType = static_cast<uint32_t>(TableSelection::Column);
   }
 
   return NS_OK;

@@ -16,7 +16,6 @@ sys.path.insert(1, os.path.dirname(sys.path[0]))
 from mozharness.base.errors import BaseErrorList
 from mozharness.base.script import PreScriptAction
 from mozharness.base.vcs.vcsbase import MercurialScript
-from mozharness.mozilla.blob_upload import BlobUploadMixin, blobupload_config_options
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.mozilla.testing.codecoverage import (
     CodeCoverageMixin,
@@ -28,7 +27,7 @@ from mozharness.mozilla.structuredlog import StructuredOutputParser
 from mozharness.base.log import INFO
 
 
-class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCoverageMixin):
+class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin):
     config_options = [
         [['--test-type'], {
             "action": "extend",
@@ -89,7 +88,6 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             "help": "Forcibly enable single thread traversal in Stylo with STYLO_THREADS=1"}
          ],
     ] + copy.deepcopy(testing_config_options) + \
-        copy.deepcopy(blobupload_config_options) + \
         copy.deepcopy(code_coverage_config_options)
 
     def __init__(self, require_config_file=True):
@@ -97,7 +95,6 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             config_options=self.config_options,
             all_actions=[
                 'clobber',
-                'read-buildbot-config',
                 'download-and-extract',
                 'create-virtualenv',
                 'pull',
@@ -212,17 +209,18 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
         else:
             cmd.append("--stylo-threads=4")
 
-        if os.environ.get('MOZHARNESS_TEST_PATHS'):
-            prefix = 'testing/web-platform'
-            paths = os.environ['MOZHARNESS_TEST_PATHS'].split(':')
-            paths = [os.path.join(dirs["abs_wpttest_dir"], os.path.relpath(p, prefix))
-                     for p in paths if p.startswith(prefix)]
-            cmd.extend(paths)
-        elif not self.verify_enabled:
-            for opt in ["total_chunks", "this_chunk"]:
-                val = c.get(opt)
-                if val:
-                    cmd.append("--%s=%s" % (opt.replace("_", "-"), val))
+        if not (self.verify_enabled or self.per_test_coverage):
+            if os.environ.get('MOZHARNESS_TEST_PATHS'):
+                prefix = 'testing/web-platform'
+                paths = os.environ['MOZHARNESS_TEST_PATHS'].split(':')
+                paths = [os.path.join(dirs["abs_wpttest_dir"], os.path.relpath(p, prefix))
+                         for p in paths if p.startswith(prefix)]
+                cmd.extend(paths)
+            else:
+                for opt in ["total_chunks", "this_chunk"]:
+                    val = c.get(opt)
+                    if val:
+                        cmd.append("--%s=%s" % (opt.replace("_", "-"), val))
 
         if "wdspec" in test_types:
             geckodriver_path = self._query_geckodriver()
@@ -240,7 +238,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             'test_install_path': dirs["abs_test_install_dir"],
             'abs_app_dir': abs_app_dir,
             'abs_work_dir': dirs["abs_work_dir"]
-            }
+        }
 
         test_type_suite = {
             "testharness": "web-platform-tests",
@@ -320,7 +318,10 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
         start_time = datetime.now()
         max_per_test_time = timedelta(minutes=60)
         max_per_test_tests = 10
+        if self.per_test_coverage:
+            max_per_test_tests = 30
         executed_tests = 0
+        executed_too_many_tests = False
 
         if self.per_test_coverage or self.verify_enabled:
             suites = self.query_per_test_category_suites(None, None)
@@ -334,27 +335,40 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
             test_types = self.config.get("test_type", [])
             suites = [None]
         for suite in suites:
+            if executed_too_many_tests and not self.per_test_coverage:
+                continue
+
             if suite:
                 test_types = [suite]
 
-            summary = None
+            summary = {}
             for per_test_args in self.query_args(suite):
-                if (datetime.now() - start_time) > max_per_test_time:
-                    # Running tests has run out of time. That is okay! Stop running
-                    # them so that a task timeout is not triggered, and so that
-                    # (partial) results are made available in a timely manner.
-                    self.info("TinderboxPrint: Running tests took too long: Not all tests "
-                              "were executed.<br/>")
-                    return
-                if executed_tests >= max_per_test_tests:
-                    # When changesets are merged between trees or many tests are
-                    # otherwise updated at once, there probably is not enough time
-                    # to run all tests, and attempting to do so may cause other
-                    # problems, such as generating too much log output.
-                    self.info("TinderboxPrint: Too many modified tests: Not all tests "
-                              "were executed.<br/>")
-                    return
-                executed_tests = executed_tests + 1
+                # Make sure baseline code coverage tests are never
+                # skipped and that having them run has no influence
+                # on the max number of actual tests that are to be run.
+                is_baseline_test = 'baselinecoverage' in per_test_args[-1] \
+                                   if self.per_test_coverage else False
+                if executed_too_many_tests and not is_baseline_test:
+                    continue
+
+                if not is_baseline_test:
+                    if (datetime.now() - start_time) > max_per_test_time:
+                        # Running tests has run out of time. That is okay! Stop running
+                        # them so that a task timeout is not triggered, and so that
+                        # (partial) results are made available in a timely manner.
+                        self.info("TinderboxPrint: Running tests took too long: Not all tests "
+                                  "were executed.<br/>")
+                        return
+                    if executed_tests >= max_per_test_tests:
+                        # When changesets are merged between trees or many tests are
+                        # otherwise updated at once, there probably is not enough time
+                        # to run all tests, and attempting to do so may cause other
+                        # problems, such as generating too much log output.
+                        self.info("TinderboxPrint: Too many modified tests: Not all tests "
+                                  "were executed.<br/>")
+                        executed_too_many_tests = True
+
+                    executed_tests = executed_tests + 1
 
                 cmd = self._query_cmd(test_types)
                 cmd.extend(per_test_args)
@@ -371,8 +385,9 @@ class WebPlatformTest(TestingMixin, MercurialScript, BlobUploadMixin, CodeCovera
                 if self.per_test_coverage:
                     self.add_per_test_coverage_report(gcov_dir, jsvm_dir, suite, per_test_args[-1])
 
-                tbpl_status, log_level, summary = parser.evaluate_parser(return_code, summary)
-                self.buildbot_status(tbpl_status, level=log_level)
+                tbpl_status, log_level, summary = parser.evaluate_parser(return_code,
+                                                                         previous_summary=summary)
+                self.record_status(tbpl_status, level=log_level)
 
                 if len(per_test_args) > 0:
                     self.log_per_test_status(per_test_args[-1], tbpl_status, log_level)

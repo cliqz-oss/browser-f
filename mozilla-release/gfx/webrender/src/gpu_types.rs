@@ -2,12 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{DevicePoint, LayoutToWorldTransform, WorldToLayoutTransform};
+use api::{DevicePoint, DeviceSize, DeviceRect, LayoutToWorldTransform};
+use api::{PremultipliedColorF, WorldToLayoutTransform};
 use gpu_cache::{GpuCacheAddress, GpuDataRequest};
-use prim_store::EdgeAaSegmentMask;
+use prim_store::{VECS_PER_SEGMENT, EdgeAaSegmentMask};
 use render_task::RenderTaskAddress;
+use renderer::MAX_VERTEX_TEXTURE_WIDTH;
 
 // Contains type that must exactly match the same structures declared in GLSL.
+
+const INT_BITS: usize = 31; //TODO: convert to unsigned
+const CLIP_CHAIN_RECT_BITS: usize = 22;
+const SEGMENT_BITS: usize = INT_BITS - CLIP_CHAIN_RECT_BITS;
+// The guard ensures (at compile time) that the designated number of bits cover
+// the maximum supported segment count for the texture width.
+const _SEGMENT_GUARD: usize = (1 << SEGMENT_BITS) * VECS_PER_SEGMENT - MAX_VERTEX_TEXTURE_WIDTH;
+const EDGE_FLAG_BITS: usize = 4;
+const BRUSH_FLAG_BITS: usize = 4;
+const CLIP_SCROLL_INDEX_BITS: usize = INT_BITS - EDGE_FLAG_BITS - BRUSH_FLAG_BITS;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -18,7 +30,7 @@ pub struct ZBufferIdGenerator {
 }
 
 impl ZBufferIdGenerator {
-    pub fn new() -> ZBufferIdGenerator {
+    pub fn new() -> Self {
         ZBufferIdGenerator {
             next: 0
         }
@@ -68,6 +80,36 @@ pub struct BlurInstance {
     pub blur_direction: BlurDirection,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[repr(C)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+pub enum BorderSegment {
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft,
+    Left,
+    Top,
+    Right,
+    Bottom,
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+pub struct BorderInstance {
+    pub task_origin: DevicePoint,
+    pub local_rect: DeviceRect,
+    pub color0: PremultipliedColorF,
+    pub color1: PremultipliedColorF,
+    pub flags: i32,
+    pub widths: DeviceSize,
+    pub radius: DeviceSize,
+    pub clip_params: [f32; 8],
+}
+
 /// A clipping primitive drawn into the clipping mask.
 /// Could be an image or a rectangle, which defines the
 /// way `address` is treated.
@@ -101,7 +143,7 @@ pub struct PrimitiveInstance {
     data: [i32; 8],
 }
 
-pub struct SimplePrimitiveInstance {
+pub struct GlyphInstance {
     pub specific_prim_address: GpuCacheAddress,
     pub task_address: RenderTaskAddress,
     pub clip_task_address: RenderTaskAddress,
@@ -110,7 +152,7 @@ pub struct SimplePrimitiveInstance {
     pub z: ZBufferId,
 }
 
-impl SimplePrimitiveInstance {
+impl GlyphInstance {
     pub fn new(
         specific_prim_address: GpuCacheAddress,
         task_address: RenderTaskAddress,
@@ -119,7 +161,7 @@ impl SimplePrimitiveInstance {
         scroll_id: ClipScrollNodeIndex,
         z: ZBufferId,
     ) -> Self {
-        SimplePrimitiveInstance {
+        GlyphInstance {
             specific_prim_address,
             task_address,
             clip_task_address,
@@ -133,9 +175,9 @@ impl SimplePrimitiveInstance {
         PrimitiveInstance {
             data: [
                 self.specific_prim_address.as_int(),
-                self.task_address.0 as i32,
-                self.clip_task_address.0 as i32,
-                ((self.clip_chain_rect_index.0 as i32) << 16) | self.scroll_id.0 as i32,
+                self.task_address.0 as i32 | (self.clip_task_address.0 as i32) << 16,
+                self.clip_chain_rect_index.0 as i32,
+                self.scroll_id.0 as i32,
                 self.z.0,
                 data0,
                 data1,
@@ -145,53 +187,41 @@ impl SimplePrimitiveInstance {
     }
 }
 
-pub struct CompositePrimitiveInstance {
+pub struct SplitCompositeInstance {
     pub task_address: RenderTaskAddress,
     pub src_task_address: RenderTaskAddress,
-    pub backdrop_task_address: RenderTaskAddress,
-    pub data0: i32,
-    pub data1: i32,
+    pub polygons_address: GpuCacheAddress,
     pub z: ZBufferId,
-    pub data2: i32,
-    pub data3: i32,
 }
 
-impl CompositePrimitiveInstance {
+impl SplitCompositeInstance {
     pub fn new(
         task_address: RenderTaskAddress,
         src_task_address: RenderTaskAddress,
-        backdrop_task_address: RenderTaskAddress,
-        data0: i32,
-        data1: i32,
+        polygons_address: GpuCacheAddress,
         z: ZBufferId,
-        data2: i32,
-        data3: i32,
     ) -> Self {
-        CompositePrimitiveInstance {
+        SplitCompositeInstance {
             task_address,
             src_task_address,
-            backdrop_task_address,
-            data0,
-            data1,
+            polygons_address,
             z,
-            data2,
-            data3,
         }
     }
 }
 
-impl From<CompositePrimitiveInstance> for PrimitiveInstance {
-    fn from(instance: CompositePrimitiveInstance) -> Self {
+impl From<SplitCompositeInstance> for PrimitiveInstance {
+    fn from(instance: SplitCompositeInstance) -> Self {
         PrimitiveInstance {
             data: [
                 instance.task_address.0 as i32,
                 instance.src_task_address.0 as i32,
-                instance.backdrop_task_address.0 as i32,
+                instance.polygons_address.as_int(),
                 instance.z.0,
-                instance.data0,
-                instance.data1,
-                instance.data2,
-                instance.data3,
+                0,
+                0,
+                0,
+                0,
             ],
         }
     }
@@ -236,15 +266,18 @@ pub struct BrushInstance {
 
 impl From<BrushInstance> for PrimitiveInstance {
     fn from(instance: BrushInstance) -> Self {
+        debug_assert_eq!(0, instance.clip_chain_rect_index.0 >> CLIP_CHAIN_RECT_BITS);
+        debug_assert_eq!(0, instance.scroll_id.0 >> CLIP_SCROLL_INDEX_BITS);
+        debug_assert_eq!(0, instance.segment_index >> SEGMENT_BITS);
         PrimitiveInstance {
             data: [
                 instance.picture_address.0 as i32 | (instance.clip_task_address.0 as i32) << 16,
                 instance.prim_address.as_int(),
-                ((instance.clip_chain_rect_index.0 as i32) << 16) | instance.scroll_id.0 as i32,
+                instance.clip_chain_rect_index.0 as i32 | (instance.segment_index << CLIP_CHAIN_RECT_BITS),
                 instance.z.0,
-                instance.segment_index |
-                    ((instance.edge_flags.bits() as i32) << 16) |
-                    ((instance.brush_flags.bits() as i32) << 24),
+                instance.scroll_id.0 as i32 |
+                    ((instance.edge_flags.bits() as i32) << CLIP_SCROLL_INDEX_BITS) |
+                    ((instance.brush_flags.bits() as i32) << (CLIP_SCROLL_INDEX_BITS + EDGE_FLAG_BITS)),
                 instance.user_data[0],
                 instance.user_data[1],
                 instance.user_data[2],

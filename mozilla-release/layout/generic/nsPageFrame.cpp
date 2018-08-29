@@ -587,7 +587,7 @@ nsPageFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   }
 
   content.AppendToTop(MakeDisplayItem<nsDisplayTransform>(aBuilder, child,
-      &content, content.GetVisibleRect(), ::ComputePageTransform));
+      &content, content.GetBuildingRect(), ::ComputePageTransform));
 
   set.Content()->AppendToTop(&content);
 
@@ -683,7 +683,7 @@ nsPageFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult)
 nsIFrame*
 NS_NewPageBreakFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle)
 {
-  NS_PRECONDITION(aPresShell, "null PresShell");
+  MOZ_ASSERT(aPresShell, "null PresShell");
   //check that we are only creating page break frames when printing
   NS_ASSERTION(aPresShell->GetPresContext()->IsPaginated(), "created a page break frame while not printing");
 

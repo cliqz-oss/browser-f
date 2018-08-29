@@ -7,12 +7,12 @@
 #ifndef mozilla_InspectorFontFace_h
 #define mozilla_InspectorFontFace_h
 
-#include "mozilla/ServoFontFaceRule.h"
+#include "mozilla/dom/CSSFontFaceRule.h"
 #include "mozilla/dom/InspectorUtilsBinding.h"
 #include "mozilla/dom/NonRefcountedDOMObject.h"
 #include "nsRange.h"
+#include "gfxFont.h"
 
-class gfxFontEntry;
 class gfxFontGroup;
 
 namespace mozilla {
@@ -27,7 +27,7 @@ class InspectorFontFace final : public NonRefcountedDOMObject
 public:
   InspectorFontFace(gfxFontEntry* aFontEntry,
                     gfxFontGroup* aFontGroup,
-                    uint8_t aMatchType)
+                    gfxTextRange::MatchType aMatchType)
     : mFontEntry(aFontEntry)
     , mFontGroup(aFontGroup)
     , mMatchType(aMatchType)
@@ -41,7 +41,9 @@ public:
   }
 
   gfxFontEntry* GetFontEntry() const { return mFontEntry; }
-  void AddMatchType(uint8_t aMatchType) { mMatchType |= aMatchType; }
+  void AddMatchType(gfxTextRange::MatchType aMatchType) {
+    mMatchType |= aMatchType;
+  }
 
   void AddRange(nsRange* aRange);
   size_t RangeCount() const {
@@ -54,7 +56,8 @@ public:
   bool FromSystemFallback();
   void GetName(nsAString& aName);
   void GetCSSFamilyName(nsAString& aCSSFamilyName);
-  ServoFontFaceRule* GetRule();
+  void GetCSSGeneric(nsAString& aGeneric);
+  CSSFontFaceRule* GetRule();
   int32_t SrcIndex();
   void GetURI(nsAString& aURI);
   void GetLocalName(nsAString& aLocalName);
@@ -80,8 +83,8 @@ public:
 protected:
   RefPtr<gfxFontEntry> mFontEntry;
   RefPtr<gfxFontGroup> mFontGroup;
-  RefPtr<ServoFontFaceRule> mRule;
-  uint8_t mMatchType;
+  RefPtr<CSSFontFaceRule> mRule;
+  gfxTextRange::MatchType mMatchType;
 
   nsTArray<RefPtr<nsRange>> mRanges;
 };

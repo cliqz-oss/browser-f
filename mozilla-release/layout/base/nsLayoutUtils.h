@@ -223,7 +223,7 @@ public:
    * Optionally pass the child, and it only returns true if the child is the
    * scrolled frame for the displayport.
    */
-  static bool FrameHasDisplayPort(nsIFrame* aFrame, nsIFrame* aScrolledFrame = nullptr);
+  static bool FrameHasDisplayPort(nsIFrame* aFrame, const nsIFrame* aScrolledFrame = nullptr);
 
   /**
    * Check if the given element has a margins based displayport but is missing a
@@ -854,7 +854,7 @@ public:
    * non-null pointer to a non-empty Matrix4x4 - The provided matrix will be used
    *   as the transform matrix and applied to the rect.
    */
-  static nsRect TransformFrameRectToAncestor(nsIFrame* aFrame,
+  static nsRect TransformFrameRectToAncestor(const nsIFrame* aFrame,
                                              const nsRect& aRect,
                                              const nsIFrame* aAncestor,
                                              bool* aPreservesAxisAlignedRectangles = nullptr,
@@ -868,7 +868,7 @@ public:
    * aAncestor to go up to the root frame. aInCSSUnits set to true will
    * return CSS units, set to false (the default) will return App units.
    */
-  static Matrix4x4Flagged GetTransformToAncestor(nsIFrame *aFrame,
+  static Matrix4x4Flagged GetTransformToAncestor(const nsIFrame *aFrame,
                                           const nsIFrame *aAncestor,
                                           uint32_t aFlags = 0,
                                           nsIFrame** aOutAncestor = nullptr);
@@ -2029,7 +2029,7 @@ public:
    * A frame is a popup if it has its own floating window. Menus, panels
    * and combobox dropdowns are popups.
    */
-  static bool IsPopup(nsIFrame* aFrame);
+  static bool IsPopup(const nsIFrame* aFrame);
 
   /**
    * Find the nearest "display root". This is the nearest enclosing
@@ -2288,7 +2288,8 @@ public:
    */
   static nsresult GetFontFacesForFrames(nsIFrame* aFrame,
                                         UsedFontFaceTable& aResult,
-                                        uint32_t aMaxRanges);
+                                        uint32_t aMaxRanges,
+                                        bool aSkipCollapsedWhitespace);
 
   /**
    * Adds all font faces used within the specified range of text in aFrame,
@@ -2302,7 +2303,8 @@ public:
                                   int32_t aEndOffset,
                                   bool aFollowContinuations,
                                   UsedFontFaceTable& aResult,
-                                  uint32_t aMaxRanges);
+                                  uint32_t aMaxRanges,
+                                  bool aSkipCollapsedWhitespace);
 
   /**
    * Walks the frame tree starting at aFrame looking for textRuns.
@@ -2332,8 +2334,6 @@ public:
    */
   static bool HasAnimationOfProperty(const nsIFrame* aFrame,
                                      nsCSSPropertyID aProperty);
-  static bool MayHaveAnimationOfProperty(const nsIFrame* aFrame,
-                                         nsCSSPropertyID aProperty);
 
   /**
    * Returns true if |aEffectSet| has an animation of |aProperty| regardless of
@@ -2348,8 +2348,6 @@ public:
    */
   static bool HasEffectiveAnimation(const nsIFrame* aFrame,
                                     nsCSSPropertyID aProperty);
-  static bool MayHaveEffectiveAnimation(const nsIFrame* aFrame,
-                                        nsCSSPropertyID aProperty);
 
   /**
    * Checks if off-main-thread animations are enabled.
@@ -2519,10 +2517,6 @@ public:
 
   static bool SVGTransformBoxEnabled() {
     return sSVGTransformBoxEnabled;
-  }
-
-  static bool TextCombineUprightDigitsEnabled() {
-    return sTextCombineUprightDigitsEnabled;
   }
 
   static uint32_t IdlePeriodDeadlineLimit() {
@@ -3111,6 +3105,12 @@ public:
     return ResolveToLength<true>(aGap, aPercentageBasis);
   }
 
+  /**
+   * Get the computed style from which the scrollbar style should be
+   * used for the given scrollbar part frame.
+   */
+  static ComputedStyle* StyleForScrollbar(nsIFrame* aScrollbarPart);
+
 private:
   static uint32_t sFontSizeInflationEmPerLine;
   static uint32_t sFontSizeInflationMinTwips;
@@ -3125,7 +3125,6 @@ private:
   static bool sInvalidationDebuggingIsEnabled;
   static bool sInterruptibleReflowEnabled;
   static bool sSVGTransformBoxEnabled;
-  static bool sTextCombineUprightDigitsEnabled;
   static uint32_t sIdlePeriodDeadlineLimit;
   static uint32_t sQuiescentFramesBeforeIdlePeriod;
 

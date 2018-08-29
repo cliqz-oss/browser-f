@@ -34,6 +34,7 @@ namespace wasm {
 struct LinkDataTier;
 struct MetadataTier;
 struct Metadata;
+class LinkData;
 
 // ShareableBytes is a reference-counted Vector of bytes.
 
@@ -42,7 +43,7 @@ struct ShareableBytes : ShareableBase<ShareableBytes>
     // Vector is 'final', so instead make Vector a member and add boilerplate.
     Bytes bytes;
     ShareableBytes() = default;
-    explicit ShareableBytes(Bytes&& bytes) : bytes(Move(bytes)) {}
+    explicit ShareableBytes(Bytes&& bytes) : bytes(std::move(bytes)) {}
     size_t sizeOfExcludingThis(MallocSizeOf m) const { return bytes.sizeOfExcludingThis(m); }
     const uint8_t* begin() const { return bytes.begin(); }
     const uint8_t* end() const { return bytes.end(); }
@@ -81,30 +82,30 @@ class CodeSegment
   protected:
     static UniqueCodeBytes AllocateCodeBytes(uint32_t codeLength);
 
-    UniqueCodeBytes bytes_;
-    uint32_t length_;
-
-    // A back reference to the owning code.
-    const CodeTier* codeTier_;
-
     enum class Kind {
         LazyStubs,
         Module
-    } kind_;
+    };
 
-    bool registerInProcessMap();
-
-  private:
-    bool registered_;
-
-  public:
-    explicit CodeSegment(Kind kind = Kind::Module)
-      : length_(UINT32_MAX),
-        codeTier_(nullptr),
+    CodeSegment(UniqueCodeBytes bytes, uint32_t length, Kind kind)
+      : bytes_(std::move(bytes)),
+        length_(length),
         kind_(kind),
-        registered_(false)
+        codeTier_(nullptr),
+        unregisterOnDestroy_(false)
     {}
 
+    bool initialize(const CodeTier& codeTier);
+
+  private:
+    const UniqueCodeBytes bytes_;
+    const uint32_t        length_;
+    const Kind            kind_;
+    const CodeTier*       codeTier_;
+    bool                  unregisterOnDestroy_;
+
+  public:
+    bool initialized() const { return !!codeTier_; }
     ~CodeSegment();
 
     bool isLazyStubs() const { return kind_ == Kind::LazyStubs; }
@@ -125,11 +126,7 @@ class CodeSegment
         return pc >= base() && pc < (base() + length_);
     }
 
-    void initCodeTier(const CodeTier* codeTier) {
-        MOZ_ASSERT(!codeTier_);
-        codeTier_ = codeTier;
-    }
-    const CodeTier& codeTier() const { return *codeTier_; }
+    const CodeTier& codeTier() const { MOZ_ASSERT(initialized()); return *codeTier_; }
     const Code& code() const;
 
     void addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code) const;
@@ -138,60 +135,36 @@ class CodeSegment
 // A wasm ModuleSegment owns the allocated executable code for a wasm module.
 
 typedef UniquePtr<ModuleSegment> UniqueModuleSegment;
-typedef UniquePtr<const ModuleSegment> UniqueConstModuleSegment;
 
 class ModuleSegment : public CodeSegment
 {
-    Tier            tier_;
+    const Tier      tier_;
+    uint8_t* const  outOfBoundsCode_;
+    uint8_t* const  unalignedAccessCode_;
+    uint8_t* const  trapCode_;
 
-    // These are pointers into code for stubs used for signal-handler
-    // control-flow transfer.
-    uint8_t*        outOfBoundsCode_;
-    uint8_t*        unalignedAccessCode_;
-    uint8_t*        trapCode_;
-
-    bool initialize(Tier tier,
-                    UniqueCodeBytes bytes,
-                    uint32_t codeLength,
-                    const ShareableBytes& bytecode,
-                    const LinkDataTier& linkData,
-                    const Metadata& metadata,
-                    const CodeRangeVector& codeRanges);
-
-    static UniqueModuleSegment create(Tier tier,
-                                      UniqueCodeBytes bytes,
-                                      uint32_t codeLength,
-                                      const ShareableBytes& bytecode,
-                                      const LinkDataTier& linkData,
-                                      const Metadata& metadata,
-                                      const CodeRangeVector& codeRanges);
   public:
-    ModuleSegment(const ModuleSegment&) = delete;
-    void operator=(const ModuleSegment&) = delete;
-
-    ModuleSegment()
-      : CodeSegment(),
-        tier_(Tier(-1)),
-        outOfBoundsCode_(nullptr),
-        unalignedAccessCode_(nullptr),
-        trapCode_(nullptr)
-    {}
+    ModuleSegment(Tier tier,
+                  UniqueCodeBytes codeBytes,
+                  uint32_t codeLength,
+                  const LinkDataTier& linkData);
 
     static UniqueModuleSegment create(Tier tier,
                                       jit::MacroAssembler& masm,
-                                      const ShareableBytes& bytecode,
-                                      const LinkDataTier& linkData,
-                                      const Metadata& metadata,
-                                      const CodeRangeVector& codeRanges);
-
+                                      const LinkDataTier& linkData);
     static UniqueModuleSegment create(Tier tier,
                                       const Bytes& unlinkedBytes,
-                                      const ShareableBytes& bytecode,
-                                      const LinkDataTier& linkData,
-                                      const Metadata& metadata,
-                                      const CodeRangeVector& codeRanges);
+                                      const LinkDataTier& linkData);
+
+    bool initialize(const CodeTier& codeTier,
+                    const ShareableBytes& bytecode,
+                    const LinkDataTier& linkData,
+                    const Metadata& metadata,
+                    const MetadataTier& metadataTier);
 
     Tier tier() const { return tier_; }
+
+    // Pointers to stubs to which PC is redirected from the signal-handler.
 
     uint8_t* outOfBoundsCode() const { return outOfBoundsCode_; }
     uint8_t* unalignedAccessCode() const { return unalignedAccessCode_; }
@@ -200,10 +173,9 @@ class ModuleSegment : public CodeSegment
     // Structured clone support:
 
     size_t serializedSize() const;
-    uint8_t* serialize(uint8_t* cursor, const LinkDataTier& linkDataTier) const;
-    const uint8_t* deserialize(const uint8_t* cursor, const ShareableBytes& bytecode,
-                               const LinkDataTier& linkDataTier, const Metadata& metadata,
-                               const CodeRangeVector& codeRanges);
+    uint8_t* serialize(uint8_t* cursor, const LinkDataTier& linkData) const;
+    static const uint8_t* deserialize(const uint8_t* cursor, const LinkDataTier& linkData,
+                                      UniqueModuleSegment* segment);
 
     const CodeRange* lookupRange(const void* pc) const;
 
@@ -219,7 +191,7 @@ class ModuleSegment : public CodeSegment
 
 class FuncExport
 {
-    Sig sig_;
+    FuncType funcType_;
     MOZ_INIT_OUTSIDE_CTOR struct CacheablePod {
         uint32_t funcIndex_;
         uint32_t interpCodeRangeIndex_;
@@ -229,8 +201,8 @@ class FuncExport
 
   public:
     FuncExport() = default;
-    explicit FuncExport(Sig&& sig, uint32_t funcIndex, bool hasEagerStubs)
-      : sig_(Move(sig))
+    explicit FuncExport(FuncType&& funcType, uint32_t funcIndex, bool hasEagerStubs)
+      : funcType_(std::move(funcType))
     {
         pod.funcIndex_ = funcIndex;
         pod.interpCodeRangeIndex_ = UINT32_MAX;
@@ -250,8 +222,8 @@ class FuncExport
     bool hasEagerStubs() const {
         return pod.hasEagerStubs_;
     }
-    const Sig& sig() const {
-        return sig_;
+    const FuncType& funcType() const {
+        return funcType_;
     }
     uint32_t funcIndex() const {
         return pod.funcIndex_;
@@ -268,7 +240,7 @@ class FuncExport
 
     bool clone(const FuncExport& src) {
         mozilla::PodAssign(&pod, &src.pod);
-        return sig_.clone(src.sig_);
+        return funcType_.clone(src.funcType_);
     }
 
     WASM_DECLARE_SERIALIZABLE(FuncExport)
@@ -284,7 +256,7 @@ typedef Vector<FuncExport, 0, SystemAllocPolicy> FuncExportVector;
 
 class FuncImport
 {
-    Sig sig_;
+    FuncType funcType_;
     struct CacheablePod {
         uint32_t tlsDataOffset_;
         uint32_t interpExitCodeOffset_; // Machine code offset
@@ -296,8 +268,8 @@ class FuncImport
         memset(&pod, 0, sizeof(CacheablePod));
     }
 
-    FuncImport(Sig&& sig, uint32_t tlsDataOffset)
-      : sig_(Move(sig))
+    FuncImport(FuncType&& funcType, uint32_t tlsDataOffset)
+      : funcType_(std::move(funcType))
     {
         pod.tlsDataOffset_ = tlsDataOffset;
         pod.interpExitCodeOffset_ = 0;
@@ -313,8 +285,8 @@ class FuncImport
         pod.jitExitCodeOffset_ = off;
     }
 
-    const Sig& sig() const {
-        return sig_;
+    const FuncType& funcType() const {
+        return funcType_;
     }
     uint32_t tlsDataOffset() const {
         return pod.tlsDataOffset_;
@@ -328,7 +300,7 @@ class FuncImport
 
     bool clone(const FuncImport& src) {
         mozilla::PodAssign(&pod, &src.pod);
-        return sig_.clone(src.sig_);
+        return funcType_.clone(src.funcType_);
     }
 
     WASM_DECLARE_SERIALIZABLE(FuncImport)
@@ -405,13 +377,16 @@ struct MetadataCacheablePod
     uint32_t              globalDataLength;
     Maybe<uint32_t>       maxMemoryLength;
     Maybe<uint32_t>       startFuncIndex;
+    Maybe<NameInBytecode> moduleName;
+    bool                  filenameIsURL;
 
     explicit MetadataCacheablePod(ModuleKind kind)
       : kind(kind),
         memoryUsage(MemoryUsage::None),
         temporaryHasGcTypes(HasGcTypes::False),
         minMemoryLength(0),
-        globalDataLength(0)
+        globalDataLength(0),
+        filenameIsURL(false)
     {}
 };
 
@@ -419,13 +394,12 @@ typedef uint8_t ModuleHash[8];
 
 struct Metadata : public ShareableBase<Metadata>, public MetadataCacheablePod
 {
-    SigWithIdVector       sigIds;
+    FuncTypeWithIdVector  funcTypeIds;
     GlobalDescVector      globals;
     TableDescVector       tables;
     NameInBytecodeVector  funcNames;
     CustomSectionVector   customSections;
     CacheableChars        filename;
-    CacheableChars        baseURL;
     CacheableChars        sourceMapURL;
 
     // Debug-enabled code is not serialized.
@@ -468,7 +442,23 @@ struct Metadata : public ShareableBase<Metadata>, public MetadataCacheablePod
     virtual ScriptSource* maybeScriptSource() const {
         return nullptr;
     }
-    virtual bool getFuncName(const Bytes* maybeBytecode, uint32_t funcIndex, UTF8Bytes* name) const;
+
+    // The Developer-Facing Display Conventions section of the WebAssembly Web
+    // API spec defines two cases for displaying a wasm function name:
+    //  1. the function name stands alone
+    //  2. the function name precedes the location
+
+    enum NameContext { Standalone, BeforeLocation };
+
+    virtual bool getFuncName(NameContext ctx, const Bytes* maybeBytecode, uint32_t funcIndex,
+                             UTF8Bytes* name) const;
+
+    bool getFuncNameStandalone(const Bytes* maybeBytecode, uint32_t funcIndex, UTF8Bytes* name) const {
+        return getFuncName(NameContext::Standalone, maybeBytecode, funcIndex, name);
+    }
+    bool getFuncNameBeforeLocation(const Bytes* maybeBytecode, uint32_t funcIndex, UTF8Bytes* name) const {
+        return getFuncName(NameContext::BeforeLocation, maybeBytecode, funcIndex, name);
+    }
 
     WASM_DECLARE_SERIALIZABLE_VIRTUAL(Metadata);
 };
@@ -509,25 +499,23 @@ using UniqueMetadataTier = UniquePtr<MetadataTier>;
 // isn't (64KiB), a given stub segment can contain entry stubs of many
 // functions.
 
+using UniqueLazyStubSegment = UniquePtr<LazyStubSegment>;
+using LazyStubSegmentVector = Vector<UniqueLazyStubSegment, 0, SystemAllocPolicy>;
+
 class LazyStubSegment : public CodeSegment
 {
     CodeRangeVector codeRanges_;
     size_t usedBytes_;
 
-    static constexpr size_t MPROTECT_PAGE_SIZE = 4 * 1024;
-
-    bool initialize(UniqueCodeBytes codeBytes, size_t length);
-
   public:
-    explicit LazyStubSegment(const CodeTier& codeTier)
-      : CodeSegment(CodeSegment::Kind::LazyStubs),
+    LazyStubSegment(UniqueCodeBytes bytes, size_t length)
+      : CodeSegment(std::move(bytes), length, CodeSegment::Kind::LazyStubs),
         usedBytes_(0)
-    {
-        initCodeTier(&codeTier);
-    }
+    {}
 
-    static UniquePtr<LazyStubSegment> create(const CodeTier& codeTier, size_t length);
-    static size_t AlignBytesNeeded(size_t bytes) { return AlignBytes(bytes, MPROTECT_PAGE_SIZE); }
+    static UniqueLazyStubSegment create(const CodeTier& codeTier, size_t codeLength);
+
+    static size_t AlignBytesNeeded(size_t bytes) { return AlignBytes(bytes, gc::SystemPageSize()); }
 
     bool hasSpace(size_t bytes) const;
     bool addStubs(size_t codeLength, const Uint32Vector& funcExportIndices,
@@ -539,9 +527,6 @@ class LazyStubSegment : public CodeSegment
 
     void addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const;
 };
-
-using UniqueLazyStubSegment = UniquePtr<LazyStubSegment>;
-using LazyStubSegmentVector = Vector<UniqueLazyStubSegment, 0, SystemAllocPolicy>;
 
 // LazyFuncExport helps to efficiently lookup a CodeRange from a given function
 // index. It is inserted in a vector sorted by function index, to perform
@@ -605,22 +590,19 @@ class LazyStubTier
 // CodeTier contains all the data related to a given compilation tier. It is
 // built during module generation and then immutably stored in a Code.
 
+typedef UniquePtr<CodeTier> UniqueCodeTier;
+typedef UniquePtr<const CodeTier> UniqueConstCodeTier;
+
 class CodeTier
 {
-    const Tier                  tier_;
-    const Code*                 code_;
+    const Code* code_;
 
     // Serialized information.
-    UniqueMetadataTier          metadata_;
-    UniqueConstModuleSegment    segment_;
+    const UniqueMetadataTier metadata_;
+    const UniqueModuleSegment segment_;
 
     // Lazy stubs, not serialized.
     ExclusiveData<LazyStubTier> lazyStubs_;
-
-    UniqueConstModuleSegment takeOwnership(UniqueModuleSegment segment) const {
-        segment->initCodeTier(this);
-        return UniqueConstModuleSegment(segment.release());
-    }
 
     static const MutexId& mutexForTier(Tier tier) {
         if (tier == Tier::Baseline)
@@ -630,44 +612,34 @@ class CodeTier
     }
 
   public:
-    explicit CodeTier(Tier tier)
-      : tier_(tier),
-        code_(nullptr),
-        metadata_(nullptr),
-        segment_(nullptr),
-        lazyStubs_(mutexForTier(tier))
+    CodeTier(UniqueMetadataTier metadata, UniqueModuleSegment segment)
+      : code_(nullptr),
+        metadata_(std::move(metadata)),
+        segment_(std::move(segment)),
+        lazyStubs_(mutexForTier(segment_->tier()))
     {}
 
-    CodeTier(Tier tier, UniqueMetadataTier metadata, UniqueModuleSegment segment)
-      : tier_(tier),
-        code_(nullptr),
-        metadata_(Move(metadata)),
-        segment_(takeOwnership(Move(segment))),
-        lazyStubs_(mutexForTier(tier))
-    {}
+    bool initialized() const { return !!code_ && segment_->initialized(); }
 
-    void initCode(const Code* code) {
-        MOZ_ASSERT(!code_);
-        code_ = code;
-    }
+    bool initialize(const Code& code,
+                    const ShareableBytes& bytecode,
+                    const LinkDataTier& linkData,
+                    const Metadata& metadata);
 
-    Tier tier() const { return tier_; }
+    Tier tier() const { return segment_->tier(); }
     const ExclusiveData<LazyStubTier>& lazyStubs() const { return lazyStubs_; }
     const MetadataTier& metadata() const { return *metadata_.get(); }
     const ModuleSegment& segment() const { return *segment_.get(); }
-    const Code& code() const { return *code_; }
+    const Code& code() const { MOZ_ASSERT(initialized()); return *code_; }
 
     const CodeRange* lookupRange(const void* pc) const;
 
     size_t serializedSize() const;
     uint8_t* serialize(uint8_t* cursor, const LinkDataTier& linkData) const;
-    const uint8_t* deserialize(const uint8_t* cursor, const SharedBytes& bytecode,
-                               Metadata& metadata, const LinkDataTier& linkData);
+    static const uint8_t* deserialize(const uint8_t* cursor, const LinkDataTier& linkData,
+                                      UniqueCodeTier* codeTier);
     void addSizeOfMisc(MallocSizeOf mallocSizeOf, size_t* code, size_t* data) const;
 };
-
-typedef UniquePtr<CodeTier> UniqueCodeTier;
-typedef UniquePtr<const CodeTier> UniqueConstCodeTier;
 
 // Jump tables to take tiering into account, when calling either from wasm to
 // wasm (through rabaldr) or from jit to wasm (jit entry).
@@ -725,23 +697,23 @@ class JumpTables
 //
 // profilingLabels_ is lazily initialized, but behind a lock.
 
+typedef RefPtr<const Code> SharedCode;
+typedef RefPtr<Code> MutableCode;
+
 class Code : public ShareableBase<Code>
 {
-    UniqueConstCodeTier                 tier1_;
+    UniqueCodeTier                      tier1_;
     mutable UniqueConstCodeTier         tier2_; // Access only when hasTier2() is true
     mutable Atomic<bool>                hasTier2_;
     SharedMetadata                      metadata_;
     ExclusiveData<CacheableCharsVector> profilingLabels_;
     JumpTables                          jumpTables_;
 
-    UniqueConstCodeTier takeOwnership(UniqueCodeTier codeTier) const {
-        codeTier->initCode(this);
-        return UniqueConstCodeTier(codeTier.release());
-    }
-
   public:
-    Code();
-    Code(UniqueCodeTier tier, const Metadata& metadata, JumpTables&& maybeJumpTables);
+    Code(UniqueCodeTier tier1, const Metadata& metadata, JumpTables&& maybeJumpTables);
+    bool initialized() const { return tier1_->initialized(); }
+
+    bool initialize(const ShareableBytes& bytecode, const LinkDataTier& linkData);
 
     void setTieringEntry(size_t i, void* target) const { jumpTables_.setTieringEntry(i, target); }
     void** tieringJumpTable() const { return jumpTables_.tiering(); }
@@ -750,7 +722,8 @@ class Code : public ShareableBase<Code>
     void** getAddressOfJitEntry(size_t i) const { return jumpTables_.getAddressOfJitEntry(i); }
     uint32_t getFuncIndex(JSFunction* fun) const;
 
-    void setTier2(UniqueCodeTier tier2) const;
+    bool setTier2(UniqueCodeTier tier2, const ShareableBytes& bytecode,
+                  const LinkDataTier& linkData) const;
     void commitTier2() const;
 
     bool hasTier2() const { return hasTier2_; }
@@ -796,13 +769,13 @@ class Code : public ShareableBase<Code>
     // machine code and other parts.
 
     size_t serializedSize() const;
-    uint8_t* serialize(uint8_t* cursor, const LinkDataTier& linkDataTier) const;
-    const uint8_t* deserialize(const uint8_t* cursor, const SharedBytes& bytecode,
-                               const LinkDataTier& linkDataTier, Metadata& metadata);
+    uint8_t* serialize(uint8_t* cursor, const LinkData& linkData) const;
+    static const uint8_t* deserialize(const uint8_t* cursor,
+                                      const ShareableBytes& bytecode,
+                                      const LinkData& linkData,
+                                      Metadata& metadata,
+                                      SharedCode* code);
 };
-
-typedef RefPtr<const Code> SharedCode;
-typedef RefPtr<Code> MutableCode;
 
 } // namespace wasm
 } // namespace js

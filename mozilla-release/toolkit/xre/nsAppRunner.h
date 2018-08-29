@@ -27,11 +27,6 @@
 #include "nsStringFwd.h"
 #include "nsXULAppAPI.h"
 
-// This directory service key is a lot like NS_APP_LOCALSTORE_50_FILE,
-// but it is always the "main" localstore file, even when we're in safe mode
-// and we load localstore from somewhere else.
-#define NS_LOCALSTORE_UNSAFE_FILE "LStoreS"
-
 class nsINativeAppSupport;
 class nsXREDirProvider;
 class nsIToolkitProfileService;
@@ -50,6 +45,7 @@ extern int    gArgc;
 extern char **gArgv;
 extern int    gRestartArgc;
 extern char **gRestartArgv;
+extern bool gRestartedByOS;
 extern bool gLogConsoleErrors;
 extern nsString gAbsoluteArgv0Path;
 
@@ -110,6 +106,8 @@ BOOL
 WinLaunchChild(const wchar_t *exePath, int argc,
                char **argv, HANDLE userToken = nullptr,
                HANDLE *hProcess = nullptr);
+
+#define PREF_WIN_REGISTER_APPLICATION_RESTART "toolkit.winRegisterApplicationRestart"
 #endif
 
 #define NS_NATIVEAPPSUPPORT_CONTRACTID "@mozilla.org/toolkit/native-app-support;1"

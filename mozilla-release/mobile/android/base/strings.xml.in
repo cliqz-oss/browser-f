@@ -43,11 +43,6 @@
   <string name="firstrun_welcome_button_browser">&onboard_start_button_browser;</string>
   <string name="firstrun_button_next">&firstrun_button_next;</string>
 
-  <string name="firstrun_tabqueue_message_off">&firstrun_tabqueue_message_off;</string>
-  <string name="firstrun_tabqueue_subtext_off">&firstrun_tabqueue_subtext_off;</string>
-  <string name="firstrun_tabqueue_message_on">&firstrun_tabqueue_message_on;</string>
-  <string name="firstrun_tabqueue_subtext_on">&firstrun_tabqueue_subtext_on;</string>
-
   <string name="firstrun_welcome_restricted">&onboard_start_restricted1;</string>
 
   <string name="bookmarks_title">&bookmarks_title;</string>
@@ -71,6 +66,8 @@
   <string name="crash_restart_label">&crash_restart_label;</string>
 
   <string name="url_bar_default_text">&url_bar_default_text2;</string>
+  <string name="url_bar_qrcode_text">&url_bar_qrcode_text2;</string>
+  <string name="url_bar_mic_text">&url_bar_mic_text2;</string>
 
   <!-- https://support.mozilla.org/1/mobile/%VERSION%/%OS%/%LOCALE%/mobile-help -->
   <string name="help_link">https://support.mozilla.org/1/mobile/&formatS1;/&formatS2;/&formatS3;/mobile-help</string>
@@ -167,7 +164,7 @@
   <string name="pref_developer_remotedebugging_wifi_disabled_summary">&pref_developer_remotedebugging_wifi_disabled_summary;</string>
 
   <string name="pref_category_notifications">&pref_category_notifications;</string>
-  <string name="pref_category_notifications_summary">&pref_category_notifications_summary;</string>
+  <string name="pref_category_notifications_summary">&pref_category_notifications_summary2;</string>
 
   <string name="pref_category_home">&pref_category_home;</string>
   <string name="pref_category_home_summary">&pref_category_home_summary;</string>

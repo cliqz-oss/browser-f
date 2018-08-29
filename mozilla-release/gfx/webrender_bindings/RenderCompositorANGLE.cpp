@@ -13,6 +13,7 @@
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/layers/HelpersD3D11.h"
 #include "mozilla/layers/SyncObject.h"
+#include "mozilla/webrender/RenderThread.h"
 #include "mozilla/widget/CompositorWidget.h"
 #include "mozilla/widget/WinCompositorWidget.h"
 #include "mozilla/WindowsVersion.h"
@@ -30,7 +31,7 @@ namespace wr {
 /* static */ UniquePtr<RenderCompositor>
 RenderCompositorANGLE::Create(RefPtr<widget::CompositorWidget>&& aWidget)
 {
-  UniquePtr<RenderCompositorANGLE> compositor = MakeUnique<RenderCompositorANGLE>(Move(aWidget));
+  UniquePtr<RenderCompositorANGLE> compositor = MakeUnique<RenderCompositorANGLE>(std::move(aWidget));
   if (!compositor->Initialize()) {
     return nullptr;
   }
@@ -38,7 +39,7 @@ RenderCompositorANGLE::Create(RefPtr<widget::CompositorWidget>&& aWidget)
 }
 
 RenderCompositorANGLE::RenderCompositorANGLE(RefPtr<widget::CompositorWidget>&& aWidget)
-  : RenderCompositor(Move(aWidget))
+  : RenderCompositor(std::move(aWidget))
   , mEGLConfig(nullptr)
   , mEGLSurface(nullptr)
 {
@@ -53,7 +54,7 @@ RenderCompositorANGLE::~RenderCompositorANGLE()
 ID3D11Device*
 RenderCompositorANGLE::GetDeviceOfEGLDisplay()
 {
-  const auto& egl = &gl::sEGLLibrary;
+  auto* egl = gl::GLLibraryEGL::Get();
 
   // Fetch the D3D11 device.
   EGLDeviceEXT eglDevice = nullptr;
@@ -69,16 +70,50 @@ RenderCompositorANGLE::GetDeviceOfEGLDisplay()
 }
 
 bool
+RenderCompositorANGLE::SutdownEGLLibraryIfNecessary()
+{
+  const RefPtr<gl::GLLibraryEGL> egl = gl::GLLibraryEGL::Get();
+  if (!egl) {
+    // egl is not initialized yet;
+    return true;
+  }
+
+  RefPtr<ID3D11Device> device = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
+  // When DeviceReset is handled by GPUProcessManager/GPUParent,
+  // CompositorDevice is updated to a new device. EGLDisplay also needs to be updated,
+  // since EGLDisplay uses DeviceManagerDx::mCompositorDevice on ANGLE WebRender use case.
+  // EGLDisplay could be updated when Renderer count becomes 0.
+  // It is ensured by GPUProcessManager during handling DeviceReset.
+  // GPUChild::RecvNotifyDeviceReset() destroys all CompositorSessions before
+  // re-creating them.
+  if (device.get() != GetDeviceOfEGLDisplay() &&
+      RenderThread::Get()->RendererCount() == 0) {
+    // Shutdown GLLibraryEGL for updating EGLDisplay.
+    egl->Shutdown();
+  }
+  return true;
+}
+
+bool
 RenderCompositorANGLE::Initialize()
 {
-  const auto& egl = &gl::sEGLLibrary;
+  if (RenderThread::Get()->IsHandlingDeviceReset()) {
+    gfxCriticalNote << "Waiting for handling device reset";
+    return false;
+  }
+
+  // Update device if necessary.
+  if (!SutdownEGLLibraryIfNecessary()) {
+    return false;
+  }
 
   nsCString discardFailureId;
-  if (!egl->EnsureInitialized(/* forceAccel */ true, &discardFailureId)) {
+  if (!gl::GLLibraryEGL::EnsureInitialized(/* forceAccel */ true, &discardFailureId)) {
     gfxCriticalNote << "Failed to load EGL library: " << discardFailureId.get();
     return false;
   }
 
+  auto* egl = gl::GLLibraryEGL::Get();
   mDevice = GetDeviceOfEGLDisplay();
 
   if (!mDevice) {
@@ -275,6 +310,11 @@ RenderCompositorANGLE::CreateSwapChainForDCompIfPossible(IDXGIFactory2* aDXGIFac
 bool
 RenderCompositorANGLE::BeginFrame()
 {
+  if (mDevice->GetDeviceRemovedReason() != S_OK) {
+    RenderThread::Get()->HandleDeviceReset("BeginFrame", /* aNotify */ true);
+    return false;
+  }
+
   mWidget->AsWindows()->UpdateCompositorWndSizeIfNecessary();
 
   if (!ResizeBufferIfNeeded()) {
@@ -287,8 +327,11 @@ RenderCompositorANGLE::BeginFrame()
   }
 
   if (mSyncObject) {
-    // XXX: if the synchronization is failed, we should handle the device reset.
-    mSyncObject->Synchronize();
+    if (!mSyncObject->Synchronize()) {
+      // It's timeout or other error. Handle the device-reset here.
+      RenderThread::Get()->HandleDeviceReset("SyncObject", /* aNotify */ true);
+      return false;
+    }
   }
   return true;
 }
@@ -368,7 +411,7 @@ RenderCompositorANGLE::ResizeBufferIfNeeded()
     }
   }
 
-  const auto& egl = &gl::sEGLLibrary;
+  auto* egl = gl::GLLibraryEGL::Get();
 
   const EGLint pbuffer_attribs[]{
     LOCAL_EGL_WIDTH, size.width,
@@ -399,7 +442,7 @@ RenderCompositorANGLE::ResizeBufferIfNeeded()
 void
 RenderCompositorANGLE::DestroyEGLSurface()
 {
-  const auto& egl = &gl::sEGLLibrary;
+  auto* egl = gl::GLLibraryEGL::Get();
 
   // Release EGLSurface of back buffer before calling ResizeBuffers().
   if (mEGLSurface) {

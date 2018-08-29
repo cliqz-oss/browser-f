@@ -39,7 +39,7 @@ public:
   explicit SchedulerEventQueue(UniquePtr<AbstractEventQueue> aQueue)
     : mLock("Scheduler")
     , mNonCooperativeCondVar(mLock, "SchedulerNonCoop")
-    , mQueue(Move(aQueue))
+    , mQueue(std::move(aQueue))
     , mScheduler(nullptr)
   {}
 
@@ -188,6 +188,7 @@ private:
       : mScheduler(aScheduler)
       , mMainVirtual(GetCurrentVirtualThread())
       , mMainLoop(MessageLoop::current())
+      , mOldMainLoop(nullptr)
       , mMainQueue(aQueue)
     {}
 
@@ -231,7 +232,7 @@ SchedulerEventQueue::PutEvent(already_AddRefed<nsIRunnable>&& aEvent,
 {
   // We want to leak the reference when we fail to dispatch it, so that
   // we won't release the event in a wrong thread.
-  LeakRefPtr<nsIRunnable> event(Move(aEvent));
+  LeakRefPtr<nsIRunnable> event(std::move(aEvent));
   nsCOMPtr<nsIThreadObserver> obs;
 
   {
@@ -286,6 +287,7 @@ SchedulerEventQueue::GetEvent(bool aMayWait,
     if (mScheduler) {
       CooperativeThreadPool::Yield(mScheduler->GetQueueResource(), lock);
     } else {
+      AUTO_PROFILER_LABEL("SchedulerEventQueue::GetEvent::Wait", IDLE);
       mNonCooperativeCondVar.Wait();
     }
   }
@@ -506,7 +508,7 @@ SchedulerImpl::Start()
     sNumThreadsRunning = 1;
 
     mShuttingDown = false;
-    nsTArray<nsCOMPtr<nsIRunnable>> callbacks = Move(mShutdownCallbacks);
+    nsTArray<nsCOMPtr<nsIRunnable>> callbacks = std::move(mShutdownCallbacks);
     for (nsIRunnable* runnable : callbacks) {
       runnable->Run();
     }
@@ -574,6 +576,7 @@ Scheduler::EventLoopActivation::EventLoopActivation()
   : mPrev(sTopActivation.get())
   , mProcessingEvent(false)
   , mIsLabeled(false)
+  , mPriority(EventPriority::Normal)
 {
   sTopActivation.set(this);
 

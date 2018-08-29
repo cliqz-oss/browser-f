@@ -47,16 +47,15 @@ function test_source() {
       Assert.ok(!!response);
       Assert.ok(!!response.sources);
 
-      let source = response.sources.filter(function(s) {
+      const source = response.sources.filter(function(s) {
         return s.url === SOURCE_URL;
       })[0];
 
       Assert.ok(!!source);
 
-      let sourceClient = gThreadClient.source(source);
-      sourceClient.source(function(response) {
+      const sourceClient = gThreadClient.source(source);
+      sourceClient.source().then(function(response) {
         Assert.ok(!!response);
-        Assert.ok(!response.error);
         Assert.ok(!!response.contentType);
         Assert.ok(response.contentType.includes("javascript"));
 

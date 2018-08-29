@@ -37,26 +37,24 @@ function verifySignatures() {
 
     info("Verifying signatures");
     let XPIscope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
-    XPIscope.XPIProvider.verifySignatures();
+    XPIscope.XPIDatabase.verifySignatures();
   });
 }
 
-function run_test() {
+add_task(async function setup() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "4", "4");
 
   // Start and stop the manager to initialise everything in the profile before
   // actual testing
-  startupManager();
-  shutdownManager();
-
-  run_next_test();
-}
+  await promiseStartupManager();
+  await promiseShutdownManager();
+});
 
 // Updating the pref without changing the app version won't disable add-ons
 // immediately but will after a signing check
 add_task(async function() {
   Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, false);
-  startupManager();
+  await promiseStartupManager();
 
   // Install the signed add-on
   await promiseInstallAllFiles([do_get_file(DATA + "unsigned_bootstrap_2.xpi")]);
@@ -71,7 +69,7 @@ add_task(async function() {
 
   Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, true);
 
-  startupManager();
+  await promiseStartupManager();
 
   addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);
@@ -98,7 +96,7 @@ add_task(async function() {
   Assert.ok(!addon.isActive);
   Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
-  addon.uninstall();
+  await addon.uninstall();
 
   await promiseShutdownManager();
 });
@@ -107,7 +105,7 @@ add_task(async function() {
 // immediately
 add_task(async function() {
   Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, false);
-  startupManager();
+  await promiseStartupManager();
 
   // Install the signed add-on
   await promiseInstallAllFiles([do_get_file(DATA + "unsigned_bootstrap_2.xpi")]);
@@ -122,7 +120,7 @@ add_task(async function() {
 
   Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, true);
   gAppInfo.version = 5.0;
-  startupManager(true);
+  await promiseStartupManager();
 
   addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);
@@ -130,7 +128,7 @@ add_task(async function() {
   Assert.ok(!addon.isActive);
   Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_MISSING);
 
-  addon.uninstall();
+  await addon.uninstall();
 
   await promiseShutdownManager();
 });

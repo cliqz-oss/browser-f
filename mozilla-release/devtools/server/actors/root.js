@@ -11,8 +11,8 @@ const Services = require("Services");
 const { ActorPool, appendExtraActors, createExtraActors } = require("devtools/server/actors/common");
 const { DebuggerServer } = require("devtools/server/main");
 
-loader.lazyRequireGetter(this, "WindowActor",
-  "devtools/server/actors/window", true);
+loader.lazyRequireGetter(this, "ChromeWindowTargetActor",
+  "devtools/server/actors/targets/chrome-window", true);
 
 /* Root actor for the remote debugging protocol. */
 
@@ -102,7 +102,7 @@ function RootActor(connection, parameters) {
   this._globalActorPool = new ActorPool(this.conn);
   this.conn.addActorPool(this._globalActorPool);
 
-  this._chromeActor = null;
+  this._parentProcessTargetActor = null;
   this._processActors = new Map();
 }
 
@@ -147,14 +147,14 @@ RootActor.prototype = {
     // Added in Firefox 40. Indicates that the backend supports registering custom
     // commands through the WebConsoleCommands API.
     webConsoleCommands: true,
-    // Whether root actor exposes tab actors and access to any window.
+    // Whether root actor exposes chrome target actors and access to any window.
     // If allowChromeProcess is true, you can:
-    // * get a ChromeActor instance to debug chrome and any non-content
+    // * get a ParentProcessTargetActor instance to debug chrome and any non-content
     //   resource via getProcess requests
-    // * get a WindowActor instance to debug windows which could be chrome,
+    // * get a ChromeWindowTargetActor instance to debug windows which could be chrome,
     //   like browser windows via getWindow requests
     // If allowChromeProcess is defined, but not true, it means that root actor
-    // no longer expose tab actors, but also that the above requests are
+    // no longer expose chrome target actors, but also that the above requests are
     // forbidden for security reasons.
     get allowChromeProcess() {
       return DebuggerServer.allowChromeProcess;
@@ -169,7 +169,7 @@ RootActor.prototype = {
     // markers, currently in use by the network monitor. Fx45+
     documentLoadingMarkers: true,
     // Whether or not the webextension addon actor have to be connected
-    // to retrieve the extension child process tab actors.
+    // to retrieve the extension child process target actors.
     webExtensionAddonConnect: true,
   },
 
@@ -221,9 +221,9 @@ RootActor.prototype = {
     this.conn = null;
     this._tabActorPool = null;
     this._globalActorPool = null;
-    this._windowActorPool = null;
+    this._chromeWindowActorPool = null;
     this._parameters = null;
-    this._chromeActor = null;
+    this._parentProcessTargetActor = null;
     this._processActors.clear();
   },
 
@@ -233,7 +233,7 @@ RootActor.prototype = {
    * and didn't actually care about tabs.
    */
   onGetRoot: function() {
-    let reply = {
+    const reply = {
       from: this.actorID,
     };
 
@@ -263,7 +263,7 @@ RootActor.prototype = {
    * this method whenever possible.
    */
   onListTabs: async function(request) {
-    let tabList = this._parameters.tabList;
+    const tabList = this._parameters.tabList;
     if (!tabList) {
       return { from: this.actorID, error: "noTabs",
                message: "This root actor has no browser tabs." };
@@ -277,13 +277,13 @@ RootActor.prototype = {
     // all the actors to a new ActorPool. We'll replace the old tab actor pool with the
     // one we build here, thus retiring any actors that didn't get listed again, and
     // preparing any new actors to receive packets.
-    let newActorPool = new ActorPool(this.conn);
-    let tabActorList = [];
+    const newActorPool = new ActorPool(this.conn);
+    const tabActorList = [];
     let selected;
 
-    let options = request.options || {};
-    let tabActors = await tabList.getList(options);
-    for (let tabActor of tabActors) {
+    const options = request.options || {};
+    const tabActors = await tabList.getList(options);
+    for (const tabActor of tabActors) {
       if (tabActor.exited) {
         // Tab actor may have exited while we were gathering the list.
         continue;
@@ -297,7 +297,7 @@ RootActor.prototype = {
     }
 
     // Start with the root reply, which includes the global actors for the whole browser.
-    let reply = this.onGetRoot();
+    const reply = this.onGetRoot();
 
     // Drop the old actorID -> actor map. Actors that still mattered were added to the
     // new map; others will go away.
@@ -317,7 +317,7 @@ RootActor.prototype = {
   },
 
   onGetTab: async function(options) {
-    let tabList = this._parameters.tabList;
+    const tabList = this._parameters.tabList;
     if (!tabList) {
       return { error: "noTabs",
                message: "This root actor has no browser tabs." };
@@ -355,7 +355,7 @@ RootActor.prototype = {
         message: "You are not allowed to debug windows."
       };
     }
-    let window = Services.wm.getOuterWindowWithId(outerWindowID);
+    const window = Services.wm.getOuterWindowWithId(outerWindowID);
     if (!window) {
       return {
         from: this.actorID,
@@ -364,14 +364,14 @@ RootActor.prototype = {
       };
     }
 
-    if (!this._windowActorPool) {
-      this._windowActorPool = new ActorPool(this.conn);
-      this.conn.addActorPool(this._windowActorPool);
+    if (!this._chromeWindowActorPool) {
+      this._chromeWindowActorPool = new ActorPool(this.conn);
+      this.conn.addActorPool(this._chromeWindowActorPool);
     }
 
-    let actor = new WindowActor(this.conn, window);
+    const actor = new ChromeWindowTargetActor(this.conn, window);
     actor.parentID = this.actorID;
-    this._windowActorPool.addActor(actor);
+    this._chromeWindowActorPool.addActor(actor);
 
     return {
       from: this.actorID,
@@ -386,7 +386,7 @@ RootActor.prototype = {
   },
 
   onListAddons: function() {
-    let addonList = this._parameters.addonList;
+    const addonList = this._parameters.addonList;
     if (!addonList) {
       return { from: this.actorID, error: "noAddons",
                message: "This root actor has no browser addons." };
@@ -395,21 +395,21 @@ RootActor.prototype = {
     // Reattach the onListChanged listener now that a client requested the list.
     addonList.onListChanged = this._onAddonListChanged;
 
-    return addonList.getList().then((addonActors) => {
-      let addonActorPool = new ActorPool(this.conn);
-      for (let addonActor of addonActors) {
-        addonActorPool.addActor(addonActor);
+    return addonList.getList().then((addonTargetActors) => {
+      const addonTargetActorPool = new ActorPool(this.conn);
+      for (const addonTargetActor of addonTargetActors) {
+        addonTargetActorPool.addActor(addonTargetActor);
       }
 
-      if (this._addonActorPool) {
-        this.conn.removeActorPool(this._addonActorPool);
+      if (this._addonTargetActorPool) {
+        this.conn.removeActorPool(this._addonTargetActorPool);
       }
-      this._addonActorPool = addonActorPool;
-      this.conn.addActorPool(this._addonActorPool);
+      this._addonTargetActorPool = addonTargetActorPool;
+      this.conn.addActorPool(this._addonTargetActorPool);
 
       return {
         "from": this.actorID,
-        "addons": addonActors.map(addonActor => addonActor.form())
+        "addons": addonTargetActors.map(addonTargetActor => addonTargetActor.form())
       };
     });
   },
@@ -420,7 +420,7 @@ RootActor.prototype = {
   },
 
   onListWorkers: function() {
-    let workerList = this._parameters.workerList;
+    const workerList = this._parameters.workerList;
     if (!workerList) {
       return { from: this.actorID, error: "noWorkers",
                message: "This root actor has no workers." };
@@ -430,14 +430,14 @@ RootActor.prototype = {
     workerList.onListChanged = this._onWorkerListChanged;
 
     return workerList.getList().then(actors => {
-      let pool = new ActorPool(this.conn);
-      for (let actor of actors) {
+      const pool = new ActorPool(this.conn);
+      for (const actor of actors) {
         pool.addActor(actor);
       }
 
-      this.conn.removeActorPool(this._workerActorPool);
-      this._workerActorPool = pool;
-      this.conn.addActorPool(this._workerActorPool);
+      this.conn.removeActorPool(this._workerTargetActorPool);
+      this._workerTargetActorPool = pool;
+      this.conn.addActorPool(this._workerTargetActorPool);
 
       return {
         "from": this.actorID,
@@ -452,7 +452,7 @@ RootActor.prototype = {
   },
 
   onListServiceWorkerRegistrations: function() {
-    let registrationList = this._parameters.serviceWorkerRegistrationList;
+    const registrationList = this._parameters.serviceWorkerRegistrationList;
     if (!registrationList) {
       return { from: this.actorID, error: "noServiceWorkerRegistrations",
                message: "This root actor has no service worker registrations." };
@@ -462,8 +462,8 @@ RootActor.prototype = {
     registrationList.onListChanged = this._onServiceWorkerRegistrationListChanged;
 
     return registrationList.getList().then(actors => {
-      let pool = new ActorPool(this.conn);
-      for (let actor of actors) {
+      const pool = new ActorPool(this.conn);
+      for (const actor of actors) {
         pool.addActor(actor);
       }
 
@@ -484,7 +484,7 @@ RootActor.prototype = {
   },
 
   onListProcesses: function() {
-    let { processList } = this._parameters;
+    const { processList } = this._parameters;
     if (!processList) {
       return { from: this.actorID, error: "noProcesses",
                message: "This root actor has no processes." };
@@ -512,18 +512,24 @@ RootActor.prototype = {
     // If the request doesn't contains id parameter or id is 0
     // (id == 0, based on onListProcesses implementation)
     if ((!("id" in request)) || request.id === 0) {
-      if (!this._chromeActor) {
-        // Create a ChromeActor for the parent process
-        let { ChromeActor } = require("devtools/server/actors/chrome");
-        this._chromeActor = new ChromeActor(this.conn);
-        this._globalActorPool.addActor(this._chromeActor);
+      if (this._parentProcessTargetActor && (!this._parentProcessTargetActor.docShell ||
+          this._parentProcessTargetActor.docShell.isBeingDestroyed)) {
+        this._globalActorPool.removeActor(this._parentProcessTargetActor);
+        this._parentProcessTargetActor = null;
+      }
+      if (!this._parentProcessTargetActor) {
+        // Create a ParentProcessTargetActor for the parent process
+        const { ParentProcessTargetActor } =
+          require("devtools/server/actors/targets/parent-process");
+        this._parentProcessTargetActor = new ParentProcessTargetActor(this.conn);
+        this._globalActorPool.addActor(this._parentProcessTargetActor);
       }
 
-      return { form: this._chromeActor.form() };
+      return { form: this._parentProcessTargetActor.form() };
     }
 
-    let { id } = request;
-    let mm = Services.ppmm.getChildAt(id);
+    const { id } = request;
+    const mm = Services.ppmm.getChildAt(id);
     if (!mm) {
       return { error: "noProcess",
                message: "There is no process with id '" + id + "'." };
@@ -532,7 +538,7 @@ RootActor.prototype = {
     if (form) {
       return { form };
     }
-    let onDestroy = () => {
+    const onDestroy = () => {
       this._processActors.delete(id);
     };
     form = await DebuggerServer.connectToContentProcess(this.conn, mm, onDestroy);
@@ -568,7 +574,7 @@ RootActor.prototype = {
         this._globalActorPool.removeActor(actor);
       }
       if (this._tabActorPool) {
-        // Iterate over TabActor instances to also remove tab actors
+        // Iterate over BrowsingContextTargetActor instances to also remove tab actors
         // created during listTabs for each document.
         this._tabActorPool.forEach(tab => {
           tab.removeActorByName(name);

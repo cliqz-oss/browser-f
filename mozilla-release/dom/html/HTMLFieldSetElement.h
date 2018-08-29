@@ -42,9 +42,6 @@ public:
 
   virtual nsresult InsertChildBefore(nsIContent* aChild, nsIContent* aBeforeThis,
                                      bool aNotify) override;
-  virtual nsresult InsertChildAt_Deprecated(nsIContent* aChild, uint32_t aIndex,
-                                            bool aNotify) override;
-  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
   virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
 
   // nsIFormControl
@@ -83,7 +80,7 @@ public:
     SetHTMLAttr(nsGkAtoms::name, aValue, aRv);
   }
 
-  NS_IMETHOD GetType(nsAString & aType);
+  void GetType(nsAString & aType) const;
 
   nsIHTMLCollection* Elements();
 

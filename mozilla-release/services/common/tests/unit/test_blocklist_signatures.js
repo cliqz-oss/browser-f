@@ -262,6 +262,19 @@ add_task(async function test_check_signatures() {
   const RESPONSE_BODY_META_EMPTY_SIG = makeMetaResponseBody(1000,
     "vxuAg5rDCB-1pul4a91vqSBQRXJG_j7WOYUTswxRSMltdYmbhLRH8R8brQ9YKuNDF56F-w6pn4HWxb076qgKPwgcEBtUeZAO_RtaHXRkRUUgVzAr86yQL4-aJTbv3D6u");
 
+  const RESPONSE_META_NO_SIG = {
+    sampleHeaders: [
+      "Content-Type: application/json; charset=UTF-8",
+      `ETag: \"123456\"`
+    ],
+    status: {status: 200, statusText: "OK"},
+    responseBody: JSON.stringify({
+      data: {
+        last_modified: 123456
+      }
+    })
+  };
+
   // The collection metadata containing the signature for the empty
   // collection.
   const RESPONSE_META_EMPTY_SIG =
@@ -436,19 +449,16 @@ add_task(async function test_check_signatures() {
 
   startHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
 
-  let retrySyncData;
-  OneCRLBlocklistClient.on("sync", ({ data }) => { retrySyncData = data; });
+  let syncEventSent = false;
+  OneCRLBlocklistClient.on("sync", ({ data }) => { syncEventSent = true; });
 
   await OneCRLBlocklistClient.maybeSync(5000, startTime);
 
   endHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
 
-  // since we only fixed the signature, and no data was changed, the sync result
-  // will be called with empty lists of created/updated/deleted.
-  equal(retrySyncData.current.length, 2);
-  equal(retrySyncData.created.length, 0);
-  equal(retrySyncData.updated.length, 0);
-  equal(retrySyncData.deleted.length, 0);
+  // since we only fixed the signature, and no data was changed, the sync event
+  // was not sent.
+  equal(syncEventSent, false);
 
   // ensure that the failure count is incremented for a succesful sync with an
   // (initial) bad signature - only SERVICES_SETTINGS_SYNC_SIG_FAIL should
@@ -480,17 +490,14 @@ add_task(async function test_check_signatures() {
 
   registerHandlers(badSigGoodOldResponses);
 
-  let oldChangesData;
-  OneCRLBlocklistClient.on("sync", ({ data }) => { oldChangesData = data; });
+  syncEventSent = false;
+  OneCRLBlocklistClient.on("sync", ({ data }) => { syncEventSent = true; });
 
   await OneCRLBlocklistClient.maybeSync(5000, startTime);
 
-  // Local data was unchanged, since it was never than the one returned by the server.
-  equal(oldChangesData.current.length, 2);
-  equal(oldChangesData.created.length, 0);
-  equal(oldChangesData.updated.length, 0);
-  equal(oldChangesData.deleted.length, 0);
-
+  // Local data was unchanged, since it was never than the one returned by the server,
+  // thus the sync event is not sent.
+  equal(syncEventSent, false);
 
   const badLocalContentGoodSigResponses = {
     // In this test, we deliberately serve a bad signature initially. The
@@ -562,6 +569,31 @@ add_task(async function test_check_signatures() {
   // Ensure that the failure is reflected in the accumulated telemetry:
   endHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
   expectedIncrements = {[UptakeTelemetry.STATUS.SIGNATURE_RETRY_ERROR]: 1};
+  checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
+
+
+  const missingSigResponses = {
+    // In this test, we deliberately serve metadata without the signature attribute.
+    // As if the collection was not signed.
+    "GET:/v1/buckets/blocklists/collections/certificates?":
+      [RESPONSE_META_NO_SIG],
+  };
+
+  startHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
+  registerHandlers(missingSigResponses);
+  try {
+    await OneCRLBlocklistClient.maybeSync(6000, startTime);
+    do_throw("Sync should fail (the signature is missing)");
+  } catch (e) {
+    await checkRecordCount(OneCRLBlocklistClient, 2);
+  }
+
+  // Ensure that the failure is reflected in the accumulated telemetry:
+  endHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
+  expectedIncrements = {
+    [UptakeTelemetry.STATUS.SIGNATURE_ERROR]: 1,
+    [UptakeTelemetry.STATUS.SIGNATURE_RETRY_ERROR]: 0  // Not retried since missing.
+  };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
 });
 

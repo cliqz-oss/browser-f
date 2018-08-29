@@ -153,15 +153,13 @@ nsStyleDisplay::HasPerspective(const nsIFrame* aContextFrame) const
   return HasPerspectiveStyle() && aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms);
 }
 
-template<class ComputedStyleLike>
 bool
 nsStyleDisplay::HasFixedPosContainingBlockStyleInternal(
-                  ComputedStyleLike* aComputedStyle) const
+  mozilla::ComputedStyle& aStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the FIXPOS_CB flag set on them.
-  NS_ASSERTION(aComputedStyle->ThreadsafeStyleDisplay() == this,
-               "unexpected aComputedStyle");
+  NS_ASSERTION(aStyle.ThreadsafeStyleDisplay() == this, "unexpected aStyle");
 
   if (IsContainPaint()) {
     return true;
@@ -171,17 +169,16 @@ nsStyleDisplay::HasFixedPosContainingBlockStyleInternal(
     return true;
   }
 
-  return aComputedStyle->ThreadsafeStyleEffects()->HasFilters();
+  return aStyle.ThreadsafeStyleEffects()->HasFilters();
 }
 
-template<class ComputedStyleLike>
 bool
 nsStyleDisplay::IsFixedPosContainingBlockForAppropriateFrame(
-                  ComputedStyleLike* aComputedStyle) const
+  mozilla::ComputedStyle& aStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the FIXPOS_CB flag set on them.
-  return HasFixedPosContainingBlockStyleInternal(aComputedStyle) ||
+  return HasFixedPosContainingBlockStyleInternal(aStyle) ||
          HasTransformStyle() || HasPerspectiveStyle();
 }
 
@@ -190,45 +187,43 @@ nsStyleDisplay::IsFixedPosContainingBlock(const nsIFrame* aContextFrame) const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the FIXPOS_CB flag set on them.
-  if (!HasFixedPosContainingBlockStyleInternal(aContextFrame->Style()) &&
+  if (!HasFixedPosContainingBlockStyleInternal(*aContextFrame->Style()) &&
       !HasTransform(aContextFrame) && !HasPerspective(aContextFrame)) {
     return false;
   }
   return !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
 }
 
-template<class ComputedStyleLike>
 bool
-nsStyleDisplay::HasAbsPosContainingBlockStyleInternal(
-                  ComputedStyleLike* aComputedStyle) const
+nsStyleDisplay::HasAbsPosContainingBlockStyleInternal() const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the ABSPOS_CB set on them.
-  NS_ASSERTION(aComputedStyle->ThreadsafeStyleDisplay() == this,
-               "unexpected aComputedStyle");
   return IsAbsolutelyPositionedStyle() ||
          IsRelativelyPositionedStyle() ||
          (mWillChangeBitField & NS_STYLE_WILL_CHANGE_ABSPOS_CB);
 }
 
-template<class ComputedStyleLike>
 bool
-nsStyleDisplay::IsAbsPosContainingBlockForAppropriateFrame(ComputedStyleLike* aComputedStyle) const
+nsStyleDisplay::IsAbsPosContainingBlockForAppropriateFrame(
+  mozilla::ComputedStyle& aStyle) const
 {
+  NS_ASSERTION(aStyle.ThreadsafeStyleDisplay() == this, "unexpected aStyle");
   // NOTE: Any CSS properties that influence the output of this function
   // should have the ABSPOS_CB set on them.
-  return HasAbsPosContainingBlockStyleInternal(aComputedStyle) ||
-         IsFixedPosContainingBlockForAppropriateFrame(aComputedStyle);
+  return HasAbsPosContainingBlockStyleInternal() ||
+         IsFixedPosContainingBlockForAppropriateFrame(aStyle);
 }
 
 bool
 nsStyleDisplay::IsAbsPosContainingBlock(const nsIFrame* aContextFrame) const
 {
+  NS_ASSERTION(aContextFrame->Style()->ThreadsafeStyleDisplay() == this,
+               "unexpected aContextFrame");
   // NOTE: Any CSS properties that influence the output of this function
   // should have the ABSPOS_CB set on them.
-  mozilla::ComputedStyle* sc = aContextFrame->Style();
-  if (!HasAbsPosContainingBlockStyleInternal(sc) &&
-      !HasFixedPosContainingBlockStyleInternal(sc) &&
+  if (!HasAbsPosContainingBlockStyleInternal() &&
+      !HasFixedPosContainingBlockStyleInternal(*aContextFrame->Style()) &&
       !HasTransform(aContextFrame) &&
       !HasPerspective(aContextFrame)) {
     return false;
@@ -274,7 +269,7 @@ nsStyleBackground::HasLocalBackground() const
   NS_FOR_VISIBLE_IMAGE_LAYERS_BACK_TO_FRONT(i, mImage) {
     const nsStyleImageLayers::Layer& layer = mImage.mLayers[i];
     if (!layer.mImage.IsEmpty() &&
-        layer.mAttachment == NS_STYLE_IMAGELAYER_ATTACHMENT_LOCAL) {
+        layer.mAttachment == mozilla::StyleImageLayerAttachment::Local) {
       return true;
     }
   }

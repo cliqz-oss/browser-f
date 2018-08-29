@@ -83,7 +83,7 @@ struct VisitData {
   , referrerVisitId(0)
   , titleChanged(false)
   , shouldUpdateFrecency(true)
-  , redirect(false)
+  , useFrecencyRedirectBonus(false)
   {
     guid.SetIsVoid(true);
     title.SetIsVoid(true);
@@ -105,7 +105,7 @@ struct VisitData {
   , referrerVisitId(0)
   , titleChanged(false)
   , shouldUpdateFrecency(true)
-  , redirect(false)
+  , useFrecencyRedirectBonus(false)
   {
     MOZ_ASSERT(aURI);
     if (aURI) {
@@ -164,8 +164,9 @@ struct VisitData {
   // Indicates whether frecency should be updated for this visit.
   bool shouldUpdateFrecency;
 
-  // Whether this is a redirect source.
-  bool redirect;
+  // Whether to override the visit type bonus with a redirect bonus when
+  // calculating frecency on the most recent visit.
+  bool useFrecencyRedirectBonus;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -594,7 +595,7 @@ public:
   static nsresult Start(nsIURI* aURI,
                         mozIVisitedStatusCallback* aCallback=nullptr)
   {
-    NS_PRECONDITION(aURI, "Null URI");
+    MOZ_ASSERT(aURI, "Null URI");
 
     // If we are a content process, always remote the request to the
     // parent process.
@@ -693,7 +694,7 @@ public:
       AutoTArray<URIParams, 1> uris;
       URIParams uri;
       SerializeURI(mURI, uri);
-      uris.AppendElement(Move(uri));
+      uris.AppendElement(std::move(uri));
       history->NotifyVisitedParent(uris);
     }
 
@@ -851,7 +852,7 @@ public:
 
         URIParams serializedUri;
         SerializeURI(uris[i], serializedUri);
-        serializableUris.AppendElement(Move(serializedUri));
+        serializableUris.AppendElement(std::move(serializedUri));
       }
       mHistory->NotifyVisitedParent(serializableUris);
     } else {
@@ -861,7 +862,7 @@ public:
 
       URIParams serializedUri;
       SerializeURI(uris[0], serializedUri);
-      serializableUris.AppendElement(Move(serializedUri));
+      serializableUris.AppendElement(std::move(serializedUri));
       mHistory->NotifyVisitedParent(serializableUris);
     }
 
@@ -1269,8 +1270,18 @@ public:
     }
 
     {
-      // Trigger an update for all the hosts of the places we inserted
-      nsAutoCString query("DELETE FROM moz_updatehostsinsert_temp");
+      // Trigger insertions for all the new origins of the places we inserted.
+      nsAutoCString query("DELETE FROM moz_updateoriginsinsert_temp");
+      nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(query);
+      NS_ENSURE_STATE(stmt);
+      mozStorageStatementScoper scoper(stmt);
+      nsresult rv = stmt->Execute();
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+
+    {
+      // Trigger frecency updates for all those origins.
+      nsAutoCString query("DELETE FROM moz_updateoriginsupdate_temp");
       nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(query);
       NS_ENSURE_STATE(stmt);
       mozStorageStatementScoper scoper(stmt);
@@ -1489,8 +1500,7 @@ private:
 
       rv = stmt->BindInt64ByName(NS_LITERAL_CSTRING("page_id"), aPlace.placeId);
       NS_ENSURE_SUCCESS(rv, rv);
-
-      rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("redirect"), aPlace.redirect);
+      rv = stmt->BindInt32ByName(NS_LITERAL_CSTRING("redirect"), aPlace.useFrecencyRedirectBonus);
       NS_ENSURE_SUCCESS(rv, rv);
 
       rv = stmt->Execute();
@@ -2065,7 +2075,7 @@ private:
     {
       // Hosts accumulated during the places delete are updated through a trigger
       // (see nsPlacesTriggers.h).
-      nsAutoCString query("DELETE FROM moz_updatehostsdelete_temp");
+      nsAutoCString query("DELETE FROM moz_updateoriginsdelete_temp");
       nsCOMPtr<mozIStorageStatement> stmt = mHistory->GetStatement(query);
       NS_ENSURE_STATE(stmt);
       mozStorageStatementScoper scoper(stmt);
@@ -2840,8 +2850,13 @@ History::VisitURI(nsIURI* aURI,
   }
 
   place.SetTransitionType(transitionType);
-  place.redirect = aFlags & IHistory::REDIRECT_SOURCE;
-  place.hidden = GetHiddenState(place.redirect, place.transitionType);
+  bool isRedirect = aFlags & IHistory::REDIRECT_SOURCE;
+  if (isRedirect) {
+    place.useFrecencyRedirectBonus =
+      (aFlags & IHistory::REDIRECT_SOURCE_PERMANENT) ||
+      transitionType != nsINavHistoryService::TRANSITION_TYPED;
+  }
+  place.hidden = GetHiddenState(isRedirect, place.transitionType);
 
   // Error pages should never be autocompleted.
   if (aFlags & IHistory::UNRECOVERABLE_ERROR) {
@@ -2878,7 +2893,7 @@ History::RegisterVisitedCallback(nsIURI* aURI,
   MOZ_ASSERT(NS_IsMainThread());
   NS_ASSERTION(aURI, "Must pass a non-null URI!");
   if (XRE_IsContentProcess()) {
-    NS_PRECONDITION(aLink, "Must pass a non-null Link!");
+    MOZ_ASSERT(aLink, "Must pass a non-null Link!");
   }
 
   // Obtain our array of observers for this URI.

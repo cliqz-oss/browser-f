@@ -168,13 +168,10 @@ public:
   AsyncOpen2(nsIStreamListener *aListener) override;
 
   NS_IMETHOD
-  LogBlockedCORSRequest(const nsAString & aMessage) override;
+  LogBlockedCORSRequest(const nsAString & aMessage, const nsACString& aCategory) override;
 
   NS_IMETHOD
   SetupFallbackChannel(const char * aFallbackKey) override;
-
-  NS_IMETHOD
-  GetResponseSynthesized(bool *aResponseSynthesized) override;
 
   NS_IMETHOD
   SetPriority(int32_t aPriority) override;
@@ -193,6 +190,9 @@ public:
 
   void
   DoNotifyListenerCleanup() override;
+
+  void
+  DoAsyncAbort(nsresult aStatus) override;
 };
 
 } // namespace net

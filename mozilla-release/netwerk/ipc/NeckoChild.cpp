@@ -32,6 +32,7 @@
 #include "nsIOService.h"
 #include "nsINetworkPredictor.h"
 #include "nsINetworkPredictorVerifier.h"
+#include "nsINetworkLinkService.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "nsNetUtil.h"
 
@@ -323,8 +324,7 @@ NeckoChild::DeallocPUDPSocketChild(PUDPSocketChild* child)
 PDNSRequestChild*
 NeckoChild::AllocPDNSRequestChild(const nsCString& aHost,
                                   const OriginAttributes& aOriginAttributes,
-                                  const uint32_t& aFlags,
-                                  const nsCString& aNetworkInterface)
+                                  const uint32_t& aFlags)
 {
   // We don't allocate here: instead we always use IPDL constructor that takes
   // an existing object
@@ -447,6 +447,17 @@ NeckoChild::RecvSpeculativeConnectRequest()
   if (obsService) {
     obsService->NotifyObservers(nullptr, "speculative-connect-request",
                                 nullptr);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+NeckoChild::RecvNetworkChangeNotification(nsCString const& type)
+{
+  nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
+  if (obsService) {
+    obsService->NotifyObservers(nullptr, NS_NETWORK_LINK_TOPIC,
+                                NS_ConvertUTF8toUTF16(type).get());
   }
   return IPC_OK();
 }

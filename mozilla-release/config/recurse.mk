@@ -29,6 +29,7 @@ include root.mk
 # Main rules (export, compile, libs and tools) call recurse_* rules.
 # This wrapping is only really useful for build status.
 $(TIERS)::
+	$(if $(filter $@,$(MAKECMDGOALS)),$(call BUILDSTATUS,TIERS $@),)
 	$(call BUILDSTATUS,TIER_START $@)
 	+$(MAKE) recurse_$@
 	$(call BUILDSTATUS,TIER_FINISH $@)
@@ -165,8 +166,14 @@ ifeq (.,$(DEPTH))
 js/xpconnect/src/export: dom/bindings/export xpcom/xpidl/export
 accessible/xpcom/export: xpcom/xpidl/export
 
-# The widget binding generator code is part of the annotationProcessors.
-widget/android/bindings/export: build/annotationProcessors/export
+# The Android SDK bindings needs to build the Java generator code
+# source code in order to write the SDK bindings.
+widget/android/bindings/export: mobile/android/base/export
+
+# The widget JNI wrapper generator code needs to build the GeckoView
+# and Fennec source code in order to find JNI wrapper annotations.
+widget/android/fennec/export: mobile/android/base/export
+widget/android/export: mobile/android/base/export
 
 # .xpt generation needs the xpidl lex/yacc files
 xpcom/xpidl/export: xpcom/idl-parser/xpidl/export

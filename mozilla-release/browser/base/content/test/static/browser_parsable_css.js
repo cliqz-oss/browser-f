@@ -14,15 +14,11 @@ let whitelist = [
   {sourceName: /codemirror\.css$/i,
    isFromDevTools: true},
   // The debugger uses cross-browser CSS.
-  {sourceName: /devtools\/client\/debugger\/new\/debugger.css/i,
+  {sourceName: /devtools\/client\/debugger\/new\/dist\/debugger.css/i,
    isFromDevTools: true},
    // Reps uses cross-browser CSS.
    {sourceName: /devtools-client-shared\/components\/reps\/reps.css/i,
    isFromDevTools: true},
-  // PDFjs is futureproofing its pseudoselectors, and those rules are dropped.
-  {sourceName: /web\/viewer\.css$/i,
-   errorMessage: /Unknown pseudo-class.*(fullscreen|selection)/i,
-   isFromDevTools: false},
   // PDFjs rules needed for compat with other UAs.
   {sourceName: /web\/viewer\.css$/i,
    errorMessage: /Unknown property.*(appearance|user-select)/i,
@@ -74,6 +70,11 @@ let whitelist = [
 if (!Services.prefs.getBoolPref("full-screen-api.unprefix.enabled")) {
   whitelist.push({
     sourceName: /(?:res|gre-resources)\/(ua|html)\.css$/i,
+    errorMessage: /Unknown pseudo-class .*\bfullscreen\b/i,
+    isFromDevTools: false
+  }, {
+    // PDFjs is futureproofing its pseudoselectors, and those rules are dropped.
+    sourceName: /web\/viewer\.css$/i,
     errorMessage: /Unknown pseudo-class .*\bfullscreen\b/i,
     isFromDevTools: false
   });
@@ -262,7 +263,9 @@ function processCSSRules(sheet) {
     // Note: CSSStyleRule.cssText always has double quotes around URLs even
     //       when the original CSS file didn't.
     let urls = rule.cssText.match(/url\("[^"]*"\)/g);
-    let props = rule.cssText.match(/(var\()?(--[\w\-]+)/g);
+    // Extract props by searching all "--" preceeded by "var(" or a non-word
+    // character.
+    let props = rule.cssText.match(/(var\(|\W)(--[\w\-]+)/g);
     if (!urls && !props)
       continue;
 
@@ -290,8 +293,13 @@ function processCSSRules(sheet) {
         prop = prop.substring(4);
         let prevValue = customPropsToReferencesMap.get(prop) || 0;
         customPropsToReferencesMap.set(prop, prevValue + 1);
-      } else if (!customPropsToReferencesMap.has(prop)) {
-        customPropsToReferencesMap.set(prop, undefined);
+      } else {
+        // Remove the extra non-word character captured by the regular
+        // expression.
+        prop = prop.substring(1);
+        if (!customPropsToReferencesMap.has(prop)) {
+          customPropsToReferencesMap.set(prop, undefined);
+        }
       }
     }
   }

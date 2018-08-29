@@ -21,7 +21,6 @@ using namespace mozilla;
 
 JS::PersistentRootedObject gGlobal;
 JSContext* gCx = nullptr;
-JSCompartment* gOldCompartment = nullptr;
 
 static const JSClass*
 getGlobalClass()
@@ -44,7 +43,7 @@ jsfuzz_createGlobal(JSContext* cx, JSPrincipals* principals)
 {
     /* Create the global object. */
     JS::RootedObject newGlobal(cx);
-    JS::CompartmentOptions options;
+    JS::RealmOptions options;
 #ifdef ENABLE_STREAMS
     options.creationOptions().setStreamsEnabled(true);
 #endif
@@ -53,11 +52,11 @@ jsfuzz_createGlobal(JSContext* cx, JSPrincipals* principals)
     if (!newGlobal)
         return nullptr;
 
-    JSAutoCompartment ac(cx, newGlobal);
+    JSAutoRealm ar(cx, newGlobal);
 
     // Populate the global object with the standard globals like Object and
     // Array.
-    if (!JS_InitStandardClasses(cx, newGlobal))
+    if (!JS::InitRealmStandardClasses(cx))
         return nullptr;
 
     return newGlobal;
@@ -82,17 +81,13 @@ jsfuzz_init(JSContext** cx, JS::PersistentRootedObject* global)
     *global = jsfuzz_createGlobal(*cx, nullptr);
     if (!*global)
         return false;
-    JS_EnterCompartment(*cx, *global);
+    JS::EnterRealm(*cx, *global);
     return true;
 }
 
 static void
-jsfuzz_uninit(JSContext* cx, JSCompartment* oldCompartment)
+jsfuzz_uninit(JSContext* cx)
 {
-    if (oldCompartment) {
-        JS_LeaveCompartment(cx, oldCompartment);
-        oldCompartment = nullptr;
-    }
     if (cx) {
         JS_EndRequest(cx);
         JS_DestroyContext(cx);
@@ -143,7 +138,7 @@ main(int argc, char* argv[])
     testingFunc(nullptr, 0);
 #endif
 
-    jsfuzz_uninit(gCx, nullptr);
+    jsfuzz_uninit(gCx);
 
     JS_ShutDown();
 

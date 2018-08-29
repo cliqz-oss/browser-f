@@ -74,7 +74,7 @@ BufferRecycleBin::RecycleBuffer(UniquePtr<uint8_t[]> aBuffer, uint32_t aSize)
     mRecycledBuffers.Clear();
   }
   mRecycledBufferSize = aSize;
-  mRecycledBuffers.AppendElement(Move(aBuffer));
+  mRecycledBuffers.AppendElement(std::move(aBuffer));
 }
 
 UniquePtr<uint8_t[]>
@@ -87,7 +87,7 @@ BufferRecycleBin::GetBuffer(uint32_t aSize)
   }
 
   uint32_t last = mRecycledBuffers.Length() - 1;
-  UniquePtr<uint8_t[]> result = Move(mRecycledBuffers[last]);
+  UniquePtr<uint8_t[]> result = std::move(mRecycledBuffers[last]);
   mRecycledBuffers.RemoveElementAt(last);
   return result;
 }
@@ -472,26 +472,13 @@ ImageContainer::GetD3D11YCbCrRecycleAllocator(KnowsCompositor* aAllocator)
     return mD3D11YCbCrRecycleAllocator;
   }
 
-  RefPtr<ID3D11Device> device = gfx::DeviceManagerDx::Get()->GetContentDevice();
-  if (!device) {
-    device = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
-  }
-
-  if (!device || !aAllocator->SupportsD3D11()) {
+  if (!aAllocator->SupportsD3D11() ||
+      !gfx::DeviceManagerDx::Get()->GetImageDevice()) {
     return nullptr;
   }
-
-  RefPtr<ID3D10Multithread> multi;
-  HRESULT hr =
-    device->QueryInterface((ID3D10Multithread**)getter_AddRefs(multi));
-  if (FAILED(hr) || !multi) {
-    gfxWarning() << "Multithread safety interface not supported. " << hr;
-    return nullptr;
-  }
-  multi->SetMultithreadProtected(TRUE);
 
   mD3D11YCbCrRecycleAllocator =
-    new D3D11YCbCrRecycleAllocator(aAllocator, device);
+    new D3D11YCbCrRecycleAllocator(aAllocator);
   return mD3D11YCbCrRecycleAllocator;
 }
 #endif
@@ -506,7 +493,7 @@ PlanarYCbCrImage::PlanarYCbCrImage()
 RecyclingPlanarYCbCrImage::~RecyclingPlanarYCbCrImage()
 {
   if (mBuffer) {
-    mRecycleBin->RecycleBuffer(Move(mBuffer), mBufferSize);
+    mRecycleBin->RecycleBuffer(std::move(mBuffer), mBufferSize);
   }
 }
 

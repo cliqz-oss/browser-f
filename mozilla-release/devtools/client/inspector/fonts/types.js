@@ -49,6 +49,9 @@ const fontVariationInstance = exports.fontVariationInstance = {
  * A single font.
  */
 const font = exports.font = {
+  // Font family name
+  CSSFamilyName: PropTypes.string,
+
   // The format of the font
   format: PropTypes.string,
 
@@ -79,6 +82,14 @@ exports.fontOptions = {
   previewText: PropTypes.string,
 };
 
+const fontFamilies = {
+  // Font family names used on the selected element
+  used: PropTypes.arrayOf(PropTypes.string),
+
+  // Font family names declared but not used on the selected element
+  notUsed: PropTypes.arrayOf(PropTypes.string),
+};
+
 exports.fontEditor = {
   // Variable font axes and their values
   axes: PropTypes.object,
@@ -87,20 +98,17 @@ exports.fontEditor = {
   // of a fontVariationInstance
   customInstanceValues: PropTypes.array,
 
-  // Fonts applicable to selected element
+  // Font families declared on this element
+  families: PropTypes.shape(fontFamilies),
+
+  // Fonts used on the selected element whose family names are declared in CSS font-family
   fonts: PropTypes.arrayOf(PropTypes.shape(font)),
 
   // Font variation instance currently selected
   instance: PropTypes.shape(fontVariationInstance),
 
-  // Whether or not the font editor is visible
-  isVisible: PropTypes.bool,
-
   // CSS font properties defined on the element
   properties: PropTypes.object,
-
-  // Selector text of the rule where font properties will be written
-  selector: PropTypes.string,
 };
 
 /**

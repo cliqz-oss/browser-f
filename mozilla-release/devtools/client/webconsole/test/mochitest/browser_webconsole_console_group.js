@@ -15,7 +15,7 @@ const { INDENT_WIDTH } =
 
 add_task(async function() {
   const hud = await openNewTabAndConsole(TEST_URI);
-  const store = hud.ui.newConsoleOutput.getStore();
+  const store = hud.ui.consoleOutput.getStore();
   logAllStoreChanges(hud);
 
   const onMessagesLogged = waitForMessage(hud, "log-6");
@@ -84,7 +84,7 @@ add_task(async function() {
   node = findMessage(hud, "log-6");
   testClass(node, "log");
   testIndent(node, 0);
-  let nodes = hud.ui.outputNode.querySelectorAll(".message");
+  const nodes = hud.ui.outputNode.querySelectorAll(".message");
   is(nodes.length, 8, "expected number of messages are displayed");
 });
 
@@ -105,10 +105,10 @@ async function testGroupToggle({
   visibleMessageIdsAfterExpand,
   visibleMessageIdsAfterCollapse
 }) {
-  let toggleArrow = node.querySelector(".collapse-button");
+  const toggleArrow = node.querySelector(".collapse-button");
   const isOpen = node2 => node2.classList.contains("open");
   const assertVisibleMessageIds = (expanded) => {
-    let visibleMessageIds = store.getState().messages.visibleMessages;
+    const visibleMessageIds = store.getState().messages.visibleMessages;
     expanded ? is(visibleMessageIds.toString(), visibleMessageIdsAfterExpand.toString()) :
       is(visibleMessageIds.toString(), visibleMessageIdsAfterCollapse.toString());
   };

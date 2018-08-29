@@ -11,6 +11,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/Date.h"
 #include "mozilla/dom/Directory.h"
+#include "mozilla/dom/DocumentOrShadowRoot.h"
 #include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/HTMLFormSubmission.h"
 #include "mozilla/dom/FileSystemUtils.h"
@@ -18,9 +19,9 @@
 #include "mozilla/dom/WheelEventBinding.h"
 #include "nsAttrValueInlines.h"
 #include "nsCRTGlue.h"
+#include "nsQueryObject.h"
 
 #include "nsITextControlElement.h"
-#include "nsIDOMNSEditableElement.h"
 #include "nsIRadioVisitor.h"
 #include "InputType.h"
 
@@ -508,7 +509,7 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
 
     while (NS_SUCCEEDED(iter->HasMoreElements(&hasMore)) && hasMore) {
       iter->GetNext(getter_AddRefs(tmp));
-      nsCOMPtr<nsIDOMBlob> domBlob = do_QueryInterface(tmp);
+      RefPtr<Blob> domBlob = do_QueryObject(tmp);
       MOZ_ASSERT(domBlob,
                  "Null file object from FilePicker's file enumerator?");
       if (!domBlob) {
@@ -516,7 +517,7 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
       }
 
       OwningFileOrDirectory* element = newFilesOrDirectories.AppendElement();
-      element->SetAsFile() = static_cast<File*>(domBlob.get());
+      element->SetAsFile() = domBlob->ToFile();
     }
   } else {
     MOZ_ASSERT(mode == static_cast<int16_t>(nsIFilePicker::modeOpen) ||
@@ -525,9 +526,9 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
     nsresult rv = mFilePicker->GetDomFileOrDirectory(getter_AddRefs(tmp));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIDOMBlob> blob = do_QueryInterface(tmp);
+    RefPtr<Blob> blob = do_QueryObject(tmp);
     if (blob) {
-      RefPtr<File> file = static_cast<Blob*>(blob.get())->ToFile();
+      RefPtr<File> file = blob->ToFile();
       MOZ_ASSERT(file);
 
       OwningFileOrDirectory* element = newFilesOrDirectories.AppendElement();
@@ -876,12 +877,12 @@ UploadLastDir::FetchDirectoryAndDisplayPicker(nsIDocument* aDoc,
                                               nsIFilePicker* aFilePicker,
                                               nsIFilePickerShownCallback* aFpCallback)
 {
-  NS_PRECONDITION(aDoc, "aDoc is null");
-  NS_PRECONDITION(aFilePicker, "aFilePicker is null");
-  NS_PRECONDITION(aFpCallback, "aFpCallback is null");
+  MOZ_ASSERT(aDoc, "aDoc is null");
+  MOZ_ASSERT(aFilePicker, "aFilePicker is null");
+  MOZ_ASSERT(aFpCallback, "aFpCallback is null");
 
   nsIURI* docURI = aDoc->GetDocumentURI();
-  NS_PRECONDITION(docURI, "docURI is null");
+  MOZ_ASSERT(docURI, "docURI is null");
 
   nsCOMPtr<nsILoadContext> loadContext = aDoc->GetLoadContext();
   nsCOMPtr<nsIContentPrefCallback2> prefCallback =
@@ -906,13 +907,13 @@ UploadLastDir::FetchDirectoryAndDisplayPicker(nsIDocument* aDoc,
 nsresult
 UploadLastDir::StoreLastUsedDirectory(nsIDocument* aDoc, nsIFile* aDir)
 {
-  NS_PRECONDITION(aDoc, "aDoc is null");
+  MOZ_ASSERT(aDoc, "aDoc is null");
   if (!aDir) {
     return NS_OK;
   }
 
   nsCOMPtr<nsIURI> docURI = aDoc->GetDocumentURI();
-  NS_PRECONDITION(docURI, "docURI is null");
+  MOZ_ASSERT(docURI, "docURI is null");
 
   // Attempt to get the CPS, if it's not present we'll just return
   nsCOMPtr<nsIContentPrefService2> contentPrefService =
@@ -1117,10 +1118,9 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLInputElement,
                                              nsITextControlElement,
                                              imgINotificationObserver,
                                              nsIImageLoadingContent,
-                                             nsIDOMNSEditableElement,
                                              nsIConstraintValidation)
 
-// nsIDOMNode
+// nsINode
 
 nsresult
 HTMLInputElement::Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
@@ -1716,13 +1716,12 @@ HTMLInputElement::GetList() const
     return nullptr;
   }
 
-  //XXXsmaug How should this all work in case input element is in Shadow DOM.
-  nsIDocument* doc = GetUncomposedDoc();
-  if (!doc) {
+  DocumentOrShadowRoot* docOrShadow = GetUncomposedDocOrConnectedShadowRoot();
+  if (!docOrShadow) {
     return nullptr;
   }
 
-  Element* element = doc->GetElementById(dataListId);
+  Element* element = docOrShadow->GetElementById(dataListId);
   if (!element || !element->IsHTMLElement(nsGkAtoms::datalist)) {
     return nullptr;
   }
@@ -2341,37 +2340,30 @@ HTMLInputElement::GetOwnerNumberControl()
 }
 
 void
-HTMLInputElement::SetUserInput(const nsAString& aInput,
+HTMLInputElement::SetUserInput(const nsAString& aValue,
                                nsIPrincipal& aSubjectPrincipal) {
   if (mType == NS_FORM_INPUT_FILE &&
       !nsContentUtils::IsSystemPrincipal(&aSubjectPrincipal)) {
     return;
   }
 
-  SetUserInput(aInput);
-}
-
-NS_IMETHODIMP
-HTMLInputElement::SetUserInput(const nsAString& aValue)
-{
   if (mType == NS_FORM_INPUT_FILE)
   {
     Sequence<nsString> list;
     if (!list.AppendElement(aValue, fallible)) {
-      return NS_ERROR_OUT_OF_MEMORY;
+      return;
     }
 
-    ErrorResult rv;
-    MozSetFileNameArray(list, rv);
-    return rv.StealNSResult();
-  } else {
-    nsresult rv =
-      SetValueInternal(aValue,
-        nsTextEditorState::eSetValue_BySetUserInput |
-        nsTextEditorState::eSetValue_Notify|
-        nsTextEditorState::eSetValue_MoveCursorToEndIfValueChanged);
-    NS_ENSURE_SUCCESS(rv, rv);
+    MozSetFileNameArray(list, IgnoreErrors());
+    return;
   }
+
+  nsresult rv =
+    SetValueInternal(aValue,
+      nsTextEditorState::eSetValue_BySetUserInput |
+      nsTextEditorState::eSetValue_Notify|
+      nsTextEditorState::eSetValue_MoveCursorToEndIfValueChanged);
+  NS_ENSURE_SUCCESS_VOID(rv);
 
   nsContentUtils::DispatchTrustedEvent(OwnerDoc(),
                                        static_cast<Element*>(this),
@@ -2383,8 +2375,6 @@ HTMLInputElement::SetUserInput(const nsAString& aValue)
   if (!ShouldBlur(this)) {
     FireChangeEventIfNeeded();
   }
-
-  return NS_OK;
 }
 
 nsIEditor*
@@ -2794,8 +2784,8 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
                                    const nsAString* aOldValue,
                                    uint32_t aFlags)
 {
-  NS_PRECONDITION(GetValueMode() != VALUE_MODE_FILENAME,
-                  "Don't call SetValueInternal for file inputs");
+  MOZ_ASSERT(GetValueMode() != VALUE_MODE_FILENAME,
+             "Don't call SetValueInternal for file inputs");
 
   // We want to remember if the SetValueInternal() call is being made for a XUL
   // element.  We do that by looking at the parent node here, and if that node
@@ -6194,7 +6184,7 @@ SaveFileContentData(const nsTArray<OwningFileOrDirectory>& aArray)
   for (auto& it : aArray) {
     if (it.IsFile()) {
       RefPtr<BlobImpl> impl = it.GetAsFile()->Impl();
-      res.AppendElement(Move(impl));
+      res.AppendElement(std::move(impl));
     } else {
       MOZ_ASSERT(it.IsDirectory());
       nsString fullPath;
@@ -6202,7 +6192,7 @@ SaveFileContentData(const nsTArray<OwningFileOrDirectory>& aArray)
       if (NS_WARN_IF(NS_FAILED(rv))) {
         continue;
       }
-      res.AppendElement(Move(fullPath));
+      res.AppendElement(std::move(fullPath));
     }
   }
   return res;
@@ -6264,7 +6254,7 @@ HTMLInputElement::SaveState()
         }
       }
 
-      state->contentData() = Move(value);
+      state->contentData() = std::move(value);
       break;
   }
 

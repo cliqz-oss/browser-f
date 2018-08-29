@@ -12,29 +12,26 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   FormHistory: "resource://gre/modules/FormHistory.jsm",
-  Downloads: "resource://gre/modules/Downloads.jsm",
   TelemetryStopwatch: "resource://gre/modules/TelemetryStopwatch.jsm",
-  setTimeout: "resource://gre/modules/Timer.jsm",
-  ServiceWorkerCleanUp: "resource://gre/modules/ServiceWorkerCleanUp.jsm",
-  OfflineAppCacheHelper: "resource://gre/modules/offlineAppCache.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
 });
 
-XPCOMUtils.defineLazyServiceGetter(this, "sas",
-                                   "@mozilla.org/storage/activity-service;1",
-                                   "nsIStorageActivityService");
 XPCOMUtils.defineLazyServiceGetter(this, "quotaManagerService",
                                    "@mozilla.org/dom/quota-manager-service;1",
                                    "nsIQuotaManagerService");
+XPCOMUtils.defineLazyServiceGetter(this, "serviceWorkerManager",
+                                   "@mozilla.org/serviceworkers/manager;1",
+                                   "nsIServiceWorkerManager");
+
 
 // Used as unique id for pending sanitizations.
 var gPendingSanitizationSerial = 0;
 
 /**
- * A number of iterations after which to yield time back
- * to the system.
+ * Cookie lifetime policy is currently used to cleanup on shutdown other
+ * components such as QuotaManager, localStorage, ServiceWorkers.
  */
-const YIELD_PERIOD = 10;
+const PREF_COOKIE_LIFETIME = "network.cookie.lifetimePolicy";
 
 var Sanitizer = {
   /**
@@ -209,6 +206,7 @@ var Sanitizer = {
         d.setHours(0); // zero us back to midnight...
         d.setMinutes(0);
         d.setSeconds(0);
+        d.setMilliseconds(0);
         startDate = d.valueOf() * 1000; // convert to epoch usec
         break;
       case Sanitizer.TIMESPAN_24HOURS :
@@ -253,10 +251,7 @@ var Sanitizer = {
     // hasn't been closed by the time we use it.
     // Though, if this is a sanitize on shutdown, we already have a blocker.
     if (!progress.isShutdown) {
-      let shutdownClient = Cc["@mozilla.org/browser/nav-history-service;1"]
-                             .getService(Ci.nsPIPlacesDatabase)
-                             .shutdownClient
-                             .jsclient;
+      let shutdownClient = PlacesUtils.history.shutdownClient.jsclient;
       shutdownClient.addBlocker("sanitize.js: Sanitize",
         promise,
         {
@@ -303,6 +298,11 @@ var Sanitizer = {
     Ci.nsISupportsWeakReference
   ]),
 
+  // This method is meant to be used by tests.
+  async runSanitizeOnShutdown() {
+    return sanitizeOnShutdown({ isShutdown: true });
+  },
+
   // When making any changes to the sanitize implementations here,
   // please check whether the changes are applicable to Android
   // (mobile/android/modules/Sanitizer.jsm) as well.
@@ -310,202 +310,37 @@ var Sanitizer = {
   items: {
     cache: {
       async clear(range) {
-        let seenException;
         let refObj = {};
         TelemetryStopwatch.start("FX_SANITIZE_CACHE", refObj);
-
-        try {
-          // Cache doesn't consult timespan, nor does it have the
-          // facility for timespan-based eviction.  Wipe it.
-          Services.cache2.clear();
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        try {
-          let imageCache = Cc["@mozilla.org/image/tools;1"]
-                             .getService(Ci.imgITools)
-                             .getImgCacheForDocument(null);
-          imageCache.clearCache(false); // true=chrome, false=content
-        } catch (ex) {
-          seenException = ex;
-        }
-
+        await clearData(range, Ci.nsIClearDataService.CLEAR_ALL_CACHES);
         TelemetryStopwatch.finish("FX_SANITIZE_CACHE", refObj);
-        if (seenException) {
-          throw seenException;
-        }
       }
     },
 
     cookies: {
       async clear(range) {
-        let seenException;
-        let yieldCounter = 0;
         let refObj = {};
-
-        // Clear cookies.
         TelemetryStopwatch.start("FX_SANITIZE_COOKIES_2", refObj);
-        try {
-          if (range) {
-            // Iterate through the cookies and delete any created after our cutoff.
-            let cookiesEnum = Services.cookies.enumerator;
-            while (cookiesEnum.hasMoreElements()) {
-              let cookie = cookiesEnum.getNext().QueryInterface(Ci.nsICookie2);
-
-              if (cookie.creationTime > range[0]) {
-                // This cookie was created after our cutoff, clear it
-                Services.cookies.remove(cookie.host, cookie.name, cookie.path,
-                                        false, cookie.originAttributes);
-
-                if (++yieldCounter % YIELD_PERIOD == 0) {
-                  await new Promise(resolve => setTimeout(resolve, 0)); // Don't block the main thread too long
-                }
-              }
-            }
-          } else {
-            // Remove everything
-            Services.cookies.removeAll();
-            await new Promise(resolve => setTimeout(resolve, 0)); // Don't block the main thread too long
-          }
-        } catch (ex) {
-          seenException = ex;
-        } finally {
-          TelemetryStopwatch.finish("FX_SANITIZE_COOKIES_2", refObj);
-        }
-
-        // Clear deviceIds. Done asynchronously (returns before complete).
-        try {
-          let mediaMgr = Cc["@mozilla.org/mediaManagerService;1"]
-                           .getService(Ci.nsIMediaManagerService);
-          mediaMgr.sanitizeDeviceIds(range && range[0]);
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        // Clear plugin data.
-        try {
-          await clearPluginData(range);
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        if (seenException) {
-          throw seenException;
-        }
+        await clearData(range, Ci.nsIClearDataService.CLEAR_COOKIES |
+                               Ci.nsIClearDataService.CLEAR_PLUGIN_DATA |
+                               Ci.nsIClearDataService.CLEAR_MEDIA_DEVICES);
+        TelemetryStopwatch.finish("FX_SANITIZE_COOKIES_2", refObj);
       },
     },
 
     offlineApps: {
       async clear(range) {
-        // AppCache: this doesn't wait for the cleanup to be complete.
-        OfflineAppCacheHelper.clear();
-
-        if (range) {
-          let principals = sas.getActiveOrigins(range[0], range[1])
-                              .QueryInterface(Ci.nsIArray);
-
-          let promises = [];
-
-          for (let i = 0; i < principals.length; ++i) {
-            let principal = principals.queryElementAt(i, Ci.nsIPrincipal);
-
-            if (principal.URI.scheme != "http" &&
-                principal.URI.scheme != "https" &&
-                principal.URI.scheme != "file") {
-              continue;
-            }
-
-            // LocalStorage
-            Services.obs.notifyObservers(null, "browser:purge-domain-data", principal.URI.host);
-
-            // ServiceWorkers
-            await ServiceWorkerCleanUp.removeFromPrincipal(principal);
-
-            // QuotaManager
-            promises.push(new Promise(r => {
-              let req = quotaManagerService.clearStoragesForPrincipal(principal, null, false);
-              req.callback = () => { r(); };
-            }));
-          }
-
-          return Promise.all(promises);
-        }
-
-        // LocalStorage
-        Services.obs.notifyObservers(null, "extension:purge-localStorage");
-
-        // ServiceWorkers
-        await ServiceWorkerCleanUp.removeAll();
-
-        // QuotaManager
-        let promises = [];
-        await new Promise(resolve => {
-          quotaManagerService.getUsage(request => {
-            if (request.resultCode != Cr.NS_OK) {
-              // We are probably shutting down. We don't want to propagate the
-              // error, rejecting the promise.
-              resolve();
-              return;
-            }
-
-            for (let item of request.result) {
-              let principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(item.origin);
-              let uri = principal.URI;
-              if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "file") {
-                promises.push(new Promise(r => {
-                  let req = quotaManagerService.clearStoragesForPrincipal(principal, null, false);
-                  req.callback = () => { r(); };
-                }));
-              }
-            }
-            resolve();
-          });
-        });
-
-        return Promise.all(promises);
+        await clearData(range, Ci.nsIClearDataService.CLEAR_DOM_STORAGES);
       }
     },
 
     history: {
       async clear(range) {
-        let seenException;
         let refObj = {};
         TelemetryStopwatch.start("FX_SANITIZE_HISTORY", refObj);
-        try {
-          if (range) {
-            await PlacesUtils.history.removeVisitsByFilter({
-              beginDate: new Date(range[0] / 1000),
-              endDate: new Date(range[1] / 1000)
-            });
-          } else {
-            // Remove everything.
-            await PlacesUtils.history.clear();
-          }
-        } catch (ex) {
-          seenException = ex;
-        } finally {
-          TelemetryStopwatch.finish("FX_SANITIZE_HISTORY", refObj);
-        }
-
-        try {
-          let clearStartingTime = range ? String(range[0]) : "";
-          Services.obs.notifyObservers(null, "browser:purge-session-history", clearStartingTime);
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        try {
-          let predictor = Cc["@mozilla.org/network/predictor;1"]
-                            .getService(Ci.nsINetworkPredictor);
-          predictor.reset();
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        if (seenException) {
-          throw seenException;
-        }
+        await clearData(range, Ci.nsIClearDataService.CLEAR_HISTORY |
+                               Ci.nsIClearDataService.CLEAR_SESSION_HISTORY);
+        TelemetryStopwatch.finish("FX_SANITIZE_HISTORY", refObj);
       }
     },
 
@@ -578,22 +413,8 @@ var Sanitizer = {
       async clear(range) {
         let refObj = {};
         TelemetryStopwatch.start("FX_SANITIZE_DOWNLOADS", refObj);
-        try {
-          let filterByTime = null;
-          if (range) {
-            // Convert microseconds back to milliseconds for date comparisons.
-            let rangeBeginMs = range[0] / 1000;
-            let rangeEndMs = range[1] / 1000;
-            filterByTime = download => download.startTime >= rangeBeginMs &&
-                                       download.startTime <= rangeEndMs;
-          }
-
-          // Clear all completed/cancelled downloads
-          let list = await Downloads.getList(Downloads.ALL);
-          list.removeFinished(filterByTime);
-        } finally {
-          TelemetryStopwatch.finish("FX_SANITIZE_DOWNLOADS", refObj);
-        }
+        await clearData(range, Ci.nsIClearDataService.CLEAR_DOWNLOADS);
+        TelemetryStopwatch.finish("FX_SANITIZE_DOWNLOADS", refObj);
       }
     },
 
@@ -601,87 +422,21 @@ var Sanitizer = {
       async clear(range) {
         let refObj = {};
         TelemetryStopwatch.start("FX_SANITIZE_SESSIONS", refObj);
-
-        try {
-          // clear all auth tokens
-          let sdr = Cc["@mozilla.org/security/sdr;1"]
-                      .getService(Ci.nsISecretDecoderRing);
-          sdr.logoutAndTeardown();
-
-          // clear FTP and plain HTTP auth sessions
-          Services.obs.notifyObservers(null, "net:clear-active-logins");
-        } finally {
-          TelemetryStopwatch.finish("FX_SANITIZE_SESSIONS", refObj);
-        }
+        await clearData(range, Ci.nsIClearDataService.CLEAR_AUTH_TOKENS |
+                               Ci.nsIClearDataService.CLEAR_AUTH_CACHE);
+        TelemetryStopwatch.finish("FX_SANITIZE_SESSIONS", refObj);
       }
     },
 
     siteSettings: {
       async clear(range) {
-        let seenException;
         let refObj = {};
         TelemetryStopwatch.start("FX_SANITIZE_SITESETTINGS", refObj);
-
-        let startDateMS = range ? range[0] / 1000 : null;
-
-        try {
-          // Clear site-specific permissions like "Allow this site to open popups"
-          // we ignore the "end" range and hope it is now() - none of the
-          // interfaces used here support a true range anyway.
-          if (startDateMS == null) {
-            Services.perms.removeAll();
-          } else {
-            Services.perms.removeAllSince(startDateMS);
-          }
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        try {
-          // Clear site-specific settings like page-zoom level
-          let cps = Cc["@mozilla.org/content-pref/service;1"]
-                      .getService(Ci.nsIContentPrefService2);
-          if (startDateMS == null) {
-            cps.removeAllDomains(null);
-          } else {
-            cps.removeAllDomainsSince(startDateMS, null);
-          }
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        try {
-          // Clear site security settings - no support for ranges in this
-          // interface either, so we clearAll().
-          let sss = Cc["@mozilla.org/ssservice;1"]
-                      .getService(Ci.nsISiteSecurityService);
-          sss.clearAll();
-        } catch (ex) {
-          seenException = ex;
-        }
-
-        // Clear all push notification subscriptions
-        try {
-          await new Promise((resolve, reject) => {
-            let push = Cc["@mozilla.org/push/Service;1"]
-                         .getService(Ci.nsIPushService);
-            push.clearForDomain("*", status => {
-              if (Components.isSuccessCode(status)) {
-                resolve();
-              } else {
-                reject(new Error("Error clearing push subscriptions: " +
-                                 status));
-              }
-            });
-          });
-        } catch (ex) {
-          seenException = ex;
-        }
-
+        await clearData(range, Ci.nsIClearDataService.CLEAR_PERMISSIONS |
+                               Ci.nsIClearDataService.CLEAR_CONTENT_PREFERENCES |
+                               Ci.nsIClearDataService.CLEAR_DOM_PUSH_NOTIFICATIONS |
+                               Ci.nsIClearDataService.CLEAR_SECURITY_SETTINGS);
         TelemetryStopwatch.finish("FX_SANITIZE_SITESETTINGS", refObj);
-        if (seenException) {
-          throw seenException;
-        }
       }
     },
 
@@ -813,7 +568,7 @@ var Sanitizer = {
 
     pluginData: {
       async clear(range) {
-        await clearPluginData(range);
+        await clearData(range, Ci.nsIClearDataService.CLEAR_PLUGIN_DATA);
       },
     },
   },
@@ -903,86 +658,118 @@ async function sanitizeInternal(items, aItemsToClear, progress, options = {}) {
   }
 }
 
-async function clearPluginData(range) {
-  // Clear plugin data.
-  // As evidenced in bug 1253204, clearing plugin data can sometimes be
-  // very, very long, for mysterious reasons. Unfortunately, this is not
-  // something actionable by Mozilla, so crashing here serves no purpose.
-  //
-  // For this reason, instead of waiting for sanitization to always
-  // complete, we introduce a soft timeout. Once this timeout has
-  // elapsed, we proceed with the shutdown of Firefox.
-  let seenException;
-
-  let promiseClearPluginData = async function() {
-    const FLAG_CLEAR_ALL = Ci.nsIPluginHost.FLAG_CLEAR_ALL;
-    let ph = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
-
-    // Determine age range in seconds. (-1 means clear all.) We don't know
-    // that range[1] is actually now, so we compute age range based
-    // on the lower bound. If range results in a negative age, do nothing.
-    let age = range ? (Date.now() / 1000 - range[0] / 1000000) : -1;
-    if (!range || age >= 0) {
-      let tags = ph.getPluginTags();
-      for (let tag of tags) {
-        try {
-          let rv = await new Promise(resolve =>
-            ph.clearSiteData(tag, null, FLAG_CLEAR_ALL, age, resolve)
-          );
-          // If the plugin doesn't support clearing by age, clear everything.
-          if (rv == Cr.NS_ERROR_PLUGIN_TIME_RANGE_NOT_SUPPORTED) {
-            await new Promise(resolve =>
-              ph.clearSiteData(tag, null, FLAG_CLEAR_ALL, -1, resolve)
-            );
-          }
-        } catch (ex) {
-          // Ignore errors from plug-ins
-        }
-      }
-    }
-  };
-
-  try {
-    // We don't want to wait for this operation to complete...
-    promiseClearPluginData = promiseClearPluginData(range);
-
-    // ... at least, not for more than 10 seconds.
-    await Promise.race([
-      promiseClearPluginData,
-      new Promise(resolve => setTimeout(resolve, 10000 /* 10 seconds */))
-    ]);
-  } catch (ex) {
-    seenException = ex;
-  }
-
-  // Detach waiting for plugin data to be cleared.
-  promiseClearPluginData.catch(() => {
-    // If this exception is raised before the soft timeout, it
-    // will appear in `seenException`. Otherwise, it's too late
-    // to do anything about it.
-  });
-
-  if (seenException) {
-    throw seenException;
-  }
-}
-
 async function sanitizeOnShutdown(progress) {
+  if (Sanitizer.shouldSanitizeOnShutdown) {
+    // Need to sanitize upon shutdown
+    let itemsToClear = getItemsToClearFromPrefBranch(Sanitizer.PREF_SHUTDOWN_BRANCH);
+    await Sanitizer.sanitize(itemsToClear, { progress });
+  }
+
+  // Clear out QuotaManager storage for principals that have been marked as
+  // session only.  The cookie service has special logic that avoids writing
+  // such cookies to disk, but QuotaManager always touches disk, so we need to
+  // wipe the data on shutdown (or startup if we failed to wipe it at
+  // shutdown).  (Note that some session cookies do survive Firefox restarts
+  // because the Session Store that remembers your tabs between sessions takes
+  // on the responsibility for persisting them through restarts.)
+  //
+  // The default value is determined by the "Browser Privacy" preference tab's
+  // "Cookies and Site Data" "Accept cookies and site data from websites...Keep
+  // until" setting.  The default is "They expire" (ACCEPT_NORMALLY), but it
+  // can also be set to "PRODUCT is closed" (ACCEPT_SESSION).  A permission can
+  // also be explicitly set on a per-origin basis from the Page Info's "Set
+  // Cookies" row.
+  //
+  // We can think of there being two groups that might need to be wiped.
+  // First, when the default is set to ACCEPT_SESSION, then all origins that
+  // use QuotaManager storage but don't have a specific permission set to
+  // ACCEPT_NORMALLY need to be wiped.  Second, the set of origins that have
+  // the permission explicitly set to ACCEPT_SESSION need to be wiped.  There
+  // are also other ways to think about and accomplish this, but this is what
+  // the logic below currently does!
+  await sanitizeSessionPrincipals();
+
+  // Let's see if we have to forget some particular site.
+  let enumerator = Services.perms.enumerator;
+  while (enumerator.hasMoreElements()) {
+    let permission = enumerator.getNext().QueryInterface(Ci.nsIPermission);
+    if (permission.type == "cookie" && permission.capability == Ci.nsICookiePermission.ACCESS_SESSION) {
+      await sanitizeSessionPrincipal(permission.principal);
+    }
+  }
+
   if (Sanitizer.shouldSanitizeNewTabContainer) {
     sanitizeNewTabSegregation();
     removePendingSanitization("newtab-container");
   }
 
-  if (!Sanitizer.shouldSanitizeOnShutdown) {
+  if (Sanitizer.shouldSanitizeOnShutdown) {
+    // We didn't crash during shutdown sanitization, so annotate it to avoid
+    // sanitizing again on startup.
+    removePendingSanitization("shutdown");
+    Services.prefs.savePrefFile(null);
+  }
+}
+
+async function sanitizeSessionPrincipals() {
+  if (Services.prefs.getIntPref(PREF_COOKIE_LIFETIME,
+                                Ci.nsICookieService.ACCEPT_NORMALLY) != Ci.nsICookieService.ACCEPT_SESSION) {
     return;
   }
-  // Need to sanitize upon shutdown
-  let itemsToClear = getItemsToClearFromPrefBranch(Sanitizer.PREF_SHUTDOWN_BRANCH);
-  await Sanitizer.sanitize(itemsToClear, { progress });
-  // We didn't crash during shutdown sanitization, so annotate it to avoid
-  // sanitizing again on startup.
-  removePendingSanitization("shutdown");
-  Services.prefs.savePrefFile(null);
+
+  let principals = await new Promise(resolve => {
+    quotaManagerService.getUsage(request => {
+      if (request.resultCode != Cr.NS_OK) {
+        // We are probably shutting down. We don't want to propagate the
+        // error, rejecting the promise.
+        resolve([]);
+        return;
+      }
+
+      let list = [];
+      for (let item of request.result) {
+        let principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(item.origin);
+        let uri = principal.URI;
+        if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "file") {
+          list.push(principal);
+        }
+      }
+      resolve(list);
+    });
+  }).catch(() => []);
+
+  let serviceWorkers = serviceWorkerManager.getAllRegistrations();
+  for (let i = 0; i < serviceWorkers.length; i++) {
+    let sw = serviceWorkers.queryElementAt(i, Ci.nsIServiceWorkerRegistrationInfo);
+    principals.push(sw.principal);
+  }
+
+  await maybeSanitizeSessionPrincipals(principals);
+}
+
+// This method receives a list of principals and it checks if some of them need
+// to be sanitize.
+async function maybeSanitizeSessionPrincipals(principals) {
+  let promises = [];
+
+  for (let i = 0; i < principals.length; ++i) {
+    let p = Services.perms.testPermissionFromPrincipal(principals[i], "cookie");
+    if (p != Ci.nsICookiePermission.ACCESS_ALLOW &&
+        p != Ci.nsICookiePermission.ACCESS_ALLOW_FIRST_PARTY_ONLY &&
+        p != Ci.nsICookiePermission.ACCESS_LIMIT_THIRD_PARTY) {
+      promises.push(sanitizeSessionPrincipal(principals[i]));
+    }
+  }
+
+  return Promise.all(promises);
+}
+
+async function sanitizeSessionPrincipal(principal) {
+  await new Promise(resolve => {
+    Services.clearData.deleteDataFromPrincipal(principal, true /* user request */,
+                                               Ci.nsIClearDataService.CLEAR_DOM_STORAGES,
+                                               resolve);
+  });
 }
 
 function sanitizeNewTabSegregation() {
@@ -1043,5 +830,18 @@ function safeGetPendingSanitizations() {
   } catch (ex) {
     Cu.reportError("Invalid JSON value for pending sanitizations: " + ex);
     return [];
+  }
+}
+
+async function clearData(range, flags) {
+  if (range) {
+    await new Promise(resolve => {
+      Services.clearData.deleteDataInTimeRange(range[0], range[1], true /* user request */,
+                                               flags, resolve);
+    });
+  } else {
+    await new Promise(resolve => {
+      Services.clearData.deleteData(flags, resolve);
+    });
   }
 }

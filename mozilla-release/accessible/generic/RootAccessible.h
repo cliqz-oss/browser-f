@@ -29,10 +29,10 @@ public:
 
   // Accessible
   virtual void Shutdown() override;
-  virtual mozilla::a11y::ENameValueFlag Name(nsString& aName) override;
-  virtual Relation RelationByType(RelationType aType) override;
-  virtual mozilla::a11y::role NativeRole() override;
-  virtual uint64_t NativeState() override;
+  virtual mozilla::a11y::ENameValueFlag Name(nsString& aName) const override;
+  virtual Relation RelationByType(RelationType aType) const override;
+  virtual mozilla::a11y::role NativeRole() const override;
+  virtual uint64_t NativeState() const override;
 
   // RootAccessible
 
@@ -76,7 +76,7 @@ protected:
   void HandleTreeInvalidatedEvent(dom::Event* aEvent,
                                   XULTreeAccessible* aAccessible);
 
-    uint32_t GetChromeFlags();
+    uint32_t GetChromeFlags() const;
 #endif
 };
 

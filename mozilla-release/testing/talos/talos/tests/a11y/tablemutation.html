@@ -77,7 +77,6 @@
 
 </body>
 <script>
-/* import-globals-from a11y.js */
 window.onload = function() {
   setTimeout(function() {
     mutateTable();
@@ -116,7 +115,7 @@ function mutateTable() {
     return;
   }
 
-  ensureAccessibleTree("start");
+  ensureAccessibleTreeForId("start");
 
   TalosContentProfiler.resume("tablemutation start", true).then(() => {
     var start = new Date(); // eslint-disable-line mozilla/avoid-Date-timing

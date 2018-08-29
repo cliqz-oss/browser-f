@@ -24,13 +24,6 @@ storage/test/.*
 testing/gtest/.*
 tools/profiler/tests/.*
 uriloader/exthandler/tests/.*
-# JNI code is generated
-widget/android/GeneratedJNINatives.h
-widget/android/GeneratedJNIWrappers.cpp
-widget/android/GeneratedJNIWrappers.h
-widget/android/fennec/FennecJNINatives.h
-widget/android/fennec/FennecJNIWrappers.cpp
-widget/android/fennec/FennecJNIWrappers.h
 widget/tests/.*
 xpcom/glue/tests/.*
 xpcom/tests/.*
@@ -42,6 +35,8 @@ browser/extensions/mortar/ppapi/.*
 db/sqlite3/src/.*
 devtools/client/sourceeditor/codemirror/.*
 devtools/client/sourceeditor/tern/.*
+editor/libeditor/tests/browserscope/lib/richtext/.*
+editor/libeditor/tests/browserscope/lib/richtext2/.*
 extensions/spellcheck/hunspell/src/.*
 gfx/angle/.*
 gfx/cairo/.*

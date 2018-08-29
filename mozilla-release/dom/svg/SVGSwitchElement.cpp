@@ -73,7 +73,7 @@ SVGSwitchElement::MaybeInvalidate()
 }
 
 //----------------------------------------------------------------------
-// nsIDOMNode methods
+// nsINode methods
 
 
 NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGSwitchElement)
@@ -91,26 +91,6 @@ SVGSwitchElement::InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
     MaybeInvalidate();
   }
   return rv;
-}
-
-nsresult
-SVGSwitchElement::InsertChildAt_Deprecated(nsIContent* aKid,
-                                           uint32_t aIndex,
-                                           bool aNotify)
-{
-  nsresult rv = SVGSwitchElementBase::InsertChildAt_Deprecated(aKid, aIndex,
-                                                               aNotify);
-  if (NS_SUCCEEDED(rv)) {
-    MaybeInvalidate();
-  }
-  return rv;
-}
-
-void
-SVGSwitchElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
-{
-  SVGSwitchElementBase::RemoveChildAt_Deprecated(aIndex, aNotify);
-  MaybeInvalidate();
 }
 
 void

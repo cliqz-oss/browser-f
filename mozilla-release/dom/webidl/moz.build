@@ -242,7 +242,7 @@ with Files("Position*"):
     BUG_COMPONENT = ("Core", "Geolocation")
 
 with Files("ProfileTimelineMarker.webidl"):
-    BUG_COMPONENT = ("Firefox", "Developer Tools: Performance Tools (profiler/timeline)")
+    BUG_COMPONENT = ("DevTools", "Performance Tools (Profiler/Timeline)")
 
 with Files("ProgressEvent.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Events")
@@ -278,7 +278,7 @@ with Files("StereoPannerNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
 
 with Files("StreamFilter*"):
-    BUG_COMPONENT = ("Toolkit", "WebExtensions: Request Handling")
+    BUG_COMPONENT = ("WebExtensions", "Request Handling")
 
 with Files("Style*"):
     BUG_COMPONENT = ("Core", "DOM: CSS Object Model")
@@ -358,15 +358,12 @@ PREPROCESSED_WEBIDL_FILES = [
 WEBIDL_FILES = [
     'AbortController.webidl',
     'AbortSignal.webidl',
-    'AboutCapabilities.webidl',
     'AbstractWorker.webidl',
     'AddonManager.webidl',
     'AnalyserNode.webidl',
     'Animatable.webidl',
     'Animation.webidl',
-    'AnimationEffectReadOnly.webidl',
-    'AnimationEffectTiming.webidl',
-    'AnimationEffectTimingReadOnly.webidl',
+    'AnimationEffect.webidl',
     'AnimationEvent.webidl',
     'AnimationTimeline.webidl',
     'AnonymousContent.webidl',
@@ -381,12 +378,14 @@ WEBIDL_FILES = [
     'AudioListener.webidl',
     'AudioNode.webidl',
     'AudioParam.webidl',
+    'AudioParamMap.webidl',
     'AudioProcessingEvent.webidl',
     'AudioScheduledSourceNode.webidl',
     'AudioStreamTrack.webidl',
     'AudioTrack.webidl',
     'AudioTrackList.webidl',
     'AudioWorkletGlobalScope.webidl',
+    'AudioWorkletNode.webidl',
     'AutocompleteInfo.webidl',
     'BarProp.webidl',
     'BaseAudioContext.webidl',
@@ -438,12 +437,10 @@ WEBIDL_FILES = [
     'CSSImportRule.webidl',
     'CSSKeyframeRule.webidl',
     'CSSKeyframesRule.webidl',
-    'CSSLexer.webidl',
     'CSSMediaRule.webidl',
     'CSSMozDocumentRule.webidl',
     'CSSNamespaceRule.webidl',
     'CSSPageRule.webidl',
-    'CSSPrimitiveValue.webidl',
     'CSSPseudoElement.webidl',
     'CSSRule.webidl',
     'CSSRuleList.webidl',
@@ -452,8 +449,6 @@ WEBIDL_FILES = [
     'CSSStyleSheet.webidl',
     'CSSSupportsRule.webidl',
     'CSSTransition.webidl',
-    'CSSValue.webidl',
-    'CSSValueList.webidl',
     'CustomElementRegistry.webidl',
     'DataTransfer.webidl',
     'DataTransferItem.webidl',
@@ -740,10 +735,8 @@ WEBIDL_FILES = [
     'PushSubscriptionOptions.webidl',
     'RadioNodeList.webidl',
     'Range.webidl',
-    'Rect.webidl',
     'Request.webidl',
     'Response.webidl',
-    'RGBColor.webidl',
     'RTCStatsReport.webidl',
     'Screen.webidl',
     'ScreenOrientation.webidl',
@@ -943,7 +936,6 @@ WEBIDL_FILES = [
     'XMLHttpRequestEventTarget.webidl',
     'XMLHttpRequestUpload.webidl',
     'XMLSerializer.webidl',
-    'XMLStylesheetProcessingInstruction.webidl',
     'XPathEvaluator.webidl',
     'XPathExpression.webidl',
     'XPathNSResolver.webidl',

@@ -42,8 +42,9 @@ public:
         mBundlePolicy(kBundleBalanced),
         mSessionId(0),
         mSessionVersion(0),
-        mUuidGen(Move(uuidgen)),
-        mSdpHelper(&mLastError)
+        mUuidGen(std::move(uuidgen)),
+        mSdpHelper(&mLastError),
+        mRunRustParser(false)
   {
   }
 

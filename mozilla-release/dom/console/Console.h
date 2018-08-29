@@ -97,6 +97,10 @@ public:
   Time(const GlobalObject& aGlobal, const nsAString& aLabel);
 
   static void
+  TimeLog(const GlobalObject& aGlobal, const nsAString& aLabel,
+          const Sequence<JS::Value>& aData);
+
+  static void
   TimeEnd(const GlobalObject& aGlobal, const nsAString& aLabel);
 
   static void
@@ -114,6 +118,9 @@ public:
 
   static void
   Count(const GlobalObject& aGlobal, const nsAString& aLabel);
+
+  static void
+  CountReset(const GlobalObject& aGlobal, const nsAString& aLabel);
 
   static void
   Clear(const GlobalObject& aGlobal);
@@ -159,10 +166,12 @@ private:
     MethodGroupCollapsed,
     MethodGroupEnd,
     MethodTime,
+    MethodTimeLog,
     MethodTimeEnd,
     MethodTimeStamp,
     MethodAssert,
     MethodCount,
+    MethodCountReset,
     MethodClear,
     MethodProfile,
     MethodProfileEnd,
@@ -193,13 +202,15 @@ private:
 
   static void
   StringMethod(const GlobalObject& aGlobal, const nsAString& aLabel,
-               MethodName aMethodName, const nsAString& aMethodString);
+               const Sequence<JS::Value>& aData, MethodName aMethodName,
+               const nsAString& aMethodString);
 
   void
   StringMethodInternal(JSContext* aCx, const nsAString& aLabel,
+                       const Sequence<JS::Value>& aData,
                        MethodName aMethodName, const nsAString& aMethodString);
 
-  // This method must receive aCx and aArguments in the same JSCompartment.
+  // This method must receive aCx and aArguments in the same JS::Compartment.
   void
   ProcessCallData(JSContext* aCx,
                   ConsoleCallData* aData,
@@ -317,9 +328,9 @@ private:
   CreateStartTimerValue(JSContext* aCx, const nsAString& aTimerLabel,
                         TimerStatus aTimerStatus) const;
 
-  // StopTimer follows the same pattern as StartTimer: it runs on the
+  // LogTimer follows the same pattern as StartTimer: it runs on the
   // owning thread and populates aTimerLabel and aTimerDuration, used by
-  // CreateStopTimerValue.
+  // CreateLogOrEndTimerValue.
   // * aCx - the JSContext rooting aName.
   // * aName - this is (should be) the name of the timer as JS::Value.
   // * aTimestamp - the monotonicTimer for this context taken from
@@ -328,22 +339,24 @@ private:
   //                 string.
   // * aTimerDuration - the difference between aTimestamp and when the timer
   //                    started (see StartTimer).
+  // * aCancelTimer - if true, the timer is removed from the table.
   TimerStatus
-  StopTimer(JSContext* aCx, const JS::Value& aName,
-            DOMHighResTimeStamp aTimestamp,
-            nsAString& aTimerLabel,
-            double* aTimerDuration);
+  LogTimer(JSContext* aCx, const JS::Value& aName,
+           DOMHighResTimeStamp aTimestamp,
+           nsAString& aTimerLabel,
+           double* aTimerDuration,
+           bool aCancelTimer);
 
   // This method generates a ConsoleTimerEnd dictionary exposed as JS::Value, or
-  // a ConsoleTimerError dictionary if aTimerStatus is false. See StopTimer.
+  // a ConsoleTimerError dictionary if aTimerStatus is false. See LogTimer.
   // * aCx - this is the context that will root the returned value.
-  // * aTimerLabel - this label must be what StopTimer received as aTimerLabel.
-  // * aTimerDuration - this is what StopTimer received as aTimerDuration
-  // * aTimerStatus - the return value of StopTimer.
+  // * aTimerLabel - this label must be what LogTimer received as aTimerLabel.
+  // * aTimerDuration - this is what LogTimer received as aTimerDuration
+  // * aTimerStatus - the return value of LogTimer.
   JS::Value
-  CreateStopTimerValue(JSContext* aCx, const nsAString& aTimerLabel,
-                       double aTimerDuration,
-                       TimerStatus aTimerStatus) const;
+  CreateLogOrEndTimerValue(JSContext* aCx, const nsAString& aTimerLabel,
+                           double aTimerDuration,
+                           TimerStatus aTimerStatus) const;
 
   // The method populates a Sequence from an array of JS::Value.
   bool
@@ -351,8 +364,8 @@ private:
                        Sequence<JS::Value>& aSequence) const;
 
   // This method follows the same pattern as StartTimer: its runs on the owning
-  // thread and populate aCountLabel, used by CreateCounterValue. Returns
-  // 3 possible values:
+  // thread and populate aCountLabel, used by CreateCounterOrResetCounterValue.
+  // Returns 3 possible values:
   // * MAX_PAGE_COUNTERS in case of error that has to be reported;
   // * 0 in case of a CX exception. The operation cannot continue;
   // * the incremented counter value.
@@ -364,6 +377,20 @@ private:
   IncreaseCounter(JSContext* aCx, const Sequence<JS::Value>& aData,
                   nsAString& aCountLabel);
 
+  // This method follows the same pattern as StartTimer: its runs on the owning
+  // thread and populate aCountLabel, used by CreateCounterResetValue. Returns
+  // 3 possible values:
+  // * MAX_PAGE_COUNTERS in case of error that has to be reported;
+  // * 0 elsewhere. In case of a CX exception, aCountLabel will be an empty
+  // string.
+  // Params:
+  // * aCx - the JSContext rooting aData.
+  // * aData - the arguments received by the console.count() method.
+  // * aCountLabel - the label that will be populated by this method.
+  uint32_t
+  ResetCounter(JSContext* aCx, const Sequence<JS::Value>& aData,
+               nsAString& aCountLabel);
+
   // This method generates a ConsoleCounter dictionary as JS::Value. If
   // aCountValue is == MAX_PAGE_COUNTERS it generates a ConsoleCounterError
   // instead. See IncreaseCounter.
@@ -372,8 +399,8 @@ private:
   //                 aTimerLabel.
   // * aCountValue - the return value of IncreaseCounter.
   JS::Value
-  CreateCounterValue(JSContext* aCx, const nsAString& aCountLabel,
-                     uint32_t aCountValue) const;
+  CreateCounterOrResetCounterValue(JSContext* aCx, const nsAString& aCountLabel,
+                                   uint32_t aCountValue) const;
 
   bool
   ShouldIncludeStackTrace(MethodName aMethodName) const;

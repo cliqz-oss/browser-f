@@ -1,18 +1,7 @@
 "use strict";
 
 add_task(async function setup() {
-  let onChanged = TestUtils.topicObserved("formautofill-storage-changed",
-                                          (subject, data) => data == "add");
-
-  let card = {
-    "cc-exp-month": 1,
-    "cc-exp-year": 9999,
-    "cc-name": "John Doe",
-    "cc-number": "999999999999",
-  };
-
-  formAutofillStorage.creditCards.add(card);
-  await onChanged;
+  await addSampleAddressesAndBasicCard();
 });
 
 add_task(async function test_request_shipping_present() {
@@ -35,31 +24,27 @@ add_task(async function test_request_shipping_present() {
       let {win, frame} =
         await setupPaymentDialog(browser, {
           methodData: [PTU.MethodData.basicCard],
-          details: PTU.Details.twoShippingOptions,
+          details: Object.assign({}, PTU.Details.twoShippingOptions, PTU.Details.total2USD),
           options,
           merchantTaskFn: PTU.ContentTasks.createAndShowRequest,
         }
       );
 
-      let isShippingOptionsVisible =
-        await spawnPaymentDialogTask(frame,
-                                     PTU.DialogContentTasks.isElementVisible,
-                                     "shipping-option-picker");
-      ok(isShippingOptionsVisible, "shipping-option-picker should be visible");
-      let addressSelector = "address-picker[selected-state-key='selectedShippingAddress']";
-      let isShippingAddressVisible =
-        await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.isElementVisible,
-                                     addressSelector);
-      ok(isShippingAddressVisible, "shipping address picker should be visible");
-
-      let shippingOptionText =
-        await spawnPaymentDialogTask(frame,
-                                     PTU.DialogContentTasks.getElementTextContent,
-                                     "#shipping-type-label");
-      is(shippingOptionText, shippingString,
-         "Label should be match shipping type: " + shippingKey);
+      await spawnPaymentDialogTask(frame, async ([aShippingKey, aShippingString]) => {
+        let shippingOptionPicker = content.document.querySelector("shipping-option-picker");
+        ok(content.isVisible(shippingOptionPicker),
+           "shipping-option-picker should be visible");
+        const addressSelector = "address-picker[selected-state-key='selectedShippingAddress']";
+        let shippingAddress = content.document.querySelector(addressSelector);
+        ok(content.isVisible(shippingAddress),
+           "shipping address picker should be visible");
+        let shippingOption = content.document.querySelector("#shipping-type-label");
+        is(shippingOption.textContent, aShippingString,
+           "Label should be match shipping type: " + aShippingKey);
+      }, [shippingKey, shippingString]);
 
       spawnPaymentDialogTask(frame, PTU.DialogContentTasks.manuallyClickCancel);
+
       await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");
     }
   });
@@ -73,20 +58,18 @@ add_task(async function test_request_shipping_not_present() {
     let {win, frame} =
       await setupPaymentDialog(browser, {
         methodData: [PTU.MethodData.basicCard],
-        details: PTU.Details.twoShippingOptions,
+        details: Object.assign({}, PTU.Details.twoShippingOptions, PTU.Details.total2USD),
         merchantTaskFn: PTU.ContentTasks.createAndShowRequest,
       }
     );
 
-    let isShippingOptionsVisible =
-      await spawnPaymentDialogTask(frame,
-                                   PTU.DialogContentTasks.isElementVisible,
-                                   "shipping-option-picker");
-    ok(!isShippingOptionsVisible, "shipping-option-picker should not be visible");
-    let isShippingAddressVisible =
-      await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.isElementVisible,
-                                   "address-picker[selected-state-key='selectedShippingAddress']");
-    ok(!isShippingAddressVisible, "shipping address picker should not be visible");
+    await spawnPaymentDialogTask(frame, async () => {
+      let shippingOptionPicker = content.document.querySelector("shipping-option-picker");
+      ok(content.isHidden(shippingOptionPicker), "shipping-option-picker should not be visible");
+      const addressSelector = "address-picker[selected-state-key='selectedShippingAddress']";
+      let shippingAddress = content.document.querySelector(addressSelector);
+      ok(content.isHidden(shippingAddress), "shipping address picker should not be visible");
+    });
 
     spawnPaymentDialogTask(frame, PTU.DialogContentTasks.manuallyClickCancel);
     await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");

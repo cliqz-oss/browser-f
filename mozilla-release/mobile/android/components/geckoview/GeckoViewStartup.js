@@ -46,6 +46,9 @@ GeckoViewStartup.prototype = {
             "getUserMedia:request",
             "PeerConnection:request",
           ],
+          ppmm: [
+            "GeckoView:AddCameraPermission",
+          ],
         });
 
         if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT) {
@@ -54,6 +57,13 @@ GeckoViewStartup.prototype = {
 
           Services.mm.loadFrameScript(
               "chrome://geckoview/content/GeckoViewPromptContent.js", true);
+
+          GeckoViewUtils.addLazyGetter(this, "ContentCrashHandler", {
+            module: "resource://gre/modules/ContentCrashHandler.jsm",
+            observers: [
+              "ipc:content-shutdown",
+            ]
+          });
         }
         break;
       }

@@ -5,40 +5,48 @@
 "use strict";
 
 const {Utils: WebConsoleUtils} = require("devtools/client/webconsole/utils");
-const defer = require("devtools/shared/defer");
-const Debugger = require("Debugger");
 const Services = require("Services");
-const {KeyCodes} = require("devtools/client/shared/keycodes");
-const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 loader.lazyServiceGetter(this, "clipboardHelper",
                          "@mozilla.org/widget/clipboardhelper;1",
                          "nsIClipboardHelper");
+loader.lazyRequireGetter(this, "defer", "devtools/shared/defer");
+loader.lazyRequireGetter(this, "Debugger", "Debugger");
 loader.lazyRequireGetter(this, "EventEmitter", "devtools/shared/event-emitter");
 loader.lazyRequireGetter(this, "AutocompletePopup", "devtools/client/shared/autocomplete-popup");
-loader.lazyRequireGetter(this, "asyncStorage", "devtools/shared/async-storage");
+loader.lazyRequireGetter(this, "PropTypes", "devtools/client/shared/vendor/react-prop-types");
 loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
-loader.lazyRequireGetter(this, "NotificationBox", "devtools/client/shared/components/NotificationBox", true);
-loader.lazyRequireGetter(this, "PriorityLevels", "devtools/client/shared/components/NotificationBox", true);
+loader.lazyRequireGetter(this, "KeyCodes", "devtools/client/shared/keycodes", true);
+loader.lazyRequireGetter(this, "Editor", "devtools/client/sourceeditor/editor");
+loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
+loader.lazyRequireGetter(this, "processScreenshot", "devtools/shared/webconsole/screenshot-helper");
 
 const l10n = require("devtools/client/webconsole/webconsole-l10n");
 
-// Constants used for defining the direction of JSTerm input history navigation.
-const HISTORY_BACK = -1;
-const HISTORY_FORWARD = 1;
-
 const HELP_URL = "https://developer.mozilla.org/docs/Tools/Web_Console/Helpers";
-
-const PREF_INPUT_HISTORY_COUNT = "devtools.webconsole.inputHistoryCount";
-const PREF_AUTO_MULTILINE = "devtools.webconsole.autoMultiline";
 
 function gSequenceId() {
   return gSequenceId.n++;
 }
 gSequenceId.n = 0;
 
+// React & Redux
 const { Component } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const { connect } = require("devtools/client/shared/vendor/react-redux");
+
+// History Modules
+const {
+  getHistory,
+  getHistoryValue
+} = require("devtools/client/webconsole/selectors/history");
+const historyActions = require("devtools/client/webconsole/actions/history");
+
+// Constants used for defining the direction of JSTerm input history navigation.
+const {
+  HISTORY_BACK,
+  HISTORY_FORWARD
+} = require("devtools/client/webconsole/constants");
 
 /**
  * Create a JSTerminal (a JavaScript command line). This is attached to an
@@ -52,7 +60,22 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 class JSTerm extends Component {
   static get propTypes() {
     return {
+      // Append new executed expression into history list (action).
+      appendToHistory: PropTypes.func.isRequired,
+      // Remove all entries from the history list (action).
+      clearHistory: PropTypes.func.isRequired,
+      // Returns previous or next value from the history
+      // (depending on direction argument).
+      getValueFromHistory: PropTypes.func.isRequired,
+      // History of executed expression (state).
+      history: PropTypes.object.isRequired,
+      // Console object.
       hud: PropTypes.object.isRequired,
+      // Handler for clipboard 'paste' event (also used for 'drop' event, callback).
+      onPaste: PropTypes.func,
+      codeMirrorEnabled: PropTypes.bool,
+      // Update position in the history after executing an expression (action).
+      updatePlaceHolder: PropTypes.func.isRequired,
     };
   }
 
@@ -62,10 +85,9 @@ class JSTerm extends Component {
     const {
       hud,
     } = props;
+
     this.hud = hud;
     this.hudId = this.hud.hudId;
-    this.inputHistoryCount = Services.prefs.getIntPref(PREF_INPUT_HISTORY_COUNT);
-    this._loadHistory();
 
     /**
      * Stores the data for the last completion.
@@ -125,11 +147,6 @@ class JSTerm extends Component {
      */
     this._autocompletePopupNavigated = false;
 
-    /**
-     * History of code that was executed.
-     * @type array
-     */
-    this.history = [];
     this.autocompletePopup = null;
     this.inputNode = null;
     this.completeNode = null;
@@ -140,16 +157,14 @@ class JSTerm extends Component {
     this.COMPLETE_PAGEUP = 3;
     this.COMPLETE_PAGEDOWN = 4;
 
+    this._telemetry = new Telemetry();
+
     EventEmitter.decorate(this);
     hud.jsterm = this;
   }
 
   componentDidMount() {
-    if (!this.inputNode) {
-      return;
-    }
-
-    let autocompleteOptions = {
+    const autocompleteOptions = {
       onSelect: this.onAutocompleteSelect.bind(this),
       onClick: this.acceptProposedCompletion.bind(this),
       listId: "webConsole_autocompletePopupListBox",
@@ -158,94 +173,65 @@ class JSTerm extends Component {
       autoSelect: true
     };
 
-    let doc = this.hud.document;
-    let toolbox = gDevTools.getToolbox(this.hud.owner.target);
-    let tooltipDoc = toolbox ? toolbox.doc : doc;
+    const doc = this.hud.document;
+    const toolbox = gDevTools.getToolbox(this.hud.owner.target);
+    const tooltipDoc = toolbox ? toolbox.doc : doc;
     // The popup will be attached to the toolbox document or HUD document in the case
     // such as the browser console which doesn't have a toolbox.
     this.autocompletePopup = new AutocompletePopup(tooltipDoc, autocompleteOptions);
 
-    this.inputBorderSize = this.inputNode.getBoundingClientRect().height -
-                           this.inputNode.clientHeight;
+    this.inputBorderSize = this.inputNode
+      ? this.inputNode.getBoundingClientRect().height - this.inputNode.clientHeight
+      : 0;
 
     // Update the character width and height needed for the popup offset
     // calculations.
     this._updateCharSize();
 
-    this.inputNode.addEventListener("keypress", this._keyPress);
-    this.inputNode.addEventListener("input", this._inputEventHandler);
-    this.inputNode.addEventListener("keyup", this._inputEventHandler);
-    this.inputNode.addEventListener("focus", this._focusEventHandler);
+    if (this.props.codeMirrorEnabled) {
+      if (this.node) {
+        this.editor = new Editor({
+          autofocus: true,
+          enableCodeFolding: false,
+          gutters: [],
+          lineWrapping: true,
+          mode: Editor.modes.js,
+          styleActiveLine: false,
+          tabIndex: "0",
+          viewportMargin: Infinity,
+          extraKeys: {
+            "Enter": (e, cm) => {
+              if (!this.autocompletePopup.isOpen && (
+                e.shiftKey || !Debugger.isCompilableUnit(this.getInputValue())
+              )) {
+                // shift return or incomplete statement
+                return "CodeMirror.Pass";
+              }
 
-    if (!this.hud.isBrowserConsole) {
-      let okstring = l10n.getStr("selfxss.okstring");
-      let msg = l10n.getFormatStr("selfxss.msg", [okstring]);
-      this._onPaste = WebConsoleUtils.pasteHandlerGen(this.inputNode,
-          this.getNotificationBox(), msg, okstring);
-      this.inputNode.addEventListener("paste", this._onPaste);
-      this.inputNode.addEventListener("drop", this._onPaste);
+              this.execute();
+              return null;
+            },
+          },
+        });
+        this.editor.appendToLocalElement(this.node);
+      }
+    } else if (this.inputNode) {
+      this.inputNode.addEventListener("keypress", this._keyPress);
+      this.inputNode.addEventListener("input", this._inputEventHandler);
+      this.inputNode.addEventListener("keyup", this._inputEventHandler);
+      this.inputNode.addEventListener("focus", this._focusEventHandler);
+      this.focus();
     }
 
     this.hud.window.addEventListener("blur", this._blurEventHandler);
     this.lastInputValue && this.setInputValue(this.lastInputValue);
-
-    this.focus();
   }
 
-  shouldComponentUpdate() {
-    // XXX: For now, everything is handled in an imperative way and we only want React
-    // to do the initial rendering of the component.
+  shouldComponentUpdate(nextProps, nextState) {
+    // XXX: For now, everything is handled in an imperative way and we
+    // only want React to do the initial rendering of the component.
     // This should be modified when the actual refactoring will take place.
     return false;
-  }
-
-  /**
-   * Load the console history from previous sessions.
-   * @private
-   */
-  _loadHistory() {
-    this.history = [];
-    this.historyIndex = this.historyPlaceHolder = 0;
-
-    this.historyLoaded = asyncStorage.getItem("webConsoleHistory")
-      .then(value => {
-        if (Array.isArray(value)) {
-          // Since it was gotten asynchronously, there could be items already in
-          // the history.  It's not likely but stick them onto the end anyway.
-          this.history = value.concat(this.history);
-
-          // Holds the number of entries in history. This value is incremented
-          // in this.execute().
-          this.historyIndex = this.history.length;
-
-          // Holds the index of the history entry that the user is currently
-          // viewing. This is reset to this.history.length when this.execute()
-          // is invoked.
-          this.historyPlaceHolder = this.history.length;
-        }
-      }, console.error);
-  }
-
-  /**
-   * Clear the console history altogether.  Note that this will not affect
-   * other consoles that are already opened (since they have their own copy),
-   * but it will reset the array for all newly-opened consoles.
-   * @returns Promise
-   *          Resolves once the changes have been persisted.
-   */
-  clearHistory() {
-    this.history = [];
-    this.historyIndex = this.historyPlaceHolder = 0;
-    return this.storeHistory();
-  }
-
-  /**
-   * Stores the console history for future console instances.
-   * @returns Promise
-   *          Resolves once the changes have been persisted.
-   */
-  storeHistory() {
-    return asyncStorage.setItem("webConsoleHistory", this.history);
   }
 
   /**
@@ -265,7 +251,9 @@ class JSTerm extends Component {
   }
 
   focus() {
-    if (this.inputNode && !this.inputNode.getAttribute("focused")) {
+    if (this.editor) {
+      this.editor.focus();
+    } else if (this.inputNode && !this.inputNode.getAttribute("focused")) {
       this.inputNode.focus();
     }
   }
@@ -280,7 +268,7 @@ class JSTerm extends Component {
    * @param object response
    *        The message received from the server.
    */
-  _executeResultCallback(callback, response) {
+  async _executeResultCallback(callback, response) {
     if (!this.hud) {
       return;
     }
@@ -294,17 +282,17 @@ class JSTerm extends Component {
     if (typeof response.exception === "string") {
       errorMessage = new Error(errorMessage).toString();
     }
-    let result = response.result;
-    let helperResult = response.helperResult;
-    let helperHasRawOutput = !!(helperResult || {}).rawOutput;
+    const result = response.result;
+    const helperResult = response.helperResult;
+    const helperHasRawOutput = !!(helperResult || {}).rawOutput;
 
     if (helperResult && helperResult.type) {
       switch (helperResult.type) {
         case "clearOutput":
-          this.clearOutput();
+          this.hud.clearOutput();
           break;
         case "clearHistory":
-          this.clearHistory();
+          this.props.clearHistory();
           break;
         case "inspectObject":
           this.inspectObjectActor(helperResult.object);
@@ -322,6 +310,12 @@ class JSTerm extends Component {
         case "copyValueToClipboard":
           clipboardHelper.copyString(helperResult.value);
           break;
+        case "screenshotOutput":
+          const { args, value } = helperResult;
+          const results = await processScreenshot(this.hud.window, args, value);
+          this.screenshotNotify(results);
+          // early return as screenshot notify has dispatched all necessary messages
+          return;
       }
     }
 
@@ -333,19 +327,24 @@ class JSTerm extends Component {
       return;
     }
 
-    if (this.hud.newConsoleOutput) {
-      this.hud.newConsoleOutput.dispatchMessageAdd(response, true).then(callback);
+    if (this.hud.consoleOutput) {
+      this.hud.consoleOutput.dispatchMessageAdd(response, true).then(callback);
     }
   }
 
   inspectObjectActor(objectActor) {
-    this.hud.newConsoleOutput.dispatchMessageAdd({
+    this.hud.consoleOutput.dispatchMessageAdd({
       helperResult: {
         type: "inspectObject",
         object: objectActor
       }
     }, true);
-    return this.hud.newConsoleOutput;
+    return this.hud.consoleOutput;
+  }
+
+  screenshotNotify(results) {
+    const wrappedResults = results.map(result => ({ result }));
+    this.hud.consoleOutput.dispatchMessagesAdd(wrappedResults);
   }
 
   /**
@@ -361,8 +360,8 @@ class JSTerm extends Component {
    *          Resolves with the message once the result is displayed.
    */
   async execute(executeString, callback) {
-    let deferred = defer();
-    let resultCallback = msg => deferred.resolve(msg);
+    const deferred = defer();
+    const resultCallback = msg => deferred.resolve(msg);
 
     // attempt to execute the content of the inputNode
     executeString = executeString || this.getInputValue();
@@ -370,36 +369,28 @@ class JSTerm extends Component {
       return null;
     }
 
-    // Append a new value in the history of executed code, or overwrite the most
-    // recent entry. The most recent entry may contain the last edited input
-    // value that was not evaluated yet.
-    this.history[this.historyIndex++] = executeString;
-    this.historyPlaceHolder = this.history.length;
+    // Append executed expression into the history list.
+    this.props.appendToHistory(executeString);
 
-    if (this.history.length > this.inputHistoryCount) {
-      this.history.splice(0, this.history.length - this.inputHistoryCount);
-      this.historyIndex = this.historyPlaceHolder = this.history.length;
-    }
-    this.storeHistory();
     WebConsoleUtils.usageCount++;
     this.setInputValue("");
     this.clearCompletion();
 
     let selectedNodeActor = null;
-    let inspectorSelection = this.hud.owner.getInspectorSelection();
+    const inspectorSelection = this.hud.owner.getInspectorSelection();
     if (inspectorSelection && inspectorSelection.nodeFront) {
       selectedNodeActor = inspectorSelection.nodeFront.actorID;
     }
 
     const { ConsoleCommand } = require("devtools/client/webconsole/types");
-    let message = new ConsoleCommand({
+    const message = new ConsoleCommand({
       messageText: executeString,
     });
     this.hud.proxy.dispatchMessageAdd(message);
 
-    let onResult = this._executeResultCallback.bind(this, resultCallback);
+    const onResult = this._executeResultCallback.bind(this, resultCallback);
 
-    let options = {
+    const options = {
       frame: this.SELECTED_FRAME,
       selectedNodeActor: selectedNodeActor,
     };
@@ -435,7 +426,8 @@ class JSTerm extends Component {
    *         received.
    */
   requestEvaluation(str, options = {}) {
-    let deferred = defer();
+    const toolbox = gDevTools.getToolbox(this.hud.owner.target);
+    const deferred = defer();
 
     function onResult(response) {
       if (!response.error) {
@@ -450,7 +442,7 @@ class JSTerm extends Component {
       frameActor = this.getFrameActor(options.frame);
     }
 
-    let evalOptions = {
+    const evalOptions = {
       bindObjectActor: options.bindObjectActor,
       frameActor: frameActor,
       selectedNodeActor: options.selectedNodeActor,
@@ -458,6 +450,14 @@ class JSTerm extends Component {
     };
 
     this.webConsoleClient.evaluateJSAsync(str, onResult, evalOptions);
+
+    // Send telemetry event. If we are in the browser toolbox we send -1 as the
+    // toolbox session id.
+    this._telemetry.recordEvent("devtools.main", "execute_js", "webconsole", null, {
+      "lines": str.split(/\n/).length,
+      "session_id": toolbox ? toolbox.sessionId : -1
+    });
+
     return deferred.promise;
   }
 
@@ -485,7 +485,7 @@ class JSTerm extends Component {
    *         The FrameActor ID for the given frame depth.
    */
   getFrameActor(frame) {
-    let state = this.hud.owner.getDebuggerFrames();
+    const state = this.hud.owner.getDebuggerFrames();
     if (!state) {
       return null;
     }
@@ -501,60 +501,27 @@ class JSTerm extends Component {
   }
 
   /**
-   * Clear the Web Console output.
-   *
-   * This method emits the "messages-cleared" notification.
-   *
-   * @param boolean clearStorage
-   *        True if you want to clear the console messages storage associated to
-   *        this Web Console.
-   */
-  clearOutput(clearStorage) {
-    if (this.hud && this.hud.newConsoleOutput) {
-      this.hud.newConsoleOutput.dispatchMessagesClear();
-    }
-
-    this.webConsoleClient.clearNetworkRequests();
-    if (clearStorage) {
-      this.webConsoleClient.clearMessagesCache();
-    }
-    this.focus();
-    this.emit("messages-cleared");
-  }
-
-  /**
-   * Remove all of the private messages from the Web Console output.
-   *
-   * This method emits the "private-messages-cleared" notification.
-   */
-  clearPrivateMessages() {
-    if (this.hud && this.hud.newConsoleOutput) {
-      this.hud.newConsoleOutput.dispatchPrivateMessagesClear();
-      this.emit("private-messages-cleared");
-    }
-  }
-
-  /**
    * Updates the size of the input field (command line) to fit its contents.
    *
    * @returns void
    */
   resizeInput() {
+    if (this.props.codeMirrorEnabled) {
+      return;
+    }
+
     if (!this.inputNode) {
       return;
     }
 
-    let inputNode = this.inputNode;
+    const inputNode = this.inputNode;
 
     // Reset the height so that scrollHeight will reflect the natural height of
     // the contents of the input field.
     inputNode.style.height = "auto";
 
     // Now resize the input field to fit its contents.
-    // TODO: remove `inputNode.inputField.scrollHeight` when the old
-    // console UI is removed. See bug 1381834
-    let scrollHeight = inputNode.inputField ?
-      inputNode.inputField.scrollHeight : inputNode.scrollHeight;
+    const scrollHeight = inputNode.scrollHeight;
 
     if (scrollHeight > 0) {
       inputNode.style.height = (scrollHeight + this.inputBorderSize) + "px";
@@ -571,13 +538,20 @@ class JSTerm extends Component {
    * @returns void
    */
   setInputValue(newValue) {
-    if (!this.inputNode) {
-      return;
+    if (this.props.codeMirrorEnabled) {
+      if (this.editor) {
+        this.editor.setText(newValue);
+      }
+    } else {
+      if (!this.inputNode) {
+        return;
+      }
+
+      this.inputNode.value = newValue;
+      this.completeNode.value = "";
     }
 
-    this.inputNode.value = newValue;
     this.lastInputValue = newValue;
-    this.completeNode.value = "";
     this.resizeInput();
     this._inputChanged = true;
     this.emit("set-input-value");
@@ -588,6 +562,10 @@ class JSTerm extends Component {
    * @returns string
    */
   getInputValue() {
+    if (this.props.codeMirrorEnabled) {
+      return this.editor.getText() || "";
+    }
+
     return this.inputNode ? this.inputNode.value || "" : "";
   }
 
@@ -622,8 +600,8 @@ class JSTerm extends Component {
    * @param Event event
    */
   _keyPress(event) {
-    let inputNode = this.inputNode;
-    let inputValue = this.getInputValue();
+    const inputNode = this.inputNode;
+    const inputValue = this.getInputValue();
     let inputUpdated = false;
 
     if (event.ctrlKey) {
@@ -685,9 +663,9 @@ class JSTerm extends Component {
       }
       return;
     } else if (event.keyCode == KeyCodes.DOM_VK_RETURN) {
-      let autoMultiline = Services.prefs.getBoolPref(PREF_AUTO_MULTILINE);
-      if (event.shiftKey ||
-          (!Debugger.isCompilableUnit(inputNode.value) && autoMultiline)) {
+      if (!this.autocompletePopup.isOpen && (
+        event.shiftKey || !Debugger.isCompilableUnit(this.getInputValue())
+      )) {
         // shift return or incomplete statement
         return;
       }
@@ -803,13 +781,13 @@ class JSTerm extends Component {
         break;
 
       case KeyCodes.DOM_VK_RIGHT:
-        let cursorAtTheEnd = this.inputNode.selectionStart ==
+        const cursorAtTheEnd = this.inputNode.selectionStart ==
                              this.inputNode.selectionEnd &&
                              this.inputNode.selectionStart ==
                              inputValue.length;
-        let haveSuggestion = this.autocompletePopup.isOpen ||
+        const haveSuggestion = this.autocompletePopup.isOpen ||
                              this.lastCompletion.value;
-        let useCompletion = cursorAtTheEnd || this._autocompletePopupNavigated;
+        const useCompletion = cursorAtTheEnd || this._autocompletePopupNavigated;
         if (haveSuggestion && useCompletion &&
             this.complete(this.COMPLETE_HINT_ONLY) &&
             this.lastCompletion.value &&
@@ -856,39 +834,26 @@ class JSTerm extends Component {
    *          True if the input value changed, false otherwise.
    */
   historyPeruse(direction) {
-    if (!this.history.length) {
+    const {
+      history,
+      updatePlaceHolder,
+      getValueFromHistory,
+    } = this.props;
+
+    if (!history.entries.length) {
       return false;
     }
 
-    // Up Arrow key
-    if (direction == HISTORY_BACK) {
-      if (this.historyPlaceHolder <= 0) {
-        return false;
-      }
-      let inputVal = this.history[--this.historyPlaceHolder];
+    const newInputValue = getValueFromHistory(direction);
+    const expression = this.getInputValue();
+    updatePlaceHolder(direction, expression);
 
-      // Save the current input value as the latest entry in history, only if
-      // the user is already at the last entry.
-      // Note: this code does not store changes to items that are already in
-      // history.
-      if (this.historyPlaceHolder + 1 == this.historyIndex) {
-        this.history[this.historyIndex] = this.getInputValue() || "";
-      }
-
-      this.setInputValue(inputVal);
-    } else if (direction == HISTORY_FORWARD) {
-      // Down Arrow key
-      if (this.historyPlaceHolder >= (this.history.length - 1)) {
-        return false;
-      }
-
-      let inputVal = this.history[++this.historyPlaceHolder];
-      this.setInputValue(inputVal);
-    } else {
-      throw new Error("Invalid argument 0");
+    if (newInputValue != null) {
+      this.setInputValue(newInputValue);
+      return true;
     }
 
-    return true;
+    return false;
   }
 
   /**
@@ -911,12 +876,12 @@ class JSTerm extends Component {
    *         otherwise false.
    */
   canCaretGoPrevious() {
-    let node = this.inputNode;
+    const node = this.inputNode;
     if (node.selectionStart != node.selectionEnd) {
       return false;
     }
 
-    let multiline = /[\r\n]/.test(node.value);
+    const multiline = /[\r\n]/.test(node.value);
     return node.selectionStart == 0 ? true :
            node.selectionStart == node.value.length && !multiline;
   }
@@ -931,12 +896,12 @@ class JSTerm extends Component {
    *         false.
    */
   canCaretGoNext() {
-    let node = this.inputNode;
+    const node = this.inputNode;
     if (node.selectionStart != node.selectionEnd) {
       return false;
     }
 
-    let multiline = /[\r\n]/.test(node.value);
+    const multiline = /[\r\n]/.test(node.value);
     return node.selectionStart == node.value.length ? true :
            node.selectionStart == 0 && !multiline;
   }
@@ -976,9 +941,9 @@ class JSTerm extends Component {
    *          or false otherwise.
    */
   complete(type, callback) {
-    let inputNode = this.inputNode;
-    let inputValue = this.getInputValue();
-    let frameActor = this.getFrameActor(this.SELECTED_FRAME);
+    const inputNode = this.inputNode;
+    const inputValue = this.getInputValue();
+    const frameActor = this.getFrameActor(this.SELECTED_FRAME);
 
     // If the inputNode has no value, then don't try to complete on it.
     if (!inputValue) {
@@ -1003,7 +968,7 @@ class JSTerm extends Component {
       return false;
     }
 
-    let popup = this.autocompletePopup;
+    const popup = this.autocompletePopup;
     let accepted = false;
 
     if (type != this.COMPLETE_HINT_ONLY && popup.itemCount == 1) {
@@ -1035,16 +1000,16 @@ class JSTerm extends Component {
    *        Optional, function to invoke when completion results are received.
    */
   _updateCompletionResult(type, callback) {
-    let frameActor = this.getFrameActor(this.SELECTED_FRAME);
+    const frameActor = this.getFrameActor(this.SELECTED_FRAME);
     if (this.lastCompletion.value == this.getInputValue() &&
         frameActor == this._lastFrameActorId) {
       return;
     }
 
-    let requestId = gSequenceId();
-    let cursor = this.inputNode.selectionStart;
-    let input = this.getInputValue().substring(0, cursor);
-    let cache = this._autocompleteCache;
+    const requestId = gSequenceId();
+    const cursor = this.inputNode.selectionStart;
+    const input = this.getInputValue().substring(0, cursor);
+    const cache = this._autocompleteCache;
 
     // If the current input starts with the previous input, then we already
     // have a list of suggestions and we just need to filter the cached
@@ -1060,14 +1025,14 @@ class JSTerm extends Component {
     if (this._autocompleteQuery && input.startsWith(this._autocompleteQuery)) {
       let filterBy = input;
       // Find the last non-alphanumeric other than _ or $ if it exists.
-      let lastNonAlpha = input.match(/[^a-zA-Z0-9_$][a-zA-Z0-9_$]*$/);
+      const lastNonAlpha = input.match(/[^a-zA-Z0-9_$][a-zA-Z0-9_$]*$/);
       // If input contains non-alphanumerics, use the part after the last one
       // to filter the cache
       if (lastNonAlpha) {
         filterBy = input.substring(input.lastIndexOf(lastNonAlpha) + 1);
       }
 
-      let newList = cache.sort().filter(function(l) {
+      const newList = cache.sort().filter(function(l) {
         return l.startsWith(filterBy);
       });
 
@@ -1077,7 +1042,7 @@ class JSTerm extends Component {
         value: null,
       };
 
-      let response = { matches: newList, matchProp: filterBy };
+      const response = { matches: newList, matchProp: filterBy };
       this._receiveAutocompleteProperties(null, callback, response);
       return;
     }
@@ -1090,7 +1055,7 @@ class JSTerm extends Component {
       value: null,
     };
 
-    let autocompleteCallback =
+    const autocompleteCallback =
       this._receiveAutocompleteProperties.bind(this, requestId, callback);
 
     this.webConsoleClient.autocomplete(
@@ -1111,24 +1076,24 @@ class JSTerm extends Component {
    *        the content process.
    */
   _receiveAutocompleteProperties(requestId, callback, message) {
-    let inputNode = this.inputNode;
-    let inputValue = this.getInputValue();
+    const inputNode = this.inputNode;
+    const inputValue = this.getInputValue();
     if (this.lastCompletion.value == inputValue ||
         requestId != this.lastCompletion.requestId) {
       return;
     }
     // Cache whatever came from the server if the last char is
     // alphanumeric or '.'
-    let cursor = inputNode.selectionStart;
-    let inputUntilCursor = inputValue.substring(0, cursor);
+    const cursor = inputNode.selectionStart;
+    const inputUntilCursor = inputValue.substring(0, cursor);
 
     if (requestId != null && /[a-zA-Z0-9.]$/.test(inputUntilCursor)) {
       this._autocompleteCache = message.matches;
       this._autocompleteQuery = inputUntilCursor;
     }
 
-    let matches = message.matches;
-    let lastPart = message.matchProp;
+    const matches = message.matches;
+    const lastPart = message.matchProp;
     if (!matches.length) {
       this.clearCompletion();
       callback && callback(this);
@@ -1136,22 +1101,22 @@ class JSTerm extends Component {
       return;
     }
 
-    let items = matches.reverse().map(function(match) {
+    const items = matches.reverse().map(function(match) {
       return { preLabel: lastPart, label: match };
     });
 
-    let popup = this.autocompletePopup;
+    const popup = this.autocompletePopup;
     popup.setItems(items);
 
-    let completionType = this.lastCompletion.completionType;
+    const completionType = this.lastCompletion.completionType;
     this.lastCompletion = {
       value: inputValue,
       matchProp: lastPart,
     };
     if (items.length > 1 && !popup.isOpen) {
-      let str = this.getInputValue().substr(0, this.inputNode.selectionStart);
-      let offset = str.length - (str.lastIndexOf("\n") + 1) - lastPart.length;
-      let x = offset * this._inputCharWidth;
+      const str = this.getInputValue().substr(0, this.inputNode.selectionStart);
+      const offset = str.length - (str.lastIndexOf("\n") + 1) - lastPart.length;
+      const x = offset * this._inputCharWidth;
       popup.openPopup(inputNode, x + this._chevronWidth);
       this._autocompletePopupNavigated = false;
     } else if (items.length < 2 && popup.isOpen) {
@@ -1182,9 +1147,9 @@ class JSTerm extends Component {
       return;
     }
 
-    let currentItem = this.autocompletePopup.selectedItem;
+    const currentItem = this.autocompletePopup.selectedItem;
     if (currentItem && this.lastCompletion.value) {
-      let suffix =
+      const suffix =
         currentItem.label.substring(this.lastCompletion.matchProp.length);
       this.updateCompleteNode(suffix);
     } else {
@@ -1225,15 +1190,15 @@ class JSTerm extends Component {
   acceptProposedCompletion() {
     let updated = false;
 
-    let currentItem = this.autocompletePopup.selectedItem;
+    const currentItem = this.autocompletePopup.selectedItem;
     if (currentItem && this.lastCompletion.value) {
-      let suffix =
+      const suffix =
         currentItem.label.substring(this.lastCompletion.matchProp.length);
-      let cursor = this.inputNode.selectionStart;
-      let value = this.getInputValue();
+      const cursor = this.inputNode.selectionStart;
+      const value = this.getInputValue();
       this.setInputValue(value.substr(0, cursor) +
         suffix + value.substr(cursor));
-      let newCursor = cursor + suffix.length;
+      const newCursor = cursor + suffix.length;
       this.inputNode.selectionStart = this.inputNode.selectionEnd = newCursor;
       updated = true;
     }
@@ -1255,7 +1220,7 @@ class JSTerm extends Component {
     }
 
     // completion prefix = input, with non-control chars replaced by spaces
-    let prefix = suffix ? this.getInputValue().replace(/[\S]/g, " ") : "";
+    const prefix = suffix ? this.getInputValue().replace(/[\S]/g, " ") : "";
     this.completeNode.value = prefix + suffix;
   }
   /**
@@ -1265,9 +1230,13 @@ class JSTerm extends Component {
    * @private
    */
   _updateCharSize() {
-    let doc = this.hud.document;
-    let tempLabel = doc.createElement("span");
-    let style = tempLabel.style;
+    if (this.props.codeMirrorEnabled || !this.inputNode) {
+      return;
+    }
+
+    const doc = this.hud.document;
+    const tempLabel = doc.createElement("span");
+    const style = tempLabel.style;
     style.position = "fixed";
     style.padding = "0";
     style.margin = "0";
@@ -1279,27 +1248,9 @@ class JSTerm extends Component {
     this._inputCharWidth = tempLabel.offsetWidth;
     tempLabel.remove();
     // Calculate the width of the chevron placed at the beginning of the input
-    // box. Remove 4 more pixels to accomodate the padding of the popup.
+    // box. Remove 4 more pixels to accommodate the padding of the popup.
     this._chevronWidth = +doc.defaultView.getComputedStyle(this.inputNode)
                              .paddingLeft.replace(/[^0-9.]/g, "") - 4;
-  }
-
-  /**
-   * Build the notification box as soon as needed.
-   */
-  getNotificationBox() {
-    if (this._notificationBox) {
-      return this._notificationBox;
-    }
-
-    let box = this.hud.document.getElementById("webconsole-notificationbox");
-    let toolbox = gDevTools.getToolbox(this.hud.owner.target);
-
-    // Render NotificationBox and assign priority levels to it.
-    this._notificationBox = Object.assign(
-      toolbox.ReactDOM.render(toolbox.React.createElement(NotificationBox), box),
-      PriorityLevels);
-    return this._notificationBox;
   }
 
   destroy() {
@@ -1318,12 +1269,6 @@ class JSTerm extends Component {
     }
 
     if (this.inputNode) {
-      if (this._onPaste) {
-        this.inputNode.removeEventListener("paste", this._onPaste);
-        this.inputNode.removeEventListener("drop", this._onPaste);
-        this._onPaste = null;
-      }
-
       this.inputNode.removeEventListener("keypress", this._keyPress);
       this.inputNode.removeEventListener("input", this._inputEventHandler);
       this.inputNode.removeEventListener("keyup", this._inputEventHandler);
@@ -1340,8 +1285,23 @@ class JSTerm extends Component {
       return null;
     }
 
-    return [
-      dom.div({id: "webconsole-notificationbox", key: "notification"}),
+    if (this.props.codeMirrorEnabled) {
+      return dom.div({
+        className: "jsterm-input-container devtools-monospace",
+        key: "jsterm-container",
+        style: {direction: "ltr"},
+        "aria-live": "off",
+        ref: node => {
+          this.node = node;
+        },
+      });
+    }
+
+    const {
+      onPaste
+    } = this.props;
+
+    return (
       dom.div({
         className: "jsterm-input-container",
         key: "jsterm-container",
@@ -1365,10 +1325,30 @@ class JSTerm extends Component {
           ref: node => {
             this.inputNode = node;
           },
+          onPaste: onPaste,
+          onDrop: onPaste,
         })
-      ),
-    ];
+      )
+    );
   }
 }
 
-module.exports = JSTerm;
+// Redux connect
+
+function mapStateToProps(state) {
+  return {
+    history: getHistory(state),
+    getValueFromHistory: (direction) => getHistoryValue(state, direction),
+  };
+}
+
+function mapDispatchToProps(dispatch) {
+  return {
+    appendToHistory: (expr) => dispatch(historyActions.appendToHistory(expr)),
+    clearHistory: () => dispatch(historyActions.clearHistory()),
+    updatePlaceHolder: (direction, expression) =>
+      dispatch(historyActions.updatePlaceHolder(direction, expression)),
+  };
+}
+
+module.exports = connect(mapStateToProps, mapDispatchToProps)(JSTerm);

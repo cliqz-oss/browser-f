@@ -24,6 +24,8 @@ namespace console {
   [UseCounter]
   void count(optional DOMString label = "default");
   [UseCounter]
+  void countReset(optional DOMString label = "default");
+  [UseCounter]
   void debug(any... data);
   [UseCounter]
   void error(any... data);
@@ -53,6 +55,8 @@ namespace console {
   // Timing
   [UseCounter]
   void time(optional DOMString label = "default");
+  [UseCounter]
+  void timeLog(optional DOMString label = "default", any... data);
   [UseCounter]
   void timeEnd(optional DOMString label = "default");
 
@@ -121,7 +125,7 @@ dictionary ConsoleTimerStart {
   DOMString name = "";
 };
 
-dictionary ConsoleTimerEnd {
+dictionary ConsoleTimerLogOrEnd {
   DOMString name = "";
   double duration = 0;
 };
@@ -137,7 +141,8 @@ dictionary ConsoleCounter {
 };
 
 dictionary ConsoleCounterError {
-  DOMString error = "maxCountersExceeded";
+  DOMString label = "";
+  DOMString error = "";
 };
 
 [ChromeOnly,
@@ -148,6 +153,7 @@ interface ConsoleInstance {
   void assert(optional boolean condition = false, any... data);
   void clear();
   void count(optional DOMString label = "default");
+  void countReset(optional DOMString label = "default");
   void debug(any... data);
   void error(any... data);
   void info(any... data);
@@ -165,6 +171,7 @@ interface ConsoleInstance {
 
   // Timing
   void time(optional DOMString label = "default");
+  void timeLog(optional DOMString label = "default", any... data);
   void timeEnd(optional DOMString label = "default");
 
   // Mozilla only or Webcompat methods
@@ -179,8 +186,9 @@ interface ConsoleInstance {
 callback ConsoleInstanceDumpCallback = void (DOMString message);
 
 enum ConsoleLogLevel {
-  "All", "Debug", "Log", "Info", "Clear", "Trace", "TimeEnd", "Time", "Group",
-  "GroupEnd", "Profile", "ProfileEnd", "Dir", "Dirxml", "Warn", "Error", "Off"
+  "All", "Debug", "Log", "Info", "Clear", "Trace", "TimeLog", "TimeEnd", "Time",
+  "Group", "GroupEnd", "Profile", "ProfileEnd", "Dir", "Dirxml", "Warn", "Error",
+  "Off"
 };
 
 dictionary ConsoleInstanceOptions {

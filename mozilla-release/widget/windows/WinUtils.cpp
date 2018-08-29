@@ -15,10 +15,10 @@
 #include "nsWindowDefs.h"
 #include "KeyboardLayout.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
-#include "mozilla/HangMonitor.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WindowsVersion.h"
@@ -37,7 +37,7 @@
 #include "nsNetCID.h"
 #include "prtime.h"
 #ifdef MOZ_PLACES
-#include "mozIAsyncFavicons.h"
+#include "nsIFaviconService.h"
 #endif
 #include "nsIIconURI.h"
 #include "nsIDownloader.h"
@@ -764,7 +764,7 @@ WinUtils::WaitForMessage(DWORD aTimeoutMs)
         // We executed an APC that would have woken up the hang monitor. Since
         // there are no more APCs pending and we are now going to sleep again,
         // we should notify the hang monitor.
-        mozilla::HangMonitor::Suspend();
+        mozilla::BackgroundHangMonitor().NotifyWait();
       }
       continue;
     }
@@ -799,7 +799,7 @@ WinUtils::GetRegistryKey(HKEY aRoot,
                          wchar_t* aBuffer,
                          DWORD aBufferLength)
 {
-  NS_PRECONDITION(aKeyName, "The key name is NULL");
+  MOZ_ASSERT(aKeyName, "The key name is NULL");
 
   HKEY key;
   LONG result =
@@ -1322,7 +1322,7 @@ AsyncFaviconDataReady::OnComplete(nsIURI *aFaviconURI,
   int32_t stride = 4 * size.width;
 
   // AsyncEncodeAndWriteIcon takes ownership of the heap allocated buffer
-  nsCOMPtr<nsIRunnable> event = new AsyncEncodeAndWriteIcon(path, Move(data),
+  nsCOMPtr<nsIRunnable> event = new AsyncEncodeAndWriteIcon(path, std::move(data),
                                                             stride,
                                                             size.width,
                                                             size.height,
@@ -1342,7 +1342,7 @@ AsyncEncodeAndWriteIcon::AsyncEncodeAndWriteIcon(const nsAString &aIconPath,
                                                  const bool aURLShortcut) :
   mURLShortcut(aURLShortcut),
   mIconPath(aIconPath),
-  mBuffer(Move(aBuffer)),
+  mBuffer(std::move(aBuffer)),
   mStride(aStride),
   mWidth(aWidth),
   mHeight(aHeight)
@@ -1351,7 +1351,7 @@ AsyncEncodeAndWriteIcon::AsyncEncodeAndWriteIcon(const nsAString &aIconPath,
 
 NS_IMETHODIMP AsyncEncodeAndWriteIcon::Run()
 {
-  NS_PRECONDITION(!NS_IsMainThread(), "Should not be called on the main thread.");
+  MOZ_ASSERT(!NS_IsMainThread(), "Should not be called on the main thread.");
 
   // Note that since we're off the main thread we can't use
   // gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget()
@@ -1464,21 +1464,18 @@ NS_IMETHODIMP AsyncDeleteAllFaviconsFromDisk::Run()
   nsresult rv = mJumpListCacheDir->AppendNative(
       nsDependentCString(FaviconHelper::kJumpListCacheDir));
   NS_ENSURE_SUCCESS(rv, rv);
-  nsCOMPtr<nsISimpleEnumerator> entries;
+
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = mJumpListCacheDir->GetDirectoryEntries(getter_AddRefs(entries));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Loop through each directory entry and remove all ICO files found
   do {
-    bool hasMore = false;
-    if (NS_FAILED(entries->HasMoreElements(&hasMore)) || !hasMore)
+    nsCOMPtr<nsIFile> currFile;
+    if (NS_FAILED(entries->GetNextFile(getter_AddRefs(currFile))) ||
+        !currFile)
       break;
 
-    nsCOMPtr<nsISupports> supp;
-    if (NS_FAILED(entries->GetNext(getter_AddRefs(supp))))
-      break;
-
-    nsCOMPtr<nsIFile> currFile(do_QueryInterface(supp));
     nsAutoString path;
     if (NS_FAILED(currFile->GetPath(path)))
       continue;
@@ -1649,7 +1646,7 @@ nsresult
 {
 #ifdef MOZ_PLACES
   // Obtain the favicon service and get the favicon for the specified page
-  nsCOMPtr<mozIAsyncFavicons> favIconSvc(
+  nsCOMPtr<nsIFaviconService> favIconSvc(
     do_GetService("@mozilla.org/browser/favicon-service;1"));
   NS_ENSURE_TRUE(favIconSvc, NS_ERROR_FAILURE);
 
@@ -1745,7 +1742,14 @@ WinUtils::ToIntRect(const RECT& aRect)
 bool
 WinUtils::IsIMEEnabled(const InputContext& aInputContext)
 {
-  return IsIMEEnabled(aInputContext.mIMEState.mEnabled);
+  if (!IsIMEEnabled(aInputContext.mIMEState.mEnabled)) {
+    return false;
+  }
+  if (aInputContext.mIMEState.mEnabled == IMEState::PLUGIN &&
+      aInputContext.mHTMLInputType.EqualsLiteral("password")) {
+    return false;
+  }
+  return true;
 }
 
 /* static */
@@ -1767,13 +1771,6 @@ WinUtils::SetupKeyModifiersSequence(nsTArray<KeyPair>* aArray,
       aArray->AppendElement(KeyPair(map[1], map[2]));
     }
   }
-}
-
-/* static */
-bool
-WinUtils::ShouldHideScrollbars()
-{
-  return false;
 }
 
 // This is in use here and in dom/events/TouchEvent.cpp

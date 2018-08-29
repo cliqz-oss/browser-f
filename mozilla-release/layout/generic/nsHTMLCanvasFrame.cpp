@@ -153,7 +153,6 @@ public:
         // Push IFrame for async image pipeline.
         // XXX Remove this once partial display list update is supported.
 
-        /* ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc); */
         nsIntSize canvasSizeInPx = data->GetSize();
         IntrinsicSize intrinsicSize = IntrinsicSizeFromCanvasSize(canvasSizeInPx);
         nsSize intrinsicRatio = IntrinsicRatioFromCanvasSize(canvasSizeInPx);
@@ -174,7 +173,7 @@ public:
         // That happens in WebRenderCompositableHolder.
 
         wr::LayoutRect r = wr::ToRoundedLayoutRect(bounds);
-        aBuilder.PushIFrame(r, !BackfaceIsHidden(), data->GetPipelineId().ref());
+        aBuilder.PushIFrame(r, !BackfaceIsHidden(), data->GetPipelineId().ref(), /*ignoreMissingPipelines*/ false);
 
         gfx::Matrix4x4 scTransform;
         gfxRect destGFXRect = mFrame->PresContext()->AppUnitsToGfxUnits(dest);
@@ -346,7 +345,7 @@ nsHTMLCanvasFrame::Reflow(nsPresContext*           aPresContext,
                   ("enter nsHTMLCanvasFrame::Reflow: availSize=%d,%d",
                   aReflowInput.AvailableWidth(), aReflowInput.AvailableHeight()));
 
-  NS_PRECONDITION(mState & NS_FRAME_IN_REFLOW, "frame is not in reflow");
+  MOZ_ASSERT(mState & NS_FRAME_IN_REFLOW, "frame is not in reflow");
 
   WritingMode wm = aReflowInput.GetWritingMode();
   LogicalSize finalSize(wm,
@@ -376,7 +375,7 @@ nsHTMLCanvasFrame::Reflow(nsPresContext*           aPresContext,
   LogicalSize availSize = aReflowInput.ComputedSize(childWM);
   availSize.BSize(childWM) = NS_UNCONSTRAINEDSIZE;
   NS_ASSERTION(!childFrame->GetNextSibling(), "HTML canvas should have 1 kid");
-  ReflowOutput childDesiredSize(aReflowInput.GetWritingMode(), aMetrics.mFlags);
+  ReflowOutput childDesiredSize(aReflowInput.GetWritingMode());
   ReflowInput childReflowInput(aPresContext, aReflowInput, childFrame,
                                      availSize);
   ReflowChild(childFrame, aPresContext, childDesiredSize, childReflowInput,

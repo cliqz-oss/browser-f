@@ -46,7 +46,7 @@ namespace mozilla {
 
 using namespace dom;
 
-NS_IMETHODIMP
+nsresult
 TextEditor::PrepareTransferable(nsITransferable** transferable)
 {
   // Create generic Transferable for getting the data
@@ -163,7 +163,7 @@ TextEditor::InsertFromDataTransfer(DataTransfer* aDataTransfer,
 }
 
 nsresult
-TextEditor::InsertFromDrop(DragEvent* aDropEvent)
+TextEditor::OnDrop(DragEvent* aDropEvent)
 {
   CommitComposition();
 
@@ -217,7 +217,7 @@ TextEditor::InsertFromDrop(DragEvent* aDropEvent)
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_FAILURE);
 
-  bool isCollapsed = selection->Collapsed();
+  bool isCollapsed = selection->IsCollapsed();
 
   // Check if mouse is in the selection
   // if so, jump through some hoops to determine if mouse is over selection (bail)
@@ -374,23 +374,17 @@ TextEditor::CanPaste(int32_t aSelectionType,
   return NS_OK;
 }
 
-
-NS_IMETHODIMP
-TextEditor::CanPasteTransferable(nsITransferable* aTransferable,
-                                 bool* aCanPaste)
+bool
+TextEditor::CanPasteTransferable(nsITransferable* aTransferable)
 {
-  NS_ENSURE_ARG_POINTER(aCanPaste);
-
   // can't paste if readonly
   if (!IsModifiable()) {
-    *aCanPaste = false;
-    return NS_OK;
+    return false;
   }
 
   // If |aTransferable| is null, assume that a paste will succeed.
   if (!aTransferable) {
-    *aCanPaste = true;
-    return NS_OK;
+    return true;
   }
 
   nsCOMPtr<nsISupports> data;
@@ -399,12 +393,10 @@ TextEditor::CanPasteTransferable(nsITransferable* aTransferable,
                                                getter_AddRefs(data),
                                                &dataLen);
   if (NS_SUCCEEDED(rv) && data) {
-    *aCanPaste = true;
-  } else {
-    *aCanPaste = false;
+    return true;
   }
 
-  return NS_OK;
+  return false;
 }
 
 bool

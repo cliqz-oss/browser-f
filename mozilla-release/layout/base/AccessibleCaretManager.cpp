@@ -78,8 +78,9 @@ AccessibleCaretManager::sSelectionBarEnabled = false;
 AccessibleCaretManager::sCaretShownWhenLongTappingOnEmptyContent = false;
 /* static */ bool
 AccessibleCaretManager::sCaretsAlwaysTilt = false;
-/* static */ bool
-AccessibleCaretManager::sCaretsScriptUpdates = false;
+/* static */ int32_t
+AccessibleCaretManager::sCaretsScriptUpdates =
+    AccessibleCaretManager::kScriptAlwaysHide;
 /* static */ bool
 AccessibleCaretManager::sCaretsAllowDraggingAcrossOtherCaret = true;
 /* static */ bool
@@ -107,8 +108,8 @@ AccessibleCaretManager::AccessibleCaretManager(nsIPresShell* aPresShell)
       "layout.accessiblecaret.caret_shown_when_long_tapping_on_empty_content");
     Preferences::AddBoolVarCache(&sCaretsAlwaysTilt,
                                  "layout.accessiblecaret.always_tilt");
-    Preferences::AddBoolVarCache(&sCaretsScriptUpdates,
-      "layout.accessiblecaret.allow_script_change_updates");
+    Preferences::AddIntVarCache(&sCaretsScriptUpdates,
+      "layout.accessiblecaret.script_change_update_mode");
     Preferences::AddBoolVarCache(&sCaretsAllowDraggingAcrossOtherCaret,
       "layout.accessiblecaret.allow_dragging_across_other_caret", true);
     Preferences::AddBoolVarCache(&sHapticFeedback,
@@ -136,8 +137,8 @@ AccessibleCaretManager::Terminate()
 }
 
 nsresult
-AccessibleCaretManager::OnSelectionChanged(nsIDOMDocument* aDoc,
-                                           nsISelection* aSel, int16_t aReason)
+AccessibleCaretManager::OnSelectionChanged(nsIDocument* aDoc,
+                                           Selection* aSel, int16_t aReason)
 {
   Selection* selection = GetSelection();
   AC_LOG("%s: aSel: %p, GetSelection(): %p, aReason: %d", __FUNCTION__,
@@ -154,11 +155,12 @@ AccessibleCaretManager::OnSelectionChanged(nsIDOMDocument* aDoc,
     return NS_OK;
   }
 
-  // Move the cursor by Javascript / or unknown internal.
+  // Move the cursor by JavaScript or unknown internal call.
   if (aReason == nsISelectionListener::NO_REASON) {
-    // Update visible carets, if javascript changes are allowed.
-    if (sCaretsScriptUpdates &&
-        (mFirstCaret->IsLogicallyVisible() || mSecondCaret->IsLogicallyVisible())) {
+    if (sCaretsScriptUpdates == kScriptAlwaysShow ||
+        (sCaretsScriptUpdates == kScriptUpdateVisible &&
+         (mFirstCaret->IsLogicallyVisible() ||
+          mSecondCaret->IsLogicallyVisible()))) {
         UpdateCarets();
         return NS_OK;
     }
@@ -861,8 +863,7 @@ AccessibleCaretManager::ChangeFocusToOrClearOldFocus(nsIFrame* aFrame) const
   if (aFrame) {
     nsIContent* focusableContent = aFrame->GetContent();
     MOZ_ASSERT(focusableContent, "Focusable frame must have content!");
-    RefPtr<Element> focusableElement =
-      focusableContent->IsElement() ? focusableContent->AsElement() : nullptr;
+    RefPtr<Element> focusableElement = Element::FromNode(focusableContent);
     fm->SetFocus(focusableElement, nsIFocusManager::FLAG_BYMOUSE);
   } else {
     nsPIDOMWindowOuter* win = mPresShell->GetDocument()->GetWindow();
@@ -902,12 +903,14 @@ AccessibleCaretManager::SetSelectionDragState(bool aState) const
 
   // Pin Fennecs DynamicToolbarAnimator in place before/after dragging,
   // to avoid co-incident screen scrolling.
-  #ifdef MOZ_WIDGET_ANDROID
+#ifdef MOZ_WIDGET_ANDROID
+  if (XRE_IsParentProcess()) {
     nsIDocument* doc = mPresShell->GetDocument();
     MOZ_ASSERT(doc);
     nsIWidget* widget = nsContentUtils::WidgetForDocument(doc);
     static_cast<nsWindow*>(widget)->SetSelectionDragState(aState);
-  #endif
+  }
+#endif
 }
 
 bool
@@ -964,7 +967,8 @@ AccessibleCaretManager::ExtendPhoneNumberSelection(const nsAString& aDirection) 
     // Extend the selection by one char.
     selection->Modify(NS_LITERAL_STRING("extend"),
                       aDirection,
-                      NS_LITERAL_STRING("character"));
+                      NS_LITERAL_STRING("character"),
+                      IgnoreErrors());
     if (IsTerminated()) {
       return;
     }

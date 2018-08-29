@@ -1006,6 +1006,13 @@ MediaDevice::Reconfigure(const dom::MediaTrackConstraints &aConstraints,
 }
 
 nsresult
+MediaDevice::FocusOnSelectedSource()
+{
+  MOZ_ASSERT(MediaManager::IsInMediaThread());
+  return mSource->FocusOnSelectedSource(mAllocationHandle);
+}
+
+nsresult
 MediaDevice::Stop()
 {
   MOZ_ASSERT(MediaManager::IsInMediaThread());
@@ -1119,7 +1126,8 @@ public:
     const MediaStreamConstraints& aConstraints,
     MediaDevice* aAudioDevice,
     MediaDevice* aVideoDevice,
-    PeerIdentity* aPeerIdentity)
+    PeerIdentity* aPeerIdentity,
+    bool aIsChrome)
     : Runnable("GetUserMediaStreamRunnable")
     , mOnSuccess(aOnSuccess)
     , mOnFailure(aOnFailure)
@@ -1442,7 +1450,7 @@ public:
         windowListener->ChromeAffectingStateChanged();
         manager->SendPendingGUMRequest();
       },[manager = mManager, windowID = mWindowID,
-         onFailure = Move(mOnFailure)](const RefPtr<MediaMgrError>& error)
+         onFailure = std::move(mOnFailure)](const RefPtr<MediaMgrError>& error)
       {
         LOG(("GetUserMediaStreamRunnable::Run: starting failure callback "
              "following InitializeAsync()"));
@@ -1628,7 +1636,8 @@ public:
     MediaEnginePrefs& aPrefs,
     const ipc::PrincipalInfo& aPrincipalInfo,
     bool aIsChrome,
-    MediaManager::SourceSet* aSourceSet)
+    MediaManager::SourceSet* aSourceSet,
+    bool aShouldFocusSource)
     : Runnable("GetUserMediaTask")
     , mConstraints(aConstraints)
     , mOnSuccess(aOnSuccess)
@@ -1639,6 +1648,7 @@ public:
     , mPrefs(aPrefs)
     , mPrincipalInfo(aPrincipalInfo)
     , mIsChrome(aIsChrome)
+    , mShouldFocusSource(aShouldFocusSource)
     , mDeviceChosen(false)
     , mSourceSet(aSourceSet)
     , mManager(MediaManager::GetInstance())
@@ -1709,6 +1719,16 @@ public:
         if (mAudioDevice) {
           mAudioDevice->Deallocate();
         }
+      } else {
+        if (!mIsChrome) {
+          if (mShouldFocusSource) {
+            rv = mVideoDevice->FocusOnSelectedSource();
+
+            if (NS_FAILED(rv)) {
+              LOG(("FocusOnSelectedSource failed"));
+            }
+          }
+        }
       }
     }
     if (errorMsg) {
@@ -1741,7 +1761,7 @@ public:
                                        mWindowListener, mSourceListener,
                                        mPrincipalInfo, mConstraints,
                                        mAudioDevice, mVideoDevice,
-                                       peerIdentity)));
+                                       peerIdentity, mIsChrome)));
     return NS_OK;
   }
 
@@ -1818,6 +1838,7 @@ private:
   MediaEnginePrefs mPrefs;
   ipc::PrincipalInfo mPrincipalInfo;
   bool mIsChrome;
+  bool mShouldFocusSource;
 
   bool mDeviceChosen;
 public:
@@ -1946,7 +1967,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
         result->AppendElement(source);
       }
     }
-    NS_DispatchToMainThread(NewRunnableFrom([id, result = Move(result)]() mutable {
+    NS_DispatchToMainThread(NewRunnableFrom([id, result = std::move(result)]() mutable {
       MediaManager* mgr = MediaManager::GetIfExists();
       if (!mgr) {
         return NS_OK;
@@ -2212,7 +2233,7 @@ MediaManager::PostTask(already_AddRefed<Runnable> task)
   }
   NS_ASSERTION(Get(), "MediaManager singleton?");
   NS_ASSERTION(Get()->mMediaThread, "No thread yet");
-  Get()->mMediaThread->message_loop()->PostTask(Move(task));
+  Get()->mMediaThread->message_loop()->PostTask(std::move(task));
 }
 
 template<typename MozPromiseType, typename FunctionType>
@@ -2222,7 +2243,7 @@ MediaManager::PostTask(const char* aName, FunctionType&& aFunction)
   MozPromiseHolder<MozPromiseType> holder;
   RefPtr<MozPromiseType> promise = holder.Ensure(aName);
   MediaManager::PostTask(NS_NewRunnableFunction(aName,
-        [h = Move(holder), func = Forward<FunctionType>(aFunction)]() mutable
+        [h = std::move(holder), func = std::forward<FunctionType>(aFunction)]() mutable
         {
           func(h);
         }));
@@ -2874,6 +2895,9 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
         }
       }
 
+      bool focusSource;
+      focusSource = mozilla::Preferences::GetBool("media.getusermedia.window.focus_source.enabled", true);
+
       // Pass callbacks and listeners along to GetUserMediaTask.
       RefPtr<GetUserMediaTask> task (new GetUserMediaTask(c,
                                                           onSuccess,
@@ -2884,7 +2908,8 @@ MediaManager::GetUserMedia(nsPIDOMWindowInner* aWindow,
                                                           prefs,
                                                           principalInfo,
                                                           isChrome,
-                                                          devices->release()));
+                                                          devices->release(),
+                                                          focusSource));
       // Store the task w/callbacks.
       self->mActiveCallbacks.Put(callID, task.forget());
 
@@ -3908,7 +3933,7 @@ MediaManager::IsActivelyCapturingOrHasAPermission(uint64_t aWindowId)
   // Or are persistent permissions (audio or video) granted?
 
   auto* window = nsGlobalWindowInner::GetInnerWindowWithId(aWindowId);
-  if (NS_WARN_IF(!window)) {
+  if (NS_WARN_IF(!window) || NS_WARN_IF(!window->GetPrincipal())) {
     return false;
   }
   // Check if this site has persistent permissions.
@@ -3922,7 +3947,7 @@ MediaManager::IsActivelyCapturingOrHasAPermission(uint64_t aWindowId)
   uint32_t audio = nsIPermissionManager::UNKNOWN_ACTION;
   uint32_t video = nsIPermissionManager::UNKNOWN_ACTION;
   {
-    auto* principal = window->GetExtantDoc()->NodePrincipal();
+    auto* principal = window->GetPrincipal();
     rv = mgr->TestExactPermissionFromPrincipal(principal, "microphone", &audio);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return false;
@@ -4078,7 +4103,7 @@ SourceListener::InitializeAsync()
     }, [self = RefPtr<SourceListener>(this), this](RefPtr<MediaMgrError>&& aResult)
     {
       if (mStopped) {
-        return InitPromise::CreateAndReject(Move(aResult), __func__);
+        return InitPromise::CreateAndReject(std::move(aResult), __func__);
       }
 
       for (DeviceState* state : {mAudioDeviceState.get(),
@@ -4092,7 +4117,7 @@ SourceListener::InitializeAsync()
 
         state->mStopped = true;
       }
-      return InitPromise::CreateAndReject(Move(aResult), __func__);
+      return InitPromise::CreateAndReject(std::move(aResult), __func__);
     });
 }
 

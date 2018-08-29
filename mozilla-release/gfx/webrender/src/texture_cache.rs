@@ -380,6 +380,16 @@ impl TextureCache {
         }
     }
 
+    // Returns true if the image needs to be uploaded to the
+    // texture cache (either never uploaded, or has been
+    // evicted on a previous frame).
+    pub fn needs_upload(&self, handle: &TextureCacheHandle) -> bool {
+        match handle.entry {
+            Some(ref handle) => self.entries.get_opt(handle).is_none(),
+            None => true,
+        }
+    }
+
     pub fn max_texture_size(&self) -> u32 {
         self.max_texture_size
     }
@@ -411,9 +421,7 @@ impl TextureCache {
             Some(ref handle) => {
                 match self.entries.get_opt(handle) {
                     Some(entry) => {
-                        entry.size.width != descriptor.width ||
-                            entry.size.height != descriptor.height ||
-                            entry.format != descriptor.format
+                        entry.size != descriptor.size || entry.format != descriptor.format
                     }
                     None => {
                         // Was previously allocated but has been evicted.
@@ -650,8 +658,7 @@ impl TextureCache {
         //   AND
         // - We have freed an item that will definitely allow us to
         //   fit the currently requested allocation.
-        let needed_slab_size =
-            SlabSize::new(required_alloc.width, required_alloc.height);
+        let needed_slab_size = SlabSize::new(required_alloc.size);
         let mut found_matching_slab = false;
         let mut freed_complete_page = false;
         let mut evicted_items = 0;
@@ -754,8 +761,7 @@ impl TextureCache {
         // Do the allocation. This can fail and return None
         // if there are no free slots or regions available.
         texture_array.alloc(
-            descriptor.width,
-            descriptor.height,
+            descriptor.size,
             user_data,
             self.frame_id,
             uv_rect_kind,
@@ -783,8 +789,8 @@ impl TextureCache {
         // TODO(gw): If we find pages that suffer from batch breaks in this
         //           case, add support for storing these in a standalone
         //           texture array.
-        if descriptor.width > TEXTURE_REGION_DIMENSIONS ||
-           descriptor.height > TEXTURE_REGION_DIMENSIONS {
+        if descriptor.size.width > TEXTURE_REGION_DIMENSIONS ||
+           descriptor.size.height > TEXTURE_REGION_DIMENSIONS {
             allowed_in_shared_cache = false;
         }
 
@@ -802,7 +808,7 @@ impl TextureCache {
         user_data: [f32; 3],
         uv_rect_kind: UvRectKind,
     ) {
-        assert!(descriptor.width > 0 && descriptor.height > 0);
+        assert!(descriptor.size.width > 0 && descriptor.size.height > 0);
 
         // Work out if this image qualifies to go in the shared (batching) cache.
         let allowed_in_shared_cache = self.is_allowed_in_shared_cache(
@@ -811,7 +817,6 @@ impl TextureCache {
         );
         let mut allocated_in_shared_cache = true;
         let mut new_cache_entry = None;
-        let size = DeviceUintSize::new(descriptor.width, descriptor.height);
         let frame_id = self.frame_id;
 
         // If it's allowed in the cache, see if there is a spot for it.
@@ -848,8 +853,8 @@ impl TextureCache {
             let update_op = TextureUpdate {
                 id: texture_id,
                 op: TextureUpdateOp::Create {
-                    width: descriptor.width,
-                    height: descriptor.height,
+                    width: descriptor.size.width,
+                    height: descriptor.size.height,
                     format: descriptor.format,
                     filter,
                     render_target: Some(RenderTargetInfo { has_depth: false }),
@@ -860,7 +865,7 @@ impl TextureCache {
 
             new_cache_entry = Some(CacheEntry::new_standalone(
                 texture_id,
-                size,
+                descriptor.size,
                 descriptor.format,
                 filter,
                 user_data,
@@ -928,9 +933,9 @@ struct SlabSize {
 }
 
 impl SlabSize {
-    fn new(width: u32, height: u32) -> SlabSize {
-        let x_size = quantize_dimension(width);
-        let y_size = quantize_dimension(height);
+    fn new(size: DeviceUintSize) -> SlabSize {
+        let x_size = quantize_dimension(size.width);
+        let y_size = quantize_dimension(size.height);
 
         assert!(x_size > 0 && x_size <= TEXTURE_REGION_DIMENSIONS);
         assert!(y_size > 0 && y_size <= TEXTURE_REGION_DIMENSIONS);
@@ -1109,8 +1114,7 @@ impl TextureArray {
     // Allocate space in this texture array.
     fn alloc(
         &mut self,
-        width: u32,
-        height: u32,
+        size: DeviceUintSize,
         user_data: [f32; 3],
         frame_id: FrameId,
         uv_rect_kind: UvRectKind,
@@ -1142,7 +1146,7 @@ impl TextureArray {
 
         // Quantize the size of the allocation to select a region to
         // allocate from.
-        let slab_size = SlabSize::new(width, height);
+        let slab_size = SlabSize::new(size);
 
         // TODO(gw): For simplicity, the initial implementation just
         //           has a single vec<> of regions. We could easily
@@ -1189,7 +1193,7 @@ impl TextureArray {
 
         entry_kind.map(|kind| {
             CacheEntry {
-                size: DeviceUintSize::new(width, height),
+                size,
                 user_data,
                 last_access: frame_id,
                 kind,
@@ -1217,7 +1221,7 @@ impl TextureUpdate {
         layer_index: i32,
         dirty_rect: Option<DeviceUintRect>,
     ) -> TextureUpdate {
-        let data_src = match data {
+        let source = match data {
             ImageData::Blob(..) => {
                 panic!("The vector image should have been rasterized.");
             }
@@ -1232,8 +1236,8 @@ impl TextureUpdate {
             },
             ImageData::Raw(bytes) => {
                 let finish = descriptor.offset +
-                    descriptor.width * descriptor.format.bytes_per_pixel() +
-                    (descriptor.height - 1) * descriptor.compute_stride();
+                    descriptor.size.width * descriptor.format.bytes_per_pixel() +
+                    (descriptor.size.height - 1) * descriptor.compute_stride();
                 assert!(bytes.len() >= finish as usize);
 
                 TextureUpdateSource::Bytes { data: bytes }
@@ -1242,25 +1246,33 @@ impl TextureUpdate {
 
         let update_op = match dirty_rect {
             Some(dirty) => {
+                // the dirty rectangle doesn't have to be within the area but has to intersect it, at least
                 let stride = descriptor.compute_stride();
                 let offset = descriptor.offset + dirty.origin.y * stride + dirty.origin.x * descriptor.format.bytes_per_pixel();
-                let origin =
-                    DeviceUintPoint::new(origin.x + dirty.origin.x, origin.y + dirty.origin.y);
+
                 TextureUpdateOp::Update {
-                    rect: DeviceUintRect::new(origin, dirty.size),
-                    source: data_src,
+                    rect: DeviceUintRect::new(
+                        DeviceUintPoint::new(origin.x + dirty.origin.x, origin.y + dirty.origin.y),
+                        DeviceUintSize::new(
+                            dirty.size.width.min(size.width - dirty.origin.x),
+                            dirty.size.height.min(size.height - dirty.origin.y),
+                        ),
+                    ),
+                    source,
                     stride: Some(stride),
                     offset,
                     layer_index,
                 }
             }
-            None => TextureUpdateOp::Update {
-                rect: DeviceUintRect::new(origin, size),
-                source: data_src,
-                stride: descriptor.stride,
-                offset: descriptor.offset,
-                layer_index,
-            },
+            None => {
+                TextureUpdateOp::Update {
+                    rect: DeviceUintRect::new(origin, size),
+                    source,
+                    stride: descriptor.stride,
+                    offset: descriptor.offset,
+                    layer_index,
+                }
+            }
         };
 
         TextureUpdate {

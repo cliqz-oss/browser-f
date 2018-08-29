@@ -64,13 +64,10 @@
 #include "nsISimpleEnumerator.h"
 #include "nsIDirectoryEnumerator.h"
 #include "nsIFile.h"
-#include "nsDirectoryServiceUtils.h"
-#include "nsDirectoryServiceDefs.h"
 #include "mozISpellI18NManager.h"
 #include "nsUnicharUtils.h"
 #include "nsCRT.h"
 #include "mozInlineSpellChecker.h"
-#include "mozilla/Services.h"
 #include <stdlib.h>
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
@@ -298,11 +295,6 @@ mozHunspell::LoadDictionaryList(bool aNotifyChildProcesses)
 
   nsresult rv;
 
-  nsCOMPtr<nsIProperties> dirSvc =
-    do_GetService(NS_DIRECTORY_SERVICE_CONTRACTID);
-  if (!dirSvc)
-    return;
-
   // find built in dictionaries, or dictionaries specified in
   // spellchecker.dictionary_path in prefs
   nsCOMPtr<nsIFile> dictDir;
@@ -316,33 +308,8 @@ mozHunspell::LoadDictionaryList(bool aNotifyChildProcesses)
       // set the spellchecker.dictionary_path
       rv = NS_NewNativeLocalFile(extDictPath, true, getter_AddRefs(dictDir));
     }
-  }
-  if (!dictDir) {
-    // spellcheck.dictionary_path not found, set internal path
-    rv = dirSvc->Get(DICTIONARY_SEARCH_DIRECTORY,
-                     NS_GET_IID(nsIFile), getter_AddRefs(dictDir));
-  }
-  if (dictDir) {
-    LoadDictionariesFromDir(dictDir);
-  }
-  else {
-    // try to load gredir/dictionaries
-    nsCOMPtr<nsIFile> greDir;
-    rv = dirSvc->Get(NS_GRE_DIR,
-                     NS_GET_IID(nsIFile), getter_AddRefs(greDir));
-    if (NS_SUCCEEDED(rv)) {
-      greDir->AppendNative(NS_LITERAL_CSTRING("dictionaries"));
-      LoadDictionariesFromDir(greDir);
-    }
-
-    // try to load appdir/dictionaries only if different than gredir
-    nsCOMPtr<nsIFile> appDir;
-    rv = dirSvc->Get(NS_XPCOM_CURRENT_PROCESS_DIR,
-                     NS_GET_IID(nsIFile), getter_AddRefs(appDir));
-    bool equals;
-    if (NS_SUCCEEDED(rv) && NS_SUCCEEDED(appDir->Equals(greDir, &equals)) && !equals) {
-      appDir->AppendNative(NS_LITERAL_CSTRING("dictionaries"));
-      LoadDictionariesFromDir(appDir);
+    if (dictDir) {
+      LoadDictionariesFromDir(dictDir);
     }
   }
 
@@ -367,23 +334,6 @@ mozHunspell::LoadDictionaryList(bool aNotifyChildProcesses)
     for (int32_t i = dirs.Length() - 1; i >= 0; i--) {
       LoadDictionariesFromDir(dirs[i]);
     }
-  }
-
-  // find dictionaries from extensions requiring restart
-  nsCOMPtr<nsISimpleEnumerator> dictDirs;
-  rv = dirSvc->Get(DICTIONARY_SEARCH_DIRECTORY_LIST,
-                   NS_GET_IID(nsISimpleEnumerator), getter_AddRefs(dictDirs));
-  if (NS_FAILED(rv))
-    return;
-
-  bool hasMore;
-  while (NS_SUCCEEDED(dictDirs->HasMoreElements(&hasMore)) && hasMore) {
-    nsCOMPtr<nsISupports> elem;
-    dictDirs->GetNext(getter_AddRefs(elem));
-
-    dictDir = do_QueryInterface(elem);
-    if (dictDir)
-      LoadDictionariesFromDir(dictDir);
   }
 
   // find dictionaries from restartless extensions
@@ -438,13 +388,9 @@ mozHunspell::LoadDictionariesFromDir(nsIFile* aDir)
   if (NS_FAILED(rv) || !check)
     return NS_ERROR_UNEXPECTED;
 
-  nsCOMPtr<nsISimpleEnumerator> e;
-  rv = aDir->GetDirectoryEntries(getter_AddRefs(e));
+  nsCOMPtr<nsIDirectoryEnumerator> files;
+  rv = aDir->GetDirectoryEntries(getter_AddRefs(files));
   if (NS_FAILED(rv))
-    return NS_ERROR_UNEXPECTED;
-
-  nsCOMPtr<nsIDirectoryEnumerator> files(do_QueryInterface(e));
-  if (!files)
     return NS_ERROR_UNEXPECTED;
 
   nsCOMPtr<nsIFile> file;
@@ -665,15 +611,17 @@ NS_IMETHODIMP mozHunspell::AddDictionary(const nsAString& aLang, nsIURI *aFile)
   return NS_OK;
 }
 
-NS_IMETHODIMP mozHunspell::RemoveDictionary(const nsAString& aLang, nsIURI *aFile)
+NS_IMETHODIMP mozHunspell::RemoveDictionary(const nsAString& aLang, nsIURI *aFile, bool* aRetVal)
 {
   NS_ENSURE_TRUE(aFile, NS_ERROR_INVALID_ARG);
+  *aRetVal = false;
 
   nsCOMPtr<nsIURI> file = mDynamicDictionaries.Get(aLang);
   bool equal;
   if (file && NS_SUCCEEDED(file->Equals(aFile, &equal)) && equal) {
     mDynamicDictionaries.Remove(aLang);
     LoadDictionaryList(true);
+    *aRetVal = true;
   }
   return NS_OK;
 }

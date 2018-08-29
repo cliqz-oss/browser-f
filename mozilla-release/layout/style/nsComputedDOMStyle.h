@@ -14,6 +14,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/StyleComplexColor.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/dom/Element.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
 #include "nscore.h"
@@ -58,10 +59,6 @@ private:
   typedef mozilla::dom::CSSValue CSSValue;
   typedef mozilla::StyleGeometryBox StyleGeometryBox;
 
-  already_AddRefed<CSSValue>
-  GetPropertyCSSValueWithoutWarning(const nsAString& aProp,
-                                    mozilla::ErrorResult& aRv);
-
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsComputedDOMStyle,
@@ -74,11 +71,6 @@ public:
                             const nsAString& aValue,
                             nsIPrincipal* aSubjectPrincipal) override;
 
-  // Do NOT use this, it is deprecated, see bug 474655.
-  already_AddRefed<CSSValue>
-  GetPropertyCSSValue(const nsAString& aProp, mozilla::ErrorResult& aRv) final;
-  using nsICSSDeclaration::GetPropertyCSSValue;
-
   void IndexedGetter(uint32_t aIndex, bool& aFound, nsAString& aPropName) final;
 
   enum StyleType {
@@ -88,12 +80,12 @@ public:
 
   nsComputedDOMStyle(mozilla::dom::Element* aElement,
                      const nsAString& aPseudoElt,
-                     nsIPresShell* aPresShell,
+                     nsIDocument* aDocument,
                      StyleType aStyleType);
 
-  virtual nsINode *GetParentObject() override
+  nsINode* GetParentObject() override
   {
-    return mContent;
+    return mElement;
   }
 
   static already_AddRefed<mozilla::ComputedStyle>
@@ -133,8 +125,8 @@ public:
   virtual nsresult SetCSSDeclaration(mozilla::DeclarationBlock*) override;
   virtual nsIDocument* DocToUpdate() override;
 
-  nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-  GetServoCSSParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final;
+  nsDOMCSSDeclaration::ParsingEnvironment
+  GetParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final;
 
   static already_AddRefed<nsROCSSPrimitiveValue>
     MatrixToCSSValue(const mozilla::gfx::Matrix4x4& aMatrix);
@@ -514,6 +506,8 @@ private:
   already_AddRefed<CSSValue> DoGetScrollSnapPointsY();
   already_AddRefed<CSSValue> DoGetScrollSnapDestination();
   already_AddRefed<CSSValue> DoGetScrollSnapCoordinate();
+  already_AddRefed<CSSValue> DoGetScrollbarFaceColor();
+  already_AddRefed<CSSValue> DoGetScrollbarTrackColor();
   already_AddRefed<CSSValue> DoGetShapeImageThreshold();
   already_AddRefed<CSSValue> DoGetShapeMargin();
   already_AddRefed<CSSValue> DoGetShapeOutside();
@@ -619,13 +613,13 @@ private:
 
   already_AddRefed<CSSValue> DoGetContextProperties();
 
-  /* Custom properties */
-  already_AddRefed<CSSValue> DoGetCustomProperty(const nsAString& aPropertyName);
-
   /* Helper functions */
   void SetToRGBAColor(nsROCSSPrimitiveValue* aValue, nscolor aColor);
   void SetValueFromComplexColor(nsROCSSPrimitiveValue* aValue,
                                 const mozilla::StyleComplexColor& aColor);
+  void SetValueForWidgetColor(nsROCSSPrimitiveValue* aValue,
+                              const mozilla::StyleComplexColor& aColor,
+                              uint8_t aWidgetType);
   void SetValueToStyleImage(const nsStyleImage& aStyleImage,
                             nsROCSSPrimitiveValue* aValue);
   void SetValueToPositionCoord(const mozilla::Position::Coord& aCoord,
@@ -724,9 +718,9 @@ private:
 
   // We don't really have a good immutable representation of "presentation".
   // Given the way GetComputedStyle is currently used, we should just grab the
-  // 0th presshell, if any, from the document.
+  // presshell, if any, from the document.
   nsWeakPtr mDocumentWeak;
-  nsCOMPtr<nsIContent> mContent;
+  RefPtr<mozilla::dom::Element> mElement;
 
   /**
    * Strong reference to the ComputedStyle we access data from.  This can be
@@ -792,7 +786,7 @@ private:
 already_AddRefed<nsComputedDOMStyle>
 NS_NewComputedDOMStyle(mozilla::dom::Element* aElement,
                        const nsAString& aPseudoElt,
-                       nsIPresShell* aPresShell,
+                       nsIDocument* aDocument,
                        nsComputedDOMStyle::StyleType aStyleType =
                          nsComputedDOMStyle::eAll);
 

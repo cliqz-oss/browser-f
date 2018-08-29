@@ -20,7 +20,6 @@
 
 using namespace mozilla;
 using namespace mozilla::image;
-using mozilla::Move;
 
 // The split of imgRequestProxy and imgRequestProxyStatic means that
 // certain overridden functions need to be usable in the destructor.
@@ -133,7 +132,7 @@ imgRequestProxy::imgRequestProxy() :
 imgRequestProxy::~imgRequestProxy()
 {
   /* destructor code */
-  NS_PRECONDITION(!mListener,
+  MOZ_ASSERT(!mListener,
                   "Someone forgot to properly cancel this request!");
 
   // If we had a listener, that means we would have issued notifications. With
@@ -181,11 +180,11 @@ nsresult
 imgRequestProxy::Init(imgRequest* aOwner,
                       nsILoadGroup* aLoadGroup,
                       nsIDocument* aLoadingDocument,
-                      ImageURL* aURI,
+                      nsIURI* aURI,
                       imgINotificationObserver* aObserver)
 {
-  NS_PRECONDITION(!GetOwner() && !mListener,
-                  "imgRequestProxy is already initialized");
+  MOZ_ASSERT(!GetOwner() && !mListener,
+             "imgRequestProxy is already initialized");
 
   LOG_SCOPE_WITH_PARAM(gImgLog, "imgRequestProxy::Init", "request",
                        aOwner);
@@ -214,7 +213,7 @@ imgRequestProxy::Init(imgRequest* aOwner,
 nsresult
 imgRequestProxy::ChangeOwner(imgRequest* aNewOwner)
 {
-  NS_PRECONDITION(GetOwner(),
+  MOZ_ASSERT(GetOwner(),
                   "Cannot ChangeOwner on a proxy without an owner!");
 
   if (mCanceled) {
@@ -317,11 +316,11 @@ imgRequestProxy::DispatchWithTargetIfAvailable(already_AddRefed<nsIRunnable> aEv
   // rather we need to (e.g. we are in the wrong scheduler group context).
   // As such, we do not set mHadDispatch for telemetry purposes.
   if (mEventTarget) {
-    mEventTarget->Dispatch(Move(aEvent), NS_DISPATCH_NORMAL);
+    mEventTarget->Dispatch(std::move(aEvent), NS_DISPATCH_NORMAL);
     return NS_OK;
   }
 
-  return NS_DispatchToMainThread(Move(aEvent));
+  return NS_DispatchToMainThread(std::move(aEvent));
 }
 
 void
@@ -333,7 +332,7 @@ imgRequestProxy::DispatchWithTarget(already_AddRefed<nsIRunnable> aEvent)
   MOZ_ASSERT(mEventTarget);
 
   mHadDispatch = true;
-  mEventTarget->Dispatch(Move(aEvent), NS_DISPATCH_NORMAL);
+  mEventTarget->Dispatch(std::move(aEvent), NS_DISPATCH_NORMAL);
 }
 
 void
@@ -426,7 +425,7 @@ imgRequestProxy::RemoveFromLoadGroup()
        because we know that once we get here, blocking the load group at all is
        unnecessary. */
     mIsInLoadGroup = false;
-    nsCOMPtr<nsILoadGroup> loadGroup = Move(mLoadGroup);
+    nsCOMPtr<nsILoadGroup> loadGroup = std::move(mLoadGroup);
     RefPtr<imgRequestProxy> self(this);
     DispatchWithTargetIfAvailable(NS_NewRunnableFunction(
       "imgRequestProxy::RemoveFromLoadGroup",
@@ -773,7 +772,7 @@ NS_IMETHODIMP
 imgRequestProxy::GetURI(nsIURI** aURI)
 {
   MOZ_ASSERT(NS_IsMainThread(), "Must be on main thread to convert URI");
-  nsCOMPtr<nsIURI> uri = mURI->ToIURI();
+  nsCOMPtr<nsIURI> uri = mURI;
   uri.forget(aURI);
   return NS_OK;
 }
@@ -786,18 +785,6 @@ imgRequestProxy::GetFinalURI(nsIURI** aURI)
   }
 
   return GetOwner()->GetFinalURI(aURI);
-}
-
-nsresult
-imgRequestProxy::GetURI(ImageURL** aURI)
-{
-  if (!mURI) {
-    return NS_ERROR_FAILURE;
-  }
-
-  NS_ADDREF(*aURI = mURI);
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -863,7 +850,7 @@ imgRequestProxy::PerformClone(imgINotificationObserver* aObserver,
                               bool aSyncNotify,
                               imgRequestProxy** aClone)
 {
-  NS_PRECONDITION(aClone, "Null out param");
+  MOZ_ASSERT(aClone, "Null out param");
 
   LOG_SCOPE(gImgLog, "imgRequestProxy::Clone");
 
@@ -1096,12 +1083,8 @@ imgRequestProxy::Notify(int32_t aType, const mozilla::gfx::IntRect* aRect)
 void
 imgRequestProxy::OnLoadComplete(bool aLastPart)
 {
-  if (MOZ_LOG_TEST(gImgLog, LogLevel::Debug)) {
-    nsAutoCString name;
-    GetName(name);
-    LOG_FUNC_WITH_PARAM(gImgLog, "imgRequestProxy::OnLoadComplete",
-                        "name", name.get());
-  }
+  LOG_FUNC_WITH_PARAM(gImgLog, "imgRequestProxy::OnLoadComplete",
+                      "uri", mURI);
 
   // There's all sorts of stuff here that could kill us (the OnStopRequest call
   // on the listener, the removal from the loadgroup, the release of the
@@ -1137,7 +1120,7 @@ imgRequestProxy::OnLoadComplete(bool aLastPart)
   }
 
   if (mListenerIsStrongRef && aLastPart) {
-    NS_PRECONDITION(mListener, "How did that happen?");
+    MOZ_ASSERT(mListener, "How did that happen?");
     // Drop our strong ref to the listener now that we're done with
     // everything.  Note that this can cancel us and other fun things
     // like that.  Don't add anything in this method after this point.

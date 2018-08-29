@@ -3,9 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const CURRENT_SCHEMA_VERSION = 47;
-const FIRST_UPGRADABLE_SCHEMA_VERSION = 30;
-
 const NS_APP_USER_PROFILE_50_DIR = "ProfD";
 
 // Shortcuts to transitions type.
@@ -97,8 +94,7 @@ function uri(aSpec) {
 var gDBConn;
 function DBConn(aForceNewConnection) {
   if (!aForceNewConnection) {
-    let db = PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
-                                .DBConnection;
+    let db = PlacesUtils.history.DBConnection;
     if (db.connectionReady)
       return db;
   }
@@ -502,7 +498,7 @@ function check_JSON_backup(aIsAutomaticBackup) {
     bookmarksBackupDir.append("bookmarkbackups");
     let files = bookmarksBackupDir.directoryEntries;
     while (files.hasMoreElements()) {
-      let entry = files.getNext().QueryInterface(Ci.nsIFile);
+      let entry = files.nextFile;
       if (PlacesBackups.filenamesRegex.test(entry.leafName)) {
         profileBookmarksJSONFile = entry;
         break;
@@ -924,10 +920,10 @@ const DB_FILENAME = "places.sqlite";
  *
  * @param aFileName
  *        The filename of the database to use.  This database must exist in
- *        toolkit/components/places/tests/migration!
- * @return {Promise}
+ *        the test folder.
+ * @return {Promise} the final path to the database
  */
-var setupPlacesDatabase = async function(aFileName, aDestFileName = DB_FILENAME) {
+async function setupPlacesDatabase(aFileName, aDestFileName = DB_FILENAME) {
   let currentDir = await OS.File.getCurrentDirectory();
 
   let src = OS.Path.join(currentDir, aFileName);
@@ -938,4 +934,5 @@ var setupPlacesDatabase = async function(aFileName, aDestFileName = DB_FILENAME)
   Assert.ok(!(await OS.File.exists(dest)), "Database file should not exist yet");
 
   await OS.File.copy(src, dest);
-};
+  return dest;
+}

@@ -129,7 +129,7 @@ class ResizableViewport extends Component {
   }
 
   render() {
-    let {
+    const {
       devices,
       screenshot,
       swapAfterMount,
@@ -174,6 +174,7 @@ class ResizableViewport extends Component {
         },
         Browser({
           swapAfterMount,
+          userContextId: viewport.userContextId,
           onBrowserMounted,
           onContentResize,
         })

@@ -311,9 +311,6 @@ class FullParseHandler
     ParseNode* newSuperBase(ParseNode* thisName, const TokenPos& pos) {
         return new_<UnaryNode>(ParseNodeKind::SuperBase, pos, thisName);
     }
-    ParseNode* newCatchBlock(ParseNode* catchName, ParseNode* catchGuard, ParseNode* catchBody) {
-        return new_<TernaryNode>(ParseNodeKind::Catch, catchName, catchGuard, catchBody);
-    }
     MOZ_MUST_USE bool addPrototypeMutation(ParseNode* literal, uint32_t begin, ParseNode* expr) {
         MOZ_ASSERT(literal->isKind(ParseNodeKind::Object));
         MOZ_ASSERT(literal->isArity(PN_LIST));
@@ -473,10 +470,6 @@ class FullParseHandler
             list->pn_xflags |= PNX_FUNCDEFS;
     }
 
-    MOZ_MUST_USE inline bool addCatchBlock(ParseNode* catchList, ParseNode* lexicalScope,
-                              ParseNode* catchName, ParseNode* catchGuard,
-                              ParseNode* catchBody);
-
     MOZ_MUST_USE bool prependInitialYield(ParseNode* stmtList, ParseNode* genName) {
         MOZ_ASSERT(stmtList->isKind(ParseNodeKind::StatementList));
         MOZ_ASSERT(stmtList->isArity(PN_LIST));
@@ -558,6 +551,10 @@ class FullParseHandler
 
     ParseNode* newExportBatchSpec(const TokenPos& pos) {
         return new_<NullaryNode>(ParseNodeKind::ExportBatchSpec, JSOP_NOP, pos);
+    }
+
+    ParseNode* newImportMeta(ParseNode* importHolder, ParseNode* metaHolder) {
+        return new_<BinaryNode>(ParseNodeKind::ImportMeta, JSOP_NOP, importHolder, metaHolder);
     }
 
     ParseNode* newExprStatement(ParseNode* expr, uint32_t end) {
@@ -942,19 +939,6 @@ class FullParseHandler
         return lazyOuterFunction_->closedOverBindings()[lazyClosedOverBindingIndex++];
     }
 };
-
-inline bool
-FullParseHandler::addCatchBlock(ParseNode* catchList, ParseNode* lexicalScope,
-                                ParseNode* catchName, ParseNode* catchGuard,
-                                ParseNode* catchBody)
-{
-    ParseNode* catchpn = newCatchBlock(catchName, catchGuard, catchBody);
-    if (!catchpn)
-        return false;
-    addList(/* list = */ catchList, /* child = */ lexicalScope);
-    lexicalScope->setScopeBody(catchpn);
-    return true;
-}
 
 inline bool
 FullParseHandler::setLastFunctionFormalParameterDefault(ParseNode* funcpn,

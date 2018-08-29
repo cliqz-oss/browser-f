@@ -17,6 +17,7 @@
 #include "gc/Tracer.h"
 #include "js/AllocPolicy.h"
 #include "js/GCHashTable.h"
+#include "js/HeapAPI.h"
 #include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
 #include "js/Utility.h"
@@ -24,7 +25,7 @@
 #include "vm/StringType.h"
 
 namespace js {
-class AutoLockForExclusiveAccess;
+class AutoAccessAtomsZone;
 } // namespace js
 
 namespace JS {
@@ -50,6 +51,8 @@ class Symbol : public js::gc::TenuredCell
     {
         // Silence warnings about unused_ being... unused.
         (void)unused_;
+        static_assert(uint32_t(SymbolCode::WellKnownAPILimit) == JS::shadow::Symbol::WellKnownAPILimit,
+                      "JS::shadow::Symbol::WellKnownAPILimit must match SymbolCode::WellKnownAPILimit");
     }
 
     Symbol(const Symbol&) = delete;
@@ -57,7 +60,7 @@ class Symbol : public js::gc::TenuredCell
 
     static Symbol*
     newInternal(JSContext* cx, SymbolCode code, js::HashNumber hash,
-                JSAtom* description, js::AutoLockForExclusiveAccess& lock);
+                JSAtom* description, const js::AutoAccessAtomsZone& access);
 
   public:
     static Symbol* new_(JSContext* cx, SymbolCode code, JSString* description);

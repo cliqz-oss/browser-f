@@ -13,7 +13,7 @@
 #define mozilla_DeclarationBlock_h
 
 #include "mozilla/Atomics.h"
-#include "mozilla/ServoUtils.h"
+#include "mozilla/ServoBindings.h"
 
 #include "nsCSSPropertyID.h"
 
@@ -21,51 +21,56 @@ class nsHTMLCSSStyleSheet;
 
 namespace mozilla {
 
-class ServoDeclarationBlock;
-
 namespace css {
 class Declaration;
 class Rule;
 } // namespace css
 
-class DeclarationBlock
+class DeclarationBlock final
 {
-protected:
-  DeclarationBlock()
-    : mImmutable(false)
+  DeclarationBlock(const DeclarationBlock& aCopy)
+    : mRaw(Servo_DeclarationBlock_Clone(aCopy.mRaw).Consume())
+    , mImmutable(false)
     , mIsDirty(false)
   {
     mContainer.mRaw = 0;
   }
 
-  DeclarationBlock(const DeclarationBlock& aCopy)
-    : DeclarationBlock() {}
-
 public:
-  MOZ_DECL_STYLO_METHODS(css::Declaration, ServoDeclarationBlock)
+  explicit DeclarationBlock(already_AddRefed<RawServoDeclarationBlock> aRaw)
+    : mRaw(aRaw)
+    , mImmutable(false)
+    , mIsDirty(false)
+  {
+    mContainer.mRaw = 0;
+  }
 
-  inline MozExternalRefCountType AddRef();
-  inline MozExternalRefCountType Release();
+  DeclarationBlock()
+    : DeclarationBlock(Servo_DeclarationBlock_CreateEmpty().Consume())
+  { }
 
-  inline already_AddRefed<DeclarationBlock> Clone() const;
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(DeclarationBlock)
+
+  already_AddRefed<DeclarationBlock> Clone() const
+  {
+    return do_AddRef(new DeclarationBlock(*this));
+  }
 
   /**
    * Return whether |this| may be modified.
    */
-  bool IsMutable() const {
-    return !mImmutable;
-  }
+  bool IsMutable() const { return !mImmutable; }
 
   /**
-   * Crash if |this| cannot be modified.
+   * Crash in debug builds if |this| cannot be modified.
    */
-  void AssertMutable() const {
+  void AssertMutable() const
+  {
     MOZ_ASSERT(IsMutable(), "someone forgot to call EnsureMutable");
   }
 
   /**
-   * Mark this declaration as unmodifiable.  It's 'const' so it can
-   * be called from ToString.
+   * Mark this declaration as unmodifiable.
    */
   void SetImmutable() { mImmutable = true; }
 
@@ -87,22 +92,45 @@ public:
   /**
    * Copy |this|, if necessary to ensure that it can be modified.
    */
-  inline already_AddRefed<DeclarationBlock> EnsureMutable();
+  already_AddRefed<DeclarationBlock> EnsureMutable()
+  {
+    if (!IsDirty()) {
+      // In stylo, the old DeclarationBlock is stored in element's rule node tree
+      // directly, to avoid new values replacing the DeclarationBlock in the tree
+      // directly, we need to copy the old one here if we haven't yet copied.
+      // As a result the new value does not replace rule node tree until traversal
+      // happens.
+      //
+      // FIXME(emilio): This is a hack for ::first-line and transitions starting
+      // due to CSSOM changes when other transitions are already running. Try
+      // to simplify this setup.
+      return Clone();
+    }
 
-  void SetOwningRule(css::Rule* aRule) {
+    if (!IsMutable()) {
+      return Clone();
+    }
+
+    return do_AddRef(this);
+  }
+
+  void SetOwningRule(css::Rule* aRule)
+  {
     MOZ_ASSERT(!mContainer.mOwningRule || !aRule,
                "should never overwrite one rule with another");
     mContainer.mOwningRule = aRule;
   }
 
-  css::Rule* GetOwningRule() const {
+  css::Rule* GetOwningRule() const
+  {
     if (mContainer.mRaw & 0x1) {
       return nullptr;
     }
     return mContainer.mOwningRule;
   }
 
-  void SetHTMLCSSStyleSheet(nsHTMLCSSStyleSheet* aHTMLCSSStyleSheet) {
+  void SetHTMLCSSStyleSheet(nsHTMLCSSStyleSheet* aHTMLCSSStyleSheet)
+  {
     MOZ_ASSERT(!mContainer.mHTMLCSSStyleSheet || !aHTMLCSSStyleSheet,
                "should never overwrite one sheet with another");
     mContainer.mHTMLCSSStyleSheet = aHTMLCSSStyleSheet;
@@ -111,7 +139,8 @@ public:
     }
   }
 
-  nsHTMLCSSStyleSheet* GetHTMLCSSStyleSheet() const {
+  nsHTMLCSSStyleSheet* GetHTMLCSSStyleSheet() const
+  {
     if (!(mContainer.mRaw & 0x1)) {
       return nullptr;
     }
@@ -120,22 +149,82 @@ public:
     return c.mHTMLCSSStyleSheet;
   }
 
-  inline void ToString(nsAString& aString) const;
+  static already_AddRefed<DeclarationBlock>
+  FromCssText(const nsAString& aCssText, URLExtraData* aExtraData,
+              nsCompatibility aMode, css::Loader* aLoader);
 
-  inline uint32_t Count() const;
-  inline bool GetNthProperty(uint32_t aIndex, nsAString& aReturn) const;
+  RawServoDeclarationBlock* Raw() const { return mRaw; }
+  RawServoDeclarationBlock* const* RefRaw() const
+  {
+    static_assert(sizeof(RefPtr<RawServoDeclarationBlock>) ==
+                  sizeof(RawServoDeclarationBlock*),
+                  "RefPtr should just be a pointer");
+    return reinterpret_cast<RawServoDeclarationBlock* const*>(&mRaw);
+  }
 
-  inline void GetPropertyValue(const nsAString& aProperty,
-                               nsAString& aValue) const;
-  inline void GetPropertyValueByID(nsCSSPropertyID aPropID,
-                                   nsAString& aValue) const;
-  inline bool GetPropertyIsImportant(const nsAString& aProperty) const;
+  const RawServoDeclarationBlockStrong* RefRawStrong() const
+  {
+    static_assert(sizeof(RefPtr<RawServoDeclarationBlock>) ==
+                  sizeof(RawServoDeclarationBlock*),
+                  "RefPtr should just be a pointer");
+    static_assert(sizeof(RefPtr<RawServoDeclarationBlock>) ==
+                  sizeof(RawServoDeclarationBlockStrong),
+                  "RawServoDeclarationBlockStrong should be the same as RefPtr");
+    return reinterpret_cast<const RawServoDeclarationBlockStrong*>(&mRaw);
+  }
+
+  void ToString(nsAString& aResult) const
+  {
+    Servo_DeclarationBlock_GetCssText(mRaw, &aResult);
+  }
+
+  uint32_t Count() const
+  {
+    return Servo_DeclarationBlock_Count(mRaw);
+  }
+
+  bool GetNthProperty(uint32_t aIndex, nsAString& aReturn) const
+  {
+    aReturn.Truncate();
+    return Servo_DeclarationBlock_GetNthProperty(mRaw, aIndex, &aReturn);
+  }
+
+  void GetPropertyValue(const nsAString& aProperty, nsAString& aValue) const
+  {
+    NS_ConvertUTF16toUTF8 property(aProperty);
+    Servo_DeclarationBlock_GetPropertyValue(mRaw, &property, &aValue);
+  }
+
+  void GetPropertyValueByID(nsCSSPropertyID aPropID, nsAString& aValue) const
+  {
+    Servo_DeclarationBlock_GetPropertyValueById(mRaw, aPropID, &aValue);
+  }
+
+  bool GetPropertyIsImportant(const nsAString& aProperty) const
+  {
+    NS_ConvertUTF16toUTF8 property(aProperty);
+    return Servo_DeclarationBlock_GetPropertyIsImportant(mRaw, &property);
+  }
+
   // Returns whether the property was removed.
-  inline bool RemoveProperty(const nsAString& aProperty);
+  bool RemoveProperty(const nsAString& aProperty,
+                      DeclarationBlockMutationClosure aClosure = { })
+  {
+    AssertMutable();
+    NS_ConvertUTF16toUTF8 property(aProperty);
+    return Servo_DeclarationBlock_RemoveProperty(mRaw, &property, aClosure);
+  }
+
   // Returns whether the property was removed.
-  inline bool RemovePropertyByID(nsCSSPropertyID aProperty);
+  bool RemovePropertyByID(nsCSSPropertyID aProperty,
+                          DeclarationBlockMutationClosure aClosure = { })
+  {
+    AssertMutable();
+    return Servo_DeclarationBlock_RemovePropertyById(mRaw, aProperty, aClosure);
+  }
 
 private:
+  ~DeclarationBlock() = default;
   union {
     // We only ever have one of these since we have an
     // nsHTMLCSSStyleSheet only for style attributes, and style
@@ -152,6 +241,8 @@ private:
     // Only non-null for style attributes.
     nsHTMLCSSStyleSheet* mHTMLCSSStyleSheet;
   } mContainer;
+
+  RefPtr<RawServoDeclarationBlock> mRaw;
 
   // set when declaration put in the rule tree;
   bool mImmutable;

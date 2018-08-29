@@ -28,12 +28,12 @@ BEGIN_TEST(testRedefineGlobalEval)
     };
 
     /* Create the global object. */
-    JS::CompartmentOptions options;
+    JS::RealmOptions options;
     JS::Rooted<JSObject*> g(cx, JS_NewGlobalObject(cx, &cls, nullptr, JS::FireOnNewGlobalHook, options));
     if (!g)
         return false;
 
-    JSAutoCompartment ac(cx, g);
+    JSAutoRealm ar(cx, g);
     JS::Rooted<JS::Value> v(cx);
     CHECK(JS_GetProperty(cx, g, "Object", &v));
 

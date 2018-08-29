@@ -12,7 +12,6 @@
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsILayoutHistoryState.h"
 #include "nsISHistory.h"
 #include "nsISHistoryInternal.h"
@@ -139,8 +138,8 @@ nsSHEntryShared::DropPresentationState()
 nsresult
 nsSHEntryShared::SetContentViewer(nsIContentViewer* aViewer)
 {
-  NS_PRECONDITION(!aViewer || !mContentViewer,
-                  "SHEntryShared already contains viewer");
+  MOZ_ASSERT(!aViewer || !mContentViewer,
+             "SHEntryShared already contains viewer");
 
   if (mContentViewer || !aViewer) {
     DropPresentationState();
@@ -248,37 +247,10 @@ nsSHEntryShared::GetID(uint64_t* aID)
 }
 
 void
-nsSHEntryShared::NodeWillBeDestroyed(const nsINode* aNode)
-{
-  NS_NOTREACHED("Document destroyed while we're holding a strong ref to it");
-}
-
-void
-nsSHEntryShared::CharacterDataWillChange(nsIContent* aContent,
-                                         const CharacterDataChangeInfo&)
-{
-}
-
-void
 nsSHEntryShared::CharacterDataChanged(nsIContent* aContent,
                                       const CharacterDataChangeInfo&)
 {
   RemoveFromBFCacheAsync();
-}
-
-void
-nsSHEntryShared::AttributeWillChange(dom::Element* aContent,
-                                     int32_t aNameSpaceID,
-                                     nsAtom* aAttribute,
-                                     int32_t aModType,
-                                     const nsAttrValue* aNewValue)
-{
-}
-
-void
-nsSHEntryShared::NativeAnonymousChildListChange(nsIContent* aContent,
-                                                bool aIsRemove)
-{
 }
 
 void
@@ -308,9 +280,4 @@ nsSHEntryShared::ContentRemoved(nsIContent* aChild,
                                 nsIContent* aPreviousSibling)
 {
   RemoveFromBFCacheAsync();
-}
-
-void
-nsSHEntryShared::ParentChainChanged(nsIContent* aContent)
-{
 }

@@ -28,10 +28,6 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
     "chrome,all,dialog=no,extrachrome,menubar,resizable,scrollbars,status," +
     "location,toolbar,personalbar," +
     `left=${screenX},top=${screenY}`;
-
-  if (Services.prefs.getBoolPref("browser.suppress_first_window_animation"))
-    browserWindowFeatures += ",suppressanimation";
-
   let win = Services.ww.openWindow(null, "about:blank", null,
                                    browserWindowFeatures, null);
 
@@ -76,9 +72,12 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
   TelemetryTimestamps.add("blankWindowShown");
 })();
 
-Cu.importGlobalProperties(["fetch"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
-XPCOMUtils.defineLazyServiceGetter(this, "WindowsUIUtils", "@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils");
+XPCOMUtils.defineLazyServiceGetters(this, {
+  WindowsUIUtils: ["@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils"],
+  aboutNewTabService: ["@mozilla.org/browser/aboutnewtab-service;1", "nsIAboutNewTabService"]
+});
 XPCOMUtils.defineLazyGetter(this, "WeaveService", () =>
   Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
 );
@@ -86,6 +85,7 @@ XPCOMUtils.defineLazyGetter(this, "WeaveService", () =>
 // lazy module getters
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AboutPrivateBrowsingHandler: "resource:///modules/aboutpages/AboutPrivateBrowsingHandler.jsm",
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
   AsyncPrefs: "resource://gre/modules/AsyncPrefs.jsm",
@@ -95,13 +95,12 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   BookmarkHTMLUtils: "resource://gre/modules/BookmarkHTMLUtils.jsm",
   BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.jsm",
   BrowserErrorReporter: "resource:///modules/BrowserErrorReporter.jsm",
-  BrowserUITelemetry: "resource:///modules/BrowserUITelemetry.jsm",
   BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   ContentClick: "resource:///modules/ContentClick.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
   CustomizableUI: "resource:///modules/CustomizableUI.jsm",
-  DateTimePickerHelper: "resource://gre/modules/DateTimePickerHelper.jsm",
+  DateTimePickerParent: "resource://gre/modules/DateTimePickerParent.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   Feeds: "resource:///modules/Feeds.jsm",
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
@@ -142,7 +141,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   WindowsRegistry: "resource://gre/modules/WindowsRegistry.jsm",
 });
 
-/* global AboutHome:false, ContentPrefServiceParent:false, ContentSearch:false,
+/* global ContentPrefServiceParent:false, ContentSearch:false,
           UpdateListener:false, webrtcUI:false */
 
 /**
@@ -153,7 +152,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 let initializedModules = {};
 
 [
-  ["AboutHome", "resource:///modules/AboutHome.jsm", "init"],
   ["ContentPrefServiceParent", "resource://gre/modules/ContentPrefServiceParent.jsm", "alwaysInit"],
   ["ContentSearch", "resource:///modules/ContentSearch.jsm", "init"],
   ["UpdateListener", "resource://gre/modules/UpdateListener.jsm", "init"],
@@ -211,8 +209,6 @@ const listeners = {
   },
 
   mm: {
-    "AboutHome:MaybeShowMigrateMessage": ["AboutHome"],
-    "AboutHome:RequestUpdate": ["AboutHome"],
     "Content:Click": ["ContentClick"],
     "ContentSearch": ["ContentSearch"],
     "FormValidation:ShowPopup": ["FormValidationHandler"],
@@ -379,11 +375,48 @@ BrowserGlue.prototype = {
   },
 
   _sendMainPingCentrePing() {
-    const ACTIVITY_STREAM_ID = "activity-stream";
+    let newTabSetting;
+    let homePageSetting;
+
+    // Check whether or not about:home and about:newtab have been overridden at this point.
+    // Different settings are encoded as follows:
+    //   * Value 0: default
+    //   * Value 1: about:blank
+    //   * Value 2: web extension
+    //   * Value 3: other custom URL(s)
+    // Settings for about:newtab and about:home are combined in a bitwise manner.
+
+    // Note that a user could use about:blank and web extension at the same time
+    // to overwrite the about:newtab, but the web extension takes priority, so the
+    // ordering matters in the following check.
+    if (Services.prefs.getBoolPref("browser.newtabpage.enabled") &&
+                                   !aboutNewTabService.overridden) {
+      newTabSetting = 0;
+    } else if (aboutNewTabService.newTabURL.startsWith("moz-extension://")) {
+      newTabSetting = 2;
+    } else if (!Services.prefs.getBoolPref("browser.newtabpage.enabled")) {
+      newTabSetting = 1;
+    } else {
+      newTabSetting = 3;
+    }
+
+    const homePageURL = Services.prefs.getComplexValue("browser.startup.homepage",
+                                                       Ci.nsIPrefLocalizedString).data;
+    if (homePageURL === "about:home") {
+      homePageSetting = 0;
+    } else if (homePageURL === "about:blank") {
+      homePageSetting = 1;
+    } else if (homePageURL.startsWith("moz-extension://")) {
+      homePageSetting = 2;
+    } else {
+      homePageSetting = 3;
+    }
+
     const payload = {
       event: "AS_ENABLED",
-      value: true
+      value: newTabSetting | (homePageSetting << 2)
     };
+    const ACTIVITY_STREAM_ID = "activity-stream";
     const options = {filter: ACTIVITY_STREAM_ID};
     this.pingCentre.sendPing(payload, options);
   },
@@ -393,9 +426,6 @@ BrowserGlue.prototype = {
     switch (topic) {
       case "notifications-open-settings":
         this._openPreferences("privacy", { origin: "notifOpenSettings" });
-        break;
-      case "prefservice:after-app-defaults":
-        this._onAppDefaults();
         break;
       case "final-ui-startup":
         this._beforeUIStartup();
@@ -482,7 +512,6 @@ BrowserGlue.prototype = {
         } else if (data == "force-ui-migration") {
           this._migrateUI();
         } else if (data == "force-distribution-customization") {
-          this._distributionCustomizer.applyPrefDefaults();
           this._distributionCustomizer.applyCustomizations();
           // To apply distribution bookmarks use "places-init-complete".
         } else if (data == "force-places-init") {
@@ -594,7 +623,6 @@ BrowserGlue.prototype = {
   _init: function BG__init() {
     let os = Services.obs;
     os.addObserver(this, "notifications-open-settings");
-    os.addObserver(this, "prefservice:after-app-defaults");
     os.addObserver(this, "final-ui-startup");
     os.addObserver(this, "browser-delayed-startup-finished");
     os.addObserver(this, "sessionstore-windows-restored");
@@ -639,7 +667,6 @@ BrowserGlue.prototype = {
   _dispose: function BG__dispose() {
     let os = Services.obs;
     os.removeObserver(this, "notifications-open-settings");
-    os.removeObserver(this, "prefservice:after-app-defaults");
     os.removeObserver(this, "final-ui-startup");
     os.removeObserver(this, "sessionstore-windows-restored");
     os.removeObserver(this, "browser:purge-session-history");
@@ -685,12 +712,6 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "shield-init-complete");
   },
 
-  _onAppDefaults: function BG__onAppDefaults() {
-    // apply distribution customizations (prefs)
-    // other customizations are applied in _beforeUIStartup()
-    this._distributionCustomizer.applyPrefDefaults();
-  },
-
   // runs on startup, before the first command line handler is invoked
   // (i.e. before the first window is opened)
   _beforeUIStartup: function BG__beforeUIStartup() {
@@ -701,7 +722,6 @@ BrowserGlue.prototype = {
     }
 
     // apply distribution customizations
-    // prefs are applied in _onAppDefaults()
     this._distributionCustomizer.applyCustomizations();
 
     // handle any UI migration
@@ -1020,7 +1040,7 @@ BrowserGlue.prototype = {
     this._checkForOldBuildUpdates();
 
     AutoCompletePopup.init();
-    DateTimePickerHelper.init();
+    DateTimePickerParent.init();
     // Check if Sync is configured
     if (Services.prefs.prefHasUserValue("services.sync.username")) {
       WeaveService.init();
@@ -1029,6 +1049,8 @@ BrowserGlue.prototype = {
     PageThumbs.init();
 
     NewTabUtils.init();
+
+    AboutPrivateBrowsingHandler.init();
 
     PageActions.init();
 
@@ -1080,11 +1102,13 @@ BrowserGlue.prototype = {
 
     PageThumbs.uninit();
     NewTabUtils.uninit();
+    AboutPrivateBrowsingHandler.uninit();
     AutoCompletePopup.uninit();
-    DateTimePickerHelper.uninit();
+    DateTimePickerParent.uninit();
 
-    // Browser errors are only collected on Nightly
-    if (AppConstants.NIGHTLY_BUILD && AppConstants.MOZ_DATA_REPORTING) {
+    // Browser errors are only collected on Nightly, but telemetry for
+    // them is collected on all channels.
+    if (AppConstants.MOZ_DATA_REPORTING) {
       this.browserErrorReporter.uninit();
     }
 
@@ -1100,13 +1124,13 @@ BrowserGlue.prototype = {
     }
     this._windowsWereRestored = true;
 
-    // Browser errors are only collected on Nightly
-    if (AppConstants.NIGHTLY_BUILD && AppConstants.MOZ_DATA_REPORTING) {
+    // Browser errors are only collected on Nightly, but telemetry for
+    // them is collected on all channels.
+    if (AppConstants.MOZ_DATA_REPORTING) {
       this.browserErrorReporter.init();
     }
 
     BrowserUsageTelemetry.init();
-    BrowserUITelemetry.init();
 
     // Show update notification, if needed.
     if (Services.prefs.prefHasUserValue("app.update.postupdate"))
@@ -1349,7 +1373,7 @@ BrowserGlue.prototype = {
     // "the last window is closing but we're not quitting (a non-browser window is open)"
     // and also "we're quitting by closing the last window".
 
-    if (aQuitType == "restart")
+    if (aQuitType == "restart" || aQuitType == "os-restart")
       return;
 
     var windowcount = 0;
@@ -1853,7 +1877,7 @@ BrowserGlue.prototype = {
       // children, or if it has a persisted currentset value.
       let toolbarIsCustomized = xulStore.hasValue(BROWSER_DOCURL, "PersonalToolbar", "currentset");
       let getToolbarFolderCount = () => {
-        let toolbarFolder = PlacesUtils.getFolderContents(PlacesUtils.toolbarFolderId).root;
+        let toolbarFolder = PlacesUtils.getFolderContents(PlacesUtils.bookmarks.toolbarGuid).root;
         let toolbarChildCount = toolbarFolder.childCount;
         toolbarFolder.containerOpen = false;
         return toolbarChildCount;
@@ -1869,7 +1893,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 68;
+    const UI_VERSION = 69;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
 
     let currentUIVersion;
@@ -2229,6 +2253,17 @@ BrowserGlue.prototype = {
       // Remove blocklists legacy storage, now relying on IndexedDB.
       OS.File.remove(OS.Path.join(OS.Constants.Path.profileDir,
                                   "kinto.sqlite"), {ignoreAbsent: true});
+    }
+
+    if (currentUIVersion < 69) {
+      // Clear old social prefs from profile (bug 1460675)
+      let socialPrefs = Services.prefs.getBranch("social.");
+      if (socialPrefs) {
+        let socialPrefsArray = socialPrefs.getChildList("");
+        for (let item of socialPrefsArray) {
+          Services.prefs.clearUserPref("social." + item);
+        }
+      }
     }
 
     // Update the migration version.
@@ -2807,6 +2842,9 @@ const ContentPermissionIntegration = {
       case "midi": {
         return new PermissionUI.MIDIPermissionPrompt(request);
       }
+      case "autoplay-media": {
+        return new PermissionUI.AutoplayPermissionPrompt(request);
+      }
     }
     return undefined;
   },
@@ -2835,6 +2873,7 @@ ContentPermissionPrompt.prototype = {
    *        The request that we're to show a prompt for.
    */
   prompt(request) {
+    let type;
     try {
       // Only allow exactly one permission request here.
       let types = request.types.QueryInterface(Ci.nsIArray);
@@ -2844,7 +2883,7 @@ ContentPermissionPrompt.prototype = {
           Cr.NS_ERROR_UNEXPECTED);
       }
 
-      let type = types.queryElementAt(0, Ci.nsIContentPermissionType).type;
+      type = types.queryElementAt(0, Ci.nsIContentPermissionType).type;
       let combinedIntegration =
         Integration.contentPermission.getCombined(ContentPermissionIntegration);
 
@@ -2858,8 +2897,15 @@ ContentPermissionPrompt.prototype = {
 
       permissionPrompt.prompt();
 
-      let schemeHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_ORIGIN_SCHEME");
-      let scheme = 0;
+    } catch (ex) {
+      Cu.reportError(ex);
+      request.cancel();
+      throw ex;
+    }
+
+    let schemeHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_ORIGIN_SCHEME");
+    let scheme = 0;
+    try {
       // URI is null for system principals.
       if (request.principal.URI) {
         switch (request.principal.URI.scheme) {
@@ -2871,23 +2917,26 @@ ContentPermissionPrompt.prototype = {
             break;
         }
       }
-      schemeHistogram.add(type, scheme);
-
-      // request.element should be the browser element in e10s.
-      if (request.element && request.element.contentPrincipal) {
-        let thirdPartyHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_THIRD_PARTY_ORIGIN");
-        let isThirdParty = request.principal.origin != request.element.contentPrincipal.origin;
-        thirdPartyHistogram.add(type, isThirdParty);
-      }
-
-      let userInputHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_HANDLING_USER_INPUT");
-      userInputHistogram.add(type, request.isHandlingUserInput);
-
     } catch (ex) {
-      Cu.reportError(ex);
-      request.cancel();
-      throw ex;
+      // If the request principal is not available at this point,
+      // the request has likely been cancelled before being shown to the
+      // user. We shouldn't record this request.
+      if (ex.result != Cr.NS_ERROR_FAILURE) {
+        Cu.reportError(ex);
+      }
+      return;
     }
+    schemeHistogram.add(type, scheme);
+
+    // request.element should be the browser element in e10s.
+    if (request.element && request.element.contentPrincipal) {
+      let thirdPartyHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_THIRD_PARTY_ORIGIN");
+      let isThirdParty = request.principal.origin != request.element.contentPrincipal.origin;
+      thirdPartyHistogram.add(type, isThirdParty);
+    }
+
+    let userInputHistogram = Services.telemetry.getKeyedHistogramById("PERMISSION_REQUEST_HANDLING_USER_INPUT");
+    userInputHistogram.add(type, request.isHandlingUserInput);
   },
 };
 

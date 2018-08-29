@@ -313,9 +313,7 @@ protected:
   {
     Separator();
     if (aMaybePropertyName) {
-      mWriter->Write("\"");
-      mWriter->Write(aMaybePropertyName);
-      mWriter->Write("\": ");
+      PropertyNameAndColon(aMaybePropertyName);
     }
     mWriter->Write(aStartChar);
     mNeedComma[mDepth] = true;
@@ -340,7 +338,7 @@ protected:
 
 public:
   explicit JSONWriter(UniquePtr<JSONWriteFunc> aWriter)
-    : mWriter(Move(aWriter))
+    : mWriter(std::move(aWriter))
     , mNeedComma()
     , mNeedNewlines()
     , mDepth(0)

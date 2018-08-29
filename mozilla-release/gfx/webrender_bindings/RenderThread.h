@@ -20,6 +20,8 @@
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/layers/SynchronousTask.h"
 
+#include <list>
+
 namespace mozilla {
 namespace wr {
 
@@ -42,7 +44,7 @@ protected:
 
 class WebRenderProgramCache {
 public:
-  WebRenderProgramCache();
+  explicit WebRenderProgramCache(wr::WrThreadPool* aThreadPool);
 
   ~WebRenderProgramCache();
 
@@ -165,11 +167,21 @@ public:
   /// Can only be called from the render thread.
   WebRenderProgramCache* ProgramCache();
 
+  /// Can only be called from the render thread.
+  void HandleDeviceReset(const char* aWhere, bool aNotify);
+  /// Can only be called from the render thread.
+  bool IsHandlingDeviceReset();
+  /// Can be called from any thread.
+  void SimulateDeviceReset();
+
+  size_t RendererCount();
+
 private:
   explicit RenderThread(base::Thread* aThread);
 
-  void DeferredRenderTextureHostDestroy(RefPtr<RenderTextureHost> aTexture);
+  void DeferredRenderTextureHostDestroy();
   void ShutDownTask(layers::SynchronousTask* aTask);
+  void ProgramCacheTask();
 
   ~RenderThread();
 
@@ -191,7 +203,13 @@ private:
 
   Mutex mRenderTextureMapLock;
   nsRefPtrHashtable<nsUint64HashKey, RenderTextureHost> mRenderTextures;
+  // Used to remove all RenderTextureHost that are going to be removed by
+  // a deferred callback and remove them right away without waiting for the callback.
+  // On device reset we have to remove all GL related resources right away.
+  std::list<RefPtr<RenderTextureHost>> mRenderTexturesDeferred;
   bool mHasShutdown;
+
+  bool mHandlingDeviceReset;
 };
 
 } // namespace wr

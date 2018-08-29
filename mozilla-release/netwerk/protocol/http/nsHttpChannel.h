@@ -50,7 +50,7 @@ public:
   virtual MOZ_MUST_USE nsresult
   ReportSecurityMessage(const nsAString& aMessageTag,
                         const nsAString& aMessageCategory) = 0;
-  virtual nsresult LogBlockedCORSRequest(const nsAString& aMessage) = 0;
+  virtual nsresult LogBlockedCORSRequest(const nsAString& aMessage, const nsACString& aCategory) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -73,7 +73,6 @@ class nsHttpChannel final : public HttpBaseChannel
                           , public nsICacheEntryOpenCallback
                           , public nsITransportEventSink
                           , public nsIProtocolProxyCallback
-                          , public nsIInputAvailableCallback
                           , public nsIHttpAuthenticableChannel
                           , public nsIApplicationCacheChannel
                           , public nsIAsyncVerifyRedirectCallback
@@ -97,7 +96,6 @@ public:
     NS_DECL_NSICACHEENTRYOPENCALLBACK
     NS_DECL_NSITRANSPORTEVENTSINK
     NS_DECL_NSIPROTOCOLPROXYCALLBACK
-    NS_DECL_NSIINPUTAVAILABLECALLBACK
     NS_DECL_NSIPROXIEDCHANNEL
     NS_DECL_NSIAPPLICATIONCACHECONTAINER
     NS_DECL_NSIAPPLICATIONCACHECHANNEL
@@ -192,7 +190,7 @@ public:
     MOZ_MUST_USE nsresult
     AddSecurityMessage(const nsAString& aMessageTag,
                        const nsAString& aMessageCategory) override;
-    NS_IMETHOD LogBlockedCORSRequest(const nsAString& aMessage) override;
+    NS_IMETHOD LogBlockedCORSRequest(const nsAString& aMessage, const nsACString& aCategory) override;
 
     void SetWarningReporter(HttpChannelSecurityWarningReporter *aReporter);
     HttpChannelSecurityWarningReporter* GetWarningReporter();
@@ -259,7 +257,6 @@ public: /* internal necko use only */
       uint32_t mKeep : 2;
     };
 
-    NS_IMETHOD GetResponseSynthesized(bool* aSynthesized) override;
     bool AwaitingCacheCallbacks();
     void SetCouldBeSynthesized();
 
@@ -398,8 +395,6 @@ private:
     MOZ_MUST_USE nsresult StartRedirectChannelToHttps();
     MOZ_MUST_USE nsresult ContinueAsyncRedirectChannelToURI(nsresult rv);
     MOZ_MUST_USE nsresult OpenRedirectChannel(nsresult rv);
-
-    void DetermineContentLength();
 
     /**
      * A function that takes care of reading STS and PKP headers and enforcing
@@ -715,6 +710,8 @@ protected:
     // Override ReleaseListeners() because mChannelClassifier only exists
     // in nsHttpChannel and it will be released in ReleaseListeners().
     virtual void ReleaseListeners() override;
+
+    virtual void DoAsyncAbort(nsresult aStatus) override;
 
 private: // cache telemetry
     bool mDidReval;

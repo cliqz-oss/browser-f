@@ -4,4 +4,10 @@
 
 <!ENTITY restartRequired.title "Neustart erforderlich">
 
+<!ENTITY restartRequired.header "Entschuldigung für die Störung">
+<!ENTITY restartRequired.description "
+<p>Ein Update wurde im Hintergrund installiert. Klicken Sie auf &quot;&brandShortName; neu starten&quot;, um die Installation abzuschließen.</p>
+<p>Seiten, Fenster und Tabs werden danach automatisch wiederhergestellt.</p>
+">
 
+<!ENTITY restartButton.label "&brandShortName; neu starten">

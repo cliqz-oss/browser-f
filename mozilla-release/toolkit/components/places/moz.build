@@ -15,18 +15,15 @@ XPIDL_MODULE = 'places'
 
 if CONFIG['MOZ_PLACES']:
     XPIDL_SOURCES += [
-        'mozIAsyncFavicons.idl',
         'mozIAsyncHistory.idl',
         'mozIAsyncLivemarks.idl',
         'mozIColorAnalyzer.idl',
         'mozIPlacesAutoComplete.idl',
         'mozIPlacesPendingOperation.idl',
         'nsIAnnotationService.idl',
-        'nsIBrowserHistory.idl',
         'nsIFaviconService.idl',
         'nsINavBookmarksService.idl',
         'nsITaggingService.idl',
-        'nsPIPlacesDatabase.idl',
     ]
 
     EXPORTS.mozilla.places = [

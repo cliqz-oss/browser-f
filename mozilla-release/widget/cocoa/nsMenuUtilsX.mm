@@ -15,7 +15,6 @@
 #include "nsGkAtoms.h"
 #include "nsGlobalWindowInner.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsPIDOMWindow.h"
 #include "nsQueryObject.h"
 #include "mozilla/dom/XULCommandEvent.h"
@@ -24,7 +23,7 @@ using namespace mozilla;
 
 void nsMenuUtilsX::DispatchCommandTo(nsIContent* aTargetContent)
 {
-  NS_PRECONDITION(aTargetContent, "null ptr");
+  MOZ_ASSERT(aTargetContent, "null ptr");
 
   nsIDocument* doc = aTargetContent->OwnerDoc();
   if (doc) {

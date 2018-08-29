@@ -27,19 +27,33 @@
 #include "js/TypeDecls.h"
 #include "js/Utility.h"
 
+// All jsids with the low bit set are integer ids. This means the other type
+// tags must all be even.
+#define JSID_TYPE_INT_BIT                0x1
+
+// Use 0 for JSID_TYPE_STRING to avoid a bitwise op for atom <-> id conversions.
+#define JSID_TYPE_STRING                 0x0
+#define JSID_TYPE_VOID                   0x2
+#define JSID_TYPE_SYMBOL                 0x4
+#define JSID_TYPE_EMPTY                  0x6
+#define JSID_TYPE_MASK                   0x7
+
 struct jsid
 {
     size_t asBits;
+
+    constexpr jsid() : asBits(JSID_TYPE_VOID) {}
+
+    static constexpr MOZ_ALWAYS_INLINE jsid fromRawBits(size_t bits) {
+        jsid id;
+        id.asBits = bits;
+        return id;
+    }
+
     bool operator==(const jsid& rhs) const { return asBits == rhs.asBits; }
     bool operator!=(const jsid& rhs) const { return asBits != rhs.asBits; }
 } JS_HAZ_GC_POINTER;
 #define JSID_BITS(id) (id.asBits)
-
-#define JSID_TYPE_STRING                 0x0
-#define JSID_TYPE_INT                    0x1
-#define JSID_TYPE_VOID                   0x2
-#define JSID_TYPE_SYMBOL                 0x4
-#define JSID_TYPE_MASK                   0x7
 
 // Avoid using canonical 'id' for jsid parameters since this is a magic word in
 // Objective-C++ which, apparently, wants to be able to #include jsapi.h.
@@ -48,14 +62,16 @@ struct jsid
 static MOZ_ALWAYS_INLINE bool
 JSID_IS_STRING(jsid id)
 {
-    return (JSID_BITS(id) & JSID_TYPE_MASK) == 0;
+    return (JSID_BITS(id) & JSID_TYPE_MASK) == JSID_TYPE_STRING;
 }
 
 static MOZ_ALWAYS_INLINE JSString*
 JSID_TO_STRING(jsid id)
 {
+    // Use XOR instead of `& ~JSID_TYPE_MASK` because small immediates can be
+    // encoded more efficiently on some platorms.
     MOZ_ASSERT(JSID_IS_STRING(id));
-    return (JSString*)JSID_BITS(id);
+    return (JSString*)(JSID_BITS(id) ^ JSID_TYPE_STRING);
 }
 
 /**
@@ -71,7 +87,7 @@ INTERNED_STRING_TO_JSID(JSContext* cx, JSString* str);
 static MOZ_ALWAYS_INLINE bool
 JSID_IS_INT(jsid id)
 {
-    return !!(JSID_BITS(id) & JSID_TYPE_INT);
+    return !!(JSID_BITS(id) & JSID_TYPE_INT_BIT);
 }
 
 static MOZ_ALWAYS_INLINE int32_t
@@ -96,7 +112,7 @@ INT_TO_JSID(int32_t i)
 {
     jsid id;
     MOZ_ASSERT(INT_FITS_IN_JSID(i));
-    uint32_t bits = (static_cast<uint32_t>(i) << 1) | JSID_TYPE_INT;
+    uint32_t bits = (static_cast<uint32_t>(i) << 1) | JSID_TYPE_INT_BIT;
     JSID_BITS(id) = static_cast<size_t>(bits);
     return id;
 }
@@ -104,15 +120,14 @@ INT_TO_JSID(int32_t i)
 static MOZ_ALWAYS_INLINE bool
 JSID_IS_SYMBOL(jsid id)
 {
-    return (JSID_BITS(id) & JSID_TYPE_MASK) == JSID_TYPE_SYMBOL &&
-           JSID_BITS(id) != JSID_TYPE_SYMBOL;
+    return (JSID_BITS(id) & JSID_TYPE_MASK) == JSID_TYPE_SYMBOL;
 }
 
 static MOZ_ALWAYS_INLINE JS::Symbol*
 JSID_TO_SYMBOL(jsid id)
 {
     MOZ_ASSERT(JSID_IS_SYMBOL(id));
-    return (JS::Symbol*)(JSID_BITS(id) & ~(size_t)JSID_TYPE_MASK);
+    return (JS::Symbol*)(JSID_BITS(id) ^ JSID_TYPE_SYMBOL);
 }
 
 static MOZ_ALWAYS_INLINE jsid
@@ -145,19 +160,21 @@ JSID_TO_GCTHING(jsid id)
 static MOZ_ALWAYS_INLINE bool
 JSID_IS_VOID(const jsid id)
 {
-    MOZ_ASSERT_IF(((size_t)JSID_BITS(id) & JSID_TYPE_MASK) == JSID_TYPE_VOID,
-                 JSID_BITS(id) == JSID_TYPE_VOID);
-    return (size_t)JSID_BITS(id) == JSID_TYPE_VOID;
+    MOZ_ASSERT_IF((JSID_BITS(id) & JSID_TYPE_MASK) == JSID_TYPE_VOID,
+                  JSID_BITS(id) == JSID_TYPE_VOID);
+    return JSID_BITS(id) == JSID_TYPE_VOID;
 }
 
 static MOZ_ALWAYS_INLINE bool
 JSID_IS_EMPTY(const jsid id)
 {
-    return (size_t)JSID_BITS(id) == JSID_TYPE_SYMBOL;
+    MOZ_ASSERT_IF((JSID_BITS(id) & JSID_TYPE_MASK) == JSID_TYPE_EMPTY,
+                  JSID_BITS(id) == JSID_TYPE_EMPTY);
+    return JSID_BITS(id) == JSID_TYPE_EMPTY;
 }
 
-constexpr const jsid JSID_VOID = { size_t(JSID_TYPE_VOID) };
-extern JS_PUBLIC_DATA(const jsid) JSID_EMPTY;
+constexpr const jsid JSID_VOID;
+constexpr const jsid JSID_EMPTY = jsid::fromRawBits(JSID_TYPE_EMPTY);
 
 extern JS_PUBLIC_DATA(const JS::HandleId) JSID_VOIDHANDLE;
 extern JS_PUBLIC_DATA(const JS::HandleId) JSID_EMPTYHANDLE;
@@ -167,7 +184,6 @@ namespace JS {
 template <>
 struct GCPolicy<jsid>
 {
-    static jsid initial() { return JSID_VOID; }
     static void trace(JSTracer* trc, jsid* idp, const char* name) {
         js::UnsafeTraceManuallyBarrieredEdge(trc, idp, name);
     }
@@ -213,12 +229,12 @@ struct BarrierMethods<jsid>
 template <typename F, typename... Args>
 auto
 DispatchTyped(F f, const jsid& id, Args&&... args)
-  -> decltype(f(static_cast<JSString*>(nullptr), mozilla::Forward<Args>(args)...))
+  -> decltype(f(static_cast<JSString*>(nullptr), std::forward<Args>(args)...))
 {
     if (JSID_IS_STRING(id))
-        return f(JSID_TO_STRING(id), mozilla::Forward<Args>(args)...);
+        return f(JSID_TO_STRING(id), std::forward<Args>(args)...);
     if (JSID_IS_SYMBOL(id))
-        return f(JSID_TO_SYMBOL(id), mozilla::Forward<Args>(args)...);
+        return f(JSID_TO_SYMBOL(id), std::forward<Args>(args)...);
     MOZ_ASSERT(!JSID_IS_GCTHING(id));
     return F::defaultValue(id);
 }

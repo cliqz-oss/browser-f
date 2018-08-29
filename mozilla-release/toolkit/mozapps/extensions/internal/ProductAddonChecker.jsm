@@ -6,7 +6,7 @@
 
 /* exported ProductAddonChecker */
 
-const LOCAL_EME_SOURCES = [{
+const LOCAL_GMP_SOURCES = [{
   "id": "gmp-gmpopenh264",
   "src": "chrome://global/content/gmp-sources/openh264.json"
 }, {
@@ -16,8 +16,6 @@ const LOCAL_EME_SOURCES = [{
 
 var EXPORTED_SYMBOLS = [ "ProductAddonChecker" ];
 
-Cu.importGlobalProperties(["XMLHttpRequest"]);
-
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Log.jsm");
@@ -25,6 +23,8 @@ ChromeUtils.import("resource://gre/modules/CertUtils.jsm");
 ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
+
+XPCOMUtils.defineLazyGlobalGetters(this, ["XMLHttpRequest"]);
 
 /* globals GMPPrefs */
 ChromeUtils.defineModuleGetter(this, "GMPPrefs",
@@ -233,7 +233,7 @@ function downloadLocalConfig() {
     return Promise.resolve({usedFallback: true, gmpAddons: []});
   }
 
-  return Promise.all(LOCAL_EME_SOURCES.map(conf => {
+  return Promise.all(LOCAL_GMP_SOURCES.map(conf => {
     return downloadJSON(conf.src).then(addons => {
 
       let platforms = addons.vendors[conf.id].platforms;
@@ -381,7 +381,7 @@ var computeHash = async function(hashFunction, path) {
  * Verifies that a downloaded file matches what was expected.
  *
  * @param  properties
- *         The properties to check, `size` and `hashFunction` with `hashValue`
+ *         The properties to check, `hashFunction` with `hashValue`
  *         are supported. Any properties missing won't be checked.
  * @param  path
  *         The path of the file to check.

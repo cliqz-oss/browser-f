@@ -123,11 +123,11 @@ function pemToBase64(pem) {
             .replace(/[\r\n]/g, "");
 }
 
-function build_cert_chain(certNames) {
+function build_cert_chain(certNames, testDirectory = "bad_certs") {
   let certList = Cc["@mozilla.org/security/x509certlist;1"]
                    .createInstance(Ci.nsIX509CertList);
   certNames.forEach(function(certName) {
-    let cert = constructCertFromFile("bad_certs/" + certName + ".pem");
+    let cert = constructCertFromFile(`${testDirectory}/${certName}.pem`);
     certList.addCert(cert);
   });
   return certList;
@@ -712,13 +712,7 @@ FakeSSLStatus.prototype = {
   getInterface(aIID) {
     return this.QueryInterface(aIID);
   },
-  QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsISSLStatus) ||
-        aIID.equals(Ci.nsISupports)) {
-      return this;
-    }
-    throw new Error(Cr.NS_ERROR_NO_INTERFACE);
-  },
+  QueryInterface: ChromeUtils.generateQI(["nsISSLStatus"]),
 };
 
 // Utility functions for adding tests relating to certificate error overrides

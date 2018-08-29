@@ -23,6 +23,7 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/MessagePortTimelineMarker.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/TimelineConsumers.h"
 #include "mozilla/TimelineMarker.h"
 #include "mozilla/Unused.h"
@@ -177,9 +178,9 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(MessagePort,
     NS_IMPL_CYCLE_COLLECTION_UNLINK(mPostMessageRunnable->mPort);
   }
 
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mMessages);
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mMessagesForTheOtherPort);
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mUnshippedEntangledPort);
+
+  tmp->CloseForced();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(MessagePort,
@@ -192,7 +193,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(MessagePort,
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MessagePort)
-  NS_INTERFACE_MAP_ENTRY(nsIObserver)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(MessagePort, DOMEventTargetHelper)
@@ -200,7 +200,6 @@ NS_IMPL_RELEASE_INHERITED(MessagePort, DOMEventTargetHelper)
 
 MessagePort::MessagePort(nsIGlobalObject* aGlobal)
   : DOMEventTargetHelper(aGlobal)
-  , mInnerID(0)
   , mMessageQueueEnabled(false)
   , mIsKeptAlive(false)
   , mHasBeenTransferredOrClosed(false)
@@ -247,8 +246,8 @@ MessagePort::Create(nsIGlobalObject* aGlobal,
 void
 MessagePort::UnshippedEntangle(MessagePort* aEntangledPort)
 {
-  MOZ_ASSERT(aEntangledPort);
-  MOZ_ASSERT(!mUnshippedEntangledPort);
+  MOZ_DIAGNOSTIC_ASSERT(aEntangledPort);
+  MOZ_DIAGNOSTIC_ASSERT(!mUnshippedEntangledPort);
 
   mUnshippedEntangledPort = aEntangledPort;
 }
@@ -256,7 +255,7 @@ MessagePort::UnshippedEntangle(MessagePort* aEntangledPort)
 void
 MessagePort::Initialize(const nsID& aUUID,
                         const nsID& aDestinationUUID,
-                        uint32_t aSequenceID, bool mNeutered,
+                        uint32_t aSequenceID, bool aNeutered,
                         State aState, ErrorResult& aRv)
 {
   MOZ_ASSERT(mIdentifier);
@@ -266,7 +265,7 @@ MessagePort::Initialize(const nsID& aUUID,
 
   mState = aState;
 
-  if (mNeutered) {
+  if (aNeutered) {
     // If this port is neutered we don't want to keep it alive artificially nor
     // we want to add listeners or WorkerRefs.
     mState = eStateDisentangled;
@@ -298,20 +297,14 @@ MessagePort::Initialize(const nsID& aUUID,
                               [self]() { self->CloseForced(); });
     if (NS_WARN_IF(!strongWorkerRef)) {
       // The worker is shutting down.
+      mState = eStateDisentangled;
+      UpdateMustKeepAlive();
       aRv.Throw(NS_ERROR_FAILURE);
       return;
     }
 
     MOZ_ASSERT(!mWorkerRef);
-    mWorkerRef = Move(strongWorkerRef);
-  } else if (GetOwner()) {
-    MOZ_ASSERT(NS_IsMainThread());
-    mInnerID = GetOwner()->WindowID();
-
-    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-    if (obs) {
-      obs->AddObserver(this, "inner-window-destroyed", false);
-    }
+    mWorkerRef = std::move(strongWorkerRef);
   }
 }
 
@@ -387,7 +380,7 @@ MessagePort::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
 
   // If we are unshipped we are connected to the other port on the same thread.
   if (mState == eStateUnshippedEntangled) {
-    MOZ_ASSERT(mUnshippedEntangledPort);
+    MOZ_DIAGNOSTIC_ASSERT(mUnshippedEntangledPort);
     mUnshippedEntangledPort->mMessages.AppendElement(data);
     mUnshippedEntangledPort->Dispatch();
     return;
@@ -521,11 +514,10 @@ MessagePort::CloseInternal(bool aSoftly)
   }
 
   if (mState == eStateUnshippedEntangled) {
-    MOZ_ASSERT(mUnshippedEntangledPort);
+    MOZ_DIAGNOSTIC_ASSERT(mUnshippedEntangledPort);
 
     // This avoids loops.
-    RefPtr<MessagePort> port = Move(mUnshippedEntangledPort);
-    MOZ_ASSERT(mUnshippedEntangledPort == nullptr);
+    RefPtr<MessagePort> port = std::move(mUnshippedEntangledPort);
 
     mState = eStateDisentangledForClose;
     port->CloseInternal(aSoftly);
@@ -756,13 +748,15 @@ MessagePort::CloneAndDisentangle(MessagePortIdentifier& aIdentifier)
     MOZ_ASSERT(mUnshippedEntangledPort);
     MOZ_ASSERT(mMessagesForTheOtherPort.IsEmpty());
 
+    RefPtr<MessagePort> port = std::move(mUnshippedEntangledPort);
+
     // Disconnect the entangled port and connect it to PBackground.
-    if (!mUnshippedEntangledPort->ConnectToPBackground()) {
+    if (!port->ConnectToPBackground()) {
       // We are probably shutting down. We cannot proceed.
+      mState = eStateDisentangled;
+      UpdateMustKeepAlive();
       return;
     }
-
-    mUnshippedEntangledPort = nullptr;
 
     // In this case, we don't need to be connected to the PBackground service.
     if (mMessages.IsEmpty()) {
@@ -813,7 +807,11 @@ MessagePort::Closed()
 bool
 MessagePort::ConnectToPBackground()
 {
-  mState = eStateEntangling;
+  RefPtr<MessagePort> self = this;
+  auto raii = MakeScopeExit([self] {
+    self->mState = eStateDisentangled;
+    self->UpdateMustKeepAlive();
+  });
 
   mozilla::ipc::PBackgroundChild* actorChild =
     mozilla::ipc::BackgroundChild::GetOrCreateForCurrentThread();
@@ -833,6 +831,9 @@ MessagePort::ConnectToPBackground()
   MOZ_ASSERT(mActor);
 
   mActor->SetPort(this);
+  mState = eStateEntangling;
+
+  raii.release();
   return true;
 }
 
@@ -847,14 +848,6 @@ MessagePort::UpdateMustKeepAlive()
     // The DTOR of this WorkerRef will release the worker for us.
     mWorkerRef = nullptr;
 
-    if (NS_IsMainThread()) {
-      nsCOMPtr<nsIObserverService> obs =
-        do_GetService("@mozilla.org/observer-service;1");
-      if (obs) {
-        obs->RemoveObserver(this, "inner-window-destroyed");
-      }
-    }
-
     Release();
     return;
   }
@@ -865,34 +858,11 @@ MessagePort::UpdateMustKeepAlive()
   }
 }
 
-NS_IMETHODIMP
-MessagePort::Observe(nsISupports* aSubject, const char* aTopic,
-                     const char16_t* aData)
+void
+MessagePort::DisconnectFromOwner()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  if (strcmp(aTopic, "inner-window-destroyed")) {
-    return NS_OK;
-  }
-
-  // If the window id destroyed we have to release the reference that we are
-  // keeping.
-  if (!mIsKeptAlive) {
-    return NS_OK;
-  }
-
-  nsCOMPtr<nsISupportsPRUint64> wrapper = do_QueryInterface(aSubject);
-  NS_ENSURE_TRUE(wrapper, NS_ERROR_FAILURE);
-
-  uint64_t innerID;
-  nsresult rv = wrapper->GetData(&innerID);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (innerID == mInnerID) {
-    CloseForced();
-  }
-
-  return NS_OK;
+  CloseForced();
+  DOMEventTargetHelper::DisconnectFromOwner();
 }
 
 void

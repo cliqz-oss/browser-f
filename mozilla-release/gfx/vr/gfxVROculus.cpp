@@ -795,7 +795,7 @@ VROculusSession::UnloadOvrLib()
 }
 
 VRDisplayOculus::VRDisplayOculus(VROculusSession* aSession)
-  : VRDisplayHost(VRDeviceType::Oculus)
+  : VRDisplayLocal(VRDeviceType::Oculus)
   , mSession(aSession)
   , mQuadVS(nullptr)
   , mQuadPS(nullptr)
@@ -806,7 +806,7 @@ VRDisplayOculus::VRDisplayOculus(VROculusSession* aSession)
   , mInputLayout(nullptr)
   , mEyeHeight(OVR_DEFAULT_EYE_HEIGHT)
 {
-  MOZ_COUNT_CTOR_INHERITED(VRDisplayOculus, VRDisplayHost);
+  MOZ_COUNT_CTOR_INHERITED(VRDisplayOculus, VRDisplayLocal);
   VRDisplayState& state = mDisplayInfo.mDisplayState;
   strncpy(state.mDisplayName, "Oculus VR HMD", kVRDisplayNameMaxLen);
   state.mIsConnected = true;
@@ -852,7 +852,7 @@ VRDisplayOculus::VRDisplayOculus(VROculusSession* aSession)
 
 VRDisplayOculus::~VRDisplayOculus() {
   Destroy();
-  MOZ_COUNT_DTOR_INHERITED(VRDisplayOculus, VRDisplayHost);
+  MOZ_COUNT_DTOR_INHERITED(VRDisplayOculus, VRDisplayLocal);
 }
 
 void
@@ -1678,13 +1678,15 @@ VRSystemManagerOculus::HandleInput()
     const GamepadHand hand = controller->GetHand();
     const uint32_t handIdx = static_cast<uint32_t>(hand) - 1;
     uint32_t buttonIdx = 0;
+    ovrHandType oculusHandType;
 
     switch (hand) {
       case dom::GamepadHand::Left:
+        oculusHandType = ovrHand_Left;
         HandleButtonPress(i, buttonIdx, ovrButton_LThumb, inputState.Buttons,
                           inputState.Touches);
         ++buttonIdx;
-        HandleIndexTriggerPress(i, buttonIdx, inputState.IndexTrigger[handIdx]);
+        HandleIndexTriggerPress(i, buttonIdx, inputState.IndexTrigger[handIdx], ovrTouch_LIndexTrigger, inputState.Touches);
         ++buttonIdx;
         HandleHandTriggerPress(i, buttonIdx, inputState.HandTrigger[handIdx]);
         ++buttonIdx;
@@ -1698,10 +1700,11 @@ VRSystemManagerOculus::HandleInput()
         ++buttonIdx;
         break;
       case dom::GamepadHand::Right:
+        oculusHandType = ovrHand_Right;
         HandleButtonPress(i, buttonIdx, ovrButton_RThumb, inputState.Buttons,
                           inputState.Touches);
         ++buttonIdx;
-        HandleIndexTriggerPress(i, buttonIdx, inputState.IndexTrigger[handIdx]);
+        HandleIndexTriggerPress(i, buttonIdx, inputState.IndexTrigger[handIdx], ovrTouch_RIndexTrigger, inputState.Touches);
         ++buttonIdx;
         HandleHandTriggerPress(i, buttonIdx, inputState.HandTrigger[handIdx]);
         ++buttonIdx;
@@ -1722,10 +1725,10 @@ VRSystemManagerOculus::HandleInput()
     controller->SetButtonTouched(inputState.Touches);
 
     axis = static_cast<uint32_t>(OculusControllerAxisType::ThumbstickXAxis);
-    HandleAxisMove(i, axis, inputState.Thumbstick[i].x);
+    HandleAxisMove(i, axis, inputState.Thumbstick[oculusHandType].x);
 
     axis = static_cast<uint32_t>(OculusControllerAxisType::ThumbstickYAxis);
-    HandleAxisMove(i, axis, -inputState.Thumbstick[i].y);
+    HandleAxisMove(i, axis, -inputState.Thumbstick[oculusHandType].y);
 
     // Process pose state.
     GamepadPoseState poseState;
@@ -1810,10 +1813,14 @@ VRSystemManagerOculus::HandleButtonPress(uint32_t aControllerIdx,
 void
 VRSystemManagerOculus::HandleIndexTriggerPress(uint32_t aControllerIdx,
                                                uint32_t aButton,
-                                               float aValue)
+                                               float aValue,
+                                               uint64_t aTouchMask,
+                                               uint64_t aButtonTouched)
 {
   RefPtr<impl::VRControllerOculus> controller(mOculusController[aControllerIdx]);
   MOZ_ASSERT(controller);
+
+  const uint64_t touchedDiff = (controller->GetButtonTouched() ^ aButtonTouched);
   const float oldValue = controller->GetIndexTrigger();
   // We prefer to let developers to set their own threshold for the adjustment.
   // Therefore, we don't check ButtonPressed and ButtonTouched with TouchMask here.
@@ -1821,9 +1828,10 @@ VRSystemManagerOculus::HandleIndexTriggerPress(uint32_t aControllerIdx,
   const float threshold = gfxPrefs::VRControllerTriggerThreshold();
 
   // Avoid sending duplicated events in IPC channels.
-  if (oldValue != aValue) {
+  if (oldValue != aValue ||
+      touchedDiff & aTouchMask) {
     NewButtonEvent(aControllerIdx, aButton, aValue > threshold,
-                   aValue > threshold, aValue);
+                   aButtonTouched & aTouchMask, aValue);
     controller->SetIndexTrigger(aValue);
   }
 }

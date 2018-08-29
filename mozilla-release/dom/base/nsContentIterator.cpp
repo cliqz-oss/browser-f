@@ -17,7 +17,6 @@
 #include "nsElementTable.h"
 
 using mozilla::DebugOnly;
-using mozilla::Move;
 using mozilla::RawRangeBoundary;
 
 // couple of utility static functs
@@ -93,7 +92,7 @@ public:
 
   virtual nsresult Init(nsINode* aRoot) override;
 
-  virtual nsresult Init(nsIDOMRange* aRange) override;
+  virtual nsresult Init(nsRange* aRange) override;
 
   virtual nsresult Init(nsINode* aStartContainer, uint32_t aStartOffset,
                         nsINode* aEndContainer, uint32_t aEndOffset) override;
@@ -259,20 +258,19 @@ nsContentIterator::Init(nsINode* aRoot)
 }
 
 nsresult
-nsContentIterator::Init(nsIDOMRange* aDOMRange)
+nsContentIterator::Init(nsRange* aRange)
 {
   mIsDone = false;
 
-  if (NS_WARN_IF(!aDOMRange)) {
+  if (NS_WARN_IF(!aRange)) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  nsRange* range = static_cast<nsRange*>(aDOMRange);
-  if (NS_WARN_IF(!range->IsPositioned())) {
+  if (NS_WARN_IF(!aRange->IsPositioned())) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  return InitInternal(range->StartRef().AsRaw(), range->EndRef().AsRaw());
+  return InitInternal(aRange->StartRef().AsRaw(), aRange->EndRef().AsRaw());
 }
 
 nsresult
@@ -852,7 +850,7 @@ public:
 
   virtual nsresult Init(nsINode* aRoot) override;
 
-  virtual nsresult Init(nsIDOMRange* aRange) override;
+  virtual nsresult Init(nsRange* aRange) override;
 
   virtual nsresult Init(nsINode* aStartContainer, uint32_t aStartOffset,
                         nsINode* aEndContainer, uint32_t aEndOffset) override;
@@ -895,9 +893,7 @@ protected:
 
   RefPtr<nsRange> mRange;
 
-  // these arrays all typically are used and have elements
   AutoTArray<nsIContent*, 8> mEndNodes;
-  AutoTArray<int32_t, 8>     mEndOffsets;
 };
 
 NS_IMPL_ADDREF_INHERITED(nsContentSubtreeIterator, nsContentIterator)
@@ -942,18 +938,17 @@ nsContentSubtreeIterator::Init(nsINode* aRoot)
 
 
 nsresult
-nsContentSubtreeIterator::Init(nsIDOMRange* aRange)
+nsContentSubtreeIterator::Init(nsRange* aRange)
 {
   MOZ_ASSERT(aRange);
 
   mIsDone = false;
 
-  nsRange* range = static_cast<nsRange*>(aRange);
-  if (NS_WARN_IF(!range->IsPositioned())) {
+  if (NS_WARN_IF(!aRange->IsPositioned())) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  mRange = range;
+  mRange = aRange;
 
   return InitWithRange();
 }
@@ -984,7 +979,7 @@ nsContentSubtreeIterator::Init(const RawRangeBoundary& aStart,
     return NS_ERROR_UNEXPECTED;
   }
 
-  mRange = Move(range);
+  mRange = std::move(range);
 
   return InitWithRange();
 }
@@ -1018,8 +1013,13 @@ nsContentSubtreeIterator::InitWithRange()
   }
 
   // cache ancestors
-  nsContentUtils::GetAncestorsAndOffsets(endContainer->AsDOMNode(), endOffset,
-                                         &mEndNodes, &mEndOffsets);
+  mEndNodes.Clear();
+  nsIContent* endNode =
+    endContainer->IsContent() ? endContainer->AsContent() : nullptr;
+  while (endNode) {
+    mEndNodes.AppendElement(endNode);
+    endNode = endNode->GetParent();
+  }
 
   nsIContent* firstCandidate = nullptr;
   nsIContent* lastCandidate = nullptr;
@@ -1032,7 +1032,8 @@ nsContentSubtreeIterator::InitWithRange()
     // no children, start at the node itself
     node = startContainer;
   } else {
-    nsIContent* child = startContainer->GetChildAt_Deprecated(offset);
+    nsIContent* child = mRange->GetChildAtStartOffset();
+    MOZ_ASSERT(child == startContainer->GetChildAt_Deprecated(offset));
     if (!child) {
       // offset after last child
       node = startContainer;
@@ -1081,7 +1082,8 @@ nsContentSubtreeIterator::InitWithRange()
   if (!offset || !numChildren) {
     node = endContainer;
   } else {
-    lastCandidate = endContainer->GetChildAt_Deprecated(--offset);
+    lastCandidate = mRange->EndRef().Ref();
+    MOZ_ASSERT(lastCandidate == endContainer->GetChildAt_Deprecated(--offset));
     NS_ASSERTION(lastCandidate,
                  "tree traversal trouble in nsContentSubtreeIterator::Init");
   }

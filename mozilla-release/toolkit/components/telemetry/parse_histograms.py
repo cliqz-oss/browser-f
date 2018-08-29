@@ -12,6 +12,7 @@ import sys
 import atexit
 import shared_telemetry_utils as utils
 
+from ctypes import c_int
 from shared_telemetry_utils import ParserError
 from collections import OrderedDict
 atexit.register(ParserError.exit_func)
@@ -35,6 +36,7 @@ ALWAYS_ALLOWED_KEYS = [
     'bug_numbers',
     'keys',
     'record_in_processes',
+    'products',
 ]
 
 BASE_DOC_URL = ("https://firefox-source-docs.mozilla.org/toolkit/components/"
@@ -138,6 +140,7 @@ symbol that should guard C/C++ definitions associated with the histogram."""
         self._expiration = definition.get('expires_in_version')
         self._labels = definition.get('labels', [])
         self._record_in_processes = definition.get('record_in_processes')
+        self._products = definition.get('products', ["all"])
 
         self.compute_bucket_parameters(definition)
         self.set_nsITelemetry_kind()
@@ -206,6 +209,14 @@ associated with the histogram.  Returns None if no guarding is necessary."""
     def record_in_processes_enum(self):
         """Get the non-empty list of flags representing the processes to record data in"""
         return [utils.process_name_to_enum(p) for p in self.record_in_processes()]
+
+    def products(self):
+        """Get the non-empty list of products to record data on"""
+        return self._products
+
+    def products_enum(self):
+        """Get the non-empty list of flags representing products to record data on"""
+        return [utils.product_name_to_enum(p) for p in self.products()]
 
     def ranges(self):
         """Return an array of lower bounds for each bucket in the histogram."""
@@ -276,6 +287,7 @@ associated with the histogram.  Returns None if no guarding is necessary."""
         self.check_expiration(name, definition)
         self.check_label_values(name, definition)
         self.check_record_in_processes(name, definition)
+        self.check_products(name, definition)
 
     def check_name(self, name):
         if '#' in name:
@@ -363,6 +375,24 @@ associated with the histogram.  Returns None if no guarding is necessary."""
                 ParserError('Histogram "%s" has unknown process "%s" in %s.\n%s' %
                             (name, process, field, DOC_URL)).handle_later()
 
+    def check_products(self, name, definition):
+        if not self._strict_type_checks:
+            return
+
+        field = 'products'
+        products = definition.get(field)
+
+        DOC_URL = HISTOGRAMS_DOC_URL + "#products"
+
+        if not products:
+            # products is optional
+            return
+
+        for product in products:
+            if not utils.is_valid_product(product):
+                ParserError('Histogram "%s" has unknown product "%s" in %s.\n%s' %
+                            (name, product, field, DOC_URL)).handle_later()
+
     def check_keys_field(self, name, definition):
         keys = definition.get('keys')
         if not self._strict_type_checks or keys is None:
@@ -449,6 +479,7 @@ associated with the histogram.  Returns None if no guarding is necessary."""
             "labels": basestring,
             "record_in_processes": basestring,
             "keys": basestring,
+            "products": basestring,
         }
 
         # For the server-side, where _strict_type_checks==False, we want to
@@ -486,6 +517,11 @@ associated with the histogram.  Returns None if no guarding is necessary."""
             if not isinstance(definition[key], key_type):
                 ParserError('Value for key "{0}" in histogram "{1}" should be {2}.'
                             .format(key, name, nice_type_name(key_type))).handle_later()
+
+        # Make sure the max range is lower than or equal to INT_MAX
+        if "high" in definition and not c_int(definition["high"]).value > 0:
+            ParserError('Value for high in histogram "{0}" should be lower or equal to INT_MAX.'
+                        .format(nice_type_name(c_int))).handle_later()
 
         for key, key_type in type_checked_list_fields.iteritems():
             if key not in definition:

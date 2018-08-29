@@ -82,7 +82,7 @@ bool
 PluginModuleChild::CreateForContentProcess(Endpoint<PPluginModuleChild>&& aEndpoint)
 {
     auto* child = new PluginModuleChild(false);
-    return child->InitForContent(Move(aEndpoint));
+    return child->InitForContent(std::move(aEndpoint));
 }
 
 PluginModuleChild::PluginModuleChild(bool aIsChrome)
@@ -182,7 +182,7 @@ mozilla::ipc::IPCResult
 PluginModuleChild::RecvInitProfiler(Endpoint<mozilla::PProfilerChild>&& aEndpoint)
 {
 #ifdef MOZ_GECKO_PROFILER
-    mProfilerController = ChildProfilerController::Create(Move(aEndpoint));
+    mProfilerController = ChildProfilerController::Create(std::move(aEndpoint));
 #endif
     return IPC_OK();
 }
@@ -730,7 +730,7 @@ PluginModuleChild::RecvSetAudioSessionData(const nsID& aId,
 mozilla::ipc::IPCResult
 PluginModuleChild::RecvInitPluginModuleChild(Endpoint<PPluginModuleChild>&& aEndpoint)
 {
-    if (!CreateForContentProcess(Move(aEndpoint))) {
+    if (!CreateForContentProcess(std::move(aEndpoint))) {
         return IPC_FAIL(this, "CreateForContentProcess failed");
     }
     return IPC_OK();
@@ -741,7 +741,7 @@ PluginModuleChild::RecvInitPluginFunctionBroker(Endpoint<PFunctionBrokerChild>&&
 {
 #if defined(XP_WIN)
     MOZ_ASSERT(mIsChrome);
-    if (!FunctionBrokerChild::Initialize(Move(aEndpoint))) {
+    if (!FunctionBrokerChild::Initialize(std::move(aEndpoint))) {
       return IPC_FAIL(this,
                       "InitPluginFunctionBroker failed to initialize broker child.");
     }
@@ -978,9 +978,9 @@ const NPNetscapeFuncs PluginModuleChild::sBrowserFuncs = {
     mozilla::plugins::child::_geturl,
     mozilla::plugins::child::_posturl,
     mozilla::plugins::child::_requestread,
-    nullptr,
-    nullptr,
-    nullptr,
+    nullptr, // _newstream, unimplemented
+    nullptr, // _write, unimplemented
+    nullptr, // _destroystream, unimplemented
     mozilla::plugins::child::_status,
     mozilla::plugins::child::_useragent,
     mozilla::plugins::child::_memalloc,
@@ -2235,5 +2235,23 @@ PluginModuleChild::RecvNPP_SetValue_NPNVaudioDeviceChangeDetails(
     return IPC_OK();
 #else
     MOZ_CRASH("NPP_SetValue_NPNVaudioDeviceChangeDetails is a Windows-only message");
+#endif
+}
+
+mozilla::ipc::IPCResult
+PluginModuleChild::RecvNPP_SetValue_NPNVaudioDeviceStateChanged(
+                          const NPAudioDeviceStateChangedIPC& aDeviceStateIPC)
+{
+#if defined(XP_WIN)
+  NPAudioDeviceStateChanged stateChange;
+  stateChange.newState = aDeviceStateIPC.state;
+  stateChange.device = aDeviceStateIPC.device.c_str();
+  for (auto iter = mAudioNotificationSet.ConstIter(); !iter.Done(); iter.Next()) {
+    PluginInstanceChild* pluginInst = iter.Get()->GetKey();
+    pluginInst->AudioDeviceStateChanged(stateChange);
+  }
+  return IPC_OK();
+#else
+  MOZ_CRASH("NPP_SetValue_NPNVaudioDeviceRemoved is a Windows-only message");
 #endif
 }

@@ -19,43 +19,6 @@ from taskgraph.transforms.job.common import (
 )
 import os
 
-BUILDER_NAME_PREFIX = {
-    'linux64-pgo': 'Ubuntu VM 12.04 x64',
-    'linux64': 'Ubuntu VM 12.04 x64',
-    'linux64-nightly': 'Ubuntu VM 12.04 x64',
-    'linux64-asan': 'Ubuntu ASAN VM 12.04 x64',
-    'linux64-ccov': 'Ubuntu Code Coverage VM 12.04 x64',
-    'linux64-jsdcov': 'Ubuntu Code Coverage VM 12.04 x64',
-    'linux64-qr': 'Ubuntu VM 12.04 x64',
-    'linux64-stylo-disabled': 'Ubuntu VM 12.04 x64',
-    'linux64-stylo-sequential': 'Ubuntu VM 12.04 x64',
-    'linux64-devedition': 'Ubuntu VM 12.04 x64',
-    'linux64-devedition-nightly': 'Ubuntu VM 12.04 x64',
-    'macosx64': 'Rev7 MacOSX Yosemite 10.10.5',
-    'macosx64-devedition': 'Rev7 MacOSX Yosemite 10.10.5 DevEdition',
-    'android-4.3-arm7-api-16': 'Android 4.3 armv7 api-16+',
-    'android-4.2-x86': 'Android 4.2 x86 Emulator',
-    'android-4.3-arm7-api-16-gradle': 'Android 4.3 armv7 api-16+',
-    'windows10-64': 'Windows 10 64-bit',
-    'windows10-64-nightly': 'Windows 10 64-bit',
-    'windows10-64-devedition': 'Windows 10 64-bit DevEdition',
-    'windows10-64-pgo': 'Windows 10 64-bit',
-    'windows10-64-asan': 'Windows 10 64-bit',
-    'windows10-64-stylo-disabled': 'Windows 10 64-bit',
-    'windows10-64-ccov': 'Windows 10 64-bit Code Coverage',
-    'windows10-64-qr': 'Windows 10 64-bit',
-    'windows7-32': 'Windows 7 32-bit',
-    ('windows7-32', 'virtual-with-gpu'): 'Windows 7 VM-GFX 32-bit',
-    'windows7-32-nightly': 'Windows 7 32-bit',
-    'windows7-32-devedition': 'Windows 7 32-bit DevEdition',
-    'windows7-32-pgo': 'Windows 7 32-bit',
-    'windows7-32-stylo-disabled': 'Windows 7 32-bit',
-    'windows8-64': 'Windows 8 64-bit',
-    'windows8-64-nightly': 'Windows 8 64-bit',
-    'windows8-64-devedition': 'Windows 8 64-bit DevEdition',
-    'windows8-64-pgo': 'Windows 8 64-bit',
-}
-
 VARIANTS = [
     'nightly',
     'devedition',
@@ -82,6 +45,8 @@ test_description_schema = {str(k): v for k, v in test_description_schema.schema.
 mozharness_test_run_schema = Schema({
     Required('using'): 'mozharness-test',
     Required('test'): test_description_schema,
+    # Base work directory used to set up the task.
+    Required('workdir'): basestring,
 })
 
 
@@ -93,6 +58,7 @@ def test_packages_url(taskdesc):
 @run_job_using('docker-engine', 'mozharness-test', schema=mozharness_test_run_schema)
 @run_job_using('docker-worker', 'mozharness-test', schema=mozharness_test_run_schema)
 def mozharness_test_on_docker(config, job, taskdesc):
+    run = job['run']
     test = taskdesc['run']['test']
     mozharness = test['mozharness']
     worker = taskdesc['worker']
@@ -107,9 +73,9 @@ def mozharness_test_on_docker(config, job, taskdesc):
 
     artifacts = [
         # (artifact name prefix, in-image path)
-        ("public/logs/", "/builds/worker/workspace/build/upload/logs/"),
-        ("public/test", "/builds/worker/artifacts/"),
-        ("public/test_info/", "/builds/worker/workspace/build/blobber_upload_dir/"),
+        ("public/logs/", "{workdir}/workspace/build/upload/logs/".format(**run)),
+        ("public/test", "{workdir}/artifacts/".format(**run)),
+        ("public/test_info/", "{workdir}/workspace/build/blobber_upload_dir/".format(**run)),
     ]
 
     installer_url = get_artifact_url('<build>', mozharness['build-artifact-name'])
@@ -118,7 +84,7 @@ def mozharness_test_on_docker(config, job, taskdesc):
 
     worker['artifacts'] = [{
         'name': prefix,
-        'path': os.path.join('/builds/worker/workspace', path),
+        'path': os.path.join('{workdir}/workspace'.format(**run), path),
         'type': 'directory',
     } for (prefix, path) in artifacts]
 
@@ -126,7 +92,7 @@ def mozharness_test_on_docker(config, job, taskdesc):
         'type': 'persistent',
         'name': 'level-{}-{}-test-workspace'.format(
             config.params['level'], config.params['project']),
-        'mount-point': "/builds/worker/workspace",
+        'mount-point': "{workdir}/workspace".format(**run),
     }]
 
     env = worker['env'] = {
@@ -161,7 +127,7 @@ def mozharness_test_on_docker(config, job, taskdesc):
 
     # assemble the command line
     command = [
-        '/builds/worker/bin/run-task',
+        '{workdir}/bin/run-task'.format(**run),
     ]
 
     # Support vcs checkouts regardless of whether the task runs from
@@ -171,18 +137,16 @@ def mozharness_test_on_docker(config, job, taskdesc):
     # If we have a source checkout, run mozharness from it instead of
     # downloading a zip file with the same content.
     if test['checkout']:
-        command.extend(['--vcs-checkout', '/builds/worker/checkouts/gecko'])
-        env['MOZHARNESS_PATH'] = '/builds/worker/checkouts/gecko/testing/mozharness'
+        command.extend(['--vcs-checkout', '{workdir}/checkouts/gecko'.format(**run)])
+        env['MOZHARNESS_PATH'] = '{workdir}/checkouts/gecko/testing/mozharness'.format(**run)
     else:
         env['MOZHARNESS_URL'] = {'task-reference': mozharness_url}
 
     command.extend([
         '--',
-        '/builds/worker/bin/test-linux.sh',
+        '{workdir}/bin/test-linux.sh'.format(**run),
     ])
 
-    if mozharness.get('no-read-buildbot-config'):
-        command.append("--no-read-buildbot-config")
     command.extend([
         {"task-reference": "--installer-url=" + installer_url},
         {"task-reference": "--test-packages-url=" + test_packages_url(taskdesc)},
@@ -291,8 +255,6 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
             cfg_path = normpath(cfg_path)
         mh_command.extend(['--cfg', cfg_path])
     mh_command.extend(mozharness.get('extra-options', []))
-    if mozharness.get('no-read-buildbot-config'):
-        mh_command.append('--no-read-buildbot-config')
     mh_command.extend(['--installer-url', installer_url])
     mh_command.extend(['--test-packages-url', test_packages_url(taskdesc)])
     if mozharness.get('download-symbols'):
@@ -397,8 +359,89 @@ def mozharness_test_on_native_engine(config, job, taskdesc):
     )
 
     command = worker['command'] = ["./{}".format(script)]
-    if mozharness.get('no-read-buildbot-config'):
-        command.append("--no-read-buildbot-config")
+    command.extend([
+        {"task-reference": "--installer-url=" + installer_url},
+        {"task-reference": "--test-packages-url=" + test_packages_url(taskdesc)},
+    ])
+    if mozharness.get('include-blob-upload-branch'):
+        command.append('--blob-upload-branch=' + config.params['project'])
+    command.extend(mozharness.get('extra-options', []))
+
+    # TODO: remove the need for run['chunked']
+    if mozharness.get('chunked') or test['chunks'] > 1:
+        # Implement mozharness['chunking-args'], modifying command in place
+        if mozharness['chunking-args'] == 'this-chunk':
+            command.append('--total-chunk={}'.format(test['chunks']))
+            command.append('--this-chunk={}'.format(test['this-chunk']))
+        elif mozharness['chunking-args'] == 'test-suite-suffix':
+            suffix = mozharness['chunk-suffix'].replace('<CHUNK>', str(test['this-chunk']))
+            for i, c in enumerate(command):
+                if isinstance(c, basestring) and c.startswith('--test-suite'):
+                    command[i] += suffix
+
+    if 'download-symbols' in mozharness:
+        download_symbols = mozharness['download-symbols']
+        download_symbols = {True: 'true', False: 'false'}.get(download_symbols, download_symbols)
+        command.append('--download-symbols=' + download_symbols)
+
+
+@run_job_using('script-engine-autophone', 'mozharness-test', schema=mozharness_test_run_schema)
+def mozharness_test_on_script_engine_autophone(config, job, taskdesc):
+    test = taskdesc['run']['test']
+    mozharness = test['mozharness']
+    worker = taskdesc['worker']
+    is_talos = test['suite'] == 'talos'
+    if worker['os'] != 'linux':
+        raise Exception('os: {} not supported on script-engine-autophone'.format(worker['os']))
+
+    installer_url = get_artifact_url('<build>', mozharness['build-artifact-name'])
+    mozharness_url = get_artifact_url('<build>',
+                                      'public/build/mozharness.zip')
+
+    artifacts = [
+        # (artifact name prefix, in-image path)
+        ("public/test/", "/builds/worker/artifacts"),
+        ("public/logs/", "/builds/worker/workspace/build/upload/logs"),
+        ("public/test_info/", "/builds/worker/workspace/build/blobber_upload_dir"),
+    ]
+
+    worker['artifacts'] = [{
+        'name': prefix,
+        'path': path,
+        'type': 'directory',
+    } for (prefix, path) in artifacts]
+
+    if test['reboot']:
+        worker['reboot'] = test['reboot']
+
+    worker['env'] = env = {
+        'GECKO_HEAD_REPOSITORY': config.params['head_repository'],
+        'GECKO_HEAD_REV': config.params['head_rev'],
+        'MOZHARNESS_CONFIG': ' '.join(mozharness['config']),
+        'MOZHARNESS_SCRIPT': mozharness['script'],
+        'MOZHARNESS_URL': {'task-reference': mozharness_url},
+        'MOZILLA_BUILD_URL': {'task-reference': installer_url},
+        "MOZ_NO_REMOTE": '1',
+        "NO_EM_RESTART": '1',
+        "XPCOM_DEBUG_BREAK": 'warn',
+        "NO_FAIL_ON_TEST_ERRORS": '1',
+        "MOZ_HIDE_RESULTS_TABLE": '1',
+        "MOZ_NODE_PATH": "/usr/local/bin/node",
+        'MOZ_AUTOMATION': '1',
+        'WORKSPACE': '/builds/worker/workspace',
+        'TASKCLUSTER_WORKER_TYPE': job['worker-type'],
+
+    }
+    # talos tests don't need Xvfb
+    if is_talos:
+        env['NEED_XVFB'] = 'false'
+
+    script = 'test-linux.sh'
+    worker['context'] = '{}/raw-file/{}/taskcluster/scripts/tester/{}'.format(
+        config.params['head_repository'], config.params['head_rev'], script
+    )
+
+    command = worker['command'] = ["./{}".format(script)]
     command.extend([
         {"task-reference": "--installer-url=" + installer_url},
         {"task-reference": "--test-packages-url=" + test_packages_url(taskdesc)},

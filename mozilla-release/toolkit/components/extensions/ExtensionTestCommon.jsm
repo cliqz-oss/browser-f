@@ -14,10 +14,10 @@
 
 var EXPORTED_SYMBOLS = ["ExtensionTestCommon", "MockExtension"];
 
-Cu.importGlobalProperties(["TextEncoder"]);
-
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+
+XPCOMUtils.defineLazyGlobalGetters(this, ["TextEncoder"]);
 
 ChromeUtils.defineModuleGetter(this, "AddonManager",
                                "resource://gre/modules/AddonManager.jsm");
@@ -56,9 +56,10 @@ XPCOMUtils.defineLazyGetter(this, "console", ExtensionUtils.getConsole);
  * @param {nsIFile} file
  * @param {nsIURI} rootURI
  * @param {string} installType
+ * @param {boolean} [embedded = false]
  */
 class MockExtension {
-  constructor(file, rootURI, installType) {
+  constructor(file, rootURI, installType, embedded) {
     this.id = null;
     this.file = file;
     this.rootURI = rootURI;
@@ -66,11 +67,14 @@ class MockExtension {
     this.addon = null;
 
     let promiseEvent = eventName => new Promise(resolve => {
-      let onstartup = (msg, extension) => {
-        if (this.addon && extension.id == this.addon.id) {
-          apiManager.off(eventName, onstartup);
+      let onstartup = async (msg, extension) => {
+        this.maybeSetID(extension.rootURI, extension.id);
+        if (!this.id && this.addonPromise) {
+          await this.addonPromise;
+        }
 
-          this.id = extension.id;
+        if (extension.id == this.id) {
+          apiManager.off(eventName, onstartup);
           this._extension = extension;
           resolve(extension);
         }
@@ -81,6 +85,17 @@ class MockExtension {
     this._extension = null;
     this._extensionPromise = promiseEvent("startup");
     this._readyPromise = promiseEvent("ready");
+    if (!embedded) {
+      this._uninstallPromise = promiseEvent("uninstall-complete");
+    }
+  }
+
+  maybeSetID(uri, id) {
+    if (!this.id && uri instanceof Ci.nsIJARURI &&
+        uri.JARFile.QueryInterface(Ci.nsIFileURL)
+           .file.equals(this.file)) {
+      this.id = id;
+    }
   }
 
   testMessage(...args) {
@@ -106,12 +121,17 @@ class MockExtension {
         return this._readyPromise;
       });
     } else if (this.installType == "permanent") {
+      this.addonPromise = new Promise(resolve => {
+        this.resolveAddon = resolve;
+      });
       return new Promise(async (resolve, reject) => {
         let install = await AddonManager.getInstallForFile(this.file);
         let listener = {
           onInstallFailed: reject,
           onInstallEnded: (install, newAddon) => {
             this.addon = newAddon;
+            this.id = newAddon.id;
+            this.resolveAddon(newAddon);
             resolve(this._readyPromise);
           },
         };
@@ -137,7 +157,27 @@ class MockExtension {
   }
 }
 
+function provide(obj, keys, value, override = false) {
+  if (keys.length == 1) {
+    if (!(keys[0] in obj) || override) {
+      obj[keys[0]] = value;
+    }
+  } else {
+    if (!(keys[0] in obj)) {
+      obj[keys[0]] = {};
+    }
+    provide(obj[keys[0]], keys.slice(1), value, override);
+  }
+}
+
 var ExtensionTestCommon = class ExtensionTestCommon {
+  static generateManifest(manifest) {
+    provide(manifest, ["name"], "Generated extension");
+    provide(manifest, ["manifest_version"], 2);
+    provide(manifest, ["version"], "1.0");
+    return manifest;
+  }
+
   /**
    * This code is designed to make it easy to test a WebExtension
    * without creating a bunch of files. Everything is contained in a
@@ -173,19 +213,6 @@ var ExtensionTestCommon = class ExtensionTestCommon {
     }
 
     let files = Object.assign({}, data.files);
-
-    function provide(obj, keys, value, override = false) {
-      if (keys.length == 1) {
-        if (!(keys[0] in obj) || override) {
-          obj[keys[0]] = value;
-        }
-      } else {
-        if (!(keys[0] in obj)) {
-          obj[keys[0]] = {};
-        }
-        provide(obj[keys[0]], keys.slice(1), value, override);
-      }
-    }
 
     provide(manifest, ["name"], "Generated extension");
     provide(manifest, ["manifest_version"], 2);
@@ -358,7 +385,7 @@ var ExtensionTestCommon = class ExtensionTestCommon {
 
     // This may be "temporary" or "permanent".
     if (data.useAddonManager) {
-      return new MockExtension(file, jarURI, data.useAddonManager);
+      return new MockExtension(file, jarURI, data.useAddonManager, data.embedded);
     }
 
     let id;
@@ -387,6 +414,7 @@ var ExtensionTestCommon = class ExtensionTestCommon {
       cleanupFile: file,
       signedState,
       temporarilyInstalled: !!data.temporarilyInstalled,
+      TEST_NO_ADDON_MANAGER: true,
     });
   }
 };

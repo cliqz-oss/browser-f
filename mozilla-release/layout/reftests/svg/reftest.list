@@ -52,7 +52,7 @@ pref(layout.css.mix-blend-mode.enabled,true) == blend-normal.svg blend-normal-re
 #skip-if(Android)  pref(layout.css.mix-blend-mode.enabled,true) == blend-saturation.svg blend-saturation-ref.svg
 #skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) == blend-screen.svg blend-screen-ref.svg
 #skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) == blend-soft-light.svg blend-soft-light-ref.svg
-skip-if(Android) pref(layout.css.mix-blend-mode.enabled,true) fails-if(webrender) == blend-difference-stacking.html blend-difference-stacking-ref.html
+skip pref(layout.css.mix-blend-mode.enabled,true) == blend-difference-stacking.html blend-difference-stacking-ref.html # bug 1458353
 
 fuzzy(11,7155) == blur-inside-clipPath.svg blur-inside-clipPath-ref.svg
 
@@ -159,15 +159,15 @@ fuzzy-if(d2d&&layersGPUAccelerated,3,1200) == dynamic-rect-02.svg dynamic-rect-0
 == dynamic-stroke-opacity-01.svg pass.svg
 == dynamic-stroke-width-01.svg pass.svg
 == dynamic-switch-01.svg pass.svg
-== dynamic-text-01.svg dynamic-text-01-ref.svg
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == dynamic-text-01.svg dynamic-text-01-ref.svg # bug 1392106
 fuzzy-if(d2d&&layersGPUAccelerated,3,12739) == dynamic-text-02.svg dynamic-text-02-ref.svg # bug 776038 for Win7, Win8
 fuzzy-if(d2d&&layersGPUAccelerated,2,10539) == dynamic-text-03.svg dynamic-text-03-ref.svg # bug 776038 for Win7
-fuzzy-if(/^Windows\x20NT\x206\.1/.test(http.oscpu),47,89) == dynamic-text-04.svg dynamic-text-04-ref.svg # bug 776038 for Win7
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == dynamic-text-04.svg dynamic-text-04-ref.svg # bug 776038 for Win7 # bug 1392106
 == dynamic-text-05.svg pass.svg
 == dynamic-text-06.svg pass.svg
 == dynamic-text-07.svg dynamic-text-07-ref.svg
 == dynamic-text-08.svg dynamic-text-08-ref.svg
-== dynamic-text-attr-01.svg dynamic-text-attr-01-ref.svg
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == dynamic-text-attr-01.svg dynamic-text-attr-01-ref.svg # bug 1392106
 == dynamic-textPath-01.svg dynamic-textPath-01-ref.svg
 == dynamic-textPath-02.svg dynamic-textPath-02-ref.svg
 == dynamic-textPath-03.svg dynamic-textPath-03-ref.svg
@@ -205,7 +205,7 @@ fails-if(Android) pref(security.fileuri.strict_origin_policy,true) == filter-ext
 == filter-foreignObject-01.svg pass.svg
 == filter-in-mask-01.svg pass.svg
 == filter-invalidation-01.svg pass.svg
-fuzzy(71,817) fails-if(winWidget&&stylo) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
+fuzzy(71,817) fails-if(winWidget) fuzzy-if(webrender&&cocoaWidget,67-67,887-887) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
 == filter-result-01.svg filter-result-01-ref.svg
 == filter-scaled-01.svg pass.svg
 fuzzy-if(skiaContent,1,500) == filter-scaled-02.html filter-scaled-02-ref.html
@@ -218,7 +218,7 @@ fuzzy-if(/^Windows\x20NT\x2010\.0/.test(http.oscpu)||skiaContent,1,800000) == fi
 == foreignObject-ancestor-style-change-01.svg foreignObject-ancestor-style-change-01-ref.svg
 == foreignObject-change-transform-01.svg pass.svg
 == foreignObject-display-01.svg pass.svg
-fuzzy-if(webrender,190-255,229-1552) == foreignObject-form-theme.svg foreignObject-form-theme-ref.html # Bug 1439980
+fuzzy-if(webrender,160-255,229-1552) == foreignObject-form-theme.svg foreignObject-form-theme-ref.html # Bug 1439980
 == foreignObject-img.html foreignObject-img-ref.html
 == foreignObject-img-form-theme.html foreignObject-img-form-theme-ref.html
 == foreignObject-move-repaint-01.svg pass.svg
@@ -439,7 +439,7 @@ fuzzy-if(skiaContent,1,2600) == svg-in-foreignObject-02.xhtml svg-in-foreignObje
 == symbol-01.svg symbol-01-ref.svg
 
 == text-font-size-01.svg pass.svg
-random-if(gtkWidget) == text-font-weight-01.svg text-font-weight-01-ref.svg # bug 386713
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) random-if(gtkWidget) == text-font-weight-01.svg text-font-weight-01-ref.svg # bug 386713, bug 1392106
 == text-gradient-01.svg text-gradient-01-ref.svg
 random-if(winWidget) fuzzy-if(Android,10,2) == text-gradient-02.svg text-gradient-02-ref.svg # see bug 590101
 fuzzy-if(skiaContent,1,5500) == text-gradient-03.svg pass.svg
@@ -450,17 +450,17 @@ fuzzy-if(skiaContent,1,5500) == text-gradient-03.svg pass.svg
 # Tests for bug 546813: sanity-check using HTML text, then test SVG behavior.
 != text-language-00.xhtml text-language-00-ref.xhtml
 random-if(gtkWidget) != text-language-01.xhtml text-language-01-ref.xhtml # Fails on Linux tryserver due to lack of CJK fonts.
-== text-layout-01.svg text-layout-01-ref.svg
-== text-layout-02.svg text-layout-02-ref.svg
-== text-layout-03.svg text-layout-03-ref.svg
-== text-layout-04.svg text-layout-04-ref.svg
-== text-layout-05.svg text-layout-05-ref.svg
-fuzzy-if(cocoaWidget&&layersGPUAccelerated,1,3) == text-layout-06.svg text-layout-06-ref.svg
-== text-layout-07.svg text-layout-07-ref.svg
-== text-layout-08.svg text-layout-08-ref.svg
-== text-scale-01.svg text-scale-01-ref.svg
-fuzzy-if(skiaContent,2,1000) == text-scale-02.svg text-scale-02-ref.svg
-== text-scale-03.svg text-scale-03-ref.svg
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-01.svg text-layout-01-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-02.svg text-layout-02-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-03.svg text-layout-03-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-04.svg text-layout-04-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-05.svg text-layout-05-ref.svg # Bug 1392106
+fuzzy-if(cocoaWidget&&layersGPUAccelerated,1,3) random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-06.svg text-layout-06-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-07.svg text-layout-07-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-layout-08.svg text-layout-08-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-scale-01.svg text-scale-01-ref.svg # Bug 1392106
+fuzzy-if(skiaContent,2,1000) random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-scale-02.svg text-scale-02-ref.svg # Bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == text-scale-03.svg text-scale-03-ref.svg # Bug 1392106
 
 == text-style-01a.svg text-style-01-ref.svg
 == text-style-01b.svg text-style-01-ref.svg
@@ -495,14 +495,14 @@ fuzzy-if(skiaContent,1,610) == textPath-03.svg pass.svg
 == tspan-dxdy-05.svg tspan-dxdy-ref.svg
 == tspan-dxdy-06.svg tspan-dxdy-ref.svg
 == tspan-dxdy-textPath-01.svg tspan-dxdy-textPath-01-ref.svg
-== tspan-rotate-01.svg tspan-rotate-ref.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-02.svg tspan-rotate-02.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-02.svg tspan-rotate-02-ref.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-03.svg tspan-rotate-ref.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-04.svg tspan-rotate-04.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-04.svg tspan-rotate-04-ref.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-05.svg tspan-rotate-ref.svg
-fuzzy-if(skiaContent,1,550) == tspan-rotate-06.svg tspan-rotate-ref.svg
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) == tspan-rotate-01.svg tspan-rotate-ref.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-02.svg tspan-rotate-02.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-02.svg tspan-rotate-02-ref.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-03.svg tspan-rotate-ref.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-04.svg tspan-rotate-04.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-04.svg tspan-rotate-04-ref.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-05.svg tspan-rotate-ref.svg # bug 1392106
+random-if(/^Windows\x20NT\x206\.1/.test(http.oscpu)) fuzzy-if(skiaContent,1,550) == tspan-rotate-06.svg tspan-rotate-ref.svg # bug 1392106
 == tspan-rotate-07.svg tspan-rotate-07-ref.svg
 == tspan-rotate-textPath-01.svg tspan-rotate-textPath-01-ref.svg
 fuzzy-if(skiaContent,1,100) == tspan-xy-01.svg tspan-xy-ref.svg
@@ -547,3 +547,8 @@ fuzzy-if(skiaContent,1,100) == tspan-xy-anchor-end-01.svg tspan-xy-anchor-end-re
 == winding-01.svg pass.svg
 
 == zero-stroke-01.svg pass.svg
+
+# currentColor override by color attribute
+== currentColor-override-flood.svg pass.svg
+== currentColor-override-lighting.svg currentColor-override-lighting-ref.svg
+== currentColor-override-stop.svg pass.svg

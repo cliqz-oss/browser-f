@@ -9,7 +9,6 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/PodOperations.h"
 
 #include "jstypes.h"
 
@@ -69,10 +68,7 @@ class JitCode : public gc::TenuredCell
     bool hasBytecodeMap_ : 1;         // Whether the code object has been registered with
                                       // native=>bytecode mapping tables.
 
-    JitCode()
-      : code_(nullptr),
-        pool_(nullptr)
-    { }
+    JitCode() = delete;
     JitCode(uint8_t* code, uint32_t bufferSize, uint32_t headerSize, ExecutablePool* pool,
             CodeKind kind)
       : code_(code),
@@ -429,7 +425,7 @@ struct IonScript
     }
     MOZ_MUST_USE bool addTraceLoggerEvent(TraceLoggerEvent& event) {
         MOZ_ASSERT(event.hasTextId());
-        return traceLoggerEvents_.append(mozilla::Move(event));
+        return traceLoggerEvents_.append(std::move(event));
     }
     const uint8_t* snapshots() const {
         return reinterpret_cast<const uint8_t*>(this) + snapshots_;
@@ -677,17 +673,14 @@ struct IonScriptCounts
 {
   private:
     // Any previous invalidated compilation(s) for the script.
-    IonScriptCounts* previous_;
+    IonScriptCounts* previous_ = nullptr;
 
     // Information about basic blocks in this script.
-    size_t numBlocks_;
-    IonBlockCounts* blocks_;
+    size_t numBlocks_ = 0;
+    IonBlockCounts* blocks_ = nullptr;
 
   public:
-
-    IonScriptCounts() {
-        mozilla::PodZero(this);
-    }
+    IonScriptCounts() = default;
 
     ~IonScriptCounts() {
         for (size_t i = 0; i < numBlocks_; i++)

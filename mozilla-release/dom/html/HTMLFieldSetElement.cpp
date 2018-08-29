@@ -98,11 +98,10 @@ HTMLFieldSetElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
                                                 aSubjectPrincipal, aNotify);
 }
 
-NS_IMETHODIMP
-HTMLFieldSetElement::GetType(nsAString& aType)
+void
+HTMLFieldSetElement::GetType(nsAString& aType) const
 {
   aType.AssignLiteral("fieldset");
-  return NS_OK;
 }
 
 /* static */
@@ -170,64 +169,6 @@ HTMLFieldSetElement::InsertChildBefore(nsIContent* aChild,
   }
 
   return rv;
-}
-
-nsresult
-HTMLFieldSetElement::InsertChildAt_Deprecated(nsIContent* aChild,
-                                              uint32_t aIndex,
-                                              bool aNotify)
-{
-  bool firstLegendHasChanged = false;
-
-  if (aChild->IsHTMLElement(nsGkAtoms::legend)) {
-    if (!mFirstLegend) {
-      mFirstLegend = aChild;
-      // We do not want to notify the first time mFirstElement is set.
-    } else {
-      // If mFirstLegend is before aIndex, we do not change it.
-      // Otherwise, mFirstLegend is now aChild.
-      if (int32_t(aIndex) <= ComputeIndexOf(mFirstLegend)) {
-        mFirstLegend = aChild;
-        firstLegendHasChanged = true;
-      }
-    }
-  }
-
-  nsresult rv =
-    nsGenericHTMLFormElement::InsertChildAt_Deprecated(aChild, aIndex, aNotify);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (firstLegendHasChanged) {
-    NotifyElementsForFirstLegendChange(aNotify);
-  }
-
-  return rv;
-}
-
-void
-HTMLFieldSetElement::RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify)
-{
-  bool firstLegendHasChanged = false;
-
-  if (mFirstLegend && (GetChildAt_Deprecated(aIndex) == mFirstLegend)) {
-    // If we are removing the first legend we have to found another one.
-    nsIContent* child = mFirstLegend->GetNextSibling();
-    mFirstLegend = nullptr;
-    firstLegendHasChanged = true;
-
-    for (; child; child = child->GetNextSibling()) {
-      if (child->IsHTMLElement(nsGkAtoms::legend)) {
-        mFirstLegend = child;
-        break;
-      }
-    }
-  }
-
-  nsGenericHTMLFormElement::RemoveChildAt_Deprecated(aIndex, aNotify);
-
-  if (firstLegendHasChanged) {
-    NotifyElementsForFirstLegendChange(aNotify);
-  }
 }
 
 void

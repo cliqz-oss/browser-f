@@ -10,7 +10,7 @@ ChromeUtils.import("resource://services-common/observers.js");
 ChromeUtils.import("resource://services-common/utils.js");
 ChromeUtils.import("resource://services-sync/util.js");
 const {setTimeout, clearTimeout} = ChromeUtils.import("resource://gre/modules/Timer.jsm", {});
-Cu.importGlobalProperties(["fetch"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 /* global AbortController */
 
 /*
@@ -123,6 +123,10 @@ Resource.prototype = {
           this._log.trace(`HTTP Header ${k}: ${v}`);
         }
       }
+    }
+
+    if (!headers.has("accept")) {
+      headers.append("accept", "application/json;q=0.9,*/*;q=0.2");
     }
 
     return headers;

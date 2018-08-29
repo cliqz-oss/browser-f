@@ -6,7 +6,7 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $DIR
 
-echo "To complete this script you will need the following tokens from https://api.pub.build.mozilla.org/tokenauth/"
+echo "To complete this script you will need the following tokens from https://mozilla-releng.net/tokens/"
 echo " - tooltool.upload.public"
 echo " - tooltool.download.public"
 echo ""
@@ -14,7 +14,7 @@ read -p "Are these tokens visible at the above URL (y/n)?" choice
 case "$choice" in
   y|Y )
     echo ""
-    echo "1. Go to https://api.pub.build.mozilla.org/"
+    echo "1. Go to https://mozilla-releng.net/"
     echo "2. Log in using your Mozilla LDAP account."
     echo "3. Click on \"Tokens.\""
     echo "4. Issue a user token with the permissions tooltool.upload.public and tooltool.download.public."
@@ -36,12 +36,12 @@ case "$choice" in
 esac
 
 echo ""
-echo "Removing node_modules and npm_shrinkwrap.json..."
+echo "Removing node_modules and package-lock.json..."
 # Move to the top-level directory.
 cd ../../../
 rm -rf node_modules/
 rm -rf tools/lint/eslint/eslint-plugin-mozilla/node_modules
-rm npm-shrinkwrap.json
+rm package-lock.json
 
 echo "Installing eslint and external plugins..."
 # ESLint and all _external_ plugins are listed in this directory's package.json,
@@ -51,18 +51,15 @@ echo "Installing eslint and external plugins..."
 # access to make changes.
 npm install
 
-echo "Creating npm shrinkwrap..."
-mv package-lock.json npm-shrinkwrap.json
-
 echo "Creating eslint.tar.gz..."
 tar cvz --exclude=eslint-plugin-mozilla --exclude=eslint-plugin-spidermonkey-js -f eslint.tar.gz node_modules
 
 echo "Adding eslint.tar.gz to tooltool..."
 rm tools/lint/eslint/manifest.tt
-./python/mozbuild/mozbuild/action/tooltool.py add --visibility public --unpack eslint.tar.gz --url="https://api.pub.build.mozilla.org/tooltool/"
+./python/mozbuild/mozbuild/action/tooltool.py add --visibility public --unpack eslint.tar.gz --url="https://tooltool.mozilla-releng.net/"
 
 echo "Uploading eslint.tar.gz to tooltool..."
-./python/mozbuild/mozbuild/action/tooltool.py upload --authentication-file=~/.tooltool-token --message "node_modules folder update for tools/lint/eslint" --url="https://api.pub.build.mozilla.org/tooltool/"
+./python/mozbuild/mozbuild/action/tooltool.py upload --authentication-file=~/.tooltool-token --message "node_modules folder update for tools/lint/eslint" --url="https://tooltool.mozilla-releng.net/"
 
 echo "Cleaning up..."
 mv manifest.tt tools/lint/eslint/manifest.tt

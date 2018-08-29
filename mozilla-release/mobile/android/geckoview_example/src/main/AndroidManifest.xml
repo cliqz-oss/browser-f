@@ -1,6 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="org.mozilla.geckoview_example">
 
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+
     <application android:allowBackup="true"
                  android:label="@string/app_name"
                  android:supportsRtl="true">
@@ -8,8 +15,9 @@
         <uses-library android:name="android.test.runner" />
 
         <activity android:name="org.mozilla.geckoview_example.GeckoViewActivity"
-                  android:label="GeckoViewActivity"
+                  android:label="GeckoView Example"
                   android:windowSoftInputMode="stateUnspecified|adjustResize"
+                  android:theme="@style/Theme.AppCompat.Light.NoActionBar"
                   android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -28,6 +36,12 @@
                 <data android:scheme="about" />
                 <data android:scheme="javascript" />
             </intent-filter>
+        </activity>
+
+        <activity android:name="org.mozilla.geckoview_example.SessionActivity"
+                  android:label="GeckoView Example"
+                  android:windowSoftInputMode="stateUnspecified|adjustResize"
+                  android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         </activity>
 
     </application>

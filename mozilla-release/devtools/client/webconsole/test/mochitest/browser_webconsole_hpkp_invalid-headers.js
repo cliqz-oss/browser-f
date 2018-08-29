@@ -18,7 +18,7 @@ add_task(async function() {
     Services.prefs.clearUserPref(NON_BUILTIN_ROOT_PREF);
   });
 
-  let hud = await openNewTabAndConsole(TEST_URI);
+  const hud = await openNewTabAndConsole(TEST_URI);
 
   await navigateAndCheckForWarningMessage({
     url: SJS_URL + "?badSyntax",
@@ -92,14 +92,14 @@ add_task(async function() {
 });
 
 async function navigateAndCheckForWarningMessage({name, text, url}, hud) {
-  hud.jsterm.clearOutput(true);
+  hud.ui.clearOutput(true);
 
   const onMessage = waitForMessage(hud, text, ".message.warning");
   BrowserTestUtils.loadURI(gBrowser.selectedBrowser, url);
   const {node} = await onMessage;
   ok(node, name);
 
-  let learnMoreNode = node.querySelector(".learn-more-link");
+  const learnMoreNode = node.querySelector(".learn-more-link");
   ok(learnMoreNode, `There is a "Learn more" link`);
   const navigationResponse = await simulateLinkClick(learnMoreNode);
   is(navigationResponse.link, LEARN_MORE_URI,

@@ -14,11 +14,11 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MaybeOneOf.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/PodOperations.h"
 #include "mozilla/Scoped.h"
 #include "mozilla/ThreadLocal.h"
 #include "mozilla/Vector.h"
 
+#include <algorithm>
 #include <setjmp.h>
 
 #include "builtin/AtomicsObject.h"
@@ -60,6 +60,10 @@ class EnterDebuggeeNoExecute;
 #ifdef JS_TRACE_LOGGING
 class TraceLoggerThread;
 #endif
+
+namespace gc {
+class AutoHeapSession;
+}
 
 } // namespace js
 
@@ -354,9 +358,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     /* Compartment memory reporting callback. */
     js::MainThreadData<JSSizeOfIncludingThisCompartmentCallback> sizeOfIncludingThisCompartmentCallback;
 
-    /* Call this to get the name of a compartment. */
-    js::MainThreadData<JSCompartmentNameCallback> compartmentNameCallback;
-
     /* Realm destroy callback. */
     js::MainThreadData<JS::DestroyRealmCallback> destroyRealmCallback;
 
@@ -484,6 +485,9 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     // Number of zones which may be operated on by helper threads.
     mozilla::Atomic<size_t> numActiveHelperThreadZones;
 
+    // Any GC activity affecting the heap.
+    mozilla::Atomic<JS::HeapState> heapState_;
+
     friend class js::AutoLockForExclusiveAccess;
     friend class js::AutoLockScriptData;
 
@@ -511,10 +515,14 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     }
 #endif
 
-    // How many compartments there are across all zones. This number includes
-    // off thread context compartments, so it isn't necessarily equal to the
-    // number of compartments visited by CompartmentsIter.
-    js::MainThreadData<size_t> numCompartments;
+    JS::HeapState heapState() const {
+        return heapState_;
+    }
+
+    // How many realms there are across all zones. This number includes
+    // off-thread context realms, so it isn't necessarily equal to the
+    // number of realms visited by RealmsIter.
+    js::MainThreadData<size_t> numRealms;
 
     /* Locale-specific callbacks for string conversion. */
     js::MainThreadData<const JSLocaleCallbacks*> localeCallbacks;
@@ -568,9 +576,14 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     mozilla::Maybe<mozilla::non_crypto::XorShift128PlusRNG> randomKeyGenerator_;
     mozilla::non_crypto::XorShift128PlusRNG& randomKeyGenerator();
 
+    // Used to generate random hash codes for symbols.
+    mozilla::Maybe<mozilla::non_crypto::XorShift128PlusRNG> randomHashCodeGenerator_;
+
   public:
     mozilla::HashCodeScrambler randomHashCodeScrambler();
     mozilla::non_crypto::XorShift128PlusRNG forkRandomKeyGenerator();
+
+    js::HashNumber randomHashCode();
 
     //-------------------------------------------------------------------------
     // Self-hosting support
@@ -586,7 +599,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     bool isSelfHostingGlobal(JSObject* global) {
         return global == selfHostingGlobal_;
     }
-    bool isSelfHostingCompartment(JSCompartment* comp) const;
     bool isSelfHostingZone(const JS::Zone* zone) const;
     bool createLazySelfHostedFunctionClone(JSContext* cx, js::HandlePropertyName selfHostedName,
                                            js::HandleAtom name, unsigned nargs,
@@ -694,20 +706,15 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
   private:
     // Set of all atoms other than those in permanentAtoms and staticStrings.
     // Reading or writing this set requires the calling thread to use
-    // AutoLockForExclusiveAccess.
+    // AutoAccessAtomsZone.
     js::ExclusiveAccessLockOrGCTaskData<js::AtomSet*> atoms_;
 
     // Set of all atoms added while the main atoms table is being swept.
-    js::ExclusiveAccessLockData<js::AtomSet*> atomsAddedWhileSweeping_;
-
-    // Compartment and associated zone containing all atoms in the runtime, as
-    // well as runtime wide IonCode stubs. Modifying the contents of this
-    // compartment requires the calling thread to use AutoLockForExclusiveAccess.
-    js::WriteOnceData<JSCompartment*> atomsCompartment_;
+    js::ExclusiveAccessLockOrGCTaskData<js::AtomSet*> atomsAddedWhileSweeping_;
 
     // Set of all live symbols produced by Symbol.for(). All such symbols are
-    // allocated in the atomsCompartment. Reading or writing the symbol
-    // registry requires the calling thread to use AutoLockForExclusiveAccess.
+    // allocated in the atoms zone. Reading or writing the symbol registry
+    // requires the calling thread to use AutoAccessAtomsZone.
     js::ExclusiveAccessLockOrGCTaskData<js::SymbolRegistry> symbolRegistry_;
 
   public:
@@ -716,11 +723,11 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     bool atomsAreFinished() const { return !atoms_; }
 
     js::AtomSet* atomsForSweeping() {
-        MOZ_ASSERT(JS::CurrentThreadIsHeapCollecting());
+        MOZ_ASSERT(JS::RuntimeHeapIsCollecting());
         return atoms_;
     }
 
-    js::AtomSet& atoms(js::AutoLockForExclusiveAccess& lock) {
+    js::AtomSet& atoms(const js::AutoAccessAtomsZone& access) {
         MOZ_ASSERT(atoms_);
         return *atoms_;
     }
@@ -735,29 +742,23 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
         return atomsAddedWhileSweeping_;
     }
 
-    JSCompartment* atomsCompartment(js::AutoLockForExclusiveAccess& lock) {
-        return atomsCompartment_;
+    const JS::Zone* atomsZone(const js::AutoAccessAtomsZone& access) const {
+        return gc.atomsZone;
     }
-    JSCompartment* unsafeAtomsCompartment() {
-        return atomsCompartment_;
+    JS::Zone* atomsZone(const js::AutoAccessAtomsZone& access) {
+        return gc.atomsZone;
     }
-
-    bool isAtomsCompartment(JSCompartment* comp) {
-        return comp == atomsCompartment_;
-    }
-
-    const JS::Zone* atomsZone(js::AutoLockForExclusiveAccess& lock) const {
+    JS::Zone* unsafeAtomsZone() {
         return gc.atomsZone;
     }
 
-    // The atoms compartment is the only one in its zone.
     bool isAtomsZone(const JS::Zone* zone) const {
         return zone == gc.atomsZone;
     }
 
     bool activeGCInAtomsZone();
 
-    js::SymbolRegistry& symbolRegistry(js::AutoLockForExclusiveAccess& lock) {
+    js::SymbolRegistry& symbolRegistry(const js::AutoAccessAtomsZone& access) {
         return symbolRegistry_.ref();
     }
     js::SymbolRegistry& unsafeSymbolRegistry() {
@@ -860,6 +861,11 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     mozilla::Atomic<bool> offthreadIonCompilationEnabled_;
     mozilla::Atomic<bool> parallelParsingEnabled_;
 
+#ifdef DEBUG
+    mozilla::Atomic<uint32_t> offThreadParsesRunning_;
+    mozilla::Atomic<bool> offThreadParsingBlocked_;
+#endif
+
     js::MainThreadData<bool> autoWritableJitCodeActive_;
 
   public:
@@ -878,6 +884,38 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     bool canUseParallelParsing() const {
         return parallelParsingEnabled_;
     }
+
+#ifdef DEBUG
+
+    bool isOffThreadParseRunning() const {
+        return offThreadParsesRunning_;
+    }
+
+    void incOffThreadParsesRunning() {
+        MOZ_ASSERT(!isOffThreadParsingBlocked());
+        offThreadParsesRunning_++;
+    }
+
+    void decOffThreadParsesRunning() {
+        MOZ_ASSERT(isOffThreadParseRunning());
+        offThreadParsesRunning_--;
+    }
+
+    bool isOffThreadParsingBlocked() const {
+        return offThreadParsingBlocked_;
+    }
+    void setOffThreadParsingBlocked(bool blocked) {
+        MOZ_ASSERT(offThreadParsingBlocked_ != blocked);
+        MOZ_ASSERT(!isOffThreadParseRunning());
+        offThreadParsingBlocked_ = blocked;
+    }
+
+#else
+
+    void incOffThreadParsesRunning() {}
+    void decOffThreadParsesRunning() {}
+
+#endif
 
     void toggleAutoWritableJitCodeActive(bool b) {
         MOZ_ASSERT(autoWritableJitCodeActive_ != b, "AutoWritableJitCode should not be nested.");
@@ -924,7 +962,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     }
 
     // For inherited heap state accessors.
-    friend class js::gc::AutoTraceSession;
+    friend class js::gc::AutoHeapSession;
     friend class JS::AutoEnterCycleCollection;
 
   private:
@@ -933,9 +971,16 @@ struct JSRuntime : public js::MallocProvider<JSRuntime>
     js::RuntimeCaches& caches() { return caches_.ref(); }
 
     // List of all the live wasm::Instances in the runtime. Equal to the union
-    // of all instances registered in all JSCompartments. Accessed from watchdog
+    // of all instances registered in all JS::Realms. Accessed from watchdog
     // threads for purposes of wasm::InterruptRunningCode().
     js::ExclusiveData<js::wasm::InstanceVector> wasmInstances;
+
+    // The implementation-defined abstract operation HostResolveImportedModule.
+    js::MainThreadData<JS::ModuleResolveHook> moduleResolveHook;
+
+    // A hook that implements the abstract operations
+    // HostGetImportMetaProperties and HostFinalizeImportMeta.
+    js::MainThreadData<JS::ModuleMetadataHook> moduleMetadataHook;
 
   public:
 #if defined(JS_BUILD_BINAST)
@@ -1090,20 +1135,21 @@ class MOZ_RAII AutoUnlockGC
 static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Value* vec, size_t len)
 {
-    mozilla::PodZero(vec, len);
+    // Don't PodZero here because JS::Value is non-trivial.
+    for (size_t i = 0; i < len; i++)
+        vec[i].setDouble(+0.0);
 }
 
 static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Value* beg, Value* end)
 {
-    mozilla::PodZero(beg, end - beg);
+    MakeRangeGCSafe(beg, end - beg);
 }
 
 static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(jsid* beg, jsid* end)
 {
-    for (jsid* id = beg; id != end; ++id)
-        *id = INT_TO_JSID(0);
+    std::fill(beg, end, INT_TO_JSID(0));
 }
 
 static MOZ_ALWAYS_INLINE void
@@ -1115,13 +1161,13 @@ MakeRangeGCSafe(jsid* vec, size_t len)
 static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Shape** beg, Shape** end)
 {
-    mozilla::PodZero(beg, end - beg);
+    std::fill(beg, end, nullptr);
 }
 
 static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Shape** vec, size_t len)
 {
-    mozilla::PodZero(vec, len);
+    MakeRangeGCSafe(vec, vec + len);
 }
 
 static MOZ_ALWAYS_INLINE void

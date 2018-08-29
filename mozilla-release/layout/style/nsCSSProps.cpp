@@ -20,7 +20,8 @@
 #include "nsIWidget.h"
 #include "nsThemeConstants.h"  // For system widget appearance types
 
-#include "mozilla/dom/AnimationEffectReadOnlyBinding.h" // for PlaybackDirection
+#include "mozilla/dom/Animation.h"
+#include "mozilla/dom/AnimationEffectBinding.h" // for PlaybackDirection
 #include "mozilla/LookAndFeel.h" // for system colors
 
 #include "nsString.h"
@@ -123,25 +124,11 @@ nsCSSProps::AddRefTable(void)
     static bool prefObserversInited = false;
     if (!prefObserversInited) {
       prefObserversInited = true;
-
-      #define OBSERVE_PROP(pref_, id_)                                        \
-        if (pref_[0]) {                                                       \
-          Preferences::AddBoolVarCache(&gPropertyEnabled[id_],                \
-                                       pref_);                                \
-        }
-
-      #define CSS_PROP_LONGHAND(name_, id_, method_, flags_, pref_) \
-        OBSERVE_PROP(pref_, eCSSProperty_##id_)
-      #define CSS_PROP_SHORTHAND(name_, id_, method_, flags_, pref_) \
-        OBSERVE_PROP(pref_, eCSSProperty_##id_)
-      #define CSS_PROP_ALIAS(name_, aliasid_, id_, method_, pref_) \
-        OBSERVE_PROP(pref_, eCSSPropertyAlias_##aliasid_)
-      #include "mozilla/ServoCSSPropList.h"
-      #undef CSS_PROP_ALIAS
-      #undef CSS_PROP_SHORTHAND
-      #undef CSS_PROP_LONGHAND
-
-      #undef OBSERVE_PROP
+      for (const PropertyPref* pref = kPropertyPrefTable;
+           pref->mPropID != eCSSProperty_UNKNOWN; pref++) {
+        bool* enabled = &gPropertyEnabled[pref->mPropID];
+        Preferences::AddBoolVarCache(enabled, pref->mPref);
+      }
     }
   }
 }
@@ -366,6 +353,7 @@ const KTableEntry nsCSSProps::kAppearanceKTable[] = {
   { eCSSKeyword_scrollbartrack_vertical,      NS_THEME_SCROLLBARTRACK_VERTICAL },
   { eCSSKeyword_scrollbarthumb_horizontal,    NS_THEME_SCROLLBARTHUMB_HORIZONTAL },
   { eCSSKeyword_scrollbarthumb_vertical,      NS_THEME_SCROLLBARTHUMB_VERTICAL },
+  { eCSSKeyword_scrollcorner,           NS_THEME_SCROLLCORNER },
   { eCSSKeyword_textfield,              NS_THEME_TEXTFIELD },
   { eCSSKeyword_textfield_multiline,    NS_THEME_TEXTFIELD_MULTILINE },
   { eCSSKeyword_caret,                  NS_THEME_CARET },
@@ -389,6 +377,10 @@ const KTableEntry nsCSSProps::kAppearanceKTable[] = {
   { eCSSKeyword_checkbox_label,         NS_THEME_CHECKBOX_LABEL },
   { eCSSKeyword_radio_label,            NS_THEME_RADIO_LABEL },
   { eCSSKeyword_button_focus,           NS_THEME_BUTTON_FOCUS },
+  // Even though window is meant for OS window styling, web developers use
+  // `window` on <select> to remove the dropmarker. Care should be taken when
+  // changing -moz-appearance:window to avoid web compatibility regressions.
+  // See https://bugzilla.mozilla.org/show_bug.cgi?id=1466715#c10
   { eCSSKeyword_window,                 NS_THEME_WINDOW },
   { eCSSKeyword_dialog,                 NS_THEME_DIALOG },
   { eCSSKeyword_menubar,                NS_THEME_MENUBAR },
@@ -447,9 +439,9 @@ const KTableEntry nsCSSProps::kTransformStyleKTable[] = {
 };
 
 const KTableEntry nsCSSProps::kImageLayerAttachmentKTable[] = {
-  { eCSSKeyword_fixed, NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED },
-  { eCSSKeyword_scroll, NS_STYLE_IMAGELAYER_ATTACHMENT_SCROLL },
-  { eCSSKeyword_local, NS_STYLE_IMAGELAYER_ATTACHMENT_LOCAL },
+  { eCSSKeyword_fixed, StyleImageLayerAttachment::Fixed },
+  { eCSSKeyword_scroll, StyleImageLayerAttachment::Scroll },
+  { eCSSKeyword_local, StyleImageLayerAttachment::Local },
   { eCSSKeyword_UNKNOWN, -1 }
 };
 
@@ -1048,9 +1040,11 @@ const KTableEntry nsCSSProps::kListStylePositionKTable[] = {
 const KTableEntry nsCSSProps::kContainKTable[] = {
   { eCSSKeyword_none,    NS_STYLE_CONTAIN_NONE },
   { eCSSKeyword_strict,  NS_STYLE_CONTAIN_STRICT },
+  { eCSSKeyword_content, NS_STYLE_CONTAIN_CONTENT },
   { eCSSKeyword_layout,  NS_STYLE_CONTAIN_LAYOUT },
   { eCSSKeyword_style,   NS_STYLE_CONTAIN_STYLE },
   { eCSSKeyword_paint,   NS_STYLE_CONTAIN_PAINT },
+  { eCSSKeyword_size,    NS_STYLE_CONTAIN_SIZE },
   { eCSSKeyword_UNKNOWN, -1 }
 };
 
@@ -1251,7 +1245,6 @@ const KTableEntry nsCSSProps::kTextJustifyKTable[] = {
 const KTableEntry nsCSSProps::kTextCombineUprightKTable[] = {
   { eCSSKeyword_none, NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE },
   { eCSSKeyword_all, NS_STYLE_TEXT_COMBINE_UPRIGHT_ALL },
-  { eCSSKeyword_digits, NS_STYLE_TEXT_COMBINE_UPRIGHT_DIGITS_2 }, // w/o number ==> 2
   { eCSSKeyword_UNKNOWN, -1 }
 };
 

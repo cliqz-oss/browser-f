@@ -105,7 +105,6 @@ class GlobalObject : public NativeObject
         DEBUGGERS,
         INTRINSICS,
         FOR_OF_PIC_CHAIN,
-        MODULE_RESOLVE_HOOK,
         WINDOW_PROXY,
 
         /* Total reserved-slot count for global objects. */
@@ -261,7 +260,7 @@ class GlobalObject : public NativeObject
   public:
     static GlobalObject*
     new_(JSContext* cx, const Class* clasp, JSPrincipals* principals,
-         JS::OnNewGlobalHookOption hookOption, const JS::CompartmentOptions& options);
+         JS::OnNewGlobalHookOption hookOption, const JS::RealmOptions& options);
 
     /*
      * Create a constructor function with the specified name and length using
@@ -692,7 +691,7 @@ class GlobalObject : public NativeObject
         if (!holder)
             return false;
 
-        if (Shape* shape = holder->lookupPure(name)) {
+        if (Shape* shape = holder->lookup(cx, name)) {
             vp.set(holder->getSlot(shape->slot()));
             *exists = true;
         } else {
@@ -819,19 +818,6 @@ class GlobalObject : public NativeObject
     }
     void setWindowProxy(JSObject* windowProxy) {
         setReservedSlot(WINDOW_PROXY, ObjectValue(*windowProxy));
-    }
-
-    void setModuleResolveHook(HandleFunction hook) {
-        MOZ_ASSERT(hook);
-        setSlot(MODULE_RESOLVE_HOOK, ObjectValue(*hook));
-    }
-
-    JSFunction* moduleResolveHook() {
-        Value value = getSlotRef(MODULE_RESOLVE_HOOK);
-        if (value.isUndefined())
-            return nullptr;
-
-        return &value.toObject().as<JSFunction>();
     }
 
     // A class used in place of a prototype during off-thread parsing.

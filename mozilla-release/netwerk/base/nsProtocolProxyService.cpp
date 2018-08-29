@@ -802,7 +802,7 @@ NS_INTERFACE_MAP_BEGIN(nsProtocolProxyService)
 NS_INTERFACE_MAP_ENTRY(nsIProtocolProxyService)
 NS_INTERFACE_MAP_ENTRY(nsIProtocolProxyService2)
 NS_INTERFACE_MAP_ENTRY(nsIObserver)
-if ( aIID.Equals(NS_GET_IID(nsProtocolProxyService)) )  foundInterface = static_cast<nsIProtocolProxyService2*>(this); else
+NS_INTERFACE_MAP_ENTRY_CONCRETE(nsProtocolProxyService)
 NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIProtocolProxyService)
 NS_IMPL_QUERY_CLASSINFO(nsProtocolProxyService)
 NS_INTERFACE_MAP_END
@@ -1878,7 +1878,7 @@ nsProtocolProxyService::RegisterFilter(nsIProtocolProxyFilter *filter,
     UnregisterFilter(filter); // remove this filter if we already have it
 
     RefPtr<FilterLink> link = new FilterLink(position, filter);
-    return InsertFilterLink(Move(link));
+    return InsertFilterLink(std::move(link));
 }
 
 NS_IMETHODIMP
@@ -1888,7 +1888,7 @@ nsProtocolProxyService::RegisterChannelFilter(nsIProtocolProxyChannelFilter *cha
     UnregisterChannelFilter(channelFilter);  // remove this filter if we already have it
 
     RefPtr<FilterLink> link = new FilterLink(position, channelFilter);
-    return InsertFilterLink(Move(link));
+    return InsertFilterLink(std::move(link));
 }
 
 nsresult
@@ -2132,8 +2132,8 @@ loser:
 nsresult
 nsProtocolProxyService::GetProtocolInfo(nsIURI *uri, nsProtocolInfo *info)
 {
-    NS_PRECONDITION(uri, "URI is null");
-    NS_PRECONDITION(info, "info is null");
+    MOZ_ASSERT(uri, "URI is null");
+    MOZ_ASSERT(info, "info is null");
 
     nsresult rv;
 

@@ -7,18 +7,7 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: File")
 
-DIRS += ['ipc']
-
-XPIDL_SOURCES += [
-    'nsIDOMBlob.idl',
-]
-
-XPIDL_MODULE = 'dom_file'
-
-EXPORTS += [
-    'nsHostObjectProtocolHandler.h',
-    'nsHostObjectURI.h',
-]
+DIRS += ['ipc', 'uri' ]
 
 EXPORTS.mozilla.dom += [
     'BaseBlobImpl.h',
@@ -54,8 +43,6 @@ UNIFIED_SOURCES += [
     'MultipartBlobImpl.cpp',
     'MutableBlobStorage.cpp',
     'MutableBlobStreamListener.cpp',
-    'nsHostObjectProtocolHandler.cpp',
-    'nsHostObjectURI.cpp',
     'StreamBlobImpl.cpp',
     'StringBlobImpl.cpp',
     'TemporaryFileBlobImpl.cpp',

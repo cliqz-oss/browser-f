@@ -157,7 +157,7 @@ class InfallibleVector
     T& operator[](size_t index) { return vector_[index]; }
     const T& operator[](size_t index) const { return vector_[index]; }
 
-    InfallibleVector& operator=(InfallibleVector&& rhs) { vector_ = Move(rhs.vector_); return *this; }
+    InfallibleVector& operator=(InfallibleVector&& rhs) { vector_ = std::move(rhs.vector_); return *this; }
 };
 
 class CharacterRange;
@@ -686,6 +686,7 @@ class ActionNode : public SeqRegExpNode
 
     ActionNode(ActionType action_type, RegExpNode* on_success)
       : SeqRegExpNode(on_success),
+        data_{},
         action_type_(action_type)
     {}
 

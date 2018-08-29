@@ -101,7 +101,7 @@ nsHttpTransaction::nsHttpTransaction()
     , mPriority(0)
     , mRestartCount(0)
     , mCaps(0)
-    , mHttpVersion(NS_HTTP_VERSION_UNKNOWN)
+    , mHttpVersion(HttpVersion::UNKNOWN)
     , mHttpResponseCode(0)
     , mCurrentHttpResponseHeaderSize(0)
     , mThrottlingReadAllowance(THROTTLE_NO_LIMIT)
@@ -133,7 +133,6 @@ nsHttpTransaction::nsHttpTransaction()
     , mWaitingOnPipeOut(false)
     , mReportedStart(false)
     , mReportedResponseHeader(false)
-    , mForTakeResponseHead(nullptr)
     , mResponseHeadTaken(false)
     , mForTakeResponseTrailers(nullptr)
     , mResponseTrailersTaken(false)
@@ -147,6 +146,8 @@ nsHttpTransaction::nsHttpTransaction()
     , mEarlyDataDisposition(EARLY_NONE)
     , mFastOpenStatus(TFO_NOT_TRIED)
 {
+    this->mSelfAddr.inet = {};
+    this->mPeerAddr.inet = {};
     LOG(("Creating nsHttpTransaction @%p\n", this));
 
 #ifdef MOZ_VALGRIND
@@ -230,7 +231,6 @@ nsHttpTransaction::~nsHttpTransaction()
     mConnection = nullptr;
 
     delete mResponseHead;
-    delete mForTakeResponseHead;
     delete mChunkedDecoder;
     ReleaseBlockingTransaction();
 }
@@ -467,15 +467,6 @@ nsHttpTransaction::TakeResponseHead()
 
     mResponseHeadTaken = true;
 
-    // Prefer mForTakeResponseHead over mResponseHead. It is always a complete
-    // set of headers.
-    nsHttpResponseHead *head;
-    if (mForTakeResponseHead) {
-        head = mForTakeResponseHead;
-        mForTakeResponseHead = nullptr;
-        return head;
-    }
-
     // Even in OnStartRequest() the headers won't be available if we were
     // canceled
     if (!mHaveAllHeaders) {
@@ -483,7 +474,7 @@ nsHttpTransaction::TakeResponseHead()
         return nullptr;
     }
 
-    head = mResponseHead;
+    nsHttpResponseHead *head = mResponseHead;
     mResponseHead = nullptr;
     return head;
 }
@@ -545,6 +536,18 @@ nsHttpTransaction::OnActivated()
 
     if (mActivated) {
         return;
+    }
+
+    if (mConnection && mRequestHead && mConnection->Version() >= HttpVersion::v2_0) {
+        // So this is fun. On http/2, we want to send TE: Trailers, to be
+        // spec-compliant. So we add it to the request head here. The fun part
+        // is that adding a header to the request head at this point has no
+        // effect on what we send on the wire, as the headers are already
+        // flattened (in Init()) by the time we get here. So the *real* adding
+        // of the header happens in the h2 compression code. We still have to
+        // add the header to the request head here, though, so that devtools can
+        // show that we sent the header. FUN!
+        Unused << mRequestHead->SetHeader(nsHttp::TE, NS_LITERAL_CSTRING("Trailers"));
     }
 
     mActivated = true;
@@ -612,7 +615,7 @@ nsHttpTransaction::OnTransportStatus(nsITransport* transport,
                 // After a socket is connected we know for sure whether data
                 // has been sent on SYN packet and if not we should update TLS
                 // start timing.
-                if ((mFastOpenStatus != TFO_DATA_SENT) && 
+                if ((mFastOpenStatus != TFO_DATA_SENT) &&
                     !mTimings.secureConnectionStart.IsNull()) {
                     mTimings.secureConnectionStart = tnow;
                 }
@@ -1096,7 +1099,8 @@ nsHttpTransaction::Close(nsresult reason)
     if ((reason == NS_ERROR_NET_RESET ||
          reason == NS_OK ||
          reason == psm::GetXPCOMFromNSSError(SSL_ERROR_DOWNGRADE_WITH_EARLY_DATA)) &&
-        (!(mCaps & NS_HTTP_STICKY_CONNECTION) || (mCaps & NS_HTTP_CONNECTION_RESTARTABLE))) {
+        (!(mCaps & NS_HTTP_STICKY_CONNECTION) || (mCaps & NS_HTTP_CONNECTION_RESTARTABLE) ||
+         (mEarlyDataDisposition == EARLY_425))) {
 
         if (mForceRestart && NS_SUCCEEDED(Restart())) {
             if (mResponseHead) {
@@ -1142,7 +1146,7 @@ nsHttpTransaction::Close(nsresult reason)
         NS_WARNING("Partial transfer, incomplete HTTP response received");
 
         if ((mHttpResponseCode / 100 == 2) &&
-            (mHttpVersion >= NS_HTTP_VERSION_1_1)) {
+            (mHttpVersion >= HttpVersion::v1_1)) {
             FrameCheckLevel clevel = gHttpHandler->GetEnforceH1Framing();
             if (clevel >= FRAMECHECK_BARELY) {
                 if ((clevel == FRAMECHECK_STRICT) ||
@@ -1174,7 +1178,7 @@ nsHttpTransaction::Close(nsresult reason)
             uint32_t unused;
             Unused << ParseHead(&data, 1, &unused);
 
-            if (mResponseHead->Version() == NS_HTTP_VERSION_0_9) {
+            if (mResponseHead->Version() == HttpVersion::v0_9) {
                 // Reject 0 byte HTTP/0.9 Responses - bug 423506
                 LOG(("nsHttpTransaction::Close %p 0 Byte 0.9 Response", this));
                 reason = NS_ERROR_NET_RESET;
@@ -1393,7 +1397,7 @@ nsHttpTransaction::ParseLine(nsACString &line)
         mResponseHead->ParseStatusLine(line);
         mHaveStatusLine = true;
         // XXX this should probably never happen
-        if (mResponseHead->Version() == NS_HTTP_VERSION_0_9)
+        if (mResponseHead->Version() == HttpVersion::v0_9)
             mHaveAllHeaders = true;
     }
     else {
@@ -1405,7 +1409,7 @@ nsHttpTransaction::ParseLine(nsACString &line)
 nsresult
 nsHttpTransaction::ParseLineSegment(char *segment, uint32_t len)
 {
-    NS_PRECONDITION(!mHaveAllHeaders, "already have all headers");
+    MOZ_ASSERT(!mHaveAllHeaders, "already have all headers");
 
     if (!mLineBuf.IsEmpty() && mLineBuf.Last() == '\n') {
         // trim off the new line char, and if this segment is
@@ -1456,7 +1460,7 @@ nsHttpTransaction::ParseHead(char *buf,
 
     *countRead = 0;
 
-    NS_PRECONDITION(!mHaveAllHeaders, "oops");
+    MOZ_ASSERT(!mHaveAllHeaders, "oops");
 
     // allocate the response head object if necessary
     if (!mResponseHead) {
@@ -1665,7 +1669,7 @@ nsHttpTransaction::HandleContentStart()
             if ((mEarlyDataDisposition == EARLY_425) && !mDoNotTryEarlyData) {
                 mDoNotTryEarlyData = true;
                 mForceRestart = true; // force restart has built in loop protection
-                if (mConnection->Version() == HTTP_VERSION_2) {
+                if (mConnection->Version() == HttpVersion::v2_0) {
                     mReuseOnRestart = true;
                 }
                 return NS_ERROR_NET_RESET;
@@ -1690,7 +1694,7 @@ nsHttpTransaction::HandleContentStart()
             // we're done with the socket.  please note that _all_ other
             // decoding is done when the channel receives the content data
             // so as not to block the socket transport thread too much.
-            if (mResponseHead->Version() >= NS_HTTP_VERSION_1_0 &&
+            if (mResponseHead->Version() >= HttpVersion::v1_0 &&
                 mResponseHead->HasHeaderValue(nsHttp::Transfer_Encoding, "chunked")) {
                 // we only support the "chunked" transfer encoding right now.
                 mChunkedDecoder = new nsHttpChunkedDecoder();
@@ -1749,7 +1753,7 @@ nsHttpTransaction::HandleContent(char *buf,
         // allowances for a possibly invalid Content-Length header. Thus, if
         // NOT persistent, we simply accept everything in |buf|.
         if (mConnection->IsPersistent() || mPreserveStream ||
-            mHttpVersion >= NS_HTTP_VERSION_1_1) {
+            mHttpVersion >= HttpVersion::v1_1) {
             int64_t remaining = mContentLength - mContentRead;
             *contentRead = uint32_t(std::min<int64_t>(count, remaining));
             *contentRemaining = count - *contentRead;
@@ -2275,7 +2279,7 @@ NS_IMETHODIMP_(MozExternalRefCountType)
 nsHttpTransaction::Release()
 {
     nsrefcnt count;
-    NS_PRECONDITION(0 != mRefCnt, "dup release");
+    MOZ_ASSERT(0 != mRefCnt, "dup release");
     count = --mRefCnt;
     NS_LOG_RELEASE(this, count, "nsHttpTransaction");
     if (0 == count) {

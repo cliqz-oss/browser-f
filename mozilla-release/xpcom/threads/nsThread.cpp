@@ -21,10 +21,10 @@
 #include "nsCOMPtr.h"
 #include "nsQueryObject.h"
 #include "pratom.h"
+#include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/Logging.h"
 #include "nsIObserverService.h"
-#include "mozilla/HangMonitor.h"
 #include "mozilla/IOInterposer.h"
 #include "mozilla/ipc/MessageChannel.h"
 #include "mozilla/ipc/BackgroundChild.h"
@@ -32,6 +32,7 @@
 #include "mozilla/Scheduler.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/Services.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/SystemGroup.h"
 #include "nsXPCOMPrivate.h"
 #include "mozilla/ChaosMode.h"
@@ -47,7 +48,6 @@
 #include "ThreadEventTarget.h"
 
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/DOMPrefs.h"
 
 #ifdef XP_LINUX
 #include <sys/time.h>
@@ -197,7 +197,7 @@ NS_IMPL_CI_INTERFACE_GETTER(nsThread, nsIThread, nsIThreadInternal,
 
 //-----------------------------------------------------------------------------
 
-class nsThreadStartupEvent : public Runnable
+class nsThreadStartupEvent final : public Runnable
 {
 public:
   nsThreadStartupEvent()
@@ -217,11 +217,9 @@ public:
     }
   }
 
-  // This method needs to be public to support older compilers (xlC_r on AIX).
-  // It should be called directly as this class type is reference counted.
-  virtual ~nsThreadStartupEvent() {}
-
 private:
+  ~nsThreadStartupEvent() = default;
+
   NS_IMETHOD Run() override
   {
     ReentrantMonitorAutoEnter mon(mMon);
@@ -558,7 +556,6 @@ nsThread::nsThread(NotNull<SynchronizedEventQueue*> aQueue,
   , mShutdownContext(nullptr)
   , mShutdownRequired(false)
   , mIsMainThread(aMainThread)
-  , mLastUnlabeledRunnable(TimeStamp::Now())
   , mCanInvokeJS(false)
   , mCurrentEvent(nullptr)
   , mCurrentEventStart(TimeStamp::Now())
@@ -582,14 +579,6 @@ nsThread::~nsThread()
     Unused << mRequestedShutdownContexts[i].forget();
   }
 #endif
-}
-
-bool
-nsThread::GetSchedulerLoggingEnabled() {
-  if (!NS_IsMainThread() || !mozilla::Preferences::IsServiceAvailable()) {
-    return false;
-  }
-  return mozilla::dom::DOMPrefs::SchedulerLoggingEnabled();
 }
 
 nsresult
@@ -651,13 +640,13 @@ nsThread::Dispatch(already_AddRefed<nsIRunnable> aEvent, uint32_t aFlags)
 {
   LOG(("THRD(%p) Dispatch [%p %x]\n", this, /* XXX aEvent */nullptr, aFlags));
 
-  return mEventTarget->Dispatch(Move(aEvent), aFlags);
+  return mEventTarget->Dispatch(std::move(aEvent), aFlags);
 }
 
 NS_IMETHODIMP
 nsThread::DelayedDispatch(already_AddRefed<nsIRunnable> aEvent, uint32_t aDelayMs)
 {
-  return mEventTarget->DelayedDispatch(Move(aEvent), aDelayMs);
+  return mEventTarget->DelayedDispatch(std::move(aEvent), aDelayMs);
 }
 
 NS_IMETHODIMP
@@ -1003,10 +992,10 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult)
       LOG(("THRD(%p) running [%p]\n", this, event.get()));
 
       if (MAIN_THREAD == mIsMainThread) {
-        HangMonitor::NotifyActivity();
+        BackgroundHangMonitor().NotifyActivity();
       }
 
-      bool schedulerLoggingEnabled = GetSchedulerLoggingEnabled();
+      bool schedulerLoggingEnabled = mozilla::StaticPrefs::dom_performance_enable_scheduler_timing();
       if (schedulerLoggingEnabled
           && mNestedEventLoopDepth > mCurrentEventLoopDepth
           && mCurrentPerformanceCounter) {
@@ -1017,37 +1006,6 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult)
       }
 
 #ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
-      Maybe<Telemetry::AutoTimer<Telemetry::MAIN_THREAD_RUNNABLE_MS>> timer;
-      Maybe<Telemetry::AutoTimer<Telemetry::IDLE_RUNNABLE_BUDGET_OVERUSE_MS>> idleTimer;
-
-      nsAutoCString name;
-      if ((MAIN_THREAD == mIsMainThread) || mNextIdleDeadline) {
-        bool labeled = GetLabeledRunnableName(event, name, priority);
-
-        if (MAIN_THREAD == mIsMainThread) {
-          timer.emplace(name);
-
-          // High-priority runnables are ignored here since they'll run right away
-          // even with the cooperative scheduler.
-          if (!labeled && (priority == EventPriority::Normal ||
-                           priority == EventPriority::Idle)) {
-            TimeStamp now = TimeStamp::Now();
-            double diff = (now - mLastUnlabeledRunnable).ToMilliseconds();
-            Telemetry::Accumulate(Telemetry::TIME_BETWEEN_UNLABELED_RUNNABLES_MS, diff);
-            mLastUnlabeledRunnable = now;
-          }
-        }
-
-        if (mNextIdleDeadline) {
-          // If we construct the AutoTimer with the deadline, then we'll
-          // compute TimeStamp::Now() - mNextIdleDeadline when
-          // accumulating telemetry.  If that is positive we've
-          // overdrawn our idle budget, if it's negative it will go in
-          // the 0 bucket of the histogram.
-          idleTimer.emplace(name, mNextIdleDeadline);
-        }
-      }
-
       // If we're on the main thread, we want to record our current runnable's
       // name in a static so that BHR can record it.
       Array<char, kRunnableNameBufSize> restoreRunnableName;
@@ -1059,6 +1017,9 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult)
         }
       });
       if (MAIN_THREAD == mIsMainThread) {
+        nsAutoCString name;
+        GetLabeledRunnableName(event, name, priority);
+
         MOZ_ASSERT(NS_IsMainThread());
         restoreRunnableName = sMainThreadRunnableName;
 
@@ -1258,7 +1219,7 @@ nsThread::DoMainThreadSpecificProcessing(bool aReallyWait)
   ipc::CancelCPOWs();
 
   if (aReallyWait) {
-    HangMonitor::Suspend();
+    BackgroundHangMonitor().NotifyWait();
   }
 
   // Fire a memory pressure notification, if one is pending.
@@ -1268,11 +1229,13 @@ nsThread::DoMainThreadSpecificProcessing(bool aReallyWait)
       nsCOMPtr<nsIObserverService> os = services::GetObserverService();
 
       if (os) {
-        // Use no-forward to prevent the notifications from being transferred to
-        // the children of this process.
-        os->NotifyObservers(nullptr, "memory-pressure",
-                            mpPending == MemPressure_New ? u"low-memory-no-forward" :
-                            u"low-memory-ongoing-no-forward");
+        if (mpPending == MemPressure_Stopping) {
+          os->NotifyObservers(nullptr, "memory-pressure-stop", nullptr);
+        } else {
+          os->NotifyObservers(nullptr, "memory-pressure",
+                              mpPending == MemPressure_New ? u"low-memory" :
+                              u"low-memory-ongoing");
+        }
       } else {
         NS_WARNING("Can't get observer service!");
       }

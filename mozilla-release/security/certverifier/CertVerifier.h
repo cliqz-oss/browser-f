@@ -11,6 +11,7 @@
 #include "CTPolicyEnforcer.h"
 #include "CTVerifyResult.h"
 #include "OCSPCache.h"
+#include "RootCertificateTelemetryUtils.h"
 #include "ScopedNSSTypes.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
@@ -63,21 +64,31 @@ enum class SHA1ModeResult {
 
 // Whether or not we are enforcing one of our CA distrust policies. For context,
 // see Bug 1437754 and Bug 1409257.
-enum class DistrustedCAPolicy : uint32_t {
-  Permit = 0,
-  DistrustSymantecRoots = 1,
+enum DistrustedCAPolicy : uint32_t {
+  Permit = 0b0000,
+  DistrustSymantecRoots = 0b0001,
+  DistrustSymantecRootsRegardlessOfDate = 0b0010,
 };
+
+// Bitmask by nsNSSComponent to check for wholly-invalid values; be sure to
+// update this to account for new entries in DistrustedCAPolicy.
+const uint32_t DistrustedCAPolicyMaxAllowedValueMask = 0b0011;
 
 enum class NetscapeStepUpPolicy : uint32_t;
 
 class PinningTelemetryInfo
 {
 public:
-  PinningTelemetryInfo() { Reset(); }
+  PinningTelemetryInfo()
+    : certPinningResultBucket(0)
+    , rootBucket(ROOT_CERTIFICATE_UNKNOWN)
+  {
+    Reset();
+  }
 
   // Should we accumulate pinning telemetry for the result?
   bool accumulateResult;
-  Telemetry::HistogramID certPinningResultHistogram;
+  Maybe<Telemetry::HistogramID> certPinningResultHistogram;
   int32_t certPinningResultBucket;
   // Should we accumulate telemetry for the root?
   bool accumulateForRoot;
@@ -89,7 +100,12 @@ public:
 class CertificateTransparencyInfo
 {
 public:
-  CertificateTransparencyInfo() { Reset(); }
+  CertificateTransparencyInfo()
+    : enabled(false)
+    , policyCompliance(mozilla::ct::CTPolicyCompliance::Unknown)
+  {
+    Reset();
+  }
 
   // Was CT enabled?
   bool enabled;
@@ -187,14 +203,13 @@ public:
     ocspEVOnly = 2
   };
   enum OcspStrictConfig { ocspRelaxed = 0, ocspStrict };
-  enum OcspGetConfig { ocspGetDisabled = 0, ocspGetEnabled = 1 };
 
   enum class CertificateTransparencyMode {
     Disabled = 0,
     TelemetryOnly = 1,
   };
 
-  CertVerifier(OcspDownloadConfig odc, OcspStrictConfig osc, OcspGetConfig ogc,
+  CertVerifier(OcspDownloadConfig odc, OcspStrictConfig osc,
                mozilla::TimeDuration ocspTimeoutSoft,
                mozilla::TimeDuration ocspTimeoutHard,
                uint32_t certShortLifetimeInDays,
@@ -209,7 +224,6 @@ public:
 
   const OcspDownloadConfig mOCSPDownloadConfig;
   const bool mOCSPStrict;
-  const bool mOCSPGETEnabled;
   const mozilla::TimeDuration mOCSPTimeoutSoft;
   const mozilla::TimeDuration mOCSPTimeoutHard;
   const uint32_t mCertShortLifetimeInDays;

@@ -37,6 +37,7 @@
 #include "gfxUserFontSet.h"
 #include "nsBindingManager.h"
 #include "nsWindowSizes.h"
+#include "GeckoProfiler.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -192,15 +193,6 @@ ServoStyleSet::Shutdown()
   ClearNonInheritingComputedStyles();
   mRawSet = nullptr;
   mStyleRuleMap = nullptr;
-}
-
-void
-ServoStyleSet::InvalidateStyleForCSSRuleChanges()
-{
-  MOZ_ASSERT(StylistNeedsUpdate());
-  if (nsPresContext* pc = GetPresContext()) {
-    pc->RestyleManager()->PostRestyleEventForCSSRuleChanges();
-  }
 }
 
 void
@@ -384,17 +376,6 @@ ServoStyleSet::SetAuthorStyleDisabled(bool aStyleDisabled)
   // to rebuild stylist for this change. But we have bug around this, and we
   // may want to rethink how things should work. See bug 1437785.
   SetStylistStyleSheetsDirty();
-}
-
-void
-ServoStyleSet::BeginUpdate()
-{
-}
-
-nsresult
-ServoStyleSet::EndUpdate()
-{
-  return NS_OK;
 }
 
 already_AddRefed<ComputedStyle>
@@ -1533,7 +1514,15 @@ bool
 ServoStyleSet::ShouldTraverseInParallel() const
 {
   MOZ_ASSERT(mDocument->GetShell(), "Styling a document without a shell?");
-  return mDocument->GetShell()->IsActive();
+  if (!mDocument->GetShell()->IsActive()) {
+    return false;
+  }
+#ifdef MOZ_GECKO_PROFILER
+  if (profiler_feature_active(ProfilerFeature::SequentialStyle)) {
+    return false;
+  }
+#endif
+  return true;
 }
 
 void

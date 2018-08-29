@@ -19,8 +19,6 @@ const PushService = Cc["@mozilla.org/push/Service;1"]
 add_task(async function() {
   info("Turn on workers via mochitest http.");
   await enableServiceWorkerDebugging();
-  // Enable the push service.
-  await pushPref("dom.push.connection.enabled", true);
 
   info("Mock the push service");
   PushService.service = {
@@ -33,7 +31,7 @@ add_task(async function() {
     },
     init() {},
     register(pageRecord) {
-      let registration = {
+      const registration = {
         endpoint: FAKE_ENDPOINT
       };
       this._registrations.set(pageRecord.scope, registration);
@@ -44,7 +42,7 @@ add_task(async function() {
       return Promise.resolve(this._registrations.get(pageRecord.scope));
     },
     unregister(pageRecord) {
-      let deleted = this._registrations.delete(pageRecord.scope);
+      const deleted = this._registrations.delete(pageRecord.scope);
       if (deleted) {
         this._notify(pageRecord.scope);
       }
@@ -52,13 +50,13 @@ add_task(async function() {
     },
   };
 
-  let { tab, document } = await openAboutDebugging("workers");
+  const { tab, document } = await openAboutDebugging("workers");
 
   // Listen for mutations in the service-workers list.
-  let serviceWorkersElement = document.getElementById("service-workers");
+  const serviceWorkersElement = document.getElementById("service-workers");
 
   // Open a tab that registers a push service worker.
-  let swTab = await addTab(TAB_URL);
+  const swTab = await addTab(TAB_URL);
 
   info("Wait until the service worker appears in about:debugging");
   await waitUntilServiceWorkerContainer(SERVICE_WORKER, document);
@@ -66,22 +64,22 @@ add_task(async function() {
   await waitForServiceWorkerActivation(SERVICE_WORKER, document);
 
   // Wait for the service worker details to update.
-  let names = [...document.querySelectorAll("#service-workers .target-name")];
-  let name = names.filter(element => element.textContent === SERVICE_WORKER)[0];
+  const names = [...document.querySelectorAll("#service-workers .target-name")];
+  const name = names.filter(element => element.textContent === SERVICE_WORKER)[0];
   ok(name, "Found the service worker in the list");
 
-  let targetContainer = name.closest(".target-container");
+  const targetContainer = name.closest(".target-container");
 
   // Retrieve the push subscription endpoint URL, and verify it looks good.
   info("Wait for the push URL");
-  let pushURL = await waitUntilElement(".service-worker-push-url", targetContainer);
+  const pushURL = await waitUntilElement(".service-worker-push-url", targetContainer);
 
   info("Found the push service URL in the service worker details");
   is(pushURL.textContent, FAKE_ENDPOINT, "The push service URL looks correct");
 
   // Unsubscribe from the push service.
   ContentTask.spawn(swTab.linkedBrowser, {}, function() {
-    let win = content.wrappedJSObject;
+    const win = content.wrappedJSObject;
     return win.sub.unsubscribe();
   });
 

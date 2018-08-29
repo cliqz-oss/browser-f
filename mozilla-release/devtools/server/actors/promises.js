@@ -19,7 +19,7 @@ const EventEmitter = require("devtools/shared/event-emitter");
 var PromisesActor = protocol.ActorClassWithSpec(promisesSpec, {
   /**
    * @param conn DebuggerServerConnection.
-   * @param parentActor TabActor|RootActor
+   * @param parentActor BrowsingContextTargetActor|RootActor
    */
   initialize: function(conn, parentActor) {
     protocol.Actor.prototype.initialize.call(this, conn);
@@ -99,7 +99,7 @@ var PromisesActor = protocol.ActorClassWithSpec(promisesSpec, {
   }),
 
   _createActorPool: function() {
-    let pool = new ActorPool(this.conn);
+    const pool = new ActorPool(this.conn);
     pool.objectActors = new WeakMap();
     return pool;
   },
@@ -117,7 +117,7 @@ var PromisesActor = protocol.ActorClassWithSpec(promisesSpec, {
       return this._navigationLifetimePool.objectActors.get(promise);
     }
 
-    let actor = new ObjectActor(promise, {
+    const actor = new ObjectActor(promise, {
       getGripDepth: () => this._gripDepth,
       incrementGripDepth: () => this._gripDepth++,
       decrementGripDepth: () => this._gripDepth--,
@@ -126,8 +126,7 @@ var PromisesActor = protocol.ActorClassWithSpec(promisesSpec, {
       sources: () => this.parentActor.sources,
       createEnvironmentActor: () => DevToolsUtils.reportException(
         "PromisesActor", Error("createEnvironmentActor not yet implemented")),
-      getGlobalDebugObject: () => DevToolsUtils.reportException(
-        "PromisesActor", Error("getGlobalDebugObject not yet implemented")),
+      getGlobalDebugObject: () => null,
     });
 
     this._navigationLifetimePool.addActor(actor);
@@ -152,7 +151,7 @@ var PromisesActor = protocol.ActorClassWithSpec(promisesSpec, {
    * Get a list of ObjectActors for all live Promise Objects.
    */
   listPromises: function() {
-    let promises = this.dbg.findObjects({ class: "Promise" });
+    const promises = this.dbg.findObjects({ class: "Promise" });
 
     this.dbg.onNewPromise = this._makePromiseEventHandler(this._newPromises,
       "new-promises");
@@ -174,8 +173,8 @@ var PromisesActor = protocol.ActorClassWithSpec(promisesSpec, {
    */
   _makePromiseEventHandler: function(array, eventName) {
     return promise => {
-      let actor = this._createObjectActorForPromise(promise);
-      let needsScheduling = array.length == 0;
+      const actor = this._createObjectActorForPromise(promise);
+      const needsScheduling = array.length == 0;
 
       array.push(actor);
 

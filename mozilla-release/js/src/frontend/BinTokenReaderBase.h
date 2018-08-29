@@ -7,19 +7,14 @@
 #ifndef frontend_BinTokenReaderBase_h
 #define frontend_BinTokenReaderBase_h
 
-#include "mozilla/Maybe.h"
-
 #include "frontend/BinToken.h"
 #include "frontend/TokenStream.h"
 
+#include "js/Result.h"
 #include "js/TypeDecls.h"
-
 
 namespace js {
 namespace frontend {
-
-using namespace mozilla;
-using namespace JS;
 
 // A constant used by tokenizers to represent a null float.
 extern const uint64_t NULL_FLOAT_REPRESENTATION;
@@ -80,6 +75,7 @@ class MOZ_STACK_CLASS BinTokenReaderBase
   protected:
     BinTokenReaderBase(JSContext* cx, const uint8_t* start, const size_t length)
         : cx_(cx)
+        , poisoned_(false)
         , start_(start)
         , current_(start)
         , stop_(start + length)

@@ -15,6 +15,7 @@ using mozilla::DebugOnly;
 ControlFlowGenerator::ControlFlowGenerator(TempAllocator& temp, JSScript* script)
   : script(script),
     current(nullptr),
+    pc(nullptr),
     alloc_(temp),
     blocks_(temp),
     cfgStack_(temp),
@@ -82,7 +83,7 @@ ControlFlowGraph::init(TempAllocator& alloc, const CFGBlockVector& blocks)
 
         block.setStopPc(blocks[i]->stopPc());
         block.setId(i);
-        blocks_.infallibleAppend(mozilla::Move(block));
+        blocks_.infallibleAppend(std::move(block));
     }
 
     for (size_t i = 0; i < blocks.length(); i++) {
@@ -933,7 +934,7 @@ ControlFlowGenerator::processWhileOrForInLoop(jssrcnote* sn)
     jsbytecode* exitpc = GetNextPc(ifne);
     jsbytecode* continuepc = pc;
 
-    CFGBlock* header = CFGBlock::New(alloc(), GetNextPc(loopEntry));
+    CFGBlock* header = CFGBlock::New(alloc(), loopEntry);
 
     CFGLoopEntry* ins = CFGLoopEntry::New(alloc(), header, stackPhiCount);
     if (LoopEntryCanIonOsr(loopEntry))
@@ -1481,7 +1482,7 @@ ControlFlowGenerator::processForLoop(JSOp op, jssrcnote* sn)
 
     MOZ_ASSERT(JSOp(*loopEntry) == JSOP_LOOPENTRY);
 
-    CFGBlock* header = CFGBlock::New(alloc(), GetNextPc(loopEntry));
+    CFGBlock* header = CFGBlock::New(alloc(), loopEntry);
 
     CFGLoopEntry* ins = CFGLoopEntry::New(alloc(), header, 0);
     if (LoopEntryCanIonOsr(loopEntry))
@@ -1549,7 +1550,7 @@ ControlFlowGenerator::processDoWhileLoop(jssrcnote* sn)
 
     jsbytecode* loopEntry = GetNextPc(loopHead);
 
-    CFGBlock* header = CFGBlock::New(alloc(), GetNextPc(loopEntry));
+    CFGBlock* header = CFGBlock::New(alloc(), loopEntry);
 
     CFGLoopEntry* ins = CFGLoopEntry::New(alloc(), header, 0);
     if (LoopEntryCanIonOsr(loopEntry))
@@ -1762,22 +1763,22 @@ ControlFlowGenerator::processIfStart(JSOp op)
 
     // The bytecode for if/ternary gets emitted either like this:
     //
-    //    IFEQ X  ; src note (IF_ELSE, COND) points to the GOTO
+    //    IFEQ X     ; src note (IF_ELSE, COND)
     //    ...
     //    GOTO Z
-    // X: ...     ; else/else if
+    // X: JUMPTARGET ; else/else if
     //    ...
-    // Z:         ; join
+    // Z: JUMPTARGET ; join
     //
     // Or like this:
     //
-    //    IFEQ X  ; src note (IF) has no offset
+    //    IFEQ X     ; src note (IF)
     //    ...
-    // Z: ...     ; join
+    // X: JUMPTARGET ; join
     //
     // We want to parse the bytecode as if we were parsing the AST, so for the
-    // IF_ELSE/COND cases, we use the source note and follow the GOTO. For the
-    // IF case, the IFEQ offset is the join point.
+    // IF_ELSE/COND cases, we use the IFEQ/GOTO bytecode offsets to follow the
+    // branch. For the IF case, the IFEQ offset is the join point.
     switch (SN_TYPE(sn)) {
       case SRC_IF:
         if (!cfgStack_.append(CFGState::If(falseStart, test)))
@@ -1789,9 +1790,9 @@ ControlFlowGenerator::processIfStart(JSOp op)
       {
         // Infer the join point from the JSOP_GOTO[X] sitting here, then
         // assert as we much we can that this is the right GOTO.
-        jsbytecode* trueEnd = pc + GetSrcNoteOffset(sn, 0);
+        MOZ_ASSERT(JSOp(*falseStart) == JSOP_JUMPTARGET);
+        jsbytecode* trueEnd = falseStart - JSOP_GOTO_LENGTH;
         MOZ_ASSERT(trueEnd > pc);
-        MOZ_ASSERT(trueEnd < falseStart);
         MOZ_ASSERT(JSOp(*trueEnd) == JSOP_GOTO);
         MOZ_ASSERT(!GetSrcNote(gsn, script, trueEnd));
 

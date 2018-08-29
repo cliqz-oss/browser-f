@@ -839,26 +839,7 @@ protected:
 
   void SetDecoder(MediaDecoder* aDecoder);
 
-  class WakeLockBoolWrapper {
-  public:
-    WakeLockBoolWrapper(bool aVal, HTMLMediaElement& aOuter)
-      : mValue(aVal)
-      , mOuter(aOuter)
-    {}
-
-    ~WakeLockBoolWrapper() {};
-
-    MOZ_IMPLICIT operator bool() const { return mValue; }
-
-    WakeLockBoolWrapper& operator=(bool val);
-
-    bool operator !() const { return !mValue; }
-
-    void UpdateWakeLock();
-  private:
-    bool mValue;
-    HTMLMediaElement& mOuter;
-  };
+  void UpdateWakeLock();
 
   // Holds references to the DOM wrappers for the MediaStreams that we're
   // writing to.
@@ -896,8 +877,8 @@ protected:
   void ChangeNetworkState(nsMediaNetworkState aState);
 
   /**
-   * These two methods are called by the WakeLockBoolWrapper when the wakelock
-   * has to be created or released.
+   * These two methods are called when mPaused is changed to ensure we have
+   * a wake lock active when we're playing audibly.
    */
   virtual void WakeLockCreate();
   virtual void WakeLockRelease();
@@ -1373,6 +1354,8 @@ protected:
 
   void PauseIfShouldNotBePlaying();
 
+  WatchManager<HTMLMediaElement> mWatchManager;
+
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
   RefPtr<MediaDecoder> mDecoder;
@@ -1600,7 +1583,7 @@ protected:
 
   // Playback of the video is paused either due to calling the
   // 'Pause' method, or playback not yet having started.
-  WakeLockBoolWrapper mPaused;
+  Watchable<bool> mPaused;
 
   // The following two fields are here for the private storage of the builtin
   // video controls, and control 'casting' of the video to external devices
@@ -1825,13 +1808,6 @@ private:
   // True if media element has been forced into being considered 'hidden'.
   // For use by mochitests. Enabling pref "media.test.video-suspend"
   bool mForcedHidden = false;
-
-  // True if we attempted to play before the media element had loaded
-  // metadata, and we need to attempt the play once we reach loaded metadata.
-  // If autoplay is disabled, we can't decide whether to allow a play()
-  // until we've loaded metadata, as we need to know whether the resource
-  // has an audio track.
-  bool mAttemptPlayUponLoadedMetadata = false;
 
   // True if audio tracks and video tracks are constructed and added into the
   // track list, false if all tracks are removed from the track list.

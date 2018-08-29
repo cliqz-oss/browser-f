@@ -42,11 +42,9 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/X11Util.h"
 
-#ifdef GL_PROVIDER_GLX
 #include "GLContextProvider.h"
 #include "GLContextGLX.h"
 #include "GLXLibrary.h"
-#endif
 
 /* Undefine the Status from Xlib since it will conflict with system headers on OSX */
 #if defined(__APPLE__) && defined(Status)
@@ -510,7 +508,7 @@ gfxPlatformGtk::CheckVariationFontSupport()
   return major * 1000000 + minor * 1000 + patch >= 2007001;
 }
 
-#ifdef GL_PROVIDER_GLX
+#ifdef MOZ_X11
 
 class GLXVsyncSource final : public VsyncSource
 {
@@ -743,8 +741,10 @@ gfxPlatformGtk::CreateHardwareVsyncSource()
   // Only use GLX vsync when the OpenGL compositor is being used.
   // The extra cost of initializing a GLX context while blocking the main
   // thread is not worth it when using basic composition.
+  // Also don't use it on non-X11 displays.
   if (gfxConfig::IsEnabled(Feature::HW_COMPOSITING)) {
-    if (gl::sGLXLibrary.SupportsVideoSync()) {
+    if (GDK_IS_X11_DISPLAY(gdk_display_get_default()) &&
+        gl::sGLXLibrary.SupportsVideoSync()) {
       RefPtr<VsyncSource> vsyncSource = new GLXVsyncSource();
       VsyncSource::Display& display = vsyncSource->GetGlobalDisplay();
       if (!static_cast<GLXVsyncSource::GLXDisplay&>(display).Setup()) {

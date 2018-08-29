@@ -8,13 +8,15 @@ geckoview:
     target: geckoview_example.apk
     mozharness:
         script: android_emulator_unittest.py
-        no-read-buildbot-config: true
         config:
             by-test-platform:
-                android-4.2-x86/opt:
+                android-em-4.2-x86/opt:
                     - android/android_common.py
                     - android/androidx86.py
-                android.*:
+                android-em-7.0-x86/opt:
+                    - android/android_common.py
+                    - android/androidx86_7_0.py
+                android-em.*:
                     - android/android_common.py
                     - android/androidarm_4_3.py
         extra-options:
@@ -31,19 +33,21 @@ geckoview-junit:
     max-run-time: 3600
     chunks:
         by-test-platform:
-            android-4.3-arm7-api-16/debug: 3
+            android-em-4.3-arm7-api-16/debug: 3
             default: 1
     mozharness:
         script: android_emulator_unittest.py
-        no-read-buildbot-config: true
         config:
             by-test-platform:
-                android-4.2-x86/opt:
+                android-em-4.2-x86/opt:
                     - android/android_common.py
                     - android/androidx86.py
-                android.*:
+                android-em-7.0-x86/opt:
                     - android/android_common.py
-                    - android/androidarm_4_3.py
+                    - android/androidx86_7_0.py
+                android-em.*:
+                    - android/android_common.py
+                    - android/androidarm_4_3_junit.py
         extra-options:
             - --test-suite=geckoview-junit
 
@@ -54,13 +58,12 @@ robocop:
     instance-size: xlarge
     chunks:
         by-test-platform:
-            # android-4.3-arm7-api-16/debug -- not run
-            android-4.3-arm7-api-16/opt: 4
+            # android-em-4.3-arm7-api-16/debug -- not run
+            android-em-4.3-arm7-api-16/opt: 4
     loopback-video: true
     e10s: false
     mozharness:
         script: android_emulator_unittest.py
-        no-read-buildbot-config: true
         config:
             - android/android_common.py
             - android/androidarm_4_3.py
@@ -89,31 +92,32 @@ test-verify:
     loopback-video: true
     instance-size:
         by-test-platform:
-            android.*: xlarge
+            android-em.*: xlarge
             default: default
     max-run-time: 10800
     allow-software-gl-layers: false
     run-on-projects:
         by-test-platform:
-            # do not run on ccov; see also the enable_code_coverage transform
-            linux64-ccov/.*: []
-            windows10-64-ccov/debug: []
+            # do not run on ccov or jsdcov
+            .*-ccov/.*: []
+            .*-jsdcov/.*: []
+            .*-asan/.*: []
             # do not run on beta or release: usually just confirms earlier results
             default: ['trunk', 'try']
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: 2
+    tier: 2
     mozharness:
         script:
             by-test-platform:
-                android.*: android_emulator_unittest.py
+                android-em.*: android_emulator_unittest.py
                 default: desktop_unittest.py
         config:
             by-test-platform:
-                android.*:
+                android-em.*:
                     - android/android_common.py
                     - android/androidarm_4_3.py
+                android-em-7.0-x86/opt:
+                    - android/android_common.py
+                    - android/androidx86_7_0.py
                 linux.*:
                     - unittests/linux_unittest.py
                     - remove_executables.py
@@ -121,7 +125,6 @@ test-verify:
                     - unittests/mac_unittest.py
                 windows.*:
                     - unittests/win_taskcluster_unittest.py
-        no-read-buildbot-config: true
         extra-options:
             - --verify
 
@@ -133,31 +136,32 @@ test-verify-gpu:
     virtualization: virtual-with-gpu
     instance-size:
         by-test-platform:
-            android.*: xlarge
+            android-em.*: xlarge
             default: default
     max-run-time: 10800
     allow-software-gl-layers: false
     run-on-projects:
         by-test-platform:
-            # do not run on ccov; see also the enable_code_coverage transform
-            linux64-ccov/.*: []
-            windows10-64-ccov/debug: []
+            # do not run on ccov or jsdcov
+            .*-ccov/.*: []
+            .*-jsdcov/.*: []
+            .*-asan/.*: []
             # do not run on beta or release: usually just confirms earlier results
             default: ['trunk', 'try']
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: 2
+    tier: 2
     mozharness:
         script:
             by-test-platform:
-                android.*: android_emulator_unittest.py
+                android-em.*: android_emulator_unittest.py
                 default: desktop_unittest.py
         config:
             by-test-platform:
-                android.*:
+                android-em.*:
                     - android/android_common.py
                     - android/androidarm_4_3.py
+                android-em-7.0-x86/opt:
+                    - android/android_common.py
+                    - android/androidx86_7_0.py
                 linux.*:
                     - unittests/linux_unittest.py
                     - remove_executables.py
@@ -165,7 +169,6 @@ test-verify-gpu:
                     - unittests/mac_unittest.py
                 windows.*:
                     - unittests/win_taskcluster_unittest.py
-        no-read-buildbot-config: true
         extra-options:
             - --verify
             - --gpu-required
@@ -180,22 +183,17 @@ test-coverage:
     allow-software-gl-layers: false
     run-on-projects:
         by-test-platform:
-            # only run on mozilla-central and try.
-            linux64-ccov/.*: ['mozilla-central', 'try']
-            windows10-64-ccov/debug: ['mozilla-central', 'try']
+            .*-ccov/.*: built-projects
             default: []
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: 2
+    tier: 2
     mozharness:
         script:
             by-test-platform:
-                android.*: android_emulator_unittest.py
+                android-em.*: android_emulator_unittest.py
                 default: desktop_unittest.py
         config:
             by-test-platform:
-                android.*:
+                android-em.*:
                     - android/android_common.py
                     - android/androidarm_4_3.py
                 linux.*:
@@ -205,6 +203,44 @@ test-coverage:
                     - unittests/mac_unittest.py
                 windows.*:
                     - unittests/win_taskcluster_unittest.py
-        no-read-buildbot-config: true
         extra-options:
             - --per-test-coverage
+
+test-coverage-gpu:
+    description: "Per-test coverage for tests that require gpu instances"
+    suite: test-coverage
+    treeherder-symbol: TCg
+    loopback-video: true
+    virtualization: virtual-with-gpu
+    instance-size: default
+    max-run-time: 10800
+    allow-software-gl-layers: false
+    run-on-projects:
+        by-test-platform:
+            # only run on mozilla-central and try.
+            .*-ccov/.*: ['mozilla-central', 'try']
+            default: []
+    tier:
+        by-test-platform:
+            windows10-64-asan.*: 3
+            default: 2
+    mozharness:
+        script:
+            by-test-platform:
+                android-em.*: android_emulator_unittest.py
+                default: desktop_unittest.py
+        config:
+            by-test-platform:
+                android-em.*:
+                    - android/android_common.py
+                    - android/androidarm_4_3.py
+                linux.*:
+                    - unittests/linux_unittest.py
+                    - remove_executables.py
+                macosx.*:
+                    - unittests/mac_unittest.py
+                windows.*:
+                    - unittests/win_taskcluster_unittest.py
+        extra-options:
+            - --per-test-coverage
+            - --gpu-required

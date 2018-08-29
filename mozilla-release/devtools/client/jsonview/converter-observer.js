@@ -53,14 +53,14 @@ const CONTENT_SNIFFER_CATEGORY = "net-content-sniffers";
 function JsonViewSniffer() {}
 
 JsonViewSniffer.prototype = {
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIContentSniffer]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIContentSniffer]),
 
   get wrappedJSObject() {
     return this;
   },
 
   isTopLevelLoad: function(request) {
-    let loadInfo = request.loadInfo;
+    const loadInfo = request.loadInfo;
     if (loadInfo && loadInfo.isTopLevelLoad) {
       return (request.loadFlags & Ci.nsIChannel.LOAD_DOCUMENT_URI);
     }

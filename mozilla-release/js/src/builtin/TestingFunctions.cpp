@@ -13,9 +13,16 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/Unused.h"
 
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+
+#if defined(XP_UNIX) && !defined(XP_DARWIN)
+#include <time.h>
+#else
+#include <chrono>
+#endif
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
@@ -28,6 +35,7 @@
 #include "irregexp/RegExpEngine.h"
 #include "irregexp/RegExpParser.h"
 #endif
+#include "gc/Heap.h"
 #include "jit/BaselineJIT.h"
 #include "jit/InlinableNatives.h"
 #include "js/Debug.h"
@@ -52,6 +60,7 @@
 #include "vm/ProxyObject.h"
 #include "vm/SavedStacks.h"
 #include "vm/Stack.h"
+#include "vm/StringType.h"
 #include "vm/TraceLogging.h"
 #include "wasm/AsmJS.h"
 #include "wasm/WasmBinaryToText.h"
@@ -61,17 +70,18 @@
 #include "wasm/WasmTextToBinary.h"
 #include "wasm/WasmTypes.h"
 
+#include "vm/Compartment-inl.h"
 #include "vm/Debugger-inl.h"
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/JSContext-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
+#include "vm/StringType-inl.h"
 
 using namespace js;
 
 using mozilla::ArrayLength;
 using mozilla::Maybe;
-using mozilla::Move;
 
 // If fuzzingSafe is set, remove functionality that could cause problems with
 // fuzzers. Set this via the environment variable MOZ_FUZZING_SAFE.
@@ -345,7 +355,7 @@ GC(JSContext* cx, unsigned argc, Value* vp)
         JS::PrepareForFullGC(cx);
 
     JSGCInvocationKind gckind = shrinking ? GC_SHRINK : GC_NORMAL;
-    JS::GCForReason(cx, gckind, JS::gcreason::API);
+    JS::NonIncrementalGC(cx, gckind, JS::gcreason::API);
 
     char buf[256] = { '\0' };
 #ifndef JS_MORE_DETERMINISTIC
@@ -509,7 +519,7 @@ RelazifyFunctions(JSContext* cx, unsigned argc, Value* vp)
     SetAllowRelazification(cx, true);
 
     JS::PrepareForFullGC(cx);
-    JS::GCForReason(cx, GC_SHRINK, JS::gcreason::API);
+    JS::NonIncrementalGC(cx, GC_SHRINK, JS::gcreason::API);
 
     SetAllowRelazification(cx, false);
     args.rval().setUndefined();
@@ -570,10 +580,10 @@ WasmThreadsSupported(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-WasmSignExtensionSupported(JSContext* cx, unsigned argc, Value* vp)
+WasmSaturatingTruncationSupported(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
     bool isSupported = true;
 #else
     bool isSupported = false;
@@ -583,10 +593,10 @@ WasmSignExtensionSupported(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-WasmSaturatingTruncationSupported(JSContext* cx, unsigned argc, Value* vp)
+WasmBulkMemSupported(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+#ifdef ENABLE_WASM_BULKMEM_OPS
     bool isSupported = true;
 #else
     bool isSupported = false;
@@ -978,6 +988,11 @@ SelectForGC(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
+    if (gc::GCRuntime::temporaryAbortIfWasmGc(cx)) {
+        JS_ReportErrorASCII(cx, "API temporarily unavailable under wasm gc");
+        return false;
+    }
+
     /*
      * The selectedForMarking set is intended to be manually marked at slice
      * start to detect missing pre-barriers. It is invalid for nursery things
@@ -1250,7 +1265,7 @@ SetSavedStacksRNGState(JSContext* cx, unsigned argc, Value* vp)
 
     // Either one or the other of the seed arguments must be non-zero;
     // make this true no matter what value 'seed' has.
-    cx->compartment()->savedStacks().setRNGState(seed, (seed + 1) * 33);
+    cx->realm()->savedStacks().setRNGState(seed, (seed + 1) * 33);
     return true;
 }
 
@@ -1258,7 +1273,7 @@ static bool
 GetSavedFrameCount(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    args.rval().setNumber(cx->compartment()->savedStacks().count());
+    args.rval().setNumber(cx->realm()->savedStacks().count());
     return true;
 }
 
@@ -1267,13 +1282,12 @@ ClearSavedFrames(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    js::SavedStacks& savedStacks = cx->compartment()->savedStacks();
+    js::SavedStacks& savedStacks = cx->realm()->savedStacks();
     if (savedStacks.initialized())
         savedStacks.clear();
 
-    for (ActivationIterator iter(cx); !iter.done(); ++iter) {
+    for (ActivationIterator iter(cx); !iter.done(); ++iter)
         iter->clearLiveSavedFrameCache();
-    }
 
     args.rval().setUndefined();
     return true;
@@ -1290,9 +1304,8 @@ SaveStack(JSContext* cx, unsigned argc, Value* vp)
         if (!ToNumber(cx, args[0], &maxDouble))
             return false;
         if (mozilla::IsNaN(maxDouble) || maxDouble < 0 || maxDouble > UINT32_MAX) {
-            ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                                  JSDVG_SEARCH_STACK, args[0], nullptr,
-                                  "not a valid maximum frame count", NULL);
+            ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[0], nullptr,
+                             "not a valid maximum frame count");
             return false;
         }
         uint32_t max = uint32_t(maxDouble);
@@ -1303,9 +1316,8 @@ SaveStack(JSContext* cx, unsigned argc, Value* vp)
     RootedObject compartmentObject(cx);
     if (args.length() >= 2) {
         if (!args[1].isObject()) {
-            ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                                  JSDVG_SEARCH_STACK, args[0], nullptr,
-                                  "not an object", NULL);
+            ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[0], nullptr,
+                             "not an object");
             return false;
         }
         compartmentObject = UncheckedUnwrap(&args[1].toObject());
@@ -1315,10 +1327,10 @@ SaveStack(JSContext* cx, unsigned argc, Value* vp)
 
     RootedObject stack(cx);
     {
-        Maybe<AutoCompartment> ac;
+        Maybe<AutoRealm> ar;
         if (compartmentObject)
-            ac.emplace(cx, compartmentObject);
-        if (!JS::CaptureCurrentStack(cx, &stack, mozilla::Move(capture)))
+            ar.emplace(cx, compartmentObject);
+        if (!JS::CaptureCurrentStack(cx, &stack, std::move(capture)))
             return false;
     }
 
@@ -1348,12 +1360,12 @@ CaptureFirstSubsumedFrame(JSContext* cx, unsigned argc, JS::Value* vp)
         return false;
     }
 
-    JS::StackCapture capture(JS::FirstSubsumedFrame(cx, obj->compartment()->principals()));
+    JS::StackCapture capture(JS::FirstSubsumedFrame(cx, obj->nonCCWRealm()->principals()));
     if (args.length() > 1)
         capture.as<JS::FirstSubsumedFrame>().ignoreSelfHosted = JS::ToBoolean(args[1]);
 
     JS::RootedObject capturedStack(cx);
-    if (!JS::CaptureCurrentStack(cx, &capturedStack, mozilla::Move(capture)))
+    if (!JS::CaptureCurrentStack(cx, &capturedStack, std::move(capture)))
         return false;
 
     args.rval().setObjectOrNull(capturedStack);
@@ -1501,6 +1513,48 @@ NewMaybeExternalString(JSContext* cx, unsigned argc, Value* vp)
     if (allocatedExternal)
         mozilla::Unused << buf.release();
     args.rval().setString(res);
+    return true;
+}
+
+// Warning! This will let you create ropes that I'm not sure would be possible
+// otherwise, specifically:
+//
+//   - a rope with a zero-length child
+//   - a rope that would fit into an inline string
+//
+static bool
+NewRope(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    if (!args.get(0).isString() || !args.get(1).isString()) {
+        JS_ReportErrorASCII(cx, "newRope requires two string arguments.");
+        return false;
+    }
+
+    gc::InitialHeap heap = js::gc::DefaultHeap;
+    if (args.get(2).isObject()) {
+        RootedObject options(cx, &args[2].toObject());
+        RootedValue v(cx);
+        if (!JS_GetProperty(cx, options, "nursery", &v))
+            return false;
+        if (!v.isUndefined() && !ToBoolean(v))
+            heap = js::gc::TenuredHeap;
+    }
+
+    JSString* left = args[0].toString();
+    JSString* right = args[1].toString();
+    size_t length = JS_GetStringLength(left) + JS_GetStringLength(right);
+    if (length > JSString::MAX_LENGTH) {
+        JS_ReportErrorASCII(cx, "rope length exceeds maximum string length");
+        return false;
+    }
+
+    Rooted<JSRope*> str(cx, JSRope::new_<NoGC>(cx, left, right, length, heap));
+    if (!str)
+        return false;
+
+    args.rval().setString(str);
     return true;
 }
 
@@ -2125,10 +2179,10 @@ ResolvePromise(JSContext* cx, unsigned argc, Value* vp)
 
     RootedObject promise(cx, &args[0].toObject());
     RootedValue resolution(cx, args[1]);
-    mozilla::Maybe<AutoCompartment> ac;
+    mozilla::Maybe<AutoRealm> ar;
     if (IsWrapper(promise)) {
         promise = UncheckedUnwrap(promise);
-        ac.emplace(cx, promise);
+        ar.emplace(cx, promise);
         if (!cx->compartment()->wrap(cx, &resolution))
             return false;
     }
@@ -2157,10 +2211,10 @@ RejectPromise(JSContext* cx, unsigned argc, Value* vp)
 
     RootedObject promise(cx, &args[0].toObject());
     RootedValue reason(cx, args[1]);
-    mozilla::Maybe<AutoCompartment> ac;
+    mozilla::Maybe<AutoRealm> ar;
     if (IsWrapper(promise)) {
         promise = UncheckedUnwrap(promise);
-        ac.emplace(cx, promise);
+        ar.emplace(cx, promise);
         if (!cx->compartment()->wrap(cx, &reason))
             return false;
     }
@@ -2339,8 +2393,8 @@ ReadGeckoProfilingStack(JSContext* cx, unsigned argc, Value* vp)
 
     struct InlineFrameInfo
     {
-        InlineFrameInfo(const char* kind, char* label)
-          : kind(kind), label(label) {}
+        InlineFrameInfo(const char* kind, UniqueChars label)
+          : kind(kind), label(std::move(label)) {}
         const char* kind;
         UniqueChars label;
     };
@@ -2374,11 +2428,11 @@ ReadGeckoProfilingStack(JSContext* cx, unsigned argc, Value* vp)
                 frameKindStr = "unknown";
             }
 
-            char* label = JS_strdup(cx, frames[i].label);
+            UniqueChars label = DuplicateString(cx, frames[i].label);
             if (!label)
                 return false;
 
-            if (!frameInfo.back().emplaceBack(frameKindStr, label))
+            if (!frameInfo.back().emplaceBack(frameKindStr, std::move(label)))
                 return false;
         }
     }
@@ -2412,10 +2466,12 @@ ReadGeckoProfilingStack(JSContext* cx, unsigned argc, Value* vp)
                 return false;
 
             size_t length = strlen(inlineFrame.label.get());
-            auto label = reinterpret_cast<Latin1Char*>(inlineFrame.label.release());
+            auto* label = reinterpret_cast<Latin1Char*>(inlineFrame.label.release());
             frameLabel = NewString<CanGC>(cx, label, length);
-            if (!frameLabel)
+            if (!frameLabel) {
+                js_free(label);
                 return false;
+            }
 
             if (!JS_DefineProperty(cx, inlineFrameInfo, "label", frameLabel, propAttrs))
                 return false;
@@ -2938,9 +2994,14 @@ class CloneBufferObject : public NativeObject {
         }
         auto iter = data->Start();
         data->ReadBytes(iter, buffer.get(), size);
-        JSObject* arrayBuffer = JS_NewArrayBufferWithContents(cx, size, buffer.release());
-        if (!arrayBuffer)
+
+        auto* rawBuffer = buffer.release();
+        JSObject* arrayBuffer = JS_NewArrayBufferWithContents(cx, size, rawBuffer);
+        if (!arrayBuffer) {
+            js_free(rawBuffer);
             return false;
+        }
+
         args.rval().setObject(*arrayBuffer);
         return true;
     }
@@ -3231,7 +3292,7 @@ static bool
 SharedMemoryEnabled(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    args.rval().setBoolean(cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled());
+    args.rval().setBoolean(cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled());
     return true;
 }
 
@@ -3424,16 +3485,16 @@ class BackEdge {
     BackEdge() : name_(nullptr) { }
     // Construct an initialized back edge, taking ownership of |name|.
     BackEdge(JS::ubi::Node predecessor, EdgeName name)
-        : predecessor_(predecessor), name_(Move(name)) { }
-    BackEdge(BackEdge&& rhs) : predecessor_(rhs.predecessor_), name_(Move(rhs.name_)) { }
+        : predecessor_(predecessor), name_(std::move(name)) { }
+    BackEdge(BackEdge&& rhs) : predecessor_(rhs.predecessor_), name_(std::move(rhs.name_)) { }
     BackEdge& operator=(BackEdge&& rhs) {
         MOZ_ASSERT(&rhs != this);
         this->~BackEdge();
-        new(this) BackEdge(Move(rhs));
+        new(this) BackEdge(std::move(rhs));
         return *this;
     }
 
-    EdgeName forgetName() { return Move(name_); }
+    EdgeName forgetName() { return std::move(name_); }
     JS::ubi::Node predecessor() const { return predecessor_; }
 
   private:
@@ -3466,7 +3527,7 @@ struct FindPathHandler {
         EdgeName edgeName = DuplicateString(cx, edge.name.get());
         if (!edgeName)
             return false;
-        *backEdge = mozilla::Move(BackEdge(origin, Move(edgeName)));
+        *backEdge = BackEdge(origin, std::move(edgeName));
 
         // Have we reached our final target node?
         if (edge.referent == target) {
@@ -3537,16 +3598,14 @@ FindPath(JSContext* cx, unsigned argc, Value* vp)
     // test is all about object identity, and ToString doesn't preserve that.
     // Non-GCThing endpoints don't make much sense.
     if (!args[0].isObject() && !args[0].isString() && !args[0].isSymbol()) {
-        ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                              JSDVG_SEARCH_STACK, args[0], nullptr,
-                              "not an object, string, or symbol", NULL);
+        ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[0], nullptr,
+                         "not an object, string, or symbol");
         return false;
     }
 
     if (!args[1].isObject() && !args[1].isString() && !args[1].isSymbol()) {
-        ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                              JSDVG_SEARCH_STACK, args[0], nullptr,
-                              "not an object, string, or symbol", NULL);
+        ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[0], nullptr,
+                         "not an object, string, or symbol");
         return false;
     }
 
@@ -3614,7 +3673,7 @@ FindPath(JSContext* cx, unsigned argc, Value* vp)
         if (!JS_DefineProperty(cx, obj, "node", wrapped, JSPROP_ENUMERATE))
             return false;
 
-        heaptools::EdgeName edgeName = Move(edges[i]);
+        heaptools::EdgeName edgeName = std::move(edges[i]);
 
         RootedString edgeStr(cx, NewString<CanGC>(cx, edgeName.get(), js_strlen(edgeName.get())));
         if (!edgeStr)
@@ -3642,25 +3701,22 @@ ShortestPaths(JSContext* cx, unsigned argc, Value* vp)
     // test is all about object identity, and ToString doesn't preserve that.
     // Non-GCThing endpoints don't make much sense.
     if (!args[0].isObject() && !args[0].isString() && !args[0].isSymbol()) {
-        ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                              JSDVG_SEARCH_STACK, args[0], nullptr,
-                              "not an object, string, or symbol", nullptr);
+        ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[0], nullptr,
+                         "not an object, string, or symbol");
         return false;
     }
 
     if (!args[1].isObject() || !args[1].toObject().is<ArrayObject>()) {
-        ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                              JSDVG_SEARCH_STACK, args[1], nullptr,
-                              "not an array object", nullptr);
+        ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[1], nullptr,
+                         "not an array object");
         return false;
     }
 
     RootedArrayObject objs(cx, &args[1].toObject().as<ArrayObject>());
     size_t length = objs->getDenseInitializedLength();
     if (length == 0) {
-        ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                              JSDVG_SEARCH_STACK, args[1], nullptr,
-                              "not a dense array object with one or more elements", nullptr);
+        ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[1], nullptr,
+                         "not a dense array object with one or more elements");
         return false;
     }
 
@@ -3676,9 +3732,8 @@ ShortestPaths(JSContext* cx, unsigned argc, Value* vp)
     if (!JS::ToInt32(cx, args[2], &maxNumPaths))
         return false;
     if (maxNumPaths <= 0) {
-        ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
-                              JSDVG_SEARCH_STACK, args[2], nullptr,
-                              "not greater than 0", nullptr);
+        ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[2], nullptr,
+                         "not greater than 0");
         return false;
     }
 
@@ -3708,7 +3763,7 @@ ShortestPaths(JSContext* cx, unsigned argc, Value* vp)
 
         JS::ubi::Node root(args[0]);
         auto maybeShortestPaths = JS::ubi::ShortestPaths::Create(cx, noGC, maxNumPaths,
-                                                                 root, mozilla::Move(targets));
+                                                                 root, std::move(targets));
         if (maybeShortestPaths.isNothing()) {
             ReportOutOfMemory(cx);
             return false;
@@ -3731,14 +3786,14 @@ ShortestPaths(JSContext* cx, unsigned argc, Value* vp)
 
                 for (auto& part : path) {
                     if (!pathVals.append(part->predecessor().exposeToJS()) ||
-                        !pathNames.append(mozilla::Move(part->name())))
+                        !pathNames.append(std::move(part->name())))
                     {
                         return false;
                     }
                 }
 
-                return values.back().append(mozilla::Move(pathVals.get())) &&
-                       names.back().append(mozilla::Move(pathNames));
+                return values.back().append(std::move(pathVals.get())) &&
+                       names.back().append(std::move(pathNames));
             });
 
             if (!ok)
@@ -3864,7 +3919,7 @@ EvalReturningScope(JSContext* cx, unsigned argc, Value* vp)
         // If we're switching globals here, ExecuteInGlobalAndReturnScope will
         // take care of cloning the script into that compartment before
         // executing it.
-        AutoCompartment ac(cx, global);
+        AutoRealm ar(cx, global);
 
         if (!js::ExecuteInGlobalAndReturnScope(cx, global, script, &lexicalScope))
             return false;
@@ -3939,7 +3994,7 @@ ShellCloneAndExecuteScript(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    AutoCompartment ac(cx, global);
+    AutoRealm ar(cx, global);
 
     JS::RootedValue rval(cx);
     if (!JS::CloneAndExecuteScript(cx, script, &rval))
@@ -4062,7 +4117,7 @@ SetLazyParsingDisabled(JSContext* cx, unsigned argc, Value* vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     bool disable = !args.hasDefined(0) || ToBoolean(args[0]);
-    cx->compartment()->behaviors().setDisableLazyParsing(disable);
+    cx->realm()->behaviors().setDisableLazyParsing(disable);
 
     args.rval().setUndefined();
     return true;
@@ -4074,7 +4129,7 @@ SetDiscardSource(JSContext* cx, unsigned argc, Value* vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     bool discard = !args.hasDefined(0) || ToBoolean(args[0]);
-    cx->compartment()->behaviors().setDiscardSource(discard);
+    cx->realm()->behaviors().setDiscardSource(discard);
 
     args.rval().setUndefined();
     return true;
@@ -4150,7 +4205,7 @@ majorGC(JSContext* cx, JSGCStatus status, void* data)
     if (info->depth > 0) {
         info->depth--;
         JS::PrepareForFullGC(cx);
-        JS::GCForReason(cx, GC_NORMAL, JS::gcreason::API);
+        JS::NonIncrementalGC(cx, GC_NORMAL, JS::gcreason::API);
         info->depth++;
     }
 }
@@ -4324,7 +4379,7 @@ GetLcovInfo(JSContext* cx, unsigned argc, Value* vp)
     size_t length = 0;
     char* content = nullptr;
     {
-        AutoCompartment ac(cx, global);
+        AutoRealm ar(cx, global);
         content = js::GetCodeCoverageSummary(cx, &length);
     }
 
@@ -4332,7 +4387,7 @@ GetLcovInfo(JSContext* cx, unsigned argc, Value* vp)
         return false;
 
     JSString* str = JS_NewStringCopyN(cx, content, length);
-    free(content);
+    js_free(content);
 
     if (!str)
         return false;
@@ -4365,8 +4420,7 @@ SetRNGState(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    cx->compartment()->ensureRandomNumberGenerator();
-    cx->compartment()->randomNumberGenerator.ref().setState(seed0, seed1);
+    cx->realm()->getOrCreateRandomNumberGenerator().setState(seed0, seed1);
 
     args.rval().setUndefined();
     return true;
@@ -4952,6 +5006,56 @@ AflLoop(JSContext* cx, unsigned argc, Value* vp)
 #endif
 
 static bool
+MonotonicNow(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    double now;
+
+// The std::chrono symbols are too new to be present in STL on all platforms we
+// care about, so use raw POSIX clock APIs when it might be necessary.
+#if defined(XP_UNIX) && !defined(XP_DARWIN)
+    auto ComputeNow = [](const timespec& ts) {
+        return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    };
+
+    timespec ts;
+    if (false && clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        // Use a monotonic clock if available.
+        now = ComputeNow(ts);
+    } else {
+        // Use a realtime clock as fallback.
+        if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+            // Fail if no clock is available.
+            JS_ReportErrorASCII(cx, "can't retrieve system clock");
+            return false;
+        }
+
+        now = ComputeNow(ts);
+
+        // Manually enforce atomicity on a non-monotonic clock.
+        {
+            static mozilla::Atomic<bool, mozilla::ReleaseAcquire> spinLock;
+            while (!spinLock.compareExchange(false, true))
+                continue;
+
+            static double lastNow = -FLT_MAX;
+            now = lastNow = std::max(now, lastNow);
+
+            spinLock = false;
+        }
+    }
+#else
+    using std::chrono::duration_cast;
+    using std::chrono::milliseconds;
+    using std::chrono::steady_clock;
+    now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+#endif // XP_UNIX && !XP_DARWIN
+
+    args.rval().setNumber(now);
+    return true;
+}
+
+static bool
 TimeSinceCreation(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -5034,6 +5138,49 @@ SetTimeResolution(JSContext* cx, unsigned argc, Value* vp)
 
    args.rval().setUndefined();
    return true;
+}
+
+static bool
+ScriptedCallerGlobal(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    RootedObject obj(cx, JS::GetScriptedCallerGlobal(cx));
+    if (!obj) {
+        args.rval().setNull();
+        return true;
+    }
+
+    obj = ToWindowProxyIfWindow(obj);
+
+    if (!cx->compartment()->wrap(cx, &obj))
+        return false;
+
+    args.rval().setObject(*obj);
+    return true;
+}
+
+static bool
+ObjectGlobal(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    RootedObject callee(cx, &args.callee());
+
+    if (!args.get(0).isObject()) {
+        ReportUsageErrorASCII(cx, callee, "Argument must be an object");
+        return false;
+    }
+
+    RootedObject obj(cx, &args[0].toObject());
+    if (IsWrapper(obj)) {
+        args.rval().setNull();
+        return true;
+    }
+
+    obj = ToWindowProxyIfWindow(&obj->nonCCWGlobal());
+
+    args.rval().setObject(*obj);
+    return true;
 }
 
 JSScript*
@@ -5128,7 +5275,7 @@ BaselineCompile(JSContext* cx, unsigned argc, Value* vp)
 
     const char* returnedStr = nullptr;
     do {
-        AutoCompartment ac(cx, script);
+        AutoRealm ar(cx, script);
         if (script->hasBaselineScript()) {
             if (forceDebug && !script->baselineScript()->hasDebugInstrumentation()) {
                 // There isn't an easy way to do this for a script that might be on
@@ -5150,7 +5297,7 @@ BaselineCompile(JSContext* cx, unsigned argc, Value* vp)
             returnedStr = "can't compile";
             break;
         }
-        if (!cx->compartment()->ensureJitCompartmentExists(cx))
+        if (!cx->realm()->ensureJitRealmExists(cx))
             return false;
 
         jit::MethodStatus status = jit::BaselineCompile(cx, script, forceDebug);
@@ -5315,6 +5462,12 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "interruptTest(function)",
 "  This function simulates interrupts similar to how oomTest simulates OOM conditions."),
 #endif
+
+    JS_FN_HELP("newRope", NewRope, 3, 0,
+"newRope(left, right[, options])",
+"  Creates a rope with the given left/right strings.\n"
+"  Available options:\n"
+"    nursery: bool - force the string to be created in/out of the nursery, if possible.\n"),
 
     JS_FN_HELP("settlePromiseNow", SettlePromiseNow, 1, 0,
 "settlePromiseNow(promise)",
@@ -5497,14 +5650,14 @@ gc::ZealModeHelpText),
 "  Returns a boolean indicating whether the WebAssembly threads proposal is\n"
 "  supported on the current device."),
 
-    JS_FN_HELP("wasmSignExtensionSupported", WasmSignExtensionSupported, 0, 0,
-"wasmSignExtensionSupported()",
-"  Returns a boolean indicating whether the WebAssembly sign extension opcodes are\n"
-"  supported on the current device."),
-
     JS_FN_HELP("wasmSaturatingTruncationSupported", WasmSaturatingTruncationSupported, 0, 0,
 "wasmSaturatingTruncationSupported()",
 "  Returns a boolean indicating whether the WebAssembly saturating truncates opcodes are\n"
+"  supported on the current device."),
+
+    JS_FN_HELP("wasmBulkMemSupported", WasmBulkMemSupported, 0, 0,
+"wasmBulkMemSupported()",
+"  Returns a boolean indicating whether the WebAssembly bulk memory proposal is\n"
 "  supported on the current device."),
 
     JS_FN_HELP("wasmCompileMode", WasmCompileMode, 0, 0,
@@ -5799,6 +5952,11 @@ gc::ZealModeHelpText),
 "  Call the __AFL_LOOP() runtime function (see AFL docs)\n"),
 #endif
 
+    JS_FN_HELP("monotonicNow", MonotonicNow, 0, 0,
+"monotonicNow()",
+"  Return a timestamp reflecting the current elapsed system time.\n"
+"  This is monotonically increasing.\n"),
+
     JS_FN_HELP("timeSinceCreation", TimeSinceCreation, 0, 0,
 "TimeSinceCreation()",
 "  Returns the time in milliseconds since process creation.\n"
@@ -5820,6 +5978,14 @@ gc::ZealModeHelpText),
 "setTimeResolution(resolution, jitter)",
 "  Enables time clamping and jittering. Specify a time resolution in\n"
 "  microseconds and whether or not to jitter\n"),
+
+    JS_FN_HELP("scriptedCallerGlobal", ScriptedCallerGlobal, 0, 0,
+"scriptedCallerGlobal()",
+"  Get the caller's global (or null). See JS::GetScriptedCallerGlobal.\n"),
+
+    JS_FN_HELP("objectGlobal", ObjectGlobal, 1, 0,
+"objectGlobal(obj)",
+"  Returns the object's global object or null if the object is a wrapper.\n"),
 
     JS_FN_HELP("baselineCompile", BaselineCompile, 2, 0,
 "baselineCompile([fun/code], forceDebugInstrumentation=false)",

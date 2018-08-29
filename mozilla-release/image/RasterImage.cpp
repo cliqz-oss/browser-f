@@ -24,6 +24,7 @@
 #include "nsIInputStream.h"
 #include "nsIScriptError.h"
 #include "nsISupportsPrimitives.h"
+#include "nsMemory.h"
 #include "nsPresContext.h"
 #include "SourceBuffer.h"
 #include "SurfaceCache.h"
@@ -69,10 +70,11 @@ NS_IMPL_ISUPPORTS(RasterImage, imgIContainer, nsIProperties,
 #endif
 
 //******************************************************************************
-RasterImage::RasterImage(ImageURL* aURI /* = nullptr */) :
+RasterImage::RasterImage(nsIURI* aURI /* = nullptr */) :
   ImageResource(aURI), // invoke superclass's constructor
   mSize(0,0),
   mLockCount(0),
+  mDecoderType(DecoderType::UNKNOWN),
   mDecodeCount(0),
 #ifdef DEBUG
   mFramesNotified(0),
@@ -387,7 +389,7 @@ RasterImage::LookupFrame(const IntSize& aSize,
   }
 
   if (result.Surface()->GetCompositingFailed()) {
-    DrawableSurface tmp = Move(result.Surface());
+    DrawableSurface tmp = std::move(result.Surface());
     return result;
   }
 
@@ -407,7 +409,7 @@ RasterImage::LookupFrame(const IntSize& aSize,
   // IsAborted acquires the monitor for the imgFrame.
   if (aFlags & (FLAG_SYNC_DECODE | FLAG_SYNC_DECODE_IF_FAST) &&
     result.Surface()->IsAborted()) {
-    DrawableSurface tmp = Move(result.Surface());
+    DrawableSurface tmp = std::move(result.Surface());
     return result;
   }
 
@@ -622,10 +624,10 @@ RasterImage::GetFrameInternal(const IntSize& aSize,
 
   RefPtr<SourceSurface> surface = result.Surface()->GetSourceSurface();
   if (!result.Surface()->IsFinished()) {
-    return MakeTuple(ImgDrawResult::INCOMPLETE, suggestedSize, Move(surface));
+    return MakeTuple(ImgDrawResult::INCOMPLETE, suggestedSize, std::move(surface));
   }
 
-  return MakeTuple(ImgDrawResult::SUCCESS, suggestedSize, Move(surface));
+  return MakeTuple(ImgDrawResult::SUCCESS, suggestedSize, std::move(surface));
 }
 
 IntSize
@@ -1003,7 +1005,20 @@ RasterImage::OnImageDataAvailable(nsIRequest*,
 nsresult
 RasterImage::SetSourceSizeHint(uint32_t aSizeHint)
 {
-  return mSourceBuffer->ExpectLength(aSizeHint);
+  if (aSizeHint == 0) {
+    return NS_OK;
+  }
+
+  nsresult rv = mSourceBuffer->ExpectLength(aSizeHint);
+  if (rv == NS_ERROR_OUT_OF_MEMORY) {
+    // Flush memory, try to get some back, and try again.
+    rv = nsMemory::HeapMinimize(true);
+    if (NS_SUCCEEDED(rv)) {
+      rv = mSourceBuffer->ExpectLength(aSizeHint);
+    }
+  }
+
+  return rv;
 }
 
 /********* Methods to implement lazy allocation of nsIProperties object *******/
@@ -1165,7 +1180,7 @@ RasterImage::RequestDecodeForSizeInternal(const IntSize& aSize, uint32_t aFlags)
   PlaybackType playbackType = mAnimationState ? PlaybackType::eAnimated
                                               : PlaybackType::eStatic;
   LookupResult result = LookupFrame(aSize, flags, playbackType);
-  return Move(result.Surface());
+  return std::move(result.Surface());
 }
 
 static bool
@@ -1490,7 +1505,7 @@ RasterImage::Draw(gfxContext* aContext,
   bool shouldRecordTelemetry = !mDrawStartTime.IsNull() &&
                                result.Surface()->IsFinished();
 
-  auto drawResult = DrawInternal(Move(result.Surface()), aContext, aSize,
+  auto drawResult = DrawInternal(std::move(result.Surface()), aContext, aSize,
                                  aRegion, aSamplingFilter, flags, aOpacity);
 
   if (shouldRecordTelemetry) {
@@ -1761,7 +1776,7 @@ RasterImage::NotifyDecodeComplete(const DecoderFinalStatus& aStatus,
                               int32_t(aTelemetry.mDecodeTime.ToMicroseconds()));
       }
 
-      if (aTelemetry.mSpeedHistogram) {
+      if (aTelemetry.mSpeedHistogram && aTelemetry.mBytesDecoded) {
         Telemetry::Accumulate(*aTelemetry.mSpeedHistogram, aTelemetry.Speed());
       }
     }
@@ -1803,8 +1818,8 @@ RasterImage::ReportDecoderError()
     nsAutoString msg(NS_LITERAL_STRING("Image corrupt or truncated."));
     nsAutoString src;
     if (GetURI()) {
-      nsCString uri;
-      if (GetURI()->GetSpecTruncatedTo1k(uri) == ImageURL::TruncatedTo1k) {
+      nsAutoCString uri;
+      if (!GetSpecTruncatedTo1k(uri)) {
         msg += NS_LITERAL_STRING(" URI in this note truncated due to length.");
       }
       src = NS_ConvertUTF8toUTF16(uri);

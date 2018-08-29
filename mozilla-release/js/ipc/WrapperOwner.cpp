@@ -16,7 +16,7 @@
 #include "WrapperFactory.h"
 
 #include "nsIDocShellTreeItem.h"
-#include "nsIDOMDocument.h"
+#include "nsIDocument.h"
 
 using namespace js;
 using namespace JS;
@@ -1110,7 +1110,7 @@ GetRemoteObjectTag(JS::Handle<JSObject*> obj)
         if (treeItem)
             return NS_LITERAL_CSTRING("ContentDocShellTreeItem");
 
-        nsCOMPtr<nsIDOMDocument> doc(do_QueryInterface(supports));
+        nsCOMPtr<nsIDocument> doc(do_QueryInterface(supports));
         if (doc)
             return NS_LITERAL_CSTRING("ContentDocument");
     }
@@ -1181,13 +1181,18 @@ WrapperOwner::fromObjectVariant(JSContext* cx, const ObjectVariant& objVar)
 JSObject*
 WrapperOwner::fromRemoteObjectVariant(JSContext* cx, const RemoteObject& objVar)
 {
-    ObjectId objId = ObjectId::deserialize(objVar.serializedId());
+    Maybe<ObjectId> maybeObjId(ObjectId::deserialize(objVar.serializedId()));
+    if (maybeObjId.isNothing()) {
+        return nullptr;
+    }
+
+    ObjectId objId = maybeObjId.value();
     RootedObject obj(cx, findCPOWById(objId));
     if (!obj) {
 
         // All CPOWs live in the privileged junk scope.
         RootedObject junkScope(cx, xpc::PrivilegedJunkScope());
-        JSAutoCompartment ac(cx, junkScope);
+        JSAutoRealm ar(cx, junkScope);
         RootedValue v(cx, UndefinedValue());
         // We need to setLazyProto for the getPrototype/getPrototypeIfOrdinary
         // hooks.
@@ -1227,8 +1232,9 @@ WrapperOwner::fromRemoteObjectVariant(JSContext* cx, const RemoteObject& objVar)
 JSObject*
 WrapperOwner::fromLocalObjectVariant(JSContext* cx, const LocalObject& objVar)
 {
-    ObjectId id = ObjectId::deserialize(objVar.serializedId());
-    Rooted<JSObject*> obj(cx, findObjectById(cx, id));
+    Maybe<ObjectId> id(ObjectId::deserialize(objVar.serializedId()));
+    MOZ_RELEASE_ASSERT(id.isSome());
+    Rooted<JSObject*> obj(cx, findObjectById(cx, id.value()));
     if (!obj)
         return nullptr;
     if (!JS_WrapObject(cx, &obj))

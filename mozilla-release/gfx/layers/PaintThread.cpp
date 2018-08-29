@@ -167,10 +167,8 @@ PaintThread::Init()
 
   // Only create paint workers for tiling if we are using tiling or could
   // expect to dynamically switch to tiling in the future
-  if (gfxPlatform::GetPlatform()->UsesTiling() ||
-      gfxPrefs::LayersTilesEnabledIfSkiaPOMTP()) {
-    int32_t paintWorkerCount = PaintThread::CalculatePaintWorkerCount();
-    mPaintWorkers = SharedThreadPool::Get(NS_LITERAL_CSTRING("PaintWorker"), paintWorkerCount);
+  if (gfxPlatform::GetPlatform()->UsesTiling()) {
+    InitPaintWorkers();
   }
 
   nsCOMPtr<nsIRunnable> paintInitTask =
@@ -185,6 +183,14 @@ PaintThread::InitOnPaintThread()
 {
   MOZ_ASSERT(!NS_IsMainThread());
   sThreadId = PlatformThread::CurrentId();
+}
+
+void
+PaintThread::InitPaintWorkers()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  int32_t count = PaintThread::CalculatePaintWorkerCount();
+  mPaintWorkers = SharedThreadPool::Get(NS_LITERAL_CSTRING("PaintWorker"), count);
 }
 
 void
@@ -206,7 +212,7 @@ PaintThread::Shutdown()
 
   sThread->Dispatch(NewRunnableFunction("DestroyPaintThreadRunnable",
                                         DestroyPaintThread,
-                                        Move(pt)));
+                                        std::move(pt)));
   sThread->Shutdown();
   sThread = nullptr;
 }
@@ -234,6 +240,18 @@ bool
 PaintThread::IsOnPaintWorkerThread()
 {
   return mPaintWorkers && mPaintWorkers->IsOnCurrentThread();
+}
+
+void
+PaintThread::UpdateRenderMode()
+{
+  if (!!mPaintWorkers != gfxPlatform::GetPlatform()->UsesTiling()) {
+    if (mPaintWorkers) {
+      mPaintWorkers = nullptr;
+    } else {
+      InitPaintWorkers();
+    }
+  }
 }
 
 void
@@ -269,6 +287,8 @@ void
 PaintThread::AsyncPrepareBuffer(CompositorBridgeChild* aBridge,
                                 CapturedBufferState* aState)
 {
+  AUTO_PROFILER_LABEL("PaintThread::AsyncPrepareBuffer", GRAPHICS);
+
   MOZ_ASSERT(IsOnPaintThread());
   MOZ_ASSERT(aState);
 
@@ -320,6 +340,8 @@ PaintThread::AsyncPaintContents(CompositorBridgeChild* aBridge,
                                 CapturedPaintState* aState,
                                 PrepDrawTargetForPaintingCallback aCallback)
 {
+  AUTO_PROFILER_LABEL("PaintThread::AsyncPaintContents", GRAPHICS);
+
   MOZ_ASSERT(IsOnPaintThread());
   MOZ_ASSERT(aState);
 
@@ -363,6 +385,7 @@ PaintThread::PaintTiledContents(CapturedTiledPaintState* aState)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aState);
+  MOZ_ASSERT(mPaintWorkers);
 
   if (gfxPrefs::LayersOMTPDumpCapture() && aState->mCapture) {
     aState->mCapture->Dump();
@@ -391,6 +414,8 @@ void
 PaintThread::AsyncPaintTiledContents(CompositorBridgeChild* aBridge,
                                      CapturedTiledPaintState* aState)
 {
+  AUTO_PROFILER_LABEL("PaintThread::AsyncPaintTiledContents", GRAPHICS);
+  
   MOZ_ASSERT(IsOnPaintWorkerThread());
   MOZ_ASSERT(aState);
 

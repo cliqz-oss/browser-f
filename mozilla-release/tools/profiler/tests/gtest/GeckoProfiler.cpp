@@ -42,7 +42,6 @@ InactiveFeaturesAndParamsCheck()
   ASSERT_TRUE(!profiler_is_active());
   ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
   ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
-  ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
   profiler_get_start_params(&entries, &interval, &features, &filters);
 
@@ -87,7 +86,6 @@ TEST(GeckoProfiler, FeaturesAndParams)
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
     ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES, PROFILER_DEFAULT_INTERVAL,
                       features, filters, MOZ_ARRAY_LENGTH(filters));
@@ -109,7 +107,6 @@ TEST(GeckoProfiler, FeaturesAndParams)
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
     // Profiler::Threads is added because filters has multiple entries.
     ActiveParamsCheck(999999, 3,
@@ -132,7 +129,6 @@ TEST(GeckoProfiler, FeaturesAndParams)
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Privacy));
-    ASSERT_TRUE(profiler_feature_active(ProfilerFeature::Restyle));
 
     ActiveParamsCheck(88888, 10,
                       availableFeatures, filters, MOZ_ARRAY_LENGTH(filters));
@@ -153,7 +149,6 @@ TEST(GeckoProfiler, FeaturesAndParams)
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
     // Entries and intervals go to defaults if 0 is specified.
     ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES, PROFILER_DEFAULT_INTERVAL,
@@ -267,7 +262,6 @@ TEST(GeckoProfiler, DifferentThreads)
     ASSERT_TRUE(profiler_is_active());
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
     ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
-    ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
     ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES, PROFILER_DEFAULT_INTERVAL,
                       features, filters, MOZ_ARRAY_LENGTH(filters));
@@ -296,7 +290,6 @@ TEST(GeckoProfiler, DifferentThreads)
           ASSERT_TRUE(profiler_is_active());
           ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::MainThreadIO));
           ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Privacy));
-          ASSERT_TRUE(!profiler_feature_active(ProfilerFeature::Restyle));
 
           ActiveParamsCheck(PROFILER_DEFAULT_ENTRIES,
                             PROFILER_DEFAULT_INTERVAL,
@@ -453,7 +446,7 @@ TEST(GeckoProfiler, Markers)
   PROFILER_TRACING("A", "C", TRACING_INTERVAL_END);
 
   UniqueProfilerBacktrace bt = profiler_get_backtrace();
-  profiler_tracing("B", "A", TRACING_EVENT, Move(bt));
+  profiler_tracing("B", "A", TRACING_EVENT, std::move(bt));
 
   {
     AUTO_PROFILER_TRACING("C", "A");
@@ -486,9 +479,9 @@ TEST(GeckoProfiler, Markers)
   okstr1[kMax - 1] = '\0';
   okstr2[kMax - 1] = '\0';
   longstr[kMax] = '\0';
-  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", CSS, okstr1.get());
-  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("okstr2", CSS, okstr2.get());
-  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", CSS, longstr.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", LAYOUT, okstr1.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("okstr2", LAYOUT, okstr2.get());
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("", LAYOUT, longstr.get());
 
   // Sleep briefly to ensure a sample is taken and the pending markers are
   // processed.
@@ -680,7 +673,7 @@ TEST(GeckoProfiler, StreamJSONForThisProcessThreaded)
   ASSERT_TRUE(!profiler_stream_json_for_this_process(w));
 }
 
-TEST(GeckoProfiler, PseudoStack)
+TEST(GeckoProfiler, ProfilingStack)
 {
   uint32_t features = ProfilerFeature::StackWalk;
   const char* filters[] = { "GeckoMain" };
@@ -702,9 +695,9 @@ TEST(GeckoProfiler, PseudoStack)
   }
 
   AutoProfilerLabel label1("A", nullptr, 888,
-                           js::ProfileEntry::Category::STORAGE);
+                           js::ProfilingStackFrame::Category::DOM);
   AutoProfilerLabel label2("A", dynamic.get(), 888,
-                           js::ProfileEntry::Category::NETWORK);
+                           js::ProfilingStackFrame::Category::NETWORK);
   ASSERT_TRUE(profiler_get_backtrace());
 
   profiler_stop();
@@ -747,7 +740,7 @@ public:
   virtual void CollectNativeLeafAddr(void* aAddr) { mFrames++; }
   virtual void CollectJitReturnAddr(void* aAddr) { mFrames++; }
   virtual void CollectWasmFrame(const char* aLabel) { mFrames++; }
-  virtual void CollectPseudoEntry(const js::ProfileEntry& aEntry) { mFrames++; }
+  virtual void CollectProfilingStackFrame(const js::ProfilingStackFrame& aFrame) { mFrames++; }
 
   int mSetIsMainThread;
   int mFrames;

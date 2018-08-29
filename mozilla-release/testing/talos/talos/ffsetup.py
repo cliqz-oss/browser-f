@@ -7,6 +7,7 @@ Set up a browser environment before running a test.
 """
 from __future__ import absolute_import, print_function
 
+import json
 import os
 import shutil
 import tempfile
@@ -15,12 +16,13 @@ import mozfile
 import mozinfo
 import mozrunner
 from mozlog import get_proxy_logger
-from mozprocess import ProcessHandlerMixin
 from mozprofile.profile import Profile
 from talos import utils
 from talos.gecko_profile import GeckoProfile
 from talos.utils import TalosError, run_in_debug_mode
 from talos import heavy
+
+here = os.path.abspath(os.path.dirname(__file__))
 
 LOG = get_proxy_logger()
 
@@ -59,6 +61,12 @@ class FFSetup(object):
         self.gecko_profile = None
         self.debug_mode = run_in_debug_mode(browser_config)
 
+    @property
+    def profile_data_dir(self):
+        if 'MOZ_DEVELOPER_REPO_DIR' in os.environ:
+            return os.path.join(os.environ['MOZ_DEVELOPER_REPO_DIR'], 'testing', 'profiles')
+        return os.path.join(here, 'profile_data')
+
     def _init_env(self):
         self.env = dict(os.environ)
         for k, v in self.browser_config['env'].iteritems():
@@ -75,22 +83,6 @@ class FFSetup(object):
             os.path.dirname(self.browser_config['browser_path'])
 
     def _init_profile(self):
-        preferences = dict(self.browser_config['preferences'])
-        if self.test_config.get('preferences'):
-            test_prefs = dict(
-                [(i, utils.parse_pref(j))
-                 for i, j in self.test_config['preferences'].items()]
-            )
-            preferences.update(test_prefs)
-        # interpolate webserver value in prefs
-        webserver = self.browser_config['webserver']
-        if '://' not in webserver:
-            webserver = 'http://' + webserver
-        for name, value in preferences.items():
-            if type(value) is str:
-                value = utils.interpolate(value, webserver=webserver)
-                preferences[name] = value
-
         extensions = self.browser_config['extensions'][:]
         if self.test_config.get('extensions'):
             extensions.extend(self.test_config['extensions'])
@@ -120,6 +112,37 @@ class FFSetup(object):
                                 ignore=_feedback,
                                 restore=False)
 
+        # build pref interpolation context
+        webserver = self.browser_config['webserver']
+        if '://' not in webserver:
+            webserver = 'http://' + webserver
+
+        interpolation = {
+            'webserver': webserver,
+        }
+
+        # merge base profiles
+        with open(os.path.join(self.profile_data_dir, 'profiles.json'), 'r') as fh:
+            base_profiles = json.load(fh)['talos']
+
+        for name in base_profiles:
+            path = os.path.join(self.profile_data_dir, name)
+            LOG.info("Merging profile: {}".format(path))
+            profile.merge(path, interpolation=interpolation)
+
+        # set test preferences
+        preferences = self.browser_config.get('preferences', {}).copy()
+        if self.test_config.get('preferences'):
+            test_prefs = dict(
+                [(i, utils.parse_pref(j))
+                 for i, j in self.test_config['preferences'].items()]
+            )
+            preferences.update(test_prefs)
+
+        for name, value in preferences.items():
+            if type(value) is str:
+                value = utils.interpolate(value, **interpolation)
+                preferences[name] = value
         profile.set_preferences(preferences)
 
         # installing addons
@@ -155,9 +178,7 @@ class FFSetup(object):
         runner = runner_cls(profile=self.profile_dir,
                             binary=self.browser_config["browser_path"],
                             cmdargs=args,
-                            env=self.env,
-                            process_class=ProcessHandlerMixin,
-                            process_args={})
+                            env=self.env)
 
         runner.start(outputTimeout=30)
         proc = runner.process_handler

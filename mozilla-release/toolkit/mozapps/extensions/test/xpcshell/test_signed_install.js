@@ -130,7 +130,7 @@ async function test_install_working(file, expectedSignedState) {
 
   gServer.registerFile("/" + file.leafName, null);
 
-  install.addon.uninstall();
+  await install.addon.uninstall();
 }
 
 async function test_update_broken(file, expectedError) {
@@ -152,7 +152,7 @@ async function test_update_broken(file, expectedError) {
   gServer.registerFile("/" + file.leafName, null);
   gServer.registerPathHandler("/update.rdf", null);
 
-  addon.uninstall();
+  await addon.uninstall();
 }
 
 async function test_update_working(file, expectedSignedState) {
@@ -174,15 +174,13 @@ async function test_update_working(file, expectedSignedState) {
   gServer.registerFile("/" + file.leafName, null);
   gServer.registerPathHandler("/update.rdf", null);
 
-  install.addon.uninstall();
+  await install.addon.uninstall();
 }
 
-function run_test() {
+add_task(async function setup() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "4", "4");
-  startupManager();
-
-  run_next_test();
-}
+  await promiseStartupManager();
+});
 
 // Try to install a broken add-on
 add_task(async function() {

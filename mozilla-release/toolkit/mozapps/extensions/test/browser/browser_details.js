@@ -187,8 +187,6 @@ add_test(function() {
     is_element_hidden(get("detail-homepage-row"), "Homepage should not be visible");
     is_element_hidden(get("detail-repository-row"), "Repository profile should not be visible");
 
-    is_element_hidden(get("detail-size"), "Size should be hidden");
-
     is_element_hidden(get("detail-updates-row"), "Updates should be hidden");
 
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
@@ -240,8 +238,6 @@ add_test(function() {
     is(get("detail-reviews").href, "http://example.com/reviews", "Review URL should be correct");
     is(get("detail-reviews").value, "1 review", "Review text should be correct");
 
-    is_element_hidden(get("detail-size"), "Size should be hidden");
-
     is_element_visible(get("detail-autoUpdate"), "Updates should not be hidden");
     ok(get("detail-autoUpdate").lastChild.selected, "Updates should be manual");
     is_element_visible(get("detail-findUpdates-btn"), "Check for updates should be visible");
@@ -292,7 +288,7 @@ add_test(function() {
 // Opens and tests the details view for add-on 5
 add_test(function() {
   open_details("addon5@tests.mozilla.org", "extension", async function() {
-    await TestUtils.waitForCondition(() => !is_hidden(get("detail-error-link")));
+    await TestUtils.waitForCondition(() => !BrowserTestUtils.is_hidden(get("detail-error-link")));
     is(get("detail-name").textContent, "Test add-on 5", "Name should be correct");
 
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
@@ -348,7 +344,7 @@ add_test(async function() {
   gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
   open_details("addon9@tests.mozilla.org", "extension", async function() {
-    await TestUtils.waitForCondition(() => !is_hidden(get("detail-error-link")));
+    await TestUtils.waitForCondition(() => !BrowserTestUtils.is_hidden(get("detail-error-link")));
     is(get("detail-name").textContent, "Test add-on 9", "Name should be correct");
 
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
@@ -407,7 +403,7 @@ add_test(async function() {
   gCategoryUtilities = new CategoryUtilities(gManagerWindow);
 
   open_details("addon10@tests.mozilla.org", "extension", async function() {
-    await TestUtils.waitForCondition(() => !is_hidden(get("detail-error-link")));
+    await TestUtils.waitForCondition(() => !BrowserTestUtils.is_hidden(get("detail-error-link")));
     is(get("detail-name").textContent, "Test add-on 10", "Name should be correct");
 
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
@@ -576,8 +572,6 @@ add_test(function() {
 
     is_element_hidden(get("detail-homepage-row"), "Homepage should be hidden");
 
-    is_element_hidden(get("detail-size"), "Size should be hidden");
-
     is_element_hidden(get("detail-prefs-btn"), "Preferences button should be hidden");
     is_element_hidden(get("detail-enable-btn"), "Enable button should be hidden");
     is_element_visible(get("detail-disable-btn"), "Disable button should be visible");
@@ -597,7 +591,7 @@ add_test(async function() {
   info("Checking that onPropertyChanges for appDisabled updates the UI");
 
   let aAddon = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
-  aAddon.userDisabled = true;
+  await aAddon.disable();
   aAddon.isCompatible = true;
   aAddon.appDisabled = false;
 

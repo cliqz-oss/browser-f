@@ -36,13 +36,7 @@ var WindowWatcher = {
 
   },
 
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIWindowWatcher)
-     || iid.equals(Ci.nsISupports))
-      return this;
-
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"])
 };
 
 MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1", WindowWatcher);
@@ -71,7 +65,7 @@ async function run_test() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
 
   // Add 2 extensions
-  writeInstallRDFForExtension({
+  await promiseWriteInstallRDFForExtension({
     id: "block1@tests.mozilla.org",
     version: "1.0",
     name: "Blocked add-on-1 with to-be-reset prefs",
@@ -83,7 +77,7 @@ async function run_test() {
     }]
   }, profileDir);
 
-  writeInstallRDFForExtension({
+  await promiseWriteInstallRDFForExtension({
     id: "block2@tests.mozilla.org",
     version: "1.0",
     name: "Blocked add-on-2 with to-be-reset prefs",
@@ -101,7 +95,7 @@ async function run_test() {
   Services.prefs.setBoolPref("test.blocklist.pref3", true);
   Services.prefs.setBoolPref("test.blocklist.pref4", true);
 
-  startupManager();
+  await promiseStartupManager();
 
   // Before blocklist is loaded.
   let [a1, a2] = await AddonManager.getAddonsByIDs(["block1@tests.mozilla.org",
@@ -118,7 +112,7 @@ async function run_test() {
 
 function run_test_1() {
   load_blocklist("test_blocklist_prefs_1.xml", async function() {
-    restartManager();
+    await promiseRestartManager();
 
     // Blocklist changes should have applied and the prefs must be reset.
     let [a1, a2] = await AddonManager.getAddonsByIDs(["block1@tests.mozilla.org",

@@ -290,7 +290,7 @@ nsVideoFrame::Reflow(nsPresContext* aPresContext,
                   aReflowInput.AvailableWidth(),
                   aReflowInput.AvailableHeight()));
 
-  NS_PRECONDITION(mState & NS_FRAME_IN_REFLOW, "frame is not in reflow");
+  MOZ_ASSERT(mState & NS_FRAME_IN_REFLOW, "frame is not in reflow");
 
   const WritingMode myWM = aReflowInput.GetWritingMode();
   nscoord contentBoxBSize = aReflowInput.ComputedBSize();
@@ -479,6 +479,14 @@ public:
     // scaleHint is set regardless of rotation, so swap w/h if needed.
     SwapScaleWidthHeightForRotation(scaleHint, rotationDeg);
     container->SetScaleHint(scaleHint);
+
+    Matrix transformHint;
+    if (rotationDeg != VideoInfo::Rotation::kDegree_0) {
+      transformHint = ComputeRotationMatrix(destGFXRect.Width(),
+                                            destGFXRect.Height(),
+                                            rotationDeg);
+    }
+    container->SetTransformHint(transformHint);
 
     // If the image container is empty, we don't want to fallback. Any other
     // failure will be due to resource constraints and fallback is unlikely to

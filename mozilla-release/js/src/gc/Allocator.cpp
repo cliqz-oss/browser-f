@@ -9,7 +9,7 @@
 #include "gc/GCInternals.h"
 #include "gc/GCTrace.h"
 #include "gc/Nursery.h"
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "threading/CpuCount.h"
 #include "vm/JSContext.h"
 #include "vm/Runtime.h"
@@ -86,7 +86,7 @@ GCRuntime::tryNewNurseryObject(JSContext* cx, size_t thingSize, size_t nDynamicS
 
     MOZ_ASSERT(cx->isNurseryAllocAllowed());
     MOZ_ASSERT(!cx->isNurseryAllocSuppressed());
-    MOZ_ASSERT(!IsAtomsCompartment(cx->compartment()));
+    MOZ_ASSERT(!cx->zone()->isAtomsZone());
 
     JSObject* obj = cx->nursery().allocateObject(cx, thingSize, nDynamicSlots, clasp);
     if (obj)
@@ -140,7 +140,7 @@ GCRuntime::tryNewNurseryString(JSContext* cx, size_t thingSize, AllocKind kind)
     MOZ_ASSERT(cx->isNurseryAllocAllowed());
     MOZ_ASSERT(!cx->helperThread());
     MOZ_ASSERT(!cx->isNurseryAllocSuppressed());
-    MOZ_ASSERT(!IsAtomsCompartment(cx->compartment()));
+    MOZ_ASSERT(!cx->zone()->isAtomsZone());
 
     Cell* cell = cx->nursery().allocateString(cx->zone(), thingSize, kind);
     if (cell)
@@ -261,7 +261,7 @@ GCRuntime::tryNewTenuredThing(JSContext* cx, AllocKind kind, size_t thingSize)
     }
 
     checkIncrementalZoneState(cx, t);
-    TraceTenuredAlloc(t, kind);
+    gcTracer.traceTenuredAlloc(t, kind);
     return t;
 }
 
@@ -275,16 +275,16 @@ GCRuntime::checkAllocatorState(JSContext* cx, AllocKind kind)
     }
 
 #if defined(JS_GC_ZEAL) || defined(DEBUG)
-    MOZ_ASSERT_IF(cx->compartment()->isAtomsCompartment(),
+    MOZ_ASSERT_IF(cx->zone()->isAtomsZone(),
                   kind == AllocKind::ATOM ||
                   kind == AllocKind::FAT_INLINE_ATOM ||
                   kind == AllocKind::SYMBOL ||
                   kind == AllocKind::JITCODE ||
                   kind == AllocKind::SCOPE);
-    MOZ_ASSERT_IF(!cx->compartment()->isAtomsCompartment(),
+    MOZ_ASSERT_IF(!cx->zone()->isAtomsZone(),
                   kind != AllocKind::ATOM &&
                   kind != AllocKind::FAT_INLINE_ATOM);
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapBusy());
+    MOZ_ASSERT(!JS::RuntimeHeapIsBusy());
     MOZ_ASSERT(cx->isAllocAllowed());
 #endif
 
@@ -380,7 +380,7 @@ GCRuntime::refillFreeListFromMainThread(JSContext* cx, AllocKind thingKind)
     // It should not be possible to allocate on the main thread while we are
     // inside a GC.
     Zone *zone = cx->zone();
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapBusy(), "allocating while under GC");
+    MOZ_ASSERT(!JS::RuntimeHeapIsBusy(), "allocating while under GC");
 
     return cx->arenas()->allocateFromArena(zone, thingKind, ShouldCheckThresholds::CheckThresholds);
 }
@@ -405,8 +405,8 @@ GCRuntime::refillFreeListInGC(Zone* zone, AllocKind thingKind)
 
     zone->arenas.checkEmptyFreeList(thingKind);
     mozilla::DebugOnly<JSRuntime*> rt = zone->runtimeFromMainThread();
-    MOZ_ASSERT(JS::CurrentThreadIsHeapCollecting());
-    MOZ_ASSERT_IF(!JS::CurrentThreadIsHeapMinorCollecting(), !rt->gc.isBackgroundSweeping());
+    MOZ_ASSERT(JS::RuntimeHeapIsCollecting());
+    MOZ_ASSERT_IF(!JS::RuntimeHeapIsMinorCollecting(), !rt->gc.isBackgroundSweeping());
 
     return zone->arenas.allocateFromArena(zone, thingKind, ShouldCheckThresholds::DontCheckThresholds);
 }

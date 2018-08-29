@@ -7,9 +7,10 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-Cu.importGlobalProperties(["XMLHttpRequest"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["XMLHttpRequest"]);
 
-const POSITION_UNAVAILABLE = Ci.nsIDOMGeoPositionError.POSITION_UNAVAILABLE;
+// PositionError has no interface object, so we can't use that here.
+const POSITION_UNAVAILABLE = 2;
 
 var gLoggingEnabled = false;
 
@@ -202,12 +203,18 @@ function isCachedRequestMoreAccurateThanServerRequest(newCell, newWifiList)
   return false;
 }
 
-function WifiGeoCoordsObject(lat, lon, acc, alt, altacc) {
+function WifiGeoCoordsObject(lat, lon, acc) {
   this.latitude = lat;
   this.longitude = lon;
   this.accuracy = acc;
-  this.altitude = alt;
-  this.altitudeAccuracy = altacc;
+
+  // Neither GLS nor MLS return the following properties, so set them to NaN
+  // here. nsGeoPositionCoords will convert NaNs to null for optional properties
+  // of the JavaScript Coordinates object.
+  this.altitude = NaN;
+  this.altitudeAccuracy = NaN;
+  this.heading = NaN;
+  this.speed = NaN;
 }
 
 WifiGeoCoordsObject.prototype = {
@@ -215,7 +222,7 @@ WifiGeoCoordsObject.prototype = {
 };
 
 function WifiGeoPositionObject(lat, lng, acc) {
-  this.coords = new WifiGeoCoordsObject(lat, lng, acc, 0, 0);
+  this.coords = new WifiGeoCoordsObject(lat, lng, acc);
   this.address = null;
   this.timestamp = Date.now();
 }
@@ -364,7 +371,9 @@ WifiGeoPositionProvider.prototype = {
 
     if (useCached) {
       gCachedRequest.location.timestamp = Date.now();
-      this.listener.update(gCachedRequest.location);
+      if (this.listener) {
+        this.listener.update(gCachedRequest.location);
+      }
       return;
     }
 
@@ -377,7 +386,7 @@ WifiGeoPositionProvider.prototype = {
       xhr.open("POST", url, true);
       xhr.channel.loadFlags = Ci.nsIChannel.LOAD_ANONYMOUS;
     } catch (e) {
-      this.listener.notifyError(POSITION_UNAVAILABLE);
+      notifyPositionUnavailable(this.listener);
       return;
     }
     xhr.setRequestHeader("Content-Type", "application/json; charset=UTF-8");
@@ -386,16 +395,16 @@ WifiGeoPositionProvider.prototype = {
     xhr.timeout = Services.prefs.getIntPref("geo.wifi.xhr.timeout");
     xhr.ontimeout = () => {
       LOG("Location request XHR timed out.")
-      this.listener.notifyError(POSITION_UNAVAILABLE);
+      notifyPositionUnavailable(this.listener);
     };
     xhr.onerror = () => {
-      this.listener.notifyError(POSITION_UNAVAILABLE);
+      notifyPositionUnavailable(this.listener);
     };
     xhr.onload = () => {
       LOG("server returned status: " + xhr.status + " --> " +  JSON.stringify(xhr.response));
       if ((xhr.channel instanceof Ci.nsIHttpChannel && xhr.status != 200) ||
           !xhr.response || !xhr.response.location) {
-        this.listener.notifyError(POSITION_UNAVAILABLE);
+        notifyPositionUnavailable(this.listener);
         return;
       }
 
@@ -403,13 +412,21 @@ WifiGeoPositionProvider.prototype = {
                                                   xhr.response.location.lng,
                                                   xhr.response.accuracy);
 
-      this.listener.update(newLocation);
+      if (this.listener) {
+        this.listener.update(newLocation);
+      }
       gCachedRequest = new CachedRequest(newLocation, data.cellTowers, data.wifiAccessPoints);
     };
 
     var requestData = JSON.stringify(data);
     LOG("sending " + requestData);
     xhr.send(requestData);
+
+    function notifyPositionUnavailable(listener) {
+      if (listener) {
+        listener.notifyError(POSITION_UNAVAILABLE);
+      }
+    }
   }
 };
 

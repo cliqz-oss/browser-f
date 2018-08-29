@@ -374,20 +374,16 @@ nsSliderFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
     // that the event region that gets created for the thumb is included in
     // the nsDisplayOwnLayer contents.
 
-    nsDisplayOwnLayerFlags flags = aBuilder->GetCurrentScrollbarFlags();
-    mozilla::layers::FrameMetrics::ViewID scrollTargetId =
+    const mozilla::layers::FrameMetrics::ViewID scrollTargetId =
       aBuilder->GetCurrentScrollbarTarget();
-    bool thumbGetsLayer = (scrollTargetId != layers::FrameMetrics::NULL_SCROLL_ID);
+    const bool thumbGetsLayer = (scrollTargetId != layers::FrameMetrics::NULL_SCROLL_ID);
 
     if (thumbGetsLayer) {
-      MOZ_ASSERT((flags & nsDisplayOwnLayerFlags::eHorizontalScrollbar) ||
-                 (flags & nsDisplayOwnLayerFlags::eVerticalScrollbar));
-      bool isHorizontal = bool(flags & nsDisplayOwnLayerFlags::eHorizontalScrollbar);
-      ScrollDirection scrollDirection = isHorizontal
-          ? ScrollDirection::eHorizontal
-          : ScrollDirection::eVertical;
+      const Maybe<ScrollDirection> scrollDirection = aBuilder->GetCurrentScrollbarDirection();
+      MOZ_ASSERT(scrollDirection.isSome());
+      const bool isHorizontal = *scrollDirection == ScrollDirection::eHorizontal;
       const float appUnitsPerCss = float(AppUnitsPerCSSPixel());
-      CSSCoord thumbLength = NSAppUnitsToFloatPixels(
+      const CSSCoord thumbLength = NSAppUnitsToFloatPixels(
           isHorizontal ? thumbRect.width : thumbRect.height, appUnitsPerCss);
 
       nsIFrame* scrollbarBox = GetScrollbar();
@@ -403,16 +399,16 @@ nsSliderFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
       // This rect is the range in which the scroll thumb can slide in.
       sliderTrack = sliderTrack + GetRect().TopLeft() + scrollbarBox->GetPosition() -
                     scrollPortOrigin;
-      CSSCoord sliderTrackStart = NSAppUnitsToFloatPixels(
+      const CSSCoord sliderTrackStart = NSAppUnitsToFloatPixels(
           isHorizontal ? sliderTrack.x : sliderTrack.y, appUnitsPerCss);
-      CSSCoord sliderTrackLength = NSAppUnitsToFloatPixels(
+      const CSSCoord sliderTrackLength = NSAppUnitsToFloatPixels(
           isHorizontal ? sliderTrack.width : sliderTrack.height, appUnitsPerCss);
-      CSSCoord thumbStart = NSAppUnitsToFloatPixels(
+      const CSSCoord thumbStart = NSAppUnitsToFloatPixels(
           isHorizontal ? thumbRect.x : thumbRect.y, appUnitsPerCss);
 
-      nsRect overflow = thumb->GetVisualOverflowRectRelativeToParent();
+      const nsRect overflow = thumb->GetVisualOverflowRectRelativeToParent();
       nsSize refSize = aBuilder->RootReferenceFrame()->GetSize();
-      gfxSize scale = nsLayoutUtils::GetTransformToAncestorScale(thumb);
+      const gfxSize scale = nsLayoutUtils::GetTransformToAncestorScale(thumb);
       if (scale.width != 0 && scale.height != 0) {
         refSize.width /= scale.width;
         refSize.height /= scale.height;
@@ -459,16 +455,15 @@ nsSliderFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
       const ActiveScrolledRoot* ownLayerASR = contASRTracker.GetContainerASR();
       aLists.Content()->AppendToTop(
         MakeDisplayItem<nsDisplayOwnLayer>(aBuilder, this, &masterList, ownLayerASR,
-                                           flags,
-                                           ScrollbarData{scrollDirection,
-                                                         layers::ScrollbarLayerType::Thumb,
-                                                         GetThumbRatio(),
-                                                         thumbStart,
-                                                         thumbLength,
-                                                         isAsyncDraggable,
-                                                         sliderTrackStart,
-                                                         sliderTrackLength,
-                                                         scrollTargetId}));
+                                           nsDisplayOwnLayerFlags::eNone,
+                                           ScrollbarData::CreateForThumb(*scrollDirection,
+                                                                         GetThumbRatio(),
+                                                                         thumbStart,
+                                                                         thumbLength,
+                                                                         isAsyncDraggable,
+                                                                         sliderTrackStart,
+                                                                         sliderTrackLength,
+                                                                         scrollTargetId)));
 
       return;
     }
@@ -1118,7 +1113,9 @@ nsSliderFrame::StartAPZDrag(WidgetGUIEvent* aEvent)
     return;
   }
 
-  nsCOMPtr<nsIContent> scrollbar = GetContentOfBox(scrollbarBox);
+  if (!nsLayoutUtils::HasDisplayPort(scrollableContent)) {
+    return;
+  }
 
   nsIPresShell* shell = PresShell();
   uint64_t inputblockId = InputAPZContext::GetInputBlockId();
@@ -1128,10 +1125,6 @@ nsSliderFrame::StartAPZDrag(WidgetGUIEvent* aEvent)
                                  float(AppUnitsPerCSSPixel())),
                                isHorizontal ? ScrollDirection::eHorizontal :
                                               ScrollDirection::eVertical);
-
-  if (!nsLayoutUtils::HasDisplayPort(scrollableContent)) {
-    return;
-  }
 
   // It's important to set this before calling nsIWidget::StartAsyncScrollbarDrag(),
   // because in some configurations, that can call AsyncScrollbarDragRejected()

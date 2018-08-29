@@ -31,15 +31,12 @@
 #include "nsITransport.h"
 #include "nsISocketTransport.h"
 #include "nsIDocShell.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocument.h"
 #include "nsPresContext.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 
 using mozilla::DebugOnly;
 using mozilla::LogLevel;
-
-static NS_DEFINE_CID(kThisImplCID, NS_THIS_DOCLOADER_IMPL_CID);
 
 //
 // Log module for nsIDocumentLoader logging...
@@ -181,9 +178,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsDocLoader)
    NS_INTERFACE_MAP_ENTRY(nsIChannelEventSink)
    NS_INTERFACE_MAP_ENTRY(nsISecurityEventSink)
    NS_INTERFACE_MAP_ENTRY(nsISupportsPriority)
-   if (aIID.Equals(kThisImplCID))
-     foundInterface = static_cast<nsIDocumentLoader *>(this);
-   else
+   NS_INTERFACE_MAP_ENTRY_CONCRETE(nsDocLoader)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTION(nsDocLoader, mChildrenInOnload)
@@ -684,8 +679,7 @@ void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout)
 
     // The load group for this DocumentLoader is idle.  Flush if we need to.
     if (aFlushLayout && !mDontFlushLayout) {
-      nsCOMPtr<nsIDOMDocument> domDoc = do_GetInterface(GetAsSupports(this));
-      nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+      nsCOMPtr<nsIDocument> doc = do_GetInterface(GetAsSupports(this));
       if (doc) {
         // We start loads from style resolution, so we need to flush out style
         // no matter what.  If we have user fonts, we also need to flush layout,

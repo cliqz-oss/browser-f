@@ -20,6 +20,7 @@ WebrtcMediaDataDecoder::WebrtcMediaDataDecoder()
   , mImageContainer(layers::LayerManager::CreateImageContainer(
       layers::ImageContainer::ASYNCHRONOUS))
   , mFactory(new PDMFactory())
+  , mTrackType(TrackInfo::kUndefinedTrack)
 {
 }
 
@@ -133,7 +134,7 @@ WebrtcMediaDataDecoder::Decode(
         continue;
       }
       rtc::scoped_refptr<ImageBuffer> image(
-        new rtc::RefCountedObject<ImageBuffer>(Move(video->mImage)));
+        new rtc::RefCountedObject<ImageBuffer>(std::move(video->mImage)));
 
       webrtc::VideoFrame videoFrame(image,
                                     frame->mTime.ToMicroseconds(),
@@ -181,7 +182,7 @@ ImageBuffer::ImageBuffer(RefPtr<layers::Image>&& aImage)
   : webrtc::NativeHandleBuffer(aImage,
                                aImage->GetSize().width,
                                aImage->GetSize().height)
-  , mImage(Move(aImage))
+  , mImage(std::move(aImage))
 {
 }
 

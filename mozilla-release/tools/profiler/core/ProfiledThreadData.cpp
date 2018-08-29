@@ -18,11 +18,14 @@
 #endif
 
 ProfiledThreadData::ProfiledThreadData(ThreadInfo* aThreadInfo,
-                                       nsIEventTarget* aEventTarget)
+                                       nsIEventTarget* aEventTarget,
+                                       bool aIncludeResponsiveness)
   : mThreadInfo(aThreadInfo)
 {
   MOZ_COUNT_CTOR(ProfiledThreadData);
-  mResponsiveness.emplace(aEventTarget, aThreadInfo->IsMainThread());
+  if (aIncludeResponsiveness) {
+    mResponsiveness.emplace(aEventTarget, aThreadInfo->IsMainThread());
+  }
 }
 
 ProfiledThreadData::~ProfiledThreadData()
@@ -50,7 +53,7 @@ ProfiledThreadData::StreamJSON(const ProfileBuffer& aBuffer, JSContext* aCx,
       mThreadInfo->ThreadId(), aCx, jitFrameInfo);
   }
 
-  UniqueStacks uniqueStacks(Move(jitFrameInfo));
+  UniqueStacks uniqueStacks(std::move(jitFrameInfo));
 
   aWriter.Start();
   {
@@ -193,11 +196,11 @@ ProfiledThreadData::NotifyAboutToLoseJSContext(JSContext* aContext,
   }
 
   UniquePtr<JITFrameInfo> jitFrameInfo = mJITFrameInfoForPreviousJSContexts
-    ? Move(mJITFrameInfoForPreviousJSContexts) : MakeUnique<JITFrameInfo>();
+    ? std::move(mJITFrameInfoForPreviousJSContexts) : MakeUnique<JITFrameInfo>();
 
   aBuffer.AddJITInfoForRange(*mBufferPositionWhenReceivedJSContext,
      mThreadInfo->ThreadId(), aContext, *jitFrameInfo);
 
-  mJITFrameInfoForPreviousJSContexts = Move(jitFrameInfo);
+  mJITFrameInfoForPreviousJSContexts = std::move(jitFrameInfo);
   mBufferPositionWhenReceivedJSContext = Nothing();
 }

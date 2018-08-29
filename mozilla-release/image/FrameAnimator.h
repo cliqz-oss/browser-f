@@ -37,6 +37,7 @@ public:
     , mHasRequestedDecode(false)
     , mIsCurrentlyDecoded(false)
     , mCompositedFrameInvalid(false)
+    , mCompositedFrameRequested(false)
     , mDiscarded(false)
   { }
 
@@ -142,6 +143,13 @@ public:
   void SetAnimationFrameTime(const TimeStamp& aTime);
 
   /**
+   * Set the animation frame time to @aTime if we are configured to stop the
+   * animation when not visible and aTime is later than the current time.
+   * Returns true if the time was updated, else false.
+   */
+  bool MaybeAdvanceAnimationFrameTime(const TimeStamp& aTime);
+
+  /**
    * The current frame we're on, from 0 to (numFrames - 1).
    */
   uint32_t GetCurrentAnimationFrameIndex() const;
@@ -238,6 +246,10 @@ private:
   //! valid to draw to the screen.
   bool mCompositedFrameInvalid;
 
+  //! Whether the composited frame was requested from the animator since the
+  //! last time we advanced the animation.
+  bool mCompositedFrameRequested;
+
   //! Whether this image is currently discarded. Only set to true after the
   //! image has been decoded at least once.
   bool mDiscarded;
@@ -331,23 +343,17 @@ private: // methods
    * @param aTime the time that the animation should advance to. This will
    *              typically be <= TimeStamp::Now().
    *
+   * @param aCurrentFrame the currently displayed frame of the animation. If
+   *                      we advance, it will replace aCurrentFrame with the
+   *                      new current frame we advanced to.
+   *
    * @returns a RefreshResult that shows whether the frame was successfully
    *          advanced, and its resulting dirty rect.
    */
   RefreshResult AdvanceFrame(AnimationState& aState,
                              DrawableSurface& aFrames,
+                             RawAccessFrameRef& aCurrentFrame,
                              TimeStamp aTime);
-
-  /**
-   * Get the @aIndex-th frame in the frame index, ignoring results of blending.
-   */
-  RawAccessFrameRef GetRawFrame(DrawableSurface& aFrames,
-                                uint32_t aFrameNum) const;
-
-  /// @return the given frame's timeout if it is available
-  Maybe<FrameTimeout> GetTimeoutForFrame(AnimationState& aState,
-                                         DrawableSurface& aFrames,
-                                         uint32_t aFrameNum) const;
 
   /**
    * Get the time the frame we're currently displaying is supposed to end.
@@ -355,13 +361,13 @@ private: // methods
    * In the error case (like if the requested frame is not currently
    * decoded), returns None().
    */
-  Maybe<TimeStamp> GetCurrentImgFrameEndTime(AnimationState& aState,
-                                             DrawableSurface& aFrames) const;
+  TimeStamp GetCurrentImgFrameEndTime(AnimationState& aState,
+                                      FrameTimeout aCurrentTimeout) const;
 
-  bool DoBlend(DrawableSurface& aFrames,
-               gfx::IntRect* aDirtyRect,
-               uint32_t aPrevFrameIndex,
-               uint32_t aNextFrameIndex);
+  bool DoBlend(const RawAccessFrameRef& aPrevFrame,
+               const RawAccessFrameRef& aNextFrame,
+               uint32_t aNextFrameIndex,
+               gfx::IntRect* aDirtyRect);
 
   /** Clears an area of <aFrame> with transparent black.
    *
@@ -401,7 +407,7 @@ private: // methods
                               uint32_t aSrcPaletteLength, bool aSrcHasAlpha,
                               uint8_t* aDstPixels, const gfx::IntRect& aDstRect,
                               BlendMethod aBlendMethod,
-                              const Maybe<gfx::IntRect>& aBlendRect);
+                              const gfx::IntRect& aBlendRect);
 
 private: // data
   //! A weak pointer to our owning image.

@@ -12,12 +12,17 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FormData: "resource://gre/modules/FormData.jsm",
   PrivacyFilter: "resource://gre/modules/sessionstore/PrivacyFilter.jsm",
   ScrollPosition: "resource://gre/modules/ScrollPosition.jsm",
-  Utils: "resource://gre/modules/sessionstore/Utils.jsm",
 });
 
 class GeckoViewContent extends GeckoViewContentModule {
   onInit() {
     debug `onInit`;
+
+    // We don't load this in the global namespace because
+    // a Utils.jsm in a11y will clobber us.
+    XPCOMUtils.defineLazyModuleGetters(this, {
+      Utils: "resource://gre/modules/sessionstore/Utils.jsm",
+    });
 
     this.messageManager.addMessageListener("GeckoView:SaveState",
                                            this);
@@ -59,7 +64,7 @@ class GeckoViewContent extends GeckoViewContentModule {
 
   collectSessionState() {
     let history = SessionHistory.collect(docShell);
-    let [formdata, scrolldata] = Utils.mapFrameTree(content, FormData.collect, ScrollPosition.collect);
+    let [formdata, scrolldata] = this.Utils.mapFrameTree(content, FormData.collect, ScrollPosition.collect);
 
     // Save the current document resolution.
     let zoom = { value: 1 };
@@ -153,8 +158,18 @@ class GeckoViewContent extends GeckoViewContentModule {
           // Short circuit and return the pending state if we're in the process of restoring
           sendAsyncMessage("GeckoView:SaveStateFinish", {state: JSON.stringify(this._savedState), id: aMsg.data.id});
         } else {
-          let state = this.collectSessionState();
-          sendAsyncMessage("GeckoView:SaveStateFinish", {state: JSON.stringify(state), id: aMsg.data.id});
+          try {
+            let state = this.collectSessionState();
+            sendAsyncMessage("GeckoView:SaveStateFinish", {
+              state: state ? JSON.stringify(state) : null,
+              id: aMsg.data.id
+            });
+          } catch (e) {
+            sendAsyncMessage("GeckoView:SaveStateFinish", {
+              error: e.message,
+              id: aMsg.data.id
+            });
+          }
         }
         break;
 

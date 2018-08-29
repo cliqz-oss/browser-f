@@ -20,7 +20,6 @@ namespace InspectorUtils {
   unsigned long getRuleColumn(CSSRule rule);
   unsigned long getRelativeRuleLine(CSSRule rule);
   boolean hasRulesModifiedByCSSOM(CSSStyleSheet sheet);
-  [NewObject] CSSLexer getCSSLexer(DOMString text);
   unsigned long getSelectorCount(CSSStyleRule rule);
   [Throws] DOMString getSelectorText(CSSStyleRule rule,
                                      unsigned long selectorIndex);
@@ -33,6 +32,7 @@ namespace InspectorUtils {
       [TreatNullAs=EmptyString] optional DOMString pseudo = "");
   boolean isInheritedProperty(DOMString property);
   sequence<DOMString> getCSSPropertyNames(optional PropertyNamesOptions options);
+  sequence<PropertyPref> getCSSPropertyPrefs();
   [Throws] sequence<DOMString> getCSSValuesForProperty(DOMString property);
   [Throws] DOMString rgbToColorName(octet r, octet g, octet b);
   InspectorRGBATuple? colorToRGBA(DOMString colorString);
@@ -65,7 +65,8 @@ namespace InspectorUtils {
   // to access via its .ranges attribute.
   [NewObject, Throws] sequence<InspectorFontFace> getUsedFontFaces(
       Range range,
-      optional unsigned long maxRanges = 0);
+      optional unsigned long maxRanges = 0,
+      optional boolean skipCollapsedWhitespace = true);
 
   sequence<DOMString> getCSSPseudoElementNames();
   void addPseudoClassLock(Element element,
@@ -82,6 +83,11 @@ dictionary PropertyNamesOptions {
   boolean includeAliases = false;
   boolean includeShorthands = true;
   boolean includeExperimentals = false;
+};
+
+dictionary PropertyPref {
+  required DOMString name;
+  required DOMString pref;
 };
 
 dictionary InspectorRGBATuple {
@@ -134,6 +140,8 @@ interface InspectorFontFace {
   readonly attribute DOMString CSSFamilyName; // a family name that could be used in CSS font-family
                                               // (not necessarily the actual name that was used,
                                               // due to aliases, generics, localized names, etc)
+  readonly attribute DOMString CSSGeneric; // CSS generic (serif, sans-serif, etc) that was mapped
+                                           // to this font, if any (frequently empty!)
 
   [NewObject,Throws] sequence<InspectorVariationAxis> getVariationAxes();
   [NewObject,Throws] sequence<InspectorVariationInstance> getVariationInstances();

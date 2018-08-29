@@ -37,8 +37,8 @@ class AddrInfo;
  *     answers..
  */
 nsresult
-GetAddrInfo(const char* aHost, uint16_t aAddressFamily, uint16_t aFlags,
-            const char* aNetworkInterface, AddrInfo** aAddrInfo, bool aGetTtl);
+GetAddrInfo(const nsACString& aHost, uint16_t aAddressFamily, uint16_t aFlags,
+            AddrInfo** aAddrInfo, bool aGetTtl);
 
 /**
  * Initialize the GetAddrInfo module.
