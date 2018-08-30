@@ -1237,6 +1237,11 @@ ifdef HTTPSE_EXT_URL
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 endif
 
+CLIQZ_ONIONMODE_XPI_PATH = $(EXTENSIONS_PATH)/onionmode@cliqz.com.xpi
+$(CLIQZ_ONIONMODE_XPI_PATH): $(EXTENSIONS_PATH)
+	echo CLIQZ_ONIONMODE_XPI_PATH in `pwd`
+	wget --output-document $(CLIQZ_ONIONMODE_XPI_PATH) $(CLIQZ_ONIONMODE_EXT_URL)
+
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
