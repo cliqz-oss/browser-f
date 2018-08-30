@@ -13840,21 +13840,6 @@
     "kind": "exponential",
     "high": 50,
     "n_buckets": 20,
-<<<<<<< HEAD
-    "description": "Total number of doc groups per tab group, including docgroups fully in bfcache. Collected at the point when the top level document of the tab group is unloaded."
-  },
-  "REPORT_DECEPTIVE_SITE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": [],
-    "expires_in_version": "never",
-    "bug_numbers": [],
-    "kind": "enumerated",
-    "n_values": 3,
-    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
-    "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-    "description": "Total number of doc groups per tab group, including docgroups fully in bfcache. Collected at the point when the top level document of the tab group is unloaded."
-=======
     "description": "Total number of http:// and https:// doc groups per tab group, including docgroups fully in bfcache. Collected at the point when the top level document of the tab group is unloaded."
   },
   "HIDDEN_VIEWPORT_OVERFLOW_TYPE": {
@@ -13866,6 +13851,15 @@
     "releaseChannelCollection": "opt-out",
     "labels": ["NoOverflow", "Desktop", "ButNotMinScaleSize", "MinScaleSize"],
     "description": "How common are different types of out-of-reach viewport overflow?"
->>>>>>> origin/upstream-releases
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }

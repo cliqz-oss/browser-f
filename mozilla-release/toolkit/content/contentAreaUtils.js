@@ -406,19 +406,11 @@ function internalSave(aURL, aDocument, aDefaultFileName, aContentDisposition,
 
     let isPrivate = aIsContentWindowPrivate;
     if (isPrivate === undefined) {
-<<<<<<< HEAD
-      isPrivate = aInitiatingDocument instanceof Ci.nsIDOMDocument
+      isPrivate = aInitiatingDocument.nodeType == 9 /* DOCUMENT_NODE */
         ? PrivateBrowsingUtils.isContentWindowPrivate(
               aInitiatingDocument.defaultView) ||
               // TODO: This needs testing.
               aInitiatingDocument.docShell.usePrivateBrowsing
-||||||| merged common ancestors
-      isPrivate = aInitiatingDocument instanceof Ci.nsIDOMDocument
-        ? PrivateBrowsingUtils.isContentWindowPrivate(aInitiatingDocument.defaultView)
-=======
-      isPrivate = aInitiatingDocument.nodeType == 9 /* DOCUMENT_NODE */
-        ? PrivateBrowsingUtils.isContentWindowPrivate(aInitiatingDocument.defaultView)
->>>>>>> origin/upstream-releases
         : aInitiatingDocument.isPrivate;
     }
 

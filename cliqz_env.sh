@@ -45,6 +45,7 @@ fi
 
 if [ $IS_WIN ]; then
   MAKE=mozmake
+  export USE_STUB_INSTALLER=1
 else
   MAKE=make
 fi

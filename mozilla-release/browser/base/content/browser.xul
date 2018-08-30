@@ -100,7 +100,6 @@
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
       <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
       <menuitem
           id="context_togglePrivate"
@@ -111,15 +110,10 @@
           oncommand="TabContextMenu.togglePrivateMode(true);"
           />
 #endif
-||||||| merged common ancestors
-      <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
-=======
+      <menuseparator/>
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuitem id="context_toggleMuteSelectedTabs" hidden="true"
                 oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
->>>>>>> origin/upstream-releases
-      <menuseparator/>
-      <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
                 accesskey="&duplicateTab.accesskey;"
                 oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tabadjacent');"/>
@@ -129,12 +123,6 @@
       <menuitem id="context_unpinTab" label="&unpinTab.label;" hidden="true"
                 accesskey="&unpinTab.accesskey;"
                 oncommand="gBrowser.unpinTab(TabContextMenu.contextTab);"/>
-<<<<<<< HEAD
-||||||| merged common ancestors
-      <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
-                accesskey="&duplicateTab.accesskey;"
-                oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
-=======
       <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
                 accesskey="&duplicateTab.accesskey;"
                 oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
@@ -145,7 +133,6 @@
         <menupopup oncommand="reopenInContainer(event);"
                    onpopupshowing="return createReopenInContainerMenu(event);" />
       </menu>
->>>>>>> origin/upstream-releases
       <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"

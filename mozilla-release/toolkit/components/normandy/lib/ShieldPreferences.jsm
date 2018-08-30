@@ -32,20 +32,6 @@ var ShieldPreferences = {
 
   observe(subject, topic, data) {
     switch (topic) {
-<<<<<<< HEAD
-/* Cliqz - don't use
-      // Add the opt-out-study checkbox to the Privacy preferences when it is shown.
-      case "privacy-pane-loaded":
-        this.injectOptOutStudyCheckbox(subject.document);
-        break;
-*/
-||||||| merged common ancestors
-      // Add the opt-out-study checkbox to the Privacy preferences when it is shown.
-      case "privacy-pane-loaded":
-        this.injectOptOutStudyCheckbox(subject.document);
-        break;
-=======
->>>>>>> origin/upstream-releases
       case NS_PREFBRANCH_PREFCHANGE_TOPIC_ID:
         this.observePrefChange(data);
         break;

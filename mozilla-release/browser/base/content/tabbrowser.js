@@ -2177,13 +2177,9 @@ window._gBrowser = {
     var aFocusUrlBar;
     var aName;
     var aBulkOrderedOpen;
-<<<<<<< HEAD
-    var aPrivate;
-||||||| merged common ancestors
-=======
     var aIndex;
     var aPinned;
->>>>>>> origin/upstream-releases
+    var aPrivate;
     if (arguments.length == 2 &&
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2216,13 +2212,9 @@ window._gBrowser = {
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
       aBulkOrderedOpen = params.bulkOrderedOpen;
-<<<<<<< HEAD
-      aPrivate = params.private;
-||||||| merged common ancestors
-=======
       aIndex = params.index;
       aPinned = params.pinned;
->>>>>>> origin/upstream-releases
+      aPrivate = params.private;
     }
 
     // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -3575,15 +3567,9 @@ window._gBrowser = {
       eventDetail: { adoptedTab: aTab },
       preferredRemoteType: linkedBrowser.remoteType,
       sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-<<<<<<< HEAD
-      skipAnimation: true,
-      private: !!aTab.private
-||||||| merged common ancestors
-      skipAnimation: true
-=======
       skipAnimation: true,
       index: aIndex,
->>>>>>> origin/upstream-releases
+      private: !!aTab.private
     };
 
     let numPinned = this._numPinnedTabs;

@@ -4151,16 +4151,8 @@ nsDocShell::LoadURI(const char16_t* aURI,
                     nsIPrincipal* aTriggeringPrincipal)
 {
   return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI,
-<<<<<<< HEAD
-                            mozilla::net::RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, aTriggeringPrincipal, false);
-||||||| merged common ancestors
-                            mozilla::net::RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, aTriggeringPrincipal);
-=======
                             RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, aTriggeringPrincipal);
->>>>>>> origin/upstream-releases
+                            aHeaderStream, nullptr, aTriggeringPrincipal, false);
 }
 
 NS_IMETHODIMP

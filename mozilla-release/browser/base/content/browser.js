@@ -374,16 +374,10 @@ var gInitialPages = [
   "about:home",
   "about:privatebrowsing",
   "about:welcomeback",
-<<<<<<< HEAD
   "about:sessionrestore",
   "resource://cliqz/freshtab/home.html",
-  "about:cliqz"
-||||||| merged common ancestors
-  "about:sessionrestore"
-=======
-  "about:sessionrestore",
+  "about:cliqz",
   "about:welcome"
->>>>>>> origin/upstream-releases
 ];
 
 function isInitialPage(url) {
@@ -1393,14 +1387,6 @@ var gBrowserInit = {
     LanguageDetectionListener.init();
     BrowserOnClick.init();
     FeedHandler.init();
-<<<<<<< HEAD
-#if 0
-    AboutCapabilitiesListener.init();
-#endif
-||||||| merged common ancestors
-    AboutCapabilitiesListener.init();
-=======
->>>>>>> origin/upstream-releases
     TrackingProtection.init();
     CaptivePortalWatcher.init();
     ZoomUI.init(window);
@@ -1990,16 +1976,6 @@ var gBrowserInit = {
 
     FeedHandler.uninit();
 
-<<<<<<< HEAD
-#if 0
-    AboutCapabilitiesListener.uninit();
-#endif
-
-||||||| merged common ancestors
-    AboutCapabilitiesListener.uninit();
-
-=======
->>>>>>> origin/upstream-releases
     TrackingProtection.uninit();
 
     CaptivePortalWatcher.uninit();
@@ -8058,14 +8034,7 @@ var MenuTouchModeObserver = {
 
 var TabContextMenu = {
   contextTab: null,
-<<<<<<< HEAD
-
-  _updateToggleMuteMenuItem(aTab, aConditionFn) {
-||||||| merged common ancestors
-  _updateToggleMuteMenuItem(aTab, aConditionFn) {
-=======
   _updateToggleMuteMenuItems(aTab, aConditionFn) {
->>>>>>> origin/upstream-releases
     ["muted", "soundplaying"].forEach(attr => {
       if (!aConditionFn || aConditionFn(attr)) {
         if (aTab.hasAttribute(attr)) {
@@ -8186,19 +8155,15 @@ var TabContextMenu = {
 
 #ifdef MOZ_SERVICES_SYNC
     gSync.updateTabContextMenu(aPopupMenu, this.contextTab);
-<<<<<<< HEAD
 #endif
+
+    updateTabMenuUserContextUIVisibility("context_reopenInContainer");
   },
 
 #if CQZ_AUTO_PRIVATE_TAB
   togglePrivateMode: function(rememberDomain) {
     autoForgetTabs.toggleBrowserPrivateMode(
         this.contextTab.linkedBrowser, rememberDomain);
-||||||| merged common ancestors
-=======
-
-    updateTabMenuUserContextUIVisibility("context_reopenInContainer");
->>>>>>> origin/upstream-releases
   },
 #endif
 
@@ -8590,78 +8555,6 @@ var PanicButtonNotifier = {
   },
 };
 
-<<<<<<< HEAD
-#if 0
-var AboutCapabilitiesListener = {
-  _topics: [
-    "AboutCapabilities:OpenPrivateWindow",
-    "AboutCapabilities:DontShowIntroPanelAgain",
-  ],
-
-  init() {
-    let mm = window.messageManager;
-    for (let topic of this._topics) {
-      mm.addMessageListener(topic, this);
-    }
-  },
-
-  uninit() {
-    let mm = window.messageManager;
-    for (let topic of this._topics) {
-      mm.removeMessageListener(topic, this);
-    }
-  },
-
-  receiveMessage(aMsg) {
-    switch (aMsg.name) {
-      case "AboutCapabilities:OpenPrivateWindow":
-        OpenBrowserWindow({private: true});
-        break;
-
-      case "AboutCapabilities:DontShowIntroPanelAgain":
-        TrackingProtection.dontShowIntroPanelAgain();
-        break;
-    }
-  },
-};
-#endif
-
-||||||| merged common ancestors
-var AboutCapabilitiesListener = {
-  _topics: [
-    "AboutCapabilities:OpenPrivateWindow",
-    "AboutCapabilities:DontShowIntroPanelAgain",
-  ],
-
-  init() {
-    let mm = window.messageManager;
-    for (let topic of this._topics) {
-      mm.addMessageListener(topic, this);
-    }
-  },
-
-  uninit() {
-    let mm = window.messageManager;
-    for (let topic of this._topics) {
-      mm.removeMessageListener(topic, this);
-    }
-  },
-
-  receiveMessage(aMsg) {
-    switch (aMsg.name) {
-      case "AboutCapabilities:OpenPrivateWindow":
-        OpenBrowserWindow({private: true});
-        break;
-
-      case "AboutCapabilities:DontShowIntroPanelAgain":
-        TrackingProtection.dontShowIntroPanelAgain();
-        break;
-    }
-  },
-};
-
-=======
->>>>>>> origin/upstream-releases
 const SafeBrowsingNotificationBox = {
   _currentURIBaseDomain: null,
   show(title, buttons) {

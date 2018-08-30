@@ -133,54 +133,6 @@ const BOOTSTRAP_REASONS = {
   ADDON_DOWNGRADE: 8
 };
 
-<<<<<<< HEAD
-// Some add-on types that we track internally are presented as other types
-// externally
-const TYPE_ALIASES = {
-  "webextension": "extension",
-  "webextension-dictionary": "dictionary",
-  "webextension-langpack": "locale",
-  "webextension-theme": "theme",
-};
-
-const CHROME_TYPES = new Set([
-  "extension",
-]);
-
-const SIGNED_TYPES = new Set([
-  "extension",
-  "experiment",
-  "theme",
-  "locale",
-  "multipackage",
-  "webextension",
-  "webextension-langpack",
-  "webextension-theme",
-]);
-
-||||||| merged common ancestors
-// Some add-on types that we track internally are presented as other types
-// externally
-const TYPE_ALIASES = {
-  "webextension": "extension",
-  "webextension-dictionary": "dictionary",
-  "webextension-langpack": "locale",
-  "webextension-theme": "theme",
-};
-
-const CHROME_TYPES = new Set([
-  "extension",
-]);
-
-const SIGNED_TYPES = new Set([
-  "extension",
-  "webextension",
-  "webextension-langpack",
-  "webextension-theme",
-]);
-
-=======
->>>>>>> origin/upstream-releases
 const ALL_EXTERNAL_TYPES = new Set([
   "dictionary",
   "extension",

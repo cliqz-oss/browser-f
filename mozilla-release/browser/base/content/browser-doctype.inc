@@ -14,15 +14,7 @@
 %placesDTD;
 <!ENTITY % safebrowsingDTD SYSTEM "chrome://browser/locale/safebrowsing/phishing-afterload-warning-message.dtd">
 %safebrowsingDTD;
-<<<<<<< HEAD
-<!ENTITY % aboutHomeDTD SYSTEM "chrome://browser/locale/aboutHome.dtd">
-%aboutHomeDTD;
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-<!ENTITY % aboutHomeDTD SYSTEM "chrome://browser/locale/aboutHome.dtd">
-%aboutHomeDTD;
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
 %syncBrandDTD;
 #endif

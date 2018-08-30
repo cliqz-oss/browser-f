@@ -135,6 +135,10 @@ const TYPE_ALIASES = {
 
 const SIGNED_TYPES = new Set([
   "extension",
+  "experiment",
+  "theme",
+  "locale",
+  "multipackage",
   "webextension",
   "webextension-langpack",
   "webextension-theme",
@@ -956,41 +960,9 @@ AddonWrapper = class {
     return addon.softDisabled || addon.userDisabled;
   }
 
-<<<<<<< HEAD
-    if (addon.inDatabase) {
-      /* In CLIQZ we need to be able to userDisable system addons like HTTPSEverywhere
-      // hidden and system add-ons should not be user disabled,
-      // as there is no UI to re-enable them.
-      if (this.hidden) {
-        throw new Error(`Cannot disable hidden add-on ${addon.id}`);
-      }
-      */
-      XPIDatabase.updateAddonDisabledState(addon, val);
-    } else {
-      addon.userDisabled = val;
-      // When enabling remove the softDisabled flag
-      if (!val)
-        addon.softDisabled = false;
-    }
-||||||| merged common ancestors
-    if (addon.inDatabase) {
-      // hidden and system add-ons should not be user disabled,
-      // as there is no UI to re-enable them.
-      if (this.hidden) {
-        throw new Error(`Cannot disable hidden add-on ${addon.id}`);
-      }
-      XPIDatabase.updateAddonDisabledState(addon, val);
-    } else {
-      addon.userDisabled = val;
-      // When enabling remove the softDisabled flag
-      if (!val)
-        addon.softDisabled = false;
-    }
-=======
   enable() {
     return addonFor(this).setUserDisabled(false);
   }
->>>>>>> origin/upstream-releases
 
   disable() {
     return addonFor(this).setUserDisabled(true);
@@ -1018,25 +990,11 @@ AddonWrapper = class {
   }
 
   get hidden() {
-<<<<<<< HEAD
-    let addon = addonFor(this);
-    if (addon._installLocation.name == KEY_APP_TEMPORARY)
-      return false;
-
     if (!Services.prefs.getPrefType("extensions.cliqz.listed")
       || Services.prefs.getBoolPref("extensions.cliqz.listed", false))
       return false;
 
-    return addon._installLocation.isSystem;
-||||||| merged common ancestors
-    let addon = addonFor(this);
-    if (addon._installLocation.name == KEY_APP_TEMPORARY)
-      return false;
-
-    return addon._installLocation.isSystem;
-=======
     return addonFor(this).hidden;
->>>>>>> origin/upstream-releases
   }
 
   get isSystem() {

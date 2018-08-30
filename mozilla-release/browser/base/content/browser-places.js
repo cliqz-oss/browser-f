@@ -741,14 +741,8 @@ HistoryMenu.prototype = {
       return;
     }
 
-<<<<<<< HEAD
-    menuitem.setAttribute("hidden", false);
-#endif
-||||||| merged common ancestors
-    menuitem.setAttribute("hidden", false);
-=======
     this.syncTabsMenuitem.setAttribute("hidden", false);
->>>>>>> origin/upstream-releases
+#endif
   },
 
   _onPopupShowing: function HM__onPopupShowing(aEvent) {

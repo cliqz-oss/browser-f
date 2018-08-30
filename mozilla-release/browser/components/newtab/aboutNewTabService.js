@@ -13,17 +13,7 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.defineModuleGetter(this, "AboutNewTab",
                                "resource:///modules/AboutNewTab.jsm");
 
-<<<<<<< HEAD
-// Dummy references to the files that this service no longer allows loading.
-// Bug 1409054 to remove "chrome://browser/content/abouthome/aboutHome.xhtml"
-
 const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
-||||||| merged common ancestors
-// Dummy references to the files that this service no longer allows loading.
-// Bug 1409054 to remove "chrome://browser/content/abouthome/aboutHome.xhtml"
-
-=======
->>>>>>> origin/upstream-releases
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 

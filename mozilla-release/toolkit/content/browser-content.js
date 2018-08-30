@@ -9,19 +9,10 @@
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource:///modules/AutoForgetTabsMonitor.jsm");
 
-<<<<<<< HEAD
-Cu.import("resource:///modules/AutoForgetTabsMonitor.jsm");
-
-ChromeUtils.defineModuleGetter(this, "ReaderMode",
-  "resource://gre/modules/ReaderMode.jsm");
-||||||| merged common ancestors
-ChromeUtils.defineModuleGetter(this, "ReaderMode",
-  "resource://gre/modules/ReaderMode.jsm");
-=======
 ChromeUtils.defineModuleGetter(this, "AutoScrollController",
   "resource://gre/modules/AutoScrollController.jsm");
->>>>>>> origin/upstream-releases
 ChromeUtils.defineModuleGetter(this, "BrowserUtils",
   "resource://gre/modules/BrowserUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "SelectContentHelper",

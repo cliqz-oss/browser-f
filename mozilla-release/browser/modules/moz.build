@@ -158,14 +158,8 @@ EXTRA_JS_MODULES += [
     'LightWeightThemeWebInstallListener.jsm',
     'NetErrorContent.jsm',
     'OpenInTabsUtils.jsm',
-<<<<<<< HEAD
-||||||| merged common ancestors
-    'PageActions.jsm',
-=======
-    'PageActions.jsm',
     'PageInfoListener.jsm',
     'PageStyleHandler.jsm',
->>>>>>> origin/upstream-releases
     'PermissionUI.jsm',
     'PingCentre.jsm',
     'PluginContent.jsm',

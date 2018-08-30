@@ -29,14 +29,8 @@ browser.jar:
 *       content/browser/browser.css                   (content/browser.css)
 *       content/browser/browser.js                    (content/browser.js)
 *       content/browser/browser.xul                   (content/browser.xul)
-<<<<<<< HEAD
 *       content/browser/browser-addons.js             (content/browser-addons.js)
-||||||| merged common ancestors
-        content/browser/browser-addons.js             (content/browser-addons.js)
-=======
-        content/browser/browser-addons.js             (content/browser-addons.js)
         content/browser/browser-allTabsMenu.js        (content/browser-allTabsMenu.js)
->>>>>>> origin/upstream-releases
         content/browser/browser-captivePortal.js      (content/browser-captivePortal.js)
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)
         content/browser/browser-customization.js      (content/browser-customization.js)
@@ -58,13 +52,7 @@ browser.jar:
         content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
 #ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
-<<<<<<< HEAD
 #endif
-*       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
-||||||| merged common ancestors
-*       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
-=======
->>>>>>> origin/upstream-releases
         content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
         content/browser/browser-thumbnails.js         (content/browser-thumbnails.js)
         content/browser/browser-trackingprotection.js (content/browser-trackingprotection.js)
@@ -88,14 +76,10 @@ browser.jar:
         content/browser/defaultthemes/5.preview.jpg   (content/defaultthemes/5.preview.jpg)
         content/browser/defaultthemes/dark.icon.svg   (content/defaultthemes/dark.icon.svg)
         content/browser/defaultthemes/light.icon.svg  (content/defaultthemes/light.icon.svg)
-<<<<<<< HEAD
+        content/browser/history-swipe-arrow.svg       (content/history-swipe-arrow.svg)
 #if CQZ_AUTO_PRIVATE_TAB
         content/browser/PrivateTabUI.jsm              (content/PrivateTabUI.jsm)
 #endif
-||||||| merged common ancestors
-=======
-        content/browser/history-swipe-arrow.svg       (content/history-swipe-arrow.svg)
->>>>>>> origin/upstream-releases
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)

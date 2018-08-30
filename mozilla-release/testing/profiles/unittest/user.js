@@ -277,3 +277,5 @@ user_pref("toolkit.telemetry.test.pref2", false);
 // Disable the caret blinking so we get stable snapshot
 user_pref("ui.caretBlinkTime", -1);
 user_pref("webextensions.tests", true);
+// Cliqz ignore onboarding
+user_pref("extensions.cliqz.browserOnboarding", true);

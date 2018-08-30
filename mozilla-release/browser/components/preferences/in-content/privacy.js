@@ -30,15 +30,11 @@ const TRACKING_PROTECTION_KEY = "websites.trackingProtectionMode";
 const TRACKING_PROTECTION_PREFS = ["privacy.trackingprotection.enabled",
                                    "privacy.trackingprotection.pbmode.enabled"];
 
-<<<<<<< HEAD
 var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
-||||||| merged common ancestors
-=======
 const PREF_OPT_OUT_STUDIES_ENABLED = "app.shield.optoutstudies.enabled";
 const PREF_NORMANDY_ENABLED = "app.normandy.enabled";
 
->>>>>>> origin/upstream-releases
 XPCOMUtils.defineLazyGetter(this, "AlertsServiceDND", function() {
   try {
     let alertsService = Cc["@mozilla.org/alerts-service;1"]
@@ -516,92 +512,6 @@ var gPrivacyPane = {
     appendSearchKeywords("showPasswords", [
       signonBundle.getString("loginsDescriptionAll2"),
     ]);
-<<<<<<< HEAD
-    appendSearchKeywords("cookieExceptions", [
-      bundlePrefs.getString("cookiepermissionstext1"),
-    ]);
-#if 0
-    appendSearchKeywords("trackingProtectionExceptions", [
-      bundlePrefs.getString("trackingprotectionpermissionstitle"),
-      bundlePrefs.getString("trackingprotectionpermissionstext2"),
-    ]);
-#endif
-    appendSearchKeywords("popupPolicyButton", [
-      bundlePrefs.getString("popuppermissionstitle2"),
-      bundlePrefs.getString("popuppermissionstext"),
-    ]);
-    appendSearchKeywords("notificationSettingsButton", [
-      bundlePrefs.getString("notificationspermissionstitle2"),
-      bundlePrefs.getString("notificationspermissionstext6"),
-      bundlePrefs.getString("notificationspermissionsdisablelabel"),
-      bundlePrefs.getString("notificationspermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("locationSettingsButton", [
-      bundlePrefs.getString("locationpermissionstitle"),
-      bundlePrefs.getString("locationpermissionstext2"),
-      bundlePrefs.getString("locationpermissionsdisablelabel"),
-      bundlePrefs.getString("locationpermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("cameraSettingsButton", [
-      bundlePrefs.getString("camerapermissionstitle"),
-      bundlePrefs.getString("camerapermissionstext2"),
-      bundlePrefs.getString("camerapermissionsdisablelabel"),
-      bundlePrefs.getString("camerapermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("microphoneSettingsButton", [
-      bundlePrefs.getString("microphonepermissionstitle"),
-      bundlePrefs.getString("microphonepermissionstext2"),
-      bundlePrefs.getString("microphonepermissionsdisablelabel"),
-      bundlePrefs.getString("microphonepermissionsdisabledescription"),
-    ]);
-#if 0
-    appendSearchKeywords("addonExceptions", [
-      bundlePrefs.getString("addons_permissions_title2"),
-      bundlePrefs.getString("addonspermissionstext"),
-    ]);
-#endif
-||||||| merged common ancestors
-    appendSearchKeywords("cookieExceptions", [
-      bundlePrefs.getString("cookiepermissionstext1"),
-    ]);
-    appendSearchKeywords("trackingProtectionExceptions", [
-      bundlePrefs.getString("trackingprotectionpermissionstitle"),
-      bundlePrefs.getString("trackingprotectionpermissionstext2"),
-    ]);
-    appendSearchKeywords("popupPolicyButton", [
-      bundlePrefs.getString("popuppermissionstitle2"),
-      bundlePrefs.getString("popuppermissionstext"),
-    ]);
-    appendSearchKeywords("notificationSettingsButton", [
-      bundlePrefs.getString("notificationspermissionstitle2"),
-      bundlePrefs.getString("notificationspermissionstext6"),
-      bundlePrefs.getString("notificationspermissionsdisablelabel"),
-      bundlePrefs.getString("notificationspermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("locationSettingsButton", [
-      bundlePrefs.getString("locationpermissionstitle"),
-      bundlePrefs.getString("locationpermissionstext2"),
-      bundlePrefs.getString("locationpermissionsdisablelabel"),
-      bundlePrefs.getString("locationpermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("cameraSettingsButton", [
-      bundlePrefs.getString("camerapermissionstitle"),
-      bundlePrefs.getString("camerapermissionstext2"),
-      bundlePrefs.getString("camerapermissionsdisablelabel"),
-      bundlePrefs.getString("camerapermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("microphoneSettingsButton", [
-      bundlePrefs.getString("microphonepermissionstitle"),
-      bundlePrefs.getString("microphonepermissionstext2"),
-      bundlePrefs.getString("microphonepermissionsdisablelabel"),
-      bundlePrefs.getString("microphonepermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("addonExceptions", [
-      bundlePrefs.getString("addons_permissions_title2"),
-      bundlePrefs.getString("addonspermissionstext"),
-    ]);
-=======
->>>>>>> origin/upstream-releases
     appendSearchKeywords("viewSecurityDevicesButton", [
       pkiBundle.getString("enable_fips"),
     ]);

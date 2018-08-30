@@ -921,14 +921,8 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
   margin-top: 64px;
 }
 
-<<<<<<< HEAD
 %if 0
-.no-results-container:nth-child(2) > image {
-||||||| merged common ancestors
-.no-results-container:nth-child(2) > image {
-=======
 .no-results-image {
->>>>>>> origin/upstream-releases
   list-style-image: url("chrome://browser/skin/preferences/in-content/no-search-results.svg");
   width: 380px;
   height: 293px;

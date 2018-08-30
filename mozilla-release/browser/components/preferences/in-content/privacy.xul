@@ -342,14 +342,8 @@
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
   <caption><label data-l10n-id="tracking-header"/></caption>
-<<<<<<< HEAD
 #if 0
-  <vbox>
-||||||| merged common ancestors
-  <vbox>
-=======
   <vbox data-subcategory="trackingprotection">
->>>>>>> origin/upstream-releases
     <hbox align="start">
       <vbox flex="1">
         <description data-l10n-id="tracking-desc">
@@ -669,10 +663,6 @@
       <label id="FHRLearnMore"
              class="learnMore text-link"
              data-l10n-id="collection-health-report-link"/>
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
       <vbox class="indent">
         <hbox align="center">
           <checkbox id="optOutStudiesEnabled"
@@ -685,7 +675,7 @@
                  data-l10n-id="collection-studies-link"/>
         </hbox>
       </vbox>
->>>>>>> origin/upstream-releases
+#endif
     </description>
 #ifndef MOZ_TELEMETRY_REPORTING
   <description id="TelemetryDisabledDesc"

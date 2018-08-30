@@ -30,23 +30,11 @@ def _create_header(array_name, cert_bytes):
 #   def arrayName(header, cert_filename):
 #     header.write(_create_header("arrayName", cert_filename))
 array_names = [
-<<<<<<< HEAD
-  'xpcshellRoot',
-  'addonsPublicRoot',
-  'addonsStageRoot',
-  'privilegedPackageRoot',
-  'cliqzAddonsRoot',
-||||||| merged common ancestors
-  'xpcshellRoot',
-  'addonsPublicRoot',
-  'addonsStageRoot',
-  'privilegedPackageRoot',
-=======
     'xpcshellRoot',
     'addonsPublicRoot',
     'addonsStageRoot',
     'privilegedPackageRoot',
->>>>>>> origin/upstream-releases
+    'cliqzAddonsRoot',
 ]
 
 for n in array_names:
