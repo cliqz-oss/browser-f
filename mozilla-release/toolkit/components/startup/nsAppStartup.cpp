@@ -152,8 +152,7 @@ nsAppStartup::nsAppStartup() :
   mInterrupted(false),
   mIsSafeModeNecessary(false),
   mStartupCrashTrackingEnded(false),
-  mRestartNotSameProfile(false),
-  mCliqzPrivateMode(false)
+  mRestartNotSameProfile(false)
 { }
 
 
@@ -400,10 +399,6 @@ nsAppStartup::Quit(uint32_t aMode)
       mRestartNotSameProfile = (aMode & eRestartNotSameProfile) != 0;
     }
 
-    if (!mCliqzPrivateMode) {
-      mCliqzPrivateMode = (aMode & eCliqzPrivateMode) != 0;
-    }
-
     if (mRestart || mRestartNotSameProfile) {
       // Mark the next startup as a restart.
       PR_SetEnv("MOZ_APP_RESTART=1");
@@ -465,15 +460,6 @@ nsAppStartup::Quit(uint32_t aMode)
   }
 
   if (ferocity == eForceQuit) {
-    if (mCliqzPrivateMode) {
-      // Toggle between modes
-      const char *val = PR_GetEnv("MOZ_CLIQZ_PRIVATE_MODE");
-      if (val && *val) {
-        PR_SetEnv("MOZ_CLIQZ_PRIVATE_MODE=");
-      } else {
-        PR_SetEnv("MOZ_CLIQZ_PRIVATE_MODE=1");
-      }
-    }
     // do it!
 
     // No chance of the shutdown being cancelled from here on; tell people
