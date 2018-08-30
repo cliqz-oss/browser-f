@@ -131,13 +131,6 @@ interface nsIAppStartup : nsISupports
     const uint32_t eRestartNotSameProfile = 0x100;
 
     /**
-     * Switch from normal to ultra-private mode and viceversa. Essentially restart
-     * the application and switch profile. To be used together with eRestartNotSameProfile
-     * and (eAttemptQuit or eForceQuit).
-     */
-    const uint32_t eCliqzPrivateMode = 0x1000;
-
-    /**
      * Exit the event loop, and shut down the app.
      *
      * @param aMode
