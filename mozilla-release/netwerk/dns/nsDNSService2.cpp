@@ -631,12 +631,14 @@ nsDNSService::ReadPrefs(const char *name)
         // Disable prefetching either by explicit preference or if a
         // manual proxy is configured
         mDisablePrefetch = true;
-    }
 
-    if (!name || !strcmp(name, kPrefSocksRemoteDns)) {
+        // Disable DNS service if manual proxy is configured and SOCKS
+        // remote DNS preference is set.
         if (NS_SUCCEEDED(Preferences::GetBool(kPrefSocksRemoteDns, &tmpbool))) {
             mDisableDNS = tmpbool;
         }
+    } else {
+        mDisableDNS = false;
     }
     return NS_OK;
 }
