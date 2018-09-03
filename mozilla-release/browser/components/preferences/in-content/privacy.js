@@ -504,7 +504,9 @@ var gPrivacyPane = {
       this.initSubmitHealthReport();
       setEventListener("submitHealthReportBox", "command",
         gPrivacyPane.updateSubmitHealthReport);
+#if 0
       this.initOptOutStudyCheckbox();
+#endif
     }
     this._initA11yState();
     let signonBundle = document.getElementById("signonBundle");
@@ -1554,7 +1556,7 @@ var gPrivacyPane = {
     Services.prefs.setBoolPref(PREF_UPLOAD_ENABLED, checkbox.checked);
   },
 
-
+#if 0
   /**
    * Initialize the opt-out-study preference checkbox into about:preferences and
    * handles events coming from the UI for it.
@@ -1615,6 +1617,7 @@ var gPrivacyPane = {
     Preferences.get(PREF_UPLOAD_ENABLED).on("change", updateStudyCheckboxState);
     updateStudyCheckboxState();
   },
+#endif
 
   observe(aSubject, aTopic, aData) {
     switch (aTopic) {
