@@ -151,6 +151,17 @@ var ContentPolicy = {
         window = doc.defaultView;
       }
 
+      // loadInfo.loadingContext could be an empty object.
+      // Then else clause above is executed and node is equal
+      // to empty object as well.
+      // This leads to node.ownerDocument === undefined,
+      // what in case assigns {} to doc as well.
+      // window object becomes undefined eventually.
+      // We need to return windowId = 0 in that case.
+      if (!window) {
+        return windowId;
+      }
+
       windowId = getWindowId(window);
       if (window.parent !== window) {
         parentWindowId = getWindowId(window.parent);
