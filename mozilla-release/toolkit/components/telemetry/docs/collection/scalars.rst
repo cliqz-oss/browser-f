@@ -166,6 +166,12 @@ Optional Fields
 - ``cpp_guard``: A string that gets inserted as an ``#ifdef`` directive around the automatically generated C++ declaration. This is typically used for platform-specific scalars, e.g. ``ANDROID``.
 - ``release_channel_collection``: This can be either ``opt-in`` (default) or ``opt-out``. With the former the scalar is submitted by default on pre-release channels, unless the user has opted out. With the latter the scalar is submitted by default on release and pre-release channels, unless the user has opted out.
 - ``keyed``: A boolean that determines whether this is a keyed scalar. It defaults to ``False``.
+- ``products``: A list of products the scalar can be recorded on. It defaults to ``all``. Currently supported values are:
+
+  - ``firefox``
+  - ``fennec``
+  - ``geckoview``
+  - ``all`` (record on all products)
 
 String type restrictions
 ------------------------
@@ -176,7 +182,9 @@ to set a longer string will result in an error and no string being set.
 
 Keyed Scalars
 -------------
-Keyed scalars are collections of one of the available scalar types, indexed by a string key that can contain UTF8 characters and cannot be longer than 72 characters. Keyed scalars can contain up to 100 keys. This scalar type is for example useful when you want to break down certain counts by a name, like how often searches happen with which search engine.
+Keyed scalars are collections of ``uint`` or ``boolean`` scalar types, indexed by a string key that can contain UTF8 characters and cannot be longer than 72 characters. Keyed scalars can contain up to 100 keys. This scalar type is for example useful when you want to break down certain counts by a name, like how often searches happen with which search engine.
+
+Keyed ``string`` scalars are not supported.
 
 Keyed scalars should only be used if the set of keys are not known beforehand. If the keys are from a known set of strings, other options are preferred if suitable, like categorical histograms or splitting measurements up into separate scalars.
 

@@ -10,11 +10,14 @@
 const TEST_URI = URL_ROOT + "browser_fontinspector.html";
 
 add_task(async function() {
-  let {view} = await openFontInspectorForURL(TEST_URI);
-  let viewDoc = view.document;
+  await pushPref("devtools.inspector.fonteditor.enabled", true);
+  const { view, inspector } = await openFontInspectorForURL(TEST_URI);
+  const viewDoc = view.document;
+  await selectNode("div", inspector);
+  await expandOtherFontsAccordion(viewDoc);
 
-  let previews = viewDoc.querySelectorAll("#font-container .font-preview");
-  let initialPreviews = [...previews].map(p => p.src);
+  const previews = viewDoc.querySelectorAll("#font-container .font-preview");
+  const initialPreviews = [...previews].map(p => p.src);
 
   info("Typing 'Abc' to check that the reference previews are correct.");
   await updatePreviewText(view, "Abc");
@@ -42,8 +45,8 @@ add_task(async function() {
  *        URI's are different.
  */
 function checkPreviewImages(viewDoc, originalURIs, assertIdentical) {
-  let previews = viewDoc.querySelectorAll("#font-container .font-preview");
-  let newURIs = [...previews].map(p => p.src);
+  const previews = viewDoc.querySelectorAll("#font-container .font-preview");
+  const newURIs = [...previews].map(p => p.src);
 
   is(newURIs.length, originalURIs.length,
     "The number of previews has not changed.");

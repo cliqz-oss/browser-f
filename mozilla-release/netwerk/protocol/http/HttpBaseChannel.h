@@ -211,6 +211,7 @@ public:
   NS_IMETHOD GetTopLevelOuterContentWindowId(uint64_t *aWindowId) override;
   NS_IMETHOD SetTopLevelOuterContentWindowId(uint64_t aWindowId) override;
   NS_IMETHOD GetIsTrackingResource(bool* aIsTrackingResource) override;
+  NS_IMETHOD OverrideTrackingResource(bool aIsTracking) override;
 
   // nsIHttpChannelInternal
   NS_IMETHOD GetDocumentURI(nsIURI **aDocumentURI) override;
@@ -247,8 +248,6 @@ public:
   NS_IMETHOD SetResponseTimeoutEnabled(bool aEnable) override;
   NS_IMETHOD GetInitialRwin(uint32_t* aRwin) override;
   NS_IMETHOD SetInitialRwin(uint32_t aRwin) override;
-  NS_IMETHOD GetNetworkInterfaceId(nsACString& aNetworkInterfaceId) override;
-  NS_IMETHOD SetNetworkInterfaceId(const nsACString& aNetworkInterfaceId) override;
   NS_IMETHOD ForcePending(bool aForcePending) override;
   NS_IMETHOD GetLastModifiedTime(PRTime* lastModifiedTime) override;
   NS_IMETHOD GetCorsIncludeCredentials(bool* aInclude) override;
@@ -389,6 +388,11 @@ public: /* Necko internal use only... */
       mUploadStream = uploadStream;
     }
 
+    void InternalSetUploadStreamLength(uint64_t aLength)
+    {
+      mReqContentLength = aLength;
+    }
+
     void SetUploadStreamHasHeaders(bool hasHeaders)
     {
       mUploadStreamHasHeaders = hasHeaders;
@@ -421,6 +425,10 @@ protected:
 
   // drop reference to listener, its callbacks, and the progress sink
   virtual void ReleaseListeners();
+
+  // Call AsyncAbort().
+  virtual void
+  DoAsyncAbort(nsresult aStatus) = 0;
 
   // This is fired only when a cookie is created due to the presence of
   // Set-Cookie header in the response header of any network request.
@@ -484,6 +492,10 @@ protected:
   nsresult
   CheckRedirectLimit(uint32_t aRedirectFlags) const;
 
+  bool
+  MaybeWaitForUploadStreamLength(nsIStreamListener *aListener,
+                                 nsISupports *aContext);
+
   friend class PrivateBrowsingChannel<HttpBaseChannel>;
   friend class InterceptFailedOnStop;
 
@@ -513,6 +525,13 @@ private:
   void ReleaseMainThreadOnlyReferences();
 
   bool IsCrossOriginWithReferrer();
+
+  nsresult
+  ExplicitSetUploadStreamLength(uint64_t aContentLength,
+                                bool aStreamHasHeaders);
+
+  void
+  MaybeResumeAsyncOpen();
 
 protected:
   // Use Release-Acquire ordering to ensure the OMT ODA is ignored while channel
@@ -600,6 +619,11 @@ protected:
   // a non tail request.  We must remove it again when this channel is done.
   uint32_t                          mAddedAsNonTailRequest : 1;
 
+  // True if AsyncOpen() is called when the stream length is still unknown.
+  // AsyncOpen() will be retriggered when InputStreamLengthHelper execs the
+  // callback, passing the stream length value.
+  uint32_t                          mAsyncOpenWaitingForStreamLength : 1;
+
   // An opaque flags for non-standard behavior of the TLS system.
   // It is unlikely this will need to be set outside of telemetry studies
   // relating to the TLS implementation.
@@ -652,6 +676,7 @@ protected:
   // so that the timing can still be queried from OnStopRequest
   TimingStruct                      mTransactionTimings;
 
+  bool                              mAsyncOpenTimeOverriden;
   bool                              mForcePending;
 
   bool mCorsIncludeCredentials;
@@ -674,9 +699,6 @@ protected:
   uint64_t mTransferSize;
   uint64_t mDecodedBodySize;
   uint64_t mEncodedBodySize;
-
-  // The network interface id that's associated with this channel.
-  nsCString mNetworkInterfaceId;
 
   uint64_t mRequestContextID;
   bool EnsureRequestContextID();
@@ -721,7 +743,6 @@ protected:
   uint32_t mLastRedirectFlags;
 
   uint64_t mReqContentLength;
-  bool mReqContentLengthDetermined;
 
   nsString mIntegrityMetadata;
 
@@ -729,6 +750,10 @@ protected:
   nsCString mMatchedList;
   nsCString mMatchedProvider;
   nsCString mMatchedFullHash;
+
+  // This is set true if the channel is waiting for the
+  // InputStreamLengthHelper::GetAsyncLength callback.
+  bool mPendingInputStreamLengthOperation;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(HttpBaseChannel, HTTP_BASE_CHANNEL_IID)
@@ -784,7 +809,7 @@ MOZ_MUST_USE nsresult HttpAsyncAborter<T>::AsyncAbort(nsresult status)
 template <class T>
 inline void HttpAsyncAborter<T>::HandleAsyncAbort()
 {
-  NS_PRECONDITION(!mCallOnResume, "How did that happen?");
+  MOZ_ASSERT(!mCallOnResume, "How did that happen?");
 
   if (mThis->mSuspendCount) {
     MOZ_LOG(gHttpLog, LogLevel::Debug,
@@ -821,7 +846,7 @@ class ProxyReleaseRunnable final : public mozilla::Runnable
 public:
   explicit ProxyReleaseRunnable(nsTArray<nsCOMPtr<nsISupports>>&& aDoomed)
     : Runnable("ProxyReleaseRunnable")
-    , mDoomed(Move(aDoomed))
+    , mDoomed(std::move(aDoomed))
   {}
 
   NS_IMETHOD

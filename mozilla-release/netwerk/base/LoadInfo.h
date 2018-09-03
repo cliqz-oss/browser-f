@@ -110,7 +110,6 @@ private:
            bool aBrowserWouldUpgradeInsecureRequests,
            bool aVerifySignedContent,
            bool aEnforceSRI,
-           bool aAllowDocumentToBeAgnosticToCSP,
            bool aForceAllowDataURI,
            bool aAllowInsecureRedirectToDataURI,
            bool aSkipContentPolicyCheckForWebRequest,
@@ -179,7 +178,6 @@ private:
   bool                             mBrowserWouldUpgradeInsecureRequests;
   bool                             mVerifySignedContent;
   bool                             mEnforceSRI;
-  bool                             mAllowDocumentToBeAgnosticToCSP;
   bool                             mForceAllowDataURI;
   bool                             mAllowInsecureRedirectToDataURI;
   bool                             mSkipContentPolicyCheckForWebRequest;

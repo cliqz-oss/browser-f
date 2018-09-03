@@ -8,16 +8,11 @@ from mozharness.base.log import INFO
 class BalrogMixin(object):
 
     def query_python(self):
-        python = sys.executable
-        # A mock environment is a special case, the system python isn't
-        # available there
-        if 'mock_target' in self.config:
-            python = 'python2.7'
-        return python
+        return sys.executable
 
     def generate_balrog_props(self, props_path):
         balrog_props = {}
-        balrog_props.update(self.buildbot_properties)
+        balrog_props.update(self.properties)
 
         balrog_props['hashType'] = self.config.get("hash_type", "sha512")
         if self.config.get('stage_platform'):

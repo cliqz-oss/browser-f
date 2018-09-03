@@ -99,12 +99,12 @@ TEST(TArray, AppendElementsRvalue)
   nsTArray<int> array;
 
   nsTArray<int> temp(DummyArray());
-  array.AppendElements(Move(temp));
+  array.AppendElements(std::move(temp));
   ASSERT_EQ(DummyArray(), array);
   ASSERT_TRUE(temp.IsEmpty());
 
   temp = DummyArray();
-  array.AppendElements(Move(temp));
+  array.AppendElements(std::move(temp));
   nsTArray<int> expected;
   expected.AppendElements(DummyArray());
   expected.AppendElements(DummyArray());
@@ -126,7 +126,7 @@ TEST(TArray, Assign)
 #endif
 
   nsTArray<int> array2;
-  array2.Assign(Move(array));
+  array2.Assign(std::move(array));
   ASSERT_TRUE(array.IsEmpty());
   ASSERT_EQ(DummyArray(), array2);
 }
@@ -138,8 +138,16 @@ TEST(TArray, AssignmentOperatorSelfAssignment)
 
   array = *&array;
   ASSERT_EQ(DummyArray(), array);
-  array = Move(array);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wself-move"
+#endif
+  array = std::move(array); // self-move
   ASSERT_EQ(DummyArray(), array);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 }
 
 TEST(TArray, CopyOverlappingForwards)

@@ -355,7 +355,7 @@ nsDisplayCanvasBackgroundImage::Paint(nsDisplayListBuilder* aBuilder,
   nsPoint offset = ToReferenceFrame();
   nsRect bgClipRect = frame->CanvasArea() + offset;
 
-  PaintInternal(aBuilder, aCtx, mVisibleRect, &bgClipRect);
+  PaintInternal(aBuilder, aCtx, GetPaintRect(), &bgClipRect);
 }
 
 bool
@@ -375,7 +375,7 @@ nsDisplayCanvasBackgroundImage::IsSingleFixedPositionImage(nsDisplayListBuilder*
   nsRect borderArea = nsRect(ToReferenceFrame(), mFrame->GetSize());
   const nsStyleImageLayers::Layer &layer = mBackgroundStyle->StyleBackground()->mImage.mLayers[mLayer];
 
-  if (layer.mAttachment != NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED)
+  if (layer.mAttachment != StyleImageLayerAttachment::Fixed)
     return false;
 
    nsBackgroundLayerState state =
@@ -402,7 +402,7 @@ nsDisplayCanvasThemedBackground::Paint(nsDisplayListBuilder* aBuilder,
   nsPoint offset = ToReferenceFrame();
   nsRect bgClipRect = frame->CanvasArea() + offset;
 
-  PaintInternal(aBuilder, aCtx, mVisibleRect, &bgClipRect);
+  PaintInternal(aBuilder, aCtx, GetPaintRect(), &bgClipRect);
 }
 
 /**

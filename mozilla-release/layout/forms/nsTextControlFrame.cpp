@@ -451,6 +451,7 @@ nsTextControlFrame::CreateRootNode()
   MOZ_ASSERT(!mRootNode);
 
   mRootNode = CreateEmptyDiv(*this);
+  mRootNode->SetIsNativeAnonymousRoot();
 
   mMutationObserver = new nsAnonDivObserver(*this);
   mRootNode->AddMutationObserver(mMutationObserver);
@@ -463,9 +464,6 @@ nsTextControlFrame::CreateRootNode()
   // sheet and is still applied even if author styles are disabled.
   nsAutoString classValue;
   classValue.AppendLiteral("anonymous-div");
-  if (GetWrapCols() > 0) {
-    classValue.AppendLiteral(" wrap");
-  }
 
   if (!IsSingleLineTextControl()) {
     // We can't just inherit the overflow because setting visible overflow will
@@ -757,20 +755,24 @@ void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint)
   }
 
   nsISelectionController* selCon = txtCtrl->GetSelectionController();
-  if (!selCon)
+  if (!selCon) {
     return;
+  }
 
-  nsCOMPtr<nsISelection> ourSel;
-  selCon->GetSelection(nsISelectionController::SELECTION_NORMAL,
-    getter_AddRefs(ourSel));
-  if (!ourSel) return;
+  RefPtr<Selection> ourSel =
+    selCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
+  if (!ourSel) {
+    return;
+  }
 
   nsIPresShell* presShell = PresContext()->GetPresShell();
   RefPtr<nsCaret> caret = presShell->GetCaret();
-  if (!caret) return;
+  if (!caret) {
+    return;
+  }
 
   // Scroll the current selection into view
-  nsISelection *caretSelection = caret->GetSelection();
+  Selection* caretSelection = caret->GetSelection();
   const bool isFocusedRightNow = ourSel == caretSelection;
   if (!isFocusedRightNow) {
     // Don't scroll the current selection if we've been focused using the mouse.
@@ -787,7 +789,7 @@ void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint)
       nsresult rv = mContent->OwnerDoc()->Dispatch(TaskCategory::Other,
                                                    do_AddRef(event));
       if (NS_SUCCEEDED(rv)) {
-        mScrollEvent = Move(event);
+        mScrollEvent = std::move(event);
       }
     }
   }
@@ -801,7 +803,7 @@ void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint)
 
   nsCOMPtr<nsISelectionController> selcon = do_QueryInterface(presShell);
   RefPtr<Selection> docSel =
-    selcon->GetDOMSelection(nsISelectionController::SELECTION_NORMAL);
+    selcon->GetSelection(nsISelectionController::SELECTION_NORMAL);
   if (!docSel) {
     return;
   }
@@ -880,16 +882,13 @@ nsTextControlFrame::SetSelectionInternal(nsINode* aStartNode,
   NS_ENSURE_TRUE(selCon, NS_ERROR_FAILURE);
 
   RefPtr<Selection> selection =
-    selCon->GetDOMSelection(nsISelectionController::SELECTION_NORMAL);
+    selCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
   NS_ENSURE_TRUE(selection, NS_ERROR_FAILURE);
-
-  nsCOMPtr<nsISelectionPrivate> selPriv = do_QueryObject(selection, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
 
   nsDirection direction;
   if (aDirection == eNone) {
     // Preserve the direction
-    direction = selPriv->GetSelectionDirection();
+    direction = selection->GetDirection();
   } else {
     direction = (aDirection == eBackward) ? eDirPrevious : eDirNext;
   }
@@ -905,7 +904,7 @@ nsTextControlFrame::SetSelectionInternal(nsINode* aStartNode,
     return err.StealNSResult();
   }
 
-  selPriv->SetSelectionDirection(direction);
+  selection->SetDirection(direction);
   return rv;
 }
 
@@ -1259,9 +1258,9 @@ nsTextControlFrame::UpdateValueDisplay(bool aNotify,
   if (!IsSingleLineTextControl()) // textareas don't use this
     return NS_OK;
 
-  NS_PRECONDITION(mRootNode, "Must have a div content\n");
-  NS_PRECONDITION(!mEditorHasBeenInitialized,
-                  "Do not call this after editor has been initialized");
+  MOZ_ASSERT(mRootNode, "Must have a div content\n");
+  MOZ_ASSERT(!mEditorHasBeenInitialized,
+             "Do not call this after editor has been initialized");
 
   nsIContent* childContent = mRootNode->GetFirstChild();
   Text* textContent;
@@ -1413,16 +1412,6 @@ nsTextControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
     kid = kid->GetNextSibling();
   }
-}
-
-mozilla::dom::Element*
-nsTextControlFrame::GetPseudoElement(CSSPseudoElementType aType)
-{
-  if (aType == CSSPseudoElementType::placeholder) {
-    return mPlaceholderDiv;
-  }
-
-  return nsContainerFrame::GetPseudoElement(aType);
 }
 
 NS_IMETHODIMP

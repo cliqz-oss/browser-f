@@ -83,3 +83,14 @@ patch -p3 < prefer-pulse-rust.patch
 echo "Applying disable-device-switching.patch on top of $rev"
 patch -p3 < disable-device-switching.patch
 
+echo "Applying Correctly-retrieve-the-output-layout-on-macOS-10.12.patch on top of $rev"
+patch -p1 < 0001-Correctly-retrieve-the-output-layout-on-macOS-10.12.patch
+
+echo "Applying Always-upmix-mono-to-the-first-two-channels-if-enoug.patch on top of $rev"
+patch -p1 < 0002-Always-upmix-mono-to-the-first-two-channels-if-enoug.patch
+
+echo "Apply audiounit-stream-destroy-crash.patch on top of $rev"
+patch -p1 < audiounit-stream-destroy-crash.patch
+
+echo "Apply cast.patch on top of $rev"
+patch -p3 < patch.patch

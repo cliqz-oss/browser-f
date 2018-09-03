@@ -18,7 +18,7 @@
 #include "mozilla/dom/BaseKeyframeTypesBinding.h" // For FastBaseKeyframe etc.
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/KeyframeEffectBinding.h"
-#include "mozilla/dom/KeyframeEffectReadOnly.h" // For PropertyValuesPair etc.
+#include "mozilla/dom/KeyframeEffect.h" // For PropertyValuesPair etc.
 #include "mozilla/dom/Nullable.h"
 #include "jsapi.h" // For ForOfIterator etc.
 #include "nsClassHashtable.h"
@@ -486,7 +486,7 @@ ConvertKeyframeSequence(JSContext* aCx,
       if (!valuePair) {
         continue;
       }
-      keyframe->mPropertyValues.AppendElement(Move(valuePair.ref()));
+      keyframe->mPropertyValues.AppendElement(std::move(valuePair.ref()));
 
 #ifdef DEBUG
       // When we go to convert keyframes into arrays of property values we
@@ -676,7 +676,7 @@ MakePropertyValuePair(nsCSSPropertyID aProperty, const nsAString& aStringValue,
     ServoCSSParser::ParseProperty(aProperty, aStringValue, env);
 
   if (servoDeclarationBlock) {
-    result.emplace(aProperty, Move(servoDeclarationBlock));
+    result.emplace(aProperty, std::move(servoDeclarationBlock));
   } else {
     ReportInvalidPropertyValueToConsole(aProperty, aStringValue, aDocument);
   }
@@ -1079,13 +1079,13 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
       if (!valuePair) {
         continue;
       }
-      keyframe->mPropertyValues.AppendElement(Move(valuePair.ref()));
+      keyframe->mPropertyValues.AppendElement(std::move(valuePair.ref()));
     }
   }
 
   aResult.SetCapacity(processedKeyframes.Count());
   for (auto iter = processedKeyframes.Iter(); !iter.Done(); iter.Next()) {
-    aResult.AppendElement(Move(*iter.UserData()));
+    aResult.AppendElement(std::move(*iter.UserData()));
   }
 
   aResult.Sort(ComputedOffsetComparator());
@@ -1148,7 +1148,7 @@ GetKeyframeListFromPropertyIndexedKeyframe(JSContext* aCx,
   auto parseAndAppendEasing = [&](const nsString& easingString,
                                   ErrorResult& aRv) {
     auto easing = TimingParams::ParseEasing(easingString, aDocument, aRv);
-    if (!aRv.Failed() && !easings.AppendElement(Move(easing), fallible)) {
+    if (!aRv.Failed() && !easings.AppendElement(std::move(easing), fallible)) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     }
   };

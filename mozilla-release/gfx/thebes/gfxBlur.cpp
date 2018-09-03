@@ -16,6 +16,8 @@
 #include "nsExpirationTracker.h"
 #include "nsClassHashtable.h"
 #include "gfxUtils.h"
+#include <limits>
+#include <cmath>
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -349,7 +351,7 @@ struct BlurCacheData {
   BlurCacheData(SourceSurface* aBlur, const IntMargin& aBlurMargin, BlurCacheKey&& aKey)
     : mBlur(aBlur)
     , mBlurMargin(aBlurMargin)
-    , mKey(Move(aKey))
+    , mKey(std::move(aKey))
   {}
 
   BlurCacheData(BlurCacheData&& aOther) = default;
@@ -504,7 +506,7 @@ CacheBlur(DrawTarget* aDT,
           SourceSurface* aBoxShadow)
 {
   BlurCacheKey key(aMinSize, aBlurRadius, aCornerRadii, aShadowColor, aDT->GetBackendType());
-  BlurCacheData* data = new BlurCacheData(aBoxShadow, aBlurMargin, Move(key));
+  BlurCacheData* data = new BlurCacheData(aBoxShadow, aBlurMargin, std::move(key));
   if (!gBlurCache->RegisterEntry(data)) {
     delete data;
   }
@@ -592,6 +594,12 @@ GetBlur(gfxContext* aDestinationCtx,
   if (useDestRect) {
     minSize = aRectSize;
   }
+
+  int32_t maxTextureSize = gfxPlatform::MaxTextureSize();
+  if (minSize.width > maxTextureSize || minSize.height > maxTextureSize) {
+    return nullptr;
+  }
+
   aOutMinSize = minSize;
 
   DrawTarget* destDT = aDestinationCtx->GetDrawTarget();
@@ -953,6 +961,10 @@ gfxAlphaBoxBlur::BlurRectangle(gfxContext* aDestinationCtx,
                                const gfxRect& aDirtyRect,
                                const gfxRect& aSkipRect)
 {
+  if (!RectIsInt32Safe(ToRect(aRect))) {
+    return;
+  }
+
   IntSize blurRadius = CalculateBlurRadius(aBlurStdDev);
   bool mirrorCorners = !aCornerRadii || aCornerRadii->AreRadiiSame();
 
@@ -1008,17 +1020,12 @@ gfxAlphaBoxBlur::BlurRectangle(gfxContext* aDestinationCtx,
   // so if there's a transform on destDrawTarget that is not pixel-aligned,
   // there will be seams between adjacent parts of the box-shadow. It's hard to
   // avoid those without the use of an intermediate surface.
-  // You might think that we could avoid those by just turning of AA, but there
+  // You might think that we could avoid those by just turning off AA, but there
   // is a problem with that: Box-shadow rendering needs to clip out the
   // element's border box, and we'd like that clip to have anti-aliasing -
   // especially if the element has rounded corners! So we can't do that unless
   // we have a way to say "Please anti-alias the clip, but don't antialias the
   // destination rect of the DrawSurface call".
-  // On OS X there is an additional problem with turning off AA: CoreGraphics
-  // will not just fill the pixels that have their pixel center inside the
-  // filled shape. Instead, it will fill all the pixels which are partially
-  // covered by the shape. So for pixels on the edge between two adjacent parts,
-  // all those pixels will be painted to by both parts, which looks very bad.
 
   destDrawTarget->PopClip();
 }
@@ -1086,7 +1093,7 @@ CacheInsetBlur(const IntSize& aMinOuterSize,
                    aShadowColor, isInsetBlur,
                    aBackendType);
   IntMargin blurMargin(0, 0, 0, 0);
-  BlurCacheData* data = new BlurCacheData(aBoxShadow, blurMargin, Move(key));
+  BlurCacheData* data = new BlurCacheData(aBoxShadow, blurMargin, std::move(key));
   if (!gBlurCache->RegisterEntry(data)) {
     delete data;
   }

@@ -5,6 +5,7 @@
 from __future__ import absolute_import, unicode_literals
 
 import argparse
+import logging
 import os
 import sys
 
@@ -19,6 +20,8 @@ from mach.decorators import (
     CommandProvider,
     Command,
 )
+
+import mozinfo
 
 def setup_awsy_argument_parser():
     from marionette_harness.runtests import MarionetteArguments
@@ -76,7 +79,7 @@ class MachCommands(MachCommandBase):
         runtime_testvars = {}
         for arg in ('webRootDir', 'pageManifest', 'resultsDir', 'entities', 'iterations',
                     'perTabPause', 'settleWaitTime', 'maxTabs', 'dmd'):
-            if kwargs[arg]:
+            if arg in kwargs and kwargs[arg] is not None:
                 runtime_testvars[arg] = kwargs[arg]
 
         if 'webRootDir' not in runtime_testvars:
@@ -127,7 +130,16 @@ class MachCommands(MachCommandBase):
                 tp5nzip,
                 '-d',
                 page_load_test_dir]}
-            self.run_process(**unzip_args)
+            try:
+                self.run_process(**unzip_args)
+            except Exception as exc:
+                troubleshoot = ''
+                if mozinfo.os == 'win':
+                    troubleshoot = ' Try using --web-root to specify a directory closer to the drive root.'
+
+                self.log(logging.ERROR, 'awsy', {'directory': page_load_test_dir, 'exception': exc},
+                    'Failed to unzip `tp5n.zip` into `{directory}` with `{exception}`.' + troubleshoot)
+                raise exc
 
         # If '--preferences' was not specified supply our default set.
         if not kwargs['prefs_files']:
@@ -139,6 +151,18 @@ class MachCommands(MachCommandBase):
 
             if 'DMD' not in os.environ:
                 os.environ['DMD'] = '1'
+
+            # Work around a startup crash with DMD on windows
+            if mozinfo.os == 'win':
+                kwargs['pref'] = 'security.sandbox.content.level:0'
+                self.log(logging.WARNING, 'awsy', {},
+                    'Forcing \'security.sandbox.content.level\' = 0 because DMD is enabled.')
+            elif mozinfo.os == 'mac':
+                # On mac binary is in MacOS and dmd.py is in Resources, ie:
+                #   Name.app/Contents/MacOS/libdmd.dylib
+                #   Name.app/Contents/Resources/dmd.py
+                bin_dir = os.path.join(bin_dir, "../Resources/")
+
 
             # Also add the bin dir to the python path so we can use dmd.py
             if bin_dir not in sys.path:

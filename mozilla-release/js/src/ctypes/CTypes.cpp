@@ -39,6 +39,7 @@
 #include "gc/Policy.h"
 #include "gc/Zone.h"
 #include "jit/AtomicOperations.h"
+#include "js/UniquePtr.h"
 #include "js/Vector.h"
 #include "util/Windows.h"
 #include "vm/JSContext.h"
@@ -97,10 +98,8 @@ GetDeflatedUTF8StringLength(JSContext* maybecx, const CharT* chars,
         js::gc::AutoSuppressGC suppress(maybecx);
         char buffer[10];
         SprintfLiteral(buffer, "0x%x", c);
-        JS_ReportErrorFlagsAndNumberASCII(maybecx, JSREPORT_ERROR,
-                                          GetErrorMessage,
-                                          nullptr, JSMSG_BAD_SURROGATE_CHAR,
-                                          buffer);
+        JS_ReportErrorNumberASCII(maybecx, GetErrorMessage, nullptr, JSMSG_BAD_SURROGATE_CHAR,
+                                  buffer);
     }
     return (size_t) -1;
 }
@@ -5758,7 +5757,7 @@ ArrayType::BuildFFIType(JSContext* cx, JSObject* obj)
     ffiType->elements[i] = ffiBaseType;
   ffiType->elements[length] = nullptr;
 
-  return Move(ffiType);
+  return ffiType;
 }
 
 bool
@@ -6165,8 +6164,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
 
       if (!JS_DefineUCProperty(cx, prototype,
              nameChars.twoByteChars(), name->length(),
-             JS_DATA_TO_FUNC_PTR(JSNative, getterObj.get()),
-             JS_DATA_TO_FUNC_PTR(JSNative, setterObj.get()),
+             getterObj, setterObj,
              JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_GETTER | JSPROP_SETTER))
       {
         return false;
@@ -6223,7 +6221,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
   }
 
   // Move the field hash to the heap and store it in the typeObj.
-  FieldInfoHash *heapHash = cx->new_<FieldInfoHash>(mozilla::Move(fields.get()));
+  FieldInfoHash *heapHash = cx->new_<FieldInfoHash>(std::move(fields.get()));
   if (!heapHash) {
     JS_ReportOutOfMemory(cx);
     return false;
@@ -6306,7 +6304,7 @@ StructType::BuildFFIType(JSContext* cx, JSObject* obj)
   ffiType->alignment = structAlign;
 #endif
 
-  return Move(ffiType);
+  return ffiType;
 }
 
 bool
@@ -8396,7 +8394,7 @@ CDataFinalizer::Construct(JSContext* cx, unsigned argc, Value* vp)
                      valCodeType);
   }
 
-  ScopedJSFreePtr<void> cargs(malloc(sizeArg));
+  UniquePtr<void, JS::FreePolicy> cargs(malloc(sizeArg));
 
   if (!ImplicitConvert(cx, valData, objArgType, cargs.get(),
                        ConversionType::Finalizer, &freePointer,
@@ -8411,10 +8409,9 @@ CDataFinalizer::Construct(JSContext* cx, unsigned argc, Value* vp)
 
   // 4. Prepare buffer for holding return value
 
-  ScopedJSFreePtr<void> rvalue;
+  UniquePtr<void, JS::FreePolicy> rvalue;
   if (CType::GetTypeCode(returnType) != TYPE_void_t) {
-    rvalue = malloc(Align(CType::GetSize(returnType),
-                          sizeof(ffi_arg)));
+    rvalue.reset(malloc(Align(CType::GetSize(returnType), sizeof(ffi_arg))));
   } //Otherwise, simply do not allocate
 
   // 5. Create |objResult|
@@ -8468,18 +8465,18 @@ CDataFinalizer::Construct(JSContext* cx, unsigned argc, Value* vp)
   }
 
   // 7. Store C information as private
-  ScopedJSFreePtr<CDataFinalizer::Private>
+  UniquePtr<CDataFinalizer::Private, JS::FreePolicy>
     p((CDataFinalizer::Private*)malloc(sizeof(CDataFinalizer::Private)));
 
   memmove(&p->CIF, &funInfoFinalizer->mCIF, sizeof(ffi_cif));
 
-  p->cargs = cargs.forget();
-  p->rvalue = rvalue.forget();
+  p->cargs = cargs.release();
+  p->rvalue = rvalue.release();
   p->cargs_size = sizeArg;
   p->code = code;
 
 
-  JS_SetPrivate(objResult, p.forget());
+  JS_SetPrivate(objResult, p.release());
   args.rval().setObject(*objResult);
   return true;
 }

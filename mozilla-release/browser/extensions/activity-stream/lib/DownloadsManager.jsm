@@ -1,5 +1,6 @@
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-Cu.importGlobalProperties(["URL"]);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
 const {actionTypes: at} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm", {});
 
@@ -20,14 +21,6 @@ class DownloadElement extends DownloadsViewUI.DownloadElementShell {
 
   get download() {
     return this._download;
-  }
-
-  get fileType() {
-    if (!this.download.target.path) {
-      return null;
-    }
-    let items = this.download.target.path.split(".");
-    return items[items.length - 1].toUpperCase();
   }
 
   downloadsCmd_copyLocation() {
@@ -52,14 +45,7 @@ this.DownloadsManager = class DownloadsManager {
 
   formatDownload(element) {
     const downloadedItem = element.download;
-    let description;
-    if (element.fileType) {
-      // If we have a file type: '1.5 MB — PNG'
-      description = `${element.sizeStrings.stateLabel} \u2014 ${element.fileType}`;
-    } else {
-      // If we do not have a file type: '1.5 MB'
-      description = `${element.sizeStrings.stateLabel}`;
-    }
+    const description = element.sizeStrings.stateLabel;
     return {
       hostname: new URL(downloadedItem.source.url).hostname,
       url: downloadedItem.source.url,

@@ -21,7 +21,6 @@
 class nsDisplayListBuilder;
 class nsFrameSelection;
 class nsIContent;
-class nsIDOMNode;
 class nsIFrame;
 class nsINode;
 class nsIPresShell;
@@ -52,8 +51,8 @@ class nsCaret final : public nsISelectionListener
     nsresult Init(nsIPresShell *inPresShell);
     void Terminate();
 
-    void SetSelection(nsISelection *aDOMSel);
-    nsISelection* GetSelection();
+    void SetSelection(mozilla::dom::Selection *aDOMSel);
+    mozilla::dom::Selection* GetSelection();
 
     /**
      * Sets whether the caret should only be visible in nodes that are not
@@ -75,7 +74,7 @@ class nsCaret final : public nsISelectionListener
      *  It does not take account of blinking or the caret being hidden
      *  because we're in non-editable/disabled content.
      */
-    bool IsVisible(nsISelection* aSelection = nullptr)
+    bool IsVisible(mozilla::dom::Selection* aSelection = nullptr)
     {
       if (!mVisible || mHideCount) {
         return false;
@@ -84,9 +83,9 @@ class nsCaret final : public nsISelectionListener
       if (!mShowDuringSelection) {
         mozilla::dom::Selection* selection;
         if (aSelection) {
-          selection = static_cast<mozilla::dom::Selection*>(aSelection);
+          selection = aSelection;
         } else {
-          selection = GetSelectionInternal();
+          selection = GetSelection();
         }
         if (!selection || !selection->IsCollapsed()) {
           return false;
@@ -131,13 +130,12 @@ class nsCaret final : public nsISelectionListener
      * Passing null for aNode would set the caret to track its selection again.
      **/
     void SetCaretPosition(nsINode* aNode, int32_t aOffset);
-    void SetCaretPosition(nsIDOMNode* aNode, int32_t aOffset);
 
     /**
      * Schedule a repaint for the frame where the caret would appear.
      * Does not check visibility etc.
      */
-    void SchedulePaint(nsISelection* aSelection = nullptr);
+    void SchedulePaint(mozilla::dom::Selection* aSelection = nullptr);
 
     /**
      * Returns a frame to paint in, and the bounds of the painted caret
@@ -176,7 +174,7 @@ class nsCaret final : public nsISelectionListener
      * This rect does not include any extra decorations for bidi.
      * @param aRect must be non-null
      */
-    static nsIFrame* GetGeometry(nsISelection* aSelection,
+    static nsIFrame* GetGeometry(mozilla::dom::Selection* aSelection,
                                  nsRect* aRect);
     static nsresult GetCaretFrameForNodeOffset(nsFrameSelection* aFrameSelection,
                                                nsIContent* aContentNode,
@@ -213,8 +211,6 @@ protected:
     void          ResetBlinking();
     void          StopBlinking();
 
-    mozilla::dom::Selection* GetSelectionInternal();
-
     struct Metrics {
       nscoord mBidiIndicatorSize; // width and height of bidi indicator
       nscoord mCaretWidth;        // full caret width including bidi indicator
@@ -233,7 +229,7 @@ protected:
     bool IsMenuPopupHidingCaret();
 
     nsWeakPtr             mPresShell;
-    nsWeakPtr             mDomSelectionWeak;
+    mozilla::WeakPtr<mozilla::dom::Selection> mDomSelectionWeak;
 
     nsCOMPtr<nsITimer>    mBlinkTimer;
 

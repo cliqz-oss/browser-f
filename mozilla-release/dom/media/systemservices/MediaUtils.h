@@ -81,7 +81,7 @@ public:
   template<typename OnSuccessType>
   void Then(OnSuccessType&& aOnSuccess)
   {
-    Then(Forward<OnSuccessType>(aOnSuccess), [](ErrorType&){});
+    Then(std::forward<OnSuccessType>(aOnSuccess), [](ErrorType&){});
   }
 
   template<typename OnSuccessType, typename OnFailureType>
@@ -91,7 +91,7 @@ public:
     {
     public:
       Functors(OnSuccessType&& aOnSuccessRef, OnFailureType&& aOnFailureRef)
-        : mOnSuccess(Move(aOnSuccessRef)), mOnFailure(Move(aOnFailureRef)) {}
+        : mOnSuccess(std::move(aOnSuccessRef)), mOnFailure(std::move(aOnFailureRef)) {}
 
       void Succeed(ValueType& result)
       {
@@ -105,8 +105,8 @@ public:
       OnSuccessType mOnSuccess;
       OnFailureType mOnFailure;
     };
-    mFunctors = MakeUnique<Functors>(Forward<OnSuccessType>(aOnSuccess),
-                                     Forward<OnFailureType>(aOnFailure));
+    mFunctors = MakeUnique<Functors>(std::forward<OnSuccessType>(aOnSuccess),
+                                     std::forward<OnFailureType>(aOnFailure));
     if (mDone) {
       if (!mRejected) {
         mFunctors->Succeed(mValue);
@@ -198,7 +198,7 @@ class LambdaRunnable : public Runnable
 public:
   explicit LambdaRunnable(OnRunType&& aOnRun)
     : Runnable("media::LambdaRunnable")
-    , mOnRun(Move(aOnRun))
+    , mOnRun(std::move(aOnRun))
   {
   }
 
@@ -216,7 +216,7 @@ already_AddRefed<LambdaRunnable<OnRunType>>
 NewRunnableFrom(OnRunType&& aOnRun)
 {
   typedef LambdaRunnable<OnRunType> LambdaType;
-  RefPtr<LambdaType> lambda = new LambdaType(Forward<OnRunType>(aOnRun));
+  RefPtr<LambdaType> lambda = new LambdaType(std::forward<OnRunType>(aOnRun));
   return lambda.forget();
 }
 
@@ -439,7 +439,7 @@ Await(
   RejectFunction&& aRejectFunction)
 {
   RefPtr<AutoTaskQueue> taskQueue =
-    new AutoTaskQueue(Move(aPool), "MozPromiseAwait");
+    new AutoTaskQueue(std::move(aPool), "MozPromiseAwait");
   // We can't use a Monitor allocated on the stack (see bug 1426067)
   Monitor& mon = taskQueue->Monitor();
   bool done = false;
@@ -448,13 +448,13 @@ Await(
                  __func__,
                  [&](ResolveValueType&& aResolveValue) {
                    MonitorAutoLock lock(mon);
-                   aResolveFunction(Forward<ResolveValueType>(aResolveValue));
+                   aResolveFunction(std::forward<ResolveValueType>(aResolveValue));
                    done = true;
                    mon.Notify();
                  },
                  [&](RejectValueType&& aRejectValue) {
                    MonitorAutoLock lock(mon);
-                   aRejectFunction(Forward<RejectValueType>(aRejectValue));
+                   aRejectFunction(std::forward<RejectValueType>(aRejectValue));
                    done = true;
                    mon.Notify();
                  });
@@ -472,7 +472,7 @@ Await(already_AddRefed<nsIEventTarget> aPool,
       RefPtr<MozPromise<ResolveValueType, RejectValueType, Excl>> aPromise)
 {
   RefPtr<AutoTaskQueue> taskQueue =
-    new AutoTaskQueue(Move(aPool), "MozPromiseAwait");
+    new AutoTaskQueue(std::move(aPool), "MozPromiseAwait");
   // We can't use a Monitor allocated on the stack (see bug 1426067)
   Monitor& mon = taskQueue->Monitor();
   bool done = false;
@@ -481,13 +481,13 @@ Await(already_AddRefed<nsIEventTarget> aPool,
   aPromise->Then(taskQueue,
                  __func__,
                  [&](ResolveValueType aResolveValue) {
-                   val.SetResolve(Move(aResolveValue));
+                   val.SetResolve(std::move(aResolveValue));
                    MonitorAutoLock lock(mon);
                    done = true;
                    mon.Notify();
                  },
                  [&](RejectValueType aRejectValue) {
-                   val.SetReject(Move(aRejectValue));
+                   val.SetReject(std::move(aRejectValue));
                    MonitorAutoLock lock(mon);
                    done = true;
                    mon.Notify();
@@ -521,7 +521,7 @@ AwaitAll(already_AddRefed<nsIEventTarget> aPool,
   RefPtr<AutoTaskQueue> taskQueue =
     new AutoTaskQueue(do_AddRef(pool), "MozPromiseAwaitAll");
   RefPtr<typename Promise::AllPromiseType> p = Promise::All(taskQueue, aPromises);
-  Await(pool.forget(), p, Move(aResolveFunction), Move(aRejectFunction));
+  Await(pool.forget(), p, std::move(aResolveFunction), std::move(aRejectFunction));
 }
 
 // Note: only works with exclusive MozPromise, as Promise::All would attempt

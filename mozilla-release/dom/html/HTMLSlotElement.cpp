@@ -34,9 +34,7 @@ HTMLSlotElement::HTMLSlotElement(already_AddRefed<mozilla::dom::NodeInfo>& aNode
 {
 }
 
-HTMLSlotElement::~HTMLSlotElement()
-{
-}
+HTMLSlotElement::~HTMLSlotElement() = default;
 
 NS_IMPL_ADDREF_INHERITED(HTMLSlotElement, nsGenericHTMLElement)
 NS_IMPL_RELEASE_INHERITED(HTMLSlotElement, nsGenericHTMLElement)
@@ -132,15 +130,15 @@ FlattenAssignedNodes(HTMLSlotElement* aSlot, nsTArray<RefPtr<nsINode>>& aNodes)
 
   // If assignedNodes is empty, use children of slot as fallback content.
   if (assignedNodes.IsEmpty()) {
-    for (nsIContent* child = aSlot->AsContent()->GetFirstChild();
+    for (nsIContent* child = aSlot->GetFirstChild();
          child;
          child = child->GetNextSibling()) {
       if (!child->IsSlotable()) {
         continue;
       }
 
-      if (child->IsHTMLElement(nsGkAtoms::slot)) {
-        FlattenAssignedNodes(HTMLSlotElement::FromNode(child), aNodes);
+      if (auto* slot = HTMLSlotElement::FromNode(child)) {
+        FlattenAssignedNodes(slot, aNodes);
       } else {
         aNodes.AppendElement(child);
       }
@@ -148,11 +146,9 @@ FlattenAssignedNodes(HTMLSlotElement* aSlot, nsTArray<RefPtr<nsINode>>& aNodes)
     return;
   }
 
-  for (uint32_t i = 0; i < assignedNodes.Length(); i++) {
-    nsINode* assignedNode = assignedNodes[i];
-    if (assignedNode->IsHTMLElement(nsGkAtoms::slot)) {
-      FlattenAssignedNodes(
-        HTMLSlotElement::FromNode(assignedNode->AsContent()), aNodes);
+  for (const RefPtr<nsINode>& assignedNode : assignedNodes) {
+    if (auto* slot = HTMLSlotElement::FromNode(assignedNode)) {
+      FlattenAssignedNodes(slot, aNodes);
     } else {
       aNodes.AppendElement(assignedNode);
     }
@@ -216,14 +212,25 @@ HTMLSlotElement::ClearAssignedNodes()
 }
 
 void
-HTMLSlotElement::EnqueueSlotChangeEvent() const
+HTMLSlotElement::EnqueueSlotChangeEvent()
 {
+  if (mInSignalSlotList) {
+    return;
+  }
+
+  // FIXME(bug 1459704): Need to figure out how to deal with microtasks posted
+  // during shutdown.
+  if (gXPCOMThreadsShutDown) {
+    return;
+  }
+
   DocGroup* docGroup = OwnerDoc()->GetDocGroup();
   if (!docGroup) {
     return;
   }
 
-  docGroup->SignalSlotChange(this);
+  mInSignalSlotList = true;
+  docGroup->SignalSlotChange(*this);
 }
 
 void

@@ -14,7 +14,7 @@
 
 <!ENTITY abContextMenuButton.tooltip        "Kontextmenü für Adressbuch öffnen">
 <!ENTITY addressbookPicker.label            "Adressbuch:">
-<!ENTITY addressbookPicker.accesskey        "d">
+<!ENTITY addressbookPicker.accesskey        "u">
 <!ENTITY searchContacts.label               "Kontakte suchen:">
 <!ENTITY searchContacts.accesskey           "S">
 <!ENTITY SearchNameOrEmail.label            "Name oder E-Mail-Adresse">
@@ -42,8 +42,8 @@
 <!ENTITY newListAbContext.accesskey         "L">
 
 <!ENTITY toButton.label                     ">> &quot;An:&quot;">
-<!ENTITY toButton.accesskey                 "A">
+<!ENTITY toButton.accesskey                 "n">
 <!ENTITY ccButton.label                     ">> &quot;Kopie (CC):&quot;">
 <!ENTITY ccButton.accesskey                 "C">
 <!ENTITY bccButton.label                    ">> &quot;Blindkopie (BCC):&quot;">
-<!ENTITY bccButton.accesskey                "B">
+<!ENTITY bccButton.accesskey                "p">

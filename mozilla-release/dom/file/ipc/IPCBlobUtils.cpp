@@ -61,12 +61,12 @@ Deserialize(const IPCBlob& aIPCBlob)
   RefPtr<StreamBlobImpl> blobImpl;
 
   if (aIPCBlob.file().type() == IPCFileUnion::Tvoid_t) {
-    blobImpl = StreamBlobImpl::Create(inputStream,
+    blobImpl = StreamBlobImpl::Create(inputStream.forget(),
                                       aIPCBlob.type(),
                                       aIPCBlob.size());
   } else {
     const IPCFile& file = aIPCBlob.file().get_IPCFile();
-    blobImpl = StreamBlobImpl::Create(inputStream,
+    blobImpl = StreamBlobImpl::Create(inputStream.forget(),
                                       file.name(),
                                       aIPCBlob.type(),
                                       file.lastModified(),
@@ -89,13 +89,34 @@ SerializeInputStreamParent(nsIInputStream* aInputStream, uint64_t aSize,
   // Parent to Child we always send a IPCBlobInputStream.
   MOZ_ASSERT(XRE_IsParentProcess());
 
+  nsCOMPtr<nsIInputStream> stream = aInputStream;
+
+  // In case this is a IPCBlobInputStream, we don't want to create a loop:
+  // IPCBlobInputStreamParent -> IPCBlobInputStream ->
+  // IPCBlobInputStreamParent. Let's use the underlying inputStream instead.
+  nsCOMPtr<nsIIPCBlobInputStream> ipcBlobInputStream =
+    do_QueryInterface(aInputStream);
+  if (ipcBlobInputStream) {
+    stream = ipcBlobInputStream->GetInternalStream();
+    // If we don't have an underlying stream, it's better to terminate here
+    // instead of sending an 'empty' IPCBlobInputStream actor on the other side,
+    // unable to be used.
+    if (NS_WARN_IF(!stream)) {
+      return NS_ERROR_FAILURE;
+    }
+  }
+
   nsresult rv;
-  IPCBlobInputStreamParent* parentActor =
-    IPCBlobInputStreamParent::Create(aInputStream, aSize, aChildID, &rv,
-                                     aManager);
+  RefPtr<IPCBlobInputStreamParent> parentActor =
+    IPCBlobInputStreamParent::Create(stream, aSize, aChildID, &rv, aManager);
   if (!parentActor) {
     return rv;
   }
+
+  // We need manually to increase the reference for this actor because the
+  // IPC allocator method is not triggered. The Release() is called by IPDL
+  // when the actor is deleted.
+  parentActor.get()->AddRef();
 
   if (!aManager->SendPIPCBlobInputStreamConstructor(parentActor,
                                                     parentActor->ID(),

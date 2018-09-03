@@ -78,6 +78,7 @@ using mozilla::Unused;
 #include "GeckoEditableSupport.h"
 #include "KeyEvent.h"
 #include "MotionEvent.h"
+#include "ScreenHelperAndroid.h"
 
 #include "imgIEncoder.h"
 
@@ -144,13 +145,13 @@ public:
     WindowEvent(Lambda&& aLambda,
                 InstanceType&& aInstance)
         : Runnable("nsWindowEvent")
-        , mLambda(mozilla::Move(aLambda))
-        , mInstance(Forward<InstanceType>(aInstance))
+        , mLambda(std::move(aLambda))
+        , mInstance(std::forward<InstanceType>(aInstance))
     {}
 
     explicit WindowEvent(Lambda&& aLambda)
         : Runnable("nsWindowEvent")
-        , mLambda(mozilla::Move(aLambda))
+        , mLambda(std::move(aLambda))
         , mInstance(mLambda.GetThisArg())
     {}
 
@@ -183,7 +184,7 @@ namespace {
     template<class Lambda> bool
     DispatchToUiThread(const char* aName, Lambda&& aLambda) {
         if (RefPtr<nsThread> uiThread = GetAndroidUiThread()) {
-            uiThread->Dispatch(NS_NewRunnableFunction(aName, Move(aLambda)));
+            uiThread->Dispatch(NS_NewRunnableFunction(aName, std::move(aLambda)));
             return true;
         }
         return false;
@@ -199,7 +200,7 @@ nsWindow::NativePtr<Impl>::Attach(Instance aInstance, nsWindow* aWindow,
     MOZ_ASSERT(!mPtr && !mImpl);
 
     Impl* const impl = new Impl(
-            this, aWindow, mozilla::Forward<Args>(aArgs)...);
+            this, aWindow, std::forward<Args>(aArgs)...);
     mImpl = impl;
 
     // CallAttachNative transfers ownership of impl.
@@ -255,7 +256,7 @@ public:
     template<typename Functor>
     static void OnNativeCall(Functor&& aCall)
     {
-        NS_DispatchToMainThread(new WindowEvent<Functor>(mozilla::Move(aCall)));
+        NS_DispatchToMainThread(new WindowEvent<Functor>(std::move(aCall)));
     }
 
     GeckoViewSupport(nsWindow* aWindow,
@@ -331,7 +332,7 @@ class nsWindow::NPZCSupport final
     public:
         InputEvent(const NPZCSupport* aNPZCSupport, Lambda&& aLambda)
             : mNPZC(aNPZCSupport->mNPZC)
-            , mLambda(mozilla::Move(aLambda))
+            , mLambda(std::move(aLambda))
         {}
 
         void Run() override
@@ -353,9 +354,9 @@ class nsWindow::NPZCSupport final
             return mLambda(window);
         }
 
-        nsAppShell::Event::Type ActivityType() const override
+        bool IsUIEvent() const override
         {
-            return nsAppShell::Event::Type::kUIActivity;
+            return true;
         }
     };
 
@@ -364,7 +365,7 @@ class nsWindow::NPZCSupport final
     {
         // Use priority queue for input events.
         nsAppShell::PostEvent(MakeUnique<InputEvent<Lambda>>(
-                this, mozilla::Move(aLambda)));
+                this, std::move(aLambda)));
     }
 
 public:
@@ -439,7 +440,7 @@ public:
         uiThread->Dispatch(NewRunnableFunction(
                 "OnDetachRunnable",
                 static_cast<void(*)(const NPZCRef&)>(callDestroy),
-                mozilla::Move(npzc)), nsIThread::DISPATCH_NORMAL);
+                std::move(npzc)), nsIThread::DISPATCH_NORMAL);
     }
 
     const PanZoomController::Ref& GetJavaNPZC() const
@@ -797,11 +798,11 @@ class nsWindow::LayerViewSupport final
     public:
         static UniquePtr<Event> MakeEvent(UniquePtr<Event>&& event)
         {
-            return MakeUnique<LayerViewEvent>(mozilla::Move(event));
+            return MakeUnique<LayerViewEvent>(std::move(event));
         }
 
         explicit LayerViewEvent(UniquePtr<Event>&& event)
-            : nsAppShell::ProxyEvent(mozilla::Move(event))
+            : nsAppShell::ProxyEvent(std::move(event))
         {}
 
         void PostTo(LinkedList<Event>& queue) override
@@ -822,19 +823,6 @@ class nsWindow::LayerViewSupport final
 
 public:
     typedef LayerSession::Compositor::Natives<LayerViewSupport> Base;
-
-    template<class Functor>
-    static void OnNativeCall(Functor&& aCall)
-    {
-        if (aCall.IsTarget(&LayerViewSupport::CreateCompositor)) {
-            // This call is blocking.
-            nsAppShell::SyncRunEvent(nsAppShell::LambdaEvent<Functor>(
-                    mozilla::Move(aCall)), &LayerViewEvent::MakeEvent);
-            return;
-        }
-
-        MOZ_CRASH("Unexpected call");
-    }
 
     static LayerViewSupport*
     FromNative(const LayerSession::Compositor::LocalRef& instance)
@@ -930,20 +918,6 @@ public:
         mWindow->Resize(aLeft, aTop, aWidth, aHeight, /* repaint */ false);
     }
 
-    void CreateCompositor(int32_t aWidth, int32_t aHeight,
-                          jni::Object::Param aSurface)
-    {
-        MOZ_ASSERT(NS_IsMainThread());
-        if (!mWindow) {
-            return; // Already shut down.
-        }
-
-        mSurface = aSurface;
-        mWindow->CreateLayerManager(aWidth, aHeight);
-
-        mCompositorPaused = false;
-    }
-
     void SyncPauseCompositor()
     {
         MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
@@ -984,7 +958,7 @@ public:
 
         public:
             explicit OnResumedEvent(LayerSession::Compositor::GlobalRef&& aCompositor)
-                : mCompositor(mozilla::Move(aCompositor))
+                : mCompositor(std::move(aCompositor))
             {}
 
             void Run() override
@@ -1291,11 +1265,6 @@ nsWindow::GeckoViewSupport::Transfer(const GeckoSession::Window::LocalRef& inst,
             [compositor = LayerSession::Compositor::GlobalRef(compositor)] {
                 compositor->OnCompositorAttached();
             });
-
-    // Set the first-paint flag so that we refresh viewports, etc.
-    if (RefPtr<CompositorBridgeChild> bridge = window.GetCompositorBridgeChild()) {
-        bridge->SendForceIsFirstPaint();
-    }
 }
 
 void
@@ -1423,6 +1392,14 @@ nsWindow::Create(nsIWidget* aParent,
         mParent = parent;
     }
 
+    // A default size of 1x1 confuses MobileViewportManager, so
+    // use 0x0 instead. This is also a little more fitting since
+    // we don't yet have a surface yet (and therefore a valid size)
+    // and 0x0 is usually recognized as invalid.
+    Resize(0, 0, false);
+
+    CreateLayerManager();
+
 #ifdef DEBUG_ANDROID_WIDGET
     DumpWindows();
 #endif
@@ -1543,19 +1520,27 @@ nsWindow::GetParent()
 float
 nsWindow::GetDPI()
 {
-    if (AndroidBridge::Bridge())
-        return AndroidBridge::Bridge()->GetDPI();
-    return 160.0f;
+    float dpi = 160.0f;
+
+    nsCOMPtr<nsIScreen> screen = GetWidgetScreen();
+    if (screen) {
+        screen->GetDpi(&dpi);
+    }
+
+    return dpi;
 }
 
 double
 nsWindow::GetDefaultScaleInternal()
 {
+    double scale = 1.0f;
 
     nsCOMPtr<nsIScreen> screen = GetWidgetScreen();
-    MOZ_ASSERT(screen);
-    RefPtr<nsScreenAndroid> screenAndroid = (nsScreenAndroid*) screen.get();
-    return screenAndroid->GetDensity();
+    if (screen) {
+        screen->GetContentsScaleFactor(&scale);
+    }
+
+    return scale;
 }
 
 void
@@ -1859,7 +1844,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild*, LayersBackend, LayerManagerPe
 }
 
 void
-nsWindow::CreateLayerManager(int aCompositorWidth, int aCompositorHeight)
+nsWindow::CreateLayerManager()
 {
     if (mLayerManager) {
         return;
@@ -1875,7 +1860,8 @@ nsWindow::CreateLayerManager(int aCompositorWidth, int aCompositorHeight)
     gfxPlatform::GetPlatform();
 
     if (ShouldUseOffMainThreadCompositing()) {
-        CreateCompositor(aCompositorWidth, aCompositorHeight);
+        LayoutDeviceIntRect rect = GetBounds();
+        CreateCompositor(rect.Width(), rect.Height());
         if (mLayerManager) {
             return;
         }
@@ -2292,13 +2278,8 @@ nsWindow::GetCompositorBridgeChild() const
 already_AddRefed<nsIScreen>
 nsWindow::GetWidgetScreen()
 {
-    nsCOMPtr<nsIScreenManager> screenMgr =
-        do_GetService("@mozilla.org/gfx/screenmanager;1");
-    MOZ_ASSERT(screenMgr, "Failed to get nsIScreenManager");
-
-    RefPtr<nsScreenManagerAndroid> screenMgrAndroid =
-        (nsScreenManagerAndroid*) screenMgr.get();
-    return screenMgrAndroid->ScreenForId(mScreenId);
+    RefPtr<nsIScreen> screen = ScreenHelperAndroid::GetSingleton()->ScreenForId(mScreenId);
+    return screen.forget();
 }
 
 void
@@ -2338,7 +2319,7 @@ nsWindow::RecvScreenPixels(Shmem&& aMem, const ScreenIntSize& aSize)
 {
   MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
   if (NativePtr<LayerViewSupport>::Locked lvs{mLayerViewSupport}) {
-    lvs->RecvScreenPixels(mozilla::Move(aMem), aSize);
+    lvs->RecvScreenPixels(std::move(aMem), aSize);
   }
 }
 

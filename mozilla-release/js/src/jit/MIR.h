@@ -262,7 +262,7 @@ class MUse : public TempObject, public InlineListNode<MUse>
     // Move constructor for use in vectors. When an MUse is moved, it stays
     // in its containing use list.
     MUse(MUse&& other)
-      : InlineListNode<MUse>(mozilla::Move(other)),
+      : InlineListNode<MUse>(std::move(other)),
         producer_(other.producer_), consumer_(other.consumer_)
     { }
 
@@ -1251,23 +1251,23 @@ class MInstruction
 #define TRIVIAL_NEW_WRAPPERS                                                \
     template <typename... Args>                                             \
     static MThisOpcode* New(TempAllocator& alloc, Args&&... args) {         \
-        return new(alloc) MThisOpcode(mozilla::Forward<Args>(args)...);     \
+        return new(alloc) MThisOpcode(std::forward<Args>(args)...);     \
     }                                                                       \
     template <typename... Args>                                             \
     static MThisOpcode* New(TempAllocator::Fallible alloc, Args&&... args)  \
     {                                                                       \
-        return new(alloc) MThisOpcode(mozilla::Forward<Args>(args)...);     \
+        return new(alloc) MThisOpcode(std::forward<Args>(args)...);     \
     }
 
 #define TRIVIAL_NEW_WRAPPERS_WITH_ALLOC                                     \
     template <typename... Args>                                             \
     static MThisOpcode* New(TempAllocator& alloc, Args&&... args) {         \
-        return new(alloc) MThisOpcode(alloc, mozilla::Forward<Args>(args)...); \
+        return new(alloc) MThisOpcode(alloc, std::forward<Args>(args)...); \
     }                                                                       \
     template <typename... Args>                                             \
     static MThisOpcode* New(TempAllocator::Fallible alloc, Args&&... args)  \
     {                                                                       \
-        return new(alloc) MThisOpcode(alloc, mozilla::Forward<Args>(args)...); \
+        return new(alloc) MThisOpcode(alloc, std::forward<Args>(args)...); \
     }
 
 // These macros are used as a syntactic sugar for writting getOperand
@@ -7039,6 +7039,44 @@ class MRandom : public MNullaryInstruction
     ALLOW_CLONE(MRandom)
 };
 
+class MSign
+  : public MUnaryInstruction,
+    public SignPolicy::Data
+{
+  private:
+    MSign(MDefinition* input, MIRType resultType)
+      : MUnaryInstruction(classOpcode, input)
+    {
+        MOZ_ASSERT(IsNumberType(input->type()));
+        MOZ_ASSERT(resultType == MIRType::Int32 || resultType == MIRType::Double);
+        specialization_ = input->type();
+        setResultType(resultType);
+        setMovable();
+    }
+
+  public:
+    INSTRUCTION_HEADER(Sign)
+    TRIVIAL_NEW_WRAPPERS
+
+    bool congruentTo(const MDefinition* ins) const override {
+        return congruentIfOperandsEqual(ins);
+    }
+
+    AliasSet getAliasSet() const override {
+        return AliasSet::None();
+    }
+
+    MDefinition* foldsTo(TempAllocator& alloc) override;
+
+    void computeRange(TempAllocator& alloc) override;
+    MOZ_MUST_USE bool writeRecoverData(CompactBufferWriter& writer) const override;
+    bool canRecoverOnBailout() const override {
+        return true;
+    }
+
+    ALLOW_CLONE(MSign)
+};
+
 class MMathFunction
   : public MUnaryInstruction,
     public FloatingPointPolicy<0>::Data
@@ -7063,7 +7101,6 @@ class MMathFunction
         ACosH,
         ASinH,
         ATanH,
-        Sign,
         Trunc,
         Cbrt,
         Floor,
@@ -7119,7 +7156,7 @@ class MMathFunction
     static const char* FunctionName(Function function);
 
     bool isFloat32Commutative() const override {
-        return function_ == Floor || function_ == Ceil || function_ == Round;
+        return function_ == Floor || function_ == Ceil || function_ == Round || function_ == Trunc;
     }
     void trySpecializeFloat32(TempAllocator& alloc) override;
     void computeRange(TempAllocator& alloc) override;
@@ -7133,6 +7170,7 @@ class MMathFunction
           case Ceil:
           case Floor:
           case Round:
+          case Trunc:
             return true;
           default:
             return false;
@@ -10093,20 +10131,21 @@ class MStoreElementHole
     ALLOW_CLONE(MStoreElementHole)
 };
 
-// Try to store a value to a dense array slots vector. May fail due to the object being frozen.
-// Cannot be used on an object that has extra indexed properties.
+// Try to store a value to a dense array slots vector. May fail due to the
+// object being non-extensible/sealed/frozen. Cannot be used on an object that
+// has extra indexed properties.
 class MFallibleStoreElement
   : public MQuaternaryInstruction,
     public MStoreElementCommon,
     public MixPolicy<SingleObjectPolicy, NoFloatPolicy<3> >::Data
 {
-    bool strict_;
+    bool needsHoleCheck_;
 
     MFallibleStoreElement(MDefinition* object, MDefinition* elements,
                           MDefinition* index, MDefinition* value,
-                          bool strict)
+                          bool needsHoleCheck)
       : MQuaternaryInstruction(classOpcode, object, elements, index, value),
-        strict_(strict)
+        needsHoleCheck_(needsHoleCheck)
     {
         MOZ_ASSERT(elements->type() == MIRType::Elements);
         MOZ_ASSERT(index->type() == MIRType::Int32);
@@ -10120,8 +10159,8 @@ class MFallibleStoreElement
     AliasSet getAliasSet() const override {
         return AliasSet::Store(AliasSet::ObjectFields | AliasSet::Element);
     }
-    bool strict() const {
-        return strict_;
+    bool needsHoleCheck() const {
+        return needsHoleCheck_;
     }
 
     ALLOW_CLONE(MFallibleStoreElement)
@@ -12681,6 +12720,48 @@ class MRound
     ALLOW_CLONE(MRound)
 };
 
+// Inlined version of Math.trunc(double | float32) -> int32.
+class MTrunc
+  : public MUnaryInstruction,
+    public FloatingPointPolicy<0>::Data
+{
+    explicit MTrunc(MDefinition* num)
+      : MUnaryInstruction(classOpcode, num)
+    {
+        setResultType(MIRType::Int32);
+        specialization_ = MIRType::Double;
+        setMovable();
+    }
+
+  public:
+    INSTRUCTION_HEADER(Trunc)
+    TRIVIAL_NEW_WRAPPERS
+
+    AliasSet getAliasSet() const override {
+        return AliasSet::None();
+    }
+
+    bool isFloat32Commutative() const override {
+        return true;
+    }
+    void trySpecializeFloat32(TempAllocator& alloc) override;
+#ifdef DEBUG
+    bool isConsistentFloat32Use(MUse* use) const override {
+        return true;
+    }
+#endif
+    bool congruentTo(const MDefinition* ins) const override {
+        return congruentIfOperandsEqual(ins);
+    }
+
+    MOZ_MUST_USE bool writeRecoverData(CompactBufferWriter& writer) const override;
+    bool canRecoverOnBailout() const override {
+        return true;
+    }
+
+    ALLOW_CLONE(MTrunc)
+};
+
 // NearbyInt rounds the floating-point input to the nearest integer, according
 // to the RoundingMode.
 class MNearbyInt
@@ -12741,6 +12822,7 @@ class MNearbyInt
         switch (roundingMode_) {
           case RoundingMode::Up:
           case RoundingMode::Down:
+          case RoundingMode::TowardsZero:
             return true;
           default:
             return false;
@@ -15155,7 +15237,7 @@ bool ElementAccessIsTypedArray(CompilerConstraintList* constraints,
                                Scalar::Type* arrayType);
 bool ElementAccessIsPacked(CompilerConstraintList* constraints, MDefinition* obj);
 bool ElementAccessMightBeCopyOnWrite(CompilerConstraintList* constraints, MDefinition* obj);
-bool ElementAccessMightBeFrozen(CompilerConstraintList* constraints, MDefinition* obj);
+bool ElementAccessMightBeNonExtensible(CompilerConstraintList* constraints, MDefinition* obj);
 AbortReasonOr<bool>
 ElementAccessHasExtraIndexedProperty(IonBuilder* builder, MDefinition* obj);
 MIRType DenseNativeElementType(CompilerConstraintList* constraints, MDefinition* obj);

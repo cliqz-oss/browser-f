@@ -9,10 +9,21 @@ ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
 
-ChromeUtils.defineModuleGetter(this, "NetUtil",
-  "resource://gre/modules/NetUtil.jsm");
+Cu.importGlobalProperties(["fetch"]);
+
 ChromeUtils.defineModuleGetter(this, "PlacesBackups",
   "resource://gre/modules/PlacesBackups.jsm");
+
+// This is used to translate old folder pseudonyms in queries with their newer
+// guids.
+const OLD_BOOKMARK_QUERY_TRANSLATIONS = {
+  "PLACES_ROOT": PlacesUtils.bookmarks.rootGuid,
+  "BOOKMARKS_MENU": PlacesUtils.bookmarks.menuGuid,
+  "TAGS": PlacesUtils.bookmarks.tagsGuid,
+  "UNFILED_BOOKMARKS": PlacesUtils.bookmarks.unfiledGuid,
+  "TOOLBAR": PlacesUtils.bookmarks.toolbarGuid,
+  "MOBILE_BOOKMARKS": PlacesUtils.bookmarks.mobileGuid,
+};
 
 /**
  * Generates an hash for the given string.
@@ -171,34 +182,14 @@ BookmarkImporter.prototype = {
    * @resolves When the new bookmarks have been created.
    * @rejects JavaScript exception.
    */
-  importFromURL(spec) {
-    return new Promise((resolve, reject) => {
-      let streamObserver = {
-        onStreamComplete: (aLoader, aContext, aStatus, aLength, aResult) => {
-          let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"].
-                          createInstance(Ci.nsIScriptableUnicodeConverter);
-          converter.charset = "UTF-8";
-          try {
-            let jsonString = converter.convertFromByteArray(aResult,
-                                                            aResult.length);
-            resolve(this.importFromJSON(jsonString));
-          } catch (ex) {
-            Cu.reportError("Failed to import from URL: " + ex);
-            reject(ex);
-          }
-        }
-      };
+  async importFromURL(spec) {
+    let nodes = await (await fetch(spec)).json();
 
-      let uri = NetUtil.newURI(spec);
-      let channel = NetUtil.newChannel({
-        uri,
-        loadUsingSystemPrincipal: true
-      });
-      let streamLoader = Cc["@mozilla.org/network/stream-loader;1"]
-                           .createInstance(Ci.nsIStreamLoader);
-      streamLoader.init(streamObserver);
-      channel.asyncOpen2(streamLoader);
-    });
+    if (!nodes.children || !nodes.children.length) {
+      return;
+    }
+
+    await this.import(nodes);
   },
 
   /**
@@ -213,10 +204,8 @@ BookmarkImporter.prototype = {
    */
   importFromCompressedFile: async function BI_importFromCompressedFile(aFilePath) {
       let aResult = await OS.File.read(aFilePath, { compression: "lz4" });
-      let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"].
-                        createInstance(Ci.nsIScriptableUnicodeConverter);
-      converter.charset = "UTF-8";
-      let jsonString = converter.convertFromByteArray(aResult, aResult.length);
+      let decoder = new TextDecoder();
+      let jsonString = decoder.decode(aResult);
       await this.importFromJSON(jsonString);
   },
 
@@ -237,9 +226,13 @@ BookmarkImporter.prototype = {
       return;
     }
 
-    // Change to nodes[0].children as we don't import the root, and also filter
+    await this.import(nodes[0]);
+  },
+
+  async import(rootNode) {
+    // Change to rootNode.children as we don't import the root, and also filter
     // out any obsolete "tagsFolder" sections.
-    nodes = nodes[0].children.filter(node => !node.root || node.root != "tagsFolder");
+    let nodes = rootNode.children.filter(node => node.root !== "tagsFolder");
 
     // If we're replacing, then erase existing bookmarks first.
     if (this._replace) {
@@ -247,7 +240,6 @@ BookmarkImporter.prototype = {
     }
 
     let folderIdToGuidMap = {};
-    let searchGuids = [];
 
     // Now do some cleanup on the imported nodes so that the various guids
     // match what we need for insertTree, and we also have mappings of folders
@@ -260,10 +252,9 @@ BookmarkImporter.prototype = {
       node.source = this._source;
 
       // Translate the node for insertTree.
-      let [folders, searches] = translateTreeTypes(node);
+      let folders = translateTreeTypes(node);
 
       folderIdToGuidMap = Object.assign(folderIdToGuidMap, folders);
-      searchGuids = searchGuids.concat(searches);
     }
 
     // Now we can add the actual nodes to the database.
@@ -279,6 +270,8 @@ BookmarkImporter.prototype = {
         continue;
       }
 
+      fixupSearchQueries(node, folderIdToGuidMap);
+
       await PlacesUtils.bookmarks.insertTree(node, { fixupOrSkipInvalidEntries: true });
 
       // Now add any favicons.
@@ -286,16 +279,6 @@ BookmarkImporter.prototype = {
         insertFaviconsForTree(node);
       } catch (ex) {
         Cu.reportError(`Failed to insert favicons: ${ex}`);
-      }
-    }
-
-    // Now update any bookmarks with a place: search that contain an index to
-    // a folder id.
-    for (let guid of searchGuids) {
-      let searchBookmark = await PlacesUtils.bookmarks.fetch(guid);
-      let url = await fixupQuery(searchBookmark.url, folderIdToGuidMap);
-      if (url != searchBookmark.url) {
-        await PlacesUtils.bookmarks.update({ guid, url, source: this._source });
       }
     }
   },
@@ -306,9 +289,28 @@ function notifyObservers(topic, replace) {
 }
 
 /**
+ * Iterates through a node, fixing up any place: URL queries that are found. This
+ * replaces any old (pre Firefox 62) queries that contain "folder=<id>" parts with
+ * "parent=<guid>".
+ *
+ * @param {Object} aNode The node to search.
+ * @param {Array} aFolderIdMap An array mapping of old folder IDs to new folder GUIDs.
+ */
+function fixupSearchQueries(aNode, aFolderIdMap) {
+  if (aNode.url && aNode.url.startsWith("place:")) {
+    aNode.url = fixupQuery(aNode.url, aFolderIdMap);
+  }
+  if (aNode.children) {
+    for (let child of aNode.children) {
+      fixupSearchQueries(child, aFolderIdMap);
+    }
+  }
+}
+
+/**
  * Replaces imported folder ids with their local counterparts in a place: URI.
  *
- * @param   {nsIURI} aQueryURI
+ * @param   {String} aQueryURL
  *          A place: URI with folder ids.
  * @param   {Object} aFolderIdMap
  *          An array mapping of old folder IDs to new folder GUIDs.
@@ -316,30 +318,29 @@ function notifyObservers(topic, replace) {
  *         the URI with only the matching folders included. If none matched
  *         it returns the input URI unchanged.
  */
-async function fixupQuery(aQueryURI, aFolderIdMap) {
-  const reGlobal = /folder=([0-9]+)/g;
-  const re = /([0-9]+)/;
-
-  // Unfortunately .replace can't handle async functions. Therefore,
-  // we find the folder guids we need to know the ids for first, then
-  // do the async request, and finally replace everything in one go.
-  let uri = aQueryURI.href;
-  let found = uri.match(reGlobal);
-  if (!found) {
-    return uri;
-  }
-
-  let queryFolderGuids = [];
-  for (let folderString of found) {
-    let existingFolderId = folderString.match(re)[0];
-    queryFolderGuids.push(aFolderIdMap[existingFolderId]);
-  }
-
-  let newFolderIds = await PlacesUtils.promiseManyItemIds(queryFolderGuids);
-  let convert = function(str, p1) {
-    return "folder=" + newFolderIds.get(aFolderIdMap[p1]);
+function fixupQuery(aQueryURL, aFolderIdMap) {
+  let invalid = false;
+  let convert = function(str, existingFolderId) {
+    let guid;
+    if (Object.keys(OLD_BOOKMARK_QUERY_TRANSLATIONS).includes(existingFolderId)) {
+      guid = OLD_BOOKMARK_QUERY_TRANSLATIONS[existingFolderId];
+    } else {
+      guid = aFolderIdMap[existingFolderId];
+      if (!guid) {
+        invalid = true;
+        return `invalidOldParentId=${existingFolderId}`;
+      }
+    }
+    return `parent=${guid}`;
   };
-  return uri.replace(reGlobal, convert);
+
+  let url = aQueryURL.replace(/folder=([A-Za-z0-9_]+)/g, convert);
+  if (invalid) {
+    // One or more of the folders don't exist, cause an empty query so that
+    // we don't try to display the whole database.
+    url += "&excludeItems=1";
+  }
+  return url;
 }
 
 /**
@@ -378,7 +379,6 @@ function fixupRootFolderGuid(node) {
  */
 function translateTreeTypes(node) {
   let folderIdToGuidMap = {};
-  let searchGuids = [];
 
   // Do the uri fixup first, so we can be consistent in this function.
   if (node.uri) {
@@ -407,11 +407,6 @@ function translateTreeTypes(node) {
       break;
     case PlacesUtils.TYPE_X_MOZ_PLACE:
       node.type = PlacesUtils.bookmarks.TYPE_BOOKMARK;
-
-      if (node.url && node.url.substr(0, 6) == "place:") {
-        searchGuids.push(node.guid);
-      }
-
       break;
     case PlacesUtils.TYPE_X_MOZ_PLACE_SEPARATOR:
       node.type = PlacesUtils.bookmarks.TYPE_SEPARATOR;
@@ -458,7 +453,7 @@ function translateTreeTypes(node) {
 
   // Now handle any children.
   if (!node.children) {
-    return [folderIdToGuidMap, searchGuids];
+    return folderIdToGuidMap;
   }
 
   // First sort the children by index.
@@ -468,12 +463,11 @@ function translateTreeTypes(node) {
 
   // Now do any adjustments required for the children.
   for (let child of node.children) {
-    let [folders, searches] = translateTreeTypes(child);
+    let folders = translateTreeTypes(child);
     folderIdToGuidMap = Object.assign(folderIdToGuidMap, folders);
-    searchGuids = searchGuids.concat(searches);
   }
 
-  return [folderIdToGuidMap, searchGuids];
+  return folderIdToGuidMap;
 }
 
 /**

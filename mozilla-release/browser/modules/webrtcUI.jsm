@@ -341,12 +341,20 @@ function prompt(aBrowser, aRequest) {
   let { audioDevices, videoDevices, sharingScreen, sharingAudio,
         requestTypes } = aRequest;
 
+  let uri;
+  try {
+    // This fails for principals that serialize to "null", e.g. file URIs.
+    uri = Services.io.newURI(aRequest.origin);
+  } catch (e) {
+    uri = Services.io.newURI(aRequest.documentURI);
+  }
+
   // If the user has already denied access once in this tab,
   // deny again without even showing the notification icon.
   if ((audioDevices.length && SitePermissions
-        .get(null, "microphone", aBrowser).state == SitePermissions.BLOCK) ||
+        .get(uri, "microphone", aBrowser).state == SitePermissions.BLOCK) ||
       (videoDevices.length && SitePermissions
-        .get(null, sharingScreen ? "screen" : "camera", aBrowser).state == SitePermissions.BLOCK)) {
+        .get(uri, sharingScreen ? "screen" : "camera", aBrowser).state == SitePermissions.BLOCK)) {
     denyRequest(aBrowser, aRequest);
     return;
   }
@@ -355,14 +363,6 @@ function prompt(aBrowser, aRequest) {
   // are expired permission states.
   aBrowser.dispatchEvent(new aBrowser.ownerGlobal
                                      .CustomEvent("PermissionStateChange"));
-
-  let uri;
-  try {
-    // This fails for principals that serialize to "null", e.g. file URIs.
-    uri = Services.io.newURI(aRequest.origin);
-  } catch (e) {
-    uri = Services.io.newURI(aRequest.documentURI);
-  }
 
   let chromeDoc = aBrowser.ownerDocument;
   let stringBundle = chromeDoc.defaultView.gNavigatorBundle;
@@ -670,7 +670,7 @@ function prompt(aBrowser, aRequest) {
               stream.getTracks().forEach(t => t.stop());
               return;
             }
-            video.src = chromeWin.URL.createObjectURL(stream);
+            video.srcObject = stream;
             video.stream = stream;
             doc.getElementById("webRTC-preview").hidden = false;
             video.onloadedmetadata = function(e) {

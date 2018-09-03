@@ -6,13 +6,15 @@ a11y:
   instantiators:
     bug_numbers:
       - 1323069
+      - 1462238
     description: >
       The leaf name and version number of the binary for the process responsible
       for remotely instantiating a11y.
-    expires: "61"
+    expires: never
     kind: string
     notification_emails:
-      - dbolter@mozilla.com
+      - accessibility@mozilla.com
+      - jteh@mozilla.com
     record_in_processes:
       - 'main'
     release_channel_collection: opt-out
@@ -379,6 +381,20 @@ browser.session.restore:
     record_in_processes:
       - 'main'
 
+extensions.updates:
+  rdf:
+    bug_numbers:
+      - 1460336
+    description: >
+      The number of RDF update requsts for a given extension ID.
+    expires: "66"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+    record_in_processes:
+      - main
+
 # This section is for probes used to measure use of the Webextensions storage.sync API.
 storage.sync.api.usage:
   extensions_using:
@@ -476,6 +492,22 @@ security:
     notification_emails:
       - seceng-telemetry@mozilla.com
       - jjones@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - main
+  client_cert:
+    bug_numbers:
+      - 1255120
+    description: >
+      Counts of events related to client certificates this session. Currently:
+      "requested" (a server requested a client certificate), "sent" (a client
+      certificate was sent), "compat" (a compatibility workaround was required).
+    expires: "66"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - seceng-telemetry@mozilla.com
+      - dkeeler@mozilla.com
     release_channel_collection: opt-out
     record_in_processes:
       - main
@@ -757,6 +789,20 @@ dom.contentprocess:
       - benjamin@smedbergs.us
       - mconley@mozilla.com
     release_channel_collection: opt-in
+    record_in_processes:
+      - 'main'
+
+  buildID_mismatch:
+    bug_numbers:
+      - 1366808
+    description: >
+      The number of times the about:restartrequired page appeared due to a
+      buildID mismatch between the parent and the content processes.
+    expires: never
+    kind: uint
+    notification_emails:
+      - spohl@mozilla.com
+    release_channel_collection: opt-out
     record_in_processes:
       - 'main'
 
@@ -1165,8 +1211,6 @@ telemetry:
     description: >
       The count of accumulations that had to be clamped down to not overflow,
       keyed to the histogram name of the overflowing accumulation.
-      This is doubled for non-keyed desktop Firefox Histograms because of
-      saved-session pings.
     expires: never
     kind: uint
     keyed: true
@@ -1193,6 +1237,83 @@ telemetry:
     release_channel_collection: opt-out
     record_in_processes:
       - 'all'
+
+  profile_directory_scans:
+    bug_numbers:
+      - 1458574
+    description: >
+      The number of times a profile directory scan was initiated in ProfileAge.jsm
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - jrediger@mozilla.com
+      - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'all'
+
+  profile_directory_scan_date:
+    bug_numbers:
+      - 1466518
+    description: >
+      The date of the profile scan to determine the profile creation date from the oldest file, in days since UNIX epoch.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - jrediger@mozilla.com
+      - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  # While the following probe could be restricted to GeckoView, we can't
+  # turn the product filter on as we don't run GeckoView test coverage on
+  # GeckoView.
+  persistence_timer_hit_count:
+    bug_numbers:
+      - 1463152
+    description: >
+      How many times the GeckoView Telemetry persistence timer was hit during
+      the current subsession.
+    expires: "65"
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - aplacitelli@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  pending_operations_highwatermark_reached:
+    bug_numbers:
+      - 1465052
+    description: >
+      The number of times the pending operations list reached the
+      high-water mark, leading to operations being applied immediately.
+    expires: "65"
+    kind: uint
+    keyed: false
+    notification_emails:
+      - jrediger@mozilla.com
+      - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
+
+  os_shutting_down:
+    bug_numbers:
+      - 1480826
+    description: >
+      Records true if there is a signal that Firefox was quitting because
+      the OS was shutting down. Only available on Windows.
+    expires: "64"
+    kind: boolean
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - agashlin@mozilla.com
+    release_channel_collection: opt-out
+    record_in_processes:
+      - 'main'
 
 telemetry.discarded:
   accumulations:
@@ -1287,24 +1408,6 @@ gfx.omtp:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
       - rhunt@mozilla.com
-    record_in_processes:
-      - 'content'
-
-gfx:
-  small_paint_phase_weight:
-    bug_numbers:
-      - 1430897
-    description: >
-      Time that is spent in each phase of painting, as a percentage of
-      paint time. See also CONTENT_LARGE_PAINT_PHASE_WEIGHT in Histograms.json.
-      Keys are r (rasterization), dl (display list construction), and flb
-      (FrameLayerBuilder).
-    keyed: true
-    kind: uint
-    expires: "66"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - mwoodrow@mozilla.com
     record_in_processes:
       - 'content'
 
@@ -1807,6 +1910,18 @@ telemetry.test:
     record_in_processes:
       - 'main'
 
+  child_keyed_unsigned_int:
+    bug_numbers:
+      - 1466490
+    description: A testing keyed uint scalar; not meant to be touched.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'content'
+
   keyed_boolean_kind:
     bug_numbers:
       - 1277806
@@ -1852,6 +1967,101 @@ telemetry.test:
       - telemetry-client-dev@mozilla.com
     record_in_processes:
       - 'all_childs'
+
+  default_products:
+    bug_numbers:
+      - 1452552
+    description: A testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+
+  desktop_only:
+    bug_numbers:
+      - 1452552
+    description: A testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+    products:
+      - firefox
+
+  keyed_desktop_only:
+    bug_numbers:
+      - 1452552
+    description: A keyed testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+    products:
+      - firefox
+
+  multiproduct:
+    bug_numbers:
+      - 1452552
+    description: A testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+    products:
+      - firefox
+      - fennec
+      - geckoview
+
+  mobile_only:
+    bug_numbers:
+      - 1452552
+    description: A testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+    products:
+      - fennec
+      - geckoview
+
+  geckoview_only:
+    bug_numbers:
+      - 1452552
+    description: A testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+    products:
+      - geckoview
+
+  keyed_mobile_only:
+    bug_numbers:
+      - 1452552
+    description: A keyed testing uint scalar; not meant to be touched
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    record_in_processes:
+      - 'all'
+    products:
+      - fennec
+      - geckoview
 
 # NOTE: Please don't add new definitions below this point. Consider adding
 # them earlier in the file and leave the telemetry.test category as the last

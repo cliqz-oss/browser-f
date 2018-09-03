@@ -17,6 +17,16 @@ distroDir.append("distribution");
 distroDir.append("extensions");
 registerDirectory("XREAppDist", distroDir.parent);
 
+const ADDONS = {
+  test_distribution1_2: {
+    "install.rdf": {
+      "id": "addon1@tests.mozilla.org",
+      "version": "2.0",
+      "name": "Distributed add-ons test",
+    }
+  },
+};
+
 var addon1_1 = {
   id: "addon1@tests.mozilla.org",
   version: "1.0",
@@ -53,23 +63,15 @@ var addon1_3 = {
   }]
 };
 
-function getActiveVersion() {
-  return Services.prefs.getIntPref("bootstraptest.active_version");
-}
-
-function getInstalledVersion() {
-  return Services.prefs.getIntPref("bootstraptest.installed_version");
-}
-
-function setOldModificationTime() {
+async function setOldModificationTime() {
   // Make sure the installed extension has an old modification time so any
   // changes will be detected
-  shutdownManager();
+  await promiseShutdownManager();
   let extension = gProfD.clone();
   extension.append("extensions");
   extension.append("addon1@tests.mozilla.org.xpi");
   setExtensionModifiedTime(extension, Date.now() - MAKE_FILE_OLD_DIFFERENCE);
-  startupManager(false);
+  await promiseStartupManager();
 }
 
 function run_test() {
@@ -81,10 +83,10 @@ function run_test() {
 // Tests that on the first startup the add-on gets installed, with now as the
 // profile modifiedTime.
 async function run_test_1() {
-  let extension = writeInstallRDFForExtension(addon1_1, distroDir);
+  let extension = await promiseWriteInstallRDFForExtension(addon1_1, distroDir);
   setExtensionModifiedTime(extension, Date.now() - MAKE_FILE_OLD_DIFFERENCE);
 
-  startupManager();
+  await promiseStartupManager();
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.notEqual(a1, null);
@@ -108,11 +110,11 @@ async function run_test_1() {
 // Tests that starting with a newer version in the distribution dir doesn't
 // install it yet
 async function run_test_2() {
-  setOldModificationTime();
+  await setOldModificationTime();
 
-  writeInstallRDFForExtension(addon1_2, distroDir);
+  await promiseWriteInstallRDFForExtension(addon1_2, distroDir);
 
-  restartManager();
+  await promiseRestartManager();
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.notEqual(a1, null);
@@ -125,7 +127,7 @@ async function run_test_2() {
 
 // Test that an app upgrade installs the newer version
 async function run_test_3() {
-  restartManager("2");
+  await promiseRestartManager("2");
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.notEqual(a1, null);
@@ -139,11 +141,11 @@ async function run_test_3() {
 
 // Test that an app upgrade doesn't downgrade the extension
 async function run_test_4() {
-  setOldModificationTime();
+  await setOldModificationTime();
 
-  writeInstallRDFForExtension(addon1_1, distroDir);
+  await promiseWriteInstallRDFForExtension(addon1_1, distroDir);
 
-  restartManager("3");
+  await promiseRestartManager("3");
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.notEqual(a1, null);
@@ -157,9 +159,9 @@ async function run_test_4() {
 // Tests that after uninstalling a restart doesn't re-install the extension
 async function run_test_5() {
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
-  a1.uninstall();
+  await a1.uninstall();
 
-  restartManager();
+  await promiseRestartManager();
 
   let a1_2 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.equal(a1_2, null);
@@ -170,7 +172,7 @@ async function run_test_5() {
 // Tests that upgrading the application still doesn't re-install the uninstalled
 // extension
 async function run_test_6() {
-  restartManager("4");
+  await promiseRestartManager("4");
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.equal(a1, null);
@@ -183,8 +185,8 @@ async function run_test_6() {
 async function run_test_7() {
   Services.prefs.clearUserPref("extensions.installedDistroAddon.addon1@tests.mozilla.org");
 
-  await promiseInstallAllFiles([do_get_addon("test_distribution1_2")]);
-  restartManager(2);
+  await AddonTestUtils.promiseInstallXPI(ADDONS.test_distribution1_2);
+  await promiseRestartManager(2);
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.notEqual(a1, null);
@@ -192,19 +194,19 @@ async function run_test_7() {
   Assert.ok(a1.isActive);
   Assert.equal(a1.scope, AddonManager.SCOPE_PROFILE);
 
-  a1.uninstall();
+  await a1.uninstall();
   executeSoon(run_test_8);
 }
 
 // Tests that a pending install of a older version of a distributed add-on
 // at app change gets replaced by the distributed version
 async function run_test_8() {
-  restartManager();
+  await promiseRestartManager();
 
-  writeInstallRDFForExtension(addon1_3, distroDir);
+  await promiseWriteInstallRDFForExtension(addon1_3, distroDir);
 
-  await promiseInstallAllFiles([do_get_addon("test_distribution1_2")]);
-  restartManager(3);
+  await AddonTestUtils.promiseInstallXPI(ADDONS.test_distribution1_2);
+  await promiseRestartManager(3);
 
   let a1 = await AddonManager.getAddonByID("addon1@tests.mozilla.org");
   Assert.notEqual(a1, null);
@@ -212,50 +214,6 @@ async function run_test_8() {
   Assert.ok(a1.isActive);
   Assert.equal(a1.scope, AddonManager.SCOPE_PROFILE);
 
-  a1.uninstall();
-  executeSoon(run_test_9);
-}
-
-// Tests that bootstrapped add-ons distributed start up correctly, also that
-// add-ons with multiple directories get copied fully
-async function run_test_9() {
-  restartManager();
-
-  // Copy the test add-on to the distro dir
-  let addon = do_get_file("data/test_distribution2_2");
-  addon.copyTo(distroDir, "addon2@tests.mozilla.org");
-
-  restartManager("5");
-
-  let a2 = await AddonManager.getAddonByID("addon2@tests.mozilla.org");
-  Assert.notEqual(a2, null);
-  Assert.ok(a2.isActive);
-
-  Assert.equal(getInstalledVersion(), 2);
-  Assert.equal(getActiveVersion(), 2);
-
-  Assert.ok(a2.hasResource("bootstrap.js"));
-  Assert.ok(a2.hasResource("subdir/dummy.txt"));
-  Assert.ok(a2.hasResource("subdir/subdir2/dummy2.txt"));
-
-  // Currently installs are unpacked if the source is a directory regardless
-  // of the install.rdf property or the global preference
-
-  let addonDir = profileDir.clone();
-  addonDir.append("addon2@tests.mozilla.org");
-  Assert.ok(addonDir.exists());
-  Assert.ok(addonDir.isDirectory());
-  addonDir.append("subdir");
-  Assert.ok(addonDir.exists());
-  Assert.ok(addonDir.isDirectory());
-  addonDir.append("subdir2");
-  Assert.ok(addonDir.exists());
-  Assert.ok(addonDir.isDirectory());
-  addonDir.append("dummy2.txt");
-  Assert.ok(addonDir.exists());
-  Assert.ok(addonDir.isFile());
-
-  a2.uninstall();
-
+  await a1.uninstall();
   executeSoon(do_test_finished);
 }

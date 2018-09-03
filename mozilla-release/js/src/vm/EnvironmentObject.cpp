@@ -12,8 +12,8 @@
 #include "vm/AsyncFunction.h"
 #include "vm/GlobalObject.h"
 #include "vm/Iteration.h"
-#include "vm/JSCompartment.h"
 #include "vm/ProxyObject.h"
+#include "vm/Realm.h"
 #include "vm/Shape.h"
 #include "vm/Xdr.h"
 #include "wasm/WasmInstance.h"
@@ -145,7 +145,9 @@ CallObject::createSingleton(JSContext* cx, HandleShape shape)
     MOZ_ASSERT(CanBeFinalizedInBackground(kind, &CallObject::class_));
     kind = gc::GetBackgroundAllocKind(kind);
 
-    RootedObjectGroup group(cx, ObjectGroup::lazySingletonGroup(cx, &class_, TaggedProto(nullptr)));
+    ObjectGroupRealm& realm = ObjectGroupRealm::getForNewObject(cx);
+    RootedObjectGroup group(cx, ObjectGroup::lazySingletonGroup(cx, realm, &class_,
+                                                                TaggedProto(nullptr)));
     if (!group)
         return nullptr;
 
@@ -1046,7 +1048,7 @@ LexicalEnvironmentObject::recreate(JSContext* cx, Handle<LexicalEnvironmentObjec
 bool
 LexicalEnvironmentObject::isExtensible() const
 {
-    return nonProxyIsExtensible();
+    return NativeObject::isExtensible();
 }
 
 Value
@@ -2314,7 +2316,7 @@ const DebugEnvironmentProxyHandler DebugEnvironmentProxyHandler::singleton;
 /* static */ DebugEnvironmentProxy*
 DebugEnvironmentProxy::create(JSContext* cx, EnvironmentObject& env, HandleObject enclosing)
 {
-    MOZ_ASSERT(env.compartment() == cx->compartment());
+    MOZ_ASSERT(env.realm() == cx->realm());
     MOZ_ASSERT(!enclosing->is<EnvironmentObject>());
 
     RootedValue priv(cx, ObjectValue(env));
@@ -2510,15 +2512,15 @@ DebugEnvironments::checkHashTablesAfterMovingGC()
 static bool
 CanUseDebugEnvironmentMaps(JSContext* cx)
 {
-    return cx->compartment()->isDebuggee();
+    return cx->realm()->isDebuggee();
 }
 
 DebugEnvironments*
-DebugEnvironments::ensureCompartmentData(JSContext* cx)
+DebugEnvironments::ensureRealmData(JSContext* cx)
 {
-    JSCompartment* c = cx->compartment();
-    if (c->debugEnvs)
-        return c->debugEnvs;
+    Realm* realm = cx->realm();
+    if (auto* debugEnvs = realm->debugEnvs())
+        return debugEnvs;
 
     auto debugEnvs = cx->make_unique<DebugEnvironments>(cx, cx->zone());
     if (!debugEnvs || !debugEnvs->init()) {
@@ -2526,14 +2528,14 @@ DebugEnvironments::ensureCompartmentData(JSContext* cx)
         return nullptr;
     }
 
-    c->debugEnvs = debugEnvs.release();
-    return c->debugEnvs;
+    realm->debugEnvsRef() = std::move(debugEnvs);
+    return realm->debugEnvs();
 }
 
 /* static */ DebugEnvironmentProxy*
 DebugEnvironments::hasDebugEnvironment(JSContext* cx, EnvironmentObject& env)
 {
-    DebugEnvironments* envs = env.compartment()->debugEnvs;
+    DebugEnvironments* envs = env.realm()->debugEnvs();
     if (!envs)
         return nullptr;
 
@@ -2549,13 +2551,13 @@ DebugEnvironments::hasDebugEnvironment(JSContext* cx, EnvironmentObject& env)
 DebugEnvironments::addDebugEnvironment(JSContext* cx, Handle<EnvironmentObject*> env,
                                        Handle<DebugEnvironmentProxy*> debugEnv)
 {
-    MOZ_ASSERT(cx->compartment() == env->compartment());
-    MOZ_ASSERT(cx->compartment() == debugEnv->compartment());
+    MOZ_ASSERT(cx->realm() == env->realm());
+    MOZ_ASSERT(cx->realm() == debugEnv->nonCCWRealm());
 
     if (!CanUseDebugEnvironmentMaps(cx))
         return true;
 
-    DebugEnvironments* envs = ensureCompartmentData(cx);
+    DebugEnvironments* envs = ensureRealmData(cx);
     if (!envs)
         return false;
 
@@ -2567,7 +2569,7 @@ DebugEnvironments::hasDebugEnvironment(JSContext* cx, const EnvironmentIter& ei)
 {
     MOZ_ASSERT(!ei.hasSyntacticEnvironment());
 
-    DebugEnvironments* envs = cx->compartment()->debugEnvs;
+    DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
         return nullptr;
 
@@ -2583,7 +2585,7 @@ DebugEnvironments::addDebugEnvironment(JSContext* cx, const EnvironmentIter& ei,
                                        Handle<DebugEnvironmentProxy*> debugEnv)
 {
     MOZ_ASSERT(!ei.hasSyntacticEnvironment());
-    MOZ_ASSERT(cx->compartment() == debugEnv->compartment());
+    MOZ_ASSERT(cx->realm() == debugEnv->nonCCWRealm());
     // Generators should always have environments.
     MOZ_ASSERT_IF(ei.scope().is<FunctionScope>(),
                   !ei.scope().as<FunctionScope>().canonicalFunction()->isGenerator() &&
@@ -2592,7 +2594,7 @@ DebugEnvironments::addDebugEnvironment(JSContext* cx, const EnvironmentIter& ei,
     if (!CanUseDebugEnvironmentMaps(cx))
         return true;
 
-    DebugEnvironments* envs = ensureCompartmentData(cx);
+    DebugEnvironments* envs = ensureRealmData(cx);
     if (!envs)
         return false;
 
@@ -2717,7 +2719,7 @@ DebugEnvironments::onPopCall(JSContext* cx, AbstractFramePtr frame)
 {
     assertSameCompartment(cx, frame);
 
-    DebugEnvironments* envs = cx->compartment()->debugEnvs;
+    DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
         return;
 
@@ -2759,7 +2761,7 @@ DebugEnvironments::onPopLexical(JSContext* cx, AbstractFramePtr frame, jsbytecod
 {
     assertSameCompartment(cx, frame);
 
-    DebugEnvironments* envs = cx->compartment()->debugEnvs;
+    DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
         return;
 
@@ -2771,7 +2773,7 @@ template <typename Environment, typename Scope>
 void
 DebugEnvironments::onPopGeneric(JSContext* cx, const EnvironmentIter& ei)
 {
-    DebugEnvironments* envs = cx->compartment()->debugEnvs;
+    DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
         return;
 
@@ -2807,7 +2809,7 @@ DebugEnvironments::onPopVar(JSContext* cx, AbstractFramePtr frame, jsbytecode* p
 {
     assertSameCompartment(cx, frame);
 
-    DebugEnvironments* envs = cx->compartment()->debugEnvs;
+    DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
         return;
 
@@ -2827,14 +2829,15 @@ DebugEnvironments::onPopVar(JSContext* cx, const EnvironmentIter& ei)
 void
 DebugEnvironments::onPopWith(AbstractFramePtr frame)
 {
-    if (DebugEnvironments* envs = frame.compartment()->debugEnvs)
+    Realm* realm = frame.realm();
+    if (DebugEnvironments* envs = realm->debugEnvs())
         envs->liveEnvs.remove(&frame.environmentChain()->as<WithEnvironmentObject>());
 }
 
 void
-DebugEnvironments::onCompartmentUnsetIsDebuggee(JSCompartment* c)
+DebugEnvironments::onRealmUnsetIsDebuggee(Realm* realm)
 {
-    if (DebugEnvironments* envs = c->debugEnvs) {
+    if (DebugEnvironments* envs = realm->debugEnvs()) {
         envs->proxiedEnvs.clear();
         envs->missingEnvs.clear();
         envs->liveEnvs.clear();
@@ -2864,7 +2867,7 @@ DebugEnvironments::updateLiveEnvironments(JSContext* cx)
             continue;
 
         AbstractFramePtr frame = i.abstractFramePtr();
-        if (frame.environmentChain()->compartment() != cx->compartment())
+        if (frame.realm() != cx->realm())
             continue;
 
         if (frame.isFunctionFrame()) {
@@ -2882,8 +2885,8 @@ DebugEnvironments::updateLiveEnvironments(JSContext* cx)
 
         for (EnvironmentIter ei(cx, env, scope, frame); ei.withinInitialFrame(); ei++) {
             if (ei.hasSyntacticEnvironment() && !ei.scope().is<GlobalScope>()) {
-                MOZ_ASSERT(ei.environment().compartment() == cx->compartment());
-                DebugEnvironments* envs = ensureCompartmentData(cx);
+                MOZ_ASSERT(ei.environment().realm() == cx->realm());
+                DebugEnvironments* envs = ensureRealmData(cx);
                 if (!envs)
                     return false;
                 if (!envs->liveEnvs.put(&ei.environment(), LiveEnvironmentVal(ei)))
@@ -2893,7 +2896,7 @@ DebugEnvironments::updateLiveEnvironments(JSContext* cx)
 
         if (frame.prevUpToDate())
             return true;
-        MOZ_ASSERT(frame.environmentChain()->compartment()->isDebuggee());
+        MOZ_ASSERT(frame.realm()->isDebuggee());
         frame.setPrevUpToDate();
     }
 
@@ -2903,7 +2906,7 @@ DebugEnvironments::updateLiveEnvironments(JSContext* cx)
 LiveEnvironmentVal*
 DebugEnvironments::hasLiveEnvironment(EnvironmentObject& env)
 {
-    DebugEnvironments* envs = env.compartment()->debugEnvs;
+    DebugEnvironments* envs = env.realm()->debugEnvs();
     if (!envs)
         return nullptr;
 
@@ -2932,7 +2935,7 @@ DebugEnvironments::unsetPrevUpToDateUntil(JSContext* cx, AbstractFramePtr until)
         if (frame == until)
             return;
 
-        if (frame.environmentChain()->compartment() != cx->compartment())
+        if (frame.realm() != cx->realm())
             continue;
 
         frame.unsetPrevUpToDate();
@@ -2942,7 +2945,7 @@ DebugEnvironments::unsetPrevUpToDateUntil(JSContext* cx, AbstractFramePtr until)
 /* static */ void
 DebugEnvironments::forwardLiveFrame(JSContext* cx, AbstractFramePtr from, AbstractFramePtr to)
 {
-    DebugEnvironments* envs = cx->compartment()->debugEnvs;
+    DebugEnvironments* envs = cx->realm()->debugEnvs();
     if (!envs)
         return;
 
@@ -3215,9 +3218,19 @@ WithEnvironmentObject::scope() const
 ModuleEnvironmentObject*
 js::GetModuleEnvironmentForScript(JSScript* script)
 {
+    ModuleObject* module = GetModuleObjectForScript(script);
+    if (!module)
+        return nullptr;
+
+    return module->environment();
+}
+
+ModuleObject*
+js::GetModuleObjectForScript(JSScript* script)
+{
     for (ScopeIter si(script); si; si++) {
         if (si.kind() == ScopeKind::Module)
-            return si.scope()->as<ModuleScope>().module()->environment();
+            return si.scope()->as<ModuleScope>().module();
     }
     return nullptr;
 }
@@ -3316,7 +3329,7 @@ js::CheckLexicalNameConflict(JSContext* cx, Handle<LexicalEnvironmentObject*> le
     const char* redeclKind = nullptr;
     RootedId id(cx, NameToId(name));
     RootedShape shape(cx);
-    if (varObj->is<GlobalObject>() && varObj->compartment()->isInVarNames(name)) {
+    if (varObj->is<GlobalObject>() && varObj->as<GlobalObject>().realm()->isInVarNames(name)) {
         // ES 15.1.11 step 5.a
         redeclKind = "var";
     } else if ((shape = lexicalEnv->lookup(cx, name))) {
@@ -3382,7 +3395,7 @@ js::CheckCanDeclareGlobalBinding(JSContext* cx, Handle<GlobalObject*> global,
     if (!desc.object()) {
         // 8.1.14.15 step 6.
         // 8.1.14.16 step 5.
-        if (global->nonProxyIsExtensible())
+        if (global->isExtensible())
             return true;
 
         ReportCannotDeclareGlobalBinding(cx, name, "global is non-extensible");
@@ -3699,14 +3712,14 @@ AnalyzeEntrainedVariablesInScript(JSContext* cx, HandleScript script, HandleScri
             buf.printf(" ");
         }
 
-        buf.printf("(%s:%zu) has variables entrained by ", script->filename(), script->lineno());
+        buf.printf("(%s:%u) has variables entrained by ", script->filename(), script->lineno());
 
         if (JSAtom* name = innerScript->functionNonDelazifying()->displayAtom()) {
             buf.putString(name);
             buf.printf(" ");
         }
 
-        buf.printf("(%s:%zu) ::", innerScript->filename(), innerScript->lineno());
+        buf.printf("(%s:%u) ::", innerScript->filename(), innerScript->lineno());
 
         for (PropertyNameSet::Range r = remainingNames.all(); !r.empty(); r.popFront()) {
             buf.printf(" ");

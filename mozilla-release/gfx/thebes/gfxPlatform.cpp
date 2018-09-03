@@ -22,6 +22,7 @@
 
 #include "mozilla/Logging.h"
 #include "mozilla/Services.h"
+#include "nsAppDirectoryServiceDefs.h"
 
 #include "gfxCrashReporterUtils.h"
 #include "gfxPlatform.h"
@@ -48,6 +49,7 @@
 #elif defined(XP_MACOSX)
 #include "gfxPlatformMac.h"
 #include "gfxQuartzSurface.h"
+#include "nsCocoaFeatures.h"
 #elif defined(MOZ_WIDGET_GTK)
 #include "gfxPlatformGtk.h"
 #elif defined(ANDROID)
@@ -106,6 +108,7 @@
 # ifdef MOZ_ENABLE_FREETYPE
 #  include "skia/include/ports/SkTypeface_cairo.h"
 # endif
+# include "mozilla/gfx/SkMemoryReporter.h"
 # ifdef __GNUC__
 #  pragma GCC diagnostic pop // -Wshadow
 # endif
@@ -615,6 +618,9 @@ WebRenderDebugPrefChangeCallback(const char* aPrefName, void*)
   GFX_WEBRENDER_DEBUG(".disable-batching",   1 << 5)
   GFX_WEBRENDER_DEBUG(".epochs",             1 << 6)
   GFX_WEBRENDER_DEBUG(".compact-profiler",   1 << 7)
+  GFX_WEBRENDER_DEBUG(".echo-driver-messages", 1 << 8)
+  GFX_WEBRENDER_DEBUG(".new-frame-indicator", 1 << 9)
+  GFX_WEBRENDER_DEBUG(".new-scene-indicator", 1 << 10)
 #undef GFX_WEBRENDER_DEBUG
 
   gfx::gfxVars::SetWebRenderDebugFlags(flags);
@@ -630,7 +636,7 @@ static uint32_t GetSkiaGlyphCacheSize()
     // Chromium uses 20mb and skia default uses 2mb.
     // We don't need to change the font cache count since we usually
     // cache thrash due to asian character sets in talos.
-    // Only increase memory on the content proces
+    // Only increase memory on the content process
     uint32_t cacheSize = gfxPrefs::SkiaContentFontCacheSize() * 1024 * 1024;
     if (mozilla::BrowserTabsRemoteAutostart()) {
       return XRE_IsContentProcess() ? cacheSize : kDefaultGlyphCacheSize;
@@ -840,6 +846,9 @@ gfxPlatform::Init()
     }
 
     RegisterStrongMemoryReporter(new GfxMemoryImageReporter());
+#ifdef USE_SKIA
+    RegisterStrongMemoryReporter(new SkMemoryReporter());
+#endif
     mlg::InitializeMemoryReporters();
 
 #ifdef USE_SKIA
@@ -863,6 +872,18 @@ gfxPlatform::Init()
         Preferences::SetBool(FONT_VARIATIONS_PREF, false);
         Preferences::Lock(FONT_VARIATIONS_PREF);
       }
+
+      nsCOMPtr<nsIFile> profDir;
+      rv = NS_GetSpecialDirectory(NS_APP_PROFILE_DIR_STARTUP, getter_AddRefs(profDir));
+      if (NS_FAILED(rv)) {
+        gfxVars::SetProfDirectory(nsString());
+      } else {
+        nsAutoString path;
+        profDir->GetPath(path);
+        gfxVars::SetProfDirectory(nsString(path));
+      }
+
+      gfxUtils::RemoveShaderCacheFromDiskIfNecessary();
     }
 
     if (obs) {
@@ -1042,7 +1063,7 @@ gfxPlatform::InitLayersIPC()
       layers::PaintThread::Start();
     }
   } else if (XRE_IsParentProcess()) {
-    if (gfxVars::UseWebRender()) {
+    if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS) && gfxVars::UseWebRender()) {
       wr::RenderThread::Start();
     }
 
@@ -1818,7 +1839,7 @@ gfxPlatform::GetBackendPrefs() const
   data.mCanvasDefault = BackendType::CAIRO;
   data.mContentDefault = BackendType::CAIRO;
 
-  return mozilla::Move(data);
+  return data;
 }
 
 void
@@ -2524,8 +2545,16 @@ void
 gfxPlatform::InitWebRenderConfig()
 {
   bool prefEnabled = WebRenderPrefEnabled();
+  bool envvarEnabled = WebRenderEnvvarEnabled();
 
-  ScopedGfxFeatureReporter reporter("WR", prefEnabled);
+  // On Nightly:
+  //   WR? WR+   => means WR was enabled via gfx.webrender.all.qualified
+  //   WR! WR+   => means WR was enabled via gfx.webrender.{all,enabled} or envvar
+  // On Beta/Release:
+  //   WR? WR+   => means WR was enabled via gfx.webrender.all.qualified on qualified hardware
+  //   WR! WR+   => means WR was enabled via envvar, possibly on unqualified hardware.
+  // In all cases WR- means WR was not enabled, for one of many possible reasons.
+  ScopedGfxFeatureReporter reporter("WR", prefEnabled || envvarEnabled);
   if (!XRE_IsParentProcess()) {
     // The parent process runs through all the real decision-making code
     // later in this function. For other processes we still want to report
@@ -2543,10 +2572,19 @@ gfxPlatform::InitWebRenderConfig()
       "WebRender is an opt-in feature",
       NS_LITERAL_CSTRING("FEATURE_FAILURE_DEFAULT_OFF"));
 
-  if (prefEnabled) {
-    featureWebRender.UserEnable("Force enabled by pref");
-  } else if (WebRenderEnvvarEnabled()) {
+  // envvar works everywhere; we need this for testing in CI. Sadly this allows
+  // beta/release to enable it on unqualified hardware, but at least this is
+  // harder for the average person than flipping a pref.
+  if (envvarEnabled) {
     featureWebRender.UserEnable("Force enabled by envvar");
+
+  // gfx.webrender.enabled and gfx.webrender.all only work on nightly
+#ifdef NIGHTLY_BUILD
+  } else if (prefEnabled) {
+    featureWebRender.UserEnable("Force enabled by pref");
+#endif
+
+  // gfx.webrender.all.qualified works on all channels
   } else if (gfxPrefs::WebRenderAllQualified()) {
     nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
     nsCString discardFailureId;
@@ -2609,7 +2647,10 @@ gfxPlatform::InitWebRenderConfig()
 #endif
 
   if (Preferences::GetBool("gfx.webrender.program-binary", false)) {
-    gfx::gfxVars::SetUseWebRenderProgramBinary(gfxConfig::IsEnabled(Feature::WEBRENDER));
+    gfxVars::SetUseWebRenderProgramBinary(gfxConfig::IsEnabled(Feature::WEBRENDER));
+    if (Preferences::GetBool("gfx.webrender.program-binary-disk", false)) {
+      gfxVars::SetUseWebRenderProgramBinaryDisk(gfxConfig::IsEnabled(Feature::WEBRENDER));
+    }
   }
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -2669,6 +2710,13 @@ gfxPlatform::InitOMTPConfig()
     omtp.ForceDisable(FeatureStatus::Broken, "OMTP is not supported when using cairo",
       NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_PREF"));
   }
+
+#ifdef XP_MACOSX
+  if (!nsCocoaFeatures::OnYosemiteOrLater()) {
+    omtp.ForceDisable(FeatureStatus::Blocked, "OMTP blocked before OSX 10.10",
+                      NS_LITERAL_CSTRING("FEATURE_FAILURE_OMTP_OSX_MAVERICKS"));
+  }
+#endif
 
   if (InSafeMode()) {
     omtp.ForceDisable(FeatureStatus::Blocked, "OMTP blocked by safe-mode",

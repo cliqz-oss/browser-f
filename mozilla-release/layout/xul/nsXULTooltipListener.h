@@ -13,12 +13,12 @@
 #include "nsString.h"
 #ifdef MOZ_XUL
 #include "nsITreeBoxObject.h"
-#include "nsITreeColumns.h"
 #endif
 #include "nsWeakPtr.h"
 #include "mozilla/Attributes.h"
 
 class nsIContent;
+class nsTreeColumn;
 
 namespace mozilla {
 namespace dom {
@@ -99,7 +99,7 @@ protected:
   bool mIsSourceTree;
   bool mNeedTitletip;
   int32_t mLastTreeRow;
-  nsCOMPtr<nsITreeColumn> mLastTreeCol;
+  RefPtr<nsTreeColumn> mLastTreeCol;
 #endif
 };
 

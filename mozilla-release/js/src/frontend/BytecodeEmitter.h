@@ -44,9 +44,7 @@ struct CGObjectList {
     CGObjectList() : length(0), lastbox(nullptr) {}
 
     unsigned add(ObjectBox* objbox);
-    unsigned indexOf(JSObject* obj);
     void finish(ObjectArray* array);
-    ObjectBox* find(uint32_t index);
 };
 
 struct MOZ_STACK_CLASS CGScopeList {
@@ -370,9 +368,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     MOZ_MUST_USE bool init();
 
-    template <typename Predicate /* (NestableControl*) -> bool */>
-    NestableControl* findInnermostNestableControl(Predicate predicate) const;
-
     template <typename T>
     T* findInnermostNestableControl() const;
 
@@ -415,8 +410,10 @@ struct MOZ_STACK_CLASS BytecodeEmitter
         }
 
         uint32_t index = atomIndices->count();
-        if (!atomIndices->add(p, atom, index))
+        if (!atomIndices->add(p, atom, index)) {
+            ReportOutOfMemory(cx);
             return false;
+        }
 
         *indexp = index;
         return true;
@@ -441,7 +438,11 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     void switchToPrologue() { current = &prologue; }
     bool inPrologue() const { return current == &prologue; }
 
-    SrcNotesVector& notes() const { return current->notes; }
+    SrcNotesVector& notes() const {
+        // Prologue shouldn't have source notes.
+        MOZ_ASSERT(!inPrologue());
+        return current->notes;
+    }
     ptrdiff_t lastNoteOffset() const { return current->lastNoteOffset; }
     unsigned currentLine() const { return current->currentLine; }
 
@@ -773,12 +774,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitDestructuringOps(ParseNode* pattern, DestructuringFlavor flav);
     MOZ_MUST_USE bool emitDestructuringOpsArray(ParseNode* pattern, DestructuringFlavor flav);
     MOZ_MUST_USE bool emitDestructuringOpsObject(ParseNode* pattern, DestructuringFlavor flav);
-
-    typedef bool
-    (*DestructuringDeclEmitter)(BytecodeEmitter* bce, ParseNode* pn);
-
-    template <typename NameEmitter>
-    MOZ_MUST_USE bool emitDestructuringDeclsWithEmitter(ParseNode* pattern, NameEmitter emitName);
 
     enum class CopyOption {
         Filtered, Unfiltered

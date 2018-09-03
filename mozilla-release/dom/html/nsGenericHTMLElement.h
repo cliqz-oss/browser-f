@@ -9,7 +9,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "nsMappedAttributeElement.h"
-#include "nsIDOMNode.h"
 #include "nsNameSpaceManager.h"  // for kNameSpaceID_None
 #include "nsIFormControl.h"
 #include "nsGkAtoms.h"
@@ -46,8 +45,7 @@ typedef nsMappedAttributeElement nsGenericHTMLElementBase;
 /**
  * A common superclass for HTML elements
  */
-class nsGenericHTMLElement : public nsGenericHTMLElementBase,
-                             public nsIDOMNode
+class nsGenericHTMLElement : public nsGenericHTMLElementBase
 {
 public:
   using Element::SetTabIndex;
@@ -61,7 +59,8 @@ public:
     SetFlags(NODE_HAS_DIRECTION_LTR);
   }
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsGenericHTMLElement,
+                                       nsGenericHTMLElementBase)
 
   NS_IMPL_FROMNODE(nsGenericHTMLElement, kNameSpaceID_XHTML)
 
@@ -268,8 +267,6 @@ public:
    */
   MOZ_CAN_RUN_SCRIPT
   nsSize GetWidthHeightForImage(RefPtr<imgRequestProxy>& aImageRequest);
-
-  virtual nsIDOMNode* AsDOMNode() override { return this; }
 
 public:
   // Implementation for nsIContent
@@ -1239,7 +1236,7 @@ inline nsGenericHTMLElement*                                               \
 NS_NewHTML##_elementName##Element(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo, \
                                   mozilla::dom::FromParser aFromParser = mozilla::dom::NOT_FROM_PARSER) \
 {                                                                          \
-  return NS_NewHTMLSharedElement(mozilla::Move(aNodeInfo), aFromParser);   \
+  return NS_NewHTMLSharedElement(std::move(aNodeInfo), aFromParser);   \
 }
 
 /**
@@ -1345,17 +1342,5 @@ NS_DECLARE_NS_NEW_HTML_ELEMENT(Title)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Track)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Unknown)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Video)
-
-inline nsISupports*
-ToSupports(nsGenericHTMLElement* aHTMLElement)
-{
-  return static_cast<nsIContent*>(aHTMLElement);
-}
-
-inline nsISupports*
-ToCanonicalSupports(nsGenericHTMLElement* aHTMLElement)
-{
-  return static_cast<nsIContent*>(aHTMLElement);
-}
 
 #endif /* nsGenericHTMLElement_h___ */

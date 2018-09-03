@@ -7,8 +7,8 @@
 function test() {
   waitForExplicitFinish();
 
-  getChromeActors((client, response) => {
-    let options = {
+  getParentProcessActors((client, response) => {
+    const options = {
       form: response,
       client: client,
       chrome: true

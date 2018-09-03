@@ -104,14 +104,15 @@ class Configuration(DescriptorProvider):
                             "%s" %
                             (partialIface.location, iface.location))
                 if not (iface.getExtendedAttribute("ChromeOnly") or
+                        iface.getExtendedAttribute("Func") == ["IsChromeOrXBL"] or
                         not (iface.hasInterfaceObject() or
                              iface.isNavigatorProperty()) or
                         isInWebIDLRoot(iface.filename())):
                     raise TypeError(
                         "Interfaces which are exposed to the web may only be "
                         "defined in a DOM WebIDL root %r. Consider marking "
-                        "the interface [ChromeOnly] if you do not want it "
-                        "exposed to the web.\n"
+                        "the interface [ChromeOnly] or [Func='IsChromeOrXBL'] "
+                        "if you do not want it exposed to the web.\n"
                         "%s" %
                         (webRoots, iface.location))
             self.interfaces[iface.identifier.name] = iface
@@ -417,10 +418,11 @@ class Descriptor(DescriptorProvider):
             'NamedDeleter': None,
             'Stringifier': None,
             'LegacyCaller': None,
-            'Jsonifier': None
             }
 
-        # Stringifiers and jsonifiers need to be set up whether an interface is
+        self.hasDefaultToJSON = False
+
+        # Stringifiers need to be set up whether an interface is
         # concrete or not, because they're actually prototype methods and hence
         # can apply to instances of descendant interfaces.  Legacy callers and
         # named/indexed operations only need to be set up on concrete
@@ -436,8 +438,8 @@ class Descriptor(DescriptorProvider):
             for m in self.interface.members:
                 if m.isMethod() and m.isStringifier():
                     addOperation('Stringifier', m)
-                if m.isMethod() and m.isJsonifier():
-                    addOperation('Jsonifier', m)
+                if m.isMethod() and m.isDefaultToJSON():
+                    self.hasDefaultToJSON = True
 
         if self.concrete:
             self.proxy = False

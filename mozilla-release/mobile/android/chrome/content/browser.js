@@ -138,7 +138,10 @@ lazilyLoadedBrowserScripts.forEach(function (aScript) {
 });
 
 var lazilyLoadedObserverScripts = [
-  ["MemoryObserver", ["memory-pressure", "Memory:Dump"], "chrome://browser/content/MemoryObserver.js"],
+  ["MemoryObserver", ["memory-pressure",
+                      "memory-pressure-stop",
+                      "Memory:Dump"],
+   "chrome://browser/content/MemoryObserver.js"],
   ["ConsoleAPI", ["console-api-log-event"], "chrome://browser/content/ConsoleAPI.js"],
   ["ExtensionPermissions", ["webextension-permission-prompt",
                             "webextension-update-permissions",
@@ -486,9 +489,9 @@ var BrowserApp = {
       InitLater(() => GlobalEventDispatcher.dispatch("GeckoView:AccessibilityReady"));
       GlobalEventDispatcher.registerListener((aEvent, aData, aCallback) => {
         if (aData.enabled) {
-          AccessFu.attach(window);
+          AccessFu.enable();
         } else {
-          AccessFu.detach();
+          AccessFu.disable();
         }
       }, "GeckoView:AccessibilitySettings");
     }
@@ -551,6 +554,12 @@ var BrowserApp = {
       // Bug 778855 - Perf regression if we do this here. To be addressed in bug 779008.
       InitLater(() => SafeBrowsing.init(), window, "SafeBrowsing");
 
+      // This should always go last, since the idle tasks (except for the ones with
+      // timeouts) should execute in order. Note that this observer notification is
+      // not guaranteed to fire, since the window could close before we get here.
+      InitLater(() => {
+        Services.obs.notifyObservers(window, "browser-idle-startup-tasks-finished");
+      });
     }, {once: true});
   },
 
@@ -894,7 +903,8 @@ var BrowserApp = {
                 return;
             }
 
-            ContentAreaUtils.saveImageURL(aTarget.currentRequestFinalURI.spec, null, "SaveImageTitle",
+            let uri = aTarget.currentRequestFinalURI || aTarget.currentURI;
+            ContentAreaUtils.saveImageURL(uri.spec, null, "SaveImageTitle",
                                           false, true, aTarget.ownerDocument.documentURIObject,
                                           aTarget.ownerDocument);
         });
@@ -2159,6 +2169,13 @@ var BrowserApp = {
       appLocale = appLocale.toLowerCase();
     }
 
+    try {
+        const resistFingerprinting = Services.prefs.getBoolPref("privacy.resistFingerprinting");
+        if (resistFingerprinting) {
+          osLocale = null;
+        }
+    } catch (e) {}
+
     if (osLocale) {
       osLocale = osLocale.toLowerCase();
     }
@@ -2904,7 +2921,10 @@ var NativeWindow = {
       if (node.hasAttribute && node.hasAttribute("title")) {
         return node.getAttribute("title");
       }
-      return this._getUrl(node);
+      let url = this._getUrl(node);
+      let readerUrl = ReaderMode.getOriginalUrlObjectForDisplay(url);
+
+      return (readerUrl && readerUrl.displaySpec) || url;
     },
 
     // Returns a url associated with a node
@@ -3140,7 +3160,7 @@ var NativeWindow = {
     },
 
     _getLink: function(aElement) {
-      if (aElement.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
+      if (aElement.nodeType == aElement.ELEMENT_NODE &&
           ((ChromeUtils.getClassName(aElement) === "HTMLAnchorElement" && aElement.href) ||
            (ChromeUtils.getClassName(aElement) === "HTMLAreaElement" && aElement.href) ||
            ChromeUtils.getClassName(aElement) === "HTMLLinkElement" ||
@@ -4878,7 +4898,7 @@ var BrowserEventHandler = {
   },
 
   _getLinkURI: function(aElement) {
-    if (aElement.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
+    if (aElement.nodeType == aElement.ELEMENT_NODE &&
         ((ChromeUtils.getClassName(aElement) === "HTMLAnchorElement" && aElement.href) ||
          (ChromeUtils.getClassName(aElement) === "HTMLAreaElement" && aElement.href))) {
       try {
@@ -5376,9 +5396,9 @@ var IndexedDB = {
       throw new Error("Unexpected topic!");
     }
 
-    let requestor = subject.QueryInterface(Ci.nsIInterfaceRequestor);
+    let request = subject.QueryInterface(Ci.nsIIDBPermissionsRequest);
 
-    let browser = requestor.getInterface(Ci.nsIDOMNode);
+    let browser = request.browserElement;
     let tab = BrowserApp.getTabForBrowser(browser);
     if (!tab)
       return;
@@ -5398,7 +5418,7 @@ var IndexedDB = {
     let timeoutId;
 
     let notificationID = responseTopic + host;
-    let observer = requestor.getInterface(Ci.nsIObserver);
+    let observer = request.responseObserver;
 
     // This will be set to the result of PopupNotifications.show() below, or to
     // the result of PopupNotifications.getNotification() if this is a
@@ -5608,7 +5628,7 @@ var IdentityHandler = {
       return this.IDENTITY_MODE_IDENTIFIED;
     }
 
-    let whitelist = /^about:(about|accounts|addons|buildconfig|cache|config|crashes|devices|downloads|fennec|firefox|feedback|home|license|logins|logo|memory|mozilla|networking|privatebrowsing|rights|serviceworkers|support|telemetry|webrtc)($|\?)/i;
+    let whitelist = /^about:(about|accounts|addons|buildconfig|cache|config|crashes|devices|downloads|experiments|fennec|firefox|feedback|home|license|logins|logo|memory|mozilla|networking|privatebrowsing|rights|serviceworkers|support|telemetry|webrtc)($|\?)/i;
     if (uri.schemeIs("about") && whitelist.test(uri.spec)) {
         return this.IDENTITY_MODE_CHROMEUI;
     }

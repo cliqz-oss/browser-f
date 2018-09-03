@@ -61,6 +61,12 @@ PluginProcessParent::Launch(mozilla::UniquePtr<LaunchCompleteTask> aLaunchComple
     // On Mac, when |aSandboxLevel| is positive, we enable the sandbox.
 #if defined(XP_WIN)
     mSandboxLevel = aSandboxLevel;
+
+    // The sandbox process sometimes needs read access to the plugin file.
+    if (aSandboxLevel >= 3) {
+        std::wstring pluginFile(NS_ConvertUTF8toUTF16(mPluginFilePath.c_str()).get());
+        mAllowedFilesRead.push_back(pluginFile);
+    }
 #endif // XP_WIN
 #else
     if (aSandboxLevel != 0) {
@@ -69,7 +75,7 @@ PluginProcessParent::Launch(mozilla::UniquePtr<LaunchCompleteTask> aLaunchComple
     }
 #endif
 
-    mLaunchCompleteTask = mozilla::Move(aLaunchCompleteTask);
+    mLaunchCompleteTask = std::move(aLaunchCompleteTask);
 
     vector<string> args;
     args.push_back(MungePluginDsoPath(mPluginFilePath));

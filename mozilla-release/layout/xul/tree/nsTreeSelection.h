@@ -8,12 +8,12 @@
 #define nsTreeSelection_h__
 
 #include "nsITreeSelection.h"
-#include "nsITreeColumns.h"
 #include "nsITimer.h"
 #include "nsCycleCollectionParticipant.h"
 #include "mozilla/Attributes.h"
 
 class nsITreeBoxObject;
+class nsTreeColumn;
 struct nsTreeRange;
 
 class nsTreeSelection final : public nsINativeTreeSelection
@@ -45,7 +45,7 @@ protected:
 
   bool mSuppressed; // Whether or not we should be firing onselect events.
   int32_t mCurrentIndex; // The item to draw the rect around. The last one clicked, etc.
-  nsCOMPtr<nsITreeColumn> mCurrentColumn;
+  RefPtr<nsTreeColumn> mCurrentColumn;
   int32_t mShiftSelectPivot; // Used when multiple SHIFT+selects are performed to pivot on.
 
   nsTreeRange* mFirstRange; // Our list of ranges.

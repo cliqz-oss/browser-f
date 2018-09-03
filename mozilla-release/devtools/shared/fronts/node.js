@@ -74,7 +74,7 @@ class AttributeModificationList {
   }
 
   apply() {
-    let ret = this.node.modifyAttributes(this.modifications);
+    const ret = this.node.modifyAttributes(this.modifications);
     return ret;
   }
 
@@ -163,7 +163,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
       // Get the owner actor for this actor (the walker), and find the
       // parent node of this actor from it, creating a standin node if
       // necessary.
-      let parentNodeFront = ctx.marshallPool().ensureParentFront(form.parent);
+      const parentNodeFront = ctx.marshallPool().ensureParentFront(form.parent);
       this.reparent(parentNodeFront);
     }
 
@@ -196,7 +196,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
       // Update any already-existing attributes.
       let found = false;
       for (let i = 0; i < this.attributes.length; i++) {
-        let attr = this.attributes[i];
+        const attr = this.attributes[i];
         if (attr.name == change.attributeName &&
             attr.namespace == change.attributeNamespace) {
           if (change.newValue !== null) {
@@ -226,7 +226,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
     }
   },
 
-  // Some accessors to make NodeFront feel more like an nsIDOMNode
+  // Some accessors to make NodeFront feel more like a Node
 
   get id() {
     return this.getAttribute("id");
@@ -242,7 +242,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
     return this._form.nodeName;
   },
   get displayName() {
-    let {displayName, nodeName} = this._form;
+    const {displayName, nodeName} = this._form;
 
     // Keep `nodeName.toLowerCase()` for backward compatibility
     return displayName || nodeName.toLowerCase();
@@ -319,7 +319,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
   },
 
   getAttribute: function(name) {
-    let attr = this._getAttribute(name);
+    const attr = this._getAttribute(name);
     return attr ? attr.value : null;
   },
   hasAttribute: function(name) {
@@ -328,7 +328,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
   },
 
   get hidden() {
-    let cls = this.getAttribute("class");
+    const cls = this.getAttribute("class");
     return cls && cls.indexOf(HIDDEN_CLASS) > -1;
   },
 
@@ -369,7 +369,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
       return this._getNodeValue();
     }
 
-    let str = this._form.nodeValue || "";
+    const str = this._form.nodeValue || "";
     return promise.resolve(new SimpleStringFront(str));
   }, {
     impl: "_getNodeValue"
@@ -387,7 +387,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
       return;
     }
     this._attrMap = {};
-    for (let attr of this.attributes) {
+    for (const attr of this.attributes) {
       this._attrMap[attr.name] = attr;
     }
   },
@@ -434,7 +434,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
    * Return all the known children of this node.
    */
   treeChildren: function() {
-    let ret = [];
+    const ret = [];
     for (let child = this._child; child != null; child = child._next) {
       ret.push(child);
     }
@@ -453,7 +453,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
   },
 
   /**
-   * Get an nsIDOMNode for the given node front.  This only works locally,
+   * Get a Node for the given node front.  This only works locally,
    * and is only intended as a stopgap during the transition to the remote
    * protocol.  If you depend on this you're likely to break soon.
    */
@@ -463,7 +463,7 @@ const NodeFront = FrontClassWithSpec(nodeSpec, {
       return null;
     }
     const { DebuggerServer } = require("devtools/server/main");
-    let actor = DebuggerServer.searchAllConnectionsForActor(this.actorID);
+    const actor = DebuggerServer.searchAllConnectionsForActor(this.actorID);
     if (!actor) {
       // Can happen if we try to get the raw node for an already-expired
       // actor.

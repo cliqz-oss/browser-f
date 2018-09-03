@@ -8,6 +8,9 @@
 
 #include "mozilla/MaybeOneOf.h"
 
+#ifdef ENABLE_BIGINT
+#include "builtin/BigInt.h"
+#endif
 #include "builtin/Eval.h"
 #include "builtin/SelfHostingDefines.h"
 #include "builtin/String.h"
@@ -1986,7 +1989,7 @@ CreateObjectConstructor(JSContext* cx, JSProtoKey key)
 static JSObject*
 CreateObjectPrototype(JSContext* cx, JSProtoKey key)
 {
-    MOZ_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
+    MOZ_ASSERT(!cx->zone()->isAtomsZone());
     MOZ_ASSERT(cx->global()->isNative());
 
     /*
@@ -2010,7 +2013,8 @@ CreateObjectPrototype(JSContext* cx, JSProtoKey key)
      * to have unknown properties, to simplify handling of e.g. heterogenous
      * objects in JSON and script literals.
      */
-    if (!JSObject::setNewGroupUnknown(cx, &PlainObject::class_, objectProto))
+    ObjectGroupRealm& realm = ObjectGroupRealm::getForNewObject(cx);
+    if (!JSObject::setNewGroupUnknown(cx, realm, &PlainObject::class_, objectProto))
         return nullptr;
 
     return objectProto;

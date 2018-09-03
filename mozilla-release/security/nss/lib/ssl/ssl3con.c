@@ -1476,6 +1476,13 @@ ssl3_SetupBothPendingCipherSpecs(sslSocket *ss)
         goto loser;
     }
 
+    if (ssl3_ExtensionNegotiated(ss, ssl_record_size_limit_xtn)) {
+        ss->ssl3.prSpec->recordSizeLimit = PR_MIN(MAX_FRAGMENT_LENGTH,
+                                                  ss->opt.recordSizeLimit);
+        ss->ssl3.pwSpec->recordSizeLimit = PR_MIN(MAX_FRAGMENT_LENGTH,
+                                                  ss->xtnData.recordSizeLimit);
+    }
+
     ssl_ReleaseSpecWriteLock(ss); /*******************************/
     return SECSuccess;
 
@@ -2272,7 +2279,7 @@ ssl_ProtectNextRecord(sslSocket *ss, ssl3CipherSpec *spec, SSL3ContentType type,
     unsigned int spaceNeeded;
     SECStatus rv;
 
-    contentLen = PR_MIN(nIn, MAX_FRAGMENT_LENGTH);
+    contentLen = PR_MIN(nIn, spec->recordSizeLimit);
     spaceNeeded = contentLen + SSL3_BUFFER_FUDGE;
     if (spec->version >= SSL_LIBRARY_VERSION_TLS_1_1 &&
         spec->cipherDef->type == type_block) {
@@ -5572,13 +5579,20 @@ ssl3_SendRSAClientKeyExchange(sslSocket *ss, SECKEYPublicKey *svrPubKey)
     }
 
     /* Get the wrapped (encrypted) pre-master secret, enc_pms */
-    enc_pms.len = SECKEY_PublicKeyStrength(svrPubKey);
+    unsigned int svrPubKeyBits = SECKEY_PublicKeyStrengthInBits(svrPubKey);
+    enc_pms.len = (svrPubKeyBits + 7) / 8;
+    /* Check that the RSA key isn't larger than 8k bit. */
+    if (svrPubKeyBits > SSL_MAX_RSA_KEY_BITS) {
+        (void)SSL3_SendAlert(ss, alert_fatal, illegal_parameter);
+        ssl_MapLowLevelError(SSL_ERROR_CLIENT_KEY_EXCHANGE_FAILURE);
+        goto loser;
+    }
     enc_pms.data = (unsigned char *)PORT_Alloc(enc_pms.len);
     if (enc_pms.data == NULL) {
         goto loser; /* err set by PORT_Alloc */
     }
 
-    /* wrap pre-master secret in server's public key. */
+    /* Wrap pre-master secret in server's public key. */
     rv = PK11_PubWrapSymKey(CKM_RSA_PKCS, svrPubKey, pms, &enc_pms);
     if (rv != SECSuccess) {
         ssl_MapLowLevelError(SSL_ERROR_CLIENT_KEY_EXCHANGE_FAILURE);
@@ -5681,7 +5695,7 @@ ssl3_SendDHClientKeyExchange(sslSocket *ss, SECKEYPublicKey *svrPubKey)
     };
     sslEphemeralKeyPair *keyPair = NULL;
     SECKEYPublicKey *pubKey;
-    PRUint8 dhData[1026]; /* Enough for the 8192-bit group. */
+    PRUint8 dhData[SSL_MAX_DH_KEY_BITS / 8 + 2];
     sslBuffer dhBuf = SSL_BUFFER(dhData);
 
     PORT_Assert(ss->opt.noLocks || ssl_HaveSSL3HandshakeLock(ss));
@@ -6728,6 +6742,10 @@ ssl_HandleDHServerKeyExchange(sslSocket *ss, PRUint8 *b, PRUint32 length)
         errCode = SSL_ERROR_WEAK_SERVER_EPHEMERAL_DH_KEY;
         goto alert_loser;
     }
+    if (dh_p_bits > SSL_MAX_DH_KEY_BITS) {
+        errCode = SSL_ERROR_DH_KEY_TOO_LONG;
+        goto alert_loser;
+    }
     rv = ssl3_ConsumeHandshakeVariable(ss, &dh_g, 2, &b, &length);
     if (rv != SECSuccess) {
         goto loser; /* malformed. */
@@ -6937,8 +6955,10 @@ ssl3_ParseCertificateRequestCAs(sslSocket *ss, PRUint8 **b, PRUint32 *length,
             goto alert_loser; /* malformed */
 
         remaining -= 2;
+        if (SECITEM_MakeItem(ca_list->arena, &node->name, *b, len) != SECSuccess) {
+            goto no_mem;
+        }
         node->name.len = len;
-        node->name.data = *b;
         *b += len;
         *length -= len;
         remaining -= len;
@@ -6966,7 +6986,6 @@ ssl3_ParseCertificateRequestCAs(sslSocket *ss, PRUint8 **b, PRUint32 *length,
     return SECSuccess;
 
 no_mem:
-    PORT_SetError(SEC_ERROR_NO_MEMORY);
     return SECFailure;
 
 alert_loser:
@@ -11389,6 +11408,10 @@ ssl3_HandleHandshakeMessage(sslSocket *ss, PRUint8 *b, PRUint32 length,
         /* Increment the expected sequence number */
         ss->ssl3.hs.recvMessageSeq++;
     }
+
+    /* Taint the message so that it's easier to detect UAFs. */
+    PORT_Memset(b, 'N', length);
+
     return rv;
 }
 
@@ -12131,6 +12154,11 @@ ssl3_GetCipherSpec(sslSocket *ss, SSL3Ciphertext *cText)
     return NULL;
 }
 
+/* MAX_EXPANSION is the amount by which a record might plausibly be expanded
+ * when protected.  It's the worst case estimate, so the sum of block cipher
+ * padding (up to 256 octets) and HMAC (48 octets for SHA-384). */
+#define MAX_EXPANSION (256 + 48)
+
 /* if cText is non-null, then decipher and check the MAC of the
  * SSL record from cText->buf (typically gs->inbuf)
  * into databuf (typically gs->buf), and any previous contents of databuf
@@ -12160,6 +12188,7 @@ ssl3_HandleRecord(sslSocket *ss, SSL3Ciphertext *cText)
     PRBool isTLS;
     DTLSEpoch epoch;
     ssl3CipherSpec *spec = NULL;
+    PRUint16 recordSizeLimit;
     PRBool outOfOrderSpec = PR_FALSE;
     SSL3ContentType rType;
     sslBuffer *plaintext = &ss->gs.buf;
@@ -12175,6 +12204,14 @@ ssl3_HandleRecord(sslSocket *ss, SSL3Ciphertext *cText)
     /* Clear out the buffer in case this exits early.  Any data then won't be
      * processed twice. */
     plaintext->len = 0;
+
+    /* We're waiting for another ClientHello, which will appear unencrypted.
+     * Use the content type to tell whether this should be discarded. */
+    if (ss->ssl3.hs.zeroRttIgnore == ssl_0rtt_ignore_hrr &&
+        cText->hdr[0] == content_application_data) {
+        PORT_Assert(ss->ssl3.hs.ws == wait_client_hello);
+        return SECSuccess;
+    }
 
     ssl_GetSpecReadLock(ss); /******************************************/
     spec = ssl3_GetCipherSpec(ss, cText);
@@ -12206,47 +12243,53 @@ ssl3_HandleRecord(sslSocket *ss, SSL3Ciphertext *cText)
         return SECFailure;
     }
 
-    /* We're waiting for another ClientHello, which will appear unencrypted.
-     * Use the content type to tell whether this is should be discarded.
-     *
-     * XXX If we decide to remove the content type from encrypted records, this
-     *     will become much more difficult to manage. */
-    if (ss->ssl3.hs.zeroRttIgnore == ssl_0rtt_ignore_hrr &&
-        cText->hdr[0] == content_application_data) {
+    recordSizeLimit = spec->recordSizeLimit;
+    if (cText->buf->len > recordSizeLimit + MAX_EXPANSION) {
         ssl_ReleaseSpecReadLock(ss); /*****************************/
-        PORT_Assert(ss->ssl3.hs.ws == wait_client_hello);
-        return SECSuccess;
+        SSL3_SendAlert(ss, alert_fatal, record_overflow);
+        PORT_SetError(SSL_ERROR_RX_RECORD_TOO_LONG);
+        return SECFailure;
     }
 
-    if (plaintext->space < MAX_FRAGMENT_LENGTH) {
-        rv = sslBuffer_Grow(plaintext, MAX_FRAGMENT_LENGTH + 2048);
+    if (plaintext->space < recordSizeLimit + MAX_EXPANSION) {
+        rv = sslBuffer_Grow(plaintext, recordSizeLimit + MAX_EXPANSION);
         if (rv != SECSuccess) {
             ssl_ReleaseSpecReadLock(ss); /*************************/
             SSL_DBG(("%d: SSL3[%d]: HandleRecord, tried to get %d bytes",
-                     SSL_GETPID(), ss->fd, MAX_FRAGMENT_LENGTH + 2048));
+                     SSL_GETPID(), ss->fd, recordSizeLimit + MAX_EXPANSION));
             /* sslBuffer_Grow has set a memory error code. */
             /* Perhaps we should send an alert. (but we have no memory!) */
             return SECFailure;
         }
     }
 
-#ifdef UNSAFE_FUZZER_MODE
+    /* Most record types aside from protected TLS 1.3 records carry the content
+     * type in the first octet. TLS 1.3 will override this value later. */
     rType = cText->hdr[0];
-    rv = Null_Cipher(NULL, plaintext->buf, (int *)&plaintext->len,
-                     plaintext->space, cText->buf->buf, cText->buf->len);
-#else
-    /* IMPORTANT: Unprotect functions MUST NOT send alerts
-     * because we still hold the spec read lock. Instead, if they
-     * return SECFailure, they set *alert to the alert to be sent. */
-    if (spec->version < SSL_LIBRARY_VERSION_TLS_1_3 ||
-        spec->cipherDef->calg == ssl_calg_null) {
-        /* Unencrypted TLS 1.3 records use the pre-TLS 1.3 format. */
-        rType = cText->hdr[0];
-        rv = ssl3_UnprotectRecord(ss, spec, cText, plaintext, &alert);
+    /* Encrypted application data records could arrive before the handshake
+     * completes in DTLS 1.3. These can look like valid TLS 1.2 application_data
+     * records in epoch 0, which is never valid. Pretend they didn't decrypt. */
+    if (spec->epoch == 0 && rType == content_application_data) {
+        PORT_SetError(SSL_ERROR_RX_UNEXPECTED_APPLICATION_DATA);
+        alert = unexpected_message;
+        rv = SECFailure;
     } else {
-        rv = tls13_UnprotectRecord(ss, spec, cText, plaintext, &rType, &alert);
-    }
+#ifdef UNSAFE_FUZZER_MODE
+        rv = Null_Cipher(NULL, plaintext->buf, (int *)&plaintext->len,
+                         plaintext->space, cText->buf->buf, cText->buf->len);
+#else
+        /* IMPORTANT: Unprotect functions MUST NOT send alerts
+         * because we still hold the spec read lock. Instead, if they
+         * return SECFailure, they set *alert to the alert to be sent. */
+        if (spec->version < SSL_LIBRARY_VERSION_TLS_1_3 ||
+            spec->epoch == 0) {
+            rv = ssl3_UnprotectRecord(ss, spec, cText, plaintext, &alert);
+        } else {
+            rv = tls13_UnprotectRecord(ss, spec, cText, plaintext, &rType,
+                                       &alert);
+        }
 #endif
+    }
 
     if (rv != SECSuccess) {
         ssl_ReleaseSpecReadLock(ss); /***************************/
@@ -12256,10 +12299,10 @@ ssl3_HandleRecord(sslSocket *ss, SSL3Ciphertext *cText)
         /* Ensure that we don't process this data again. */
         plaintext->len = 0;
 
-        /* Ignore a CCS if the alternative handshake is negotiated.  Note that
-         * this will fail if the server fails to negotiate the alternative
-         * handshake type in a 0-RTT session that is resumed from a session that
-         * did negotiate it.  We don't care about that corner case right now. */
+        /* Ignore a CCS if compatibility mode is negotiated.  Note that this
+         * will fail if the server fails to negotiate compatibility mode in a
+         * 0-RTT session that is resumed from a session that did negotiate it.
+         * We don't care about that corner case right now. */
         if (ss->version >= SSL_LIBRARY_VERSION_TLS_1_3 &&
             cText->hdr[0] == content_change_cipher_spec &&
             ss->ssl3.hs.ws != idle_handshake &&
@@ -12268,19 +12311,23 @@ ssl3_HandleRecord(sslSocket *ss, SSL3Ciphertext *cText)
             /* Ignore the CCS. */
             return SECSuccess;
         }
+
         if (IS_DTLS(ss) ||
             (ss->sec.isServer &&
              ss->ssl3.hs.zeroRttIgnore == ssl_0rtt_ignore_trial)) {
-            /* Silently drop the packet */
+            /* Silently drop the packet unless we sent a fatal alert. */
+            if (ss->ssl3.fatalAlertSent) {
+                return SECFailure;
+            }
             return SECSuccess;
-        } else {
-            int errCode = PORT_GetError();
-            SSL3_SendAlert(ss, alert_fatal, alert);
-            /* Reset the error code in case SSL3_SendAlert called
-             * PORT_SetError(). */
-            PORT_SetError(errCode);
-            return SECFailure;
         }
+
+        int errCode = PORT_GetError();
+        SSL3_SendAlert(ss, alert_fatal, alert);
+        /* Reset the error code in case SSL3_SendAlert called
+         * PORT_SetError(). */
+        PORT_SetError(errCode);
+        return SECFailure;
     }
 
     /* SECSuccess */
@@ -12307,7 +12354,7 @@ ssl3_HandleRecord(sslSocket *ss, SSL3Ciphertext *cText)
     }
 
     /* Check the length of the plaintext. */
-    if (isTLS && plaintext->len > MAX_FRAGMENT_LENGTH) {
+    if (isTLS && plaintext->len > recordSizeLimit) {
         plaintext->len = 0;
         SSL3_SendAlert(ss, alert_fatal, record_overflow);
         PORT_SetError(SSL_ERROR_RX_RECORD_TOO_LONG);

@@ -247,7 +247,7 @@ public:
     MOZ_ASSERT(mDefaultLocale,
                "the default locale must have been successfully set for anyone "
                "to be trying to adopt it");
-    return Move(mDefaultLocale);
+    return std::move(mDefaultLocale);
   }
 
   void
@@ -671,11 +671,11 @@ public:
   }
 
   void
-  CopyJSCompartmentOptions(JS::CompartmentOptions& aOptions)
+  CopyJSRealmOptions(JS::RealmOptions& aOptions)
   {
     mozilla::MutexAutoLock lock(mMutex);
-    aOptions = IsChromeWorker() ? mJSSettings.chrome.compartmentOptions
-                                : mJSSettings.content.compartmentOptions;
+    aOptions = IsChromeWorker() ? mJSSettings.chrome.realmOptions
+                                : mJSSettings.content.realmOptions;
   }
 
   // The ability to be a chrome worker is orthogonal to the type of
@@ -1043,26 +1043,19 @@ public:
     return mLoadInfo.mServiceWorkersTestingInWindow;
   }
 
-  // This is used to handle importScripts(). When the worker is first loaded
-  // and executed, it happens in a sync loop. At this point it sets
-  // mLoadingWorkerScript to true. importScripts() calls that occur during the
-  // execution run in nested sync loops and so this continues to return true,
-  // leading to these scripts being cached offline.
-  // mLoadingWorkerScript is set to false when the top level loop ends.
-  // importScripts() in function calls or event handlers are always fetched
-  // from the network.
+  // Determine if the worker is currently loading its top level script.
   bool
-  LoadScriptAsPartOfLoadingServiceWorkerScript()
+  IsLoadingWorkerScript() const
   {
-    MOZ_ASSERT(IsServiceWorker());
     return mLoadingWorkerScript;
   }
 
+  // Called by ScriptLoader to track when this worker is loading its
+  // top level script.
   void
   SetLoadingWorkerScript(bool aLoadingWorkerScript)
   {
     // any thread
-    MOZ_ASSERT(IsServiceWorker());
     mLoadingWorkerScript = aLoadingWorkerScript;
   }
 

@@ -75,6 +75,10 @@ impl UserAgentCascadeDataCache {
         Self { entries: vec![] }
     }
 
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     // FIXME(emilio): This may need to be keyed on quirks-mode too, though there
     // aren't class / id selectors on those sheets, usually, so it's probably
     // ok...
@@ -90,6 +94,7 @@ impl UserAgentCascadeDataCache {
         S: StylesheetInDocument + ToMediaListKey + PartialEq + 'static,
     {
         let mut key = EffectiveMediaQueryResults::new();
+        debug!("UserAgentCascadeDataCache::lookup({:?})", device);
         for sheet in sheets.clone() {
             CascadeData::collect_applicable_media_query_results_into(device, sheet, guard, &mut key)
         }
@@ -105,6 +110,8 @@ impl UserAgentCascadeDataCache {
             precomputed_pseudo_element_decls: PrecomputedPseudoElementDeclarations::default(),
         };
 
+        debug!("> Picking the slow path");
+
         for sheet in sheets {
             new_data.cascade_data.add_stylesheet(
                 device,
@@ -117,7 +124,6 @@ impl UserAgentCascadeDataCache {
         }
 
         let new_data = Arc::new(new_data);
-
         self.entries.push(new_data.clone());
         Ok(new_data)
     }
@@ -244,8 +250,8 @@ impl DocumentCascadeData {
                 let origin_sheets = flusher.origin_sheets(Origin::UserAgent);
                 let ua_cascade_data =
                     ua_cache.lookup(origin_sheets, device, quirks_mode, guards.ua_or_user)?;
-
                 ua_cache.expire_unused();
+                debug!("User agent data cache size {:?}", ua_cache.len());
                 self.user_agent = ua_cascade_data;
             }
         }
@@ -1085,7 +1091,7 @@ impl Stylist {
         guards: &StylesheetGuards,
         device: &Device,
     ) -> OriginSet {
-        debug!("Stylist::media_features_change_changed_style");
+        debug!("Stylist::media_features_change_changed_style {:?}", device);
 
         let mut origins = OriginSet::empty();
         let stylesheets = self.stylesheets.iter();
@@ -1951,14 +1957,9 @@ pub struct CascadeData {
     /// cascade level.
     normal_rules: ElementAndPseudoRules,
 
-    /// The `:host` pseudo rules that are the rightmost selector.
-    ///
-    /// Note that as of right now these can't affect invalidation in any way,
-    /// until we support the :host(<selector>) notation.
-    ///
-    /// Also, note that other engines don't accept stuff like :host::before /
-    /// :host::after, so we don't need to store pseudo rules at all.
-    host_rules: Option<Box<SelectorMap<Rule>>>,
+    /// The `:host` pseudo rules that are the rightmost selector (without
+    /// accounting for pseudo-elements).
+    host_rules: Option<Box<ElementAndPseudoRules>>,
 
     /// The data coming from ::slotted() pseudo-element rules.
     ///
@@ -2122,11 +2123,7 @@ impl CascadeData {
 
     #[inline]
     fn host_rules(&self, pseudo: Option<&PseudoElement>) -> Option<&SelectorMap<Rule>> {
-        if pseudo.is_some() {
-            return None;
-        }
-
-        self.host_rules.as_ref().map(|rules| &**rules)
+        self.host_rules.as_ref().and_then(|d| d.rules(pseudo))
     }
 
     #[inline]
@@ -2154,16 +2151,19 @@ impl CascadeData {
             return;
         }
 
+        debug!(" + {:?}", stylesheet);
         results.saw_effective(stylesheet);
 
         for rule in stylesheet.effective_rules(device, guard) {
             match *rule {
                 CssRule::Import(ref lock) => {
                     let import_rule = lock.read_with(guard);
+                    debug!(" + {:?}", import_rule.stylesheet.media(guard));
                     results.saw_effective(import_rule);
                 },
                 CssRule::Media(ref lock) => {
                     let media_rule = lock.read_with(guard);
+                    debug!(" + {:?}", media_rule.media_queries.read_with(guard));
                     results.saw_effective(media_rule);
                 },
                 _ => {},
@@ -2258,20 +2258,20 @@ impl CascadeData {
                             }
                         }
 
-                        if selector.is_featureless_host_selector() {
-                            let host_rules = self.host_rules
-                                .get_or_insert_with(|| Box::new(Default::default()));
-                            host_rules.insert(rule, quirks_mode)?;
+                        // NOTE(emilio): It's fine to look at :host and then at
+                        // ::slotted(..), since :host::slotted(..) could never
+                        // possibly match, as <slot> is not a valid shadow host.
+                        let rules = if selector.is_featureless_host_selector_or_pseudo_element() {
+                            self.host_rules
+                                .get_or_insert_with(|| Box::new(Default::default()))
+                        } else if selector.is_slotted() {
+                            self.slotted_rules
+                                .get_or_insert_with(|| Box::new(Default::default()))
                         } else {
-                            let rules = if selector.is_slotted() {
-                                self.slotted_rules
-                                    .get_or_insert_with(|| Box::new(Default::default()))
-                            } else {
-                                &mut self.normal_rules
-                            };
+                            &mut self.normal_rules
+                        };
 
-                            rules.insert(rule, pseudo_element, quirks_mode)?;
-                        }
+                        rules.insert(rule, pseudo_element, quirks_mode)?;
                     }
                     self.rules_source_order += 1;
                 },
@@ -2355,8 +2355,10 @@ impl CascadeData {
 
         if effective_now != effective_then {
             debug!(
-                " > Stylesheet changed -> {}, {}",
-                effective_then, effective_now
+                " > Stylesheet {:?} changed -> {}, {}",
+                stylesheet.media(guard),
+                effective_then,
+                effective_now
             );
             return false;
         }
@@ -2391,8 +2393,10 @@ impl CascadeData {
                         .was_effective(import_rule);
                     if effective_now != effective_then {
                         debug!(
-                            " > @import rule changed {} -> {}",
-                            effective_then, effective_now
+                            " > @import rule {:?} changed {} -> {}",
+                            import_rule.stylesheet.media(guard),
+                            effective_then,
+                            effective_now
                         );
                         return false;
                     }
@@ -2410,8 +2414,10 @@ impl CascadeData {
 
                     if effective_now != effective_then {
                         debug!(
-                            " > @media rule changed {} -> {}",
-                            effective_then, effective_now
+                            " > @media rule {:?} changed {} -> {}",
+                            mq,
+                            effective_then,
+                            effective_now
                         );
                         return false;
                     }

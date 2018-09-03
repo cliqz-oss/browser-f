@@ -486,12 +486,6 @@ div:-moz-native-anonymous.moz-custom-content-container {
   height: 100%;
 }
 
-/* Shadow DOM v1
- * https://drafts.csswg.org/css-scoping/#slots-in-shadow-tree */
-slot {
-  display: contents;
-}
-
 /* Cliqz - DB-1071 */
 #ConnectionsDialog .mozilla-support-label {
   margin-top: 6px;

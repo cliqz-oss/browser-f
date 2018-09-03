@@ -2,9 +2,10 @@
 const LEGACY_PREF = "extensions.legacy.enabled";
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
-startupManager();
 
 add_task(async function test_disable() {
+  await promiseStartupManager();
+
   let legacy = [
     {
       id: "bootstrap@tests.mozilla.org",
@@ -105,12 +106,12 @@ add_task(async function test_disable() {
   addons = await AddonManager.getAddonsByIDs(nonLegacy.map(a => a.id));
   for (let addon of addons) {
     Assert.equal(addon.appDisabled, false);
-    addon.uninstall();
+    await addon.uninstall();
   }
   addons = await AddonManager.getAddonsByIDs(legacy.map(a => a.id));
   for (let addon of addons) {
     Assert.equal(addon.appDisabled, true);
-    addon.uninstall();
+    await addon.uninstall();
   }
 
   Services.prefs.clearUserPref(LEGACY_PREF);

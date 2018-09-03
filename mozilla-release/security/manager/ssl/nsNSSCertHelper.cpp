@@ -19,11 +19,19 @@
 #include "nsNSSCertTrust.h"
 #include "nsNSSCertValidity.h"
 #include "nsNSSCertificate.h"
+#include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "prerror.h"
 #include "secder.h"
 
 using namespace mozilla;
+
+// To avoid relying on localized strings in PSM, we hard-code the root module
+// name internally. When we display it to the user in the list of modules in the
+// front-end, we look up the localized value and display that instead of this.
+const char* kRootModuleName = "Builtin Roots Module";
+const size_t kRootModuleNameLen = strlen(kRootModuleName);
+
 
 static nsresult
 GetPIPNSSBundle(nsIStringBundle** pipnssBundle)
@@ -55,6 +63,18 @@ GetPIPNSSBundleString(const char* stringName, nsAString& result)
   }
   result.Truncate();
   return pipnssBundle->GetStringFromName(stringName, result);
+}
+
+nsresult
+GetPIPNSSBundleString(const char* stringName, nsACString& result)
+{
+  nsAutoString tmp;
+  nsresult rv = GetPIPNSSBundleString(stringName, tmp);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  result.Assign(NS_ConvertUTF16toUTF8(tmp));
+  return NS_OK;
 }
 
 nsresult
@@ -754,25 +774,30 @@ ProcessExtKeyUsage(SECItem* extData, nsAString& text)
   return NS_OK;
 }
 
+void
+LossyUTF8ToUTF16(const char* str, uint32_t len, /*out*/ nsAString& result)
+{
+  nsDependentCSubstring substring(str, len);
+  if (IsUTF8(substring)) {
+    result.Assign(NS_ConvertUTF8toUTF16(substring));
+  } else {
+    char16_t* newUTF16(ToNewUnicode(substring));
+    result.Adopt(newUTF16);
+  }
+}
+
 static nsresult
 ProcessRDN(CERTRDN* rdn, nsAString& finalString)
 {
-  nsresult rv;
-  CERTAVA** avas;
-  CERTAVA* ava;
-  nsString avavalue;
-  nsString type;
-  nsAutoString temp;
-  const char16_t* params[2];
-
-  avas = rdn->avas;
-  while ((ava = *avas++) != 0) {
-    rv = GetOIDText(&ava->type, type);
+  CERTAVA** avas = rdn->avas;
+  for (auto i = 0; avas[i]; i++) {
+    CERTAVA* ava = avas[i];
+    nsAutoString type;
+    nsresult rv = GetOIDText(&ava->type, type);
     if (NS_FAILED(rv)) {
       return rv;
     }
 
-    // This function returns a string in UTF8 format.
     UniqueSECItem decodeItem(CERT_DecodeAVAValue(&ava->value));
     if (!decodeItem) {
       return NS_ERROR_FAILURE;
@@ -791,10 +816,13 @@ ProcessRDN(CERTRDN* rdn, nsAString& finalString)
       return NS_ERROR_FAILURE;
     }
 
-    avavalue = NS_ConvertUTF8toUTF16(escapedValue.get());
+    nsAutoString avaValue;
+    LossyUTF8ToUTF16(escapedValue.get(), strlen(escapedValue.get()), avaValue);
 
+    const char16_t* params[2];
     params[0] = type.get();
-    params[1] = avavalue.get();
+    params[1] = avaValue.get();
+    nsAutoString temp;
     PIPBundleFormatStringFromName("AVATemplate", params, 2, temp);
     finalString += temp + NS_LITERAL_STRING("\n");
   }
@@ -852,8 +880,13 @@ ProcessIA5String(const SECItem& extData,
     return NS_ERROR_FAILURE;
   }
 
-  text.AppendASCII(BitwiseCast<char*, unsigned char*>(item.data),
-                   AssertedCast<uint32_t>(item.len));
+  // Yes this is supposed to be ASCII and not UTF8, but this is just for display
+  // purposes.
+  nsAutoString utf16;
+  const char* str = BitwiseCast<char*, unsigned char*>(item.data);
+  uint32_t len = AssertedCast<uint32_t>(item.len);
+  LossyUTF8ToUTF16(str, len, utf16);
+  text.Append(utf16);
   return NS_OK;
 }
 
@@ -898,16 +931,20 @@ ProcessGeneralName(const UniquePLArenaPool& arena, CERTGeneralName* current,
       }
       ProcessRawBytes(&current->name.OthName.name, value);
       break;
-    case certRFC822Name:
+    case certRFC822Name: {
       GetPIPNSSBundleString("CertDumpRFC822Name", key);
-      value.AssignASCII((char*)current->name.other.data,
-                        current->name.other.len);
+      const char* str = reinterpret_cast<const char*>(current->name.other.data);
+      uint32_t len = current->name.other.len;
+      LossyUTF8ToUTF16(str, len, value);
       break;
-    case certDNSName:
+    }
+    case certDNSName: {
       GetPIPNSSBundleString("CertDumpDNSName", key);
-      value.AssignASCII((char*)current->name.other.data,
-                        current->name.other.len);
+      const char* str = reinterpret_cast<const char*>(current->name.other.data);
+      uint32_t len = current->name.other.len;
+      LossyUTF8ToUTF16(str, len, value);
       break;
+    }
     case certX400Address:
       GetPIPNSSBundleString("CertDumpX400Address", key);
       ProcessRawBytes(&current->name.other, value);
@@ -924,11 +961,13 @@ ProcessGeneralName(const UniquePLArenaPool& arena, CERTGeneralName* current,
       GetPIPNSSBundleString("CertDumpEDIPartyName", key);
       ProcessRawBytes(&current->name.other, value);
       break;
-    case certURI:
+    case certURI: {
       GetPIPNSSBundleString("CertDumpURI", key);
-      value.AssignASCII((char*)current->name.other.data,
-                        current->name.other.len);
+      const char* str = reinterpret_cast<const char*>(current->name.other.data);
+      uint32_t len = current->name.other.len;
+      LossyUTF8ToUTF16(str, len, value);
       break;
+    }
     case certIPAddress: {
       char buf[INET6_ADDRSTRLEN];
       PRStatus status = PR_FAILURE;
@@ -1091,11 +1130,15 @@ ProcessUserNotice(SECItem* derNotice, nsAString& text)
     switch (notice->noticeReference.organization.type) {
       case siAsciiString:
       case siVisibleString:
-      case siUTF8String:
-        text.Append(NS_ConvertUTF8toUTF16(
-          (const char*)notice->noticeReference.organization.data,
-          notice->noticeReference.organization.len));
+      case siUTF8String: {
+        const char* str = reinterpret_cast<const char*>(
+          notice->noticeReference.organization.data);
+        uint32_t len = notice->noticeReference.organization.len;
+        nsAutoString utf16;
+        LossyUTF8ToUTF16(str, len, utf16);
+        text.Append(utf16);
         break;
+      }
       case siBMPString:
         AppendBMPtoUTF16(arena,
                          notice->noticeReference.organization.data,
@@ -1125,10 +1168,15 @@ ProcessUserNotice(SECItem* derNotice, nsAString& text)
     switch (notice->displayText.type) {
       case siAsciiString:
       case siVisibleString:
-      case siUTF8String:
-        text.Append(NS_ConvertUTF8toUTF16((const char*)notice->displayText.data,
-                                          notice->displayText.len));
+      case siUTF8String: {
+        const char* str =
+          reinterpret_cast<const char*>(notice->displayText.data);
+        uint32_t len = notice->displayText.len;
+        nsAutoString utf16;
+        LossyUTF8ToUTF16(str, len, utf16);
+        text.Append(utf16);
         break;
+      }
       case siBMPString:
         AppendBMPtoUTF16(
           arena, notice->displayText.data, notice->displayText.len, text);

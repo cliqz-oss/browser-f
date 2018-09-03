@@ -4,10 +4,11 @@
 
 "use strict";
 
-const { PureComponent } = require("devtools/client/shared/vendor/react");
+const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const ReactDOM = require("devtools/client/shared/vendor/react-dom");
+
+const IndicationBar = createFactory(require("./IndicationBar"));
 
 class KeyframesProgressBar extends PureComponent {
   static get propTypes() {
@@ -27,15 +28,14 @@ class KeyframesProgressBar extends PureComponent {
     this.onCurrentTimeUpdated = this.onCurrentTimeUpdated.bind(this);
 
     this.state = {
-      // offset of the position for the progress bar
-      offset: 0,
+      // position for the progress bar
+      position: 0,
     };
   }
 
   componentDidMount() {
     const { addAnimationsCurrentTimeListener } = this.props;
 
-    this.element = ReactDOM.findDOMNode(this);
     this.setupAnimation(this.props);
     addAnimationsCurrentTimeListener(this.onCurrentTimeUpdated);
   }
@@ -51,7 +51,6 @@ class KeyframesProgressBar extends PureComponent {
     const { removeAnimationsCurrentTimeListener } = this.props;
 
     removeAnimationsCurrentTimeListener(this.onCurrentTimeUpdated);
-    this.element = null;
     this.simulatedAnimation = null;
   }
 
@@ -62,12 +61,17 @@ class KeyframesProgressBar extends PureComponent {
 
   updateOffset(currentTime, animation, timeScale) {
     const {
+      createdTime,
       playbackRate,
-      previousStartTime = 0,
     } = animation.state;
 
-    const time =
-      (timeScale.minStartTime + currentTime - previousStartTime) * playbackRate;
+    // If createdTime is not defined (which happens when connected to server older
+    // than FF62), use previousStartTime instead. See bug 1454392
+    const baseTime = typeof createdTime === "undefined"
+                       ? (animation.state.previousStartTime || 0)
+                       : createdTime;
+    const time = (timeScale.minStartTime + currentTime - baseTime) * playbackRate;
+
     if (isNaN(time)) {
       // Setting an invalid currentTime will throw so bail out if time is not a number for
       // any reason.
@@ -75,10 +79,9 @@ class KeyframesProgressBar extends PureComponent {
     }
 
     this.simulatedAnimation.currentTime = time;
-    const offset = this.element.offsetWidth *
-                   this.simulatedAnimation.effect.getComputedTiming().progress;
+    const position = this.simulatedAnimation.effect.getComputedTiming().progress;
 
-    this.setState({ offset });
+    this.setState({ position });
   }
 
   setupAnimation(props) {
@@ -99,18 +102,16 @@ class KeyframesProgressBar extends PureComponent {
   }
 
   render() {
-    const { offset } = this.state;
+    const { position } = this.state;
 
     return dom.div(
       {
-        className: "keyframes-progress-bar-area devtools-toolbar",
+        className: "keyframes-progress-bar-area",
       },
-      dom.div(
+      IndicationBar(
         {
           className: "keyframes-progress-bar",
-          style: {
-            transform: `translateX(${ offset }px)`,
-          },
+          position,
         }
       )
     );

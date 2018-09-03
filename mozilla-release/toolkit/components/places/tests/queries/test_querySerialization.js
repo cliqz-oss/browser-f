@@ -213,31 +213,32 @@ const querySwitches = [
   },
   // getFolders
   {
-    desc:    "nsINavHistoryQuery.getFolders",
+    desc:    "nsINavHistoryQuery.getParents",
     matches(aQuery1, aQuery2) {
-      var q1Folders = aQuery1.getFolders();
-      var q2Folders = aQuery2.getFolders();
-      if (q1Folders.length !== q2Folders.length)
+      var q1Parents = aQuery1.getParents();
+      var q2Parents = aQuery2.getParents();
+      if (q1Parents.length !== q2Parents.length)
         return false;
-      for (let i = 0; i < q1Folders.length; i++) {
-        if (!q2Folders.includes(q1Folders[i]))
+      for (let i = 0; i < q1Parents.length; i++) {
+        if (!q2Parents.includes(q1Parents[i]))
           return false;
       }
-      for (let i = 0; i < q2Folders.length; i++) {
-        if (!q1Folders.includes(q2Folders[i]))
+      for (let i = 0; i < q2Parents.length; i++) {
+        if (!q1Parents.includes(q2Parents[i]))
           return false;
       }
       return true;
     },
     runs: [
       function(aQuery, aQueryOptions) {
-        aQuery.setFolders([], 0);
+        aQuery.setParents([], 0);
       },
       function(aQuery, aQueryOptions) {
-        aQuery.setFolders([PlacesUtils.placesRootId], 1);
+        aQuery.setParents([PlacesUtils.bookmarks.rootGuid], 1);
       },
       function(aQuery, aQueryOptions) {
-        aQuery.setFolders([PlacesUtils.placesRootId, PlacesUtils.tagsFolderId], 2);
+        aQuery.setParents([PlacesUtils.bookmarks.rootGuid,
+                           PlacesUtils.bookmarks.tagsGuid], 2);
       }
     ]
   },
@@ -338,11 +339,6 @@ const queryOptionSwitches = [
     desc:    "nsINavHistoryQueryOptions.sortingMode",
     matches(aOptions1, aOptions2) {
       if (aOptions1.sortingMode === aOptions2.sortingMode) {
-        switch (aOptions1.sortingMode) {
-          case aOptions1.SORT_BY_ANNOTATION_ASCENDING:
-          case aOptions1.SORT_BY_ANNOTATION_DESCENDING:
-            return aOptions1.sortingAnnotation === aOptions2.sortingAnnotation;
-        }
         return true;
       }
       return false;
@@ -351,10 +347,6 @@ const queryOptionSwitches = [
       function(aQuery, aQueryOptions) {
         aQueryOptions.sortingMode = aQueryOptions.SORT_BY_DATE_ASCENDING;
       },
-      function(aQuery, aQueryOptions) {
-        aQueryOptions.sortingMode = aQueryOptions.SORT_BY_ANNOTATION_ASCENDING;
-        aQueryOptions.sortingAnnotation = "bookmarks/toolbarFolder";
-      }
     ]
   },
   // resultType

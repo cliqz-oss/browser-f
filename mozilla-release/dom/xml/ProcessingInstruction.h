@@ -9,20 +9,24 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/CharacterData.h"
-#include "nsIDOMNode.h"
 #include "nsAString.h"
+#include "nsStyleLinkElement.h"
+
+class nsIPrincipal;
+class nsIURI;
 
 namespace mozilla {
 namespace dom {
 
-class ProcessingInstruction : public CharacterData,
-                              public nsIDOMNode
+class ProcessingInstruction : public CharacterData
+                            , public nsStyleLinkElement
 {
 public:
   ProcessingInstruction(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                         const nsAString& aData);
 
-  // nsISupports
+  // nsISupports.  We need to declare QI, because nsStyleLinkElement
+  // has a pure-virtual QI.
   NS_DECL_ISUPPORTS_INHERITED
 
   virtual already_AddRefed<CharacterData>
@@ -33,8 +37,6 @@ public:
   virtual void List(FILE* out, int32_t aIndent) const override;
   virtual void DumpContent(FILE* out, int32_t aIndent, bool aDumpAll) const override;
 #endif
-
-  virtual nsIDOMNode* AsDOMNode() override { return this; }
 
   // WebIDL API
   void GetTarget(nsAString& aTarget)
@@ -60,6 +62,9 @@ protected:
   bool GetAttrValue(nsAtom *aName, nsAString& aValue);
 
   virtual JSObject* WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
+
+  // nsStyleLinkElement overrides, because we can't leave them pure virtual.
+  Maybe<SheetInfo> GetStyleSheetInfo() override;
 };
 
 } // namespace dom

@@ -16,13 +16,13 @@ const EMPTY_URL = (URL_ROOT + "service-workers/empty.html")
 add_task(async function() {
   await enableApplicationPanel();
 
-  let { panel, target } = await openNewTabAndApplicationPanel(SIMPLE_URL);
-  let doc = panel.panelWin.document;
+  const { panel, target } = await openNewTabAndApplicationPanel(SIMPLE_URL);
+  const doc = panel.panelWin.document;
 
   info("Wait until the service worker appears in the application panel");
   await waitUntil(() => getWorkerContainers(doc).length === 1);
 
-  let scopeEl = getWorkerContainers(doc)[0].querySelector(".service-worker-scope");
+  let scopeEl = getWorkerContainers(doc)[0].querySelector(".js-sw-scope");
   ok(scopeEl.textContent.startsWith("example.com"),
     "First service worker registration is displayed for the correct domain");
 
@@ -40,28 +40,9 @@ add_task(async function() {
   info("Wait until the service worker appears in the application panel");
   await waitUntil(() => getWorkerContainers(doc).length === 1);
 
-  scopeEl = getWorkerContainers(doc)[0].querySelector(".service-worker-scope");
+  scopeEl = getWorkerContainers(doc)[0].querySelector(".js-sw-scope");
   ok(scopeEl.textContent.startsWith("test1.example.com"),
     "Second service worker registration is displayed for the correct domain");
 
-  let unregisterWorkers = async function() {
-    while (getWorkerContainers(doc).length > 0) {
-      let count = getWorkerContainers(doc).length;
-
-      await waitUntil(() => getWorkerContainers(doc)[0]
-        .querySelector(".unregister-button"));
-
-      info("Click on the unregister button for the first service worker");
-      getWorkerContainers(doc)[0]
-        .querySelector(".unregister-button")
-        .click();
-
-      info("Wait until the service worker is removed from the application panel");
-      await waitUntil(() => getWorkerContainers(doc).length == count - 1);
-    }
-  };
-
-  await unregisterWorkers();
-  await navigate(target, SIMPLE_URL);
-  await unregisterWorkers();
+  await unregisterAllWorkers(target.client);
 });

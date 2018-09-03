@@ -42,7 +42,7 @@ function clearPendingCrashReports() {
   let entries = dir.directoryEntries;
 
   while (entries.hasMoreElements()) {
-    let entry = entries.getNext().QueryInterface(Ci.nsIFile);
+    let entry = entries.nextFile;
     if (entry.isFile()) {
       entry.remove(false);
     }
@@ -562,8 +562,8 @@ add_task(async function test_shutdown_while_not_showing() {
   UnsubmittedCrashHandler.uninit();
   Assert.throws(() => {
     UnsubmittedCrashHandler.prefs.getBoolPref("shutdownWhileShowing");
-  }, "We should have noticed that the notification had closed before " +
-     "uninitting.");
+  }, /NS_ERROR_UNEXPECTED/,
+     "We should have noticed that the notification had closed before uninitting.");
   UnsubmittedCrashHandler.init();
 
   clearPendingCrashReports();

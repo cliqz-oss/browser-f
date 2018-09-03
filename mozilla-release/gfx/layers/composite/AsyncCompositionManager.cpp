@@ -585,7 +585,7 @@ ServoAnimationValueToMatrix4x4(const RefPtr<RawServoAnimationValue>& aValue,
   Servo_AnimationValue_GetTransform(aValue, &list);
   // we expect all our transform data to arrive in device pixels
   Point3D transformOrigin = aTransformData.transformOrigin();
-  nsDisplayTransform::FrameTransformProperties props(Move(list),
+  nsDisplayTransform::FrameTransformProperties props(std::move(list),
                                                      transformOrigin);
 
   return nsDisplayTransform::GetResultingTransformMatrix(
@@ -658,7 +658,7 @@ ApplyAnimatedValue(Layer* aLayer,
       layerCompositor->SetShadowBaseTransform(transform);
       layerCompositor->SetShadowTransformSetByAnimation(true);
       aStorage->SetAnimatedValue(aLayer->GetCompositorAnimationsId(),
-                                 Move(transform), Move(frameTransform),
+                                 std::move(transform), std::move(frameTransform),
                                  transformData);
 
       layerCompositor->SetShadowOpacity(aLayer->GetOpacity());
@@ -673,7 +673,8 @@ ApplyAnimatedValue(Layer* aLayer,
 static bool
 SampleAnimations(Layer* aLayer,
                  CompositorAnimationStorage* aStorage,
-                 TimeStamp aTime)
+                 TimeStamp aPreviousFrameTime,
+                 TimeStamp aCurrentFrameTime)
 {
   bool isAnimating = false;
 
@@ -686,13 +687,17 @@ SampleAnimations(Layer* aLayer,
           return;
         }
         isAnimating = true;
+        AnimatedValue* previousValue =
+          aStorage->GetAnimatedValue(layer->GetCompositorAnimationsId());
         RefPtr<RawServoAnimationValue> animationValue =
           layer->GetBaseAnimationStyle();
         AnimationHelper::SampleResult sampleResult =
-          AnimationHelper::SampleAnimationForEachNode(aTime,
+          AnimationHelper::SampleAnimationForEachNode(aPreviousFrameTime,
+                                                      aCurrentFrameTime,
                                                       animations,
                                                       layer->GetAnimationData(),
-                                                      animationValue);
+                                                      animationValue,
+                                                      previousValue);
         switch (sampleResult) {
           case AnimationHelper::SampleResult::Sampled: {
             Animation& animation = animations.LastElement();
@@ -727,10 +732,8 @@ SampleAnimations(Layer* aLayer,
               case eCSSProperty_transform: {
                 MOZ_ASSERT(
                   layer->AsHostLayer()->GetShadowTransformSetByAnimation());
+                MOZ_ASSERT(previousValue);
 #ifdef DEBUG
-                AnimatedValue* transform =
-                  aStorage->GetAnimatedValue(layer->GetCompositorAnimationsId());
-
                 const TransformData& transformData =
                   animations[0].data().get_TransformData();
                 Matrix4x4 frameTransform =
@@ -740,15 +743,12 @@ SampleAnimations(Layer* aLayer,
                                                     layer,
                                                     transformData);
                 MOZ_ASSERT(
-                  transform->mTransform.mTransformInDevSpace.FuzzyEqualsMultiplicative(
+                  previousValue->mTransform.mTransformInDevSpace.FuzzyEqualsMultiplicative(
                   transformInDevice));
 #endif
                 // In the case of transform we have to set the unchanged
                 // transform value again becasue APZC might have modified the
                 // previous shadow base transform value.
-                AnimatedValue* previousValue =
-                  aStorage->GetAnimatedValue(layer->GetCompositorAnimationsId());
-                MOZ_ASSERT(previousValue);
                 HostLayer* layerCompositor = layer->AsHostLayer();
                 layerCompositor->SetShadowBaseTransform(
                   // FIXME: Bug 1459775: It seems possible that we somehow try
@@ -1285,15 +1285,11 @@ AsyncCompositionManager::TransformShadowTree(
   // First, compute and set the shadow transforms from OMT animations.
   // NB: we must sample animations *before* sampling pan/zoom
   // transforms.
-  // Use a previous vsync time to make main thread animations and compositor
-  // more in sync with each other.
-  // On the initial frame we use aVsyncTimestamp here so the timestamp on the
-  // second frame are the same as the initial frame, but it does not matter.
   bool wantNextFrame =
     SampleAnimations(root,
                      storage,
-                     !mPreviousFrameTimeStamp.IsNull() ?
-                       mPreviousFrameTimeStamp : aCurrentFrame);
+                     mPreviousFrameTimeStamp,
+                     aCurrentFrame);
 
   if (!wantNextFrame) {
     // Clean up the CompositorAnimationStorage because

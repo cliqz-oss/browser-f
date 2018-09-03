@@ -16,7 +16,7 @@ using namespace mozilla::safebrowsing;
 template<typename Function>
 void RunTestInNewThread(Function&& aFunction) {
   nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-    "RunTestInNewThread", mozilla::Forward<Function>(aFunction));
+    "RunTestInNewThread", std::forward<Function>(aFunction));
   nsCOMPtr<nsIThread> testingThread;
   nsresult rv =
     NS_NewNamedThread("Testing Thread", getter_AddRefs(testingThread), r);
@@ -24,8 +24,8 @@ void RunTestInNewThread(Function&& aFunction) {
   testingThread->Shutdown();
 }
 
-nsresult SyncApplyUpdates(Classifier* aClassifier,
-                          nsTArray<TableUpdate*>* aUpdates)
+nsresult SyncApplyUpdates(RefPtr<Classifier> aClassifier,
+                          TableUpdateArray& aUpdates)
 {
   // We need to spin a new thread specifically because the callback
   // will be on the caller thread. If we call Classifier::AsyncApplyUpdates
@@ -84,12 +84,12 @@ GetFile(const nsTArray<nsString>& path)
   return file.forget();
 }
 
-void ApplyUpdate(nsTArray<TableUpdate*>& updates)
+void ApplyUpdate(TableUpdateArray& updates)
 {
   nsCOMPtr<nsIFile> file;
   NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR, getter_AddRefs(file));
 
-  UniquePtr<Classifier> classifier(new Classifier());
+  RefPtr<Classifier> classifier = new Classifier();
   classifier->Open(*file);
 
   {
@@ -102,12 +102,12 @@ void ApplyUpdate(nsTArray<TableUpdate*>& updates)
       ASSERT_TRUE(NS_SUCCEEDED(rv));
   }
 
-  SyncApplyUpdates(classifier.get(), &updates);
+  SyncApplyUpdates(classifier, updates);
 }
 
 void ApplyUpdate(TableUpdate* update)
 {
-  nsTArray<TableUpdate*> updates = { update };
+  TableUpdateArray updates = { update };
   ApplyUpdate(updates);
 }
 
@@ -182,7 +182,7 @@ BuildCache(LookupCacheV4* cache, const _PrefixArray& prefixArray)
 }
 
 template<typename T>
-UniquePtr<T>
+RefPtr<T>
 SetupLookupCache(const _PrefixArray& prefixArray)
 {
   nsCOMPtr<nsIFile> file;
@@ -190,12 +190,12 @@ SetupLookupCache(const _PrefixArray& prefixArray)
 
   file->AppendNative(GTEST_SAFEBROWSING_DIR);
 
-  UniquePtr<T> cache = MakeUnique<T>(GTEST_TABLE, EmptyCString(), file);
+  RefPtr<T> cache = new T(GTEST_TABLE, EmptyCString(), file);
   nsresult rv = cache->Init();
   EXPECT_EQ(rv, NS_OK);
 
-  rv = BuildCache(cache.get(), prefixArray);
+  rv = BuildCache(cache, prefixArray);
   EXPECT_EQ(rv, NS_OK);
 
-  return Move(cache);
+  return cache;
 }

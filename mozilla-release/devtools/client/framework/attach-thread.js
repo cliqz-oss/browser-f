@@ -13,12 +13,14 @@ const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties"
 function handleThreadState(toolbox, event, packet) {
   // Suppress interrupted events by default because the thread is
   // paused/resumed a lot for various actions.
-  if (event !== "paused" || packet.why.type !== "interrupted") {
-    // TODO: Bug 1225492, we continue emitting events on the target
-    // like we used to, but we should emit these only on the
-    // threadClient now.
-    toolbox.target.emit("thread-" + event);
+  if (event === "paused" && packet.why.type === "interrupted") {
+    return;
   }
+
+  // TODO: Bug 1225492, we continue emitting events on the target
+  // like we used to, but we should emit these only on the
+  // threadClient now.
+  toolbox.target.emit("thread-" + event);
 
   if (event === "paused") {
     toolbox.highlightTool("jsdebugger");
@@ -35,10 +37,10 @@ function handleThreadState(toolbox, event, packet) {
 }
 
 function attachThread(toolbox) {
-  let deferred = defer();
+  const deferred = defer();
 
-  let target = toolbox.target;
-  let { form: { chromeDebugger, actor } } = target;
+  const target = toolbox.target;
+  const { form: { chromeDebugger, actor } } = target;
 
   // Sourcemaps are always turned off when using the new debugger
   // frontend. This is because it does sourcemapping on the
@@ -54,9 +56,9 @@ function attachThread(toolbox) {
     ignoreFrameEnvironment = true;
   }
 
-  let threadOptions = { useSourceMaps, autoBlackBox, ignoreFrameEnvironment };
+  const threadOptions = { useSourceMaps, autoBlackBox, ignoreFrameEnvironment };
 
-  let handleResponse = (res, threadClient) => {
+  const handleResponse = ([res, threadClient]) => {
     if (res.error) {
       deferred.reject(new Error("Couldn't attach to thread: " + res.error));
       return;
@@ -94,17 +96,17 @@ function attachThread(toolbox) {
     });
   };
 
-  if (target.isTabActor) {
+  if (target.isBrowsingContext) {
     // Attaching a tab, a browser process, or a WebExtensions add-on.
-    target.activeTab.attachThread(threadOptions, handleResponse);
+    target.activeTab.attachThread(threadOptions).then(handleResponse);
   } else if (target.isAddon) {
     // Attaching a legacy addon.
-    target.client.attachAddon(actor, res => {
-      target.client.attachThread(res.threadActor, handleResponse);
+    target.client.attachAddon(actor).then(([res]) => {
+      target.client.attachThread(res.threadActor).then(handleResponse);
     });
   } else {
     // Attaching an old browser debugger or a content process.
-    target.client.attachThread(chromeDebugger, handleResponse);
+    target.client.attachThread(chromeDebugger).then(handleResponse);
   }
 
   return deferred.promise;

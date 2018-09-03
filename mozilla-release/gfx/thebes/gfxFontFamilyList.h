@@ -23,7 +23,7 @@ namespace mozilla {
  * between unquoted and quoted names for serializaiton
  */ 
 
-enum FontFamilyType : uint32_t {
+enum FontFamilyType : uint8_t {
   eFamily_none = 0,  // used when finding generics
 
   // explicitly named font family (e.g. Helvetica)
@@ -199,7 +199,7 @@ public:
     }
 
     explicit SharedFontList(nsTArray<FontFamilyName>&& aNames)
-        : mNames(Move(aNames))
+        : mNames(std::move(aNames))
     {
     }
 
@@ -281,7 +281,7 @@ public:
     }
 
     explicit FontFamilyList(nsTArray<FontFamilyName>&& aNames)
-        : mFontlist(MakeNotNull<SharedFontList*>(Move(aNames)))
+        : mFontlist(MakeNotNull<SharedFontList*>(std::move(aNames)))
     {
     }
 
@@ -299,7 +299,7 @@ public:
 
     void SetFontlist(nsTArray<FontFamilyName>&& aNames)
     {
-        mFontlist = MakeNotNull<SharedFontList*>(Move(aNames));
+        mFontlist = MakeNotNull<SharedFontList*>(std::move(aNames));
     }
 
     void SetFontlist(NotNull<SharedFontList*> aFontlist)
@@ -360,7 +360,7 @@ public:
                     names.AppendElements(mFontlist->mNames);
                     names.RemoveElementAt(i);
                     names.InsertElementAt(0, name);
-                    SetFontlist(Move(names));
+                    SetFontlist(std::move(names));
                 }
                 return true;
             }
@@ -372,7 +372,7 @@ public:
         nsTArray<FontFamilyName> names;
         names.AppendElements(mFontlist->mNames);
         names.InsertElementAt(0, FontFamilyName(aType));
-        SetFontlist(Move(names));
+        SetFontlist(std::move(names));
     }
 
     void ToString(nsAString& aFamilyList,

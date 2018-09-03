@@ -8,6 +8,7 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Assertions.h"
 #include "nsError.h"
+#include <iostream>
 
 
 #include "signaling/src/sdp/SdpErrorHolder.h"
@@ -23,11 +24,11 @@ namespace mozilla
 {
 
 RsdparsaSdp::RsdparsaSdp(RsdparsaSessionHandle session, const SdpOrigin& origin)
-  : mSession(Move(session))
+  : mSession(std::move(session))
   , mOrigin(origin)
 {
   RsdparsaSessionHandle attributeSession(sdp_new_reference(mSession.get()));
-  mAttributeList.reset(new RsdparsaSdpAttributeList(Move(attributeSession)));
+  mAttributeList.reset(new RsdparsaSdpAttributeList(std::move(attributeSession)));
 
   size_t section_count = sdp_media_section_count(mSession.get());
   for (size_t level = 0; level < section_count; level++) {
@@ -41,7 +42,7 @@ RsdparsaSdp::RsdparsaSdp(RsdparsaSessionHandle session, const SdpOrigin& origin)
     RsdparsaSessionHandle newSession(sdp_new_reference(mSession.get()));
     RsdparsaSdpMediaSection* sdpMediaSection;
     sdpMediaSection = new RsdparsaSdpMediaSection(level,
-                                                  Move(newSession),
+                                                  std::move(newSession),
                                                   mediaSection,
                                                   mAttributeList.get());
     mMediaSections.values.push_back(sdpMediaSection);
@@ -85,8 +86,28 @@ RsdparsaSdp::AddMediaSection(SdpMediaSection::MediaType mediaType,
                              SdpMediaSection::Protocol protocol,
                              sdp::AddrType addrType, const std::string& addr)
 {
-  //TODO: See Bug 1436080
-  MOZ_CRASH("Method not implemented");
+  StringView rustAddr{addr.c_str(),addr.size()};
+  auto nr = sdp_add_media_section(mSession.get(),mediaType,dir,port,
+                                                 protocol,addrType,rustAddr);
+
+  if (NS_SUCCEEDED(nr)) {
+    std::cout << "Hello World" << std::endl;
+    size_t level = mMediaSections.values.size();
+    RsdparsaSessionHandle newSessHandle(sdp_new_reference(mSession.get()));
+
+    auto rustMediaSection = sdp_get_media_section(mSession.get(), level);
+    auto mediaSection = new RsdparsaSdpMediaSection(level,
+                                                    std::move(newSessHandle),
+                                                    rustMediaSection,
+                                                    mAttributeList.get());
+    mMediaSections.values.push_back(mediaSection);
+
+    return *mediaSection;
+  } else {
+    // Return the last media section if the construction of this one fails
+    return GetMediaSection(mMediaSections.values.size()-1);
+  }
+
 }
 
 void

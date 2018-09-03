@@ -8,10 +8,10 @@
 
 #include "nsITreeBoxObject.h"
 #include "nsITreeView.h"
-#include "nsITreeColumns.h"
 #include "XULListboxAccessible.h"
 
 class nsTreeBodyFrame;
+class nsTreeColumn;
 
 namespace mozilla {
 namespace a11y {
@@ -40,15 +40,15 @@ public:
 
   // Accessible
   virtual void Shutdown() override;
-  virtual void Value(nsString& aValue) override;
-  virtual a11y::role NativeRole() override;
-  virtual uint64_t NativeState() override;
+  virtual void Value(nsString& aValue) const override;
+  virtual a11y::role NativeRole() const override;
+  virtual uint64_t NativeState() const override;
   virtual Accessible* ChildAtPoint(int32_t aX, int32_t aY,
                                    EWhichChildAtPoint aWhichChild) override;
 
   virtual Accessible* GetChildAt(uint32_t aIndex) const override;
   virtual uint32_t ChildCount() const override;
-  virtual Relation RelationByType(RelationType aType) override;
+  virtual Relation RelationByType(RelationType aType) const override;
 
   // SelectAccessible
   virtual void SelectedItems(nsTArray<Accessible*>* aItems) override;
@@ -64,8 +64,8 @@ public:
   virtual bool IsWidget() const override;
   virtual bool IsActiveWidget() const override;
   virtual bool AreItemsOperable() const override;
-  virtual Accessible* CurrentItem() override;
-  virtual void SetCurrentItem(Accessible* aItem) override;
+  virtual Accessible* CurrentItem() const override;
+  virtual void SetCurrentItem(const Accessible* aItem) override;
 
   virtual Accessible* ContainerWidget() const override;
 
@@ -149,18 +149,18 @@ public:
   virtual nsRect BoundsInAppUnits() const override;
   virtual nsIntRect BoundsInCSSPixels() const override;
   virtual GroupPos GroupPosition() override;
-  virtual uint64_t NativeState() override;
+  virtual uint64_t NativeState() const override;
   virtual uint64_t NativeInteractiveState() const override;
   virtual int32_t IndexInParent() const override;
-  virtual Relation RelationByType(RelationType aType) override;
+  virtual Relation RelationByType(RelationType aType) const override;
   virtual Accessible* FocusedChild() override;
   virtual void SetSelected(bool aSelect) override;
-  virtual void TakeFocus() override;
+  virtual void TakeFocus() const override;
 
   // ActionAccessible
-  virtual uint8_t ActionCount() override;
+  virtual uint8_t ActionCount() const override;
   virtual void ActionNameAt(uint8_t aIndex, nsAString& aName) override;
-  virtual bool DoAction(uint8_t aIndex) override;
+  virtual bool DoAction(uint8_t aIndex) const override;
 
   // Widgets
   virtual Accessible* ContainerWidget() const override;
@@ -177,7 +177,7 @@ public:
    * Return cell accessible for the given column. If XUL tree accessible is not
    * accessible table then return null.
    */
-  virtual XULTreeGridCellAccessible* GetCellAccessible(nsITreeColumn* aColumn) const
+  virtual XULTreeGridCellAccessible* GetCellAccessible(nsTreeColumn* aColumn) const
     { return nullptr; }
 
   /**
@@ -191,7 +191,8 @@ protected:
   enum { eAction_Click = 0, eAction_Expand = 1 };
 
   // Accessible
-  virtual void DispatchClickEvent(nsIContent *aContent, uint32_t aActionIndex) override;
+  virtual void DispatchClickEvent(nsIContent *aContent,
+                                  uint32_t aActionIndex) const override;
   virtual Accessible* GetSiblingAtOffset(int32_t aOffset,
                                          nsresult *aError = nullptr) const override;
 
@@ -205,7 +206,7 @@ protected:
   /**
    * Return name for cell at the given column.
    */
-  void GetCellName(nsITreeColumn* aColumn, nsAString& aName) const;
+  void GetCellName(nsTreeColumn* aColumn, nsAString& aName) const;
 
   nsCOMPtr<nsITreeBoxObject> mTree;
   nsITreeView* mTreeView;
@@ -233,8 +234,8 @@ public:
 
   // Accessible
   virtual void Shutdown() override;
-  virtual ENameValueFlag Name(nsString& aName) override;
-  virtual a11y::role NativeRole() override;
+  virtual ENameValueFlag Name(nsString& aName) const override;
+  virtual a11y::role NativeRole() const override;
 
   // XULTreeItemAccessibleBase
   virtual void RowInvalidated(int32_t aStartColIdx, int32_t aEndColIdx) override;
@@ -243,7 +244,7 @@ protected:
   virtual ~XULTreeItemAccessible();
 
   // XULTreeItemAccessible
-  nsCOMPtr<nsITreeColumn> mColumn;
+  RefPtr<nsTreeColumn> mColumn;
   nsString mCachedName;
 };
 

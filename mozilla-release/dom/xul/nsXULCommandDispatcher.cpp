@@ -13,7 +13,6 @@
 #include "nsIContent.h"
 #include "nsFocusManager.h"
 #include "nsIControllers.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMWindow.h"
 #include "nsIDocument.h"
 #include "nsPresContext.h"
@@ -21,7 +20,6 @@
 #include "nsIScriptGlobalObject.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowRoot.h"
-#include "nsRDFCID.h"
 #include "nsXULCommandDispatcher.h"
 #include "mozilla/Logging.h"
 #include "nsContentUtils.h"
@@ -243,7 +241,7 @@ nsXULCommandDispatcher::AddCommandUpdater(Element* aElement,
                                           const nsAString& aEvents,
                                           const nsAString& aTargets)
 {
-  NS_PRECONDITION(aElement != nullptr, "null ptr");
+  MOZ_ASSERT(aElement != nullptr, "null ptr");
   if (! aElement)
     return NS_ERROR_NULL_POINTER;
 
@@ -311,7 +309,7 @@ nsXULCommandDispatcher::AddCommandUpdater(Element* aElement,
 NS_IMETHODIMP
 nsXULCommandDispatcher::RemoveCommandUpdater(Element* aElement)
 {
-  NS_PRECONDITION(aElement != nullptr, "null ptr");
+  MOZ_ASSERT(aElement != nullptr, "null ptr");
   if (! aElement)
     return NS_ERROR_NULL_POINTER;
 

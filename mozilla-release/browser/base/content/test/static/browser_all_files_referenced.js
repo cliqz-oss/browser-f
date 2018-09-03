@@ -12,9 +12,9 @@ var isDevtools = SimpleTest.harnessParameters.subsuite == "devtools";
 
 var gExceptionPaths = [
   "chrome://browser/content/defaultthemes/",
-  "chrome://browser/locale/searchplugins/",
-  "resource://app/defaults/blocklists/",
-  "resource://app/defaults/pinning/",
+  "resource://app/defaults/settings/blocklists/",
+  "resource://app/defaults/settings/main/",
+  "resource://app/defaults/settings/pinning/",
   "resource://app/defaults/preferences/",
   "resource://gre/modules/commonjs/",
   "resource://gre/defaults/pref/",
@@ -35,6 +35,9 @@ var gExceptionPaths = [
   // Exclude all the metadata paths under the country metadata folder because these
   // paths will be concatenated in FormAutofillUtils.jsm based on different country/region.
   "resource://formautofill/addressmetadata/",
+
+  // Exclude all search-plugins because they aren't referenced by filename
+  "resource://search-plugins/",
 ];
 
 // These are not part of the omni.ja file, so we find them only when running
@@ -152,6 +155,11 @@ var whitelist = [
   {file: "resource://gre/modules/PerformanceWatcher.jsm"},
   // Bug 1378173 (warning: still used by devtools)
   {file: "resource://gre/modules/Promise.jsm"},
+  // Still used by WebIDE, which is going away but not entirely gone.
+  {file: "resource://gre/modules/ZipUtils.jsm"},
+  // Bug 1463225 (on Mac this is only used by a test)
+  {file: "chrome://global/content/bindings/toolbar.xml",
+   platforms: ["macosx"]},
 ];
 
 whitelist = new Set(whitelist.filter(item =>
@@ -161,9 +169,6 @@ whitelist = new Set(whitelist.filter(item =>
 ).map(item => item.file));
 
 const ignorableWhitelist = new Set([
-  // The communicator.css file is kept for add-on backward compat.
-  "chrome://communicator/skin/communicator.css",
-
   // These 2 files are unreferenced only when building without the crash
   // reporter (eg. Linux x64 asan builds on treeherder)
   "chrome://global/locale/crashes.dtd",

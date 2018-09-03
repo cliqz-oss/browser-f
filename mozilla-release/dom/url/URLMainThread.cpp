@@ -8,43 +8,15 @@
 
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Blob.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/Unused.h"
 #include "nsContentUtils.h"
-#include "nsHostObjectProtocolHandler.h"
 #include "nsIURL.h"
 #include "nsIURIMutator.h"
 #include "nsNetUtil.h"
 
 namespace mozilla {
 namespace dom {
-
-namespace {
-
-template<typename T>
-void
-CreateObjectURLInternal(const GlobalObject& aGlobal, T aObject,
-                        nsAString& aResult, ErrorResult& aRv)
-{
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
-  if (NS_WARN_IF(!global)) {
-    aRv.Throw(NS_ERROR_FAILURE);
-    return;
-  }
-
-  nsCOMPtr<nsIPrincipal> principal =
-    nsContentUtils::ObjectPrincipal(aGlobal.Get());
-
-  nsAutoCString url;
-  aRv = nsHostObjectProtocolHandler::AddDataEntry(aObject, principal, url);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return;
-  }
-
-  global->RegisterHostObjectURI(url);
-  CopyASCIItoUTF16(url, aResult);
-}
-
-} // anonymous namespace
 
 /* static */ already_AddRefed<URLMainThread>
 URLMainThread::Constructor(const GlobalObject& aGlobal, const nsAString& aURL,
@@ -100,16 +72,24 @@ URLMainThread::CreateObjectURL(const GlobalObject& aGlobal, Blob& aBlob,
                                nsAString& aResult, ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  CreateObjectURLInternal(aGlobal, aBlob.Impl(), aResult, aRv);
-}
 
-/* static */ void
-URLMainThread::CreateObjectURL(const GlobalObject& aGlobal,
-                               DOMMediaStream& aStream,
-                               nsAString& aResult, ErrorResult& aRv)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  CreateObjectURLInternal(aGlobal, &aStream, aResult, aRv);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (NS_WARN_IF(!global)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return;
+  }
+
+  nsCOMPtr<nsIPrincipal> principal =
+    nsContentUtils::ObjectPrincipal(aGlobal.Get());
+
+  nsAutoCString url;
+  aRv = BlobURLProtocolHandler::AddDataEntry(aBlob.Impl(), principal, url);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return;
+  }
+
+  global->RegisterHostObjectURI(url);
+  CopyASCIItoUTF16(url, aResult);
 }
 
 /* static */ void
@@ -123,14 +103,14 @@ URLMainThread::CreateObjectURL(const GlobalObject& aGlobal,
     nsContentUtils::ObjectPrincipal(aGlobal.Get());
 
   nsAutoCString url;
-  aRv = nsHostObjectProtocolHandler::AddDataEntry(&aSource, principal, url);
+  aRv = BlobURLProtocolHandler::AddDataEntry(&aSource, principal, url);
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
 
   nsCOMPtr<nsIRunnable> revocation =
     NS_NewRunnableFunction("dom::URLMainThread::CreateObjectURL", [url] {
-      nsHostObjectProtocolHandler::RemoveDataEntry(url);
+      BlobURLProtocolHandler::RemoveDataEntry(url);
     });
 
   nsContentUtils::RunInStableState(revocation.forget());
@@ -154,11 +134,11 @@ URLMainThread::RevokeObjectURL(const GlobalObject& aGlobal,
   NS_LossyConvertUTF16toASCII asciiurl(aURL);
 
   nsIPrincipal* urlPrincipal =
-    nsHostObjectProtocolHandler::GetDataEntryPrincipal(asciiurl);
+    BlobURLProtocolHandler::GetDataEntryPrincipal(asciiurl);
 
   if (urlPrincipal && principal->Subsumes(urlPrincipal)) {
     global->UnregisterHostObjectURI(asciiurl);
-    nsHostObjectProtocolHandler::RemoveDataEntry(asciiurl);
+    BlobURLProtocolHandler::RemoveDataEntry(asciiurl);
   }
 }
 
@@ -179,7 +159,7 @@ URLMainThread::IsValidURL(const GlobalObject& aGlobal, const nsAString& aURL,
 {
   MOZ_ASSERT(NS_IsMainThread());
   NS_LossyConvertUTF16toASCII asciiurl(aURL);
-  return nsHostObjectProtocolHandler::HasDataEntry(asciiurl);
+  return BlobURLProtocolHandler::HasDataEntry(asciiurl);
 }
 
 void

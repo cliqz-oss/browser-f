@@ -12,8 +12,8 @@
 #include "jsmath.h"
 
 #include "jit/CodeGenerator.h"
-#include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "jit/Linker.h"
 #include "jit/RangeAnalysis.h"
 #include "vm/TraceLogging.h"
@@ -2354,6 +2354,58 @@ CodeGenerator::visitRoundF(LRoundF* lir)
     }
 
     masm.bind(&end);
+}
+
+void
+CodeGenerator::visitTrunc(LTrunc* lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label bailout, lessThanMinusOne;
+
+    // Bail on ]-1; -0] range
+    {
+        ScratchDoubleScope scratch(masm);
+        masm.loadConstantDouble(-1, scratch);
+        masm.branchDouble(Assembler::DoubleLessThanOrEqualOrUnordered, input,
+                          scratch, &lessThanMinusOne);
+    }
+
+    // Test for remaining values with the sign bit set, i.e. ]-1; -0]
+    masm.vmovmskpd(input, output);
+    masm.branchTest32(Assembler::NonZero, output, Imm32(1), &bailout);
+    bailoutFrom(&bailout, lir->snapshot());
+
+    // x <= -1 or x >= +0, truncation is the way to go.
+    masm.bind(&lessThanMinusOne);
+    bailoutCvttsd2si(input, output, lir->snapshot());
+}
+
+void
+CodeGenerator::visitTruncF(LTruncF* lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label bailout, lessThanMinusOne;
+
+    // Bail on ]-1; -0] range
+    {
+        ScratchFloat32Scope scratch(masm);
+        masm.loadConstantFloat32(-1.f, scratch);
+        masm.branchFloat(Assembler::DoubleLessThanOrEqualOrUnordered, input,
+                         scratch, &lessThanMinusOne);
+    }
+
+    // Test for remaining values with the sign bit set, i.e. ]-1; -0]
+    masm.vmovmskps(input, output);
+    masm.branchTest32(Assembler::NonZero, output, Imm32(1), &bailout);
+    bailoutFrom(&bailout, lir->snapshot());
+
+    // x <= -1 or x >= +0, truncation is the way to go.
+    masm.bind(&lessThanMinusOne);
+    bailoutCvttss2si(input, output, lir->snapshot());
 }
 
 void

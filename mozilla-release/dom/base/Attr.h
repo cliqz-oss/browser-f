@@ -13,7 +13,6 @@
 
 #include "mozilla/Attributes.h"
 #include "nsIAttribute.h"
-#include "nsIDOMNode.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
@@ -27,8 +26,7 @@ namespace dom {
 
 // Attribute helper class used to wrap up an attribute with a dom
 // object that implements the DOM Attr interface.
-class Attr final : public nsIAttribute,
-                   public nsIDOMNode
+class Attr final : public nsIAttribute
 {
   virtual ~Attr() {}
 
@@ -65,9 +63,6 @@ public:
   virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const override;
   virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
                                      bool aNotify) override;
-  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
-                                            bool aNotify) override;
-  virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
   virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
@@ -78,8 +73,6 @@ public:
 
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Attr,
                                                                    nsIAttribute)
-
-  virtual nsIDOMNode* AsDOMNode() override { return this; }
 
   // WebIDL
   virtual JSObject* WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;

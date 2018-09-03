@@ -68,6 +68,17 @@ public:
 
 /**
  * An abstract base class to be implemented by callers wanting to be notified
+ * when the observing refresh driver updated mMostRecentRefresh due to active
+ * timer changes. Callers must ensure an observer is removed before it is
+ * destroyed.
+ */
+class nsATimerAdjustmentObserver {
+public:
+  virtual void NotifyTimerAdjusted(mozilla::TimeStamp aTime) = 0;
+};
+
+/**
+ * An abstract base class to be implemented by callers wanting to be notified
  * that a refresh has occurred. Callers must ensure an observer is removed
  * before it is destroyed.
  */
@@ -132,6 +143,12 @@ public:
                           mozilla::FlushType aFlushType);
   bool RemoveRefreshObserver(nsARefreshObserver *aObserver,
                              mozilla::FlushType aFlushType);
+  /**
+   * Add / remove an observer wants to know the time when the refresh driver
+   * updated the most recent refresh time due to its active timer changes.
+   */
+  bool AddTimerAdjustmentObserver(nsATimerAdjustmentObserver *aObserver);
+  bool RemoveTimerAdjustmentObserver(nsATimerAdjustmentObserver *aObserver);
 
   void PostScrollEvent(mozilla::Runnable* aScrollEvent);
   void DispatchScrollEvents();
@@ -393,11 +410,6 @@ public:
                                             uint32_t aDelay);
   static void CancelIdleRunnable(nsIRunnable* aRunnable);
 
-  bool SkippedPaints() const
-  {
-    return mSkippedPaints;
-  }
-
   void NotifyDOMContentLoaded();
 
 private:
@@ -430,14 +442,14 @@ private:
   void StopTimer();
 
   bool HasObservers() const;
+  // Note: This should only be called in the dtor of nsRefreshDriver.
   uint32_t ObserverCount() const;
   bool HasImageRequests() const;
   ObserverArray& ArrayFor(mozilla::FlushType aFlushType);
   // Trigger a refresh immediately, if haven't been disconnected or frozen.
   void DoRefresh();
 
-  double GetRefreshTimerInterval() const;
-  double GetRegularTimerInterval(bool *outIsDefault = nullptr) const;
+  double GetRegularTimerInterval() const;
   static double GetThrottledTimerInterval();
 
   static mozilla::TimeDuration GetMinRecomputeVisibilityInterval();
@@ -506,13 +518,18 @@ private:
   // The number is doubled every time the threshold is hit.
   uint64_t mWarningThreshold;
   mozilla::TimeStamp mMostRecentRefresh;
-  mozilla::TimeStamp mMostRecentTick;
   mozilla::TimeStamp mTickStart;
   mozilla::TimeStamp mNextThrottledFrameRequestTick;
   mozilla::TimeStamp mNextRecomputeVisibilityTick;
 
   // separate arrays for each flush type we support
   ObserverArray mObservers[4];
+  // These observers should NOT be included in HasObservers() since that method
+  // is used to determine whether or not to stop the timer, or restore it when
+  // thawing the refresh driver. On the other hand these observers are intended
+  // to be called when the timer is re-started and should not influence its
+  // starting or stopping.
+  nsTObserverArray<nsATimerAdjustmentObserver*> mTimerAdjustmentObservers;
   RequestTable mRequests;
   ImageStartTable mStartTable;
   AutoTArray<nsCOMPtr<nsIRunnable>, 16> mEarlyRunners;

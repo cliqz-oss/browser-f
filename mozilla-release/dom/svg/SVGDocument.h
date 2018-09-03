@@ -22,20 +22,13 @@ class SVGForeignObjectElement;
 
 class SVGDocument final : public XMLDocument
 {
-  friend class SVGForeignObjectElement; // To call EnsureNonSVGUserAgentStyleSheetsLoaded
-
 public:
   SVGDocument()
     : XMLDocument("image/svg+xml")
-    , mHasLoadedNonSVGUserAgentStyleSheets(false)
   {
     mType = eSVG;
   }
 
-  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
-                                     bool aNotify) override;
-  virtual nsresult InsertChildAt_Deprecated(nsIContent* aKid, uint32_t aIndex,
-                                            bool aNotify) override;
   virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                          bool aPreallocateChildren) const override;
 
@@ -50,9 +43,6 @@ public:
   }
 
 private:
-  void EnsureNonSVGUserAgentStyleSheetsLoaded();
-
-  bool mHasLoadedNonSVGUserAgentStyleSheets;
 
   // This is maintained by AutoSetRestoreSVGContextPaint.
   const SVGContextPaint* mCurrentContextPaint = nullptr;

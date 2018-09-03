@@ -67,7 +67,12 @@ public:
   const uint8_t *GetData() { return (const uint8_t *)(mData + mPos); };
 
 protected:
-  OutgoingMsg() = default;; // Use this for inheritance only
+  OutgoingMsg() // Use this for inheritance only
+    : mLength(0)
+    , mData(nullptr)
+    , mInfo(nullptr)
+    , mPos(0)
+  {};
   size_t mLength;
   const uint8_t *mData;
   struct sctp_sendv_spa *mInfo;
@@ -166,7 +171,7 @@ public:
   // Connect using a TransportFlow (DTLS) channel
   void SetEvenOdd();
   bool ConnectViaTransportFlow(TransportFlow *aFlow, uint16_t localport, uint16_t remoteport);
-  void CompleteConnect(TransportFlow *flow, TransportLayer::State state);
+  void CompleteConnect(TransportLayer *layer, TransportLayer::State state);
   void SetSignals();
 #endif
 
@@ -241,8 +246,8 @@ private:
 
 #ifdef SCTP_DTLS_SUPPORTED
   static void DTLSConnectThread(void *data);
-  int SendPacket(unsigned char data[], size_t len, bool release);
-  void SctpDtlsInput(TransportFlow *flow, const unsigned char *data, size_t len);
+  int SendPacket(nsAutoPtr<MediaPacket> packet);
+  void SctpDtlsInput(TransportLayer *layer, MediaPacket& packet);
   static int SctpDtlsOutput(void *addr, void *buffer, size_t length, uint8_t tos, uint8_t set_df);
 #endif
   DataChannel* FindChannelByStream(uint16_t stream);
@@ -334,6 +339,7 @@ private:
 
 #ifdef SCTP_DTLS_SUPPORTED
   RefPtr<TransportFlow> mTransportFlow;
+  TransportLayerDtls* mDtls;
   nsCOMPtr<nsIEventTarget> mSTS;
 #endif
   uint16_t mLocalPort; // Accessed from connect thread
@@ -381,6 +387,7 @@ public:
     , mPrPolicy(policy)
     , mPrValue(value)
     , mFlags(flags)
+    , mId(0)
     , mIsRecvBinary(false)
     , mBufferedThreshold(0) // default from spec
     , mMainThreadEventTarget(connection->GetNeckoTarget())
@@ -422,6 +429,10 @@ public:
   void SendBinaryStream(nsIInputStream *aBlob, ErrorResult& aRv);
 
   uint16_t GetType() { return mPrPolicy; }
+
+  dom::Nullable<uint16_t> GetMaxPacketLifeTime() const;
+
+  dom::Nullable<uint16_t> GetMaxRetransmits() const;
 
   bool GetOrdered() { return !(mFlags & DATA_CHANNEL_FLAGS_OUT_OF_ORDER_ALLOWED); }
 

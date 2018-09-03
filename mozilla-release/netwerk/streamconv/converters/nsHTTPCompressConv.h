@@ -61,8 +61,11 @@ public:
     : mTotalOut(0)
     , mStatus(NS_OK)
     , mBrotliStateIsStreamEnd(false)
+    , mRequest(nullptr)
+    , mContext(nullptr)
+    , mSourceOffset(0)
   {
-    BrotliDecoderStateInit(&mState);
+    BrotliDecoderStateInit(&mState, 0, 0, 0);
   }
   ~BrotliWrapper()
   {

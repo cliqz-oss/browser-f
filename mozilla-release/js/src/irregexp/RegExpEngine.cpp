@@ -30,6 +30,8 @@
 
 #include "irregexp/RegExpEngine.h"
 
+#include <utility>
+
 #include "gc/GC.h"
 #include "irregexp/NativeRegExpMacroAssembler.h"
 #include "irregexp/RegExpCharacters.h"
@@ -1053,7 +1055,7 @@ ChoiceNode::FilterLATIN1(int depth, bool ignore_case, bool unicode)
         }
     }
 
-    alternatives_ = Move(new_alternatives);
+    alternatives_ = std::move(new_alternatives);
     return this;
 }
 
@@ -1650,6 +1652,7 @@ RegExpCompiler::RegExpCompiler(JSContext* cx, LifoAlloc* alloc, int capture_coun
                                bool ignore_case, bool latin1, bool match_only, bool unicode)
   : next_register_(2 * (capture_count + 1)),
     recursion_depth_(0),
+    macro_assembler_(nullptr),
     ignore_case_(ignore_case),
     latin1_(latin1),
     match_only_(match_only),
@@ -2533,7 +2536,7 @@ BoyerMooreLookahead::EmitSkipInstructions(RegExpMacroAssembler* masm)
     jit::Label cont, again;
     masm->Bind(&again);
     masm->LoadCurrentCharacter(max_lookahead, &cont, true);
-    masm->CheckBitInTable(Move(boolean_skip_table), &cont);
+    masm->CheckBitInTable(std::move(boolean_skip_table), &cont);
     masm->AdvanceCurrentPosition(skip_distance);
     masm->JumpOrBacktrack(&again);
     masm->Bind(&cont);
@@ -2545,6 +2548,12 @@ bool
 RegExpCompiler::CheckOverRecursed()
 {
     if (!CheckRecursionLimitDontReport(cx())) {
+#ifdef JS_MORE_DETERMINISTIC
+        // We don't report overrecursion here, but we throw an exception later
+        // and this still affects differential testing. Mimic ReportOverRecursed
+        // (the fuzzers check for this particular string).
+        fprintf(stderr, "ReportOverRecursed called\n");
+#endif
         SetRegExpTooBig();
         return false;
     }
@@ -3325,7 +3334,7 @@ EmitUseLookupTable(RegExpMacroAssembler* masm,
     for (int i = 0; i < kSize; i++)
         ba[i] = templ[i];
 
-    masm->CheckBitInTable(Move(ba), on_bit_set);
+    masm->CheckBitInTable(std::move(ba), on_bit_set);
     if (on_bit_clear != fall_through)
         masm->JumpOrBacktrack(on_bit_clear);
 }

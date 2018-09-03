@@ -749,8 +749,7 @@ var ActionBarHandler = {
         ChromeUtils.getClassName(this._targetElement) === "HTMLTextAreaElement") {
       let flags = Ci.nsIDocumentEncoder.OutputPreformatted |
         Ci.nsIDocumentEncoder.OutputRaw;
-      return selection.QueryInterface(Ci.nsISelectionPrivate).
-        toStringWithFormat("text/plain", flags, 0);
+      return selection.toStringWithFormat("text/plain", flags, 0);
     }
 
     // Return explicitly selected text.
@@ -758,11 +757,23 @@ var ActionBarHandler = {
   },
 
   /**
-   * Provides the nsISelection for either an editor, or from the
+   * Tests whether a given element is editable.
+   */
+  _isElementEditable: function(element) {
+    if (!element) {
+      return false;
+    }
+    let elementClass = ChromeUtils.getClassName(element);
+    return elementClass === "HTMLInputElement" ||
+           elementClass === "HTMLTextAreaElement";
+  },
+
+  /**
+   * Provides the Selection for either an editor, or from the
    * default window.
    */
   _getSelection: function(element = this._targetElement, win = this._contentWindow) {
-    return (element instanceof Ci.nsIDOMNSEditableElement) ?
+    return this._isElementEditable(element) ?
       this._getEditor(element).selection :
       win.getSelection();
   },
@@ -771,8 +782,8 @@ var ActionBarHandler = {
    * Returns an nsEditor or nsHTMLEditor.
    */
   _getEditor: function(element = this._targetElement, win = this._contentWindow) {
-    if (element instanceof Ci.nsIDOMNSEditableElement) {
-      return element.QueryInterface(Ci.nsIDOMNSEditableElement).editor;
+    if (this._isElementEditable(element)) {
+      return element.editor;
     }
 
     return win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIWebNavigation).
@@ -784,7 +795,7 @@ var ActionBarHandler = {
    * Returns a selection controller.
    */
   _getSelectionController: function(element = this._targetElement, win = this._contentWindow) {
-    if (element instanceof Ci.nsIDOMNSEditableElement) {
+    if (this._isElementEditable(element)) {
       return this._getEditor(element, win).selectionController;
     }
 

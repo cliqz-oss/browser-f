@@ -43,7 +43,7 @@ XULMenuitemAccessible::
 }
 
 uint64_t
-XULMenuitemAccessible::NativeState()
+XULMenuitemAccessible::NativeState() const
 {
   uint64_t state = Accessible::NativeState();
 
@@ -133,7 +133,7 @@ XULMenuitemAccessible::NativeInteractiveState() const
 }
 
 ENameValueFlag
-XULMenuitemAccessible::NativeName(nsString& aName)
+XULMenuitemAccessible::NativeName(nsString& aName) const
 {
   mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::label, aName);
   return eNameOK;
@@ -242,7 +242,7 @@ XULMenuitemAccessible::KeyboardShortcut() const
 }
 
 role
-XULMenuitemAccessible::NativeRole()
+XULMenuitemAccessible::NativeRole() const
 {
   nsCOMPtr<nsIDOMXULContainerElement> xulContainer(do_QueryInterface(mContent));
   if (xulContainer)
@@ -269,7 +269,7 @@ XULMenuitemAccessible::GetLevelInternal()
 }
 
 bool
-XULMenuitemAccessible::DoAction(uint8_t index)
+XULMenuitemAccessible::DoAction(uint8_t index) const
 {
   if (index == eAction_Click) {   // default action
     DoCommand();
@@ -287,7 +287,7 @@ XULMenuitemAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
 }
 
 uint8_t
-XULMenuitemAccessible::ActionCount()
+XULMenuitemAccessible::ActionCount() const
 {
   return 1;
 }
@@ -354,7 +354,7 @@ XULMenuSeparatorAccessible::
 }
 
 uint64_t
-XULMenuSeparatorAccessible::NativeState()
+XULMenuSeparatorAccessible::NativeState() const
 {
   // Isn't focusable, but can be offscreen/invisible -- only copy those states
   return XULMenuitemAccessible::NativeState() &
@@ -362,19 +362,19 @@ XULMenuSeparatorAccessible::NativeState()
 }
 
 ENameValueFlag
-XULMenuSeparatorAccessible::NativeName(nsString& aName)
+XULMenuSeparatorAccessible::NativeName(nsString& aName) const
 {
   return eNameOK;
 }
 
 role
-XULMenuSeparatorAccessible::NativeRole()
+XULMenuSeparatorAccessible::NativeRole() const
 {
   return roles::SEPARATOR;
 }
 
 bool
-XULMenuSeparatorAccessible::DoAction(uint8_t index)
+XULMenuSeparatorAccessible::DoAction(uint8_t index) const
 {
   return false;
 }
@@ -386,7 +386,7 @@ XULMenuSeparatorAccessible::ActionNameAt(uint8_t aIndex, nsAString& aName)
 }
 
 uint8_t
-XULMenuSeparatorAccessible::ActionCount()
+XULMenuSeparatorAccessible::ActionCount() const
 {
   return 0;
 }
@@ -412,7 +412,7 @@ XULMenupopupAccessible::
 }
 
 uint64_t
-XULMenupopupAccessible::NativeState()
+XULMenupopupAccessible::NativeState() const
 {
   uint64_t state = Accessible::NativeState();
 
@@ -440,7 +440,7 @@ XULMenupopupAccessible::NativeState()
 }
 
 ENameValueFlag
-XULMenupopupAccessible::NativeName(nsString& aName)
+XULMenupopupAccessible::NativeName(nsString& aName) const
 {
   nsIContent* content = mContent;
   while (content && aName.IsEmpty()) {
@@ -454,7 +454,7 @@ XULMenupopupAccessible::NativeName(nsString& aName)
 }
 
 role
-XULMenupopupAccessible::NativeRole()
+XULMenupopupAccessible::NativeRole() const
 {
   // If accessible is not bound to the tree (this happens while children are
   // cached) return general role.
@@ -544,14 +544,14 @@ XULMenubarAccessible::
 }
 
 ENameValueFlag
-XULMenubarAccessible::NativeName(nsString& aName)
+XULMenubarAccessible::NativeName(nsString& aName) const
 {
   aName.AssignLiteral("Application");
   return eNameOK;
 }
 
 role
-XULMenubarAccessible::NativeRole()
+XULMenubarAccessible::NativeRole() const
 {
   return roles::MENUBAR;
 }
@@ -573,7 +573,7 @@ XULMenubarAccessible::AreItemsOperable() const
 }
 
 Accessible*
-XULMenubarAccessible::CurrentItem()
+XULMenubarAccessible::CurrentItem() const
 {
   nsMenuBarFrame* menuBarFrame = do_QueryFrame(GetFrame());
   if (menuBarFrame) {
@@ -587,7 +587,7 @@ XULMenubarAccessible::CurrentItem()
 }
 
 void
-XULMenubarAccessible::SetCurrentItem(Accessible* aItem)
+XULMenubarAccessible::SetCurrentItem(const Accessible* aItem)
 {
   NS_ERROR("XULMenubarAccessible::SetCurrentItem not implemented");
 }

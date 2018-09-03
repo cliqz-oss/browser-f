@@ -423,7 +423,7 @@ void nsDisplayTableCellBackground::Paint(nsDisplayListBuilder* aBuilder,
                                          gfxContext* aCtx)
 {
   ImgDrawResult result = static_cast<nsTableCellFrame*>(mFrame)->
-    PaintBackground(*aCtx, mVisibleRect, ToReferenceFrame(),
+    PaintBackground(*aCtx, GetPaintRect(), ToReferenceFrame(),
                     aBuilder->GetBackgroundPaintFlags());
 
   nsDisplayTableItemGeometry::UpdateDrawResult(this, result);
@@ -877,7 +877,7 @@ nsTableCellFrame::Reflow(nsPresContext*           aPresContext,
     availSize.BSize(wm) = 1;
   }
 
-  ReflowOutput kidSize(wm, aDesiredSize.mFlags);
+  ReflowOutput kidSize(wm);
   kidSize.ClearSize();
   SetPriorAvailISize(aReflowInput.AvailableISize());
   nsIFrame* firstKid = mFrames.FirstChild();

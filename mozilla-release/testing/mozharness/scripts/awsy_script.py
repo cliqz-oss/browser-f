@@ -17,11 +17,12 @@ import sys
 # load modules from parent dir
 sys.path.insert(1, os.path.dirname(sys.path[0]))
 
+import mozinfo
+
 from mozharness.base.script import PreScriptAction
 from mozharness.base.log import INFO, ERROR
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.base.vcs.vcsbase import MercurialScript
-from mozharness.mozilla.blob_upload import BlobUploadMixin, blobupload_config_options
 from mozharness.mozilla.tooltool import TooltoolMixin
 from mozharness.mozilla.structuredlog import StructuredOutputParser
 from mozharness.mozilla.testing.codecoverage import (
@@ -30,7 +31,7 @@ from mozharness.mozilla.testing.codecoverage import (
 )
 
 
-class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCoverageMixin):
+class AWSY(TestingMixin, MercurialScript, TooltoolMixin, CodeCoverageMixin):
     config_options = [
         [["--e10s"],
          {"action": "store_true",
@@ -49,9 +50,14 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
           "dest": "enable_webrender",
           "default": False,
           "help": "Tries to enable the WebRender compositor.",
+          }],
+        [["--base"],
+         {"action": "store_true",
+          "dest": "test_about_blank",
+          "default": False,
+          "help": "Runs the about:blank base case memory test.",
           }]
-    ] + testing_config_options + copy.deepcopy(blobupload_config_options) \
-                               + copy.deepcopy(code_coverage_config_options)
+    ] + testing_config_options + copy.deepcopy(code_coverage_config_options)
 
     error_list = [
         {'regex': re.compile(r'''(TEST-UNEXPECTED|PROCESS-CRASH)'''), 'level': ERROR},
@@ -145,14 +151,42 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
 
         runtime_testvars = {'webRootDir': self.webroot_dir,
                             'resultsDir': self.results_dir}
+
+        # Check if this is a DMD build and if so enable it.
+        dmd_py_lib_dir = os.path.dirname(self.binary_path)
+        if mozinfo.os == 'mac':
+            # On mac binary is in MacOS and dmd.py is in Resources, ie:
+            #   Name.app/Contents/MacOS/libdmd.dylib
+            #   Name.app/Contents/Resources/dmd.py
+            dmd_py_lib_dir = os.path.join(dmd_py_lib_dir, "../Resources/")
+
+        dmd_path = os.path.join(dmd_py_lib_dir, "dmd.py")
+        if os.path.isfile(dmd_path):
+            runtime_testvars['dmd'] = True
+
+            # Allow the child process to import dmd.py
+            python_path = os.environ.get('PYTHONPATH')
+
+            if python_path:
+                os.environ['PYTHONPATH'] = "%s%s%s" % (python_path, os.pathsep, dmd_py_lib_dir)
+            else:
+                os.environ['PYTHONPATH'] = dmd_py_lib_dir
+
+            env['DMD'] = "--mode=dark-matter --stacks=full"
+
         runtime_testvars_path = os.path.join(self.awsy_path, 'runtime-testvars.json')
         runtime_testvars_file = open(runtime_testvars_path, 'wb')
         runtime_testvars_file.write(json.dumps(runtime_testvars, indent=2))
         runtime_testvars_file.close()
 
         cmd = ['marionette']
-        cmd.append("--preferences=%s" % os.path.join(self.awsy_path, "conf", "prefs.json"))
-        cmd.append("--testvars=%s" % os.path.join(self.awsy_path, "conf", "testvars.json"))
+
+        if self.config['test_about_blank']:
+            cmd.append("--testvars=%s" % os.path.join(self.awsy_path, "conf",
+                                                      "base-testvars.json"))
+        else:
+            cmd.append("--testvars=%s" % os.path.join(self.awsy_path, "conf", "testvars.json"))
+
         cmd.append("--testvars=%s" % runtime_testvars_path)
         cmd.append("--log-raw=-")
         cmd.append("--log-errorsummary=%s" % error_summary_file)
@@ -166,7 +200,14 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
         # self.symbols_path
         cmd.append('--symbols-path=%s' % self.symbols_path)
 
-        test_file = os.path.join(self.awsy_libdir, 'test_memory_usage.py')
+        if self.config['test_about_blank']:
+            test_file = os.path.join(self.awsy_libdir, 'test_base_memory_usage.py')
+            prefs_file = "base-prefs.json"
+        else:
+            test_file = os.path.join(self.awsy_libdir, 'test_memory_usage.py')
+            prefs_file = "prefs.json"
+
+        cmd.append("--preferences=%s" % os.path.join(self.awsy_path, "conf", prefs_file))
         cmd.append(test_file)
 
         if self.config['single_stylo_traversal']:
@@ -205,7 +246,7 @@ class AWSY(TestingMixin, MercurialScript, BlobUploadMixin, TooltoolMixin, CodeCo
 
         self.log("AWSY exited with return code %s: %s" % (return_code, tbpl_status),
                  level=level)
-        self.buildbot_status(tbpl_status)
+        self.record_status(tbpl_status)
 
 
 if __name__ == '__main__':

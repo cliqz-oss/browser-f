@@ -133,8 +133,6 @@ public:
   inline nscoord EvaluateSourceSizeList(
       const RawServoSourceSizeList* aSourceSizeList) const;
 
-  void InvalidateStyleForCSSRuleChanges();
-
   void AddSizeOfIncludingThis(nsWindowSizes& aSizes) const;
   const RawServoStyleSet* RawSet() const {
     return mRawSet.get();
@@ -146,9 +144,6 @@ public:
   }
 
   void SetAuthorStyleDisabled(bool aStyleDisabled);
-
-  void BeginUpdate();
-  nsresult EndUpdate();
 
   already_AddRefed<ComputedStyle>
   ResolveStyleFor(dom::Element* aElement,
@@ -479,7 +474,7 @@ private:
   const SnapshotTable& Snapshots();
 
   /**
-   * Resolve all ServoDeclarationBlocks attached to mapped
+   * Resolve all DeclarationBlocks attached to mapped
    * presentation attributes cached on the document.
    *
    * Call this before jumping into Servo's style system.

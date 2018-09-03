@@ -5,9 +5,26 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
 
-const sampleAddon = {
-  id: "webextension1@tests.mozilla.org",
-  name: "webextension_1",
+const ID = "webextension1@tests.mozilla.org";
+
+const ADDONS = {
+  webextension_1: {
+    "manifest.json": {
+      "name": "Web Extension Name",
+      "version": "1.0",
+      "manifest_version": 2,
+      "applications": {
+        "gecko": {
+          "id": ID
+        }
+      },
+      "icons": {
+        "48": "icon48.png",
+        "64": "icon64.png"
+      }
+    },
+    "chrome.manifest": "content webex ./\n"
+  },
 };
 
 const manifestSample = {
@@ -21,13 +38,8 @@ const manifestSample = {
   }],
 };
 
-async function installAddon(fixtureName, addonID) {
-  await promiseInstallAllFiles([do_get_addon(fixtureName)]);
-  return promiseAddonByID(addonID);
-}
-
 async function tearDownAddon(addon) {
-  addon.uninstall();
+  await addon.uninstall();
   await promiseShutdownManager();
 }
 
@@ -35,8 +47,8 @@ add_task(async function test_reloading_a_temp_addon() {
   if (AppConstants.MOZ_APP_NAME == "thunderbird")
     return;
   await promiseRestartManager();
-  await AddonManager.installTemporaryAddon(do_get_addon(sampleAddon.name));
-  const addon = await promiseAddonByID(sampleAddon.id);
+  let xpi = AddonTestUtils.createTempXPIFile(ADDONS.webextension_1);
+  const addon = await AddonManager.installTemporaryAddon(xpi);
 
   var receivedOnUninstalled = false;
   var receivedOnUninstalling = false;
@@ -46,22 +58,22 @@ add_task(async function test_reloading_a_temp_addon() {
   const onReload = new Promise(resolve => {
     const listener = {
       onUninstalling: (addonObj) => {
-        if (addonObj.id === sampleAddon.id) {
+        if (addonObj.id === ID) {
           receivedOnUninstalling = true;
         }
       },
       onUninstalled: (addonObj) => {
-        if (addonObj.id === sampleAddon.id) {
+        if (addonObj.id === ID) {
           receivedOnUninstalled = true;
         }
       },
       onInstalling: (addonObj) => {
         receivedOnInstalling = true;
-        equal(addonObj.id, sampleAddon.id);
+        equal(addonObj.id, ID);
       },
       onInstalled: (addonObj) => {
         receivedOnInstalled = true;
-        equal(addonObj.id, sampleAddon.id);
+        equal(addonObj.id, ID);
         // This should be the last event called.
         AddonManager.removeAddonListener(listener);
         resolve();
@@ -70,10 +82,7 @@ add_task(async function test_reloading_a_temp_addon() {
     AddonManager.addAddonListener(listener);
   });
 
-  await Promise.all([
-    addon.reload(),
-    promiseWebExtensionStartup(),
-  ]);
+  await addon.reload();
   await onReload;
 
   // Make sure reload() doesn't trigger uninstall events.
@@ -89,7 +98,7 @@ add_task(async function test_reloading_a_temp_addon() {
 
 add_task(async function test_can_reload_permanent_addon() {
   await promiseRestartManager();
-  const addon = await installAddon(sampleAddon.name, sampleAddon.id);
+  const {addon} = await AddonTestUtils.promiseInstallXPI(ADDONS.webextension_1);
 
   let disabledCalled = false;
   let enabledCalled = false;
@@ -104,10 +113,7 @@ add_task(async function test_can_reload_permanent_addon() {
     }
   });
 
-  await Promise.all([
-    addon.reload(),
-    promiseWebExtensionStartup(),
-  ]);
+  await addon.reload();
 
   Assert.ok(disabledCalled);
   Assert.ok(enabledCalled);
@@ -139,7 +145,6 @@ add_task(async function test_reload_to_invalid_version_fails() {
 
   let addonDir = await promiseWriteWebManifestForExtension(manifest, tempdir, "invalid_version");
   await AddonManager.installTemporaryAddon(addonDir);
-  await promiseWebExtensionStartup();
 
   let addon = await promiseAddonByID(addonId);
   notEqual(addon, null);
@@ -180,7 +185,7 @@ add_task(async function test_manifest_changes_are_refreshed() {
   await promiseRestartManager();
   let tempdir = gTmpD.clone();
 
-  const unpackedAddon = writeInstallRDFToDir(
+  const unpackedAddon = await promiseWriteInstallRDFToDir(
     Object.assign({}, manifestSample, {
       name: "Test Bootstrap 1",
     }), tempdir, manifestSample.id, "bootstrap.js");
@@ -190,7 +195,7 @@ add_task(async function test_manifest_changes_are_refreshed() {
   notEqual(addon, null);
   equal(addon.name, "Test Bootstrap 1");
 
-  writeInstallRDFToDir(Object.assign({}, manifestSample, {
+  await promiseWriteInstallRDFToDir(Object.assign({}, manifestSample, {
     name: "Test Bootstrap 1 (reloaded)",
   }), tempdir, manifestSample.id);
 
@@ -211,7 +216,7 @@ add_task(async function test_reload_fails_on_installation_errors() {
   await promiseRestartManager();
   let tempdir = gTmpD.clone();
 
-  const unpackedAddon = writeInstallRDFToDir(
+  const unpackedAddon = await promiseWriteInstallRDFToDir(
     Object.assign({}, manifestSample, {
       name: "Test Bootstrap 1",
     }), tempdir, manifestSample.id, "bootstrap.js");
@@ -221,7 +226,7 @@ add_task(async function test_reload_fails_on_installation_errors() {
   notEqual(addon, null);
 
   // Trigger an installation error with an empty manifest.
-  writeInstallRDFToDir({}, tempdir, manifestSample.id);
+  await promiseWriteInstallRDFToDir({}, tempdir, manifestSample.id);
 
   await Assert.rejects(addon.reload(), /No ID in install manifest/);
 

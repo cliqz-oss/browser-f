@@ -10,7 +10,7 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Log", "resource://gre/modules/Log.jsm");
 ChromeUtils.defineModuleGetter(this, "UpdateUtils", "resource://gre/modules/UpdateUtils.jsm");
 
-Cu.importGlobalProperties(["fetch", "URL"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["fetch", "URL"]);
 
 var EXPORTED_SYMBOLS = ["BrowserErrorReporter"];
 
@@ -22,6 +22,7 @@ const PREF_PROJECT_ID = "browser.chrome.errorReporter.projectId";
 const PREF_PUBLIC_KEY = "browser.chrome.errorReporter.publicKey";
 const PREF_SAMPLE_RATE = "browser.chrome.errorReporter.sampleRate";
 const PREF_SUBMIT_URL = "browser.chrome.errorReporter.submitUrl";
+const RECENT_BUILD_AGE = 1000 * 60 * 60 * 24 * 7; // 7 days
 const SDK_NAME = "firefox-error-reporter";
 const SDK_VERSION = "1.0.0";
 const TELEMETRY_ERROR_COLLECTED = "browser.errors.collected_count";
@@ -83,9 +84,22 @@ const MODULE_SAMPLE_RATES = new Map([
  * traces; see bug 1426482 for privacy review and server-side mitigation.
  */
 class BrowserErrorReporter {
+  /**
+   * Generate a Date object corresponding to the date in the appBuildId.
+   */
+  static getAppBuildIdDate() {
+    const appBuildId = Services.appinfo.appBuildID;
+    const buildYear = Number.parseInt(appBuildId.slice(0, 4));
+    // Date constructor uses 0-indexed months
+    const buildMonth = Number.parseInt(appBuildId.slice(4, 6)) - 1;
+    const buildDay = Number.parseInt(appBuildId.slice(6, 8));
+    return new Date(buildYear, buildMonth, buildDay);
+  }
+
   constructor(options = {}) {
     // Test arguments for mocks and changing behavior
     this.fetch = options.fetch || defaultFetch;
+    this.now = options.now || null;
     this.chromeOnly = options.chromeOnly !== undefined ? options.chromeOnly : true;
     this.registerListener = (
       options.registerListener || (() => Services.console.registerListener(this))
@@ -93,6 +107,8 @@ class BrowserErrorReporter {
     this.unregisterListener = (
       options.unregisterListener || (() => Services.console.unregisterListener(this))
     );
+
+    XPCOMUtils.defineLazyGetter(this, "appBuildIdDate", BrowserErrorReporter.getAppBuildIdDate);
 
     // Values that don't change between error reports.
     this.requestBodyTemplate = {
@@ -198,13 +214,20 @@ class BrowserErrorReporter {
     return "FILTERED";
   }
 
-  async observe(message) {
-    try {
-      message.QueryInterface(Ci.nsIScriptError);
-    } catch (err) {
-      return; // Not an error
-    }
+  isRecentBuild() {
+    // The local clock is not reliable, but this method doesn't need to be
+    // perfect.
+    const now = this.now || new Date();
+    return (now - this.appBuildIdDate) <= RECENT_BUILD_AGE;
+  }
 
+  observe(message) {
+    if (message instanceof Ci.nsIScriptError) {
+      ChromeUtils.idleDispatch(() => this.handleMessage(message));
+    }
+  }
+
+  async handleMessage(message) {
     const isWarning = message.flags & message.warningFlag;
     const isFromChrome = REPORTED_CATEGORIES.has(message.category);
     if ((this.chromeOnly && !isFromChrome) || isWarning) {
@@ -219,6 +242,12 @@ class BrowserErrorReporter {
     if (message.sourceName) {
       const key = this.errorCollectedFilenameKey(message.sourceName);
       Services.telemetry.keyedScalarAdd(TELEMETRY_ERROR_COLLECTED_FILENAME, key.slice(0, 69), 1);
+    }
+
+    // We do not collect errors on non-Nightly channels, just telemetry.
+    // Also, old builds should not send errors to Sentry
+    if (!AppConstants.NIGHTLY_BUILD || !this.isRecentBuild()) {
+      return;
     }
 
     // Sample the amount of errors we send out

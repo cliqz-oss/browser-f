@@ -50,7 +50,6 @@ sourceDir.append("source");
 
 var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
 testserver.registerDirectory("/data/", do_get_file("data"));
-testserver.registerDirectory("/addons/", do_get_file("addons"));
 gPort = testserver.identity.primaryPort;
 
 function promiseWritePointer(aId, aName) {
@@ -75,6 +74,10 @@ function promiseWriteRelativePointer(aId, aName) {
 
 add_task(async function setup() {
   ok(TEST_UNPACKED, "Pointer files only work with unpacked directories");
+
+  // Unpacked extensions are never signed, so this can only run with
+  // signature checks disabled.
+  Services.prefs.setBoolPref(PREF_XPI_SIGNATURES_REQUIRED, false);
 
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
 });
@@ -164,7 +167,7 @@ add_task(async function test_addon_over_pointer() {
   source.append(addon1.id);
   ok(source.exists());
 
-  addon.uninstall();
+  await addon.uninstall();
 });
 
 // Tests that uninstalling doesn't clobber the original sources
@@ -177,7 +180,7 @@ add_task(async function test_uninstall_pointer() {
   notEqual(addon, null);
   equal(addon.version, "1.0");
 
-  addon.uninstall();
+  await addon.uninstall();
 
   await promiseRestartManager();
 
@@ -209,7 +212,7 @@ add_task(async function test_bad_pointer() {
 
 // Tests that changing the ID of an existing add-on doesn't clobber the sources
 add_task(async function test_bad_pointer_id() {
-  var dest = writeInstallRDFForExtension(addon1, sourceDir);
+  var dest = await promiseWriteInstallRDFForExtension(addon1, sourceDir);
   // Make sure the modification time changes enough to be detected.
   setExtensionModifiedTime(dest, dest.lastModifiedTime - 5000);
   await promiseWritePointer(addon1.id);
@@ -219,7 +222,8 @@ add_task(async function test_bad_pointer_id() {
   notEqual(addon, null);
   equal(addon.version, "1.0");
 
-  writeInstallRDFForExtension(addon2, sourceDir, addon1.id);
+  await promiseWriteInstallRDFForExtension(addon2, sourceDir, addon1.id);
+  setExtensionModifiedTime(dest, dest.lastModifiedTime - 5000);
 
   await promiseRestartManager();
 
@@ -240,7 +244,7 @@ add_task(async function test_bad_pointer_id() {
 
 // Removing the pointer file should uninstall the add-on
 add_task(async function test_remove_pointer() {
-  var dest = writeInstallRDFForExtension(addon1, sourceDir);
+  var dest = await promiseWriteInstallRDFForExtension(addon1, sourceDir);
   // Make sure the modification time changes enough to be detected in run_test_8.
   setExtensionModifiedTime(dest, dest.lastModifiedTime - 5000);
   await promiseWritePointer(addon1.id);
@@ -274,7 +278,7 @@ add_task(async function test_replace_pointer() {
   pointer.append(addon1.id);
   pointer.remove(false);
 
-  writeInstallRDFForExtension(addon1_2, profileDir);
+  await promiseWriteInstallRDFForExtension(addon1_2, profileDir);
 
   await promiseRestartManager();
 
@@ -282,7 +286,7 @@ add_task(async function test_replace_pointer() {
   notEqual(addon, null);
   equal(addon.version, "2.0");
 
-  addon.uninstall();
+  await addon.uninstall();
 });
 
 // Changes to the source files should be detected
@@ -295,7 +299,8 @@ add_task(async function test_change_pointer_sources() {
   notEqual(addon, null);
   equal(addon.version, "1.0");
 
-  writeInstallRDFForExtension(addon1_2, sourceDir);
+  let dest = await promiseWriteInstallRDFForExtension(addon1_2, sourceDir);
+  setExtensionModifiedTime(dest, dest.lastModifiedTime - 5000);
 
   await promiseRestartManager();
 
@@ -303,13 +308,13 @@ add_task(async function test_change_pointer_sources() {
   notEqual(addon, null);
   equal(addon.version, "2.0");
 
-  addon.uninstall();
+  await addon.uninstall();
 });
 
 // Removing the add-on the pointer file points at should uninstall the add-on
 add_task(async function test_remove_pointer_target() {
   await promiseRestartManager();
-  var dest = writeInstallRDFForExtension(addon1, sourceDir);
+  var dest = await promiseWriteInstallRDFForExtension(addon1, sourceDir);
   await promiseWritePointer(addon1.id);
   await promiseRestartManager();
 
@@ -331,7 +336,7 @@ add_task(async function test_remove_pointer_target() {
 
 // Tests that installing a new add-on by pointer with a relative path works
 add_task(async function test_new_relative_pointer() {
-  writeInstallRDFForExtension(addon1, sourceDir);
+  await promiseWriteInstallRDFForExtension(addon1, sourceDir);
   await promiseWriteRelativePointer(addon1.id);
   await promiseRestartManager();
 

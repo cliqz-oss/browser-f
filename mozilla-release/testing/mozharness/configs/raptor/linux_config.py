@@ -11,29 +11,18 @@ else:
 
 config = {
     "log_name": "raptor",
-    "buildbot_json_path": "buildprops.json",
     "installer_path": "installer.exe",
     "virtualenv_path": VENV_PATH,
-    "find_links": [
-        "http://pypi.pvt.build.mozilla.org/pub",
-        "http://pypi.pub.build.mozilla.org/pub",
-    ],
-    "pip_index": False,
     "title": os.uname()[1].lower().split('.')[0],
     "default_actions": [
         "clobber",
-        "read-buildbot-config",
         "download-and-extract",
         "populate-webroot",
+        "install-chrome",
         "create-virtualenv",
         "install",
-        "setup-mitmproxy",
         "run-tests",
     ],
-    "default_blob_upload_servers": [
-        "https://blobupload.elasticbeanstalk.com",
-    ],
-    "blob_uploader_auth_file": os.path.join(os.getcwd(), "oauth.txt"),
     "download_minidump_stackwalk": True,
     "minidump_stackwalk_path": MINIDUMP_STACKWALK_PATH,
     "minidump_tooltool_manifest_path": TOOLTOOL_MANIFEST_PATH,

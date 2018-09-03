@@ -30,13 +30,36 @@ ARIAGridAccessible::
   ARIAGridAccessible(nsIContent* aContent, DocAccessible* aDoc) :
   AccessibleWrap(aContent, aDoc)
 {
+  mGenericTypes |= eTable;
+}
+
+role
+ARIAGridAccessible::NativeRole() const
+{
+  a11y::role r = GetAccService()->MarkupRole(mContent);
+  return r != roles::NOTHING ? r : roles::TABLE;
+}
+
+already_AddRefed<nsIPersistentProperties>
+ARIAGridAccessible::NativeAttributes()
+{
+  nsCOMPtr<nsIPersistentProperties> attributes =
+    AccessibleWrap::NativeAttributes();
+
+  if (IsProbablyLayoutTable()) {
+    nsAutoString unused;
+    attributes->SetStringProperty(NS_LITERAL_CSTRING("layout-guess"),
+                                  NS_LITERAL_STRING("true"), unused);
+  }
+
+  return attributes.forget();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Table
 
 uint32_t
-ARIAGridAccessible::ColCount()
+ARIAGridAccessible::ColCount() const
 {
   AccIterator rowIter(this, filters::GetRow);
   Accessible* row = rowIter.Next();
@@ -541,6 +564,13 @@ ARIARowAccessible::
   mGenericTypes |= eTableRow;
 }
 
+role
+ARIARowAccessible::NativeRole() const
+{
+  a11y::role r = GetAccService()->MarkupRole(mContent);
+  return r != roles::NOTHING ? r : roles::ROW;
+}
+
 GroupPos
 ARIARowAccessible::GroupPosition()
 {
@@ -569,6 +599,13 @@ ARIAGridCellAccessible::
   HyperTextAccessibleWrap(aContent, aDoc)
 {
   mGenericTypes |= eTableCell;
+}
+
+role
+ARIAGridCellAccessible::NativeRole() const
+{
+  a11y::role r = GetAccService()->MarkupRole(mContent);
+  return r != roles::NOTHING ? r : roles::CELL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

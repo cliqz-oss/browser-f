@@ -40,9 +40,6 @@
 #include "mozilla/HashFunctions.h"
 #include "mozilla/Move.h"
 
-using mozilla::Forward;
-using mozilla::Move;
-
 namespace js {
 
 namespace detail {
@@ -65,7 +62,7 @@ class OrderedHashTable
         Data* chain;
 
         Data(const T& e, Data* c) : element(e), chain(c) {}
-        Data(T&& e, Data* c) : element(Move(e)), chain(c) {}
+        Data(T&& e, Data* c) : element(std::move(e)), chain(c) {}
     };
 
     class Range;
@@ -105,6 +102,9 @@ class OrderedHashTable
       : hashTable(nullptr),
         data(nullptr),
         dataLength(0),
+        dataCapacity(0),
+        liveCount(0),
+        hashShift(0),
         ranges(nullptr),
         nurseryRanges(nullptr),
         alloc(ap),
@@ -177,7 +177,7 @@ class OrderedHashTable
     MOZ_MUST_USE bool put(ElementInput&& element) {
         HashNumber h = prepareHash(Ops::getKey(element));
         if (Data* e = lookup(Ops::getKey(element), h)) {
-            e->element = Forward<ElementInput>(element);
+            e->element = std::forward<ElementInput>(element);
             return true;
         }
 
@@ -192,7 +192,7 @@ class OrderedHashTable
         h >>= hashShift;
         liveCount++;
         Data* e = &data[dataLength++];
-        new (e) Data(Forward<ElementInput>(element), hashTable[h]);
+        new (e) Data(std::forward<ElementInput>(element), hashTable[h]);
         hashTable[h] = e;
         return true;
     }
@@ -664,7 +664,7 @@ class OrderedHashTable
             if (!Ops::isEmpty(Ops::getKey(rp->element))) {
                 HashNumber h = prepareHash(Ops::getKey(rp->element)) >> hashShift;
                 if (rp != wp)
-                    wp->element = Move(rp->element);
+                    wp->element = std::move(rp->element);
                 wp->chain = hashTable[h];
                 hashTable[h] = wp;
                 wp++;
@@ -713,7 +713,7 @@ class OrderedHashTable
         for (Data* p = data; p != end; p++) {
             if (!Ops::isEmpty(Ops::getKey(p->element))) {
                 HashNumber h = prepareHash(Ops::getKey(p->element)) >> newHashShift;
-                new (wp) Data(Move(p->element), newHashTable[h]);
+                new (wp) Data(std::move(p->element), newHashTable[h]);
                 newHashTable[h] = wp;
                 wp++;
             }
@@ -755,15 +755,15 @@ class OrderedHashMap
 
         void operator=(Entry&& rhs) {
             MOZ_ASSERT(this != &rhs, "self-move assignment is prohibited");
-            const_cast<Key&>(key) = Move(rhs.key);
-            value = Move(rhs.value);
+            const_cast<Key&>(key) = std::move(rhs.key);
+            value = std::move(rhs.value);
         }
 
       public:
         Entry() : key(), value() {}
         template <typename V>
-        Entry(const Key& k, V&& v) : key(k), value(Forward<V>(v)) {}
-        Entry(Entry&& rhs) : key(Move(rhs.key)), value(Move(rhs.value)) {}
+        Entry(const Key& k, V&& v) : key(k), value(std::forward<V>(v)) {}
+        Entry(Entry&& rhs) : key(std::move(rhs.key)), value(std::move(rhs.value)) {}
 
         const Key key;
         Value value;
@@ -809,7 +809,7 @@ class OrderedHashMap
 
     template <typename V>
     MOZ_MUST_USE bool put(const Key& key, V&& value) {
-        return impl.put(Entry(key, Forward<V>(value)));
+        return impl.put(Entry(key, std::forward<V>(value)));
     }
 
     HashNumber hash(const Key& key) const { return impl.prepareHash(key); }

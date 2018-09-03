@@ -17,26 +17,26 @@ const L10N = new LocalizationHelper("devtools/client/locales/toolbox.properties"
 
 add_task(async function() {
   info("Create a test tab and open the toolbox");
-  let tab = await addTab(URL);
-  let target = TargetFactory.forTab(tab);
-  let toolbox = await gDevTools.showToolbox(target, "webconsole");
+  const tab = await addTab(URL);
+  const target = TargetFactory.forTab(tab);
+  const toolbox = await gDevTools.showToolbox(target, "webconsole");
 
-  let shortcut = L10N.getStr("toolbox.toggleHost.key");
+  const shortcut = L10N.getStr("toolbox.toggleHost.key");
 
-  let {SIDE, BOTTOM, WINDOW} = Toolbox.HostType;
-  checkHostType(toolbox, BOTTOM, SIDE);
+  const {RIGHT, BOTTOM, WINDOW} = Toolbox.HostType;
+  checkHostType(toolbox, BOTTOM, RIGHT);
 
-  info("Switching from bottom to side");
+  info("Switching from bottom to right");
   let onHostChanged = toolbox.once("host-changed");
   synthesizeKeyShortcut(shortcut, toolbox.win);
   await onHostChanged;
-  checkHostType(toolbox, SIDE, BOTTOM);
+  checkHostType(toolbox, RIGHT, BOTTOM);
 
-  info("Switching from side to bottom");
+  info("Switching from right to bottom");
   onHostChanged = toolbox.once("host-changed");
   synthesizeKeyShortcut(shortcut, toolbox.win);
   await onHostChanged;
-  checkHostType(toolbox, BOTTOM, SIDE);
+  checkHostType(toolbox, BOTTOM, RIGHT);
 
   info("Switching to window");
   await toolbox.switchHost(WINDOW);

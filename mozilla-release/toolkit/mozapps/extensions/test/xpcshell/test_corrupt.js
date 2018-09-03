@@ -9,7 +9,6 @@
 var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
 
 // register files with server
-testserver.registerDirectory("/addons/", do_get_file("addons"));
 testserver.registerDirectory("/data/", do_get_file("data"));
 
 // The test extension uses an insecure update url.
@@ -21,15 +20,8 @@ const ADDONS = {
   "addon3@tests.mozilla.org": {
     "install.rdf": {
       id: "addon3@tests.mozilla.org",
-      version: "1.0",
       name: "Test 3",
-      bootstrap: true,
       updateURL: "http://example.com/data/test_corrupt.json",
-      targetApplications: [{
-        id: "xpcshell@tests.mozilla.org",
-        minVersion: "1",
-        maxVersion: "1"
-      }]
     },
     findUpdates: true,
     desiredState: {
@@ -48,15 +40,8 @@ const ADDONS = {
   "addon4@tests.mozilla.org": {
     "install.rdf": {
       id: "addon4@tests.mozilla.org",
-      version: "1.0",
       name: "Test 4",
-      bootstrap: true,
       updateURL: "http://example.com/data/test_corrupt.json",
-      targetApplications: [{
-        id: "xpcshell@tests.mozilla.org",
-        minVersion: "1",
-        maxVersion: "1"
-      }]
     },
     initialState: {
       userDisabled: true,
@@ -80,14 +65,7 @@ const ADDONS = {
   "addon5@tests.mozilla.org": {
     "install.rdf": {
       id: "addon5@tests.mozilla.org",
-      version: "1.0",
       name: "Test 5",
-      bootstrap: true,
-      targetApplications: [{
-        id: "xpcshell@tests.mozilla.org",
-        minVersion: "1",
-        maxVersion: "1"
-      }]
     },
     desiredState: {
       isActive: true,
@@ -103,9 +81,7 @@ const ADDONS = {
   "addon6@tests.mozilla.org": {
     "install.rdf": {
       id: "addon6@tests.mozilla.org",
-      version: "1.0",
       name: "Test 6",
-      bootstrap: "true",
       targetApplications: [{
         id: "xpcshell@tests.mozilla.org",
         minVersion: "2",
@@ -126,9 +102,7 @@ const ADDONS = {
   "addon7@tests.mozilla.org": {
     "install.rdf": {
       id: "addon7@tests.mozilla.org",
-      version: "1.0",
       name: "Test 7",
-      bootstrap: "true",
       targetApplications: [{
         id: "xpcshell@tests.mozilla.org",
         minVersion: "2",
@@ -226,7 +200,7 @@ add_task(async function setup() {
   let addons = await getAddons(IDS);
   for (let [id, addon] of Object.entries(ADDONS)) {
     if (addon.initialState) {
-      Object.assign(addons.get(id), addon.initialState);
+      await setInitialState(addons.get(id), addon.initialState);
     }
     if (addon.findUpdates) {
       await promiseUpdates(addons.get(id));
@@ -253,7 +227,7 @@ add_task(async function test_after_corruption() {
   gExtensionsJSON.remove(true);
   gExtensionsJSON.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 
-  await promiseStartupManager(false);
+  await promiseStartupManager();
 
   await new Promise(resolve => {
     Services.obs.addObserver(function listener() {
@@ -271,11 +245,11 @@ add_task(async function test_after_corruption() {
                Object.assign({}, addon.desiredState, addon.afterCorruption));
   }
 
-  await Assert.rejects(promiseShutdownManager());
+  await Assert.rejects(promiseShutdownManager(), OS.File.Error);
 });
 
 add_task(async function test_after_second_restart() {
-  await promiseStartupManager(false);
+  await promiseStartupManager();
 
   info("Test add-on state after second restart");
   let addons = await getAddons(IDS);
@@ -284,5 +258,5 @@ add_task(async function test_after_second_restart() {
                Object.assign({}, addon.desiredState, addon.afterSecondRestart));
   }
 
-  await Assert.rejects(promiseShutdownManager());
+  await Assert.rejects(promiseShutdownManager(), OS.File.Error);
 });

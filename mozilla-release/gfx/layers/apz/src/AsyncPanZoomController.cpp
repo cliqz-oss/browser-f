@@ -995,22 +995,26 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(const MouseInput& aEvent,
   }
 
   if (aEvent.mType == MouseInput::MouseType::MOUSE_UP) {
+    APZC_LOG("%p ending drag\n", this);
     SetState(NOTHING);
     ScrollSnap();
     return nsEventStatus_eConsumeNoDefault;
   }
 
-  RefPtr<HitTestingTreeNode> node =
-    GetApzcTreeManager()->FindScrollThumbNode(aDragMetrics);
+  HitTestingTreeNodeAutoLock node;
+  GetApzcTreeManager()->FindScrollThumbNode(aDragMetrics, node);
   if (!node) {
+    APZC_LOG("%p unable to find scrollthumb node with viewid %" PRIu64 "\n", this, aDragMetrics.mViewId);
     return nsEventStatus_eConsumeNoDefault;
   }
 
   if (aEvent.mType == MouseInput::MouseType::MOUSE_DOWN) {
+    APZC_LOG("%p starting scrollbar drag\n", this);
     SetState(SCROLLBAR_DRAG);
   }
 
   if (aEvent.mType != MouseInput::MouseType::MOUSE_MOVE) {
+    APZC_LOG("%p discarding event of type %d\n", this, aEvent.mType);
     return nsEventStatus_eConsumeNoDefault;
   }
 
@@ -1035,6 +1039,7 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(const MouseInput& aEvent,
     // offscreen and its visible region is therefore empty.
     if (thumbWidth > 0 && thumbWidth * snapMultiplier < distance) {
       isMouseAwayFromThumb = true;
+      APZC_LOG("%p determined mouse is away from thumb, will snap\n", this);
     }
   }
 
@@ -1051,12 +1056,13 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(const MouseInput& aEvent,
   maxThumbPos -= scrollbarData.mThumbLength;
 
   float scrollPercent = thumbPosition / maxThumbPos;
+  APZC_LOG("%p scrollbar dragged to %f percent\n", this, scrollPercent);
 
   CSSCoord minScrollPosition =
     GetAxisStart(direction, mFrameMetrics.GetScrollableRect().TopLeft());
   CSSCoord maxScrollPosition =
     GetAxisStart(direction, mFrameMetrics.GetScrollableRect().BottomRight()) -
-    GetAxisLength(direction, mFrameMetrics.CalculateCompositedRectInCssPixels());
+    GetAxisLength(direction, mFrameMetrics.CalculateCompositionBoundsInCssPixelsOfSurroundingContent());
   CSSCoord scrollPosition = minScrollPosition + (scrollPercent * (maxScrollPosition - minScrollPosition));
 
   scrollPosition = std::max(scrollPosition, minScrollPosition);
@@ -1068,6 +1074,7 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(const MouseInput& aEvent,
   } else {
     scrollOffset.y = scrollPosition;
   }
+  APZC_LOG("%p set scroll offset to %s from scrollbar drag\n", this, Stringify(scrollOffset).c_str());
   mFrameMetrics.SetScrollOffset(scrollOffset);
   ScheduleCompositeAndMaybeRepaint();
   UpdateSharedCompositorFrameMetrics();
@@ -1277,10 +1284,18 @@ nsEventStatus AsyncPanZoomController::OnTouchMove(const MultiTouchInput& aEvent)
 
     case TOUCHING: {
       ScreenCoord panThreshold = GetTouchStartTolerance();
-      UpdateWithTouchAtDevicePoint(aEvent);
 
-      if (PanDistance() < panThreshold) {
-        return nsEventStatus_eIgnore;
+      // We intentionally skip the UpdateWithTouchAtDevicePoint call when the
+      // panThreshold is zero. This ensures more deterministic behaviour during
+      // testing. If we call that, Axis::mPos gets updated to the point of this
+      // touchmove event, but we "consume" the move to overcome the
+      // panThreshold, so it's hard to pan a specific amount reliably from a
+      // mochitest.
+      if (panThreshold > 0.0f) {
+        UpdateWithTouchAtDevicePoint(aEvent);
+        if (PanDistance() < panThreshold) {
+          return nsEventStatus_eIgnore;
+        }
       }
 
       ParentLayerPoint touchPoint = GetFirstTouchPoint(aEvent);
@@ -1750,7 +1765,7 @@ AsyncPanZoomController::ConvertScrollbarPoint(const ParentLayerPoint& aScrollbar
   scrollbarPoint = scrollbarPoint * mFrameMetrics.GetPresShellResolution();
 
   // Now, get it to be relative to the beginning of the scroll track.
-  CSSRect cssCompositionBound = mFrameMetrics.CalculateCompositedRectInCssPixels();
+  CSSRect cssCompositionBound = mFrameMetrics.CalculateCompositionBoundsInCssPixelsOfSurroundingContent();
   return GetAxisStart(*aThumbData.mDirection, scrollbarPoint)
       - GetAxisStart(*aThumbData.mDirection, cssCompositionBound)
       - aThumbData.mScrollTrackStart;
@@ -3731,6 +3746,17 @@ bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime)
   return requestAnimationFrame;
 }
 
+CSSRect
+AsyncPanZoomController::GetCurrentAsyncLayoutViewport(AsyncTransformConsumer aMode) const {
+  RecursiveMutexAutoLock lock(mRecursiveMutex);
+  MOZ_ASSERT(mFrameMetrics.IsRootContent(),
+      "Only the root content APZC has a layout viewport");
+  if (aMode == eForCompositing && mScrollMetadata.IsApzForceDisabled()) {
+    return mLastContentPaintMetrics.GetViewport();
+  }
+  return GetEffectiveLayoutViewport(aMode);
+}
+
 ParentLayerPoint
 AsyncPanZoomController::GetCurrentAsyncScrollOffset(AsyncTransformConsumer aMode) const
 {
@@ -3802,6 +3828,15 @@ AsyncPanZoomController::GetCurrentAsyncTransform(AsyncTransformConsumer aMode) c
     -translation);
 }
 
+CSSRect
+AsyncPanZoomController::GetEffectiveLayoutViewport(AsyncTransformConsumer aMode) const
+{
+  if (gfxPrefs::APZFrameDelayEnabled() && aMode == eForCompositing) {
+    return mCompositedLayoutViewport;
+  }
+  return mFrameMetrics.GetViewport();
+}
+
 CSSPoint
 AsyncPanZoomController::GetEffectiveScrollOffset(AsyncTransformConsumer aMode) const
 {
@@ -3826,6 +3861,7 @@ AsyncPanZoomController::SampleCompositedAsyncTransform()
   RecursiveMutexAutoLock lock(mRecursiveMutex);
   if (mCompositedScrollOffset != mFrameMetrics.GetScrollOffset() ||
       mCompositedZoom != mFrameMetrics.GetZoom()) {
+    mCompositedLayoutViewport = mFrameMetrics.GetViewport();
     mCompositedScrollOffset = mFrameMetrics.GetScrollOffset();
     mCompositedZoom = mFrameMetrics.GetZoom();
     return true;
@@ -4084,6 +4120,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const ScrollMetadata& aScrollMe
     mExpectedGeckoMetrics = aLayerMetrics;
     ShareCompositorFrameMetrics();
 
+    mCompositedLayoutViewport = mFrameMetrics.GetViewport();
     mCompositedScrollOffset = mFrameMetrics.GetScrollOffset();
     mCompositedZoom = mFrameMetrics.GetZoom();
 
@@ -4168,6 +4205,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const ScrollMetadata& aScrollMe
       // correct this we need to update mExpectedGeckoMetrics to be the
       // last thing we know was painted by Gecko.
       mFrameMetrics.CopyScrollInfoFrom(aLayerMetrics);
+      mCompositedLayoutViewport = mFrameMetrics.GetViewport();
       mCompositedScrollOffset = mFrameMetrics.GetScrollOffset();
       mExpectedGeckoMetrics = aLayerMetrics;
 
@@ -4184,6 +4222,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const ScrollMetadata& aScrollMe
       // Note that even if the CancelAnimation call above requested a repaint
       // this is fine because we already have repaint request deduplication.
       needContentRepaint = true;
+      // Since the main-thread scroll offset changed we should trigger a
+      // recomposite to make sure it becomes user-visible.
+      ScheduleComposite();
     } else if (scrollableRectChanged) {
       // Even if we didn't accept a new scroll offset from content, the
       // scrollable rect may have changed in a way that makes our local

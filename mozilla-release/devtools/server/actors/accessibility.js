@@ -37,7 +37,6 @@ const {
   EVENT_DEFACTION_CHANGE,
   EVENT_DESCRIPTION_CHANGE,
   EVENT_DOCUMENT_ATTRIBUTES_CHANGED,
-  EVENT_HELP_CHANGE,
   EVENT_HIDE,
   EVENT_NAME_CHANGE,
   EVENT_OBJECT_ATTRIBUTE_CHANGED,
@@ -120,7 +119,7 @@ function isDefunct(accessible) {
   let defunct = false;
 
   try {
-    let extraState = {};
+    const extraState = {};
     accessible.getState({}, extraState);
     // extraState.value is a bitmask. We are applying bitwise AND to mask out
     // irrelevant states.
@@ -142,7 +141,7 @@ function isDefunct(accessible) {
  *         True if accessible object is stale, false otherwise.
  */
 function isStale(accessible) {
-  let extraState = {};
+  const extraState = {};
   accessible.getState({}, extraState);
   // extraState.value is a bitmask. We are applying bitwise AND to mask out
   // irrelevant states.
@@ -180,7 +179,7 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
      */
     Object.defineProperty(this, "isDefunct", {
       get() {
-        let defunct = isDefunct(this.rawAccessible);
+        const defunct = isDefunct(this.rawAccessible);
         if (defunct) {
           delete this.isDefunct;
           this.isDefunct = true;
@@ -234,18 +233,16 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
     return this.rawAccessible.description;
   },
 
-  get help() {
-    if (this.isDefunct) {
-      return null;
-    }
-    return this.rawAccessible.help;
-  },
-
   get keyboardShortcut() {
     if (this.isDefunct) {
       return null;
     }
-    return this.rawAccessible.keyboardShortcut;
+    // Gecko accessibility exposes two key bindings: Accessible::AccessKey and
+    // Accessible::KeyboardShortcut. The former is used for accesskey, where the latter
+    // is used for global shortcuts defined by XUL menu items, etc. Here - do what the
+    // Windows implementation does: try AccessKey first, and if that's empty, use
+    // KeyboardShortcut.
+    return this.rawAccessible.accessKey || this.rawAccessible.keyboardShortcut;
   },
 
   get childCount() {
@@ -270,7 +267,7 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
   },
 
   children() {
-    let children = [];
+    const children = [];
     if (this.isDefunct) {
       return children;
     }
@@ -295,7 +292,7 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
   },
 
   get actions() {
-    let actions = [];
+    const actions = [];
     if (this.isDefunct) {
       return actions;
     }
@@ -311,8 +308,8 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
       return [];
     }
 
-    let state = {};
-    let extState = {};
+    const state = {};
+    const extState = {};
     this.rawAccessible.getState(state, extState);
     return [
       ...this.walker.a11yService.getStringStates(state.value, extState.value)
@@ -324,10 +321,10 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
       return {};
     }
 
-    let attributes = {};
-    let attrsEnum = this.rawAccessible.attributes.enumerate();
+    const attributes = {};
+    const attrsEnum = this.rawAccessible.attributes.enumerate();
     while (attrsEnum.hasMoreElements()) {
-      let { key, value } = attrsEnum.getNext().QueryInterface(
+      const { key, value } = attrsEnum.getNext().QueryInterface(
         nsIPropertyElement);
       attributes[key] = value;
     }
@@ -361,7 +358,6 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
       name: this.name,
       value: this.value,
       description: this.description,
-      help: this.help,
       keyboardShortcut: this.keyboardShortcut,
       childCount: this.childCount,
       domNodeType: this.domNodeType,
@@ -382,9 +378,9 @@ const AccessibleActor = ActorClassWithSpec(accessibleSpec, {
  * service.
  */
 const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
-  initialize(conn, tabActor) {
+  initialize(conn, targetActor) {
     Actor.prototype.initialize.call(this, conn);
-    this.tabActor = tabActor;
+    this.targetActor = targetActor;
     this.refMap = new Map();
     this.setA11yServiceGetter();
     this.onPick = this.onPick.bind(this);
@@ -404,11 +400,11 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
   },
 
   get rootWin() {
-    return this.tabActor && this.tabActor.window;
+    return this.targetActor && this.targetActor.window;
   },
 
   get rootDoc() {
-    return this.tabActor && this.tabActor.window.document;
+    return this.targetActor && this.targetActor.window.document;
   },
 
   reset() {
@@ -435,6 +431,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       }
     }
 
+    this._childrenPromise = null;
     delete this.a11yService;
     this.setA11yServiceGetter();
   },
@@ -447,7 +444,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     this.highlighter.destroy();
     this.highlighter = null;
 
-    this.tabActor = null;
+    this.targetActor = null;
     this.refMap = null;
   },
 
@@ -479,7 +476,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       return;
     }
 
-    let actor = this.getRef(rawAccessible);
+    const actor = this.getRef(rawAccessible);
     if (actor && rawAccessible && !actor.isDefunct) {
       for (let child = rawAccessible.firstChild; child; child = child.nextSibling) {
         this.purgeSubtree(child);
@@ -509,7 +506,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     }
 
     this._childrenPromise = Promise.all([this.getDocument()]);
-    let children = await this._childrenPromise;
+    const children = await this._childrenPromise;
     this._childrenPromise = null;
     return children;
   },
@@ -526,11 +523,11 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     }
 
     if (isXUL(this.rootWin)) {
-      let doc = this.addRef(this.getRawAccessibleFor(this.rootDoc));
+      const doc = this.addRef(this.getRawAccessibleFor(this.rootDoc));
       return Promise.resolve(doc);
     }
 
-    let doc = this.getRawAccessibleFor(this.rootDoc);
+    const doc = this.getRawAccessibleFor(this.rootDoc);
     if (isStale(doc)) {
       return this.once("document-ready").then(docAcc => this.addRef(docAcc));
     }
@@ -573,7 +570,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       return [];
     }
     const doc = await this.getDocument();
-    let ancestry = [];
+    const ancestry = [];
     try {
       let parent = accessible;
       while (parent && (parent = parent.parentAcc) && parent != doc) {
@@ -595,12 +592,12 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
    *                                      accessible event object.
    */
   observe(subject) {
-    let event = subject.QueryInterface(nsIAccessibleEvent);
-    let rawAccessible = event.accessible;
-    let accessible = this.getRef(rawAccessible);
+    const event = subject.QueryInterface(nsIAccessibleEvent);
+    const rawAccessible = event.accessible;
+    const accessible = this.getRef(rawAccessible);
 
     if ((rawAccessible instanceof Ci.nsIAccessibleDocument) && !accessible) {
-      let rootDocAcc = this.getRawAccessibleFor(this.rootDoc);
+      const rootDocAcc = this.getRawAccessibleFor(this.rootDoc);
       if (rawAccessible === rootDocAcc && !isStale(rawAccessible)) {
         this.purgeSubtree(rawAccessible, event.DOMNode);
         // If it's a top level document notify listeners about the document
@@ -611,8 +608,8 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
 
     switch (event.eventType) {
       case EVENT_STATE_CHANGE:
-        let { state, isEnabled } = event.QueryInterface(nsIAccessibleStateChangeEvent);
-        let isBusy = state & Ci.nsIAccessibleStates.STATE_BUSY;
+        const { state, isEnabled } = event.QueryInterface(nsIAccessibleStateChangeEvent);
+        const isBusy = state & Ci.nsIAccessibleStates.STATE_BUSY;
         if (accessible) {
           // Only propagate state change events for active accessibles.
           if (isBusy && isEnabled) {
@@ -641,11 +638,6 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       case EVENT_DESCRIPTION_CHANGE:
         if (accessible) {
           events.emit(accessible, "description-change", rawAccessible.description);
-        }
-        break;
-      case EVENT_HELP_CHANGE:
-        if (accessible) {
-          events.emit(accessible, "help-change", rawAccessible.help);
         }
         break;
       case EVENT_REORDER:
@@ -683,9 +675,10 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
           events.emit(accessible, "attributes-change", accessible.attributes);
         }
         break;
+      // EVENT_ACCELERATOR_CHANGE is currently not fired by gecko accessibility.
       case EVENT_ACCELERATOR_CHANGE:
         if (accessible) {
-          events.emit(accessible, "shortcut-change", rawAccessible.keyboardShortcut);
+          events.emit(accessible, "shortcut-change", accessible.keyboardShortcut);
         }
         break;
       default:
@@ -707,7 +700,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
    *         True if highlighter shows the accessible object.
    */
   highlightAccessible(accessible, options = {}) {
-    let bounds = accessible.bounds;
+    const bounds = accessible.bounds;
     if (!bounds) {
       return false;
     }
@@ -794,13 +787,13 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       return;
     }
 
-    let accessible = await this._findAndAttachAccessible(event);
+    const accessible = await this._findAndAttachAccessible(event);
     if (!accessible) {
       return;
     }
 
     if (this._currentAccessible !== accessible) {
-      let { bounds } = accessible;
+      const { bounds } = accessible;
       if (bounds) {
         this.highlighter.show({ rawNode: event.originalTarget || event.target }, bounds);
       }
@@ -898,7 +891,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     }
 
     const doc = await this.getDocument();
-    let accessible = this.addRef(rawAccessible);
+    const accessible = this.addRef(rawAccessible);
     // There is a chance that ancestry lookup can fail if the accessible is in
     // the detached subtree. At that point the root accessible object would be
     // defunct and accessing it via parent property will throw.
@@ -918,7 +911,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
    * Start picker content listeners.
    */
   _startPickerListeners: function() {
-    let target = this.tabActor.chromeEventHandler;
+    const target = this.targetActor.chromeEventHandler;
     target.addEventListener("mousemove", this.onHovered, true);
     target.addEventListener("click", this.onPick, true);
     target.addEventListener("mousedown", this._preventContentEvent, true);
@@ -932,7 +925,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
    * If content is still alive, stop picker content listeners.
    */
   _stopPickerListeners: function() {
-    let target = this.tabActor.chromeEventHandler;
+    const target = this.targetActor.chromeEventHandler;
 
     if (!target) {
       return;
@@ -967,7 +960,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
  * tools UI.
  */
 const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
-  initialize(conn, tabActor) {
+  initialize(conn, targetActor) {
     Actor.prototype.initialize.call(this, conn);
 
     this.initializedDeferred = defer();
@@ -989,7 +982,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
     }
 
     Services.obs.addObserver(this, "a11y-init-or-shutdown");
-    this.tabActor = tabActor;
+    this.targetActor = targetActor;
   },
 
   bootstrap() {
@@ -1019,7 +1012,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
       return true;
     }
 
-    let { PlatformAPI } = JSON.parse(this.walker.a11yService.getConsumers());
+    const { PlatformAPI } = JSON.parse(this.walker.a11yService.getConsumers());
     return !PlatformAPI;
   },
 
@@ -1040,7 +1033,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
   },
 
   onMessage(msg) {
-    let { topic, data } = msg.data;
+    const { topic, data } = msg.data;
 
     switch (topic) {
       case "initialized":
@@ -1080,7 +1073,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
       return;
     }
 
-    let initPromise = this.once("init");
+    const initPromise = this.once("init");
 
     if (DebuggerServer.isInChildProcess) {
       this.messageManager.sendAsyncMessage(this._msgName, { action: "enable" });
@@ -1102,7 +1095,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
     }
 
     this.disabling = true;
-    let shutdownPromise = this.once("shutdown");
+    const shutdownPromise = this.once("shutdown");
     if (DebuggerServer.isInChildProcess) {
       this.messageManager.sendAsyncMessage(this._msgName, { action: "disable" });
     } else {
@@ -1160,7 +1153,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
       // in parent process, and MainProcess consumer can only be set in child
       // process. We only care about PlatformAPI consumer changes because when
       // set, we can no longer disable accessibility service.
-      let { PlatformAPI } = JSON.parse(data);
+      const { PlatformAPI } = JSON.parse(data);
       events.emit(this, "can-be-disabled-change", !PlatformAPI);
     } else if (!this.disabling && topic === "nsPref:changed" &&
                data === PREF_ACCESSIBILITY_FORCE_DISABLED) {
@@ -1181,7 +1174,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
    */
   getWalker() {
     if (!this.walker) {
-      this.walker = new AccessibleWalkerActor(this.conn, this.tabActor);
+      this.walker = new AccessibleWalkerActor(this.conn, this.targetActor);
     }
     return this.walker;
   },
@@ -1216,7 +1209,7 @@ const AccessibilityActor = ActorClassWithSpec(accessibilitySpec, {
 
     Actor.prototype.destroy.call(this);
     this.walker = null;
-    this.tabActor = null;
+    this.targetActor = null;
     resolver();
   }
 });

@@ -501,21 +501,21 @@ Options(JSContext* cx, unsigned argc, Value* vp)
 
     UniqueChars names;
     if (oldContextOptions.extraWarnings()) {
-        names = JS_sprintf_append(Move(names), "%s", "strict");
+        names = JS_sprintf_append(std::move(names), "%s", "strict");
         if (!names) {
             JS_ReportOutOfMemory(cx);
             return false;
         }
     }
     if (oldContextOptions.werror()) {
-        names = JS_sprintf_append(Move(names), "%s%s", names ? "," : "", "werror");
+        names = JS_sprintf_append(std::move(names), "%s%s", names ? "," : "", "werror");
         if (!names) {
             JS_ReportOutOfMemory(cx);
             return false;
         }
     }
     if (names && oldContextOptions.strictMode()) {
-        names = JS_sprintf_append(Move(names), "%s%s", names ? "," : "", "strict_mode");
+        names = JS_sprintf_append(std::move(names), "%s%s", names ? "," : "", "strict_mode");
         if (!names) {
             JS_ReportOutOfMemory(cx);
             return false;
@@ -542,7 +542,7 @@ XPCShellInterruptCallback(JSContext* cx)
     if (callback.isUndefined())
         return true;
 
-    JSAutoCompartment ac(cx, &callback.toObject());
+    JSAutoRealm ar(cx, &callback.toObject());
     RootedValue rv(cx);
     if (!JS_CallFunctionValue(cx, nullptr, callback, JS::HandleValueArray::empty(), &rv) ||
         !rv.isBoolean())
@@ -1282,8 +1282,8 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
 
         // Make the default XPCShell global use a fresh zone (rather than the
         // System Zone) to improve cross-zone test coverage.
-        JS::CompartmentOptions options;
-        options.creationOptions().setNewZone();
+        JS::RealmOptions options;
+        options.creationOptions().setNewCompartmentAndZone();
         if (xpc::SharedMemoryEnabled())
             options.creationOptions().setSharedMemoryAndAtomicsEnabled(true);
         JS::Rooted<JSObject*> glob(cx);
@@ -1332,14 +1332,14 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
                 return 1;
             }
 
+            backstagePass->SetGlobalObject(glob);
+
+            JSAutoRealm ar(cx, glob);
+
             // Even if we're building in a configuration where source is
             // discarded, there's no reason to do that on XPCShell, and doing so
             // might break various automation scripts.
-            JS::CompartmentBehaviorsRef(glob).setDiscardSource(false);
-
-            backstagePass->SetGlobalObject(glob);
-
-            JSAutoCompartment ac(cx, glob);
+            JS::RealmBehaviorsRef(cx).setDiscardSource(false);
 
             if (!JS_InitReflectParse(cx, glob)) {
                 return 1;

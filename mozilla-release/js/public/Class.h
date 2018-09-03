@@ -132,15 +132,23 @@ class ObjectOpResult
         Uninitialized = uintptr_t(-1)
     };
 
+    static const uintptr_t SoftFailBit = uintptr_t(1) << (sizeof(uintptr_t) * 8 - 1);
+
     ObjectOpResult() : code_(Uninitialized) {}
 
-    /* Return true if succeed() was called. */
+    /* Return true if succeed() or failSoft() was called. */
     bool ok() const {
         MOZ_ASSERT(code_ != Uninitialized);
-        return code_ == OkCode;
+        return code_ == OkCode || (code_ & SoftFailBit);
     }
 
     explicit operator bool() const { return ok(); }
+
+    /* Return true if succeed() was called. */
+    bool reallyOk() const {
+        MOZ_ASSERT(code_ != Uninitialized);
+        return code_ == OkCode;
+    }
 
     /* Set this ObjectOpResult to true and return true. */
     bool succeed() {
@@ -161,7 +169,23 @@ class ObjectOpResult
      */
     bool fail(uint32_t msg) {
         MOZ_ASSERT(msg != OkCode);
+        MOZ_ASSERT((msg & SoftFailBit) == 0);
         code_ = msg;
+        return true;
+    }
+
+    /*
+     * DEPRECATED: This is a non-standard compatibility hack.
+     *
+     * Set this ObjectOpResult to true, but remembers an error code.
+     * This is used for situations where we really want to fail,
+     * but can't for legacy reasons.
+     *
+     * Always returns true, as a convenience.
+     */
+    bool failSoft(uint32_t msg) {
+        // The msg code is currently never extracted again.
+        code_ = msg | SoftFailBit;
         return true;
     }
 
@@ -838,7 +862,7 @@ static const uint32_t JSCLASS_FOREGROUND_FINALIZE =     1 << (JSCLASS_HIGH_FLAGS
 // application.
 static const uint32_t JSCLASS_GLOBAL_APPLICATION_SLOTS = 5;
 static const uint32_t JSCLASS_GLOBAL_SLOT_COUNT =
-    JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 2 + 37;
+    JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 2 + 36;
 
 #define JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(n)                              \
     (JSCLASS_IS_GLOBAL | JSCLASS_HAS_RESERVED_SLOTS(JSCLASS_GLOBAL_SLOT_COUNT + (n)))
@@ -1024,6 +1048,9 @@ enum class ESClass {
     SetIterator,
     Arguments,
     Error,
+#ifdef ENABLE_BIGINT
+    BigInt,
+#endif
 
     /** None of the above. */
     Other

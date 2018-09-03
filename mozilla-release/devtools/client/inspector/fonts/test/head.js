@@ -24,9 +24,10 @@ registerCleanupFunction(() => {
  */
 var _selectNode = selectNode;
 selectNode = async function(node, inspector, reason) {
-  let onUpdated = inspector.once("fontinspector-updated");
+  const onInspectorUpdated = inspector.once("fontinspector-updated");
+  const onEditorUpdated = inspector.once("fonteditor-updated");
   await _selectNode(node, inspector, reason);
-  await onUpdated;
+  await Promise.all([onInspectorUpdated, onEditorUpdated]);
 };
 
 /**
@@ -35,8 +36,8 @@ selectNode = async function(node, inspector, reason) {
  * @return {Promise} resolves to a {toolbox, inspector, view} object
  */
 var openFontInspectorForURL = async function(url) {
-  await addTab(url);
-  let {toolbox, inspector} = await openInspector();
+  const tab = await addTab(url);
+  const {toolbox, inspector} = await openInspector();
 
   // Call selectNode again here to force a fontinspector update since we don't
   // know if the fontinspector-updated event has been sent while the inspector
@@ -44,6 +45,7 @@ var openFontInspectorForURL = async function(url) {
   await selectNode("body", inspector);
 
   return {
+    tab,
     toolbox,
     inspector,
     view: inspector.fontinspector
@@ -60,27 +62,27 @@ var openFontInspectorForURL = async function(url) {
 async function updatePreviewText(view, text) {
   info(`Changing the preview text to '${text}'`);
 
-  let doc = view.document;
-  let previewImg = doc.querySelector("#sidebar-panel-fontinspector .font-preview");
+  const doc = view.document;
+  const previewImg = doc.querySelector("#sidebar-panel-fontinspector .font-preview");
 
   info("Clicking the font preview element to turn it to edit mode");
-  let onClick = once(doc, "click");
+  const onClick = once(doc, "click");
   previewImg.click();
   await onClick;
 
-  let input = previewImg.parentNode.querySelector("input");
+  const input = previewImg.parentNode.querySelector("input");
   is(doc.activeElement, input, "The input was focused.");
 
   info("Blanking the input field.");
   while (input.value.length) {
-    let update = view.inspector.once("fontinspector-updated");
+    const update = view.inspector.once("fontinspector-updated");
     EventUtils.sendKey("BACK_SPACE", doc.defaultView);
     await update;
   }
 
   if (text) {
     info("Typing the specified text to the input field.");
-    let update = waitForNEvents(view.inspector, "fontinspector-updated", text.length);
+    const update = waitForNEvents(view.inspector, "fontinspector-updated", text.length);
     EventUtils.sendString(text, doc.defaultView);
     await update;
   }
@@ -95,7 +97,7 @@ async function updatePreviewText(view, text) {
  * @return {Array}
  */
 function getUsedFontsEls(viewDoc) {
-  return viewDoc.querySelectorAll("#font-container > .fonts-list > li");
+  return viewDoc.querySelectorAll("#font-editor .fonts-list li");
 }
 
 /**
@@ -104,14 +106,14 @@ function getUsedFontsEls(viewDoc) {
 async function expandOtherFontsAccordion(viewDoc) {
   info("Expanding the other fonts section");
 
-  let accordion = viewDoc.querySelector("#font-container .accordion");
-  let isExpanded = () => accordion.querySelector(".fonts-list");
+  const accordion = viewDoc.querySelector("#font-container .accordion");
+  const isExpanded = () => accordion.querySelector(".fonts-list");
 
   if (isExpanded()) {
     return;
   }
 
-  let onExpanded = BrowserTestUtils.waitForCondition(isExpanded,
+  const onExpanded = BrowserTestUtils.waitForCondition(isExpanded,
                                                      "Waiting for other fonts section");
   accordion.querySelector(".theme-twisty").click();
   await onExpanded;
@@ -137,4 +139,28 @@ function getOtherFontsEls(viewDoc) {
  */
 function getName(fontEl) {
   return fontEl.querySelector(".font-name").textContent;
+}
+
+/**
+ * Given a font element, return the font's URL.
+ *
+ * @param  {DOMNode} fontEl
+ *         The font element.
+ * @return {String}
+ *         The URL where the font was loaded from as shown in the UI.
+ */
+function getURL(fontEl) {
+  return fontEl.querySelector(".font-origin").textContent;
+}
+
+/**
+ * Given a font element, return its family name.
+ *
+ * @param  {DOMNode} fontEl
+ *         The font element.
+ * @return {String}
+ *         The name of the font family as shown in the UI.
+ */
+function getFamilyName(fontEl) {
+  return fontEl.querySelector(".font-family-name").textContent;
 }

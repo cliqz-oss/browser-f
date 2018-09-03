@@ -20,6 +20,7 @@
 #include "nsPluginStreamListenerPeer.h"
 #include "nsIServiceManager.h"
 #include "nsThreadUtils.h"
+#include "mozilla/CycleCollectedJSContext.h" // for nsAutoMicroTask
 #include "mozilla/Preferences.h"
 #include "nsPluginInstanceOwner.h"
 
@@ -103,9 +104,9 @@ static NPNetscapeFuncs sBrowserFuncs = {
   _geturl,
   _posturl,
   _requestread,
-  nullptr,
-  nullptr,
-  nullptr,
+  nullptr, // _newstream, unimplemented
+  nullptr, // _write, unimplemented
+  nullptr, // _destroystream, unimplemented
   _status,
   _useragent,
   _memalloc,

@@ -32,7 +32,6 @@ var PlacesOrganizer = {
   // is minimal. IDs should be kept in sync with the IDs of the elements
   // observing additionalInfoBroadcaster.
   _additionalInfoFields: [
-    "editBMPanel_descriptionRow",
     "editBMPanel_loadInSidebarCheckbox",
     "editBMPanel_keywordRow",
   ],
@@ -106,24 +105,19 @@ var PlacesOrganizer = {
       this._places.view.selection.selectEventsSuppressed = true;
     try {
       for (let container of hierarchy) {
-        switch (typeof container) {
-          case "number":
+        if (typeof container != "string") {
+          throw new Error("Invalid container type found: " + container);
+        }
+
+        try {
+          this.selectLeftPaneBuiltIn(container);
+        } catch (ex) {
+          if (container.substr(0, 6) == "place:") {
+            this._places.selectPlaceURI(container);
+          } else {
+            // Must be a guid.
             this._places.selectItems([container], false);
-            break;
-          case "string":
-            try {
-              this.selectLeftPaneBuiltIn(container);
-            } catch (ex) {
-              if (container.substr(0, 6) == "place:") {
-                this._places.selectPlaceURI(container);
-              } else {
-                // May be a guid.
-                this._places.selectItems([container], false);
-              }
-            }
-            break;
-          default:
-            throw new Error("Invalid container type found: " + container);
+          }
         }
         PlacesUtils.asContainer(this._places.selectedNode).containerOpen = true;
       }
@@ -375,10 +369,10 @@ var PlacesOrganizer = {
     }
   },
 
-  openFlatContainer: function PO_openFlatContainerFlatContainer(aContainer) {
-    if (aContainer.itemId != -1) {
+  openFlatContainer(aContainer) {
+    if (aContainer.bookmarkGuid) {
       PlacesUtils.asContainer(this._places.selectedNode).containerOpen = true;
-      this._places.selectItems([aContainer.itemId], false);
+      this._places.selectItems([aContainer.bookmarkGuid], false);
     } else if (PlacesUtils.nodeIsQuery(aContainer)) {
       this._places.selectPlaceURI(aContainer.uri);
     }
@@ -677,7 +671,6 @@ var PlacesOrganizer = {
                                                   "loadInSidebar",
                                                   "location",
                                                   "keyword",
-                                                  "description",
                                                   "name"]});
         this._detectAndSetDetailsPaneMinimalState(selectedNode);
       } else {
@@ -753,10 +746,7 @@ var PlacesSearchBox = {
   _folders: [],
   get folders() {
     if (this._folders.length == 0) {
-      this._folders.push(PlacesUtils.bookmarksMenuFolderId,
-                         PlacesUtils.unfiledBookmarksFolderId,
-                         PlacesUtils.toolbarFolderId,
-                         PlacesUtils.mobileFolderId);
+      this._folders = PlacesUtils.bookmarks.userContentRoots;
     }
     return this._folders;
   },
@@ -931,10 +921,7 @@ var PlacesQueryBuilder = {
         break;
       case "bookmarks":
         filterCollection = "bookmarks";
-        folders.push(PlacesUtils.bookmarksMenuFolderId,
-                     PlacesUtils.toolbarFolderId,
-                     PlacesUtils.unfiledBookmarksFolderId,
-                     PlacesUtils.mobileFolderId);
+        folders = PlacesUtils.bookmarks.userContentRoots;
         break;
       case "downloads":
         filterCollection = "downloads";
@@ -1169,13 +1156,11 @@ var ViewMenu = {
     }
 
     // This maps the possible values of columnId (i.e., anonid's of treecols in
-    // placeContent) to the default sortingMode and sortingAnnotation values for
-    // each column.
+    // placeContent) to the default sortingMode for each column.
     //   key:  Sort key in the name of one of the
     //         nsINavHistoryQueryOptions.SORT_BY_* constants
     //   dir:  Default sort direction to use if none has been specified
-    //   anno: The annotation to sort by, if key is "ANNOTATION"
-    var colLookupTable = {
+    const colLookupTable = {
       title:        { key: "TITLE",        dir: "ascending"  },
       tags:         { key: "TAGS",         dir: "ascending"  },
       url:          { key: "URI",          dir: "ascending"  },
@@ -1183,9 +1168,6 @@ var ViewMenu = {
       visitCount:   { key: "VISITCOUNT",   dir: "descending" },
       dateAdded:    { key: "DATEADDED",    dir: "descending" },
       lastModified: { key: "LASTMODIFIED", dir: "descending" },
-      description:  { key: "ANNOTATION",
-                      dir: "ascending",
-                      anno: PlacesUIUtils.DESCRIPTION_ANNO }
     };
 
     // Make sure we have a valid column.
@@ -1198,7 +1180,6 @@ var ViewMenu = {
     aDirection = (aDirection || colLookupTable[columnId].dir).toUpperCase();
 
     var sortConst = "SORT_BY_" + colLookupTable[columnId].key + "_" + aDirection;
-    result.sortingAnnotation = colLookupTable[columnId].anno || "";
     result.sortingMode = Ci.nsINavHistoryQueryOptions[sortConst];
   }
 };

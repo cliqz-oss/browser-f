@@ -757,6 +757,8 @@ class CCacheStats(object):
     STATS_KEYS = [
         # (key, description)
         # Refer to stats.c in ccache project for all the descriptions.
+        ('stats_zero_time', 'stats zero time'),
+        ('stats_updated', 'stats updated'),
         ('cache_hit_direct', 'cache hit (direct)'),
         ('cache_hit_preprocessed', 'cache hit (preprocessed)'),
         ('cache_hit_rate', 'cache hit rate'),
@@ -838,6 +840,13 @@ class CCacheStats(object):
 
     @staticmethod
     def _parse_value(raw_value):
+        try:
+            # ccache calls strftime with '%c' (src/stats.c)
+            ts = time.strptime(raw_value, '%c')
+            return int(time.mktime(ts))
+        except ValueError:
+            pass
+
         value = raw_value.split()
         unit = ''
         if len(value) == 1:
@@ -970,40 +979,57 @@ class BuildDriver(MozbuildObject):
                 if directory.startswith('/'):
                     directory = directory[1:]
 
-            def backend_out_of_date(backend_file):
-                dep_file = '%s.in' % backend_file
-                if not os.path.exists(backend_file):
+            def build_out_of_date(output, dep_file):
+                if not os.path.isfile(output):
                     return True
-                if not os.path.exists(dep_file):
+                if not os.path.isfile(dep_file):
                     return True
 
-                dep_files = None
+                deps = []
                 with open(dep_file, 'r') as fh:
-                    dep_files = fh.read().splitlines()
-                if not dep_files:
+                    deps = fh.read().splitlines()
+
+                mtime = os.path.getmtime(output)
+                for f in deps:
+                    try:
+                        dep_mtime = os.path.getmtime(f)
+                    except OSError as e:
+                        if e.errno == errno.ENOENT:
+                            return True
+                        raise
+                    if dep_mtime > mtime:
+                        return True
+                return False
+
+            def backend_out_of_date(backend_file):
+                if not os.path.isfile(backend_file):
                     return True
 
-                mtime = os.path.getmtime(backend_file)
-                for f in dep_files:
-                    if os.path.getmtime(f) > mtime:
+                # Check if any of our output files have been removed since
+                # we last built the backend, re-generate the backend if
+                # so.
+                outputs = []
+                with open(backend_file, 'r') as fh:
+                    outputs = fh.read().splitlines()
+                for output in outputs:
+                    if not os.path.isfile(mozpath.join(self.topobjdir, output)):
                         return True
 
-                return False
+                dep_file = '%s.in' % backend_file
+                return build_out_of_date(backend_file, dep_file)
 
             def maybe_invoke_backend(active_backend):
                 # Attempt to bypass the make-oriented logic below. Note this
                 # will only succeed in case we're building with a non-make
                 # backend (Tup), and otherwise be harmless.
                 if active_backend:
-                    if 'Make' in active_backend:
-                        return None
                     if backend_out_of_date(mozpath.join(self.topobjdir,
                                                         'backend.%sBackend' %
                                                         active_backend)):
                         print('Build configuration changed. Regenerating backend.')
                         args = [config.substs['PYTHON'],
                                 mozpath.join(self.topobjdir, 'config.status')]
-                        self.run_process(args, cwd=self.topobjdir)
+                        self.run_process(args, cwd=self.topobjdir, pass_thru=True)
                     backend_cls = get_backend_class(active_backend)(config)
                     return backend_cls.build(self, output, jobs, verbose, what)
                 return None
@@ -1024,8 +1050,24 @@ class BuildDriver(MozbuildObject):
 
                 config = self.config_environment
 
-            status = maybe_invoke_backend(config.substs.get('BUILD_BACKENDS',
-                                                            [None])[0])
+            status = None
+            active_backend = config.substs.get('BUILD_BACKENDS', [None])[0]
+            if active_backend and 'Make' not in active_backend:
+                # Write out any changes to the current mozconfig in case
+                # they should invalidate configure.
+                self._write_mozconfig_json()
+                # Even if we have a config object, it may be out of date
+                # if something that influences its result has changed.
+                if build_out_of_date(mozpath.join(self.topobjdir,
+                                                  'config.status'),
+                                     mozpath.join(self.topobjdir,
+                                                  'config_status_deps.in')):
+                    config_rc = self.configure(buildstatus_messages=True,
+                                               line_handler=output.on_line)
+                    if config_rc != 0:
+                        return config_rc
+
+                status = maybe_invoke_backend(active_backend)
 
             if what and status is None:
                 # Collect target pairs.
@@ -1088,10 +1130,11 @@ class BuildDriver(MozbuildObject):
                     # tree builds because they aren't reliable there. This
                     # could potentially be fixed if the build monitor were more
                     # intelligent about encountering undefined state.
+                    no_build_status = b'1' if make_dir is not None else b''
                     status = self._run_make(directory=make_dir, target=make_target,
                         line_handler=output.on_line, log=False, print_directory=False,
                         ensure_exit_code=False, num_jobs=jobs, silent=not verbose,
-                        append_env={b'NO_BUILDSTATUS_MESSAGES': b'1'},
+                        append_env={b'NO_BUILDSTATUS_MESSAGES': no_build_status},
                         keep_going=keep_going)
 
                     if status != 0:
@@ -1118,7 +1161,7 @@ class BuildDriver(MozbuildObject):
                     new_status = backend_cls.post_build(self, output, jobs, verbose, status)
                     status = new_status
             except Exception as ex:
-                self.log(logging.DEBUG, 'post_build', {'ex': ex},
+                self.log(logging.DEBUG, 'post_build', {'ex': str(ex)},
                          "Unable to run active build backend's post-build step; " +
                          "failing the build due to exception: {ex}.")
                 if not status:
@@ -1320,6 +1363,15 @@ class BuildDriver(MozbuildObject):
             install_test_files(mozpath.normpath(self.topsrcdir), self.topobjdir,
                                '_tests', test_objs)
 
+    def _write_mozconfig_json(self):
+        mozconfig_json = os.path.join(self.topobjdir, '.mozconfig.json')
+        with FileAvoidWrite(mozconfig_json) as fh:
+            json.dump({
+                'topsrcdir': self.topsrcdir,
+                'topobjdir': self.topobjdir,
+                'mozconfig': self.mozconfig,
+            }, fh, sort_keys=True, indent=2)
+
     def _run_client_mk(self, target=None, line_handler=None, jobs=0,
                        verbose=None, keep_going=False, append_env=None):
         append_env = dict(append_env or {})
@@ -1366,13 +1418,7 @@ class BuildDriver(MozbuildObject):
         with FileAvoidWrite(mozconfig_mk) as fh:
             fh.write(b'\n'.join(mozconfig_filtered_lines))
 
-        mozconfig_json = os.path.join(self.topobjdir, '.mozconfig.json')
-        with FileAvoidWrite(mozconfig_json) as fh:
-            json.dump({
-                'topsrcdir': self.topsrcdir,
-                'topobjdir': self.topobjdir,
-                'mozconfig': mozconfig,
-            }, fh, sort_keys=True, indent=2)
+        self._write_mozconfig_json()
 
         # Copy the original mozconfig to the objdir.
         mozconfig_objdir = os.path.join(self.topobjdir, '.mozconfig')

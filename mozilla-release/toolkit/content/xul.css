@@ -306,15 +306,6 @@ toolbarspring {
   -moz-box-flex: 1000;
 }
 
-toolbarpaletteitem {
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbarpaletteitem");
-}
-
-toolbarpaletteitem[place="palette"] {
-  -moz-box-orient: vertical;
-  -moz-binding: url("chrome://global/content/bindings/toolbar.xml#toolbarpaletteitem-palette");
-}
-
 /********* menu ***********/
 
 menubar > menu {
@@ -658,7 +649,6 @@ treechildren::-moz-tree-cell(ltr) {
 
 deck {
   display: -moz-deck;
-  -moz-binding: url("chrome://global/content/bindings/general.xml#deck");
 }
 
 stack {
@@ -829,8 +819,8 @@ html|*.menulist-editable-input {
   -moz-box-flex: 1;
 }
 
-dropmarker {
-  -moz-binding: url("chrome://global/content/bindings/general.xml#dropmarker");
+dropmarker > .dropmarker-icon {
+  pointer-events: none;
 }
 
 /********** splitter **********/
@@ -882,19 +872,11 @@ arrowscrollbox[clicktoscroll="true"] {
   -moz-binding: url("chrome://global/content/bindings/scrollbox.xml#arrowscrollbox-clicktoscroll");
 }
 
-autorepeatbutton {
-  -moz-binding: url("chrome://global/content/bindings/scrollbox.xml#autorepeatbutton");
-}
-
 /********** stringbundle **********/
 
+stringbundle,
 stringbundleset {
-  visibility: collapse;
-}
-
-stringbundle {
-  -moz-binding: url("chrome://global/content/bindings/stringbundle.xml#stringbundle");
-  visibility: collapse;
+  display: none;
 }
 
 /********** dialog **********/

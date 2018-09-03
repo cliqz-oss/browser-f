@@ -235,7 +235,7 @@ public:
                                          int32_t* outFrameContentOffset,
                                          nsIFrame** outChildFrame) override;
 
-  bool IsVisibleInSelection(nsISelection* aSelection) override;
+  bool IsVisibleInSelection(mozilla::dom::Selection* aSelection) override;
 
   bool IsEmpty() override;
   bool IsSelfEmpty() override { return IsEmpty(); }
@@ -666,6 +666,8 @@ public:
 
   uint32_t CountGraphemeClusters() const;
 
+  bool HasAnyNoncollapsedCharacters() override;
+
 protected:
   virtual ~nsTextFrame();
 
@@ -881,8 +883,6 @@ protected:
     bool aForInsertionPoint);
 
   void ClearFrameOffsetCache();
-
-  bool HasAnyNoncollapsedCharacters() override;
 
   void ClearMetrics(ReflowOutput& aMetrics);
 

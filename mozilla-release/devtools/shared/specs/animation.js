@@ -5,6 +5,7 @@
 
 const {
   Arg,
+  Option,
   RetVal,
   generateActorSpec,
   types
@@ -136,11 +137,24 @@ const animationsSpec = generateActorSpec({
       },
       response: {}
     },
+    pauseSome: {
+      request: {
+        players: Arg(0, "array:animationplayer"),
+      },
+      response: {}
+    },
+    playSome: {
+      request: {
+        players: Arg(0, "array:animationplayer"),
+      },
+      response: {}
+    },
     setCurrentTimes: {
       request: {
         players: Arg(0, "array:animationplayer"),
         time: Arg(1, "number"),
-        shouldPause: Arg(2, "boolean")
+        shouldPause: Arg(2, "boolean"),
+        relativeToCreatedTime: Option(3, "boolean"),
       },
       response: {}
     },

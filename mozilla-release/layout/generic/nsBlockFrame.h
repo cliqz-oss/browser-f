@@ -225,7 +225,7 @@ public:
   };
 
   void ChildIsDirty(nsIFrame* aChild) override;
-  bool IsVisibleInSelection(nsISelection* aSelection) override;
+  bool IsVisibleInSelection(mozilla::dom::Selection* aSelection) override;
 
   bool IsEmpty() override;
   bool CachedIsEmpty() override;
@@ -705,7 +705,7 @@ protected:
                  nsLineLayout& aLineLayout,
                  LineIterator aLine,
                  nsFloatManager::SavedState* aFloatStateBeforeLine,
-                 mozilla::LogicalRect& aFloatAvailableSpace, //in-out
+                 nsFlowAreaRect& aFlowArea, // in-out
                  nscoord& aAvailableSpaceBSize, // in-out
                  bool* aKeepReflowGoing);
 

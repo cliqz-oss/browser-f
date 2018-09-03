@@ -14,7 +14,7 @@
 
 use app_units::Au;
 use euclid::{Length, TypedRect, TypedScale, TypedSize2D, TypedTransform3D};
-use euclid::{TypedPoint2D, TypedPoint3D, TypedVector2D, TypedVector3D};
+use euclid::{TypedPoint2D, TypedPoint3D, TypedVector2D, TypedVector3D, TypedSideOffsets2D};
 
 /// Geometry in the coordinate system of the render target (screen or intermediate
 /// surface) in physical pixels.
@@ -25,6 +25,7 @@ pub type DeviceIntRect = TypedRect<i32, DevicePixel>;
 pub type DeviceIntPoint = TypedPoint2D<i32, DevicePixel>;
 pub type DeviceIntSize = TypedSize2D<i32, DevicePixel>;
 pub type DeviceIntLength = Length<i32, DevicePixel>;
+pub type DeviceIntSideOffsets = TypedSideOffsets2D<i32, DevicePixel>;
 
 pub type DeviceUintRect = TypedRect<u32, DevicePixel>;
 pub type DeviceUintPoint = TypedPoint2D<u32, DevicePixel>;
@@ -91,6 +92,8 @@ pub type DevicePixelScale = TypedScale<f32, WorldPixel, DevicePixel>;
 /// Scaling ratio from layout to world. Used for cases where we know the layout
 /// is in world space, or specifically want to treat it this way.
 pub type LayoutToWorldScale = TypedScale<f32, LayoutPixel, WorldPixel>;
+/// A complete scaling ratio from layout space to device pixel space.
+pub type LayoutToDeviceScale = TypedScale<f32, LayoutPixel, DevicePixel>;
 
 pub type LayoutTransform = TypedTransform3D<f32, LayoutPixel, LayoutPixel>;
 pub type LayoutToScrollTransform = TypedTransform3D<f32, LayoutPixel, ScrollLayerPixel>;

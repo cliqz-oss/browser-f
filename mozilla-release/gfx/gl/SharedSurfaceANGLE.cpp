@@ -34,8 +34,10 @@ CreatePBufferSurface(GLLibraryEGL* egl,
     MOZ_ASSERT(preCallErr == LOCAL_EGL_SUCCESS);
     EGLSurface surface = egl->fCreatePbufferSurface(display, config, attribs);
     EGLint err = egl->fGetError();
-    if (err != LOCAL_EGL_SUCCESS)
+    if (err != LOCAL_EGL_SUCCESS) {
+        gfxCriticalError() << "Failed to create Pbuffer surface error: " << gfx::hexa(err) << " Size : " << size;
         return 0;
+    }
 
     return surface;
 }
@@ -44,7 +46,7 @@ CreatePBufferSurface(GLLibraryEGL* egl,
 SharedSurface_ANGLEShareHandle::Create(GLContext* gl, EGLConfig config,
                                        const gfx::IntSize& size, bool hasAlpha)
 {
-    GLLibraryEGL* egl = &sEGLLibrary;
+    auto* egl = gl::GLLibraryEGL::Get();
     MOZ_ASSERT(egl);
     MOZ_ASSERT(egl->IsExtensionSupported(
                GLLibraryEGL::ANGLE_surface_d3d_texture_2d_share_handle));
@@ -75,7 +77,7 @@ SharedSurface_ANGLEShareHandle::Create(GLContext* gl, EGLConfig config,
     typedef SharedSurface_ANGLEShareHandle ptrT;
     UniquePtr<ptrT> ret( new ptrT(gl, egl, size, hasAlpha, pbuffer, shareHandle,
                                   keyedMutex) );
-    return Move(ret);
+    return std::move(ret);
 }
 
 EGLDisplay
@@ -323,7 +325,7 @@ SurfaceFactory_ANGLEShareHandle::Create(GLContext* gl, const SurfaceCaps& caps,
                                         const RefPtr<layers::LayersIPCChannel>& allocator,
                                         const layers::TextureFlags& flags)
 {
-    GLLibraryEGL* egl = &sEGLLibrary;
+    auto* egl = gl::GLLibraryEGL::Get();
     if (!egl)
         return nullptr;
 
@@ -335,7 +337,7 @@ SurfaceFactory_ANGLEShareHandle::Create(GLContext* gl, const SurfaceCaps& caps,
 
     typedef SurfaceFactory_ANGLEShareHandle ptrT;
     UniquePtr<ptrT> ret( new ptrT(gl, caps, allocator, flags, egl, config) );
-    return Move(ret);
+    return std::move(ret);
 }
 
 SurfaceFactory_ANGLEShareHandle::SurfaceFactory_ANGLEShareHandle(GLContext* gl,

@@ -123,16 +123,6 @@ var PluginProvider = {
   },
 
   /**
-   * Called to get Addons that have pending operations.
-   *
-   * @param  aTypes
-   *         An array of types to fetch. Can be null to get all types
-   */
-  async getAddonsWithOperationsByTypes(aTypes) {
-    return [];
-  },
-
-  /**
    * Called to get the current AddonInstalls, optionally restricting by type.
    *
    * @param  aTypes
@@ -363,6 +353,13 @@ PluginWrapper.prototype = {
     return val;
   },
 
+  async enable() {
+    this.userDisabled = false;
+  },
+  async disable() {
+    this.userDisabled = true;
+  },
+
   get blocklistState() {
     let { tags: [tag] } = pluginFor(this);
     return tag.blocklistState;
@@ -371,33 +368,6 @@ PluginWrapper.prototype = {
   async getBlocklistURL() {
     let { tags: [tag] } = pluginFor(this);
     return Blocklist.getPluginBlockURL(tag);
-  },
-
-  get size() {
-    function getDirectorySize(aFile) {
-      let size = 0;
-      let entries = aFile.directoryEntries.QueryInterface(Ci.nsIDirectoryEnumerator);
-      let entry;
-      while ((entry = entries.nextFile)) {
-        if (entry.isSymlink() || !entry.isDirectory())
-          size += entry.fileSize;
-        else
-          size += getDirectorySize(entry);
-      }
-      entries.close();
-      return size;
-    }
-
-    let size = 0;
-    let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-    for (let tag of pluginFor(this).tags) {
-      file.initWithPath(tag.fullpath);
-      if (file.isDirectory())
-        size += getDirectorySize(file);
-      else
-        size += file.fileSize;
-    }
-    return size;
   },
 
   get pluginLibraries() {

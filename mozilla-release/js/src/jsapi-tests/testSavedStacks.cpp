@@ -10,15 +10,15 @@
 #include "builtin/TestingFunctions.h"
 #include "jsapi-tests/tests.h"
 #include "vm/ArrayObject.h"
-#include "vm/JSCompartment.h"
+#include "vm/Realm.h"
 #include "vm/SavedStacks.h"
 
 BEGIN_TEST(testSavedStacks_withNoStack)
 {
-    JSCompartment* compartment = js::GetContextCompartment(cx);
-    compartment->setAllocationMetadataBuilder(&js::SavedStacks::metadataBuilder);
+    JS::Realm* realm = cx->realm();
+    realm->setAllocationMetadataBuilder(&js::SavedStacks::metadataBuilder);
     JS::RootedObject obj(cx, js::NewDenseEmptyArray(cx));
-    compartment->setAllocationMetadataBuilder(nullptr);
+    realm->setAllocationMetadataBuilder(nullptr);
     return true;
 }
 END_TEST(testSavedStacks_withNoStack)

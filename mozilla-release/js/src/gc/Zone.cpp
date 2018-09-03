@@ -11,13 +11,13 @@
 #include "gc/PublicIterators.h"
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "vm/Debugger.h"
 #include "vm/Runtime.h"
 
 #include "gc/GC-inl.h"
 #include "gc/Marking-inl.h"
-#include "vm/JSCompartment-inl.h"
+#include "vm/Realm-inl.h"
 
 using namespace js;
 using namespace js::gc;
@@ -47,6 +47,8 @@ JS::Zone::Zone(JSRuntime* rt)
     atomCache_(this),
     externalStringCache_(this),
     functionToStringCache_(this),
+    keepAtomsCount(this, 0),
+    purgeAtomsDeferred(this, 0),
     usage(&rt->gc.usage),
     threshold(),
     gcDelayBytes(0),
@@ -59,12 +61,12 @@ JS::Zone::Zone(JSRuntime* rt)
     data(this, nullptr),
     isSystem(this, false),
 #ifdef DEBUG
-    gcLastSweepGroupIndex(this, 0),
+    gcLastSweepGroupIndex(0),
 #endif
     jitZone_(this, nullptr),
     gcScheduled_(false),
     gcScheduledSaved_(false),
-    gcPreserveCode_(this, false),
+    gcPreserveCode_(false),
     keepShapeTables_(this, false),
     listNext_(NotOnList)
 {
@@ -294,10 +296,10 @@ Zone::createJitZone(JSContext* cx)
 }
 
 bool
-Zone::hasMarkedCompartments()
+Zone::hasMarkedRealms()
 {
-    for (CompartmentsInZoneIter comp(this); !comp.done(); comp.next()) {
-        if (comp->marked)
+    for (RealmsInZoneIter realm(this); !realm.done(); realm.next()) {
+        if (realm->marked())
             return true;
     }
     return false;
@@ -322,8 +324,8 @@ Zone::notifyObservingDebuggers()
     JSRuntime* rt = runtimeFromMainThread();
     JSContext* cx = rt->mainContextFromOwnThread();
 
-    for (CompartmentsInZoneIter comps(this); !comps.done(); comps.next()) {
-        RootedGlobalObject global(cx, comps->unsafeUnbarrieredMaybeGlobal());
+    for (RealmsInZoneIter realms(this); !realms.done(); realms.next()) {
+        RootedGlobalObject global(cx, realms->unsafeUnbarrieredMaybeGlobal());
         if (!global)
             continue;
 
@@ -390,18 +392,21 @@ Zone::addTypeDescrObject(JSContext* cx, HandleObject obj)
 }
 
 void
-Zone::deleteEmptyCompartment(JSCompartment* comp)
+Zone::deleteEmptyCompartment(JS::Compartment* comp)
 {
     MOZ_ASSERT(comp->zone() == this);
     MOZ_ASSERT(arenas.checkEmptyArenaLists());
-    for (auto& i : compartments()) {
-        if (i == comp) {
-            compartments().erase(&i);
-            comp->destroy(runtimeFromMainThread()->defaultFreeOp());
-            return;
-        }
-    }
-    MOZ_CRASH("Compartment not found");
+
+    MOZ_ASSERT(compartments().length() == 1);
+    MOZ_ASSERT(compartments()[0] == comp);
+    MOZ_ASSERT(comp->realms().length() == 1);
+
+    Realm* realm = comp->realms()[0];
+    FreeOp* fop = runtimeFromMainThread()->defaultFreeOp();
+    realm->destroy(fop);
+    comp->destroy(fop);
+
+    compartments().clear();
 }
 
 void
@@ -417,6 +422,54 @@ Zone::ownedByCurrentHelperThread()
     MOZ_ASSERT(usedByHelperThread());
     MOZ_ASSERT(TlsContext.get());
     return helperThreadOwnerContext_ == TlsContext.get();
+}
+
+void Zone::releaseAtoms()
+{
+    MOZ_ASSERT(hasKeptAtoms());
+
+    keepAtomsCount--;
+
+    if (!hasKeptAtoms() && purgeAtomsDeferred) {
+        purgeAtomsDeferred = false;
+        purgeAtomCache();
+    }
+}
+
+void
+Zone::purgeAtomCacheOrDefer()
+{
+    if (hasKeptAtoms()) {
+        purgeAtomsDeferred = true;
+        return;
+    }
+
+    purgeAtomCache();
+}
+
+void
+Zone::purgeAtomCache()
+{
+    MOZ_ASSERT(!hasKeptAtoms());
+    MOZ_ASSERT(!purgeAtomsDeferred);
+
+    atomCache().clearAndShrink();
+
+    // Also purge the dtoa caches so that subsequent lookups populate atom
+    // cache too.
+    for (RealmsInZoneIter r(this); !r.done(); r.next())
+        r->dtoaCache.purge();
+}
+
+void
+Zone::traceAtomCache(JSTracer* trc)
+{
+    MOZ_ASSERT(hasKeptAtoms());
+    for (auto r = atomCache().all(); !r.empty(); r.popFront()) {
+        JSAtom* atom = r.front().asPtrUnbarriered();
+        TraceRoot(trc, &atom, "kept atom");
+        MOZ_ASSERT(r.front().asPtrUnbarriered() == atom);
+    }
 }
 
 ZoneList::ZoneList()

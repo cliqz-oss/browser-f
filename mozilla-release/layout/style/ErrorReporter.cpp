@@ -8,12 +8,12 @@
 
 #include "mozilla/css/ErrorReporter.h"
 
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/css/Loader.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/SystemGroup.h"
-#include "nsCSSScanner.h"
 #include "nsIConsoleService.h"
 #include "nsIDocument.h"
 #include "nsIDocShell.h"
@@ -68,15 +68,12 @@ private:
 
 } // namespace
 
-bool ErrorReporter::sReportErrors = false;
 bool ErrorReporter::sInitialized = false;
 
 static nsIConsoleService *sConsoleService;
 static nsIFactory *sScriptErrorFactory;
 static nsIStringBundle *sStringBundle;
 static ShortTermURISpecCache *sSpecCache;
-
-#define CSS_ERRORS_PREF "layout.css.report_errors"
 
 void
 ErrorReporter::InitGlobals()
@@ -85,12 +82,6 @@ ErrorReporter::InitGlobals()
   MOZ_ASSERT(!sInitialized, "should not have been called");
 
   sInitialized = true;
-
-  if (NS_FAILED(Preferences::AddBoolVarCache(&sReportErrors,
-                                             CSS_ERRORS_PREF,
-                                             true))) {
-    return;
-  }
 
   nsCOMPtr<nsIConsoleService> cs = do_GetService(NS_CONSOLESERVICE_CONTRACTID);
   if (!cs) {
@@ -131,17 +122,33 @@ ErrorReporter::ReleaseGlobals()
   NS_IF_RELEASE(sSpecCache);
 }
 
+static uint64_t
+FindInnerWindowID(const StyleSheet* aSheet, const Loader* aLoader)
+{
+  uint64_t innerWindowID = 0;
+  if (aSheet) {
+    innerWindowID = aSheet->FindOwningWindowInnerID();
+  }
+  if (innerWindowID == 0 && aLoader) {
+    if (nsIDocument* doc = aLoader->GetDocument()) {
+      innerWindowID = doc->InnerWindowID();
+    }
+  }
+  return innerWindowID;
+}
+
 ErrorReporter::ErrorReporter(const StyleSheet* aSheet,
                              const Loader* aLoader,
                              nsIURI* aURI)
   : mSheet(aSheet)
   , mLoader(aLoader)
   , mURI(aURI)
-  , mInnerWindowID(0)
   , mErrorLineNumber(0)
   , mPrevErrorLineNumber(0)
   , mErrorColNumber(0)
 {
+  MOZ_ASSERT(ShouldReportErrors(mSheet, mLoader));
+  EnsureGlobalsInitialized();
 }
 
 ErrorReporter::~ErrorReporter()
@@ -177,34 +184,36 @@ ErrorReporter::ShouldReportErrors(const nsIDocument& aDoc)
   return report;
 }
 
+static nsINode*
+SheetOwner(const StyleSheet& aSheet)
+{
+  if (nsINode* owner = aSheet.GetOwnerNode()) {
+    return owner;
+  }
+
+  auto* associated = aSheet.GetAssociatedDocumentOrShadowRoot();
+  return associated ? &associated->AsNode() : nullptr;
+}
+
 bool
-ErrorReporter::ShouldReportErrors()
+ErrorReporter::ShouldReportErrors(const StyleSheet* aSheet,
+                                  const Loader* aLoader)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  EnsureGlobalsInitialized();
-  if (!sReportErrors) {
+  if (!StaticPrefs::layout_css_report_errors()) {
     return false;
   }
 
-  if (mInnerWindowID) {
-    // We already reported an error, and that has cleared mSheet and mLoader, so
-    // we'd get the bogus value otherwise.
-    return true;
-  }
-
-  if (mSheet) {
-    nsINode* owner = mSheet->GetOwnerNode()
-      ? mSheet->GetOwnerNode()
-      : mSheet->GetAssociatedDocument();
-
+  if (aSheet) {
+    nsINode* owner = SheetOwner(*aSheet);
     if (owner && ShouldReportErrors(*owner->OwnerDoc())) {
       return true;
     }
   }
 
-  if (mLoader && mLoader->GetDocument() &&
-      ShouldReportErrors(*mLoader->GetDocument())) {
+  if (aLoader && aLoader->GetDocument() &&
+      ShouldReportErrors(*aLoader->GetDocument())) {
     return true;
   }
 
@@ -215,25 +224,10 @@ void
 ErrorReporter::OutputError()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(ShouldReportErrors());
+  MOZ_ASSERT(ShouldReportErrors(mSheet, mLoader));
 
   if (mError.IsEmpty()) {
     return;
-  }
-
-  if (mInnerWindowID == 0 && (mSheet || mLoader)) {
-    if (mSheet) {
-      mInnerWindowID = mSheet->FindOwningWindowInnerID();
-    }
-    if (mInnerWindowID == 0 && mLoader) {
-      nsIDocument* doc = mLoader->GetDocument();
-      if (doc) {
-        mInnerWindowID = doc->InnerWindowID();
-      }
-    }
-    // don't attempt this again, even if we failed
-    mSheet = nullptr;
-    mLoader = nullptr;
   }
 
   if (mFileName.IsEmpty()) {
@@ -263,7 +257,7 @@ ErrorReporter::OutputError()
                                               mErrorColNumber,
                                               nsIScriptError::warningFlag,
                                               "CSS Parser",
-                                              mInnerWindowID);
+                                              FindInnerWindowID(mSheet, mLoader));
     if (NS_SUCCEEDED(rv)) {
       sConsoleService->LogMessage(errorObject);
     }
@@ -311,7 +305,7 @@ ErrorReporter::ClearError()
 void
 ErrorReporter::AddToError(const nsString &aErrorText)
 {
-  MOZ_ASSERT(ShouldReportErrors());
+  MOZ_ASSERT(ShouldReportErrors(mSheet, mLoader));
 
   if (mError.IsEmpty()) {
     mError = aErrorText;
@@ -324,7 +318,7 @@ ErrorReporter::AddToError(const nsString &aErrorText)
 void
 ErrorReporter::ReportUnexpected(const char *aMessage)
 {
-  MOZ_ASSERT(ShouldReportErrors());
+  MOZ_ASSERT(ShouldReportErrors(mSheet, mLoader));
 
   nsAutoString str;
   sStringBundle->GetStringFromName(aMessage, str);
@@ -335,7 +329,7 @@ void
 ErrorReporter::ReportUnexpectedUnescaped(const char *aMessage,
                                          const nsAutoString& aParam)
 {
-  MOZ_ASSERT(ShouldReportErrors());
+  MOZ_ASSERT(ShouldReportErrors(mSheet, mLoader));
 
   const char16_t *params[1] = { aParam.get() };
 

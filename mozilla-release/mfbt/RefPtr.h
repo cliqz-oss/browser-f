@@ -17,6 +17,7 @@
 
 class nsQueryReferent;
 class nsCOMPtr_helper;
+class nsISupports;
 
 namespace mozilla {
 template<class T> class OwningNonNull;
@@ -277,6 +278,14 @@ public:
     mRawPtr = nullptr;
   }
 
+  void
+  forget(nsISupports** aRhs)
+  {
+    MOZ_ASSERT(aRhs, "Null pointer passed to forget!");
+    *aRhs = ToSupports(mRawPtr);
+    mRawPtr = nullptr;
+  }
+
   T*
   get() const
   /*
@@ -334,7 +343,7 @@ public:
     template<typename... ActualArgs>
     R operator()(ActualArgs&&... aArgs)
     {
-      return ((*mRawPtr).*mFunction)(mozilla::Forward<ActualArgs>(aArgs)...);
+      return ((*mRawPtr).*mFunction)(std::forward<ActualArgs>(aArgs)...);
     }
   };
 
@@ -646,7 +655,7 @@ template<typename T, typename... Args>
 already_AddRefed<T>
 MakeAndAddRef(Args&&... aArgs)
 {
-  RefPtr<T> p(new T(Forward<Args>(aArgs)...));
+  RefPtr<T> p(new T(std::forward<Args>(aArgs)...));
   return p.forget();
 }
 
@@ -660,7 +669,7 @@ template<typename T, typename... Args>
 RefPtr<T>
 MakeRefPtr(Args&&... aArgs)
 {
-  RefPtr<T> p(new T(Forward<Args>(aArgs)...));
+  RefPtr<T> p(new T(std::forward<Args>(aArgs)...));
   return p;
 }
 

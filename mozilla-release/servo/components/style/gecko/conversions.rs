@@ -9,7 +9,7 @@
 #![allow(unsafe_code)]
 
 use app_units::Au;
-use gecko::values::{convert_rgba_to_nscolor, GeckoStyleCoordConvertible};
+use gecko::values::GeckoStyleCoordConvertible;
 use gecko_bindings::bindings;
 use gecko_bindings::structs::{self, nsCSSUnit, nsStyleCoord_CalcValue};
 use gecko_bindings::structs::{nsresult, SheetType, nsStyleImage};
@@ -145,11 +145,11 @@ impl nsStyleImage {
         match image {
             GenericImage::Gradient(boxed_gradient) => self.set_gradient(*boxed_gradient),
             GenericImage::Url(ref url) => unsafe {
-                bindings::Gecko_SetLayerImageImageValue(self, url.image_value.get());
+                bindings::Gecko_SetLayerImageImageValue(self, url.0.image_value.get());
             },
             GenericImage::Rect(ref image_rect) => {
                 unsafe {
-                    bindings::Gecko_SetLayerImageImageValue(self, image_rect.url.image_value.get());
+                    bindings::Gecko_SetLayerImageImageValue(self, image_rect.url.0.image_value.get());
                     bindings::Gecko_InitializeImageCropRect(self);
 
                     // Set CropRect
@@ -358,7 +358,7 @@ impl nsStyleImage {
 
             match *item {
                 GradientItem::ColorStop(ref stop) => {
-                    gecko_stop.mColor = convert_rgba_to_nscolor(&stop.color);
+                    gecko_stop.mColor = stop.color.into();
                     gecko_stop.mIsInterpolationHint = false;
                     coord.set(stop.position);
                 },
@@ -426,14 +426,13 @@ impl nsStyleImage {
         }
     }
 
-    unsafe fn get_image_url(self: &nsStyleImage) -> ComputedImageUrl {
-        let url_value = bindings::Gecko_GetURLValue(self);
-        ComputedImageUrl::from_url_value_data(url_value.as_ref().unwrap())
-            .expect("Could not convert to ComputedUrl")
+    unsafe fn get_image_url(&self) -> ComputedImageUrl {
+        let image_request = bindings::Gecko_GetImageRequest(self)
+            .as_ref().expect("Null image request?");
+        ComputedImageUrl::from_image_request(image_request)
     }
 
     unsafe fn get_gradient(self: &nsStyleImage) -> Box<Gradient> {
-        use gecko::values::convert_nscolor_to_rgba;
         use self::structs::NS_STYLE_GRADIENT_SIZE_CLOSEST_CORNER as CLOSEST_CORNER;
         use self::structs::NS_STYLE_GRADIENT_SIZE_CLOSEST_SIDE as CLOSEST_SIDE;
         use self::structs::NS_STYLE_GRADIENT_SIZE_FARTHEST_CORNER as FARTHEST_CORNER;
@@ -601,7 +600,7 @@ impl nsStyleImage {
                     )
                 } else {
                     GradientItem::ColorStop(ColorStop {
-                        color: convert_nscolor_to_rgba(stop.mColor),
+                        color: stop.mColor.into(),
                         position: LengthOrPercentage::from_gecko_style_coord(&stop.mLocation),
                     })
                 }
@@ -634,6 +633,7 @@ pub mod basic_shape {
     use gecko_bindings::structs::{StyleGeometryBox, StyleShapeSource, StyleShapeSourceType};
     use gecko_bindings::structs::{nsStyleCoord, nsStyleCorners};
     use gecko_bindings::sugar::ns_style_coord::{CoordDataMut, CoordDataValue};
+    use gecko_bindings::sugar::refptr::RefPtr;
     use std::borrow::Borrow;
     use values::computed::basic_shape::{BasicShape, ClippingShape, FloatAreaShape, ShapeRadius};
     use values::computed::border::{BorderCornerRadius, BorderRadius};
@@ -678,8 +678,8 @@ pub mod basic_shape {
             match other.mType {
                 StyleShapeSourceType::URL => unsafe {
                     let shape_image = &*other.mShapeImage.mPtr;
-                    let other_url = &(**shape_image.__bindgen_anon_1.mURLValue.as_ref());
-                    let url = ComputedUrl::from_url_value_data(&other_url._base).unwrap();
+                    let other_url = RefPtr::new(*shape_image.__bindgen_anon_1.mURLValue.as_ref());
+                    let url = ComputedUrl::from_url_value(other_url);
                     ShapeSource::ImageOrUrl(url)
                 },
                 StyleShapeSourceType::Image => {

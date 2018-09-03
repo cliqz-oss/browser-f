@@ -4,12 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*
- * Ways to get various per-Realm objects. All the getters declared in this
- * header operate on the Realm corresponding to the current compartment on the
- * JSContext.
- */
-
 #ifndef js_Realm_h
 #define js_Realm_h
 
@@ -44,21 +38,33 @@ struct GCPolicy<Realm*> : public NonGCPointerPolicy<Realm*>
 extern JS_PUBLIC_API(Realm*)
 GetCurrentRealmOrNull(JSContext* cx);
 
-// Return the compartment that contains a given realm.
-inline JSCompartment*
-GetCompartmentForRealm(Realm* realm) {
-    // Implementation note: For now, realms are a fiction; we treat realms and
-    // compartments as being one-to-one, but they are actually identical.
-    return reinterpret_cast<JSCompartment*>(realm);
-}
+namespace shadow {
 
-// Return the realm in a given compartment.
-//
-// Deprecated. There is currently exactly one realm per compartment, but this
-// will change.
-inline Realm*
-GetRealmForCompartment(JSCompartment* compartment) {
-    return reinterpret_cast<Realm*>(compartment);
+class Realm
+{
+  protected:
+    JS::Compartment* compartment_;
+
+    explicit Realm(JS::Compartment* comp)
+      : compartment_(comp)
+    {}
+
+  public:
+    JS::Compartment* compartment() {
+        return compartment_;
+    }
+    static shadow::Realm* get(JS::Realm* realm) {
+        return reinterpret_cast<shadow::Realm*>(realm);
+    }
+};
+
+}; // namespace shadow
+
+// Return the compartment that contains a given realm.
+inline JS::Compartment*
+GetCompartmentForRealm(Realm* realm)
+{
+    return shadow::Realm::get(realm)->compartment();
 }
 
 // Return an object's realm. All objects except cross-compartment wrappers are
@@ -97,10 +103,21 @@ typedef void
 extern JS_PUBLIC_API(void)
 SetRealmNameCallback(JSContext* cx, RealmNameCallback callback);
 
-// Get the global object for the given realm. Returns null only if `realm` is
-// in the atoms compartment.
+// Get the global object for the given realm. This only returns nullptr during
+// GC, between collecting the global object and destroying the Realm.
 extern JS_PUBLIC_API(JSObject*)
 GetRealmGlobalOrNull(Handle<Realm*> realm);
+
+// Initialize standard JS class constructors, prototypes, and any top-level
+// functions and constants associated with the standard classes (e.g. isNaN
+// for Number).
+extern JS_PUBLIC_API(bool)
+InitRealmStandardClasses(JSContext* cx);
+
+/*
+ * Ways to get various per-Realm objects. All the getters declared below operate
+ * on the JSContext's current Realm.
+ */
 
 extern JS_PUBLIC_API(JSObject*)
 GetRealmObjectPrototype(JSContext* cx);

@@ -32,12 +32,12 @@ private:
   static const int64_t kCacheExpiryPeriodMs = 2000;
 
 public:
-  VideoEngine (){};
+  VideoEngine() : mId(0) {};
   NS_INLINE_DECL_REFCOUNTING(VideoEngine)
 
   static already_AddRefed<VideoEngine> Create(UniquePtr<const webrtc::Config>&& aConfig);
 #if defined(ANDROID)
-  static int SetAndroidObjects(JavaVM* javaVM);
+  static int SetAndroidObjects();
 #endif
   void CreateVideoCapture(int32_t& id, const char* deviceUniqueIdUTF8);
 

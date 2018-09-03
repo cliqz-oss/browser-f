@@ -29,8 +29,6 @@
 #include "js/TracingAPI.h"
 #include "js/TypeDecls.h"
 
-class nsIRDFResource;
-class nsIRDFService;
 class nsPIWindowRoot;
 class nsXULPrototypeElement;
 #if 0 // XXXbe save me, scc (need NSCAP_FORWARD_DECL(nsXULPrototypeScript))
@@ -117,25 +115,12 @@ public:
     virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
                            bool aPreallocateChildren) const override;
 
-    // nsIDOMDocument interface
-    using nsDocument::CreateElement;
-    using nsDocument::CreateElementNS;
-    NS_FORWARD_NSIDOMDOCUMENT(XMLDocument::)
-    // And explicitly import the things from nsDocument that we just shadowed
-    using mozilla::dom::DocumentOrShadowRoot::GetElementById;
-    using nsDocument::GetImplementation;
-    using nsDocument::GetTitle;
-    using nsDocument::SetTitle;
-    using nsDocument::GetLastStyleSheetSet;
-    using nsDocument::MozSetImageElement;
-    using nsIDocument::GetLocation;
-
     // nsICSSLoaderObserver
     NS_IMETHOD StyleSheetLoaded(mozilla::StyleSheet* aSheet,
                                 bool aWasAlternate,
                                 nsresult aStatus) override;
 
-    virtual void EndUpdate(nsUpdateType aUpdateType) override;
+    virtual void EndUpdate() override;
 
     virtual bool IsDocumentRightToLeft() override;
 
@@ -195,10 +180,6 @@ public:
 protected:
     virtual ~XULDocument();
 
-    // Returns the associated XUL window if this is a top-level chrome document,
-    // null otherwise.
-    already_AddRefed<nsIXULWindow> GetXULWindowIfToplevelChrome() const;
-
     // Implementation methods
     friend nsresult
     (::NS_NewXULDocument(nsIDocument** aResult));
@@ -254,11 +235,6 @@ protected:
     // pseudo constants
     static int32_t gRefCnt;
 
-    static nsIRDFService* gRDFService;
-    static nsIRDFResource* kNC_persist;
-    static nsIRDFResource* kNC_attribute;
-    static nsIRDFResource* kNC_value;
-
     static LazyLogModule gXULLog;
 
     nsresult
@@ -304,12 +280,6 @@ protected:
      */
     bool                           mRestrictPersistence;
     nsTHashtable<nsStringHashKey>  mPersistenceIds;
-
-    /**
-     * An array of style sheets, that will be added (preserving order) to the
-     * document after all of them are loaded (in DoneWalking).
-     */
-    nsTArray<RefPtr<StyleSheet>> mOverlaySheets;
 
     nsCOMPtr<nsIDOMXULCommandDispatcher>     mCommandDispatcher; // [OWNER] of the focus tracker
 
@@ -422,12 +392,6 @@ protected:
      */
     char16_t* mOffThreadCompileStringBuf;
     size_t mOffThreadCompileStringLength;
-
-    /**
-     * Add the current prototype's style sheets (currently it's just
-     * style overlays from the chrome registry) to the document.
-     */
-    nsresult AddPrototypeSheets();
 
 
 protected:

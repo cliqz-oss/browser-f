@@ -30,7 +30,7 @@ public:
     , mMaxOffset(aChunkSize)
     , mAccumulatedStatus(true)
   {
-    ::VirtualProtect(aLocalBase, aChunkSize, PAGE_EXECUTE_READWRITE,
+    ::VirtualProtect(aLocalBase, aChunkSize, MMPolicy::GetTrampWriteProtFlags(),
                      &mPrevLocalProt);
   }
 
@@ -126,7 +126,7 @@ public:
 
     auto result = Some(*reinterpret_cast<uintptr_t*>(mLocalBase + mOffset));
     mOffset += sizeof(uintptr_t);
-    return Move(result);
+    return std::move(result);
   }
 
   Maybe<uintptr_t> ReadEncodedPointer()

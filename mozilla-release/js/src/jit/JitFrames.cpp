@@ -15,7 +15,7 @@
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/JitcodeMap.h"
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "jit/JitSpewer.h"
 #include "jit/MacroAssembler.h"
 #include "jit/PcScriptCache.h"
@@ -174,7 +174,7 @@ static void
 HandleExceptionIon(JSContext* cx, const InlineFrameIterator& frame, ResumeFromException* rfe,
                    bool* overrecursed)
 {
-    if (cx->compartment()->isDebuggee()) {
+    if (cx->realm()->isDebuggee()) {
         // We need to bail when there is a catchable exception, and we are the
         // debuggee of a Debugger with a live onExceptionUnwind hook, or if a
         // Debugger has observed this frame (e.g., for onPop).
@@ -682,7 +682,7 @@ HandleException(ResumeFromException* rfe)
             bool invalidated = frame.checkInvalidation(&ionScript);
 
 #ifdef JS_TRACE_LOGGING
-            if (logger && cx->compartment()->isDebuggee() && logger->enabled()) {
+            if (logger && cx->realm()->isDebuggee() && logger->enabled()) {
                 logger->disable(/* force = */ true,
                                 "Forcefully disabled tracelogger, due to "
                                 "throwing an exception with an active Debugger "
@@ -716,7 +716,12 @@ HandleException(ResumeFromException* rfe)
                 ++frames;
             }
 
+            // Remove left-over state which might have been needed for bailout.
             activation->removeIonFrameRecovery(frame.jsFrame());
+            activation->removeRematerializedFrame(frame.fp());
+
+            // If invalidated, decrement the number of frames remaining on the
+            // stack for the given IonScript.
             if (invalidated)
                 ionScript->decrementInvalidationCount(cx->runtime()->defaultFreeOp());
 
@@ -1340,7 +1345,7 @@ TraceJitActivations(JSContext* cx, JSTracer* trc)
 void
 UpdateJitActivationsForMinorGC(JSRuntime* rt)
 {
-    MOZ_ASSERT(JS::CurrentThreadIsHeapMinorCollecting());
+    MOZ_ASSERT(JS::RuntimeHeapIsMinorCollecting());
     JSContext* cx = rt->mainContextFromOwnThread();
     for (JitActivationIterator activations(cx); !activations.done(); ++activations) {
         for (OnlyJSJitFrameIter iter(activations); !iter.done(); ++iter) {
@@ -1450,7 +1455,7 @@ RInstructionResults::RInstructionResults(JitFrameLayout* fp)
 }
 
 RInstructionResults::RInstructionResults(RInstructionResults&& src)
-  : results_(mozilla::Move(src.results_)),
+  : results_(std::move(src.results_)),
     fp_(src.fp_),
     initialized_(src.initialized_)
 {
@@ -1462,7 +1467,7 @@ RInstructionResults::operator=(RInstructionResults&& rhs)
 {
     MOZ_ASSERT(&rhs != this, "self-moves are prohibited");
     this->~RInstructionResults();
-    new(this) RInstructionResults(mozilla::Move(rhs));
+    new(this) RInstructionResults(std::move(rhs));
     return *this;
 }
 
@@ -1541,6 +1546,7 @@ SnapshotIterator::SnapshotIterator()
   : snapshot_(nullptr, 0, 0, 0),
     recover_(snapshot_, nullptr, 0),
     fp_(nullptr),
+    machine_(nullptr),
     ionScript_(nullptr),
     instructionResults_(nullptr)
 {
@@ -1914,7 +1920,7 @@ SnapshotIterator::initInstructionResults(MaybeReadFallback& fallback)
     JitFrameLayout* fp = fallback.frame->jsFrame();
     RInstructionResults* results = fallback.activation->maybeIonFrameRecovery(fp);
     if (!results) {
-        AutoCompartment ac(cx, fallback.frame->script());
+        AutoRealm ar(cx, fallback.frame->script());
 
         // We do not have the result yet, which means that an observable stack
         // slot is requested.  As we do not want to bailout every time for the
@@ -1931,7 +1937,7 @@ SnapshotIterator::initInstructionResults(MaybeReadFallback& fallback)
         // cause a GC, we can ensure that the results are properly traced by the
         // activation.
         RInstructionResults tmp(fallback.frame->jsFrame());
-        if (!fallback.activation->registerIonFrameRecovery(mozilla::Move(tmp)))
+        if (!fallback.activation->registerIonFrameRecovery(std::move(tmp)))
             return false;
 
         results = fallback.activation->maybeIonFrameRecovery(fp);
@@ -2054,7 +2060,9 @@ SnapshotIterator::maybeReadAllocByIndex(size_t index)
 InlineFrameIterator::InlineFrameIterator(JSContext* cx, const JSJitFrameIter* iter)
   : calleeTemplate_(cx),
     calleeRVA_(),
-    script_(cx)
+    script_(cx),
+    pc_(nullptr),
+    numActualArgs_(0)
 {
     resetOn(iter);
 }
@@ -2065,7 +2073,9 @@ InlineFrameIterator::InlineFrameIterator(JSContext* cx, const InlineFrameIterato
     frameCount_(iter ? iter->frameCount_ : UINT32_MAX),
     calleeTemplate_(cx),
     calleeRVA_(),
-    script_(cx)
+    script_(cx),
+    pc_(nullptr),
+    numActualArgs_(0)
 {
     if (frame_) {
         machine_ = iter->machine_;
@@ -2352,7 +2362,7 @@ InlineFrameIterator::dump() const
         fprintf(stderr, "  global frame, no callee\n");
     }
 
-    fprintf(stderr, "  file %s line %zu\n",
+    fprintf(stderr, "  file %s line %u\n",
             script()->filename(), script()->lineno());
 
     fprintf(stderr, "  script = %p, pc = %p\n", (void*) script(), pc());

@@ -16,7 +16,7 @@ if (AppConstants.platform == "win" && AppConstants.DEBUG) {
   Services.prefs.setBoolPref("extensions.webextensions.remote", false);
 }
 
-PromiseTestUtils.expectUncaughtRejection(/Message manager disconnected/);
+PromiseTestUtils.whitelistRejectionsGlobally(/Message manager disconnected/);
 
 /* globals browser*/
 
@@ -33,13 +33,51 @@ const NOUPDATE_ID = "test_no_update_webext@tests.mozilla.org";
 // Create and configure the HTTP server.
 var testserver = AddonTestUtils.createHttpServer({hosts: ["example.com"]});
 testserver.registerDirectory("/data/", do_get_file("data"));
-testserver.registerDirectory("/addons/", do_get_file("addons"));
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "42", "42");
 
+const ADDONS = {
+  test_delay_update_complete_webextension_v2: {
+    "manifest.json": {
+      "manifest_version": 2,
+      "name": "Delay Upgrade",
+      "version": "2.0",
+      "applications": {
+        "gecko": {id: COMPLETE_ID}
+      }
+    }
+  },
+  test_delay_update_defer_webextension_v2: {
+    "manifest.json": {
+      "manifest_version": 2,
+      "name": "Delay Upgrade",
+      "version": "2.0",
+      "applications": {
+        "gecko": {id: DEFER_ID}
+      }
+    }
+  },
+  test_delay_update_ignore_webextension_v2: {
+    "manifest.json": {
+      "manifest_version": 2,
+      "name": "Delay Upgrade",
+      "version": "2.0",
+      "applications": {
+        "gecko": {id: IGNORE_ID}
+      }
+    }
+  },
+};
+
+const XPIS = {};
+for (let [name, files] of Object.entries(ADDONS)) {
+  XPIS[name] = AddonTestUtils.createTempXPIFile(files);
+  testserver.registerFile(`/addons/${name}.xpi`, XPIS[name]);
+}
+
 // add-on registers upgrade listener, and ignores update.
 add_task(async function delay_updates_ignore() {
-  startupManager();
+  await promiseStartupManager();
 
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "permanent",
@@ -118,7 +156,7 @@ add_task(async function delay_updates_ignore() {
 
 // add-on registers upgrade listener, and allows update.
 add_task(async function delay_updates_complete() {
-  startupManager();
+  await promiseStartupManager();
 
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "permanent",
@@ -171,6 +209,8 @@ add_task(async function delay_updates_complete() {
   Assert.ok(addon_allowed.isActive);
   Assert.equal(addon_allowed.type, "extension");
 
+  await new Promise(executeSoon);
+
   if (stageDir.exists()) {
     do_throw("Staging directory should not exist for formerly-postponed extension");
   }
@@ -181,7 +221,7 @@ add_task(async function delay_updates_complete() {
 
 // add-on registers upgrade listener, initially defers update then allows upgrade
 add_task(async function delay_updates_defer() {
-  startupManager();
+  await promiseStartupManager();
 
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "permanent",
@@ -277,7 +317,7 @@ add_task(async function delay_updates_defer() {
 
 // browser.runtime.reload() without a pending upgrade should just reload.
 add_task(async function runtime_reload() {
-  startupManager();
+  await promiseStartupManager();
 
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "permanent",

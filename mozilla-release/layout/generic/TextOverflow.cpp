@@ -23,7 +23,7 @@
 #include "nsIFrameInlines.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Likely.h"
-#include "nsISelection.h"
+#include "mozilla/dom/Selection.h"
 #include "TextDrawTarget.h"
 
 using mozilla::layout::TextDrawTarget;
@@ -74,11 +74,10 @@ GetSelfOrNearestBlock(nsIFrame* aFrame)
 static bool
 IsAtomicElement(nsIFrame* aFrame, LayoutFrameType aFrameType)
 {
-  NS_PRECONDITION(!nsLayoutUtils::GetAsBlock(aFrame) ||
-                  !aFrame->IsBlockOutside(),
-                  "unexpected block frame");
-  NS_PRECONDITION(aFrameType != LayoutFrameType::Placeholder,
-                  "unexpected placeholder frame");
+  MOZ_ASSERT(!nsLayoutUtils::GetAsBlock(aFrame) || !aFrame->IsBlockOutside(),
+             "unexpected block frame");
+  MOZ_ASSERT(aFrameType != LayoutFrameType::Placeholder,
+             "unexpected placeholder frame");
   return !aFrame->IsFrameOfType(nsIFrame::eLineParticipant);
 }
 
@@ -98,8 +97,8 @@ IsFullyClipped(nsTextFrame* aFrame, nscoord aLeft, nscoord aRight,
 static bool
 IsInlineAxisOverflowVisible(nsIFrame* aFrame)
 {
-  NS_PRECONDITION(nsLayoutUtils::GetAsBlock(aFrame) != nullptr,
-                  "expected a block frame");
+  MOZ_ASSERT(nsLayoutUtils::GetAsBlock(aFrame) != nullptr,
+             "expected a block frame");
 
   nsIFrame* f = aFrame;
   while (f && f->Style()->IsAnonBox() && !f->IsScrollFrame()) {
@@ -247,7 +246,7 @@ nsDisplayTextOverflowMarker::Paint(nsDisplayListBuilder* aBuilder,
     GetColor(mFrame, &nsStyleText::mWebkitTextFillColor);
 
   // Paint the text-shadows for the overflow marker
-  nsLayoutUtils::PaintTextShadow(mFrame, aCtx, mRect, mVisibleRect,
+  nsLayoutUtils::PaintTextShadow(mFrame, aCtx, mRect, GetPaintRect(),
                                  foregroundColor, PaintTextShadowCallback,
                                  (void*)this);
   aCtx->SetColor(gfx::Color::FromABGR(foregroundColor));
@@ -829,11 +828,10 @@ TextOverflow::CanHaveTextOverflow(nsIFrame* aBlockFrame)
   // Inhibit the markers if a descendant content owns the caret.
   RefPtr<nsCaret> caret = aBlockFrame->PresShell()->GetCaret();
   if (caret && caret->IsVisible()) {
-    nsCOMPtr<nsISelection> domSelection = caret->GetSelection();
+    RefPtr<dom::Selection> domSelection = caret->GetSelection();
     if (domSelection) {
-      nsCOMPtr<nsIDOMNode> node;
-      domSelection->GetFocusNode(getter_AddRefs(node));
-      nsCOMPtr<nsIContent> content = do_QueryInterface(node);
+      nsCOMPtr<nsIContent> content =
+        nsIContent::FromNodeOrNull(domSelection->GetFocusNode());
       if (content && nsContentUtils::ContentIsDescendantOf(content,
                        aBlockFrame->GetContent())) {
         return false;

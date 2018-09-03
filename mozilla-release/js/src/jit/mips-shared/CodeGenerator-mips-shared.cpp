@@ -12,13 +12,13 @@
 #include "jsnum.h"
 
 #include "jit/CodeGenerator.h"
-#include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
 #include "js/Conversions.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "vm/Shape.h"
 #include "vm/TraceLogging.h"
 
@@ -1450,6 +1450,48 @@ CodeGenerator::visitRoundF(LRoundF* lir)
     bailoutCmp32(Assembler::Equal, output, Imm32(INT_MIN), lir->snapshot());
 
     masm.bind(&end);
+}
+
+void
+CodeGenerator::visitTrunc(LTrunc* lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label notZero;
+    masm.as_truncwd(ScratchFloat32Reg, input);
+    masm.as_cfc1(ScratchRegister, Assembler::FCSR);
+    masm.moveFromFloat32(ScratchFloat32Reg, output);
+    masm.ma_ext(ScratchRegister, ScratchRegister, Assembler::CauseV, 1);
+
+    masm.ma_b(output, Imm32(0), &notZero, Assembler::NotEqual, ShortJump);
+    masm.moveFromDoubleHi(input, ScratchRegister);
+    // Check if input is in ]-1; -0] range by checking the sign bit.
+    masm.as_slt(ScratchRegister, ScratchRegister, zero);
+    masm.bind(&notZero);
+
+    bailoutCmp32(Assembler::NotEqual, ScratchRegister, Imm32(0), lir->snapshot());
+}
+
+void
+CodeGenerator::visitTruncF(LTruncF* lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+
+    Label notZero;
+    masm.as_truncws(ScratchFloat32Reg, input);
+    masm.as_cfc1(ScratchRegister, Assembler::FCSR);
+    masm.moveFromFloat32(ScratchFloat32Reg, output);
+    masm.ma_ext(ScratchRegister, ScratchRegister, Assembler::CauseV, 1);
+
+    masm.ma_b(output, Imm32(0), &notZero, Assembler::NotEqual, ShortJump);
+    masm.moveFromFloat32(input, ScratchRegister);
+    // Check if input is in ]-1; -0] range by checking the sign bit.
+    masm.as_slt(ScratchRegister, ScratchRegister, zero);
+    masm.bind(&notZero);
+
+    bailoutCmp32(Assembler::NotEqual, ScratchRegister, Imm32(0), lir->snapshot());
 }
 
 void

@@ -222,7 +222,7 @@ nsProfiler::GetProfileData(double aSinceTime, JSContext* aCx,
 
 NS_IMETHODIMP
 nsProfiler::GetProfileDataAsync(double aSinceTime, JSContext* aCx,
-                                nsISupports** aPromise)
+                                Promise** aPromise)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -290,7 +290,7 @@ nsProfiler::GetProfileDataAsync(double aSinceTime, JSContext* aCx,
 
 NS_IMETHODIMP
 nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
-                                        nsISupports** aPromise)
+                                        Promise** aPromise)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -347,7 +347,7 @@ nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
 NS_IMETHODIMP
 nsProfiler::DumpProfileToFileAsync(const nsACString& aFilename,
                                    double aSinceTime, JSContext* aCx,
-                                   nsISupports** aPromise)
+                                   Promise** aPromise)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -618,8 +618,10 @@ nsProfiler::StartGathering(double aSinceTime)
   RefPtr<nsProfiler> self = this;
   for (auto profile : profiles) {
     profile->Then(GetMainThreadSerialEventTarget(), __func__,
-      [self](const nsCString& aResult) {
-        self->GatheredOOPProfile(aResult);
+      [self](const mozilla::ipc::Shmem& aResult) {
+        const nsDependentCSubstring profileString(aResult.get<char>(),
+                                                  aResult.Size<char>());
+        self->GatheredOOPProfile(profileString);
       },
       [self](ipc::ResponseRejectReason aReason) {
         self->GatheredOOPProfile(NS_LITERAL_CSTRING(""));

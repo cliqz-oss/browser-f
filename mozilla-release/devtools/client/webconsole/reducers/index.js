@@ -9,10 +9,14 @@ const { filters } = require("./filters");
 const { messages } = require("./messages");
 const { prefs } = require("./prefs");
 const { ui } = require("./ui");
+const { notifications } = require("./notifications");
+const { history } = require("./history");
 
 exports.reducers = {
   filters,
   messages,
   prefs,
   ui,
+  notifications,
+  history,
 };

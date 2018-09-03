@@ -43,6 +43,7 @@ class nsIURI;
 class nsTextFrame;
 class imgIContainer;
 class nsPresContext;
+struct nsStyleDisplay;
 struct nsStyleVisibility;
 namespace mozilla {
 class ComputedStyle;
@@ -160,7 +161,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleFont
 struct nsStyleGradientStop
 {
   nsStyleCoord mLocation; // percent, coord, calc, none
-  nscolor mColor;
+  mozilla::StyleComplexColor mColor;
   bool mIsInterpolationHint;
 
   // Use ==/!= on nsStyleGradient instead of on the gradient stop.
@@ -215,30 +216,21 @@ private:
  * A wrapper for an imgRequestProxy that supports off-main-thread creation
  * and equality comparison.
  *
- * An nsStyleImageRequest can be created in two ways:
+ * An nsStyleImageRequest can be created using the constructor that takes the
+ * URL, base URI, referrer and principal that can be used to initiate an image
+ * load and produce an imgRequestProxy later.
  *
- * 1. Using the constructor that takes an imgRequestProxy.  This must
- *    be called from the main thread.  The nsStyleImageRequest is
- *    immediately considered "resolved", and the get() method that
- *    returns the imgRequestProxy can be called.
- *
- * 2. Using the constructor that takes the URL, base URI, referrer
- *    and principal that can be used to inititiate an image load and
- *    produce an imgRequestProxy later.  This can be called from
- *    any thread.  The nsStyleImageRequest is not considered "resolved"
- *    at this point, and the Resolve() method must be called later
- *    to initiate the image load and make calls to get() valid.
+ * This can be called from any thread.  The nsStyleImageRequest is not
+ * considered "resolved" at this point, and the Resolve() method must be called
+ * later to initiate the image load and make calls to get() valid.
  *
  * Calls to TrackImage(), UntrackImage(), LockImage(), UnlockImage() and
  * RequestDiscard() are made to the imgRequestProxy and ImageTracker as
  * appropriate, according to the mode flags passed in to the constructor.
  *
- * The main thread constructor takes a pointer to the css::ImageValue that
- * is the specified url() value, while the off-main-thread constructor
- * creates a new css::ImageValue to represent the url() information passed
- * to the constructor.  This ImageValue is held on to for the comparisons done
- * in DefinitelyEquals(), so that we don't need to call into the non-OMT-safe
- * Equals() on the nsIURI objects returned from imgRequestProxy::GetURI().
+ * The constructor receives a css::ImageValue to represent the url()
+ * information, which is held on to for the comparisons done in
+ * DefinitelyEquals().
  */
 class nsStyleImageRequest
 {
@@ -266,19 +258,9 @@ public:
     Discard = 0x2,
   };
 
-  // Must be called from the main thread.
-  //
-  // aImageTracker must be non-null iff aModeFlags contains Track.
-  nsStyleImageRequest(Mode aModeFlags,
-                      imgRequestProxy* aRequestProxy,
-                      mozilla::css::ImageValue* aImageValue,
-                      mozilla::dom::ImageTracker* aImageTracker);
-
   // Can be called from any thread, but Resolve() must be called later
   // on the main thread before get() can be used.
-  nsStyleImageRequest(
-      Mode aModeFlags,
-      mozilla::css::ImageValue* aImageValue);
+  nsStyleImageRequest(Mode aModeFlags, mozilla::css::ImageValue* aImageValue);
 
   bool Resolve(nsPresContext*, const nsStyleImageRequest* aOldImageRequest);
   bool IsResolved() const { return mResolved; }
@@ -382,7 +364,7 @@ struct nsStyleImage
     if (mType == eStyleImageType_Image && !mImage->IsResolved()) {
       const nsStyleImageRequest* oldRequest =
         (aOldImage && aOldImage->GetType() == eStyleImageType_Image)
-        ? aOldImage->GetImageRequest() : nullptr;
+        ? aOldImage->ImageRequest() : nullptr;
       mImage->Resolve(aContext, oldRequest);
     }
   }
@@ -390,20 +372,20 @@ struct nsStyleImage
   nsStyleImageType GetType() const {
     return mType;
   }
-  nsStyleImageRequest* GetImageRequest() const {
+  nsStyleImageRequest* ImageRequest() const {
     MOZ_ASSERT(mType == eStyleImageType_Image, "Data is not an image!");
     MOZ_ASSERT(mImage);
     return mImage;
   }
   imgRequestProxy* GetImageData() const {
-    return GetImageRequest()->get();
+    return ImageRequest()->get();
   }
   nsStyleGradient* GetGradientData() const {
     NS_ASSERTION(mType == eStyleImageType_Gradient, "Data is not a gradient!");
     return mGradient;
   }
   bool IsResolved() const {
-    return mType != eStyleImageType_Image || GetImageRequest()->IsResolved();
+    return mType != eStyleImageType_Image || ImageRequest()->IsResolved();
   }
   const nsAtom* GetElementId() const {
     NS_ASSERTION(mType == eStyleImageType_Element, "Data is not an element!");
@@ -521,11 +503,6 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleColor
   }
   void FinishStyle(nsPresContext*, const nsStyleColor*) {}
   const static bool kHasFinishStyle = false;
-
-  nscolor CalcComplexColor(const mozilla::StyleComplexColor& aColor) const {
-    return mozilla::LinearBlendColors(aColor.mColor, mColor,
-                                      aColor.mForegroundRatio);
-  }
 
   nsChangeHint CalcDifference(const nsStyleColor& aNewData) const;
 
@@ -658,6 +635,7 @@ struct nsStyleImageLayers {
 
   struct Layer {
     typedef mozilla::StyleGeometryBox StyleGeometryBox;
+    typedef mozilla::StyleImageLayerAttachment StyleImageLayerAttachment;
 
     nsStyleImage  mImage;         // [reset]
     mozilla::Position mPosition;  // [reset]
@@ -665,12 +643,13 @@ struct nsStyleImageLayers {
     StyleGeometryBox  mClip;      // [reset] See nsStyleConsts.h
     MOZ_INIT_OUTSIDE_CTOR
       StyleGeometryBox mOrigin;   // [reset] See nsStyleConsts.h
-    uint8_t       mAttachment;    // [reset] See nsStyleConsts.h
+    StyleImageLayerAttachment mAttachment;
+                                  // [reset] See nsStyleConsts.h
                                   // background-only property
                                   // This property is used for background layer
                                   // only. For a mask layer, it should always
                                   // be the initial value, which is
-                                  // NS_STYLE_IMAGELAYER_ATTACHMENT_SCROLL.
+                                  // StyleImageLayerAttachment::Scroll.
     uint8_t       mBlendMode;     // [reset] See nsStyleConsts.h
                                   // background-only property
                                   // This property is used for background layer
@@ -893,7 +872,15 @@ struct nsCSSShadowItem
   bool mHasColor; // Whether mColor should be used
   bool mInset;
 
-  nsCSSShadowItem() : mHasColor(false) {
+  nsCSSShadowItem()
+    : mXOffset(0)
+    , mYOffset(0)
+    , mRadius(0)
+    , mSpread(0)
+    , mColor(NS_RGB(0, 0, 0))
+    , mHasColor(false)
+    , mInset(false)
+  {
     MOZ_COUNT_CTOR(nsCSSShadowItem);
   }
   ~nsCSSShadowItem() {
@@ -1113,15 +1100,34 @@ protected:
 public:
   // [reset] the colors to use for a simple border.
   // not used for -moz-border-colors
-  union {
-    struct {
-      mozilla::StyleComplexColor mBorderTopColor;
-      mozilla::StyleComplexColor mBorderRightColor;
-      mozilla::StyleComplexColor mBorderBottomColor;
-      mozilla::StyleComplexColor mBorderLeftColor;
-    };
-    mozilla::StyleComplexColor mBorderColor[4];
-  };
+  mozilla::StyleComplexColor mBorderTopColor;
+  mozilla::StyleComplexColor mBorderRightColor;
+  mozilla::StyleComplexColor mBorderBottomColor;
+  mozilla::StyleComplexColor mBorderLeftColor;
+
+  mozilla::StyleComplexColor&
+  BorderColorFor(mozilla::Side aSide) {
+    switch (aSide) {
+    case mozilla::eSideTop:    return mBorderTopColor;
+    case mozilla::eSideRight:  return mBorderRightColor;
+    case mozilla::eSideBottom: return mBorderBottomColor;
+    case mozilla::eSideLeft:   return mBorderLeftColor;
+    }
+    MOZ_ASSERT_UNREACHABLE("Unknown side");
+    return mBorderTopColor;
+  }
+
+  const mozilla::StyleComplexColor&
+  BorderColorFor(mozilla::Side aSide) const {
+    switch (aSide) {
+    case mozilla::eSideTop:    return mBorderTopColor;
+    case mozilla::eSideRight:  return mBorderRightColor;
+    case mozilla::eSideBottom: return mBorderBottomColor;
+    case mozilla::eSideLeft:   return mBorderLeftColor;
+    }
+    MOZ_ASSERT_UNREACHABLE("Unknown side");
+    return mBorderTopColor;
+  }
 
   static mozilla::StyleComplexColor nsStyleBorder::*
   BorderColorFieldFor(mozilla::Side aSide) {
@@ -1166,20 +1172,6 @@ private:
 
   nsStyleBorder& operator=(const nsStyleBorder& aOther) = delete;
 };
-
-#define ASSERT_BORDER_COLOR_FIELD(side_)                          \
-  static_assert(offsetof(nsStyleBorder, mBorder##side_##Color) == \
-                  offsetof(nsStyleBorder, mBorderColor) +         \
-                    size_t(mozilla::eSide##side_) *               \
-                    sizeof(mozilla::StyleComplexColor),           \
-                "mBorder" #side_ "Color must be at same offset "  \
-                "as mBorderColor[mozilla::eSide" #side_ "]")
-ASSERT_BORDER_COLOR_FIELD(Top);
-ASSERT_BORDER_COLOR_FIELD(Right);
-ASSERT_BORDER_COLOR_FIELD(Bottom);
-ASSERT_BORDER_COLOR_FIELD(Left);
-#undef ASSERT_BORDER_COLOR_FIELD
-
 
 struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleOutline
 {
@@ -1934,22 +1926,6 @@ struct StyleTransition
     { mTimingFunction = aTimingFunction; }
   void SetDelay(float aDelay) { mDelay = aDelay; }
   void SetDuration(float aDuration) { mDuration = aDuration; }
-  void SetProperty(nsCSSPropertyID aProperty)
-    {
-      NS_ASSERTION(aProperty != eCSSProperty_UNKNOWN &&
-                   aProperty != eCSSPropertyExtra_variable,
-                   "invalid property");
-      mProperty = aProperty;
-    }
-  void SetUnknownProperty(nsCSSPropertyID aProperty,
-                          const nsAString& aPropertyString);
-  void SetUnknownProperty(nsCSSPropertyID aProperty,
-                          nsAtom* aPropertyString);
-  void CopyPropertyFrom(const StyleTransition& aOther)
-    {
-      mProperty = aOther.mProperty;
-      mUnknownProperty = aOther.mUnknownProperty;
-    }
 
   nsTimingFunction& TimingFunctionSlot() { return mTimingFunction; }
 
@@ -2408,7 +2384,11 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
   bool IsInnerTableStyle() const {
     return mozilla::StyleDisplay::TableCaption == mDisplay ||
            mozilla::StyleDisplay::TableCell == mDisplay ||
-           mozilla::StyleDisplay::TableRow == mDisplay ||
+           IsInternalTableStyleExceptCell();
+  }
+
+  bool IsInternalTableStyleExceptCell() const {
+    return mozilla::StyleDisplay::TableRow == mDisplay ||
            mozilla::StyleDisplay::TableRowGroup == mDisplay ||
            mozilla::StyleDisplay::TableHeaderGroup == mDisplay ||
            mozilla::StyleDisplay::TableFooterGroup == mDisplay ||
@@ -2436,7 +2416,11 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
 
   static bool IsRubyDisplayType(mozilla::StyleDisplay aDisplay) {
     return mozilla::StyleDisplay::Ruby == aDisplay ||
-           mozilla::StyleDisplay::RubyBase == aDisplay ||
+           IsInternalRubyDisplayType(aDisplay);
+  }
+
+  static bool IsInternalRubyDisplayType(mozilla::StyleDisplay aDisplay) {
+    return mozilla::StyleDisplay::RubyBase == aDisplay ||
            mozilla::StyleDisplay::RubyBaseContainer == aDisplay ||
            mozilla::StyleDisplay::RubyText == aDisplay ||
            mozilla::StyleDisplay::RubyTextContainer == aDisplay;
@@ -2444,6 +2428,10 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
 
   bool IsRubyDisplayType() const {
     return IsRubyDisplayType(mDisplay);
+  }
+
+  bool IsInternalRubyDisplayType() const {
+    return IsInternalRubyDisplayType(mDisplay);
   }
 
   bool IsOutOfFlowStyle() const {
@@ -2458,7 +2446,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
   }
 
   bool IsContainPaint() const {
-    return NS_STYLE_CONTAIN_PAINT & mContain;
+    return (NS_STYLE_CONTAIN_PAINT & mContain) &&
+           !IsInternalRubyDisplayType() &&
+           !IsInternalTableStyleExceptCell();
   }
 
   /* Returns whether the element has the -moz-transform property
@@ -2510,12 +2500,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
    * The same as IsAbsPosContainingBlock, except skipping the tests that
    * are based on the frame rather than the ComputedStyle (thus
    * potentially returning a false positive).
-   *
-   * FIXME(stylo-everywhere): Pretty sure the template can go here.
    */
-  template<class ComputedStyleLike>
   inline bool IsAbsPosContainingBlockForAppropriateFrame(
-                ComputedStyleLike* aComputedStyle) const;
+    mozilla::ComputedStyle&) const;
 
   /**
    * Returns true when the element has the transform property
@@ -2542,12 +2529,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
    * The same as IsFixedPosContainingBlock, except skipping the tests that
    * are based on the frame rather than the ComputedStyle (thus
    * potentially returning a false positive).
-   *
-   * FIXME(stylo-everywhere): Pretty sure the template can go here.
    */
-  template<class ComputedStyleLike>
   inline bool IsFixedPosContainingBlockForAppropriateFrame(
-                ComputedStyleLike* aComputedStyle) const;
+    mozilla::ComputedStyle&) const;
 
   /**
    * Returns the final combined transform.
@@ -2564,14 +2548,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay
 private:
   // Helpers for above functions, which do some but not all of the tests
   // for them (since transform must be tested separately for each).
-  //
-  // FIXME(stylo-everywhere): Pretty sure the template can go here.
-  template<class ComputedStyleLike>
-  inline bool HasAbsPosContainingBlockStyleInternal(
-                ComputedStyleLike* aComputedStyle) const;
-  template<class ComputedStyleLike>
+  inline bool HasAbsPosContainingBlockStyleInternal() const;
   inline bool HasFixedPosContainingBlockStyleInternal(
-                ComputedStyleLike* aComputedStyle) const;
+    mozilla::ComputedStyle&) const;
   void GenerateCombinedTransform();
 public:
   // Return the 'float' and 'clear' properties, with inline-{start,end} values
@@ -2695,15 +2674,16 @@ public:
     return mContent.mCounters;
   }
 
-  nsStyleImageRequest* GetImageRequest() const
+  nsStyleImageRequest* ImageRequest() const
   {
     MOZ_ASSERT(mType == eStyleContentType_Image);
+    MOZ_ASSERT(mContent.mImage);
     return mContent.mImage;
   }
 
   imgRequestProxy* GetImage() const
   {
-    return GetImageRequest()->get();
+    return ImageRequest()->get();
   }
 
   void SetKeyword(nsStyleContentType aType)
@@ -2901,7 +2881,15 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleUserInterface
   nsTArray<nsCursorImage> mCursorImages;      // [inherited] images and coords
   mozilla::StyleComplexColor mCaretColor;     // [inherited]
 
+  mozilla::StyleComplexColor mScrollbarFaceColor;   // [inherited]
+  mozilla::StyleComplexColor mScrollbarTrackColor;  // [inherited]
+
   inline uint8_t GetEffectivePointerEvents(nsIFrame* aFrame) const;
+
+  bool HasCustomScrollbars() const
+  {
+    return !mScrollbarFaceColor.IsAuto() || !mScrollbarTrackColor.IsAuto();
+  }
 };
 
 struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleXUL
@@ -3256,9 +3244,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleSVGReset
 
   nsStyleImageLayers    mMask;
   mozilla::StyleShapeSource mClipPath;// [reset]
-  nscolor          mStopColor;        // [reset]
-  nscolor          mFloodColor;       // [reset]
-  nscolor          mLightingColor;    // [reset]
+  mozilla::StyleComplexColor mStopColor;     // [reset]
+  mozilla::StyleComplexColor mFloodColor;    // [reset]
+  mozilla::StyleComplexColor mLightingColor; // [reset]
 
   float            mStopOpacity;      // [reset]
   float            mFloodOpacity;     // [reset]

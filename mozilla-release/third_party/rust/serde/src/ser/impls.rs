@@ -8,10 +8,7 @@
 
 use lib::*;
 
-use ser::{Serialize, SerializeTuple, Serializer};
-
-#[cfg(feature = "std")]
-use ser::Error;
+use ser::{Error, Serialize, SerializeTuple, Serializer};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,6 +40,11 @@ primitive_impl!(u64, serialize_u64);
 primitive_impl!(f32, serialize_f32);
 primitive_impl!(f64, serialize_f64);
 primitive_impl!(char, serialize_char);
+
+serde_if_integer128! {
+    primitive_impl!(i128, serialize_i128);
+    primitive_impl!(u128, serialize_u128);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -245,6 +247,16 @@ impl Serialize for () {
     }
 }
 
+#[cfg(feature = "unstable")]
+impl Serialize for ! {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        *self
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 macro_rules! tuple_impls {
@@ -374,25 +386,45 @@ deref_impl!(<'a, T: ?Sized> Serialize for Cow<'a, T> where T: Serialize + ToOwne
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[cfg(feature = "unstable")]
-#[allow(deprecated)]
-impl<T> Serialize for NonZero<T>
+/// This impl requires the [`"rc"`] Cargo feature of Serde.
+///
+/// [`"rc"`]: https://serde.rs/feature-flags.html#-features-rc
+#[cfg(all(feature = "rc", any(feature = "std", feature = "alloc")))]
+impl<T: ?Sized> Serialize for RcWeak<T>
 where
-    T: Serialize + Zeroable + Clone,
+    T: Serialize,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        self.clone().get().serialize(serializer)
+        self.upgrade().serialize(serializer)
     }
 }
+
+/// This impl requires the [`"rc"`] Cargo feature of Serde.
+///
+/// [`"rc"`]: https://serde.rs/feature-flags.html#-features-rc
+#[cfg(all(feature = "rc", any(feature = "std", feature = "alloc")))]
+impl<T: ?Sized> Serialize for ArcWeak<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.upgrade().serialize(serializer)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 macro_rules! nonzero_integers {
     ( $( $T: ident, )+ ) => {
         $(
-            #[cfg(feature = "unstable")]
-            impl Serialize for $T {
+            #[cfg(num_nonzero)]
+            impl Serialize for num::$T {
                 fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
                 where
                     S: Serializer,
@@ -434,7 +466,10 @@ where
     where
         S: Serializer,
     {
-        self.borrow().serialize(serializer)
+        match self.try_borrow() {
+            Ok(value) => value.serialize(serializer),
+            Err(_) => Err(S::Error::custom("already mutably borrowed")),
+        }
     }
 }
 
@@ -492,7 +527,7 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[cfg(feature = "std")]
+#[cfg(any(core_duration, feature = "std"))]
 impl Serialize for Duration {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -515,7 +550,8 @@ impl Serialize for SystemTime {
         S: Serializer,
     {
         use super::SerializeStruct;
-        let duration_since_epoch = self.duration_since(UNIX_EPOCH)
+        let duration_since_epoch = self
+            .duration_since(UNIX_EPOCH)
             .expect("SystemTime must be later than UNIX_EPOCH");
         let mut state = try!(serializer.serialize_struct("SystemTime", 2));
         try!(state.serialize_field("secs_since_epoch", &duration_since_epoch.as_secs()));

@@ -14,7 +14,7 @@
 
 #include "jit/CompactBuffer.h"
 #include "jit/IonCode.h"
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "jit/JitSpewer.h"
 #include "jit/mips-shared/Architecture-mips-shared.h"
 #include "jit/shared/Assembler-shared.h"
@@ -1296,7 +1296,7 @@ class AssemblerMIPSShared : public AssemblerShared
         cl.patchAt()->bind(src.getOffset());
         cl.target()->bind(dst.getOffset());
         cl.setLinkMode(CodeLabel::JumpImmediate);
-        addCodeLabel(mozilla::Move(cl));
+        addCodeLabel(std::move(cl));
     }
 
   public:

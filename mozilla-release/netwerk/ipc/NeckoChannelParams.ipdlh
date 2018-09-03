@@ -51,7 +51,6 @@ struct LoadInfoArgs
   bool                        browserWouldUpgradeInsecureRequests;
   bool                        verifySignedContent;
   bool                        enforceSRI;
-  bool                        allowDocumentToBeAgnosticToCSP;
   bool                        forceAllowDataURI;
   bool                        allowInsecureRedirectToDataURI;
   bool                        skipContentPolicyCheckForWebRequest;
@@ -129,9 +128,40 @@ struct ParentLoadInfoForwarderArgs
   // checks can pass.
   bool allowInsecureRedirectToDataURI;
 
+  // The ServiceWorker controller that may be set in the parent when
+  // interception occurs.
+  OptionalIPCServiceWorkerDescriptor controller;
+
+  // The service worker may synthesize a Response with a particular
+  // tainting value.
+  uint32_t tainting;
+
+  // We must also note that the tainting value was explicitly set
+  // by the service worker.
+  bool serviceWorkerTaintingSynthesized;
+
   // IMPORTANT: when you add new properites here you must also update
   // LoadInfoToParentLoadInfoForwarder and MergeParentLoadInfoForwarder
   // in BackgroundUtils.cpp/.h!
+};
+
+/**
+ * This structure is used to carry selected properties of a LoadInfo
+ * object to the parent process that might have changed in the child
+ * during a redirect.  We don't want to use LoadInfoArgs for that since
+ * it's too huge and we only care about small subpart of properties
+ * anyway.
+ */
+struct ChildLoadInfoForwarderArgs
+{
+  // The reserved and initial ClientInfo values may change during a
+  // redirect if the new channel is cross-origin to the old channel.
+  OptionalIPCClientInfo reservedClientInfo;
+  OptionalIPCClientInfo initialClientInfo;
+
+  // The ServiceWorker controller may be cleared in the child during
+  // a redirect.
+  OptionalIPCServiceWorkerDescriptor controller;
 };
 
 //-----------------------------------------------------------------------------
@@ -200,6 +230,7 @@ struct HttpChannelOpenArgs
   uint32_t                    corsMode;
   uint32_t                    redirectMode;
   uint64_t                    channelId;
+  nsString                    integrityMetadata;
   uint64_t                    contentWindowId;
   nsCString                   preferredAlternativeType;
   uint64_t                    topLevelOuterContentWindowId;
@@ -235,6 +266,7 @@ struct FTPChannelOpenArgs
   nsCString                 entityID;
   OptionalIPCStream         uploadStream;
   OptionalLoadInfoArgs      loadInfo;
+  uint32_t                  loadFlags;
 };
 
 struct FTPChannelConnectArgs

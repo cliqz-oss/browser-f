@@ -320,7 +320,7 @@ SpewPatchBaselineFrame(uint8_t* oldReturnAddress, uint8_t* newReturnAddress,
                        JSScript* script, ICEntry::Kind frameKind, jsbytecode* pc)
 {
     JitSpew(JitSpew_BaselineDebugModeOSR,
-            "Patch return %p -> %p on BaselineJS frame (%s:%zu) from %s at %s",
+            "Patch return %p -> %p on BaselineJS frame (%s:%u) from %s at %s",
             oldReturnAddress, newReturnAddress, script->filename(), script->lineno(),
             ICEntryKindToString(frameKind), CodeName[(JSOp)*pc]);
 }
@@ -330,7 +330,7 @@ SpewPatchBaselineFrameFromExceptionHandler(uint8_t* oldReturnAddress, uint8_t* n
                                            JSScript* script, jsbytecode* pc)
 {
     JitSpew(JitSpew_BaselineDebugModeOSR,
-            "Patch return %p -> %p on BaselineJS frame (%s:%zu) from exception handler at %s",
+            "Patch return %p -> %p on BaselineJS frame (%s:%u) from exception handler at %s",
             oldReturnAddress, newReturnAddress, script->filename(), script->lineno(),
             CodeName[(JSOp)*pc]);
 }
@@ -667,7 +667,7 @@ RecompileBaselineScriptForDebugMode(JSContext* cx, JSScript* script,
     if (oldBaselineScript->hasDebugInstrumentation() == observing)
         return true;
 
-    JitSpew(JitSpew_BaselineDebugModeOSR, "Recompiling (%s:%zu) for %s",
+    JitSpew(JitSpew_BaselineDebugModeOSR, "Recompiling (%s:%u) for %s",
             script->filename(), script->lineno(), observing ? "DEBUGGING" : "NORMAL EXECUTION");
 
     AutoKeepTypeScripts keepTypes(cx);
@@ -799,7 +799,7 @@ InvalidateScriptsInZone(JSContext* cx, Zone* zone, const Vector<DebugModeOSREntr
     RecompileInfoVector invalid;
     for (UniqueScriptOSREntryIter iter(entries); !iter.done(); ++iter) {
         JSScript* script = iter.entry().script;
-        if (script->compartment()->zone() != zone)
+        if (script->zone() != zone)
             continue;
 
         if (script->hasIonScript()) {
@@ -884,7 +884,7 @@ jit::RecompileOnStackBaselineScriptsForDebugMode(JSContext* cx,
     // crash.
     for (size_t i = 0; i < entries.length(); i++) {
         JSScript* script = entries[i].script;
-        AutoCompartment ac(cx, script);
+        AutoRealm ar(cx, script);
         if (!RecompileBaselineScriptForDebugMode(cx, script, observing) ||
             !CloneOldBaselineStub(cx, entries, i))
         {
@@ -1043,7 +1043,7 @@ JitRuntime::getBaselineDebugModeOSRHandler(JSContext* cx)
 {
     if (!baselineDebugModeOSRHandler_) {
         AutoLockForExclusiveAccess lock(cx);
-        AutoAtomsCompartment ac(cx, lock);
+        AutoAtomsZone az(cx, lock);
         uint32_t offset;
         if (JitCode* code = generateBaselineDebugModeOSRHandler(cx, &offset)) {
             baselineDebugModeOSRHandler_ = code;

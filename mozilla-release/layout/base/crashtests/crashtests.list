@@ -110,7 +110,7 @@ load 347898-1.html
 load 348126-1.html
 load 348688-1.html
 load 348708-1.xhtml
-asserts(1) asserts-if(stylo,0) load 348729-1.html # bug 548836
+load 348729-1.html
 load 349095-1.xhtml
 load 350128-1.xhtml
 load 350267-1.html
@@ -266,7 +266,7 @@ load 448543-1.html
 load 448543-2.html
 load 448543-3.html
 load 450319-1.xhtml
-asserts(1) asserts-if(stylo&&Android,2) load 453894-1.xhtml # Bug 398043
+asserts(1) asserts-if(Android,2) load 453894-1.xhtml # Bug 398043
 load 454751-1.xul
 load 455063-1.html
 load 455063-2.html
@@ -359,7 +359,7 @@ load 560447-1.html
 load 564063-1.html
 load 567292-1.xhtml
 load 569018-1.html
-load 570038-1.html
+pref(layout.css.xul-display-values.content.enabled,true) load 570038-1.html
 load 572003.xul
 load 572582-1.xhtml
 load 576649-1.html
@@ -488,6 +488,7 @@ load 1308793.svg
 load 1308848-1.html
 load 1308848-2.html
 load 1338772-1.html
+load 1340571.html
 asserts(0-1) load 1343606.html # bug 1343948
 load 1343937.html
 load 1352380.html
@@ -512,8 +513,12 @@ load 1404789-2.html
 load 1406562.html
 load 1409147.html
 load 1411138.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1414100.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1414303.html
 load 1419762.html
+load 1419802.html
 load 1420533.html
+load 1423216.html
 load 1425893.html
 load 1425959.html
 load 1428353.html
@@ -530,7 +535,12 @@ load 1452839.html
 load 1453196.html
 load 1453342.html
 load 1453702.html
+pref(dom.webcomponents.shadowdom.enabled,true) load 1461749.html
 load 1461812.html
 load 1462412.html
 load 1463940.html
 pref(dom.webcomponents.shadowdom.enabled,true) HTTP load 1464641.html
+load 1464737.html
+load 1467688.html
+load 1467964.html
+load 1469354.html

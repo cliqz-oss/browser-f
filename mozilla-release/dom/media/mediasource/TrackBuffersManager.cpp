@@ -164,7 +164,7 @@ RefPtr<TrackBuffersManager::AppendPromise>
 TrackBuffersManager::DoAppendData(already_AddRefed<MediaByteBuffer> aData,
                                   const SourceBufferAttributes& aAttributes)
 {
-  RefPtr<AppendBufferTask> task = new AppendBufferTask(Move(aData), aAttributes);
+  RefPtr<AppendBufferTask> task = new AppendBufferTask(std::move(aData), aAttributes);
   RefPtr<AppendPromise> p = task->mPromise.Ensure(__func__);
   QueueTask(task);
 
@@ -2086,7 +2086,8 @@ TrackBuffersManager::RemoveFrames(const TimeIntervals& aIntervals,
   data.RemoveElementsAt(firstRemovedIndex.ref(),
                         lastRemovedIndex - firstRemovedIndex.ref() + 1);
 
-  if (aIntervals.GetEnd() >= aTrackData.mHighestStartTimestamp) {
+  if (removedIntervals.GetEnd() >= aTrackData.mHighestStartTimestamp &&
+      removedIntervals.GetStart() <= aTrackData.mHighestStartTimestamp) {
     // The sample with the highest presentation time got removed.
     // Rescan the trackbuffer to determine the new one.
     TimeUnit highestStartTime;
@@ -2462,17 +2463,6 @@ TrackBuffersManager::GetSample(TrackInfo::TrackType aTrack,
 
   aResult = NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA;
 
-  if (!track.Length()) {
-    aResult = NS_ERROR_DOM_MEDIA_END_OF_STREAM;
-    return nullptr;
-  }
-
-  if (trackData.mNextGetSampleIndex.isNothing() &&
-      trackData.mNextSampleTimecode == TimeUnit()) {
-    // First demux, get first sample.
-    trackData.mNextGetSampleIndex = Some(0u);
-  }
-
   if (trackData.mNextGetSampleIndex.isSome()) {
     if (trackData.mNextGetSampleIndex.ref() >= track.Length()) {
       aResult = NS_ERROR_DOM_MEDIA_END_OF_STREAM;
@@ -2519,24 +2509,16 @@ TrackBuffersManager::GetSample(TrackInfo::TrackType aTrack,
     return p.forget();
   }
 
-  if (trackData.mNextSampleTimecode >
-      track.LastElement()->mTimecode + track.LastElement()->mDuration) {
-    // The next element is past our last sample. We're done.
-    trackData.mNextGetSampleIndex = Some(uint32_t(track.Length()));
-    aResult = NS_ERROR_DOM_MEDIA_END_OF_STREAM;
+  aResult = SetNextGetSampleIndexIfNeeded(aTrack, aFuzz);
+
+  if (NS_FAILED(aResult)) {
     return nullptr;
   }
 
-  // Our previous index has been overwritten, attempt to find the new one.
-  int32_t pos = FindCurrentPosition(aTrack, aFuzz);
-  if (pos < 0) {
-    MSE_DEBUG("Couldn't find sample (pts:%" PRId64 " dts:%" PRId64 ")",
-              trackData.mNextSampleTime.ToMicroseconds(),
-              trackData.mNextSampleTimecode.ToMicroseconds());
-    return nullptr;
-  }
-
-  const RefPtr<MediaRawData>& sample = track[pos];
+  MOZ_RELEASE_ASSERT(trackData.mNextGetSampleIndex.isSome() &&
+                     trackData.mNextGetSampleIndex.ref() < track.Length());
+  const RefPtr<MediaRawData>& sample =
+    track[trackData.mNextGetSampleIndex.ref()];
   RefPtr<MediaRawData> p = sample->Clone();
   if (!p) {
     // OOM
@@ -2545,15 +2527,14 @@ TrackBuffersManager::GetSample(TrackInfo::TrackType aTrack,
   }
 
   // Find the previous keyframe to calculate the evictable amount.
-  int32_t i = pos;
+  uint32_t i = trackData.mNextGetSampleIndex.ref();
   for (; !track[i]->mKeyframe; i--) {
   }
   UpdateEvictionIndex(trackData, i);
 
-  trackData.mNextGetSampleIndex = Some(uint32_t(pos)+1);
+  trackData.mNextGetSampleIndex.ref()++;
   trackData.mNextSampleTimecode = sample->mTimecode + sample->mDuration;
   trackData.mNextSampleTime = sample->GetEndTime();
-  aResult = NS_OK;
   return p.forget();
 }
 
@@ -2690,6 +2671,9 @@ TrackBuffersManager::SetNextGetSampleIndexIfNeeded(TrackInfo::TrackType aTrack,
   int32_t pos = FindCurrentPosition(aTrack, aFuzz);
   if (pos < 0) {
     // Not found, must wait for more data.
+    MSE_DEBUG("Couldn't find sample (pts:%" PRId64 " dts:%" PRId64 ")",
+              trackData.mNextSampleTime.ToMicroseconds(),
+              trackData.mNextSampleTimecode.ToMicroseconds());
     return NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA;
   }
   trackData.mNextGetSampleIndex = Some(uint32_t(pos));

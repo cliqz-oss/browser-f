@@ -55,7 +55,8 @@ exports.PerfActor = ActorClassWithSpec(perfSpec, {
     const settings = {
       entries: options.entries || 1000000,
       interval: options.interval || 1,
-      features: options.features || ["js", "stackwalk", "threads", "leaf"],
+      features: options.features ||
+        ["js", "stackwalk", "responsiveness", "threads", "leaf"],
       threads: options.threads || ["GeckoMain", "Compositor"]
     };
 
@@ -141,7 +142,7 @@ exports.PerfActor = ActorClassWithSpec(perfSpec, {
         this.emit("profile-unlocked-from-private-browsing");
         break;
       case "profiler-started":
-        let param = subject.QueryInterface(Ci.nsIProfilerStartParams);
+        const param = subject.QueryInterface(Ci.nsIProfilerStartParams);
         this.emit(topic, param.entries, param.interval, param.features);
         break;
       case "profiler-stopped":

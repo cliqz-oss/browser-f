@@ -3671,7 +3671,7 @@ function checkFilesInDirRecursive(aDir, aCallback) {
 
   let dirEntries = aDir.directoryEntries;
   while (dirEntries.hasMoreElements()) {
-    let entry = dirEntries.getNext().QueryInterface(Ci.nsIFile);
+    let entry = dirEntries.nextFile;
 
     if (entry.exists()) {
       if (entry.isDirectory()) {
@@ -3863,7 +3863,7 @@ function createAppInfo(aID, aName, aVersion, aPlatformVersion) {
     OS: "XPCShell",
     XPCOMABI: "noarch-spidermonkey",
 
-    QueryInterface: XPCOMUtils.generateQI(ifaces)
+    QueryInterface: ChromeUtils.generateQI(ifaces)
   };
 
   const XULAppInfoFactory = {

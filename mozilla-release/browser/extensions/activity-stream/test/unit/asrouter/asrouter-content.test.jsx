@@ -1,4 +1,4 @@
-import {ASRouterUISurface, ASRouterUtils} from "content-src/asrouter/asrouter-content";
+import {ASRouterUISurface, ASRouterUtils, convertLinks} from "content-src/asrouter/asrouter-content";
 import {OUTGOING_MESSAGE_NAME as AS_GENERAL_OUTGOING_MESSAGE_NAME} from "content-src/lib/init-store";
 import {FAKE_LOCAL_MESSAGES} from "./constants";
 import {GlobalOverrider} from "test/unit/utils";
@@ -7,6 +7,7 @@ import React from "react";
 let [FAKE_MESSAGE] = FAKE_LOCAL_MESSAGES;
 
 FAKE_MESSAGE = Object.assign({}, FAKE_MESSAGE, {provider: "fakeprovider"});
+const FAKE_BUNDLED_MESSAGE = {bundle: [{id: "foo", template: "onboarding", content: {title: "Foo", body: "Foo123"}}], template: "onboarding"};
 
 describe("ASRouterUtils", () => {
   let global;
@@ -42,6 +43,7 @@ describe("ASRouterUISurface", () => {
   beforeEach(() => {
     sandbox = sinon.sandbox.create();
     fakeDocument = {
+      location: {href: ""},
       _listeners: new Set(),
       _visibilityState: "hidden",
       get visibilityState() {
@@ -80,8 +82,48 @@ describe("ASRouterUISurface", () => {
 
   it("should render the component if a message id is defined", () => {
     wrapper.setState({message: FAKE_MESSAGE});
-
     assert.isTrue(wrapper.exists());
+  });
+
+  it("should render the component if a bundle of messages is defined", () => {
+    wrapper.setState({bundle: FAKE_BUNDLED_MESSAGE});
+    assert.isTrue(wrapper.exists());
+  });
+
+  describe("snippets", () => {
+    it("should send correct event and source when snippet link is clicked", () => {
+      const content = {button_url: "https://foo.com", button_type: "anchor", button_label: "foo", ...FAKE_MESSAGE.content};
+      const message = Object.assign({}, FAKE_MESSAGE, {content});
+      wrapper.setState({message});
+
+      wrapper.find("a.ASRouterAnchor").simulate("click");
+      assert.propertyVal(ASRouterUtils.sendTelemetry.firstCall.args[0], "event", "CLICK_BUTTON");
+      assert.propertyVal(ASRouterUtils.sendTelemetry.firstCall.args[0], "source", "NEWTAB_FOOTER_BAR");
+    });
+    it("should send correct event and source when snippet is blocked", () => {
+      wrapper.setState({message: FAKE_MESSAGE});
+
+      wrapper.find(".blockButton").simulate("click");
+      assert.propertyVal(ASRouterUtils.sendTelemetry.firstCall.args[0], "event", "BLOCK");
+      assert.propertyVal(ASRouterUtils.sendTelemetry.firstCall.args[0], "source", "NEWTAB_FOOTER_BAR");
+    });
+  });
+
+  describe("convertLinks", () => {
+    it("should return an object with anchor elements", () => {
+      const cta = {
+        url: "https://foo.com",
+        metric: "foo"
+      };
+      const stub = sandbox.stub();
+      const result = convertLinks({cta}, stub);
+
+      assert.property(result, "cta");
+      assert.propertyVal(result.cta, "type", "a");
+      assert.propertyVal(result.cta.props, "href", cta.url);
+      assert.propertyVal(result.cta.props, "data-metric", cta.metric);
+      assert.propertyVal(result.cta.props, "onClick", stub);
+    });
   });
 
   describe("impressions", () => {
@@ -110,12 +152,13 @@ describe("ASRouterUISurface", () => {
       assert.calledOnce(ASRouterUtils.sendTelemetry);
     });
 
-    it("should the right data in the ", () => {
+    it("should send the correct impression source", () => {
       wrapper.setState({message: FAKE_MESSAGE});
-      assert.notCalled(ASRouterUtils.sendTelemetry);
-
       simulateVisibilityChange("visible");
+
       assert.calledOnce(ASRouterUtils.sendTelemetry);
+      assert.propertyVal(ASRouterUtils.sendTelemetry.firstCall.args[0], "event", "IMPRESSION");
+      assert.propertyVal(ASRouterUtils.sendTelemetry.firstCall.args[0], "source", "NEWTAB_FOOTER_BAR");
     });
 
     it("should send an impression ping when the page is visible and a message gets loaded", () => {
@@ -164,6 +207,7 @@ describe("ASRouterUISurface", () => {
       assert.propertyVal(payload, "message_id", FAKE_MESSAGE.id);
       assert.propertyVal(payload, "event", "IMPRESSION");
       assert.propertyVal(payload, "action", `${FAKE_MESSAGE.provider}_user_event`);
+      assert.propertyVal(payload, "source", "NEWTAB_FOOTER_BAR");
     });
   });
 });

@@ -12,7 +12,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Compiler.h"
 #include "mozilla/Move.h"
-#include "mozilla/Scoped.h"
 #include "mozilla/TemplateLib.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WrappingOperations.h"
@@ -418,8 +417,6 @@ static inline void js_free(void* p)
     // js_malloc().
     free(p);
 }
-
-JS_PUBLIC_API(char*) js_strdup(const char* s);
 #endif/* JS_USE_CUSTOM_ALLOCATOR */
 
 #include <new>
@@ -440,16 +437,28 @@ JS_PUBLIC_API(char*) js_strdup(const char* s);
  *   (that is, finalizing the GC-thing will free the allocation), call one of
  *   the following functions:
  *
- *     JSContext::{malloc_,realloc_,calloc_,new_}
- *     JSRuntime::{malloc_,realloc_,calloc_,new_}
+ *     JSContext::{pod_malloc,pod_calloc,pod_realloc}
+ *     Zone::{pod_malloc,pod_calloc,pod_realloc}
  *
  *   These functions accumulate the number of bytes allocated which is used as
- *   part of the GC-triggering heuristic.
+ *   part of the GC-triggering heuristics.
  *
- *   The difference between the JSContext and JSRuntime versions is that the
- *   cx version reports an out-of-memory error on OOM. (This follows from the
+ *   The difference between the JSContext and Zone versions is that the
+ *   cx version report an out-of-memory error on OOM. (This follows from the
  *   general SpiderMonkey idiom that a JSContext-taking function reports its
  *   own errors.)
+ *
+ *   If you don't want to report an error on failure, there are maybe_ versions
+ *   of these methods available too, e.g. maybe_pod_malloc.
+ *
+ *   The methods above use templates to allow allocating memory suitable for an
+ *   array of a given type and number of elements. There are _with_extra
+ *   versions to allow allocating an area of memory which is larger by a
+ *   specified number of bytes, e.g. pod_malloc_with_extra.
+ *
+ *   These methods are available on a JSRuntime, but calling them is
+ *   discouraged. Memory attributed to a runtime can only be reclaimed by full
+ *   GCs, and we try to avoid those where possible.
  *
  * - Otherwise, use js_malloc/js_realloc/js_calloc/js_new
  *
@@ -461,9 +470,6 @@ JS_PUBLIC_API(char*) js_strdup(const char* s);
  *   operations on the FreeOp provided to the finalizer:
  *
  *     FreeOp::{free_,delete_}
- *
- *   The advantage of these operations is that the memory is batched and freed
- *   on another thread.
  */
 
 /*
@@ -479,7 +485,7 @@ JS_PUBLIC_API(char*) js_strdup(const char* s);
     NEWNAME(Args&&... args) MOZ_HEAP_ALLOCATOR { \
         void* memory = ALLOCATOR(sizeof(T)); \
         return MOZ_LIKELY(memory) \
-            ? new(memory) T(mozilla::Forward<Args>(args)...) \
+            ? new(memory) T(std::forward<Args>(args)...) \
             : nullptr; \
     }
 
@@ -497,7 +503,7 @@ JS_PUBLIC_API(char*) js_strdup(const char* s);
     template <class T, typename... Args> \
     QUALIFIERS mozilla::UniquePtr<T, JS::DeletePolicy<T>> \
     MAKENAME(Args&&... args) MOZ_HEAP_ALLOCATOR { \
-        T* ptr = NEWNAME<T>(mozilla::Forward<Args>(args)...); \
+        T* ptr = NEWNAME<T>(std::forward<Args>(args)...); \
         return mozilla::UniquePtr<T, JS::DeletePolicy<T>>(ptr); \
     }
 
@@ -549,7 +555,7 @@ js_delete_poison(const T* p)
 {
     if (p) {
         p->~T();
-        memset(const_cast<T*>(p), 0x3B, sizeof(T));
+        memset(static_cast<void*>(const_cast<T*>(p)), 0x3B, sizeof(T));
         js_free(const_cast<T*>(p));
     }
 }
@@ -598,33 +604,6 @@ js_pod_realloc(T* prior, size_t oldSize, size_t newSize)
         return nullptr;
     return static_cast<T*>(js_realloc(prior, bytes));
 }
-
-namespace js {
-
-template<typename T>
-struct ScopedFreePtrTraits
-{
-    typedef T* type;
-    static T* empty() { return nullptr; }
-    static void release(T* ptr) { js_free(ptr); }
-};
-SCOPED_TEMPLATE(ScopedJSFreePtr, ScopedFreePtrTraits)
-
-template <typename T>
-struct ScopedDeletePtrTraits : public ScopedFreePtrTraits<T>
-{
-    static void release(T* ptr) { js_delete(ptr); }
-};
-SCOPED_TEMPLATE(ScopedJSDeletePtr, ScopedDeletePtrTraits)
-
-template <typename T>
-struct ScopedReleasePtrTraits : public ScopedFreePtrTraits<T>
-{
-    static void release(T* ptr) { if (ptr) ptr->release(); }
-};
-SCOPED_TEMPLATE(ScopedReleasePtr, ScopedReleasePtrTraits)
-
-} /* namespace js */
 
 namespace JS {
 

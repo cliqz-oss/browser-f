@@ -93,7 +93,8 @@ public:
                                  const mozilla::gfx::SurfaceFormat aFormat,
                                  mozilla::gfx::SamplingFilter aSamplingFilter,
                                  uint32_t           aImageFlags = imgIContainer::FLAG_NONE,
-                                 gfxFloat           aOpacity = 1.0);
+                                 gfxFloat           aOpacity = 1.0,
+                                 bool               aUseOptimalFillOp = true);
 
     /**
      * Clip aContext to the region aRegion.
@@ -294,6 +295,8 @@ public:
                                                int32_t feature,
                                                nsACString& failureId,
                                                int32_t* status);
+
+    static void RemoveShaderCacheFromDiskIfNecessary();
 
     /**
      * Copy to the clipboard as a PNG encoded Data URL.

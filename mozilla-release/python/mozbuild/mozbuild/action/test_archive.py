@@ -106,6 +106,7 @@ ARCHIVE_FILES = {
                 'mochitest/**',
                 'reftest/**',
                 'talos/**',
+                'raptor/**',
                 'awsy/**',
                 'web-platform/**',
                 'xpcshell/**',
@@ -361,7 +362,19 @@ ARCHIVE_FILES = {
             'base': '',
             'pattern': 'mozinfo.json',
             'dest': 'mochitest'
-        }
+        },
+        {
+            'source': buildconfig.topobjdir,
+            'base': 'dist/xpi-stage',
+            'pattern': 'mochijar/**',
+            'dest': 'mochitest'
+        },
+        {
+            'source': buildconfig.topobjdir,
+            'base': 'dist/xpi-stage',
+            'pattern': 'specialpowers/**',
+            'dest': 'mochitest/extensions'
+        },
     ],
     'mozharness': [
         {
@@ -400,9 +413,34 @@ ARCHIVE_FILES = {
         },
         {
             'source': buildconfig.topsrcdir,
+            'base': 'testing/profiles',
+            'pattern': '**',
+            'dest': 'talos/talos/profile_data',
+        },
+        {
+            'source': buildconfig.topsrcdir,
             'base': 'third_party/webkit/PerformanceTests',
             'pattern': '**',
             'dest': 'talos/talos/tests/webkit/PerformanceTests/',
+        },
+    ],
+    'raptor': [
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing',
+            'pattern': 'raptor/**',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/profiles',
+            'pattern': '**',
+            'dest': 'raptor/raptor/profile_data',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'third_party/webkit/PerformanceTests',
+            'pattern': '**',
+            'dest': 'raptor/raptor/tests/webkit/PerformanceTests/',
         },
     ],
     'awsy': [

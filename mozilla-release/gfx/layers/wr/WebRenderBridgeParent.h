@@ -90,6 +90,8 @@ public:
                                              const TimeStamp& aTxnStartTime,
                                              const TimeStamp& aFwdTime) override;
   mozilla::ipc::IPCResult RecvEmptyTransaction(const FocusTarget& aFocusTarget,
+                                               const ScrollUpdatesMap& aUpdates,
+                                               const uint32_t& aPaintSequenceNumber,
                                                InfallibleTArray<WebRenderParentCommand>&& aCommands,
                                                InfallibleTArray<OpDestroy>&& aToDestroy,
                                                const uint64_t& aFwdTransactionId,
@@ -106,6 +108,7 @@ public:
   mozilla::ipc::IPCResult RecvClearCachedResources() override;
   mozilla::ipc::IPCResult RecvScheduleComposite() override;
   mozilla::ipc::IPCResult RecvCapture() override;
+  mozilla::ipc::IPCResult RecvSyncWithCompositor() override;
 
   mozilla::ipc::IPCResult RecvSetConfirmedTargetAPZC(const uint64_t& aBlockId,
                                                      nsTArray<ScrollableLayerGuid>&& aTargets) override;
@@ -191,6 +194,8 @@ private:
 
   void UpdateAPZFocusState(const FocusTarget& aFocus);
   void UpdateAPZScrollData(const wr::Epoch& aEpoch, WebRenderScrollData&& aData);
+  void UpdateAPZScrollOffsets(ScrollUpdatesMap&& aUpdates,
+                              uint32_t aPaintSequenceNumber);
 
   bool UpdateResources(const nsTArray<OpUpdateResource>& aResourceUpdates,
                        const nsTArray<RefCountedShmem>& aSmallShmems,
@@ -210,15 +215,18 @@ private:
   void RemoveExternalImageId(const ExternalImageId& aImageId);
 
   LayersId GetLayersId() const;
-  void ProcessWebRenderParentCommands(const InfallibleTArray<WebRenderParentCommand>& aCommands);
+  void ProcessWebRenderParentCommands(const InfallibleTArray<WebRenderParentCommand>& aCommands,
+                                      wr::TransactionBuilder& aTxn);
 
   void ClearResources();
   uint64_t GetChildLayerObserverEpoch() const { return mChildLayerObserverEpoch; }
   bool ShouldParentObserveEpoch();
   mozilla::ipc::IPCResult HandleShutdown();
 
-  void AdvanceAnimations();
-  void SampleAnimations(nsTArray<wr::WrOpacityProperty>& aOpacityArray,
+  // Returns true if there is any animation (including animations in delay
+  // phase).
+  bool AdvanceAnimations();
+  bool SampleAnimations(nsTArray<wr::WrOpacityProperty>& aOpacityArray,
                         nsTArray<wr::WrTransformProperty>& aTransformArray);
 
   CompositorBridgeParent* GetRootCompositorBridgeParent() const;
@@ -229,6 +237,10 @@ private:
   void SetAPZSampleTime();
 
   wr::Epoch GetNextWrEpoch();
+
+  void FlushSceneBuilds();
+  void FlushFrameGeneration();
+  void FlushFramePresentation();
 
 private:
   struct PendingTransactionId {
@@ -247,7 +259,7 @@ private:
   struct CompositorAnimationIdsForEpoch {
     CompositorAnimationIdsForEpoch(const wr::Epoch& aEpoch, InfallibleTArray<uint64_t>&& aIds)
       : mEpoch(aEpoch)
-      , mIds(Move(aIds))
+      , mIds(std::move(aIds))
     {
     }
 

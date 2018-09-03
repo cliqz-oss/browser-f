@@ -31,12 +31,13 @@ from taskgraph.util.schema import (
 from taskgraph.util.scriptworker import (
     BALROG_ACTIONS,
     get_release_config,
+    add_scope_prefix,
 )
 from voluptuous import Any, Required, Optional, Extra
 from taskgraph import GECKO, MAX_DEPENDENCIES
 from ..util import docker as dockerutil
 
-RUN_TASK = os.path.join(GECKO, 'taskcluster', 'docker', 'recipes', 'run-task')
+RUN_TASK = os.path.join(GECKO, 'taskcluster', 'scripts', 'run-task')
 
 
 @memoize
@@ -409,6 +410,36 @@ task_description_schema = Schema({
             Required('name'): basestring,
         }],
     }, {
+        Required('implementation'): 'script-engine-autophone',
+        Required('os'): Any('macosx', 'linux'),
+
+        # A link for an executable to download
+        Optional('context'): basestring,
+
+        # Tells the worker whether machine should reboot
+        # after the task is finished.
+        Optional('reboot'):
+            Any(False, 'always', 'never', 'on-exception', 'on-failure'),
+
+        # the command to run
+        Optional('command'): [taskref_or_string],
+
+        # environment variables
+        Optional('env'): {basestring: taskref_or_string},
+
+        # artifacts to extract from the task image after completion
+        Optional('artifacts'): [{
+            # type of artifact -- simple file, or recursive directory
+            Required('type'): Any('file', 'directory'),
+
+            # task image path from which to read artifact
+            Required('path'): basestring,
+
+            # name of the produced artifact (root of the names for
+            # type=directory)
+            Required('name'): basestring,
+        }],
+    }, {
         Required('implementation'): 'scriptworker-signing',
 
         # the maximum time to run, in seconds
@@ -465,7 +496,7 @@ task_description_schema = Schema({
             Required('locale'): basestring,
         }],
     }, {
-        Required('implementation'): 'beetmover-cdns',
+        Required('implementation'): 'beetmover-push-to-release',
 
         # the maximum time to run, in seconds
         Required('max-run-time'): int,
@@ -544,9 +575,11 @@ task_description_schema = Schema({
         Required('release-name'): basestring,
     }, {
         Required('implementation'): 'treescript',
-        Required('tag'): bool,
+        Required('tags'): [Any('buildN', 'release', None)],
         Required('bump'): bool,
         Optional('bump-files'): [basestring],
+        Optional('repo-param-prefix'): basestring,
+        Optional('dontbuild'): bool,
         Required('force-dry-run', default=True): bool,
         Required('push', default=False): bool
     }),
@@ -589,6 +622,7 @@ V2_NIGHTLY_L10N_TEMPLATES = [
 V2_L10N_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",
     "index.{trust-domain}.v2.{project}.pushdate.{build_date_long}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.pushlog-id.{pushlog_id}.{product}-l10n.{job-name}.{locale}",
     "index.{trust-domain}.v2.{project}.latest.{product}-l10n.{job-name}.{locale}",
 ]
 
@@ -597,7 +631,15 @@ TREEHERDER_ROUTE_ROOT = 'tc-treeherder'
 
 
 def get_branch_rev(config):
-    return config.params['{}head_rev'.format(config.graph_config['project-repo-param-prefix'])]
+    return config.params['{}head_rev'.format(
+        config.graph_config['project-repo-param-prefix']
+    )]
+
+
+def get_branch_repo(config):
+    return config.params['{}head_repository'.format(
+        config.graph_config['project-repo-param-prefix'],
+    )]
 
 
 COALESCE_KEY = '{project}.{job-identifier}'
@@ -775,6 +817,17 @@ def build_docker_worker_payload(config, task, task_def):
     if 'max-run-time' in worker:
         payload['maxRunTime'] = worker['max-run-time']
 
+    run_task = payload.get('command', [''])[0].endswith('run-task')
+
+    # run-task exits EXIT_PURGE_CACHES if there is a problem with caches.
+    # Automatically retry the tasks and purge caches if we see this exit
+    # code.
+    # TODO move this closer to code adding run-task once bug 1469697 is
+    # addressed.
+    if run_task:
+        worker.setdefault('retry-exit-status', []).append(72)
+        worker.setdefault('purge-caches-exit-status', []).append(72)
+
     payload['onExitStatus'] = {}
     if 'retry-exit-status' in worker:
         payload['onExitStatus']['retry'] = worker['retry-exit-status']
@@ -790,8 +843,6 @@ def build_docker_worker_payload(config, task, task_def):
                 'expires': task_def['expires'],  # always expire with the task
             }
         payload['artifacts'] = artifacts
-
-    run_task = payload.get('command', [''])[0].endswith('run-task')
 
     if isinstance(worker.get('docker-image'), basestring):
         out_of_tree_image = worker['docker-image']
@@ -998,8 +1049,8 @@ def build_beetmover_payload(config, task, task_def):
         task_def['payload'].update(release_config)
 
 
-@payload_builder('beetmover-cdns')
-def build_beetmover_cdns_payload(config, task, task_def):
+@payload_builder('beetmover-push-to-release')
+def build_beetmover_push_to_release_payload(config, task, task_def):
     worker = task['worker']
     release_config = get_release_config(config)
 
@@ -1119,20 +1170,25 @@ def build_treescript_payload(config, task, task_def):
 
     task_def['payload'] = {}
     task_def.setdefault('scopes', [])
-    if worker['tag']:
+    if worker['tags']:
+        tag_names = []
         product = task['shipping-product'].upper()
         version = release_config['version'].replace('.', '_')
         buildnum = release_config['build_number']
-        tag_names = [
-            "{}_{}_BUILD{}".format(product, version, buildnum),
-            "{}_{}_RELEASE".format(product, version)
-        ]
+        if 'buildN' in worker['tags']:
+            tag_names.extend([
+                "{}_{}_BUILD{}".format(product, version, buildnum),
+            ])
+        if 'release' in worker['tags']:
+            tag_names.extend([
+              "{}_{}_RELEASE".format(product, version)
+            ])
         tag_info = {
             'tags': tag_names,
-            'revision': config.params['head_rev']
+            'revision': config.params['{}head_rev'.format(worker.get('repo-param-prefix', ''))],
         }
         task_def['payload']['tag_info'] = tag_info
-        task_def['scopes'].append('project:releng:treescript:action:tagging')
+        task_def['scopes'].append(add_scope_prefix(config, 'treescript:action:tagging'))
 
     if worker['bump']:
         if not worker['bump-files']:
@@ -1142,13 +1198,16 @@ def build_treescript_payload(config, task, task_def):
         bump_info['next_version'] = release_config['next_version']
         bump_info['files'] = worker['bump-files']
         task_def['payload']['version_bump_info'] = bump_info
-        task_def['scopes'].append('project:releng:treescript:action:version_bump')
+        task_def['scopes'].append(add_scope_prefix(config, 'treescript:action:version_bump'))
 
     if worker['push']:
-        task_def['scopes'].append('project:releng:treescript:action:push')
+        task_def['scopes'].append(add_scope_prefix(config, 'treescript:action:push'))
 
     if worker.get('force-dry-run'):
         task_def['payload']['dry_run'] = True
+
+    if worker.get('dontbuild'):
+        task_def['payload']['dont_build'] = True
 
 
 @payload_builder('invalid')
@@ -1185,6 +1244,29 @@ def build_macosx_engine_payload(config, task, task_def):
         raise Exception('needs-sccache not supported in native-engine')
 
 
+@payload_builder('script-engine-autophone')
+def build_script_engine_autophone_payload(config, task, task_def):
+    worker = task['worker']
+    artifacts = map(lambda artifact: {
+        'name': artifact['name'],
+        'path': artifact['path'],
+        'type': artifact['type'],
+        'expires': task_def['expires'],
+    }, worker.get('artifacts', []))
+
+    task_def['payload'] = {
+        'context': worker['context'],
+        'command': worker['command'],
+        'env': worker['env'],
+        'artifacts': artifacts,
+    }
+    if worker.get('reboot'):
+        task_def['payload'] = worker['reboot']
+
+    if task.get('needs-sccache'):
+        raise Exception('needs-sccache not supported in taskcluster-worker')
+
+
 transforms = TransformSequence()
 
 
@@ -1219,7 +1301,7 @@ def set_defaults(config, tasks):
             worker.setdefault('max-run-time', 600)
         elif worker['implementation'] == 'beetmover':
             worker.setdefault('max-run-time', 600)
-        elif worker['implementation'] == 'beetmover-cdns':
+        elif worker['implementation'] == 'beetmover-push-to-release':
             worker.setdefault('max-run-time', 600)
         elif worker['implementation'] == 'push-apk':
             worker.setdefault('commit', False)
@@ -1402,6 +1484,8 @@ def add_nightly_l10n_index_routes(config, task, force_locale=None):
     subs['job-name'] = index['job-name']
     subs['build_date_long'] = time.strftime("%Y.%m.%d.%Y%m%d%H%M%S",
                                             time.gmtime(config.params['build_date']))
+    subs['build_date'] = time.strftime("%Y.%m.%d",
+                                       time.gmtime(config.params['build_date']))
     subs['product'] = index['product']
     subs['trust-domain'] = config.graph_config['trust-domain']
     subs['branch_rev'] = get_branch_rev(config)
@@ -1423,8 +1507,6 @@ def add_nightly_l10n_index_routes(config, task, force_locale=None):
         for tpl in V2_NIGHTLY_L10N_TEMPLATES:
             routes.append(tpl.format(locale=locale, **subs))
 
-    # Add locales at old route too
-    task = add_l10n_index_routes(config, task, force_locale=force_locale)
     return task
 
 
@@ -1474,6 +1556,7 @@ def build_task(config, tasks):
         extra['parent'] = os.environ.get('TASK_ID', '')
         task_th = task.get('treeherder')
         if task_th:
+            extra.setdefault('treeherder-platform', task_th['platform'])
             treeherder = extra.setdefault('treeherder', {})
 
             machine_platform, collection = task_th['platform'].split('/', 1)

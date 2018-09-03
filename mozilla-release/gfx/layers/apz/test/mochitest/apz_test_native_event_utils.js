@@ -280,15 +280,9 @@ function* synthesizeNativeTouchSequences(aElement, aPositions, aObserver = null,
   return true;
 }
 
-// A handy constant when synthesizing native touch drag events with the pref
-// "apz.touch_start_tolerance" set to 0. In this case, the first touchmove with
-// a nonzero pixel movement is consumed by the APZ to transition from the
-// "touching" state to the "panning" state, so calls to synthesizeNativeTouchDrag
-// should add an extra pixel pixel for this purpose. The TOUCH_SLOP provides
-// a constant that can be used for this purpose. Note that if the touch start
-// tolerance is set to something higher, the touch slop amount used must be
-// correspondingly increased so as to be higher than the tolerance.
-const TOUCH_SLOP = 1;
+// Note that when calling this function you'll want to make sure that the pref
+// "apz.touch_start_tolerance" is set to 0, or some of the touchmove will get
+// consumed to overcome the panning threshold.
 function synthesizeNativeTouchDrag(aElement, aX, aY, aDeltaX, aDeltaY, aObserver = null, aTouchId = 0) {
   var steps = Math.max(Math.abs(aDeltaX), Math.abs(aDeltaY));
   var positions = new Array();
@@ -347,4 +341,36 @@ function moveMouseAndScrollWheelOver(element, dx, dy, testDriver, waitForScroll 
       synthesizeNativeWheelAndWaitForWheelEvent(element, dx, dy, 0, -10, testDriver);
     }
   });
+}
+
+// Synthesizes events to drag |element|'s vertical scrollbar by the distance
+// specified, synthesizing a mousemove for each increment as specified.
+// Returns false if the element doesn't have a vertical scrollbar, or true after
+// all the events have been synthesized.
+function* dragVerticalScrollbar(element, testDriver, distance = 20, increment = 5) {
+  var boundingClientRect = element.getBoundingClientRect();
+  var verticalScrollbarWidth = boundingClientRect.width - element.clientWidth;
+  if (verticalScrollbarWidth == 0) {
+    return false;
+  }
+
+  var upArrowHeight = verticalScrollbarWidth; // assume square scrollbar buttons
+  var mouseX = element.clientWidth + (verticalScrollbarWidth / 2);
+  var mouseY = upArrowHeight + 5; // start dragging somewhere in the thumb
+
+  dump("Starting drag at " + mouseX + ", " + mouseY + " from top-left of #" + element.id + "\n");
+
+  // Move the mouse to the scrollbar thumb and drag it down
+  yield synthesizeNativeMouseEvent(element, mouseX, mouseY, nativeMouseMoveEventMsg(), testDriver);
+  // mouse down
+  yield synthesizeNativeMouseEvent(element, mouseX, mouseY, nativeMouseDownEventMsg(), testDriver);
+  // drag vertically by |increment| until we reach the specified distance
+  for (var y = increment; y < distance; y += increment) {
+    yield synthesizeNativeMouseEvent(element, mouseX, mouseY + y, nativeMouseMoveEventMsg(), testDriver);
+  }
+  yield synthesizeNativeMouseEvent(element, mouseX, mouseY + distance, nativeMouseMoveEventMsg(), testDriver);
+  // and release
+  yield synthesizeNativeMouseEvent(element, mouseX, mouseY + distance, nativeMouseUpEventMsg(), testDriver);
+
+  return true;
 }

@@ -319,7 +319,7 @@ typedef void
 (* JSWeakPointerZonesCallback)(JSContext* cx, void* data);
 
 typedef void
-(* JSWeakPointerCompartmentCallback)(JSContext* cx, JSCompartment* comp, void* data);
+(* JSWeakPointerCompartmentCallback)(JSContext* cx, JS::Compartment* comp, void* data);
 
 /**
  * Finalizes external strings created by JS_NewExternalString. The finalizer
@@ -356,6 +356,7 @@ namespace JS {
     D(FULL_CELL_PTR_BUFFER)                     \
     D(FULL_SLOT_BUFFER)                         \
     D(FULL_SHAPE_BUFFER)                        \
+    D(TOO_MUCH_WASM_MEMORY)                     \
                                                 \
     /* These are reserved for future use. */    \
     D(RESERVED0)                                \
@@ -367,7 +368,6 @@ namespace JS {
     D(RESERVED6)                                \
     D(RESERVED7)                                \
     D(RESERVED8)                                \
-    D(RESERVED9)                                \
                                                 \
     /* Reasons from Firefox */                  \
     D(DOM_WINDOW_UTILS)                         \
@@ -485,7 +485,7 @@ SkipZoneForGC(Zone* zone);
  * the system.
  */
 extern JS_PUBLIC_API(void)
-GCForReason(JSContext* cx, JSGCInvocationKind gckind, gcreason::Reason reason);
+NonIncrementalGC(JSContext* cx, JSGCInvocationKind gckind, gcreason::Reason reason);
 
 /*
  * Incremental GC:
@@ -534,7 +534,7 @@ IncrementalGCSlice(JSContext* cx, gcreason::Reason reason, int64_t millis = 0);
 /**
  * If IsIncrementalGCInProgress(cx), this call finishes the ongoing collection
  * by performing an arbitrarily long slice. If !IsIncrementalGCInProgress(cx),
- * this is equivalent to GCForReason. When this function returns,
+ * this is equivalent to NonIncrementalGC. When this function returns,
  * IsIncrementalGCInProgress(cx) will always be false.
  */
 extern JS_PUBLIC_API(void)

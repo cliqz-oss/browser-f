@@ -30,6 +30,7 @@
 #include "gc/Marking.h"
 #include "jit/InlinableNatives.h"
 #include "js/Conversions.h"
+#include "js/UniquePtr.h"
 #include "js/Wrapper.h"
 #include "util/Windows.h"
 #include "vm/ArrayBufferObject.h"
@@ -652,15 +653,13 @@ class TypedArrayObjectTemplate : public TypedArrayObject
 
         NewObjectKind newKind = TenuredObject;
 
-        ScopedJSFreePtr<void> buf;
+        UniquePtr<void, JS::FreePolicy> buf;
         if (!fitsInline && len > 0) {
-            buf = cx->zone()->pod_malloc<uint8_t>(nbytes);
+            buf.reset(cx->zone()->pod_calloc<uint8_t>(nbytes));
             if (!buf) {
                 ReportOutOfMemory(cx);
                 return nullptr;
             }
-
-            memset(buf, 0, nbytes);
         }
 
         TypedArrayObject* obj = NewObjectWithGroup<TypedArrayObject>(cx, group, allocKind, newKind);
@@ -668,7 +667,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
             return nullptr;
 
         initTypedArraySlots(obj, len);
-        initTypedArrayData(cx, obj, len, buf.forget(), allocKind);
+        initTypedArrayData(cx, obj, len, buf.release(), allocKind);
 
         return obj;
     }
@@ -896,7 +895,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
 
         RootedObject typedArray(cx);
         {
-            JSAutoCompartment ac(cx, unwrappedBuffer);
+            JSAutoRealm ar(cx, unwrappedBuffer);
 
             RootedObject wrappedProto(cx, protoRoot);
             if (!cx->compartment()->wrap(cx, &wrappedProto))
@@ -1177,7 +1176,7 @@ TypedArrayObjectTemplate<T>::fromTypedArray(JSContext* cx, HandleObject other, b
             return nullptr;
         }
 
-        JSAutoCompartment ac(cx, unwrapped);
+        JSAutoRealm ar(cx, unwrapped);
 
         srcArray = &unwrapped->as<TypedArrayObject>();
 
@@ -2228,8 +2227,11 @@ js::DefineTypedArrayElement(JSContext* cx, HandleObject obj, uint64_t index,
     // Steps iv-v.
     // We (wrongly) ignore out of range defines with a value.
     uint32_t length = obj->as<TypedArrayObject>().length();
-    if (index >= length)
-        return result.succeed();
+    if (index >= length) {
+        if (obj->as<TypedArrayObject>().hasDetachedBuffer())
+            return result.failSoft(JSMSG_TYPED_ARRAY_DETACHED);
+        return result.failSoft(JSMSG_BAD_INDEX);
+    }
 
     // Step vi.
     if (desc.isAccessorDescriptor())

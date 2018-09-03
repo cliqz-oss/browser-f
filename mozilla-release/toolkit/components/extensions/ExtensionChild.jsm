@@ -467,9 +467,18 @@ class Messenger {
           },
         };
 
+        const childManager = this.context.viewType == "background" ? this.context.childManager : null;
         MessageChannel.addListener(this.messageManagers, "Extension:Message", listener);
+        if (childManager) {
+          childManager.callParentFunctionNoReturn("runtime.addMessagingListener",
+                                                  ["onMessage"]);
+        }
         return () => {
           MessageChannel.removeListener(this.messageManagers, "Extension:Message", listener);
+          if (childManager) {
+            childManager.callParentFunctionNoReturn("runtime.removeMessagingListener",
+                                                    ["onMessage"]);
+          }
         };
       },
     }).api();
@@ -552,9 +561,18 @@ class Messenger {
           },
         };
 
+        const childManager = this.context.viewType == "background" ? this.context.childManager : null;
         MessageChannel.addListener(this.messageManagers, "Extension:Connect", listener);
+        if (childManager) {
+          childManager.callParentFunctionNoReturn("runtime.addMessagingListener",
+                                                  ["onConnect"]);
+        }
         return () => {
           MessageChannel.removeListener(this.messageManagers, "Extension:Connect", listener);
+          if (childManager) {
+            childManager.callParentFunctionNoReturn("runtime.removeMessagingListener",
+                                                    ["onConnect"]);
+          }
         };
       },
     }).api();
@@ -587,6 +605,8 @@ class BrowserExtensionContent extends EventEmitter {
     this.childModules = data.childModules;
     this.dependencies = data.dependencies;
     this.schemaURLs = data.schemaURLs;
+
+    this.storageIDBBackend = data.storageIDBBackend;
 
     this.MESSAGE_EMIT_EVENT = `Extension:EmitEvent:${this.instanceId}`;
     Services.cpmm.addMessageListener(this.MESSAGE_EMIT_EVENT, this);
@@ -992,6 +1012,9 @@ class ChildAPIManager {
 
   close() {
     this.messageManager.sendAsyncMessage("API:CloseProxyContext", {childId: this.id});
+    this.messageManager.removeMessageListener("API:CallResult", this);
+    MessageChannel.removeListener(this.messageManager, "API:RunListener", this);
+
     if (this.updatePermissions) {
       this.context.extension.off("add-permissions", this.updatePermissions);
       this.context.extension.off("remove-permissions", this.updatePermissions);

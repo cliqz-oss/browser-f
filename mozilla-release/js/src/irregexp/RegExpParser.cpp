@@ -42,7 +42,6 @@
 using namespace js;
 using namespace js::irregexp;
 
-using mozilla::Move;
 using mozilla::PointerRangeSize;
 
 // ----------------------------------------------------------------------------
@@ -306,7 +305,7 @@ RegExpParser<CharT>::SyntaxError(unsigned errorNumber, ...)
     va_list args;
     va_start(args, errorNumber);
 
-    ReportCompileError(ts.context(), Move(err), nullptr, JSREPORT_ERROR, errorNumber, args);
+    ReportCompileError(ts.context(), std::move(err), nullptr, JSREPORT_ERROR, errorNumber, args);
 
     va_end(args);
 }
@@ -1822,7 +1821,7 @@ RegExpParser<CharT>::ParseDisjunction()
             break;
           case '{': {
             if (unicode_)
-                return ReportError(JSMSG_RAW_BRACE_IN_REGEP);
+                return ReportError(JSMSG_RAW_BRACE_IN_REGEXP);
             int dummy;
             if (ParseIntervalQuantifier(&dummy, &dummy))
                 return ReportError(JSMSG_NOTHING_TO_REPEAT);
@@ -1840,9 +1839,9 @@ RegExpParser<CharT>::ParseDisjunction()
                     else if (unicode::IsTrailSurrogate(c))
                         builder->AddAtom(TrailSurrogateAtom(alloc, c));
                     else if (c == ']')
-                        return ReportError(JSMSG_RAW_BRACKET_IN_REGEP);
+                        return ReportError(JSMSG_RAW_BRACKET_IN_REGEXP);
                     else if (c == '}')
-                        return ReportError(JSMSG_RAW_BRACE_IN_REGEP);
+                        return ReportError(JSMSG_RAW_BRACE_IN_REGEXP);
                     else
                         builder->AddCharacter(c);
                     Advance();

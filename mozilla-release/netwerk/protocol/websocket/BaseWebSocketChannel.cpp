@@ -14,7 +14,6 @@
 #include "nsProxyRelease.h"
 #include "nsStandardURL.h"
 #include "LoadInfo.h"
-#include "nsIDOMNode.h"
 #include "mozilla/dom/ContentChild.h"
 #include "nsITransportProvider.h"
 
@@ -215,15 +214,14 @@ BaseWebSocketChannel::SetPingTimeout(uint32_t aSeconds)
 }
 
 NS_IMETHODIMP
-BaseWebSocketChannel::InitLoadInfo(nsIDOMNode* aLoadingNode,
+BaseWebSocketChannel::InitLoadInfo(nsINode* aLoadingNode,
                                    nsIPrincipal* aLoadingPrincipal,
                                    nsIPrincipal* aTriggeringPrincipal,
                                    uint32_t aSecurityFlags,
                                    uint32_t aContentPolicyType)
 {
-  nsCOMPtr<nsINode> node = do_QueryInterface(aLoadingNode);
   mLoadInfo = new LoadInfo(aLoadingPrincipal, aTriggeringPrincipal,
-                           node, aSecurityFlags, aContentPolicyType);
+                           aLoadingNode, aSecurityFlags, aContentPolicyType);
   return NS_OK;
 }
 
@@ -292,6 +290,9 @@ BaseWebSocketChannel::GetProtocolFlags(uint32_t *aProtocolFlags)
 
   *aProtocolFlags = URI_NORELATIVE | URI_NON_PERSISTABLE | ALLOWS_PROXY |
       ALLOWS_PROXY_HTTP | URI_DOES_NOT_RETURN_DATA | URI_DANGEROUS_TO_LOAD;
+  if (mEncrypted) {
+    *aProtocolFlags |= URI_IS_POTENTIALLY_TRUSTWORTHY;
+  }
   return NS_OK;
 }
 

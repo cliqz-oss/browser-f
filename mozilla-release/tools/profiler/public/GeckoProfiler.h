@@ -11,7 +11,7 @@
 //
 // Samples are collected to form a timeline with optional timeline event
 // (markers) used for filtering. The samples include both native stacks and
-// platform-independent "pseudostacks".
+// platform-independent "label stack" frames.
 
 #ifndef GeckoProfiler_h
 #define GeckoProfiler_h
@@ -44,6 +44,7 @@
 #define AUTO_PROFILER_LABEL_FAST(label, category, ctx)
 
 #define PROFILER_ADD_MARKER(markerName)
+#define PROFILER_ADD_NETWORK_MARKER(uri, pri, channel, type, start, end, count, timings, redirect)
 
 #define PROFILER_TRACING(category, markerName, kind)
 #define AUTO_PROFILER_TRACING(category, markerName)
@@ -62,11 +63,14 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/ThreadLocal.h"
+#include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/net/TimingStruct.h"
 #include "js/ProfilingStack.h"
 #include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
 #include "nscore.h"
+#include "nsIURI.h"
 
 // Make sure that we can use std::min here without the Windows headers messing
 // with us.
@@ -102,7 +106,7 @@ class TimeStamp;
   /* Profile Java code (Android only). */ \
   macro(0, "java", Java) \
   \
-  /* Get the JS engine to emit pseudostack entries in prologues/epilogues */ \
+  /* Get the JS engine to expose the JS stack to the profiler */ \
   macro(1, "js", JS) \
   \
   /* Include the C++ leaf node if not stackwalking. */ \
@@ -118,23 +122,26 @@ class TimeStamp;
   /* Do not include user-identifiable information. */ \
   macro(5, "privacy", Privacy) \
   \
-  /* Restyle profiling. */ \
-  macro(6, "restyle", Restyle) \
+  /* Collect thread responsiveness information. */ \
+  macro(6, "responsiveness", Responsiveness) \
   \
   /* Take a snapshot of the window on every composition. */ \
   macro(7, "screenshots", Screenshots) \
   \
+  /* Disable parallel traversal in styling. */ \
+  macro(8, "seqstyle", SequentialStyle) \
+  \
   /* Walk the C++ stack. Not available on all platforms. */ \
-  macro(8, "stackwalk", StackWalk) \
+  macro(9, "stackwalk", StackWalk) \
   \
   /* Start profiling with feature TaskTracer. */ \
-  macro(9, "tasktracer", TaskTracer) \
+  macro(10, "tasktracer", TaskTracer) \
   \
   /* Profile the registered secondary threads. */ \
-  macro(10, "threads", Threads) \
+  macro(11, "threads", Threads) \
   \
   /* Have the JavaScript engine track JIT optimizations. */ \
-  macro(11, "trackopts", TrackOptimizations)
+  macro(12, "trackopts", TrackOptimizations)
 
 struct ProfilerFeature
 {
@@ -199,7 +206,7 @@ private:
 
   // We combine the active bit with the feature bits so they can be read or
   // written in a single atomic operation.
-  static mozilla::Atomic<uint32_t> sActiveAndFeatures;
+  static mozilla::Atomic<uint32_t, mozilla::MemoryOrdering::Relaxed> sActiveAndFeatures;
 };
 
 } // namespace detail
@@ -229,7 +236,7 @@ void profiler_init(void* stackTop);
 
 // Clean up the profiler module, stopping it if required. This function may
 // also save a shutdown profile if requested. No profiler calls should happen
-// after this point and all pseudo labels should have been popped.
+// after this point and all profiling stack labels should have been popped.
 void profiler_shutdown();
 
 // Start the profiler -- initializing it first if necessary -- with the
@@ -240,6 +247,12 @@ void profiler_shutdown();
 //   "aInterval" the sampling interval, measured in millseconds.
 //   "aFeatures" is the feature set. Features unsupported by this
 //               platform/configuration are ignored.
+//   "aFilters" is the list of thread filters. Threads that do not match any
+//              of the filters are not profiled. A filter matches a thread if
+//              (a) the thread name contains the filter as a case-insensitive
+//                  substring, or
+//              (b) the filter is of the form "pid:<n>" where n is the process
+//                  id of the process that the thread is running in.
 void profiler_start(uint32_t aEntries, double aInterval, uint32_t aFeatures,
                     const char** aFilters, uint32_t aFilterCount);
 
@@ -392,11 +405,11 @@ public:
 
   virtual void CollectWasmFrame(const char* aLabel) = 0;
 
-  virtual void CollectPseudoEntry(const js::ProfileEntry& aEntry) = 0;
+  virtual void CollectProfilingStackFrame(const js::ProfilingStackFrame& aFrame) = 0;
 };
 
 // This method suspends the thread identified by aThreadId, samples its
-// pseudo-stack, JS stack, and (optionally) native stack, passing the collected
+// profiling stack, JS stack, and (optionally) native stack, passing the collected
 // frames into aCollector. aFeatures dictates which compiler features are used.
 // |Privacy| and |Leaf| are the only relevant ones.
 void profiler_suspend_and_sample_thread(int aThreadId, uint32_t aFeatures,
@@ -430,26 +443,23 @@ struct ProfilerBufferInfo
 // buffer is being written to, and how much data is visible.
 mozilla::Maybe<ProfilerBufferInfo> profiler_get_buffer_info();
 
-// Get the current thread's PseudoStack.
-PseudoStack* profiler_get_pseudo_stack();
-
 //---------------------------------------------------------------------------
 // Put profiling data into the profiler (labels and markers)
 //---------------------------------------------------------------------------
 
-// Insert an RAII object in this scope to enter a pseudo stack frame. Any
-// samples collected in this scope will contain this label in their pseudo
-// stack. The label argument must be a static C string. It is usually of the
+// Insert an RAII object in this scope to enter a label stack frame. Any
+// samples collected in this scope will contain this label in their stack.
+// The label argument must be a static C string. It is usually of the
 // form "ClassName::FunctionName". (Ideally we'd use the compiler to provide
 // that for us, but __func__ gives us the function name without the class
 // name.) If the label applies to only part of a function, you can qualify it
 // like this: "ClassName::FunctionName:PartName".
 //
 // Use AUTO_PROFILER_LABEL_DYNAMIC_* if you want to add additional / dynamic
-// information to the pseudo stack frame.
+// information to the label stack frame.
 #define AUTO_PROFILER_LABEL(label, category) \
   mozilla::AutoProfilerLabel PROFILER_RAII(label, nullptr, __LINE__, \
-                                           js::ProfileEntry::Category::category)
+                                           js::ProfilingStackFrame::Category::category)
 
 // Similar to AUTO_PROFILER_LABEL, but with an additional string. The inserted
 // RAII object stores the cStr pointer in a field; it does not copy the string.
@@ -459,20 +469,20 @@ PseudoStack* profiler_get_pseudo_stack();
 // ns[C]String; the other AUTO_PROFILER_LABEL_DYNAMIC_* macros below are
 // preferred because they avoid this problem.
 //
-// If the profiler samples the current thread and walks the pseudo stack while
+// If the profiler samples the current thread and walks the label stack while
 // this RAII object is on the stack, it will copy the supplied string into the
 // profile buffer. So there's one string copy operation, and it happens at
 // sample time.
 //
 // Compare this to the plain AUTO_PROFILER_LABEL macro, which only accepts
-// literal strings: When the pseudo stack frames generated by
+// literal strings: When the label stack frames generated by
 // AUTO_PROFILER_LABEL are sampled, no string copy needs to be made because the
 // profile buffer can just store the raw pointers to the literal strings.
 // Consequently, AUTO_PROFILER_LABEL frames take up considerably less space in
 // the profile buffer than AUTO_PROFILER_LABEL_DYNAMIC_* frames.
 #define AUTO_PROFILER_LABEL_DYNAMIC_CSTR(label, category, cStr) \
   mozilla::AutoProfilerLabel \
-    PROFILER_RAII(label, cStr, __LINE__, js::ProfileEntry::Category::category)
+    PROFILER_RAII(label, cStr, __LINE__, js::ProfilingStackFrame::Category::category)
 
 // Similar to AUTO_PROFILER_LABEL_DYNAMIC_CSTR, but takes an nsACString.
 //
@@ -487,7 +497,7 @@ PseudoStack* profiler_get_pseudo_stack();
   if (profiler_is_active()) { \
     autoCStr.emplace(nsCStr); \
     raiiObjectNsCString.emplace(label, autoCStr->get(), __LINE__, \
-                                js::ProfileEntry::Category::category); \
+                                js::ProfilingStackFrame::Category::category); \
   }
 
 // Similar to AUTO_PROFILER_LABEL_DYNAMIC_CSTR, but takes an nsString that is
@@ -504,23 +514,23 @@ PseudoStack* profiler_get_pseudo_stack();
   if (profiler_is_active()) { \
     asciiStr.emplace(nsStr); \
     raiiObjectLossyNsString.emplace(label, asciiStr->get(), __LINE__, \
-                                    js::ProfileEntry::Category::category); \
+                                    js::ProfilingStackFrame::Category::category); \
   }
 
 // Similar to AUTO_PROFILER_LABEL, but accepting a JSContext* parameter, and a
 // no-op if the profiler is disabled.
 // Used to annotate functions for which overhead in the range of nanoseconds is
 // noticeable. It avoids overhead from the TLS lookup because it can get the
-// PseudoStack from the JS context, and avoids almost all overhead in the case
+// ProfilingStack from the JS context, and avoids almost all overhead in the case
 // where the profiler is disabled.
 #define AUTO_PROFILER_LABEL_FAST(label, category, ctx) \
   mozilla::AutoProfilerLabel PROFILER_RAII(ctx, label, nullptr, __LINE__, \
-                                           js::ProfileEntry::Category::category)
+                                           js::ProfilingStackFrame::Category::category)
 
 // Insert a marker in the profile timeline. This is useful to delimit something
 // important happening such as the first paint. Unlike labels, which are only
 // recorded in the profile buffer if a sample is collected while the label is
-// on the pseudostack, markers will always be recorded in the profile buffer.
+// on the label stack, markers will always be recorded in the profile buffer.
 // aMarkerName is copied, so the caller does not need to ensure it lives for a
 // certain length of time. A no-op if the profiler is inactive or in privacy
 // mode.
@@ -534,6 +544,26 @@ void profiler_add_marker(const char* aMarkerName,
 void profiler_add_marker_for_thread(int aThreadId,
                                     const char* aMarkerName,
                                     mozilla::UniquePtr<ProfilerMarkerPayload> aPayload);
+
+enum class NetworkLoadType {
+  LOAD_START,
+  LOAD_STOP,
+  LOAD_REDIRECT
+};
+
+#define PROFILER_ADD_NETWORK_MARKER(uri, pri, channel, type, start, end, count, timings, redirect) \
+  profiler_add_network_marker(uri, pri, channel, type, start, end, count, timings, redirect)
+
+void profiler_add_network_marker(nsIURI* aURI,
+                                 int32_t aPriority,
+                                 uint64_t aChannelId,
+                                 NetworkLoadType aType,
+                                 mozilla::TimeStamp aStart,
+                                 mozilla::TimeStamp aEnd,
+                                 int64_t aCount,
+                                 const mozilla::net::TimingStruct* aTimings = nullptr,
+                                 nsIURI* aRedirectURI = nullptr);
+
 
 enum TracingKind {
   TRACING_EVENT,
@@ -665,29 +695,29 @@ private:
   bool mIssuedWake;
 };
 
-// This class creates a non-owning PseudoStack reference. Objects of this class
+// This class creates a non-owning ProfilingStack reference. Objects of this class
 // are stack-allocated, and so exist within a thread, and are thus bounded by
 // the lifetime of the thread, which ensures that the references held can't be
-// used after the PseudoStack is destroyed.
+// used after the ProfilingStack is destroyed.
 class MOZ_RAII AutoProfilerLabel
 {
 public:
   // This is the AUTO_PROFILER_LABEL and AUTO_PROFILER_LABEL_DYNAMIC variant.
   AutoProfilerLabel(const char* aLabel, const char* aDynamicString,
-                    uint32_t aLine, js::ProfileEntry::Category aCategory
+                    uint32_t aLine, js::ProfilingStackFrame::Category aCategory
                     MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
   {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
 
-    // Get the PseudoStack from TLS.
-    Push(sPseudoStack.get(), aLabel, aDynamicString, aLine, aCategory);
+    // Get the ProfilingStack from TLS.
+    Push(sProfilingStack.get(), aLabel, aDynamicString, aLine, aCategory);
   }
 
   // This is the AUTO_PROFILER_LABEL_FAST variant. It's guarded on
-  // profiler_is_active() and retrieves the PseudoStack from the JSContext.
+  // profiler_is_active() and retrieves the ProfilingStack from the JSContext.
   AutoProfilerLabel(JSContext* aJSContext,
                     const char* aLabel, const char* aDynamicString,
-                    uint32_t aLine, js::ProfileEntry::Category aCategory
+                    uint32_t aLine, js::ProfilingStackFrame::Category aCategory
                     MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
   {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
@@ -695,20 +725,20 @@ public:
       Push(js::GetContextProfilingStack(aJSContext),
            aLabel, aDynamicString, aLine, aCategory);
     } else {
-      mPseudoStack = nullptr;
+      mProfilingStack = nullptr;
     }
   }
 
-  void Push(PseudoStack* aPseudoStack,
+  void Push(ProfilingStack* aProfilingStack,
             const char* aLabel, const char* aDynamicString,
-            uint32_t aLine, js::ProfileEntry::Category aCategory)
+            uint32_t aLine, js::ProfilingStackFrame::Category aCategory)
   {
     // This function runs both on and off the main thread.
 
-    mPseudoStack = aPseudoStack;
-    if (mPseudoStack) {
-      mPseudoStack->pushCppFrame(aLabel, aDynamicString, this, aLine,
-                                 js::ProfileEntry::Kind::CPP_NORMAL, aCategory);
+    mProfilingStack = aProfilingStack;
+    if (mProfilingStack) {
+      mProfilingStack->pushLabelFrame(aLabel, aDynamicString, this, aLine,
+                                   aCategory);
     }
   }
 
@@ -716,21 +746,21 @@ public:
   {
     // This function runs both on and off the main thread.
 
-    if (mPseudoStack) {
-      mPseudoStack->pop();
+    if (mProfilingStack) {
+      mProfilingStack->pop();
     }
   }
 
 private:
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-  // We save a PseudoStack pointer in the ctor so we don't have to redo the TLS
+  // We save a ProfilingStack pointer in the ctor so we don't have to redo the TLS
   // lookup in the dtor.
-  PseudoStack* mPseudoStack;
+  ProfilingStack* mProfilingStack;
 
 public:
   // See the comment on the definition in platform.cpp for details about this.
-  static MOZ_THREAD_LOCAL(PseudoStack*) sPseudoStack;
+  static MOZ_THREAD_LOCAL(ProfilingStack*) sProfilingStack;
 };
 
 class MOZ_RAII AutoProfilerTracing
@@ -753,7 +783,7 @@ public:
   {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     profiler_tracing(mCategory, mMarkerName, TRACING_INTERVAL_START,
-                     Move(aBacktrace));
+                     std::move(aBacktrace));
   }
 
   ~AutoProfilerTracing()

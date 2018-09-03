@@ -2,11 +2,19 @@ use std::slice;
 use libc::{size_t, uint8_t, uint16_t, uint32_t, int64_t};
 
 use rsdparsa::SdpSession;
-use rsdparsa::attribute_type::{SdpAttribute, SdpAttributeFingerprint, SdpAttributeSetup, SdpAttributeSsrc, SdpAttributeRtpmap, SdpAttributeMsid, SdpAttributeMsidSemantic, SdpAttributeGroupSemantic, SdpAttributeGroup, SdpAttributeRtcp, SdpAttributeSctpmap, SdpAttributeRemoteCandidate, SdpAttributeExtmap, SdpAttributeDirection};
+use rsdparsa::attribute_type::{SdpAttribute, SdpAttributeType, SdpAttributePayloadType,
+                               SdpAttributeFingerprint, SdpAttributeSetup, SdpAttributeSsrc,
+                               SdpAttributeRtpmap, SdpAttributeFmtpParameters,
+                               SdpAttributeMsid, SdpAttributeMsidSemantic,
+                               SdpAttributeGroupSemantic, SdpAttributeGroup, SdpAttributeRtcp,
+                               SdpAttributeRtcpFb, SdpAttributeSctpmap,
+                               SdpAttributeRemoteCandidate, SdpAttributeExtmap,
+                               SdpAttributeDirection};
 use nserror::{nsresult, NS_OK, NS_ERROR_INVALID_ARG};
 
 use types::StringView;
 use network::RustIpAddr;
+
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -318,10 +326,69 @@ pub unsafe extern "C" fn sdp_get_rtpmaps(attributes: *const Vec<SdpAttribute>, r
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+pub struct RustSdpAttributeFmtpParameters {
+
+    // H264
+    pub packetization_mode: uint32_t,
+    pub level_asymmetry_allowed: bool,
+    pub profile_level_id: uint32_t,
+    pub max_fs: uint32_t,
+    pub max_cpb: uint32_t,
+    pub max_dpb: uint32_t,
+    pub max_br: uint32_t,
+    pub max_mbps: uint32_t,
+
+    // VP8 and VP9
+    // max_fs, already defined in H264
+    pub max_fr: uint32_t,
+
+    // Opus
+    pub maxplaybackrate: uint32_t,
+    pub usedtx: bool,
+    pub stereo: bool,
+    pub useinbandfec: bool,
+    pub cbr: bool,
+
+    // telephone-event
+    pub dtmf_tones: StringView,
+
+    // Red
+    pub encodings: *const Vec<uint8_t>,
+
+    // Unknown
+    pub unknown_tokens: *const Vec<String>,
+}
+
+impl<'a> From<&'a SdpAttributeFmtpParameters> for RustSdpAttributeFmtpParameters {
+    fn from(other: &SdpAttributeFmtpParameters) -> Self {
+        RustSdpAttributeFmtpParameters{
+                packetization_mode: other.packetization_mode,
+                level_asymmetry_allowed: other.level_asymmetry_allowed,
+                profile_level_id: other.profile_level_id,
+                max_fs: other.max_fs,
+                max_cpb: other.max_cpb,
+                max_dpb: other.max_dpb,
+                max_br: other.max_br,
+                max_mbps: other.max_mbps,
+                usedtx: other.usedtx,
+                stereo: other.stereo,
+                useinbandfec: other.useinbandfec,
+                cbr: other.cbr,
+                max_fr: other.max_fr,
+                maxplaybackrate: other.maxplaybackrate,
+                dtmf_tones: StringView::from(other.dtmf_tones.as_str()),
+                encodings: &other.encodings,
+                unknown_tokens: &other.unknown_tokens,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct RustSdpAttributeFmtp {
     pub payload_type: uint8_t,
     pub codec_name: StringView,
-    pub tokens: *const Vec<String>,
+    pub parameters: RustSdpAttributeFmtpParameters,
 }
 
 #[no_mangle]
@@ -342,7 +409,8 @@ fn find_payload_type(attributes: &[SdpAttribute], payload_type: u8) -> Option<&S
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sdp_get_fmtp(attributes: *const Vec<SdpAttribute>, ret_size: size_t, ret_fmtp: *mut RustSdpAttributeFmtp) -> size_t {
+pub unsafe extern "C" fn sdp_get_fmtp(attributes: *const Vec<SdpAttribute>, ret_size: size_t,
+                                                ret_fmtp: *mut RustSdpAttributeFmtp) -> size_t {
     let fmtps = (*attributes).iter().filter_map(|x| if let SdpAttribute::Fmtp(ref data) = *x {
         Some(data)
     } else {
@@ -354,8 +422,8 @@ pub unsafe extern "C" fn sdp_get_fmtp(attributes: *const Vec<SdpAttribute>, ret_
             rust_fmtps.push( RustSdpAttributeFmtp{
                 payload_type: fmtp.payload_type as u8,
                 codec_name: StringView::from(rtpmap.codec_name.as_str()),
-                tokens: &fmtp.tokens
-            }
+                parameters: RustSdpAttributeFmtpParameters::from(&fmtp.parameters),
+                }
             );
         }
     }
@@ -569,6 +637,47 @@ pub unsafe extern "C" fn sdp_get_rtcp(attributes: *const Vec<SdpAttribute>, ret:
     }
     NS_ERROR_INVALID_ARG
 }
+
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RustSdpAttributeRtcpFb {
+    pub payload_type: u32,
+    pub feedback_type: u32,
+    pub parameter: StringView,
+    pub extra: StringView
+}
+
+impl<'a> From<&'a SdpAttributeRtcpFb> for RustSdpAttributeRtcpFb {
+    fn from(other: &SdpAttributeRtcpFb) -> Self {
+        RustSdpAttributeRtcpFb {
+            payload_type: match other.payload_type{
+                SdpAttributePayloadType::Wildcard => u32::max_value(),
+                SdpAttributePayloadType::PayloadType(x) => x as u32,
+            },
+            feedback_type: other.feedback_type.clone() as u32,
+            parameter: StringView::from(other.parameter.as_str()),
+            extra: StringView::from(other.extra.as_str()),
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sdp_get_rtcpfb_count(attributes: *const Vec<SdpAttribute>) -> size_t {
+    count_attribute((*attributes).as_slice(), RustSdpAttributeType::Rtcpfb)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sdp_get_rtcpfbs(attributes: *const Vec<SdpAttribute>, ret_size: size_t, ret_rtcpfbs: *mut RustSdpAttributeRtcpFb) {
+    let attrs: Vec<_> = (*attributes).iter().filter_map(|x| if let SdpAttribute::Rtcpfb(ref data) = *x {
+        Some(RustSdpAttributeRtcpFb::from(data))
+    } else {
+        None
+    }).collect();
+    let rtcpfbs = slice::from_raw_parts_mut(ret_rtcpfbs, ret_size);
+    rtcpfbs.clone_from_slice(attrs.as_slice());
+}
+
 
 #[no_mangle]
 pub unsafe extern "C" fn sdp_get_imageattr_count(attributes: *const Vec<SdpAttribute>) -> size_t {

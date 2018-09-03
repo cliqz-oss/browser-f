@@ -18,14 +18,16 @@ class FontList extends PureComponent {
       fontOptions: PropTypes.shape(Types.fontOptions).isRequired,
       fonts: PropTypes.arrayOf(PropTypes.shape(Types.font)).isRequired,
       onPreviewFonts: PropTypes.func.isRequired,
+      onToggleFontHighlight: PropTypes.func.isRequired,
     };
   }
 
   render() {
-    let {
+    const {
       fonts,
       fontOptions,
-      onPreviewFonts
+      onPreviewFonts,
+      onToggleFontHighlight
     } = this.props;
 
     return dom.ul(
@@ -37,6 +39,7 @@ class FontList extends PureComponent {
         font,
         fontOptions,
         onPreviewFonts,
+        onToggleFontHighlight,
       }))
     );
   }

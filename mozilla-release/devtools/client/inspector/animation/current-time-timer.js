@@ -27,8 +27,8 @@ class CurrentTimeTimer {
    *                        the current time is over the end time, true is given.
    */
   constructor(timeScale, shouldStopAfterEndTime, win, onUpdated) {
-    this.baseCurrentTime = timeScale.documentCurrentTime - timeScale.minStartTime;
-    this.endTime = timeScale.maxEndTime - timeScale.minStartTime;
+    this.baseCurrentTime = timeScale.getCurrentTime();
+    this.endTime = timeScale.getDuration();
     this.timerStartTime = win.performance.now();
 
     this.shouldStopAfterEndTime = shouldStopAfterEndTime;

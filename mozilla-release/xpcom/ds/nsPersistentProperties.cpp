@@ -56,8 +56,13 @@ class MOZ_STACK_CLASS nsPropertiesParser
 {
 public:
   explicit nsPropertiesParser(nsIPersistentProperties* aProps)
-    : mHaveMultiLine(false)
+    : mUnicodeValuesRead(0)
+    , mUnicodeValue(u'\0')
+    , mHaveMultiLine(false)
+    , mMultiLineCanSkipN(false)
+    , mMinLength(0)
     , mState(eParserState_AwaitingKey)
+    , mSpecialState(eParserSpecial_None)
     , mProps(aProps)
   {
   }
@@ -442,6 +447,16 @@ nsPersistentProperties::nsPersistentProperties()
 
 nsPersistentProperties::~nsPersistentProperties()
 {
+}
+
+size_t
+nsPersistentProperties::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+{
+  // The memory used by mTable is accounted for in mArena.
+  size_t n = 0;
+  n += mArena.SizeOfExcludingThis(aMallocSizeOf);
+  n += mTable.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  return aMallocSizeOf(this) + n;
 }
 
 nsresult

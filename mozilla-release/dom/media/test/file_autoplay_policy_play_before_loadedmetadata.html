@@ -27,18 +27,26 @@
 
           let element = document.createElement("video");
           element.preload = "auto";
+          element.muted = testCase.muted;
           element.src = testCase.resource;
           document.body.appendChild(element);
+
           is(element.paused, true, testCase.resource + " - should start out paused.");
+
           let playEventFired = false;
           once(element, "play").then(() => { playEventFired = true; });
+          let playingEventFired = false;
+          once(element, "playing").then(() => { playingEventFired = true;});
           let pauseEventFired = false;
           once(element, "pause").then(() => { pauseEventFired = true; });
+
           let played = await element.play().then(() => true, () => false);
-          let msg = testCase.resource + " should " + (!testCase.shouldPlay ? "not " : "") + "play";
-          is(played, testCase.shouldPlay, msg);
-          is(playEventFired, true, testCase.resource + " - we should always get a play event");
-          is(pauseEventFired, !testCase.shouldPlay, testCase.resource + " - if we shouldn't play, we should get a pause event");
+
+          let playMsg = testCase.resource + " should " + (!testCase.shouldPlay ? "not " : "") + "play";
+          is(played, testCase.shouldPlay, playMsg);
+          is(playEventFired, testCase.shouldPlay, testCase.resource + " - should get play event if we played");
+          is(playingEventFired, testCase.shouldPlay, testCase.resource + "- should get playing event if we played");
+          is(pauseEventFired, false, testCase.resource + " - should not get pause event if we played");
           removeNodeAndSource(element);
         }
 

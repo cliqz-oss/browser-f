@@ -26,7 +26,7 @@
 #include "prlink.h"
 #include "nsGTKToolkit.h"
 #include "nsIRollupListener.h"
-#include "nsIDOMNode.h"
+#include "nsINode.h"
 
 #include "nsWidgetsCID.h"
 #include "nsDragService.h"
@@ -631,7 +631,7 @@ EnsureInvisibleContainer()
 static void
 CheckDestroyInvisibleContainer()
 {
-    NS_PRECONDITION(gInvisibleContainer, "oh, no");
+    MOZ_ASSERT(gInvisibleContainer, "oh, no");
 
     if (!gdk_window_peek_children(gtk_widget_get_window(gInvisibleContainer))) {
         // No children, so not in use.
@@ -887,7 +887,7 @@ nsWindow::WidgetTypeSupportsAcceleration()
 void
 nsWindow::ReparentNativeWidget(nsIWidget* aNewParent)
 {
-    NS_PRECONDITION(aNewParent, "");
+    MOZ_ASSERT(aNewParent, "null widget");
     NS_ASSERTION(!mIsDestroyed, "");
     NS_ASSERTION(!static_cast<nsWindow*>(aNewParent)->mIsDestroyed, "");
 
@@ -1518,7 +1518,7 @@ nsWindow::GetClientBounds()
 void
 nsWindow::UpdateClientOffset()
 {
-    AUTO_PROFILER_LABEL("nsWindow::UpdateClientOffset", GRAPHICS);
+    AUTO_PROFILER_LABEL("nsWindow::UpdateClientOffset", OTHER);
 
     if (!mIsTopLevel || !mShell || !mIsX11Display ||
         gtk_window_get_window_type(GTK_WINDOW(mShell)) == GTK_WINDOW_POPUP) {
@@ -1739,6 +1739,15 @@ nsWindow::GetNativeData(uint32_t aDataType)
     case NS_NATIVE_COMPOSITOR_DISPLAY:
         return gfxPlatformGtk::GetPlatform()->GetCompositorDisplay();
 #endif // MOZ_X11
+    case NS_NATIVE_EGL_WINDOW: {
+        if (mIsX11Display)
+            return mGdkWindow ? (void*)GDK_WINDOW_XID(mGdkWindow) : nullptr;
+#ifdef MOZ_WAYLAND
+        if (mContainer)
+            return moz_container_get_wl_egl_window(mContainer);
+#endif
+        return nullptr;
+    }
     default:
         NS_WARNING("nsWindow::GetNativeData called with bad value");
         return nullptr;
@@ -2058,6 +2067,12 @@ nsWindow::OnExposeEvent(cairo_t *cr)
     if (!mGdkWindow || mIsFullyObscured || !mHasMappedToplevel)
         return FALSE;
 
+#ifdef MOZ_WAYLAND
+    // Window does not have visible wl_surface yet.
+    if (!mIsX11Display && !GetWaylandSurface())
+        return FALSE;
+#endif
+
     nsIWidgetListener *listener = GetListener();
     if (!listener)
         return FALSE;
@@ -2355,7 +2370,7 @@ nsWindow::OnConfigureEvent(GtkWidget *aWidget, GdkEventConfigure *aEvent)
         //
         // These windows should not be moved by the window manager, and so any
         // change in position is a result of our direction.  mBounds has
-        // already been set in Move() or Resize(), and that is more
+        // already been set in std::move() or Resize(), and that is more
         // up-to-date than the position in the ConfigureNotify event if the
         // event is from an earlier window move.
         //
@@ -2889,7 +2904,7 @@ nsWindow::OnContainerFocusOutEvent(GdkEventFocus *aEvent)
         bool shouldRollup = !dragSession;
         if (!shouldRollup) {
             // we also roll up when a drag is from a different application
-            nsCOMPtr<nsIDOMNode> sourceNode;
+            nsCOMPtr<nsINode> sourceNode;
             dragSession->GetSourceNode(getter_AddRefs(sourceNode));
             shouldRollup = (sourceNode == nullptr);
         }
@@ -3426,6 +3441,8 @@ nsWindow::ThemeChanged()
 
         children = children->next;
     }
+
+    IMContextWrapper::OnThemeChanged();
 }
 
 void
@@ -3704,7 +3721,7 @@ nsWindow::Create(nsIWidget* aParent,
         if (Preferences::GetBool("mozilla.widget.use-argb-visuals", false))
             useAlphaVisual = true;
 
-#ifdef GL_PROVIDER_GLX
+#ifdef MOZ_X11
         // Ensure gfxPlatform is initialized, since that is what initializes
         // gfxVars, used below.
         Unused << gfxPlatform::GetPlatform();
@@ -3731,7 +3748,7 @@ nsWindow::Create(nsIWidget* aParent,
                                                                    visualId));
             }
         } else
-#endif // GL_PROVIDER_GLX
+#endif // MOZ_X11
         {
             if (useAlphaVisual) {
                 GdkScreen *screen = gtk_widget_get_screen(mShell);
@@ -4338,6 +4355,16 @@ nsWindow::NativeShow(bool aAction)
         }
     }
     else {
+#ifdef MOZ_WAYLAND
+        if (mContainer && moz_container_has_wl_egl_window(mContainer)) {
+            // Because wl_egl_window is destroyed on moz_container_unmap(),
+            // the current compositor cannot use it anymore. To avoid crash,
+            // destroy the compositor & recreate a new compositor on next
+            // expose event.
+            DestroyLayerManager();
+        }
+#endif
+
         if (mIsTopLevel) {
             // Workaround window freezes on GTK versions before 3.21.2 by
             // ensuring that configure events get dispatched to windows before
@@ -6101,13 +6128,13 @@ nsWindow::InitDragEvent(WidgetDragEvent &aEvent)
     KeymapWrapper::InitInputEvent(aEvent, modifierState);
 }
 
-static gboolean
-drag_motion_event_cb(GtkWidget *aWidget,
-                     GdkDragContext *aDragContext,
-                     gint aX,
-                     gint aY,
-                     guint aTime,
-                     gpointer aData)
+gboolean
+WindowDragMotionHandler(GtkWidget *aWidget,
+                        GdkDragContext *aDragContext,
+                        nsWaylandDragContext *aWaylandDragContext,
+                        gint aX,
+                        gint aY,
+                        guint aTime)
 {
     RefPtr<nsWindow> window = get_window_for_gtk_widget(aWidget);
     if (!window)
@@ -6132,15 +6159,24 @@ drag_motion_event_cb(GtkWidget *aWidget,
 
     RefPtr<nsDragService> dragService = nsDragService::GetInstance();
     return dragService->
-        ScheduleMotionEvent(innerMostWindow, aDragContext,
+        ScheduleMotionEvent(innerMostWindow, aDragContext, aWaylandDragContext,
                             point, aTime);
 }
 
-static void
-drag_leave_event_cb(GtkWidget *aWidget,
-                    GdkDragContext *aDragContext,
-                    guint aTime,
-                    gpointer aData)
+static gboolean
+drag_motion_event_cb(GtkWidget *aWidget,
+                     GdkDragContext *aDragContext,
+                     gint aX,
+                     gint aY,
+                     guint aTime,
+                     gpointer aData)
+{
+    return WindowDragMotionHandler(aWidget, aDragContext, nullptr,
+                                   aX, aY, aTime);
+}
+
+void
+WindowDragLeaveHandler(GtkWidget *aWidget)
 {
     RefPtr<nsWindow> window = get_window_for_gtk_widget(aWidget);
     if (!window)
@@ -6173,14 +6209,22 @@ drag_leave_event_cb(GtkWidget *aWidget,
     dragService->ScheduleLeaveEvent();
 }
 
+static void
+drag_leave_event_cb(GtkWidget *aWidget,
+                    GdkDragContext *aDragContext,
+                    guint aTime,
+                    gpointer aData)
+{
+    WindowDragLeaveHandler(aWidget);
+}
 
-static gboolean
-drag_drop_event_cb(GtkWidget *aWidget,
-                   GdkDragContext *aDragContext,
-                   gint aX,
-                   gint aY,
-                   guint aTime,
-                   gpointer aData)
+gboolean
+WindowDragDropHandler(GtkWidget *aWidget,
+                      GdkDragContext *aDragContext,
+                      nsWaylandDragContext *aWaylandDragContext,
+                      gint aX,
+                      gint aY,
+                      guint aTime)
 {
     RefPtr<nsWindow> window = get_window_for_gtk_widget(aWidget);
     if (!window)
@@ -6205,8 +6249,19 @@ drag_drop_event_cb(GtkWidget *aWidget,
 
     RefPtr<nsDragService> dragService = nsDragService::GetInstance();
     return dragService->
-        ScheduleDropEvent(innerMostWindow, aDragContext,
+        ScheduleDropEvent(innerMostWindow, aDragContext, aWaylandDragContext,
                           point, aTime);
+}
+
+static gboolean
+drag_drop_event_cb(GtkWidget *aWidget,
+                   GdkDragContext *aDragContext,
+                   gint aX,
+                   gint aY,
+                   guint aTime,
+                   gpointer aData)
+{
+    return WindowDragDropHandler(aWidget, aDragContext, nullptr, aX, aY, aTime);
 }
 
 static void

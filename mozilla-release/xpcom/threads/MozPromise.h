@@ -181,7 +181,7 @@ public:
     {
       MOZ_ASSERT(IsNothing());
       mValue = Storage(VariantIndex<ResolveIndex>{},
-                       Forward<ResolveValueType_>(aResolveValue));
+                       std::forward<ResolveValueType_>(aResolveValue));
     }
 
     template<typename RejectValueType_>
@@ -189,14 +189,14 @@ public:
     {
       MOZ_ASSERT(IsNothing());
       mValue = Storage(VariantIndex<RejectIndex>{},
-                       Forward<RejectValueType_>(aRejectValue));
+                       std::forward<RejectValueType_>(aRejectValue));
     }
 
     template<typename ResolveValueType_>
     static ResolveOrRejectValue MakeResolve(ResolveValueType_&& aResolveValue)
     {
       ResolveOrRejectValue val;
-      val.SetResolve(Forward<ResolveValueType_>(aResolveValue));
+      val.SetResolve(std::forward<ResolveValueType_>(aResolveValue));
       return val;
     }
 
@@ -204,7 +204,7 @@ public:
     static ResolveOrRejectValue MakeReject(RejectValueType_&& aRejectValue)
     {
       ResolveOrRejectValue val;
-      val.SetReject(Forward<RejectValueType_>(aRejectValue));
+      val.SetReject(std::forward<RejectValueType_>(aRejectValue));
       return val;
     }
 
@@ -265,7 +265,7 @@ public:
   CreateAndResolve(ResolveValueType_&& aResolveValue, const char* aResolveSite)
   {
     RefPtr<typename MozPromise::Private> p = new MozPromise::Private(aResolveSite);
-    p->Resolve(Forward<ResolveValueType_>(aResolveValue), aResolveSite);
+    p->Resolve(std::forward<ResolveValueType_>(aResolveValue), aResolveSite);
     return p.forget();
   }
 
@@ -274,7 +274,16 @@ public:
   CreateAndReject(RejectValueType_&& aRejectValue, const char* aRejectSite)
   {
     RefPtr<typename MozPromise::Private> p = new MozPromise::Private(aRejectSite);
-    p->Reject(Forward<RejectValueType_>(aRejectValue), aRejectSite);
+    p->Reject(std::forward<RejectValueType_>(aRejectValue), aRejectSite);
+    return p.forget();
+  }
+
+  template<typename ResolveOrRejectValueType_>
+  static RefPtr<MozPromise>
+  CreateAndResolveOrReject(ResolveOrRejectValueType_&& aValue, const char* aSite)
+  {
+    RefPtr<typename MozPromise::Private> p = new MozPromise::Private(aSite);
+    p->ResolveOrReject(std::forward<ResolveOrRejectValueType_>(aValue), aSite);
     return p.forget();
   }
 
@@ -298,15 +307,15 @@ private:
         return;
       }
 
-      mResolveValues[aIndex].emplace(Move(aResolveValue));
+      mResolveValues[aIndex].emplace(std::move(aResolveValue));
       if (--mOutstandingPromises == 0) {
         nsTArray<ResolveValueType> resolveValues;
         resolveValues.SetCapacity(mResolveValues.Length());
         for (auto&& resolveValue : mResolveValues) {
-          resolveValues.AppendElement(Move(resolveValue.ref()));
+          resolveValues.AppendElement(std::move(resolveValue.ref()));
         }
 
-        mPromise->Resolve(Move(resolveValues), __func__);
+        mPromise->Resolve(std::move(resolveValues), __func__);
         mPromise = nullptr;
         mResolveValues.Clear();
       }
@@ -319,7 +328,7 @@ private:
         return;
       }
 
-      mPromise->Reject(Move(aRejectValue), __func__);
+      mPromise->Reject(std::move(aRejectValue), __func__);
       mPromise = nullptr;
       mResolveValues.Clear();
     }
@@ -343,8 +352,8 @@ public:
     RefPtr<AllPromiseType> promise = holder->Promise();
     for (size_t i = 0; i < aPromises.Length(); ++i) {
       aPromises[i]->Then(aProcessingTarget, __func__,
-        [holder, i] (ResolveValueType aResolveValue) -> void { holder->Resolve(i, Move(aResolveValue)); },
-        [holder] (RejectValueType aRejectValue) -> void { holder->Reject(Move(aRejectValue)); }
+        [holder, i] (ResolveValueType aResolveValue) -> void { holder->Resolve(i, std::move(aResolveValue)); },
+        [holder] (RejectValueType aRejectValue) -> void { holder->Reject(std::move(aRejectValue)); }
       );
     }
     return promise;
@@ -517,7 +526,7 @@ protected:
     typename detail::MethodTrait<MethodType>::ReturnType>::Type
   InvokeMethod(ThisType* aThisVal, MethodType aMethod, ValueType&& aValue)
   {
-    return (aThisVal->*aMethod)(Forward<ValueType>(aValue));
+    return (aThisVal->*aMethod)(std::forward<ValueType>(aValue));
   }
 
   template<typename ThisType, typename MethodType, typename ValueType>
@@ -541,7 +550,7 @@ protected:
     ValueType&& aValue,
     CompletionPromiseType&& aCompletionPromise)
   {
-    auto p = InvokeMethod(aThisVal, aMethod, Forward<ValueType>(aValue));
+    auto p = InvokeMethod(aThisVal, aMethod, std::forward<ValueType>(aValue));
     if (aCompletionPromise) {
       p->ChainTo(aCompletionPromise.forget(), "<chained completion promise>");
     }
@@ -562,7 +571,7 @@ protected:
     MOZ_DIAGNOSTIC_ASSERT(
       !aCompletionPromise,
       "Can't do promise chaining for a non-promise-returning method.");
-    InvokeMethod(aThisVal, aMethod, Forward<ValueType>(aValue));
+    InvokeMethod(aThisVal, aMethod, std::forward<ValueType>(aValue));
   }
 
   template<typename>
@@ -626,13 +635,13 @@ protected:
           mThisVal.get(),
           mResolveMethod,
           MaybeMove(aValue.ResolveValue()),
-          Move(mCompletionPromise));
+          std::move(mCompletionPromise));
       } else {
         InvokeCallbackMethod<SupportChaining::value>(
           mThisVal.get(),
           mRejectMethod,
           MaybeMove(aValue.RejectValue()),
-          Move(mCompletionPromise));
+          std::move(mCompletionPromise));
       }
 
       // Null out mThisVal after invoking the callback so that any references are
@@ -693,7 +702,7 @@ protected:
       InvokeCallbackMethod<SupportChaining::value>(mThisVal.get(),
                                                    mResolveRejectMethod,
                                                    MaybeMove(aValue),
-                                                   Move(mCompletionPromise));
+                                                   std::move(mCompletionPromise));
 
       // Null out mThisVal after invoking the callback so that any references are
       // released predictably on the dispatch thread. Otherwise, it would be
@@ -732,8 +741,8 @@ protected:
               const char* aCallSite)
       : ThenValueBase(aResponseTarget, aCallSite)
     {
-      mResolveFunction.emplace(Move(aResolveFunction));
-      mRejectFunction.emplace(Move(aRejectFunction));
+      mResolveFunction.emplace(std::move(aResolveFunction));
+      mRejectFunction.emplace(std::move(aRejectFunction));
     }
 
     void Disconnect() override
@@ -766,13 +775,13 @@ protected:
           mResolveFunction.ptr(),
           &ResolveFunction::operator(),
           MaybeMove(aValue.ResolveValue()),
-          Move(mCompletionPromise));
+          std::move(mCompletionPromise));
       } else {
         InvokeCallbackMethod<SupportChaining::value>(
           mRejectFunction.ptr(),
           &RejectFunction::operator(),
           MaybeMove(aValue.RejectValue()),
-          Move(mCompletionPromise));
+          std::move(mCompletionPromise));
       }
 
       // Destroy callbacks after invocation so that any references in closures are
@@ -808,7 +817,7 @@ protected:
               const char* aCallSite)
       : ThenValueBase(aResponseTarget, aCallSite)
     {
-      mResolveRejectFunction.emplace(Move(aResolveRejectFunction));
+      mResolveRejectFunction.emplace(std::move(aResolveRejectFunction));
     }
 
     void Disconnect() override
@@ -839,7 +848,7 @@ protected:
         mResolveRejectFunction.ptr(),
         &ResolveRejectFunction::operator(),
         MaybeMove(aValue),
-        Move(mCompletionPromise));
+        std::move(mCompletionPromise));
 
       // Destroy callbacks after invocation so that any references in closures are
       // released predictably on the dispatch thread. Otherwise, they would be
@@ -937,10 +946,10 @@ protected:
 
     template<typename... Ts>
     auto Then(Ts&&... aArgs)
-      -> decltype(DeclVal<PromiseType>().Then(Forward<Ts>(aArgs)...))
+      -> decltype(DeclVal<PromiseType>().Then(std::forward<Ts>(aArgs)...))
     {
       return static_cast<RefPtr<PromiseType>>(*this)->Then(
-        Forward<Ts>(aArgs)...);
+        std::forward<Ts>(aArgs)...);
     }
 
     void Track(MozPromiseRequestHolder<MozPromise>& aRequestHolder)
@@ -985,7 +994,7 @@ public:
                   Functions&&... aFunctions)
   {
     RefPtr<ThenValueType> thenValue =
-      new ThenValueType(aResponseTarget, Move(aFunctions)..., aCallSite);
+      new ThenValueType(aResponseTarget, std::move(aFunctions)..., aCallSite);
     return ReturnType(aCallSite, thenValue.forget(), this);
   }
 
@@ -1115,7 +1124,7 @@ public:
       PROMISE_LOG("%s ignored already resolved or rejected MozPromise (%p created at %s)", aResolveSite, this, mCreationSite);
       return;
     }
-    mValue.SetResolve(Forward<ResolveValueT_>(aResolveValue));
+    mValue.SetResolve(std::forward<ResolveValueT_>(aResolveValue));
     DispatchAll();
   }
 
@@ -1129,7 +1138,7 @@ public:
       PROMISE_LOG("%s ignored already resolved or rejected MozPromise (%p created at %s)", aRejectSite, this, mCreationSite);
       return;
     }
-    mValue.SetReject(Forward<RejectValueT_>(aRejectValue));
+    mValue.SetReject(std::forward<RejectValueT_>(aRejectValue));
     DispatchAll();
   }
 
@@ -1143,7 +1152,7 @@ public:
       PROMISE_LOG("%s ignored already resolved or rejected MozPromise (%p created at %s)", aSite, this, mCreationSite);
       return;
     }
-    mValue = Forward<ResolveOrRejectValue_>(aValue);
+    mValue = std::forward<ResolveOrRejectValue_>(aValue);
     DispatchAll();
   }
 };
@@ -1224,7 +1233,7 @@ public:
       mMonitor->AssertCurrentThreadOwns();
     }
     MOZ_ASSERT(mPromise);
-    mPromise->Resolve(Move(aResolveValue), aMethodName);
+    mPromise->Resolve(std::move(aResolveValue), aMethodName);
     mPromise = nullptr;
   }
 
@@ -1239,7 +1248,7 @@ public:
                        const char* aMethodName)
   {
     if (!IsEmpty()) {
-      Resolve(Move(aResolveValue), aMethodName);
+      Resolve(std::move(aResolveValue), aMethodName);
     }
   }
 
@@ -1260,7 +1269,7 @@ public:
       mMonitor->AssertCurrentThreadOwns();
     }
     MOZ_ASSERT(mPromise);
-    mPromise->Reject(Move(aRejectValue), aMethodName);
+    mPromise->Reject(std::move(aRejectValue), aMethodName);
     mPromise = nullptr;
   }
 
@@ -1275,7 +1284,7 @@ public:
                       const char* aMethodName)
   {
     if (!IsEmpty()) {
-      Reject(Move(aRejectValue), aMethodName);
+      Reject(std::move(aRejectValue), aMethodName);
     }
   }
 
@@ -1357,7 +1366,7 @@ public:
   MethodCall(MethodType aMethod, ThisType* aThisVal, Args&&... aArgs)
     : mMethod(aMethod)
     , mThisVal(aThisVal)
-    , mArgs(Forward<Args>(aArgs)...)
+    , mArgs(std::forward<Args>(aArgs)...)
   {
     static_assert(sizeof...(Storages) == sizeof...(Args), "Storages and Args should have equal sizes");
   }
@@ -1421,7 +1430,7 @@ InvokeAsyncImpl(nsISerialEventTarget* aTarget, ThisType* aThisVal,
   typedef detail::ProxyRunnable<PromiseType, MethodType, ThisType, Storages...> ProxyRunnableType;
 
   MethodCallType* methodCall =
-    new MethodCallType(aMethod, aThisVal, Forward<ActualArgTypes>(aArgs)...);
+    new MethodCallType(aMethod, aThisVal, std::forward<ActualArgTypes>(aArgs)...);
   RefPtr<typename PromiseType::Private> p = new (typename PromiseType::Private)(aCallerName);
   RefPtr<ProxyRunnableType> r = new ProxyRunnableType(p, methodCall);
   aTarget->Dispatch(r.forget());
@@ -1464,7 +1473,7 @@ InvokeAsync(nsISerialEventTarget* aTarget, ThisType* aThisVal, const char* aCall
                 "Provided Storages and ActualArgTypes should have equal sizes");
   return detail::InvokeAsyncImpl<Storages...>(
            aTarget, aThisVal, aCallerName, aMethod,
-           Forward<ActualArgTypes>(aArgs)...);
+           std::forward<ActualArgTypes>(aArgs)...);
 }
 
 // InvokeAsync with no explicitly-specified storages, will copy arguments and
@@ -1484,7 +1493,7 @@ InvokeAsync(nsISerialEventTarget* aTarget, ThisType* aThisVal, const char* aCall
                 "Method's ArgTypes and ActualArgTypes should have equal sizes");
   return detail::InvokeAsyncImpl<StoreCopyPassByRRef<typename Decay<ActualArgTypes>::Type>...>(
            aTarget, aThisVal, aCallerName, aMethod,
-           Forward<ActualArgTypes>(aArgs)...);
+           std::forward<ActualArgTypes>(aArgs)...);
 }
 
 namespace detail {
@@ -1499,7 +1508,7 @@ public:
                         F&& aFunction)
     : CancelableRunnable("detail::ProxyFunctionRunnable")
     , mProxyPromise(aProxyPromise)
-    , mFunction(new FunctionStorage(Forward<F>(aFunction)))
+    , mFunction(new FunctionStorage(std::forward<F>(aFunction)))
   {
   }
 
@@ -1548,7 +1557,7 @@ InvokeAsync(nsISerialEventTarget* aTarget, const char* aCallerName,
   typedef detail::ProxyFunctionRunnable<Function, PromiseType> ProxyRunnableType;
 
   auto p = MakeRefPtr<typename PromiseType::Private>(aCallerName);
-  auto r = MakeRefPtr<ProxyRunnableType>(p, Forward<Function>(aFunction));
+  auto r = MakeRefPtr<ProxyRunnableType>(p, std::forward<Function>(aFunction));
   aTarget->Dispatch(r.forget());
   return p.forget();
 }
@@ -1568,7 +1577,7 @@ InvokeAsync(nsISerialEventTarget* aTarget, const char* aCallerName,
                 "unplanned copies); Consider move()ing the object.");
   return detail::InvokeAsync(aTarget, aCallerName,
                              detail::AllowInvokeAsyncFunctionLVRef(),
-                             Forward<Function>(aFunction));
+                             std::forward<Function>(aFunction));
 }
 
 #undef PROMISE_LOG

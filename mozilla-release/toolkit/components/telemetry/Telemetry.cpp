@@ -24,6 +24,7 @@
 #include "mozilla/Unused.h"
 
 #include "base/pickle.h"
+#include "CombinedStacks.h"
 #include "nsIComponentManager.h"
 #include "nsIServiceManager.h"
 #include "nsThreadManager.h"
@@ -82,30 +83,32 @@
 #include "mozilla/IOInterposer.h"
 #include "mozilla/PoisonIOInterposer.h"
 #include "mozilla/StartupTimeline.h"
-#include "mozilla/HangMonitor.h"
 #if defined(XP_WIN)
 #include "mozilla/WinDllServices.h"
 #endif
 #include "nsNativeCharsetUtils.h"
 #include "nsProxyRelease.h"
-#include "HangReports.h"
 
 #if defined(MOZ_GECKO_PROFILER)
 #include "shared-libraries.h"
 #include "KeyedStackCapturer.h"
 #endif // MOZ_GECKO_PROFILER
 
+#if defined(MOZ_TELEMETRY_GECKOVIEW)
+#include "geckoview/TelemetryGeckoViewPersistence.h"
+#endif
+
 namespace {
 
 using namespace mozilla;
-using namespace mozilla::HangMonitor;
 using Telemetry::Common::AutoHashtable;
 using Telemetry::Common::ToJSString;
+using Telemetry::Common::GetCurrentProduct;
+using Telemetry::Common::SetCurrentProduct;
+using Telemetry::Common::SupportedProduct;
 using mozilla::dom::Promise;
 using mozilla::dom::AutoJSAPI;
-using mozilla::Telemetry::HangReports;
 using mozilla::Telemetry::CombinedStacks;
-using mozilla::Telemetry::ComputeAnnotationsKey;
 using mozilla::Telemetry::TelemetryIOInterposeObserver;
 
 #if defined(MOZ_GECKO_PROFILER)
@@ -142,13 +145,6 @@ public:
   static void ShutdownTelemetry();
   static void RecordSlowStatement(const nsACString &sql, const nsACString &dbName,
                                   uint32_t delay);
-#if defined(MOZ_GECKO_PROFILER)
-  static void RecordChromeHang(uint32_t aDuration,
-                               Telemetry::ProcessedStack &aStack,
-                               int32_t aSystemUptime,
-                               int32_t aFirefoxUptime,
-                               HangAnnotations&& aAnnotations);
-#endif
 #if defined(MOZ_GECKO_PROFILER)
   static void DoStackCapture(const nsACString& aKey);
 #endif
@@ -198,8 +194,6 @@ private:
   AutoHashtable<SlowSQLEntryType> mPrivateSQL;
   AutoHashtable<SlowSQLEntryType> mSanitizedSQL;
   Mutex mHashMutex;
-  HangReports mHangReports;
-  Mutex mHangReportsMutex;
   Atomic<bool> mCanRecordBase;
   Atomic<bool> mCanRecordExtended;
 
@@ -488,7 +482,6 @@ TelemetryImpl::AsyncFetchTelemetryData(nsIFetchTelemetryDataCallback *aCallback)
 
 TelemetryImpl::TelemetryImpl()
   : mHashMutex("Telemetry::mHashMutex")
-  , mHangReportsMutex("Telemetry::mHangReportsMutex")
   , mCanRecordBase(false)
   , mCanRecordExtended(false)
   , mCachedTelemetryData(false)
@@ -506,7 +499,6 @@ TelemetryImpl::~TelemetryImpl() {
   // This is still racey as access to these collections is guarded using sTelemetry.
   // We will fix this in bug 1367344.
   MutexAutoLock hashLock(mHashMutex);
-  MutexAutoLock hangReportsLock(mHangReportsMutex);
 }
 
 void
@@ -576,32 +568,20 @@ TelemetryImpl::SetHistogramRecordingEnabled(const nsACString &id, bool aEnabled)
 }
 
 NS_IMETHODIMP
-TelemetryImpl::SnapshotHistograms(unsigned int aDataset, bool aSubsession,
+TelemetryImpl::SnapshotHistograms(unsigned int aDataset,
                                   bool aClearHistograms, JSContext* aCx,
                                   JS::MutableHandleValue aResult)
 {
-#if defined(MOZ_WIDGET_ANDROID)
-  if (aSubsession) {
-    return NS_OK;
-  }
-#endif
   return TelemetryHistogram::CreateHistogramSnapshots(aCx, aResult, aDataset,
-                                                      aSubsession,
                                                       aClearHistograms);
 }
 
 NS_IMETHODIMP
-TelemetryImpl::SnapshotKeyedHistograms(unsigned int aDataset, bool aSubsession,
+TelemetryImpl::SnapshotKeyedHistograms(unsigned int aDataset,
                                        bool aClearHistograms, JSContext* aCx,
                                        JS::MutableHandleValue aResult)
 {
-#if defined(MOZ_WIDGET_ANDROID)
-  if (aSubsession) {
-    return NS_OK;
-  }
-#endif
   return TelemetryHistogram::GetKeyedHistogramSnapshots(aCx, aResult, aDataset,
-                                                        aSubsession,
                                                         aClearHistograms);
 }
 
@@ -654,122 +634,6 @@ NS_IMETHODIMP
 TelemetryImpl::GetMaximalNumberOfConcurrentThreads(uint32_t *ret)
 {
   *ret = nsThreadManager::get().GetHighestNumberOfThreads();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TelemetryImpl::GetChromeHangs(JSContext *cx, JS::MutableHandle<JS::Value> ret)
-{
-  MutexAutoLock hangReportMutex(mHangReportsMutex);
-
-  const CombinedStacks& stacks = mHangReports.GetStacks();
-  JS::Rooted<JSObject*> fullReportObj(cx, CreateJSStackObject(cx, stacks));
-  if (!fullReportObj) {
-    return NS_ERROR_FAILURE;
-  }
-
-  ret.setObject(*fullReportObj);
-
-  JS::Rooted<JSObject*> durationArray(cx, JS_NewArrayObject(cx, 0));
-  JS::Rooted<JSObject*> systemUptimeArray(cx, JS_NewArrayObject(cx, 0));
-  JS::Rooted<JSObject*> firefoxUptimeArray(cx, JS_NewArrayObject(cx, 0));
-  JS::Rooted<JSObject*> annotationsArray(cx, JS_NewArrayObject(cx, 0));
-  if (!durationArray || !systemUptimeArray || !firefoxUptimeArray ||
-      !annotationsArray) {
-    return NS_ERROR_FAILURE;
-  }
-
-  bool ok = JS_DefineProperty(cx, fullReportObj, "durations",
-                              durationArray, JSPROP_ENUMERATE);
-  if (!ok) {
-    return NS_ERROR_FAILURE;
-  }
-
-  ok = JS_DefineProperty(cx, fullReportObj, "systemUptime",
-                         systemUptimeArray, JSPROP_ENUMERATE);
-  if (!ok) {
-    return NS_ERROR_FAILURE;
-  }
-
-  ok = JS_DefineProperty(cx, fullReportObj, "firefoxUptime",
-                         firefoxUptimeArray, JSPROP_ENUMERATE);
-  if (!ok) {
-    return NS_ERROR_FAILURE;
-  }
-
-  ok = JS_DefineProperty(cx, fullReportObj, "annotations", annotationsArray,
-                         JSPROP_ENUMERATE);
-  if (!ok) {
-    return NS_ERROR_FAILURE;
-  }
-
-
-  const size_t length = stacks.GetStackCount();
-  for (size_t i = 0; i < length; ++i) {
-    if (!JS_DefineElement(cx, durationArray, i, mHangReports.GetDuration(i),
-                          JSPROP_ENUMERATE)) {
-      return NS_ERROR_FAILURE;
-    }
-    if (!JS_DefineElement(cx, systemUptimeArray, i, mHangReports.GetSystemUptime(i),
-                          JSPROP_ENUMERATE)) {
-      return NS_ERROR_FAILURE;
-    }
-    if (!JS_DefineElement(cx, firefoxUptimeArray, i, mHangReports.GetFirefoxUptime(i),
-                          JSPROP_ENUMERATE)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    size_t annotationIndex = 0;
-    const nsClassHashtable<nsStringHashKey, HangReports::AnnotationInfo>& annotationInfo =
-      mHangReports.GetAnnotationInfo();
-
-    for (auto iter = annotationInfo.ConstIter(); !iter.Done(); iter.Next()) {
-      const HangReports::AnnotationInfo* info = iter.Data();
-
-      JS::Rooted<JSObject*> keyValueArray(cx, JS_NewArrayObject(cx, 0));
-      if (!keyValueArray) {
-        return NS_ERROR_FAILURE;
-      }
-
-      // Create an array containing all the indices of the chrome hangs relative to this
-      // annotation.
-      JS::Rooted<JS::Value> indicesArray(cx);
-      if (!mozilla::dom::ToJSValue(cx, info->mHangIndices, &indicesArray)) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
-
-      // We're saving the annotation as [[indices], {annotation-data}], so add the indices
-      // array as the first element of that structure.
-      if (!JS_DefineElement(cx, keyValueArray, 0, indicesArray, JSPROP_ENUMERATE)) {
-        return NS_ERROR_FAILURE;
-      }
-
-      // Create the annotations object...
-      JS::Rooted<JSObject*> jsAnnotation(cx, JS_NewPlainObject(cx));
-      if (!jsAnnotation) {
-        return NS_ERROR_FAILURE;
-      }
-
-      for (auto& annot : info->mAnnotations) {
-        JS::RootedValue jsValue(cx);
-        jsValue.setString(JS_NewUCStringCopyN(cx, annot.mValue.get(), annot.mValue.Length()));
-        if (!JS_DefineUCProperty(cx, jsAnnotation, annot.mName.get(), annot.mName.Length(),
-                                 jsValue, JSPROP_ENUMERATE)) {
-          return NS_ERROR_FAILURE;
-        }
-      }
-
-      // ... and append it after the indices array.
-      if (!JS_DefineElement(cx, keyValueArray, 1, jsAnnotation, JSPROP_ENUMERATE)) {
-        return NS_ERROR_FAILURE;
-      }
-      if (!JS_DefineElement(cx, annotationsArray, annotationIndex++,
-                         keyValueArray, JSPROP_ENUMERATE)) {
-        return NS_ERROR_FAILURE;
-      }
-    }
-  }
-
   return NS_OK;
 }
 
@@ -981,7 +845,7 @@ public:
 #endif // MOZ_GECKO_PROFILER
 
 NS_IMETHODIMP
-TelemetryImpl::GetLoadedModules(JSContext *cx, nsISupports** aPromise)
+TelemetryImpl::GetLoadedModules(JSContext *cx, Promise** aPromise)
 {
 #if defined(MOZ_GECKO_PROFILER)
   nsIGlobalObject* global = xpc::NativeGlobal(JS::CurrentGlobalOrNull(cx));
@@ -1004,7 +868,7 @@ TelemetryImpl::GetLoadedModules(JSContext *cx, nsISupports** aPromise)
   }
 
   nsMainThreadPtrHandle<Promise> mainThreadPromise(
-    new nsMainThreadPtrHolder<Promise>("Promise", promise));
+    new nsMainThreadPtrHolder<Promise>("TelemetryImpl::GetLoadedModules::Promise", promise));
   nsCOMPtr<nsIRunnable> runnable = new GetLoadedModulesRunnable(mainThreadPromise);
   promise.forget(aPromise);
 
@@ -1105,12 +969,8 @@ ReadStack(PathCharPtr aFileName, Telemetry::ProcessedStack &aStack)
 void
 TelemetryImpl::ReadLateWritesStacks(nsIFile* aProfileDir)
 {
-  nsCOMPtr<nsISimpleEnumerator> e;
-  if (NS_FAILED(aProfileDir->GetDirectoryEntries(getter_AddRefs(e)))) {
-    return;
-  }
-  nsCOMPtr<nsIDirectoryEnumerator> files(do_QueryInterface(e));
-  if (!files) {
+  nsCOMPtr<nsIDirectoryEnumerator> files;
+  if (NS_FAILED(aProfileDir->GetDirectoryEntries(getter_AddRefs(files)))) {
     return;
   }
 
@@ -1263,6 +1123,9 @@ TelemetryImpl::CreateTelemetryInstance()
     useTelemetry = true;
   }
 
+  // Set current product (determines Fennec/GeckoView at runtime).
+  SetCurrentProduct();
+
   // First, initialize the TelemetryHistogram and TelemetryScalar global states.
   TelemetryHistogram::InitializeGlobalState(useTelemetry, useTelemetry);
   TelemetryScalar::InitializeGlobalState(useTelemetry, useTelemetry);
@@ -1284,6 +1147,15 @@ TelemetryImpl::CreateTelemetryInstance()
   sTelemetry->InitMemoryReporter();
   InitHistogramRecordingEnabled(); // requires sTelemetry to exist
 
+#if defined(MOZ_TELEMETRY_GECKOVIEW)
+  // We only want to add persistence for GeckoView, but both
+  // GV and Fennec are on Android. So just init persistence if this
+  // is Android but not Fennec.
+  if (GetCurrentProduct() == SupportedProduct::Geckoview) {
+    TelemetryGeckoViewPersistence::InitPersistence();
+  }
+#endif
+
   return ret.forget();
 }
 
@@ -1300,6 +1172,12 @@ TelemetryImpl::ShutdownTelemetry()
   TelemetryScalar::DeInitializeGlobalState();
   TelemetryEvent::DeInitializeGlobalState();
   TelemetryIPCAccumulator::DeInitializeGlobalState();
+
+#if defined(MOZ_TELEMETRY_GECKOVIEW)
+  if (GetCurrentProduct() == SupportedProduct::Geckoview) {
+    TelemetryGeckoViewPersistence::DeInitPersistence();
+  }
+#endif
 }
 
 void
@@ -1578,22 +1456,6 @@ TelemetryImpl::RecordIceCandidates(const uint32_t iceCandidateBitmask,
 }
 
 #if defined(MOZ_GECKO_PROFILER)
-void
-TelemetryImpl::RecordChromeHang(uint32_t aDuration,
-                                Telemetry::ProcessedStack &aStack,
-                                int32_t aSystemUptime,
-                                int32_t aFirefoxUptime,
-                                HangAnnotations&& aAnnotations)
-{
-  if (!sTelemetry || !TelemetryHistogram::CanRecordExtended())
-    return;
-
-  MutexAutoLock hangReportMutex(sTelemetry->mHangReportsMutex);
-
-  sTelemetry->mHangReports.AddHang(aStack, aDuration,
-                                   aSystemUptime, aFirefoxUptime,
-                                   Move(aAnnotations));
-}
 
 void
 TelemetryImpl::DoStackCapture(const nsACString& aKey) {
@@ -1804,10 +1666,12 @@ TelemetryImpl::RecordEvent(const nsACString & aCategory, const nsACString & aMet
 }
 
 NS_IMETHODIMP
-TelemetryImpl::SnapshotEvents(uint32_t aDataset, bool aClear, JSContext* aCx,
-                                     uint8_t optional_argc, JS::MutableHandleValue aResult)
+TelemetryImpl::SnapshotEvents(uint32_t aDataset, bool aClear,
+                              uint32_t aEventLimit, JSContext* aCx,
+                              uint8_t optional_argc, JS::MutableHandleValue aResult)
 {
-  return TelemetryEvent::CreateSnapshots(aDataset, aClear, aCx, optional_argc, aResult);
+  return TelemetryEvent::CreateSnapshots(aDataset, aClear,
+                                         aEventLimit, aCx, optional_argc, aResult);
 }
 
 NS_IMETHODIMP
@@ -1831,6 +1695,36 @@ TelemetryImpl::ClearEvents()
 {
   TelemetryEvent::ClearEvents();
   return NS_OK;
+}
+
+NS_IMETHODIMP
+TelemetryImpl::ResetCurrentProduct()
+{
+#if defined(MOZ_WIDGET_ANDROID)
+  SetCurrentProduct();
+  return NS_OK;
+#else
+  return NS_ERROR_FAILURE;
+#endif
+}
+
+NS_IMETHODIMP
+TelemetryImpl::ClearProbes()
+{
+#if defined(MOZ_TELEMETRY_GECKOVIEW)
+  // We only support this in GeckoView.
+  if (GetCurrentProduct() != SupportedProduct::Geckoview) {
+    MOZ_ASSERT(false, "ClearProbes is only supported on GeckoView");
+    return NS_ERROR_FAILURE;
+  }
+
+  // TODO: supporting clear for histograms will come from bug 1457127.
+  TelemetryScalar::ClearScalars();
+  TelemetryGeckoViewPersistence::ClearPersistenceData();
+  return NS_OK;
+#else
+  return NS_ERROR_FAILURE;
+#endif
 }
 
 NS_IMETHODIMP
@@ -1859,10 +1753,6 @@ TelemetryImpl::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
     MutexAutoLock lock(mHashMutex);
     n += mPrivateSQL.SizeOfExcludingThis(aMallocSizeOf);
     n += mSanitizedSQL.SizeOfExcludingThis(aMallocSizeOf);
-  }
-  { // Scope for mHangReportsMutex lock
-    MutexAutoLock lock(mHangReportsMutex);
-    n += mHangReports.SizeOfExcludingThis(aMallocSizeOf);
   }
 
   // It's a bit gross that we measure this other stuff that lives outside of
@@ -2121,22 +2011,9 @@ void Init()
 }
 
 #if defined(MOZ_GECKO_PROFILER)
-void RecordChromeHang(uint32_t duration,
-                      ProcessedStack &aStack,
-                      int32_t aSystemUptime,
-                      int32_t aFirefoxUptime,
-                      HangAnnotations&& aAnnotations)
-{
-  TelemetryImpl::RecordChromeHang(duration, aStack,
-                                  aSystemUptime, aFirefoxUptime,
-                                  Move(aAnnotations));
-}
-
 void CaptureStack(const nsACString& aKey)
 {
-#ifdef MOZ_GECKO_PROFILER
   TelemetryImpl::DoStackCapture(aKey);
-#endif
 }
 #endif
 

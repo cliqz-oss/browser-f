@@ -93,13 +93,14 @@ public:
   virtual bool MayBeClonedToOtherThreads() const override;
 
   size_t GetAllocationSize() const override;
+  size_t GetAllocationSize(FallibleTArray<BlobImpl*>& aVisitedBlobImpls) const override;
 
 protected:
   MultipartBlobImpl(nsTArray<RefPtr<BlobImpl>>&& aBlobImpls,
                     const nsAString& aName,
                     const nsAString& aContentType)
     : BaseBlobImpl(aName, aContentType, UINT64_MAX),
-      mBlobImpls(Move(aBlobImpls)),
+      mBlobImpls(std::move(aBlobImpls)),
       mIsFromNsIFile(false)
   {
   }
@@ -107,7 +108,7 @@ protected:
   MultipartBlobImpl(nsTArray<RefPtr<BlobImpl>>&& aBlobImpls,
                     const nsAString& aContentType)
     : BaseBlobImpl(aContentType, UINT64_MAX),
-      mBlobImpls(Move(aBlobImpls)),
+      mBlobImpls(std::move(aBlobImpls)),
       mIsFromNsIFile(false)
   {
   }

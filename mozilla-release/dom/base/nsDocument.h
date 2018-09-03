@@ -21,7 +21,6 @@
 #include "nsWeakPtr.h"
 #include "nsTArray.h"
 #include "nsIdentifierMapEntry.h"
-#include "nsIDOMDocument.h"
 #include "nsStubDocumentObserver.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIContent.h"
@@ -130,7 +129,6 @@ private:
 
 // Base class for our document implementations.
 class nsDocument : public nsIDocument,
-                   public nsIDOMDocument,
                    public nsSupportsWeakReference,
                    public nsIScriptObjectPrincipal,
                    public nsIRadioGroupContainer,
@@ -160,12 +158,11 @@ public:
 
   virtual void StopDocumentLoad() override;
 
-  static bool CallerIsTrustedAboutPage(JSContext* aCx, JSObject* aObject);
   static bool IsElementAnimateEnabled(JSContext* aCx, JSObject* aObject);
   static bool IsWebAnimationsEnabled(JSContext* aCx, JSObject* aObject);
   static bool IsWebAnimationsEnabled(mozilla::dom::CallerType aCallerType);
 
-  virtual void EndUpdate(nsUpdateType aUpdateType) override;
+  virtual void EndUpdate() override;
   virtual void BeginLoad() override;
   virtual void EndLoad() override;
 
@@ -203,9 +200,6 @@ public:
   static bool IsShadowDOMEnabled(const nsINode* aNode);
 
 public:
-  // nsIDOMDocument
-  NS_DECL_NSIDOMDOCUMENT
-
   using mozilla::dom::DocumentOrShadowRoot::GetElementById;
   using mozilla::dom::DocumentOrShadowRoot::GetElementsByTagName;
   using mozilla::dom::DocumentOrShadowRoot::GetElementsByTagNameNS;
@@ -248,8 +242,6 @@ public:
 
   virtual void DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const override;
   // DocAddSizeOfIncludingThis is inherited from nsIDocument.
-
-  virtual nsIDOMNode* AsDOMNode() override { return this; }
 
 protected:
   friend class nsNodeUtils;

@@ -88,6 +88,9 @@ HTMLEditor::ShowInlineTableEditingUI(Element* aCell)
   AddMouseClickListener(mAddRowAfterButton);
 
   mInlineEditedCell = aCell;
+
+  mHasShownInlineTableEditor = true;
+
   return RefreshInlineTableEditingUI();
 }
 
@@ -109,12 +112,12 @@ HTMLEditor::HideInlineTableEditingUI()
   // are no document observers to notify, but we still want to
   // UnbindFromTree.
 
-  DeleteRefToAnonymousNode(Move(mAddColumnBeforeButton), ps);
-  DeleteRefToAnonymousNode(Move(mRemoveColumnButton), ps);
-  DeleteRefToAnonymousNode(Move(mAddColumnAfterButton), ps);
-  DeleteRefToAnonymousNode(Move(mAddRowBeforeButton), ps);
-  DeleteRefToAnonymousNode(Move(mRemoveRowButton), ps);
-  DeleteRefToAnonymousNode(Move(mAddRowAfterButton), ps);
+  DeleteRefToAnonymousNode(std::move(mAddColumnBeforeButton), ps);
+  DeleteRefToAnonymousNode(std::move(mRemoveColumnButton), ps);
+  DeleteRefToAnonymousNode(std::move(mAddColumnAfterButton), ps);
+  DeleteRefToAnonymousNode(std::move(mAddRowBeforeButton), ps);
+  DeleteRefToAnonymousNode(std::move(mRemoveRowButton), ps);
+  DeleteRefToAnonymousNode(std::move(mAddRowAfterButton), ps);
 
   return NS_OK;
 }
@@ -158,6 +161,8 @@ HTMLEditor::DoInlineTableEditingAction(const Element& aElement)
   } else {
     return NS_OK;
   }
+
+  ++mInlineTableEditorUsedCount;
 
   // InsertTableRow might causes reframe
   if (Destroyed()) {

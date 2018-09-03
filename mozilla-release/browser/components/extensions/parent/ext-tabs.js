@@ -124,7 +124,7 @@ const allProperties = new Set([
   "discarded",
   "favIconUrl",
   "hidden",
-  "isarticle",
+  "isArticle",
   "mutedInfo",
   "pinned",
   "sharingState",
@@ -148,6 +148,12 @@ class TabsUpdateFilterEventManager extends EventManager {
         // Default is to listen for all events.
         needsModified = filter.properties.some(p => allAttrs.has(p));
         filter.properties = new Set(filter.properties);
+        // TODO Bug 1465520 remove warning when ready.
+        if (filter.properties.has("isarticle")) {
+          extension.logger.warn("The isarticle filter name is deprecated, use isArticle.");
+          filter.properties.delete("isarticle");
+          filter.properties.add("isArticle");
+        }
       } else {
         filter.properties = allProperties;
       }
@@ -295,7 +301,7 @@ class TabsUpdateFilterEventManager extends EventManager {
         windowTracker.addListener(name, listener);
       }
 
-      if (filter.properties.has("isarticle")) {
+      if (filter.properties.has("isArticle")) {
         tabTracker.on("tab-isarticle", isArticleChangeListener);
       }
 
@@ -304,7 +310,7 @@ class TabsUpdateFilterEventManager extends EventManager {
           windowTracker.removeListener(name, listener);
         }
 
-        if (filter.properties.has("isarticle")) {
+        if (filter.properties.has("isArticle")) {
           tabTracker.off("tab-isarticle", isArticleChangeListener);
         }
       };
@@ -479,33 +485,8 @@ this.tabs = class extends ExtensionAPI {
           context,
           name: "tabs.onMoved",
           register: fire => {
-            // There are certain circumstances where we need to ignore a move event.
-            //
-            // Namely, the first time the tab is moved after it's created, we need
-            // to report the final position as the initial position in the tab's
-            // onAttached or onCreated event. This is because most tabs are inserted
-            // in a temporary location and then moved after the TabOpen event fires,
-            // which generates a TabOpen event followed by a TabMove event, which
-            // does not match the contract of our API.
-            let ignoreNextMove = new WeakSet();
-
-            let openListener = event => {
-              ignoreNextMove.add(event.target);
-              // Remove the tab from the set on the next tick, since it will already
-              // have been moved by then.
-              Promise.resolve().then(() => {
-                ignoreNextMove.delete(event.target);
-              });
-            };
-
             let moveListener = event => {
               let nativeTab = event.originalTarget;
-
-              if (ignoreNextMove.has(nativeTab)) {
-                ignoreNextMove.delete(nativeTab);
-                return;
-              }
-
               fire.async(tabTracker.getId(nativeTab), {
                 windowId: windowTracker.getId(nativeTab.ownerGlobal),
                 fromIndex: event.detail,
@@ -514,10 +495,8 @@ this.tabs = class extends ExtensionAPI {
             };
 
             windowTracker.addListener("TabMove", moveListener);
-            windowTracker.addListener("TabOpen", openListener);
             return () => {
               windowTracker.removeListener("TabMove", moveListener);
-              windowTracker.removeListener("TabOpen", openListener);
             };
           },
         }).api(),
@@ -601,6 +580,14 @@ this.tabs = class extends ExtensionAPI {
               }
             }
 
+            if (createProperties.index != null) {
+              options.index = createProperties.index;
+            }
+
+            if (createProperties.pinned != null) {
+              options.pinned = createProperties.pinned;
+            }
+
             let nativeTab = window.gBrowser.addTab(url || window.BROWSER_NEW_TAB_URL, options);
 
             let active = true;
@@ -609,14 +596,6 @@ this.tabs = class extends ExtensionAPI {
             }
             if (active) {
               window.gBrowser.selectedTab = nativeTab;
-            }
-
-            if (createProperties.index !== null) {
-              window.gBrowser.moveTabTo(nativeTab, createProperties.index);
-            }
-
-            if (createProperties.pinned) {
-              window.gBrowser.pinTab(nativeTab);
             }
 
             if (active && !url) {
@@ -993,8 +972,8 @@ this.tabs = class extends ExtensionAPI {
               let browser = event.originalTarget;
 
               // For non-remote browsers, this event is dispatched on the document
-              // rather than on the <browser>.
-              if (browser instanceof Ci.nsIDOMDocument) {
+              // rather than on the <browser>.  But either way we have a node here.
+              if (browser.nodeType == browser.DOCUMENT_NODE) {
                 browser = browser.docShell.chromeEventHandler;
               }
 

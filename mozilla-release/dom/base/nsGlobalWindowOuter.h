@@ -582,7 +582,7 @@ public:
   nsresult Focus() override;
   void BlurOuter();
   already_AddRefed<nsPIDOMWindowOuter> GetFramesOuter();
-  already_AddRefed<nsIDOMWindowCollection> GetFrames() override;
+  nsDOMWindowList* GetFrames() final;
   uint32_t Length();
   already_AddRefed<nsPIDOMWindowOuter> GetTopOuter();
 
@@ -638,7 +638,7 @@ public:
                    mozilla::ErrorResult& aError);
   void PrintOuter(mozilla::ErrorResult& aError);
   mozilla::dom::Selection* GetSelectionOuter();
-  already_AddRefed<nsISelection> GetSelection() override;
+  already_AddRefed<mozilla::dom::Selection> GetSelection() override;
   already_AddRefed<mozilla::dom::MediaQueryList> MatchMediaOuter(
     const nsAString& aQuery,
     mozilla::dom::CallerType aCallerType);
@@ -692,7 +692,8 @@ public:
                       const nsAString& aOptions,
                       nsISupports* aExtraArgument,
                       nsPIDOMWindowOuter** _retval) override;
-  void UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason) override;
+  void UpdateCommands(const nsAString& anAction, mozilla::dom::Selection* aSel,
+                      int16_t aReason) override;
 
   already_AddRefed<nsPIDOMWindowOuter>
   GetContentInternal(mozilla::ErrorResult& aError,
@@ -1002,9 +1003,6 @@ protected:
 
   void InitializeShowFocusRings();
 
-public:
-  // Outer windows only.
-  nsDOMWindowList* GetWindowList();
 protected:
   // Helper for getComputedStyle and getDefaultComputedStyle
   already_AddRefed<nsICSSDeclaration>

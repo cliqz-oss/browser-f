@@ -86,8 +86,10 @@ var HistoryEntry = {
       for (let itemvisit of item.visits) {
         // Note: in microseconds.
         let expectedDate = itemvisit.date * 60 * 60 * 1000 * 1000 + msSinceEpoch * 1000;
-        if (visit.type == itemvisit.type && visit.date == expectedDate) {
-          itemvisit.found = true;
+        if (visit.type == itemvisit.type) {
+          if (itemvisit.date === undefined || visit.date == expectedDate) {
+            itemvisit.found = true;
+          }
         }
       }
     }
@@ -120,7 +122,7 @@ var HistoryEntry = {
         Logger.log("Warning: Removed 0 history visits for uri " + item.uri);
       }
     } else if ("host" in item) {
-      await PlacesUtils.history.removePagesFromHost(item.host, false);
+      await PlacesUtils.history.removeByFilter({ host: item.host });
     } else if ("begin" in item && "end" in item) {
       let filter = {
         beginDate: new Date(msSinceEpoch + (item.begin * 60 * 60 * 1000)),

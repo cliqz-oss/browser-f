@@ -71,7 +71,7 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
   struct CapabilityCandidate {
     explicit CapabilityCandidate(webrtc::CaptureCapability&& aCapability,
                                  uint32_t aDistance = 0)
-    : mCapability(Forward<webrtc::CaptureCapability>(aCapability))
+    : mCapability(std::forward<webrtc::CaptureCapability>(aCapability))
     , mDistance(aDistance) {}
 
     const webrtc::CaptureCapability mCapability;
@@ -144,6 +144,7 @@ public:
                        const MediaEnginePrefs& aPrefs,
                        const nsString& aDeviceId,
                        const char** aOutBadConstraint) override;
+  nsresult FocusOnSelectedSource(const RefPtr<const AllocationHandle>& aHandle) override;
   nsresult Stop(const RefPtr<const AllocationHandle>& aHandle) override;
   void Pull(const RefPtr<const AllocationHandle>& aHandle,
             const RefPtr<SourceMediaStream>& aStream,

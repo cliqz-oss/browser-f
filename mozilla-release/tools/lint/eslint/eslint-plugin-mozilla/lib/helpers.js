@@ -25,6 +25,7 @@ const callExpressionDefinitions = [
   /^XPCOMUtils\.defineLazyModuleGetter\(this, "(\w+)"/,
   /^ChromeUtils\.defineModuleGetter\(this, "(\w+)"/,
   /^XPCOMUtils\.defineLazyPreferenceGetter\(this, "(\w+)"/,
+  /^XPCOMUtils\.defineLazyProxy\(this, "(\w+)"/,
   /^XPCOMUtils\.defineLazyScriptGetter\(this, "(\w+)"/,
   /^XPCOMUtils\.defineLazyServiceGetter\(this, "(\w+)"/,
   /^XPCOMUtils\.defineConstant\(this, "(\w+)"/,
@@ -36,6 +37,7 @@ const callExpressionDefinitions = [
 ];
 
 const callExpressionMultiDefinitions = [
+  "XPCOMUtils.defineLazyGlobalGetters(this,",
   "XPCOMUtils.defineLazyModuleGetters(this,",
   "XPCOMUtils.defineLazyServiceGetters(this,"
 ];
@@ -117,6 +119,8 @@ module.exports = {
       case "AssignmentExpression":
         return this.getASTSource(node.left) + " = " +
           this.getASTSource(node.right);
+      case "BinaryExpression":
+        return this.getASTSource(node.left) + " " + node.operator + " " + this.getASTSource(node.right);
       default:
         throw new Error("getASTSource unsupported node type: " + node.type);
     }
@@ -305,11 +309,18 @@ module.exports = {
     }
 
     if (callExpressionMultiDefinitions.some(expr => source.startsWith(expr)) &&
-        node.expression.arguments[1] &&
-        node.expression.arguments[1].type === "ObjectExpression") {
-      return node.expression.arguments[1].properties
-                 .map(p => ({ name: p.type === "Property" && p.key.name, writable: true, explicit: true }))
-                 .filter(g => g.name);
+        node.expression.arguments[1]) {
+      let arg = node.expression.arguments[1];
+      if (arg.type === "ObjectExpression") {
+        return arg.properties
+                  .map(p => ({ name: p.type === "Property" && p.key.name, writable: true, explicit: true }))
+                  .filter(g => g.name);
+      }
+      if (arg.type === "ArrayExpression") {
+        return arg.elements
+                  .map(p => ({ name: p.type === "Literal" && p.value, writable: true, explicit: true }))
+                  .filter(g => typeof g.name == "string");
+      }
     }
 
     if (node.expression.callee.type == "MemberExpression" &&

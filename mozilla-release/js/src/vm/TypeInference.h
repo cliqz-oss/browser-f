@@ -60,17 +60,29 @@ enum : uint32_t {
     TYPE_FLAG_DOUBLE    =  0x10,
     TYPE_FLAG_STRING    =  0x20,
     TYPE_FLAG_SYMBOL    =  0x40,
-    TYPE_FLAG_LAZYARGS  =  0x80,
+#ifdef ENABLE_BIGINT
+    TYPE_FLAG_BIGINT    =  0x80,
+    TYPE_FLAG_LAZYARGS  = 0x100,
+    TYPE_FLAG_ANYOBJECT = 0x200,
+#else
+    TYPE_FLAG_LAZYARGS  = 0x80,
     TYPE_FLAG_ANYOBJECT = 0x100,
+#endif
 
     /* Mask containing all primitives */
     TYPE_FLAG_PRIMITIVE = TYPE_FLAG_UNDEFINED | TYPE_FLAG_NULL | TYPE_FLAG_BOOLEAN |
                           TYPE_FLAG_INT32 | TYPE_FLAG_DOUBLE | TYPE_FLAG_STRING |
-                          TYPE_FLAG_SYMBOL,
+                          TYPE_FLAG_SYMBOL |
+                          IF_BIGINT(TYPE_FLAG_BIGINT, 0),
 
     /* Mask/shift for the number of objects in objectSet */
+#ifdef ENABLE_BIGINT
+    TYPE_FLAG_OBJECT_COUNT_MASK     = 0x3c00,
+    TYPE_FLAG_OBJECT_COUNT_SHIFT    = 10,
+#else
     TYPE_FLAG_OBJECT_COUNT_MASK     = 0x3e00,
     TYPE_FLAG_OBJECT_COUNT_SHIFT    = 9,
+#endif
     TYPE_FLAG_OBJECT_COUNT_LIMIT    = 7,
     TYPE_FLAG_DOMOBJECT_COUNT_LIMIT =
         TYPE_FLAG_OBJECT_COUNT_MASK >> TYPE_FLAG_OBJECT_COUNT_SHIFT,
@@ -79,7 +91,7 @@ enum : uint32_t {
     TYPE_FLAG_UNKNOWN             = 0x00004000,
 
     /* Mask of normal type flags on a type set. */
-    TYPE_FLAG_BASE_MASK           = 0x000041ff,
+    TYPE_FLAG_BASE_MASK           = TYPE_FLAG_PRIMITIVE | TYPE_FLAG_LAZYARGS | TYPE_FLAG_ANYOBJECT | TYPE_FLAG_UNKNOWN,
 
     /* Additional flags for HeapTypeSet sets. */
 
@@ -109,6 +121,10 @@ enum : uint32_t {
     TYPE_FLAG_DEFINITE_SHIFT      = 18
 };
 typedef uint32_t TypeFlags;
+
+static_assert(TYPE_FLAG_PRIMITIVE < TYPE_FLAG_ANYOBJECT &&
+              TYPE_FLAG_LAZYARGS < TYPE_FLAG_ANYOBJECT,
+              "TYPE_FLAG_ANYOBJECT should be greater than primitive type flags");
 
 /* Flags and other state stored in ObjectGroup::Flags */
 enum : uint32_t {
@@ -145,8 +161,8 @@ enum : uint32_t {
     /* Whether any objects have been iterated over. */
     OBJECT_FLAG_ITERATED              = 0x00080000,
 
-    /* Whether any object this represents may have frozen elements. */
-    OBJECT_FLAG_FROZEN_ELEMENTS       = 0x00100000,
+    /* Whether any object this represents may have non-extensible elements. */
+    OBJECT_FLAG_NON_EXTENSIBLE_ELEMENTS = 0x00100000,
 
     /*
      * For the function on a run-once script, whether the function has actually
@@ -267,7 +283,7 @@ class TypeSet
 
         ObjectGroup* maybeGroup();
 
-        JSCompartment* maybeCompartment();
+        JS::Compartment* maybeCompartment();
     } JS_HAZ_GC_POINTER;
 
     // Information about a single concrete type. We pack this into one word,
@@ -353,7 +369,7 @@ class TypeSet
 
         inline void trace(JSTracer* trc);
 
-        JSCompartment* maybeCompartment();
+        JS::Compartment* maybeCompartment();
 
         bool operator == (Type o) const { return data == o.data; }
         bool operator != (Type o) const { return data != o.data; }
@@ -366,6 +382,9 @@ class TypeSet
     static inline Type DoubleType()    { return Type(JSVAL_TYPE_DOUBLE); }
     static inline Type StringType()    { return Type(JSVAL_TYPE_STRING); }
     static inline Type SymbolType()    { return Type(JSVAL_TYPE_SYMBOL); }
+#ifdef ENABLE_BIGINT
+    static inline Type BigIntType()    { return Type(JSVAL_TYPE_BIGINT); }
+#endif
     static inline Type MagicArgType()  { return Type(JSVAL_TYPE_MAGIC); }
     static inline Type AnyObjectType() { return Type(JSVAL_TYPE_OBJECT); }
     static inline Type UnknownType()   { return Type(JSVAL_TYPE_UNKNOWN); }
@@ -508,7 +527,10 @@ class TypeSet
 
     // Clone a type set into an arbitrary allocator.
     TemporaryTypeSet* clone(LifoAlloc* alloc) const;
-    bool clone(LifoAlloc* alloc, TemporaryTypeSet* result) const;
+
+    // |*result| is not even partly initialized when this function is called:
+    // this function placement-new's its contents into existence.
+    bool cloneIntoUninitialized(LifoAlloc* alloc, TemporaryTypeSet* result) const;
 
     // Create a new TemporaryTypeSet where undefined and/or null has been filtered out.
     TemporaryTypeSet* filter(LifoAlloc* alloc, bool filterUndefined, bool filterNull) const;
@@ -516,7 +538,7 @@ class TypeSet
     TemporaryTypeSet* cloneObjectsOnly(LifoAlloc* alloc);
     TemporaryTypeSet* cloneWithoutObjects(LifoAlloc* alloc);
 
-    JSCompartment* maybeCompartment();
+    JS::Compartment* maybeCompartment();
 
     // Trigger a read barrier on all the contents of a type set.
     static void readBarrier(const TypeSet* types);
@@ -627,7 +649,7 @@ class TypeConstraint
     virtual bool sweep(TypeZone& zone, TypeConstraint** res) = 0;
 
     /* The associated compartment, if any. */
-    virtual JSCompartment* maybeCompartment() = 0;
+    virtual JS::Compartment* maybeCompartment() = 0;
 };
 
 // If there is an OOM while sweeping types, the type information is deoptimized
@@ -957,12 +979,10 @@ class PreliminaryObjectArray
   private:
     // All objects with the type which have been allocated. The pointers in
     // this array are weak.
-    JSObject* objects[COUNT];
+    JSObject* objects[COUNT] = {}; // zeroes
 
   public:
-    PreliminaryObjectArray() {
-        mozilla::PodZero(this);
-    }
+    PreliminaryObjectArray() = default;
 
     void registerNewObject(PlainObject* res);
     void unregisterObject(PlainObject* obj);
@@ -1056,11 +1076,11 @@ class TypeNewScript
 
   private:
     // Scripted function which this information was computed for.
-    HeapPtr<JSFunction*> function_;
+    HeapPtr<JSFunction*> function_ = {};
 
     // Any preliminary objects with the type. The analyses are not performed
     // until this array is cleared.
-    PreliminaryObjectArray* preliminaryObjects;
+    PreliminaryObjectArray* preliminaryObjects = nullptr;
 
     // After the new script properties analyses have been performed, a template
     // object to use for newly constructed objects. The shape of this object
@@ -1068,7 +1088,7 @@ class TypeNewScript
     // allocation kind to use. This is null if the new objects have an unboxed
     // layout, in which case the UnboxedLayout provides the initial structure
     // of the object.
-    HeapPtr<PlainObject*> templateObject_;
+    HeapPtr<PlainObject*> templateObject_ = {};
 
     // Order in which definite properties become initialized. We need this in
     // case the definite properties are invalidated (such as by adding a setter
@@ -1078,21 +1098,21 @@ class TypeNewScript
     // shape. Property assignments in inner frames are preceded by a series of
     // SETPROP_FRAME entries specifying the stack down to the frame containing
     // the write.
-    Initializer* initializerList;
+    Initializer* initializerList = nullptr;
 
     // If there are additional properties found by the acquired properties
     // analysis which were not found by the definite properties analysis, this
     // shape contains all such additional properties (plus the definite
     // properties). When an object of this group acquires this shape, it is
     // fully initialized and its group can be changed to initializedGroup.
-    HeapPtr<Shape*> initializedShape_;
+    HeapPtr<Shape*> initializedShape_ = {};
 
     // Group with definite properties set for all properties found by
     // both the definite and acquired properties analyses.
-    HeapPtr<ObjectGroup*> initializedGroup_;
+    HeapPtr<ObjectGroup*> initializedGroup_ = {};
 
   public:
-    TypeNewScript() { mozilla::PodZero(this); }
+    TypeNewScript() = default;
     ~TypeNewScript() {
         js_delete(preliminaryObjects);
         js_free(initializerList);
@@ -1481,7 +1501,7 @@ inline const char * InferSpewColor(TypeSet* types) { return nullptr; }
 
 // Prints type information for a context if spew is enabled or force is set.
 void
-PrintTypes(JSContext* cx, JSCompartment* comp, bool force);
+PrintTypes(JSContext* cx, JS::Compartment* comp, bool force);
 
 } /* namespace js */
 

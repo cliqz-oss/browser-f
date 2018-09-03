@@ -327,7 +327,7 @@ var PingPicker = {
       pingName = bundle.formatStringFromName("namedPing", [pingName, pingTypeText], 2);
       pingNameSpan.textContent = pingName;
       let explanation = bundle.GetStringFromName("pingDetails");
-      fragment = BrowserUtils.getLocalizedFragment(document, explanation, pingLink, pingNameSpan, pingTypeText);
+      fragment = BrowserUtils.getLocalizedFragment(document, explanation, pingLink, pingNameSpan);
     } else {
       // Change sidebar heading text.
       controls.classList.add("hidden");
@@ -340,6 +340,7 @@ var PingPicker = {
     }
 
     let pingExplanation = document.getElementById("ping-explanation");
+    removeAllChildNodes(pingExplanation);
     pingExplanation.appendChild(fragment);
     pingExplanation.querySelector(".change-ping").addEventListener("click", (ev) => {
       document.getElementById("ping-picker").classList.remove("hidden");
@@ -378,10 +379,19 @@ var PingPicker = {
 
   _updateCurrentPingData() {
     const subsession = document.getElementById("show-subsession-data").checked;
-    const ping = TelemetryController.getCurrentPingData(subsession);
+    let ping = TelemetryController.getCurrentPingData(subsession);
     if (!ping) {
       return;
     }
+
+    // augment ping payload with event telemetry
+    let eventSnapshot = Telemetry.snapshotEvents(Telemetry.DATASET_RELEASE_CHANNEL_OPTIN, false);
+    for (let process of Object.keys(eventSnapshot)) {
+      if (process in ping.payload.processes) {
+        ping.payload.processes[process].events = eventSnapshot[process].filter(e => !e[1].startsWith("telemetry.test"));
+      }
+    }
+
     displayPingData(ping, true);
   },
 
@@ -998,32 +1008,6 @@ function SymbolicationRequest_fetchSymbols() {
   this.symbolRequest.send(requestJSON);
 };
 
-var ChromeHangs = {
-
-  symbolRequest: null,
-
-  /**
-   * Renders raw chrome hang data
-   */
-  render: function ChromeHangs_render(chromeHangs) {
-    setHasData("chrome-hangs-section", !!chromeHangs);
-    if (!chromeHangs) {
-      return;
-    }
-
-    let stacks = chromeHangs.stacks;
-    let memoryMap = chromeHangs.memoryMap;
-    let durations = chromeHangs.durations;
-
-    StackRenderer.renderStacks("chrome-hangs", stacks, memoryMap,
-                               (index) => this.renderHangHeader(index, durations));
-  },
-
-  renderHangHeader: function ChromeHangs_renderHangHeader(aIndex, aDurations) {
-    StackRenderer.renderHeader("chrome-hangs", [aIndex + 1, aDurations[aIndex]]);
-  }
-};
-
 var CapturedStacks = {
   symbolRequest: null,
 
@@ -1226,7 +1210,6 @@ var Search = {
   // A list of ids of sections that do not support search.
   blacklist: [
     "late-writes-section",
-    "chrome-hangs-section",
     "raw-payload-section"
   ],
 
@@ -1993,30 +1976,6 @@ function setupListeners() {
       Settings.detachObservers();
   }, {once: true});
 
-  document.getElementById("chrome-hangs-fetch-symbols").addEventListener("click",
-    function() {
-      if (!gPingData) {
-        return;
-      }
-
-      let hangs = gPingData.payload.chromeHangs;
-      let req = new SymbolicationRequest("chrome-hangs",
-                                         ChromeHangs.renderHangHeader,
-                                         hangs.memoryMap,
-                                         hangs.stacks,
-                                         hangs.durations);
-      req.fetchSymbols();
-  });
-
-  document.getElementById("chrome-hangs-hide-symbols").addEventListener("click",
-    function() {
-      if (!gPingData) {
-        return;
-      }
-
-      ChromeHangs.render(gPingData.payload.chromeHangs);
-  });
-
   document.getElementById("captured-stacks-fetch-symbols").addEventListener("click",
     function() {
       if (!gPingData) {
@@ -2404,9 +2363,6 @@ function displayRichPingData(ping, updatePayloadList) {
   CapturedStacks.render(payload);
 
   LateWritesSingleton.renderLateWrites(payload.lateWrites);
-
-  // Show chrome hang stacks
-  ChromeHangs.render(payload.chromeHangs);
 
   // Show simple measurements
   SimpleMeasurements.render(payload);

@@ -33,20 +33,14 @@ public:
   void ZeroSensor() override;
 
 protected:
-  virtual VRHMDSensorState GetSensorState() override;
-  virtual void StartPresentation() override;
-  virtual void StopPresentation() override;
-#if defined(XP_WIN)
-  virtual bool SubmitFrame(ID3D11Texture2D* aSource,
-                           const IntSize& aSize,
-                           const gfx::Rect& aLeftEyeRect,
-                           const gfx::Rect& aRightEyeRect) override;
-#elif defined(XP_MACOSX)
-  virtual bool SubmitFrame(MacIOSurface* aMacIOSurface,
-                           const IntSize& aSize,
-                           const gfx::Rect& aLeftEyeRect,
-                           const gfx::Rect& aRightEyeRect) override;
-#endif
+  VRHMDSensorState GetSensorState() override;
+  void StartPresentation() override;
+  void StopPresentation() override;
+
+  bool SubmitFrame(const layers::SurfaceDescriptor& aTexture,
+                   uint64_t aFrameId,
+                   const gfx::Rect& aLeftEyeRect,
+                   const gfx::Rect& aRightEyeRect) override;
 
 public:
   explicit VRDisplayExternal(const VRDisplayState& aDisplayState);
@@ -54,6 +48,11 @@ public:
 protected:
   virtual ~VRDisplayExternal();
   void Destroy();
+
+private:
+  bool PopulateLayerTexture(const layers::SurfaceDescriptor& aTexture,
+                            VRLayerTextureType* aTextureType,
+                            void** aTextureHandle);
 
   VRTelemetry mTelemetry;
   bool mIsPresenting;
@@ -76,7 +75,7 @@ protected:
 class VRSystemManagerExternal : public VRSystemManager
 {
 public:
-  static already_AddRefed<VRSystemManagerExternal> Create();
+  static already_AddRefed<VRSystemManagerExternal> Create(VRExternalShmem* aAPIShmem = nullptr);
 
   virtual void Destroy() override;
   virtual void Shutdown() override;
@@ -96,23 +95,28 @@ public:
                              double aDuration,
                              const VRManagerPromise& aPromise) override;
   virtual void StopVibrateHaptic(uint32_t aControllerIdx) override;
-  void PullState(VRDisplayState* aDisplayState, VRHMDSensorState* aSensorState = nullptr);
+  bool PullState(VRDisplayState* aDisplayState, VRHMDSensorState* aSensorState = nullptr);
+  void PushState(VRBrowserState* aBrowserState);
 
 protected:
-  VRSystemManagerExternal();
+  explicit VRSystemManagerExternal(VRExternalShmem* aAPIShmem = nullptr);
   virtual ~VRSystemManagerExternal();
 
 private:
   // there can only be one
   RefPtr<impl::VRDisplayExternal> mDisplay;
   nsTArray<RefPtr<impl::VRControllerExternal>> mExternalController;
-
 #if defined(XP_MACOSX)
   int mShmemFD;
 #elif defined(XP_WIN)
   HANDLE mShmemFile;
+#elif defined(MOZ_WIDGET_ANDROID)
+  bool mDoShutdown;
+  bool mExternalStructFailed;
 #endif
+
   volatile VRExternalShmem* mExternalShmem;
+  bool mSameProcess;
 
   void OpenShmem();
   void CloseShmem();

@@ -11,6 +11,7 @@
 
 #include "ds/IdValuePair.h"
 #include "gc/Barrier.h"
+#include "gc/GCTrace.h"
 #include "js/CharacterEncoding.h"
 #include "js/GCHashTable.h"
 #include "js/TypeDecls.h"
@@ -28,9 +29,10 @@ class HeapTypeSet;
 class AutoClearTypeInferenceStateOnOOM;
 class AutoSweepObjectGroup;
 class CompilerConstraintList;
+class ObjectGroupRealm;
 
 namespace gc {
-void MergeCompartments(JSCompartment* source, JSCompartment* target);
+void MergeRealms(JS::Realm* source, JS::Realm* target);
 } // namespace gc
 
 /*
@@ -86,16 +88,97 @@ enum NewObjectKind {
 /* Type information about an object accessed by a script. */
 class ObjectGroup : public gc::TenuredCell
 {
-    friend class gc::GCRuntime;
+  public:
+    class Property;
 
+  private:
     /* Class shared by objects in this group. */
-    const Class* clasp_;
+    const Class* clasp_; // set by constructor
 
     /* Prototype shared by objects in this group. */
-    GCPtr<TaggedProto> proto_;
+    GCPtr<TaggedProto> proto_; // set by constructor
 
-    /* Compartment shared by objects in this group. */
-    JSCompartment* compartment_;
+    /* Realm shared by objects in this group. */
+    JS::Realm* realm_;; // set by constructor
+
+    /* Flags for this group. */
+    ObjectGroupFlags flags_; // set by constructor
+
+    // If non-null, holds additional information about this object, whose
+    // format is indicated by the object's addendum kind.
+    void* addendum_ = nullptr;
+
+    /*
+     * Properties of this object.
+     *
+     * The type sets in the properties of a group describe the possible values
+     * that can be read out of that property in actual JS objects. In native
+     * objects, property types account for plain data properties (those with a
+     * slot and no getter or setter hook) and dense elements. In typed objects
+     * and unboxed objects, property types account for object and value
+     * properties and elements in the object, and expando properties in unboxed
+     * objects.
+     *
+     * For accesses on these properties, the correspondence is as follows:
+     *
+     * 1. If the group has unknownProperties(), the possible properties and
+     *    value types for associated JSObjects are unknown.
+     *
+     * 2. Otherwise, for any |obj| in |group|, and any |id| which is a property
+     *    in |obj|, before obj->getProperty(id) the property in |group| for
+     *    |id| must reflect the result of the getProperty.
+     *
+     * There are several exceptions to this:
+     *
+     * 1. For properties of global JS objects which are undefined at the point
+     *    where the property was (lazily) generated, the property type set will
+     *    remain empty, and the 'undefined' type will only be added after a
+     *    subsequent assignment or deletion. After these properties have been
+     *    assigned a defined value, the only way they can become undefined
+     *    again is after such an assign or deletion.
+     *
+     * 2. Array lengths are special cased by the compiler and VM and are not
+     *    reflected in property types.
+     *
+     * 3. In typed objects (but not unboxed objects), the initial values of
+     *    properties (null pointers and undefined values) are not reflected in
+     *    the property types. These values are always possible when reading the
+     *    property.
+     *
+     * We establish these by using write barriers on calls to setProperty and
+     * defineProperty which are on native properties, and on any jitcode which
+     * might update the property with a new type.
+     */
+    Property** propertySet = nullptr;
+
+    // END OF PROPERTIES
+
+  private:
+    static inline uint32_t offsetOfClasp() {
+        return offsetof(ObjectGroup, clasp_);
+    }
+
+    static inline uint32_t offsetOfProto() {
+        return offsetof(ObjectGroup, proto_);
+    }
+
+    static inline uint32_t offsetOfRealm() {
+        return offsetof(ObjectGroup, realm_);
+    }
+
+    static inline uint32_t offsetOfFlags() {
+        return offsetof(ObjectGroup, flags_);
+    }
+
+    static inline uint32_t offsetOfAddendum() {
+        return offsetof(ObjectGroup, addendum_);
+    }
+
+    friend class gc::GCRuntime;
+    friend class gc::GCTrace;
+
+    // See JSObject::offsetOfGroup() comment.
+    friend class js::jit::MacroAssembler;
 
   public:
     const Class* clasp() const {
@@ -150,12 +233,9 @@ class ObjectGroup : public gc::TenuredCell
         return res;
     }
 
-    JSCompartment* compartment() const { return compartment_; }
-    JSCompartment* maybeCompartment() const { return compartment(); }
-
-  private:
-    /* Flags for this group. */
-    ObjectGroupFlags flags_;
+    JS::Compartment* compartment() const { return JS::GetCompartmentForRealm(realm_); }
+    JS::Compartment* maybeCompartment() const { return compartment(); }
+    JS::Realm* realm() const { return realm_; }
 
   public:
     // Kinds of addendums which can be attached to ObjectGroups.
@@ -188,10 +268,6 @@ class ObjectGroup : public gc::TenuredCell
     };
 
   private:
-    // If non-null, holds additional information about this object, whose
-    // format is indicated by the object's addendum kind.
-    void* addendum_;
-
     void setAddendum(AddendumKind kind, void* addendum, bool writeBarrier = true);
 
     AddendumKind addendumKind() const {
@@ -330,52 +406,9 @@ class ObjectGroup : public gc::TenuredCell
         static jsid getKey(Property* p) { return p->id; }
     };
 
-  private:
-    /*
-     * Properties of this object.
-     *
-     * The type sets in the properties of a group describe the possible values
-     * that can be read out of that property in actual JS objects. In native
-     * objects, property types account for plain data properties (those with a
-     * slot and no getter or setter hook) and dense elements. In typed objects
-     * and unboxed objects, property types account for object and value
-     * properties and elements in the object, and expando properties in unboxed
-     * objects.
-     *
-     * For accesses on these properties, the correspondence is as follows:
-     *
-     * 1. If the group has unknownProperties(), the possible properties and
-     *    value types for associated JSObjects are unknown.
-     *
-     * 2. Otherwise, for any |obj| in |group|, and any |id| which is a property
-     *    in |obj|, before obj->getProperty(id) the property in |group| for
-     *    |id| must reflect the result of the getProperty.
-     *
-     * There are several exceptions to this:
-     *
-     * 1. For properties of global JS objects which are undefined at the point
-     *    where the property was (lazily) generated, the property type set will
-     *    remain empty, and the 'undefined' type will only be added after a
-     *    subsequent assignment or deletion. After these properties have been
-     *    assigned a defined value, the only way they can become undefined
-     *    again is after such an assign or deletion.
-     *
-     * 2. Array lengths are special cased by the compiler and VM and are not
-     *    reflected in property types.
-     *
-     * 3. In typed objects (but not unboxed objects), the initial values of
-     *    properties (null pointers and undefined values) are not reflected in
-     *    the property types. These values are always possible when reading the
-     *    property.
-     *
-     * We establish these by using write barriers on calls to setProperty and
-     * defineProperty which are on native properties, and on any jitcode which
-     * might update the property with a new type.
-     */
-    Property** propertySet;
   public:
 
-    inline ObjectGroup(const Class* clasp, TaggedProto proto, JSCompartment* comp,
+    inline ObjectGroup(const Class* clasp, TaggedProto proto, JS::Realm* realm,
                        ObjectGroupFlags initialFlags);
 
     inline bool hasAnyFlags(const AutoSweepObjectGroup& sweep, ObjectGroupFlags flags);
@@ -461,30 +494,6 @@ class ObjectGroup : public gc::TenuredCell
 
     static const JS::TraceKind TraceKind = JS::TraceKind::ObjectGroup;
 
-  private:
-    // See JSObject::offsetOfGroup() comment.
-    friend class js::jit::MacroAssembler;
-
-    static inline uint32_t offsetOfClasp() {
-        return offsetof(ObjectGroup, clasp_);
-    }
-
-    static inline uint32_t offsetOfProto() {
-        return offsetof(ObjectGroup, proto_);
-    }
-
-    static inline uint32_t offsetOfCompartment() {
-        return offsetof(ObjectGroup, compartment_);
-    }
-
-    static inline uint32_t offsetOfAddendum() {
-        return offsetof(ObjectGroup, addendum_);
-    }
-
-    static inline uint32_t offsetOfFlags() {
-        return offsetof(ObjectGroup, flags_);
-    }
-
   public:
     const ObjectGroupFlags* addressOfFlags() const {
         return &flags_;
@@ -519,21 +528,22 @@ class ObjectGroup : public gc::TenuredCell
     static bool useSingletonForAllocationSite(JSScript* script, jsbytecode* pc,
                                               const Class* clasp);
 
-    // Static accessors for ObjectGroupCompartment NewTable.
+    // Static accessors for ObjectGroupRealm NewTable.
 
     static ObjectGroup* defaultNewGroup(JSContext* cx, const Class* clasp,
                                         TaggedProto proto,
                                         JSObject* associated = nullptr);
-    static ObjectGroup* lazySingletonGroup(JSContext* cx, const Class* clasp,
-                                           TaggedProto proto);
+    static ObjectGroup* lazySingletonGroup(JSContext* cx, ObjectGroupRealm& realm,
+                                           const Class* clasp, TaggedProto proto);
 
-    static void setDefaultNewGroupUnknown(JSContext* cx, const js::Class* clasp, JS::HandleObject obj);
+    static void setDefaultNewGroupUnknown(JSContext* cx, ObjectGroupRealm& realm,
+                                          const js::Class* clasp, JS::HandleObject obj);
 
 #ifdef DEBUG
     static bool hasDefaultNewGroup(JSObject* proto, const Class* clasp, ObjectGroup* group);
 #endif
 
-    // Static accessors for ObjectGroupCompartment ArrayObjectTable and PlainObjectTable.
+    // Static accessors for ObjectGroupRealm ArrayObjectTable and PlainObjectTable.
 
     enum class NewArrayKind {
         Normal,       // Specialize array group based on its element type.
@@ -553,7 +563,7 @@ class ObjectGroup : public gc::TenuredCell
                                     IdValuePair* properties, size_t nproperties,
                                     NewObjectKind newKind);
 
-    // Static accessors for ObjectGroupCompartment AllocationSiteTable.
+    // Static accessors for ObjectGroupRealm AllocationSiteTable.
 
     // Get a non-singleton group to use for objects created at the specified
     // allocation site.
@@ -581,38 +591,11 @@ class ObjectGroup : public gc::TenuredCell
     static ObjectGroup* defaultNewGroup(JSContext* cx, JSProtoKey key);
 };
 
-// Structure used to manage the groups in a compartment.
-class ObjectGroupCompartment
+// Structure used to manage the groups in a realm.
+class ObjectGroupRealm
 {
-    friend class ObjectGroup;
-
+  private:
     class NewTable;
-
-    // Set of default 'new' or lazy groups in the compartment.
-    NewTable* defaultNewTable;
-    NewTable* lazyTable;
-
-    // Cache for defaultNewGroup. Purged on GC.
-    class DefaultNewGroupCache
-    {
-        ObjectGroup* group_;
-        JSObject* associated_;
-
-      public:
-        DefaultNewGroupCache() { purge(); }
-
-        void purge() {
-            group_ = nullptr;
-        }
-        void put(ObjectGroup* group, JSObject* associated) {
-            group_ = group;
-            associated_ = associated;
-        }
-
-        MOZ_ALWAYS_INLINE ObjectGroup* lookup(const Class* clasp, TaggedProto proto,
-                                              JSObject* associated);
-    };
-    DefaultNewGroupCache defaultNewGroupCache;
 
     struct ArrayObjectKey;
     using ArrayObjectTable = js::GCRekeyableHashMap<ArrayObjectKey,
@@ -631,6 +614,38 @@ class ObjectGroupCompartment
                                            SystemAllocPolicy,
                                            PlainObjectTableSweepPolicy>;
 
+    class AllocationSiteTable;
+
+  private:
+    // Set of default 'new' or lazy groups in the realm.
+    NewTable* defaultNewTable = nullptr;
+    NewTable* lazyTable = nullptr;
+
+    // This cache is purged on GC.
+    class DefaultNewGroupCache
+    {
+        ObjectGroup* group_;
+        JSObject* associated_;
+
+      public:
+        DefaultNewGroupCache()
+          : associated_(nullptr)
+        {
+            purge();
+        }
+
+        void purge() {
+            group_ = nullptr;
+        }
+        void put(ObjectGroup* group, JSObject* associated) {
+            group_ = group;
+            associated_ = associated;
+        }
+
+        MOZ_ALWAYS_INLINE ObjectGroup* lookup(const Class* clasp, TaggedProto proto,
+                                              JSObject* associated);
+    } defaultNewGroupCache = {};
+
     // Tables for managing groups common to the contents of large script
     // singleton objects and JSON objects. These are vanilla ArrayObjects and
     // PlainObjects, so we distinguish the groups of different ones by looking
@@ -640,28 +655,42 @@ class ObjectGroupCompartment
     // and of the same element type will share a group. All singleton/JSON
     // objects which have the same shape and property types will also share a
     // group. We don't try to collate arrays or objects with type mismatches.
-    ArrayObjectTable* arrayObjectTable;
-    PlainObjectTable* plainObjectTable;
-
-    struct AllocationSiteKey;
-    class AllocationSiteTable;
+    ArrayObjectTable* arrayObjectTable = nullptr;
+    PlainObjectTable* plainObjectTable = nullptr;
 
     // Table for referencing types of objects keyed to an allocation site.
-    AllocationSiteTable* allocationSiteTable;
+    AllocationSiteTable* allocationSiteTable = nullptr;
 
-    // A single per-compartment ObjectGroup for all calls to StringSplitString.
+    // A single per-realm ObjectGroup for all calls to StringSplitString.
     // StringSplitString is always called from self-hosted code, and conceptually
     // the return object for a string.split(string) operation should have a
     // unified type.  Having a global group for this also allows us to remove
     // the hash-table lookup that would be required if we allocated this group
     // on the basis of call-site pc.
-    ReadBarrieredObjectGroup stringSplitStringGroup;
+    ReadBarrieredObjectGroup stringSplitStringGroup = {};
+
+  public:
+    // All unboxed layouts in the realm.
+    mozilla::LinkedList<js::UnboxedLayout> unboxedLayouts;
+
+    // END OF PROPERTIES
+
+  private:
+    friend class ObjectGroup;
+
+    struct AllocationSiteKey;
 
   public:
     struct NewEntry;
 
-    ObjectGroupCompartment();
-    ~ObjectGroupCompartment();
+    ObjectGroupRealm() = default;
+    ~ObjectGroupRealm();
+
+    ObjectGroupRealm(ObjectGroupRealm&) = delete;
+    void operator=(ObjectGroupRealm&) = delete;
+
+    static ObjectGroupRealm& get(ObjectGroup* group);
+    static ObjectGroupRealm& getForNewObject(JSContext* cx);
 
     void replaceAllocationSiteGroup(JSScript* script, jsbytecode* pc,
                                     JSProtoKey kind, ObjectGroup* group);
@@ -680,7 +709,7 @@ class ObjectGroupCompartment
                                 size_t* allocationSiteTables,
                                 size_t* arrayGroupTables,
                                 size_t* plainObjectGroupTables,
-                                size_t* compartmentTables);
+                                size_t* realmTables);
 
     void clearTables();
 

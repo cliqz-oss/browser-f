@@ -31,17 +31,16 @@ const TooltipsOverlay = require("devtools/client/inspector/shared/tooltips-overl
 const {createChild, promiseWarn} = require("devtools/client/inspector/shared/utils");
 const {debounce} = require("devtools/shared/debounce");
 const EventEmitter = require("devtools/shared/event-emitter");
-const AutocompletePopup = require("devtools/client/shared/autocomplete-popup");
 
 loader.lazyRequireGetter(this, "ClassListPreviewer", "devtools/client/inspector/rules/views/class-list-previewer");
 loader.lazyRequireGetter(this, "StyleInspectorMenu", "devtools/client/inspector/shared/style-inspector-menu");
+loader.lazyRequireGetter(this, "AutocompletePopup", "devtools/client/shared/autocomplete-popup");
 loader.lazyRequireGetter(this, "KeyShortcuts", "devtools/client/shared/key-shortcuts");
 loader.lazyRequireGetter(this, "clipboardHelper", "devtools/shared/platform/clipboard");
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const PREF_UA_STYLES = "devtools.inspector.showUserAgentStyles";
 const PREF_DEFAULT_COLOR_UNIT = "devtools.defaultColorUnit";
-const PREF_FONT_EDITOR = "devtools.inspector.fonteditor.enabled";
 const FILTER_CHANGED_TIMEOUT = 150;
 
 // This is used to parse user input when filtering.
@@ -105,7 +104,6 @@ function CssRuleView(inspector, document, store, pageStyle) {
   EventEmitter.decorate(this);
 
   this.inspector = inspector;
-  this.highlighters = inspector.highlighters;
   this.styleDocument = document;
   this.styleWindow = this.styleDocument.defaultView;
   this.store = store || {};
@@ -126,12 +124,11 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this._onCopy = this._onCopy.bind(this);
   this._onFilterStyles = this._onFilterStyles.bind(this);
   this._onClearSearch = this._onClearSearch.bind(this);
-  this._onRuleSelected = this._onRuleSelected.bind(this);
   this._onTogglePseudoClassPanel = this._onTogglePseudoClassPanel.bind(this);
   this._onTogglePseudoClass = this._onTogglePseudoClass.bind(this);
   this._onToggleClassPanel = this._onToggleClassPanel.bind(this);
 
-  let doc = this.styleDocument;
+  const doc = this.styleDocument;
   this.element = doc.getElementById("ruleview-container-focusable");
   this.addRuleButton = doc.getElementById("ruleview-add-rule-button");
   this.searchField = doc.getElementById("ruleview-searchbox");
@@ -154,6 +151,9 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this.shortcuts.on("CmdOrCtrl+F", event => this._onShortcut("CmdOrCtrl+F", event));
   this.element.addEventListener("copy", this._onCopy);
   this.element.addEventListener("contextmenu", this._onContextMenu);
+  this.element.addEventListener("mousemove", () => {
+    this.addHighlightersToView();
+  }, { once: true });
   this.addRuleButton.addEventListener("click", this._onAddRule);
   this.searchField.addEventListener("input", this._onFilterStyles);
   this.searchClearButton.addEventListener("click", this._onClearSearch);
@@ -162,7 +162,6 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this.hoverCheckbox.addEventListener("click", this._onTogglePseudoClass);
   this.activeCheckbox.addEventListener("click", this._onTogglePseudoClass);
   this.focusCheckbox.addEventListener("click", this._onTogglePseudoClass);
-  this.on("ruleview-rule-selected", this._onRuleSelected);
 
   this._handlePrefChange = this._handlePrefChange.bind(this);
   this._handleUAStylePrefChange = this._handleUAStylePrefChange.bind(this);
@@ -174,20 +173,11 @@ function CssRuleView(inspector, document, store, pageStyle) {
   this._prefObserver.on(PREF_DEFAULT_COLOR_UNIT, this._handleDefaultColorUnitPrefChange);
 
   this.showUserAgentStyles = Services.prefs.getBoolPref(PREF_UA_STYLES);
-  this.showFontEditor = Services.prefs.getBoolPref(PREF_FONT_EDITOR);
-
-  // The popup will be attached to the toolbox document.
-  this.popup = new AutocompletePopup(inspector._toolbox.doc, {
-    autoSelect: true,
-    theme: "auto"
-  });
 
   this._showEmpty();
 
   // Add the tooltips and highlighters to the view
   this.tooltips = new TooltipsOverlay(this);
-
-  this.highlighters.addToView(this);
 }
 
 CssRuleView.prototype = {
@@ -200,6 +190,18 @@ CssRuleView.prototype = {
   // Empty, unconnected element of the same type as this node, used
   // to figure out how shorthand properties will be parsed.
   _dummyElement: null,
+
+  get popup() {
+    if (!this._popup) {
+      // The popup will be attached to the toolbox document.
+      this._popup = new AutocompletePopup(this.inspector.toolbox.doc, {
+        autoSelect: true,
+        theme: "auto",
+      });
+    }
+
+    return this._popup;
+  },
 
   get classListPreviewer() {
     if (!this._classListPreviewer) {
@@ -222,9 +224,23 @@ CssRuleView.prototype = {
     return this._dummyElement;
   },
 
+  // Get the highlighters overlay from the Inspector.
+  get highlighters() {
+    if (!this._highlighters) {
+      // highlighters is a lazy getter in the inspector.
+      this._highlighters = this.inspector.highlighters;
+    }
+
+    return this._highlighters;
+  },
+
   // Get the filter search value.
   get searchValue() {
     return this.searchField.value.toLowerCase();
+  },
+
+  get rules() {
+    return this._elementStyle ? this._elementStyle.rules : [];
   },
 
   /**
@@ -244,8 +260,8 @@ CssRuleView.prototype = {
     }
 
     try {
-      let utils = this.inspector.toolbox.highlighterUtils;
-      let h = await utils.getHighlighterByType("SelectorHighlighter");
+      const utils = this.inspector.toolbox.highlighterUtils;
+      const h = await utils.getHighlighterByType("SelectorHighlighter");
       this.selectorHighlighter = h;
       return h;
     } catch (e) {
@@ -277,7 +293,7 @@ CssRuleView.prototype = {
     }
     selectorIcon.classList.remove("highlighted");
 
-    let highlighter = await this.getSelectorHighlighter();
+    const highlighter = await this.getSelectorHighlighter();
     if (!highlighter) {
       return;
     }
@@ -289,7 +305,7 @@ CssRuleView.prototype = {
       selectorIcon.classList.add("highlighted");
       this.lastSelectorIcon = selectorIcon;
 
-      let node = this.inspector.selection.nodeFront;
+      const node = this.inspector.selection.nodeFront;
 
       await highlighter.show(node, {
         hideInfoBar: true,
@@ -322,8 +338,8 @@ CssRuleView.prototype = {
     }
 
     let type, value;
-    let classes = node.classList;
-    let prop = getParentTextProperty(node);
+    const classes = node.classList;
+    const prop = getParentTextProperty(node);
 
     if (classes.contains("ruleview-propertyname") && prop) {
       type = VIEW_NODE_PROPERTY_TYPE;
@@ -416,7 +432,7 @@ CssRuleView.prototype = {
     } else if (classes.contains("ruleview-rule-source") ||
                classes.contains("ruleview-rule-source-label")) {
       type = VIEW_NODE_LOCATION_TYPE;
-      let rule = this._getRuleEditorForNode(node).rule;
+      const rule = this._getRuleEditorForNode(node).rule;
       value = (rule.sheet && rule.sheet.href) ? rule.sheet.href : rule.title;
     } else {
       return null;
@@ -481,11 +497,11 @@ CssRuleView.prototype = {
     try {
       let text = "";
 
-      let nodeName = target && target.nodeName;
+      const nodeName = target && target.nodeName;
       if (nodeName === "input" || nodeName == "textarea") {
-        let start = Math.min(target.selectionStart, target.selectionEnd);
-        let end = Math.max(target.selectionStart, target.selectionEnd);
-        let count = end - start;
+        const start = Math.min(target.selectionStart, target.selectionEnd);
+        const end = Math.max(target.selectionStart, target.selectionEnd);
+        const count = end - start;
         text = target.value.substr(start, count);
       } else {
         text = this.styleWindow.getSelection().toString();
@@ -505,24 +521,24 @@ CssRuleView.prototype = {
    * does not support as-authored styles.
    */
   _onAddNewRuleNonAuthored: function() {
-    let elementStyle = this._elementStyle;
-    let element = elementStyle.element;
-    let rules = elementStyle.rules;
-    let pseudoClasses = element.pseudoClassLocks;
+    const elementStyle = this._elementStyle;
+    const element = elementStyle.element;
+    const rules = elementStyle.rules;
+    const pseudoClasses = element.pseudoClassLocks;
 
     this.pageStyle.addNewRule(element, pseudoClasses).then(options => {
-      let newRule = new Rule(elementStyle, options);
+      const newRule = new Rule(elementStyle, options);
       rules.push(newRule);
-      let editor = new RuleEditor(this, newRule);
+      const editor = new RuleEditor(this, newRule);
       newRule.editor = editor;
 
       // Insert the new rule editor after the inline element rule
       if (rules.length <= 1) {
         this.element.appendChild(editor.element);
       } else {
-        for (let rule of rules) {
+        for (const rule of rules) {
           if (rule.domRule.type === ELEMENT_STYLE) {
-            let referenceElement = rule.editor.element.nextSibling;
+            const referenceElement = rule.editor.element.nextSibling;
             this.element.insertBefore(editor.element, referenceElement);
             break;
           }
@@ -539,9 +555,9 @@ CssRuleView.prototype = {
    * Add a new rule to the current element.
    */
   _onAddRule: function() {
-    let elementStyle = this._elementStyle;
-    let element = elementStyle.element;
-    let pseudoClasses = element.pseudoClassLocks;
+    const elementStyle = this._elementStyle;
+    const element = elementStyle.element;
+    const pseudoClasses = element.pseudoClassLocks;
 
     if (!this.pageStyle.supportsAuthoredStyles) {
       // We're talking to an old server.
@@ -553,12 +569,12 @@ CssRuleView.prototype = {
     // emit an event, which will in turn cause the rule view to be
     // updated.  So, we wait for this update and for the rule creation
     // request to complete, and then focus the new rule's selector.
-    let eventPromise = this.once("ruleview-refreshed");
-    let newRulePromise = this.pageStyle.addNewRule(element, pseudoClasses);
+    const eventPromise = this.once("ruleview-refreshed");
+    const newRulePromise = this.pageStyle.addNewRule(element, pseudoClasses);
     promise.all([eventPromise, newRulePromise]).then((values) => {
-      let options = values[1];
+      const options = values[1];
       // Be sure the reference the correct |rules| here.
-      for (let rule of this._elementStyle.rules) {
+      for (const rule of this._elementStyle.rules) {
         if (options.rule === rule.domRule) {
           rule.editor.selectorText.click();
           elementStyle._changed();
@@ -572,7 +588,7 @@ CssRuleView.prototype = {
    * Disables add rule button when needed
    */
   refreshAddRuleButtonState: function() {
-    let shouldBeDisabled = !this._viewedElement ||
+    const shouldBeDisabled = !this._viewedElement ||
                            !this.inspector.selection.isElementNode() ||
                            this.inspector.selection.isAnonymousNode();
     this.addRuleButton.disabled = shouldBeDisabled;
@@ -603,7 +619,7 @@ CssRuleView.prototype = {
 
   _handlePrefChange: function(pref) {
     // Reselect the currently selected element
-    let refreshOnPrefs = [PREF_UA_STYLES, PREF_DEFAULT_COLOR_UNIT];
+    const refreshOnPrefs = [PREF_UA_STYLES, PREF_DEFAULT_COLOR_UNIT];
     if (refreshOnPrefs.indexOf(pref) > -1) {
       this.selectElement(this._viewedElement, true);
     }
@@ -628,7 +644,7 @@ CssRuleView.prototype = {
       clearTimeout(this._filterChangedTimeout);
     }
 
-    let filterTimeout = (this.searchValue.length > 0) ?
+    const filterTimeout = (this.searchValue.length > 0) ?
                         FILTER_CHANGED_TIMEOUT : 0;
     this.searchClearButton.hidden = this.searchValue.length === 0;
 
@@ -684,7 +700,7 @@ CssRuleView.prototype = {
         // is contained in backquotes, extract the search value within the
         // backquotes and set the flag to perform a strict search for all
         // the values (selector, stylesheet, property and computed values).
-        let searchValue = FILTER_STRICT_RE.exec(this.searchValue)[1];
+        const searchValue = FILTER_STRICT_RE.exec(this.searchValue)[1];
         this.searchData.strictSearchAllValues = true;
         this.searchData.searchPropertyName = searchValue;
         this.searchData.searchPropertyValue = searchValue;
@@ -739,8 +755,13 @@ CssRuleView.prototype = {
       this._contextMenu = null;
     }
 
+    if (this._highlighters) {
+      this._highlighters.removeFromView(this);
+      this._highlighters = null;
+    }
+
     this.tooltips.destroy();
-    this.highlighters.removeFromView(this);
+
     this.unselectAllRules();
 
     // Remove bound listeners
@@ -755,7 +776,6 @@ CssRuleView.prototype = {
     this.hoverCheckbox.removeEventListener("click", this._onTogglePseudoClass);
     this.activeCheckbox.removeEventListener("click", this._onTogglePseudoClass);
     this.focusCheckbox.removeEventListener("click", this._onTogglePseudoClass);
-    this.off("ruleview-rule-selected", this._onRuleSelected);
 
     this.searchField = null;
     this.searchClearButton = null;
@@ -768,7 +788,6 @@ CssRuleView.prototype = {
     this.focusCheckbox = null;
 
     this.inspector = null;
-    this.highlighters = null;
     this.styleDocument = null;
     this.styleWindow = null;
 
@@ -780,7 +799,10 @@ CssRuleView.prototype = {
       this._elementStyle.destroy();
     }
 
-    this.popup.destroy();
+    if (this._popup) {
+      this._popup.destroy();
+      this._popup = null;
+    }
   },
 
   /**
@@ -808,12 +830,12 @@ CssRuleView.prototype = {
    *        Update the view even if the element is the same as last time.
    */
   selectElement: function(element, allowRefresh = false) {
-    let refresh = (this._viewedElement === element);
+    const refresh = (this._viewedElement === element);
     if (refresh && !allowRefresh) {
       return promise.resolve(undefined);
     }
 
-    if (this.popup.isOpen) {
+    if (this._popup && this.popup.isOpen) {
       this.popup.hidePopup();
     }
 
@@ -835,15 +857,15 @@ CssRuleView.prototype = {
     // To figure out how shorthand properties are interpreted by the
     // engine, we will set properties on a dummy element and observe
     // how their .style attribute reflects them as computed values.
-    let dummyElementPromise = promise.resolve(this.styleDocument).then(document => {
+    const dummyElementPromise = promise.resolve(this.styleDocument).then(document => {
       // ::before and ::after do not have a namespaceURI
-      let namespaceURI = this.element.namespaceURI ||
+      const namespaceURI = this.element.namespaceURI ||
           document.documentElement.namespaceURI;
       this._dummyElement = document.createElementNS(namespaceURI,
                                                    this.element.tagName);
     }).catch(promiseWarn);
 
-    let elementStyle = new ElementStyle(element, this, this.store,
+    const elementStyle = new ElementStyle(element, this, this.store,
       this.pageStyle, this.showUserAgentStyles);
     this._elementStyle = elementStyle;
 
@@ -883,8 +905,8 @@ CssRuleView.prototype = {
     }
 
     // Repopulate the element style once the current modifications are done.
-    let promises = [];
-    for (let rule of this._elementStyle.rules) {
+    const promises = [];
+    for (const rule of this._elementStyle.rules) {
       if (rule._applyingModifications) {
         promises.push(rule._applyingModifications);
       }
@@ -916,7 +938,7 @@ CssRuleView.prototype = {
       return;
     }
 
-    for (let pseudoClassLock of this._elementStyle.element.pseudoClassLocks) {
+    for (const pseudoClassLock of this._elementStyle.element.pseudoClassLocks) {
       switch (pseudoClassLock) {
         case ":hover": {
           this.hoverCheckbox.checked = true;
@@ -935,14 +957,14 @@ CssRuleView.prototype = {
   },
 
   _populate: function() {
-    let elementStyle = this._elementStyle;
+    const elementStyle = this._elementStyle;
     return this._elementStyle.populate().then(() => {
       if (this._elementStyle !== elementStyle || this.isDestroyed) {
         return null;
       }
 
       this._clearRules();
-      let onEditorsReady = this._createEditors();
+      const onEditorsReady = this._createEditors();
       this.refreshPseudoClassPanel();
 
       // Notify anyone that cares that we refreshed.
@@ -1039,18 +1061,18 @@ CssRuleView.prototype = {
    * @return {DOMNode} The container element
    */
   createExpandableContainer: function(label, isPseudo = false) {
-    let header = this.styleDocument.createElementNS(HTML_NS, "div");
+    const header = this.styleDocument.createElementNS(HTML_NS, "div");
     header.className = this._getRuleViewHeaderClassName(true);
     header.textContent = label;
 
-    let twisty = this.styleDocument.createElementNS(HTML_NS, "span");
+    const twisty = this.styleDocument.createElementNS(HTML_NS, "span");
     twisty.className = "ruleview-expander theme-twisty";
     twisty.setAttribute("open", "true");
 
     header.insertBefore(twisty, header.firstChild);
     this.element.appendChild(header);
 
-    let container = this.styleDocument.createElementNS(HTML_NS, "div");
+    const container = this.styleDocument.createElementNS(HTML_NS, "div");
     container.classList.add("ruleview-expandable-container");
     container.hidden = false;
     this.element.appendChild(container);
@@ -1104,7 +1126,7 @@ CssRuleView.prototype = {
   },
 
   _getRuleViewHeaderClassName: function(isPseudo) {
-    let baseClassName = "ruleview-header";
+    const baseClassName = "ruleview-header";
     return isPseudo ? baseClassName + " ruleview-expandable-header" :
       baseClassName;
   },
@@ -1126,8 +1148,8 @@ CssRuleView.prototype = {
       return promise.resolve();
     }
 
-    let editorReadyPromises = [];
-    for (let rule of this._elementStyle.rules) {
+    const editorReadyPromises = [];
+    for (const rule of this._elementStyle.rules) {
       if (rule.domRule.system) {
         continue;
       }
@@ -1150,15 +1172,15 @@ CssRuleView.prototype = {
       // Only print header for this element if there are pseudo elements
       if (seenPseudoElement && !seenNormalElement && !rule.pseudoElement) {
         seenNormalElement = true;
-        let div = this.styleDocument.createElementNS(HTML_NS, "div");
+        const div = this.styleDocument.createElementNS(HTML_NS, "div");
         div.className = this._getRuleViewHeaderClassName();
         div.textContent = this.selectedElementLabel;
         this.element.appendChild(div);
       }
 
-      let inheritedSource = rule.inherited;
+      const inheritedSource = rule.inherited;
       if (inheritedSource && inheritedSource !== lastInheritedSource) {
-        let div = this.styleDocument.createElementNS(HTML_NS, "div");
+        const div = this.styleDocument.createElementNS(HTML_NS, "div");
         div.className = this._getRuleViewHeaderClassName();
         div.textContent = rule.inheritedSource;
         lastInheritedSource = inheritedSource;
@@ -1171,7 +1193,7 @@ CssRuleView.prototype = {
                                                    true);
       }
 
-      let keyframes = rule.keyframes;
+      const keyframes = rule.keyframes;
       if (keyframes && keyframes !== lastKeyframes) {
         lastKeyframes = keyframes;
         container = this.createExpandableContainer(rule.keyframesName);
@@ -1203,12 +1225,12 @@ CssRuleView.prototype = {
    * @return {Boolean} true if the rule was highlighted, false otherwise.
    */
   highlightRule: function(rule) {
-    let isRuleSelectorHighlighted = this._highlightRuleSelector(rule);
-    let isStyleSheetHighlighted = this._highlightStyleSheet(rule);
+    const isRuleSelectorHighlighted = this._highlightRuleSelector(rule);
+    const isStyleSheetHighlighted = this._highlightStyleSheet(rule);
     let isHighlighted = isRuleSelectorHighlighted || isStyleSheetHighlighted;
 
     // Highlight search matches in the rule properties
-    for (let textProp of rule.textProps) {
+    for (const textProp of rule.textProps) {
       if (!textProp.invisible && this._highlightProperty(textProp.editor)) {
         isHighlighted = true;
       }
@@ -1269,7 +1291,7 @@ CssRuleView.prototype = {
       return;
     }
 
-    let index = rules.findIndex(item => item === rule);
+    const index = rules.findIndex(item => item === rule);
     if (index === -1) {
       return;
     }
@@ -1287,7 +1309,7 @@ CssRuleView.prototype = {
   *        Optional editor id for which to restrict unselect operation.
   */
   unselectAllRules(editorId) {
-    for (let [id, rules] of this.selectedRules) {
+    for (const [id, rules] of this.selectedRules) {
       // If we're supposed to unselect rules from just one editorId but it did not match,
       // skip this iteration.
       if (editorId && id !== editorId) {
@@ -1311,24 +1333,6 @@ CssRuleView.prototype = {
   },
 
   /**
-   * Called when a rule from the Rule view was marked as selected for an editor.
-   * Handle the event and show panels relevant for the given editor id.
-   *
-   * @param {Object} eventData
-   *        Data payload for the event. Contains:
-   *        - {String} editorId - id of the editor for which the rule was selected
-   *        - {Rule} rule - reference to rule that was selected
-   */
-  _onRuleSelected(eventData) {
-    const { editorId } = eventData;
-    switch (editorId) {
-      case "fonteditor":
-        this.inspector.sidebar.show("fontinspector");
-        break;
-    }
-  },
-
-  /**
    * Highlights the rule selector that matches the filter search value and
    * returns a boolean indicating whether or not the selector was highlighted.
    *
@@ -1348,8 +1352,8 @@ CssRuleView.prototype = {
     }
 
     // Highlight search matches in the rule selectors
-    for (let selectorNode of selectorNodes) {
-      let selector = selectorNode.textContent.toLowerCase();
+    for (const selectorNode of selectorNodes) {
+      const selector = selectorNode.textContent.toLowerCase();
       if ((this.searchData.strictSearchAllValues &&
            selector === this.searchData.strictSearchValue) ||
           (!this.searchData.strictSearchAllValues &&
@@ -1371,8 +1375,8 @@ CssRuleView.prototype = {
    *         otherwise.
    */
   _highlightStyleSheet: function(rule) {
-    let styleSheetSource = rule.title.toLowerCase();
-    let isStyleSheetHighlighted = this.searchData.strictSearchValue ?
+    const styleSheetSource = rule.title.toLowerCase();
+    const isStyleSheetHighlighted = this.searchData.strictSearchValue ?
       styleSheetSource === this.searchData.strictSearchValue :
       styleSheetSource.includes(this.searchValue);
 
@@ -1394,8 +1398,8 @@ CssRuleView.prototype = {
    *         highlighted, false otherwise.
    */
   _highlightProperty: function(editor) {
-    let isPropertyHighlighted = this._highlightRuleProperty(editor);
-    let isComputedHighlighted = this._highlightComputedProperty(editor);
+    const isPropertyHighlighted = this._highlightRuleProperty(editor);
+    const isComputedHighlighted = this._highlightComputedProperty(editor);
 
     // Expand the computed list if a computed property is highlighted and the
     // property rule is not highlighted
@@ -1438,8 +1442,8 @@ CssRuleView.prototype = {
    */
   _highlightRuleProperty: function(editor) {
     // Get the actual property value displayed in the rule view
-    let propertyName = editor.prop.name.toLowerCase();
-    let propertyValue = editor.valueSpan.textContent.toLowerCase();
+    const propertyName = editor.prop.name.toLowerCase();
+    const propertyValue = editor.valueSpan.textContent.toLowerCase();
 
     return this._highlightMatches(editor.container, propertyName,
                                   propertyValue);
@@ -1460,11 +1464,11 @@ CssRuleView.prototype = {
 
     // Highlight search matches in the computed list of properties
     editor._populateComputed();
-    for (let computed of editor.prop.computed) {
+    for (const computed of editor.prop.computed) {
       if (computed.element) {
         // Get the actual property value displayed in the computed list
-        let computedName = computed.name.toLowerCase();
-        let computedValue = computed.parsedValue.toLowerCase();
+        const computedName = computed.name.toLowerCase();
+        const computedValue = computed.parsedValue.toLowerCase();
 
         isComputedHighlighted = this._highlightMatches(computed.element,
           computedName, computedValue) ? true : isComputedHighlighted;
@@ -1489,7 +1493,7 @@ CssRuleView.prototype = {
    *         otherwise.
    */
   _highlightMatches: function(element, propertyName, propertyValue) {
-    let {
+    const {
       searchPropertyName,
       searchPropertyValue,
       searchPropertyMatch,
@@ -1503,10 +1507,10 @@ CssRuleView.prototype = {
     // `font-family: arial`, then check to make sure the name and value match.
     // Otherwise, just compare the inputted search string directly against the
     // name and value of the rule property.
-    let hasNameAndValue = searchPropertyMatch &&
+    const hasNameAndValue = searchPropertyMatch &&
                           searchPropertyName &&
                           searchPropertyValue;
-    let isMatch = (value, query, isStrict) => {
+    const isMatch = (value, query, isStrict) => {
       return isStrict ? value === query : query && value.includes(query);
     };
 
@@ -1534,11 +1538,11 @@ CssRuleView.prototype = {
    * list if toggled opened
    */
   _clearHighlight: function(element) {
-    for (let el of element.querySelectorAll(".ruleview-highlight")) {
+    for (const el of element.querySelectorAll(".ruleview-highlight")) {
       el.classList.remove("ruleview-highlight");
     }
 
-    for (let computed of element.querySelectorAll(
+    for (const computed of element.querySelectorAll(
           ".ruleview-computedlist[filter-open]")) {
       computed.parentNode._textPropertyEditor.collapseForFilter();
     }
@@ -1581,7 +1585,7 @@ CssRuleView.prototype = {
    * the pseudo class for the current selected element.
    */
   _onTogglePseudoClass: function(event) {
-    let target = event.currentTarget;
+    const target = event.currentTarget;
     this.inspector.togglePseudoClass(target.value);
   },
 
@@ -1633,8 +1637,15 @@ CssRuleView.prototype = {
       event.preventDefault();
       event.stopPropagation();
     }
-  }
+  },
 
+  /**
+   * Adds the highlighters overlay to the rule view. This is called by the "mousemove"
+   * event handler and in shared-head.js when opening and selecting the rule view.
+   */
+  addHighlightersToView() {
+    this.highlighters.addToView(this);
+  },
 };
 
 /**
@@ -1669,12 +1680,12 @@ function getParentTextPropertyHolder(node) {
  * @return {TextProperty}
  */
 function getParentTextProperty(node) {
-  let parent = getParentTextPropertyHolder(node);
+  const parent = getParentTextPropertyHolder(node);
   if (!parent) {
     return null;
   }
 
-  let propValue = parent.querySelector(".ruleview-propertyvalue");
+  const propValue = parent.querySelector(".ruleview-propertyvalue");
   if (!propValue) {
     return null;
   }
@@ -1739,11 +1750,11 @@ function getShapeToggleActive(node) {
  * @returns {String} The point associated with the given node.
  */
 function getShapePoint(node) {
-  let classList = node.classList;
+  const classList = node.classList;
   let point = node.dataset.point;
   // Inset points use classes instead of data because a single span can represent
   // multiple points.
-  let insetClasses = [];
+  const insetClasses = [];
   classList.forEach(className => {
     if (INSET_POINT_TYPES.includes(className)) {
       insetClasses.push(className);
@@ -1805,7 +1816,7 @@ RuleViewTool.prototype = {
       return;
     }
 
-    let isInactive = !this.isSidebarActive() &&
+    const isInactive = !this.isSidebarActive() &&
                      this.inspector.selection.nodeFront;
     if (isInactive) {
       return;
@@ -1820,7 +1831,7 @@ RuleViewTool.prototype = {
     }
 
     if (selectElement) {
-      let done = this.inspector.updating("rule-view");
+      const done = this.inspector.updating("rule-view");
       this.view.selectElement(this.inspector.selection.nodeFront)
         .then(done, done);
     }

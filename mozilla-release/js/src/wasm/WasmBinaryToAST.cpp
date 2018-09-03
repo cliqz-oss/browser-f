@@ -21,8 +21,8 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Sprintf.h"
 
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "wasm/WasmOpIter.h"
 #include "wasm/WasmValidate.h"
 
@@ -97,13 +97,13 @@ class AstDecodeContext
 
   public:
     AstDecodeContext(JSContext* cx, LifoAlloc& lifo, Decoder& d, AstModule& module,
-                     bool generateNames)
+                     bool generateNames, HasGcTypes hasGcTypes)
      : cx(cx),
        lifo(lifo),
        d(d),
        generateNames(generateNames),
-       env_(CompileMode::Once, Tier::Ion, DebugEnabled::False, HasGcTypes::False,
-            cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled()
+       env_(CompileMode::Once, Tier::Ion, DebugEnabled::False, hasGcTypes,
+            cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled()
             ? Shareable::True
             : Shareable::False),
        module_(module),
@@ -163,7 +163,7 @@ class AstDecodeContext
             if (!exprs.append(voidNode))
                 return nullptr;
 
-            return new(lifo) AstFirst(Move(exprs));
+            return new(lifo) AstFirst(std::move(exprs));
         }
 
         return voidNode;
@@ -258,11 +258,11 @@ GenerateFuncRef(AstDecodeContext& c, uint32_t funcIndex, AstRef* ref)
 }
 
 static bool
-AstDecodeCallArgs(AstDecodeContext& c, const SigWithId& sig, AstExprVector* funcArgs)
+AstDecodeCallArgs(AstDecodeContext& c, const FuncTypeWithId& funcType, AstExprVector* funcArgs)
 {
     MOZ_ASSERT(!c.iter().currentBlockHasPolymorphicBase());
 
-    uint32_t numArgs = sig.args().length();
+    uint32_t numArgs = funcType.args().length();
     if (!funcArgs->resize(numArgs))
         return false;
 
@@ -314,18 +314,18 @@ AstDecodeCall(AstDecodeContext& c)
     if (!GenerateFuncRef(c, funcIndex, &funcRef))
         return false;
 
-    const SigWithId* sig = c.env().funcSigs[funcIndex];
+    const FuncTypeWithId* funcType = c.env().funcTypes[funcIndex];
 
     AstExprVector args(c.lifo);
-    if (!AstDecodeCallArgs(c, *sig, &args))
+    if (!AstDecodeCallArgs(c, *funcType, &args))
         return false;
 
-    AstCall* call = new(c.lifo) AstCall(Op::Call, sig->ret(), funcRef, Move(args));
+    AstCall* call = new(c.lifo) AstCall(Op::Call, funcType->ret(), funcRef, std::move(args));
     if (!call)
         return false;
 
     AstExpr* result = call;
-    if (IsVoid(sig->ret()))
+    if (IsVoid(funcType->ret()))
         result = c.handleVoidExpr(call);
 
     if (!c.push(AstDecodeStackItem(result)))
@@ -337,9 +337,9 @@ AstDecodeCall(AstDecodeContext& c)
 static bool
 AstDecodeCallIndirect(AstDecodeContext& c)
 {
-    uint32_t sigIndex;
+    uint32_t funcTypeIndex;
     AstDecodeOpIter::ValueVector unusedArgs;
-    if (!c.iter().readCallIndirect(&sigIndex, nullptr, &unusedArgs))
+    if (!c.iter().readCallIndirect(&funcTypeIndex, nullptr, &unusedArgs))
         return false;
 
     if (c.iter().currentBlockHasPolymorphicBase())
@@ -347,21 +347,22 @@ AstDecodeCallIndirect(AstDecodeContext& c)
 
     AstDecodeStackItem index = c.popCopy();
 
-    AstRef sigRef;
-    if (!GenerateRef(c, AstName(u"type"), sigIndex, &sigRef))
+    AstRef funcTypeRef;
+    if (!GenerateRef(c, AstName(u"type"), funcTypeIndex, &funcTypeRef))
         return false;
 
-    const SigWithId& sig = c.env().sigs[sigIndex];
+    const FuncTypeWithId& funcType = c.env().types[funcTypeIndex].funcType();
     AstExprVector args(c.lifo);
-    if (!AstDecodeCallArgs(c, sig, &args))
+    if (!AstDecodeCallArgs(c, funcType, &args))
         return false;
 
-    AstCallIndirect* call = new(c.lifo) AstCallIndirect(sigRef, sig.ret(), Move(args), index.expr);
+    AstCallIndirect* call =
+        new(c.lifo) AstCallIndirect(funcTypeRef, funcType.ret(), std::move(args), index.expr);
     if (!call)
         return false;
 
     AstExpr* result = call;
-    if (IsVoid(sig.ret()))
+    if (IsVoid(funcType.ret()))
         result = c.handleVoidExpr(call);
 
     if (!c.push(AstDecodeStackItem(result)))
@@ -421,7 +422,7 @@ AstDecodeBrTable(AstDecodeContext& c)
     if (!AstDecodeGetBlockRef(c, defaultDepth, &def))
         return false;
 
-    auto branchTable = new(c.lifo) AstBranchTable(*index.expr, def, Move(table), value.expr);
+    auto branchTable = new(c.lifo) AstBranchTable(*index.expr, def, std::move(table), value.expr);
     if (!branchTable)
         return false;
 
@@ -472,7 +473,7 @@ AstDecodeBlock(AstDecodeContext& c, Op op)
     c.exprs().shrinkTo(c.depths().popCopy());
 
     AstName name = c.blockLabels().popCopy();
-    AstBlock* block = new(c.lifo) AstBlock(op, type, name, Move(exprs));
+    AstBlock* block = new(c.lifo) AstBlock(op, type, name, std::move(exprs));
     if (!block)
         return false;
 
@@ -549,7 +550,7 @@ AstDecodeIf(AstDecodeContext& c)
 
     AstName name = c.blockLabels().popCopy();
 
-    AstIf* if_ = new(c.lifo) AstIf(type, cond.expr, name, Move(thenExprs), Move(elseExprs));
+    AstIf* if_ = new(c.lifo) AstIf(type, cond.expr, name, std::move(thenExprs), std::move(elseExprs));
     if (!if_)
         return false;
 
@@ -714,7 +715,7 @@ AstDecodeConversion(AstDecodeContext& c, ValType fromType, ValType toType, Op op
 
 #ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
 static bool
-AstDecodeExtraConversion(AstDecodeContext& c, ValType fromType, ValType toType, NumericOp op)
+AstDecodeExtraConversion(AstDecodeContext& c, ValType fromType, ValType toType, MiscOp op)
 {
     if (!c.iter().readConversion(fromType, toType, nullptr))
         return false;
@@ -1249,6 +1250,50 @@ AstDecodeWake(AstDecodeContext& c)
     return true;
 }
 
+#ifdef ENABLE_WASM_BULKMEM_OPS
+static bool
+AstDecodeMemCopy(AstDecodeContext& c)
+{
+    if (!c.iter().readMemCopy(nullptr, nullptr, nullptr))
+        return false;
+
+    AstDecodeStackItem dest = c.popCopy();
+    AstDecodeStackItem src  = c.popCopy();
+    AstDecodeStackItem len  = c.popCopy();
+
+    AstMemCopy* mc = new(c.lifo) AstMemCopy(dest.expr, src.expr, len.expr);
+
+    if (!mc)
+        return false;
+
+    if (!c.push(AstDecodeStackItem(mc)))
+        return false;
+
+    return true;
+}
+
+static bool
+AstDecodeMemFill(AstDecodeContext& c)
+{
+    if (!c.iter().readMemFill(nullptr, nullptr, nullptr))
+        return false;
+
+    AstDecodeStackItem len   = c.popCopy();
+    AstDecodeStackItem val   = c.popCopy();
+    AstDecodeStackItem start = c.popCopy();
+
+    AstMemFill* mf = new(c.lifo) AstMemFill(start.expr, val.expr, len.expr);
+
+    if (!mf)
+        return false;
+
+    if (!c.push(AstDecodeStackItem(mf)))
+        return false;
+
+    return true;
+}
+#endif
+
 static bool
 AstDecodeExpr(AstDecodeContext& c)
 {
@@ -1540,7 +1585,6 @@ AstDecodeExpr(AstDecodeContext& c)
         if (!AstDecodeConversion(c, ValType::F32, ValType::F64, Op(op.b0)))
             return false;
         break;
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
       case uint16_t(Op::I32Extend8S):
       case uint16_t(Op::I32Extend16S):
         if (!AstDecodeConversion(c, ValType::I32, ValType::I32, Op(op.b0)))
@@ -1552,7 +1596,6 @@ AstDecodeExpr(AstDecodeContext& c)
         if (!AstDecodeConversion(c, ValType::I64, ValType::I64, Op(op.b0)))
             return false;
         break;
-#endif
       case uint16_t(Op::I32Load8S):
       case uint16_t(Op::I32Load8U):
         if (!AstDecodeLoad(c, ValType::I32, 1, Op(op.b0)))
@@ -1668,34 +1711,44 @@ AstDecodeExpr(AstDecodeContext& c)
         if (!c.push(AstDecodeStackItem(tmp)))
             return false;
         break;
-#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
-      case uint16_t(Op::NumericPrefix):
+      case uint16_t(Op::MiscPrefix):
         switch (op.b1) {
-          case uint16_t(NumericOp::I32TruncSSatF32):
-          case uint16_t(NumericOp::I32TruncUSatF32):
-            if (!AstDecodeExtraConversion(c, ValType::F32, ValType::I32, NumericOp(op.b1)))
+#ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
+          case uint16_t(MiscOp::I32TruncSSatF32):
+          case uint16_t(MiscOp::I32TruncUSatF32):
+            if (!AstDecodeExtraConversion(c, ValType::F32, ValType::I32, MiscOp(op.b1)))
                 return false;
             break;
-          case uint16_t(NumericOp::I32TruncSSatF64):
-          case uint16_t(NumericOp::I32TruncUSatF64):
-            if (!AstDecodeExtraConversion(c, ValType::F64, ValType::I32, NumericOp(op.b1)))
+          case uint16_t(MiscOp::I32TruncSSatF64):
+          case uint16_t(MiscOp::I32TruncUSatF64):
+            if (!AstDecodeExtraConversion(c, ValType::F64, ValType::I32, MiscOp(op.b1)))
                 return false;
             break;
-          case uint16_t(NumericOp::I64TruncSSatF32):
-          case uint16_t(NumericOp::I64TruncUSatF32):
-            if (!AstDecodeExtraConversion(c, ValType::F32, ValType::I64, NumericOp(op.b1)))
+          case uint16_t(MiscOp::I64TruncSSatF32):
+          case uint16_t(MiscOp::I64TruncUSatF32):
+            if (!AstDecodeExtraConversion(c, ValType::F32, ValType::I64, MiscOp(op.b1)))
                 return false;
             break;
-          case uint16_t(NumericOp::I64TruncSSatF64):
-          case uint16_t(NumericOp::I64TruncUSatF64):
-            if (!AstDecodeExtraConversion(c, ValType::F64, ValType::I64, NumericOp(op.b1)))
+          case uint16_t(MiscOp::I64TruncSSatF64):
+          case uint16_t(MiscOp::I64TruncUSatF64):
+            if (!AstDecodeExtraConversion(c, ValType::F64, ValType::I64, MiscOp(op.b1)))
                 return false;
             break;
+#endif
+#ifdef ENABLE_WASM_BULKMEM_OPS
+          case uint16_t(MiscOp::MemCopy):
+            if (!AstDecodeMemCopy(c))
+                return false;
+            break;
+          case uint16_t(MiscOp::MemFill):
+            if (!AstDecodeMemFill(c))
+                return false;
+            break;
+#endif
           default:
             return c.iter().unrecognizedOpcode(&op);
         }
         break;
-#endif
       case uint16_t(Op::ThreadPrefix):
         switch (op.b1) {
           case uint16_t(ThreadOp::Wake):
@@ -1818,23 +1871,23 @@ AstDecodeFunctionBody(AstDecodeContext &c, uint32_t funcIndex, AstFunc** func)
     const uint8_t* bodyBegin = c.d.currentPosition();
     const uint8_t* bodyEnd = bodyBegin + bodySize;
 
-    const SigWithId* sig = c.env().funcSigs[funcIndex];
+    const FuncTypeWithId* funcType = c.env().funcTypes[funcIndex];
 
     ValTypeVector locals;
-    if (!locals.appendAll(sig->args()))
+    if (!locals.appendAll(funcType->args()))
         return false;
 
     if (!DecodeLocalEntries(c.d, ModuleKind::Wasm, c.env().gcTypesEnabled, &locals))
         return false;
 
     AstDecodeOpIter iter(c.env(), c.d);
-    c.startFunction(&iter, &locals, sig->ret());
+    c.startFunction(&iter, &locals, funcType->ret());
 
     AstName funcName;
     if (!GenerateName(c, AstName(u"func"), funcIndex, &funcName))
         return false;
 
-    uint32_t numParams = sig->args().length();
+    uint32_t numParams = funcType->args().length();
     uint32_t numLocals = locals.length();
 
     AstValTypeVector vars(c.lifo);
@@ -1852,7 +1905,7 @@ AstDecodeFunctionBody(AstDecodeContext &c, uint32_t funcIndex, AstFunc** func)
             return false;
     }
 
-    if (!c.iter().readFunctionStart(sig->ret()))
+    if (!c.iter().readFunctionStart(funcType->ret()))
         return false;
 
     if (!c.depths().append(c.exprs().length()))
@@ -1887,13 +1940,14 @@ AstDecodeFunctionBody(AstDecodeContext &c, uint32_t funcIndex, AstFunc** func)
     if (c.d.currentPosition() != bodyEnd)
         return c.d.fail("function body length mismatch");
 
-    size_t sigIndex = c.env().funcIndexToSigIndex(funcIndex);
+    size_t funcTypeIndex = c.env().funcIndexToFuncTypeIndex(funcIndex);
 
-    AstRef sigRef;
-    if (!GenerateRef(c, AstName(u"type"), sigIndex, &sigRef))
+    AstRef funcTypeRef;
+    if (!GenerateRef(c, AstName(u"type"), funcTypeIndex, &funcTypeRef))
         return false;
 
-    *func = new(c.lifo) AstFunc(funcName, sigRef, Move(vars), Move(localsNames), Move(body));
+    *func = new(c.lifo) AstFunc(funcName, funcTypeRef, std::move(vars), std::move(localsNames),
+                                std::move(body));
     if (!*func)
         return false;
     (*func)->setOffset(offset);
@@ -1906,26 +1960,59 @@ AstDecodeFunctionBody(AstDecodeContext &c, uint32_t funcIndex, AstFunc** func)
 // wasm decoding and generation
 
 static bool
-AstCreateSignatures(AstDecodeContext& c)
+AstCreateTypes(AstDecodeContext& c)
 {
-    SigWithIdVector& sigs = c.env().sigs;
+    uint32_t typeIndexForNames = 0;
+    for (const TypeDef& td : c.env().types) {
+        if (td.isFuncType()) {
+            const FuncType& funcType = td.funcType();
 
-    for (size_t sigIndex = 0; sigIndex < sigs.length(); sigIndex++) {
-        const Sig& sig = sigs[sigIndex];
+            AstValTypeVector args(c.lifo);
+            if (!args.appendAll(funcType.args()))
+                return false;
 
-        AstValTypeVector args(c.lifo);
-        if (!args.appendAll(sig.args()))
-            return false;
+            AstFuncType ftNoName(std::move(args), funcType.ret());
 
-        AstSig sigNoName(Move(args), sig.ret());
+            AstName ftName;
+            if (!GenerateName(c, AstName(u"type"), typeIndexForNames, &ftName))
+                return false;
 
-        AstName sigName;
-        if (!GenerateName(c, AstName(u"type"), sigIndex, &sigName))
-            return false;
+            AstFuncType* astFuncType = new(c.lifo) AstFuncType(ftName, std::move(ftNoName));
+            if (!astFuncType || !c.module().append(astFuncType))
+                return false;
+        } else if (td.isStructType()) {
+            const StructType& st = td.structType();
 
-        AstSig* astSig = new(c.lifo) AstSig(sigName, Move(sigNoName));
-        if (!astSig || !c.module().append(astSig))
-            return false;
+            AstValTypeVector fieldTypes(c.lifo);
+            if (!fieldTypes.appendAll(st.fields_))
+                return false;
+
+            AstNameVector fieldNames(c.lifo);
+            if (!fieldNames.resize(fieldTypes.length()))
+                return false;
+
+            // The multiplication ensures that generated field names are unique
+            // within the module, though the resulting namespace is very sparse.
+
+            for (size_t fieldIndex = 0; fieldIndex < fieldTypes.length(); fieldIndex++) {
+                size_t idx = (typeIndexForNames * MaxStructFields) + fieldIndex;
+                if (!GenerateName(c, AstName(u"f"), idx, &fieldNames[fieldIndex]))
+                    return false;
+            }
+
+            AstStructType stNoName(std::move(fieldNames), std::move(fieldTypes));
+
+            AstName stName;
+            if (!GenerateName(c, AstName(u"type"), typeIndexForNames, &stName))
+                return false;
+
+            AstStructType* astStruct = new(c.lifo) AstStructType(stName, std::move(stNoName));
+            if (!astStruct || !c.module().append(astStruct))
+                return false;
+        } else {
+            MOZ_CRASH();
+        }
+        typeIndexForNames++;
     }
 
     return true;
@@ -1981,13 +2068,13 @@ AstCreateImports(AstDecodeContext& c)
             if (!GenerateName(c, AstName(u"import"), lastFunc, &importName))
                 return false;
 
-            size_t sigIndex = c.env().funcIndexToSigIndex(lastFunc);
+            size_t funcTypeIndex = c.env().funcIndexToFuncTypeIndex(lastFunc);
 
-            AstRef sigRef;
-            if (!GenerateRef(c, AstName(u"type"), sigIndex, &sigRef))
+            AstRef funcTypeRef;
+            if (!GenerateRef(c, AstName(u"type"), funcTypeIndex, &funcTypeRef))
                 return false;
 
-            ast = new(c.lifo) AstImport(importName, moduleName, fieldName, sigRef);
+            ast = new(c.lifo) AstImport(importName, moduleName, fieldName, funcTypeRef);
             lastFunc++;
             break;
           }
@@ -2164,7 +2251,7 @@ AstCreateElems(AstDecodeContext &c)
         if (!offset)
             return false;
 
-        AstElemSegment* segment = new(c.lifo) AstElemSegment(offset, Move(elems));
+        AstElemSegment* segment = new(c.lifo) AstElemSegment(offset, std::move(elems));
         if (!segment || !c.module().append(segment))
             return false;
     }
@@ -2178,7 +2265,7 @@ AstDecodeEnvironment(AstDecodeContext& c)
     if (!DecodeModuleEnvironment(c.d, &c.env()))
         return false;
 
-    if (!AstCreateSignatures(c))
+    if (!AstCreateTypes(c))
         return false;
 
     if (!AstCreateImports(c))
@@ -2263,7 +2350,7 @@ AstDecodeModuleTail(AstDecodeContext& c)
                 return false;
         }
 
-        AstDataSegment* segment = new(c.lifo) AstDataSegment(offset, Move(fragments));
+        AstDataSegment* segment = new(c.lifo) AstDataSegment(offset, std::move(fragments));
         if (!segment || !c.module().append(segment))
             return false;
     }
@@ -2281,7 +2368,7 @@ wasm::BinaryToAst(JSContext* cx, const uint8_t* bytes, uint32_t length, LifoAllo
 
     UniqueChars error;
     Decoder d(bytes, bytes + length, 0, &error, nullptr, /* resilient */ true);
-    AstDecodeContext c(cx, lifo, d, *result, true);
+    AstDecodeContext c(cx, lifo, d, *result, /* generateNames */ true, HasGcTypes::True);
 
     if (!AstDecodeEnvironment(c) ||
         !AstDecodeCodeSection(c) ||

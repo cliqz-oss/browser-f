@@ -62,8 +62,8 @@ pref("browser.cache.memory.max_entry_size",  5120);
 // (priority) like html, css, fonts and js, and one for other data like images,
 // video, etc.
 // Note: 0 means no limit.
-pref("browser.cache.disk.max_chunks_memory_usage", 10240);
-pref("browser.cache.disk.max_priority_chunks_memory_usage", 10240);
+pref("browser.cache.disk.max_chunks_memory_usage", 40960);
+pref("browser.cache.disk.max_priority_chunks_memory_usage", 40960);
 
 pref("browser.cache.disk_cache_ssl",        true);
 // 0 = once-per-session, 1 = each-time, 2 = never, 3 = when-appropriate/automatically
@@ -82,13 +82,8 @@ pref("browser.cache.max_shutdown_io_lag", 2);
 
 pref("browser.cache.offline.enable",           true);
 
-// Nightly and Early Beta will have AppCache disabled by default
-// Stable will remain enabled until Firefox 62.
-#ifdef EARLY_BETA_OR_EARLIER
+// AppCache over insecure connection is disabled by default
 pref("browser.cache.offline.insecure.enable",  false);
-#else
-pref("browser.cache.offline.insecure.enable",  true);
-#endif
 
 // enable offline apps by default, disable prompt
 pref("offline-apps.allow_by_default",          true);
@@ -111,19 +106,10 @@ pref("browser.cache.compression_level", 0);
 pref("browser.download.forbid_open_with", false);
 
 // Remove navigator.registerContentHandler
-#ifdef EARLY_BETA_OR_EARLIER
 pref("dom.registerContentHandler.enabled", false);
-#else
-pref("dom.registerContentHandler.enabled", true);
-#endif
 
-// Nightly will have insecure registerProtocolHandler disabled by default
-// Beta and Stable will remain enabled until Firefox 62 providing deprecation stats.
-#ifdef NIGHTLY_BUILD
+// Insecure registerProtocolHandler is disabled by default
 pref("dom.registerProtocolHandler.insecure.enabled", false);
-#else
-pref("dom.registerProtocolHandler.insecure.enabled", true);
-#endif
 
 // Whether or not testing features are enabled.
 pref("dom.quotaManager.testing", false);
@@ -241,7 +227,7 @@ pref("dom.keyboardevent.keypress.dispatch_non_printable_keys_only_system_group_i
 // if you need to limit under a directory, the path should end with "/" like
 // "example.com/foo/".  Note that this cannot limit port number for now.
 pref("dom.keyboardevent.keypress.hack.dispatch_non_printable_keys",
-     "docs.google.com,mail.google.com,hangouts.google.com,keep.google.com,inbox.google.com,*.etherpad.org/p/,etherpad.wikimedia.org/p/,board.net/p/,pad.riseup.net/p/,*.sandstorm.io,factor.cc/pad/,*.etherpad.fr/p/,piratenpad.de/p/,notes.typo3.org/p/,etherpad.net/p/,*.framapad.org/p/,pad.ouvaton.coop/,pad.systemli.org/p/,pad.lqdn.fr/p/,public.etherpad-mozilla.org/p/,*.cloudron.me/p/,pad.aquilenet.fr/p/,free.primarypad.com/p/,pad.ondesk.work/p/,demo.maadix.org/etherpad/pads/,www.rememberthemilk.com");
+     "docs.google.com,mail.google.com,hangouts.google.com,keep.google.com,inbox.google.com,*.etherpad.org/p/,etherpad.wikimedia.org/p/,board.net/p/,pad.riseup.net/p/,*.sandstorm.io,factor.cc/pad/,*.etherpad.fr/p/,piratenpad.de/p/,notes.typo3.org/p/,etherpad.net/p/,*.framapad.org/p/,pad.ouvaton.coop/,pad.systemli.org/p/,pad.lqdn.fr/p/,public.etherpad-mozilla.org/p/,*.cloudron.me/p/,pad.aquilenet.fr/p/,free.primarypad.com/p/,pad.ondesk.work/p/,demo.maadix.org/etherpad/pads/,paper.dropbox.com/doc");
 #else
 pref("dom.keyboardevent.keypress.dispatch_non_printable_keys_only_system_group_in_content", false);
 #endif
@@ -271,6 +257,10 @@ pref("dom.script_loader.bytecode_cache.enabled", true);
 // Other values might lead to experimental strategies. For more details, have a
 // look at: ScriptLoader::ShouldCacheBytecode function.
 pref("dom.script_loader.bytecode_cache.strategy", 0);
+
+#ifdef JS_BUILD_BINAST
+pref("dom.script_loader.binast_encoding.enabled", false);
+#endif
 
 // Fastback caching - if this pref is negative, then we calculate the number
 // of content viewers to cache based on the amount of available memory.
@@ -615,9 +605,6 @@ pref("layers.amd-switchable-gfx.enabled", true);
 // Whether to use async panning and zooming
 pref("layers.async-pan-zoom.enabled", true);
 
-// Whether to enable event region building during painting
-pref("layout.event-regions.enabled", false);
-
 // Whether to enable arbitrary layer geometry for OpenGL compositor
 pref("layers.geometry.opengl.enabled", true);
 
@@ -632,11 +619,7 @@ pref("layers.geometry.d3d11.enabled", true);
 pref("apz.allow_checkerboarding", true);
 pref("apz.allow_immediate_handoff", true);
 pref("apz.allow_zooming", false);
-#ifdef NIGHTLY_BUILD
 pref("apz.android.chrome_fling_physics.enabled", true);
-#else
-pref("apz.android.chrome_fling_physics.enabled", false);
-#endif
 pref("apz.android.chrome_fling_physics.friction", "0.015");
 pref("apz.android.chrome_fling_physics.inflexion", "0.35");
 pref("apz.android.chrome_fling_physics.stop_threshold", "0.1");
@@ -831,8 +814,6 @@ pref("gfx.content.azure.backends", "direct2d1.1,skia,cairo");
 #ifdef XP_MACOSX
 pref("gfx.content.azure.backends", "skia");
 pref("gfx.canvas.azure.backends", "skia");
-// Accelerated cg canvas where available (10.7+)
-pref("gfx.canvas.azure.accelerated", true);
 #else
 pref("gfx.canvas.azure.backends", "skia");
 pref("gfx.content.azure.backends", "skia");
@@ -853,16 +834,30 @@ pref("gfx.logging.peak-texture-usage.enabled", false);
 
 pref("gfx.ycbcr.accurate-conversion", false);
 
+// On Nightly, we expose two prefs: gfx.webrender.all and gfx.webrender.enabled.
+// The first enables WR+additional features, and the second just enables WR.
+// For developer convenience, building with --enable-webrender=true or just
+// --enable-webrender will set gfx.webrender.enabled to true by default.
+// On non-Nightly, we ignore these prefs.
+//
+// On both Nightly and non-Nightly, we have a pref gfx.webrender.all.qualified
+// which is not exposed via about:config. That pref enables WR but only on
+// qualified hardware. This is the pref we'll eventually flip to deploy WebRender
+// to the target population.
+#ifdef NIGHTLY_BUILD
 pref("gfx.webrender.all", false);
 #ifdef MOZ_ENABLE_WEBRENDER
 pref("gfx.webrender.enabled", true);
 #else
 pref("gfx.webrender.enabled", false);
 #endif
+#endif
+
 #ifdef XP_WIN
 pref("gfx.webrender.force-angle", true);
 pref("gfx.webrender.dcomp-win.enabled", true);
 pref("gfx.webrender.program-binary", true);
+pref("gfx.webrender.program-binary-disk", true);
 #endif
 
 #ifdef XP_MACOSX
@@ -870,10 +865,9 @@ pref("gfx.compositor.glcontext.opaque", false);
 #endif
 
 pref("gfx.webrender.highlight-painted-layers", false);
-pref("gfx.webrender.async-scene-build", 2);
+pref("gfx.webrender.async-scene-build", true);
 pref("gfx.webrender.blob-images", true);
 pref("gfx.webrender.blob.invalidation", true);
-pref("gfx.webrender.hit-test", true);
 
 // WebRender debugging utilities.
 pref("gfx.webrender.debug.texture-cache", false);
@@ -885,6 +879,9 @@ pref("gfx.webrender.debug.gpu-sample-queries", false);
 pref("gfx.webrender.debug.disable-batching", false);
 pref("gfx.webrender.debug.epochs", false);
 pref("gfx.webrender.debug.compact-profiler", false);
+pref("gfx.webrender.debug.echo-driver-messages", false);
+pref("gfx.webrender.debug.new-frame-indicator", false);
+pref("gfx.webrender.debug.new-scene-indicator", false);
 
 pref("accessibility.browsewithcaret", false);
 pref("accessibility.warn_on_browsewithcaret", true);
@@ -1134,6 +1131,11 @@ pref("print.print_via_parent", true);
 pref("print.print_via_parent", false);
 #endif
 
+// Variation fonts can't always be embedded in certain output formats
+// such as PDF. To work around this, draw the variation fonts using
+// paths instead of using font embedding.
+pref("print.font-variations-as-paths", true);
+
 // Pref used by the spellchecker extension to control the
 // maximum number of misspelled words that will be underlined
 // in a document.
@@ -1319,16 +1321,15 @@ pref("dom.event.clipboardevents.enabled",   true);
 pref("dom.event.highrestimestamp.enabled",  true);
 pref("dom.event.coalesce_mouse_move",       true);
 
-pref("dom.webcomponents.shadowdom.enabled", false);
 #ifdef NIGHTLY_BUILD
+pref("dom.webcomponents.shadowdom.enabled", true);
 pref("dom.webcomponents.customelements.enabled", true);
 #else
+pref("dom.webcomponents.shadowdom.enabled", false);
 pref("dom.webcomponents.customelements.enabled", false);
 #endif
 
 pref("javascript.enabled",                  true);
-// Enable Array.prototype.values
-pref("javascript.options.array_prototype_values", true);
 pref("javascript.options.strict",           false);
 #ifdef DEBUG
 pref("javascript.options.strict.debug",     false);
@@ -1783,10 +1784,25 @@ pref("network.ftp.enabled", true);
 // The max time to spend on xpcom events between two polls in ms.
 pref("network.sts.max_time_for_events_between_two_polls", 100);
 
+// The number of seconds we don't let poll() handing indefinitely after network
+// link change has been detected so we can detect breakout of the pollable event.
+// Expected in seconds, 0 to disable.
+pref("network.sts.poll_busy_wait_period", 50);
+
+// The number of seconds we cap poll() timeout to during the network link change
+// detection period.
+// Expected in seconds, 0 to disable.
+pref("network.sts.poll_busy_wait_period_timeout", 7);
+
 // During shutdown we limit PR_Close calls. If time exceeds this pref (in ms)
 // let sockets just leak.
 pref("network.sts.max_time_for_pr_close_during_shutdown", 5000);
-// </http>
+
+// When the polling socket pair we use to wake poll() up on demand doesn't
+// get signalled (is not readable) within this timeout, we try to repair it.
+// This timeout can be disabled by setting this pref to 0.
+// The value is expected in seconds.
+pref("network.sts.pollable_event_timeout", 6);
 
 // 2147483647 == PR_INT32_MAX == ~2 GB
 pref("network.websocket.max-message-size", 2147483647);
@@ -2025,12 +2041,6 @@ pref("network.standard-url.punycode-host", true);
 // Idle timeout for ftp control connections - 5 minute default
 pref("network.ftp.idleConnectionTimeout", 300);
 
-// directory listing format
-// 2: HTML
-// 3: XUL directory viewer
-// all other values are treated like 2
-pref("network.dir.format", 2);
-
 // enables the prefetch service (i.e., prefetching of <link rel="next"> and
 // <link rel="prefetch"> URLs).
 pref("network.prefetch-next", true);
@@ -2119,7 +2129,13 @@ pref("network.http.throttle.enable", false);
 #else
 pref("network.http.throttle.enable", true);
 #endif
+
+// Make HTTP throttling v2 algorithm Nightly-only due to bug 1462906
+#ifdef NIGHTLY_BUILD
 pref("network.http.throttle.version", 2);
+#else
+pref("network.http.throttle.version", 1);
+#endif
 
 // V1 prefs
 pref("network.http.throttle.suspend-for", 900);
@@ -2190,6 +2206,9 @@ pref("network.cookie.lifetime.days",        90); // Ignored unless network.cooki
 // The interval in seconds to move the cookies in the child process.
 // Set to 0 to disable moving the cookies.
 pref("network.cookie.move.interval_sec",    10);
+
+pref("network.cookie.maxNumber", 3000);
+pref("network.cookie.maxPerHost", 180);
 
 // The PAC file to load.  Ignored unless network.proxy.type is 2.
 pref("network.proxy.autoconfig_url", "");
@@ -2486,7 +2505,8 @@ pref("security.csp.experimentalEnabled", false);
 pref("security.csp.enableStrictDynamic", true);
 
 #if defined(DEBUG) && !defined(ANDROID)
-pref("csp.content_privileged_about_uris_without_csp", "blank,blocked,credits,home,logo,newtab,printpreview,srcdoc,studies");
+// about:welcome has been added until Bug 1448359 is fixed at which time home, newtab, and welcome will all be removed.
+pref("csp.content_privileged_about_uris_without_csp", "blank,blocked,home,newtab,printpreview,srcdoc,welcome");
 #endif
 
 #ifdef NIGHTLY_BUILD
@@ -2532,10 +2552,6 @@ pref("security.cert_pinning.process_headers_from_non_builtin_roots", false);
 // their protocol with the inner URI of the view-source URI
 pref("security.view-source.reachable-from-inner-protocol", false);
 
-// If set to true, in some limited circumstances it may be possible to load
-// privileged content in frames inside unprivileged content.
-pref("security.allow_chrome_frames_inside_content", false);
-
 // Services security settings
 pref("services.settings.server", "https://firefox.settings.services.mozilla.com/v1");
 pref("services.settings.changes.path", "/buckets/monitor/collections/changes/records");
@@ -2560,16 +2576,21 @@ pref("extensions.blocklist.level", 2);
 pref("services.blocklist.bucket", "blocklists");
 pref("services.blocklist.onecrl.collection", "certificates");
 pref("services.blocklist.onecrl.checked", 0);
+pref("services.blocklist.onecrl.signer", "onecrl.content-signature.mozilla.org");
 pref("services.blocklist.addons.collection", "addons");
 pref("services.blocklist.addons.checked", 0);
+pref("services.blocklist.addons.signer", "remote-settings.content-signature.mozilla.org");
 pref("services.blocklist.plugins.collection", "plugins");
 pref("services.blocklist.plugins.checked", 0);
+pref("services.blocklist.plugins.signer", "remote-settings.content-signature.mozilla.org");
 pref("services.blocklist.pinning.enabled", true);
 pref("services.blocklist.pinning.bucket", "pinning");
 pref("services.blocklist.pinning.collection", "pins");
 pref("services.blocklist.pinning.checked", 0);
+pref("services.blocklist.pinning.signer", "pinning-preload.content-signature.mozilla.org");
 pref("services.blocklist.gfx.collection", "gfx");
 pref("services.blocklist.gfx.checked", 0);
+pref("services.blocklist.gfx.signer", "remote-settings.content-signature.mozilla.org");
 // Enable blocklists via the services settings mechanism
 pref("services.blocklist.update_enabled", true);
 
@@ -2827,8 +2848,6 @@ pref("layout.selection.caret_style", 0);
 // pref to report CSS errors to the error console
 pref("layout.css.report_errors", true);
 
-pref("layout.css.getPropertyCSSValue.enabled", false);
-
 // Override DPI. A value of -1 means use the maximum of 96 and the system DPI.
 // A value of 0 means use the system DPI. A positive value is used as the DPI.
 // This sets the physical size of a device pixel and thus controls the
@@ -2855,6 +2874,9 @@ pref("layout.css.isolation.enabled", true);
 
 // Is support for CSS Filters enabled?
 pref("layout.css.filters.enabled", true);
+
+// Is support for CSS Scrollbar color properties enabled?
+pref("layout.css.scrollbar-colors.enabled", false);
 
 // Set the threshold distance in CSS pixels below which scrolling will snap to
 // an edge, when scroll snapping is set to "proximity".
@@ -2917,9 +2939,6 @@ pref("layout.css.prefixes.font-features", true);
 // Is support for background-blend-mode enabled?
 pref("layout.css.background-blend-mode.enabled", true);
 
-// Is support for CSS text-combine-upright: digits 2-4 enabled?
-pref("layout.css.text-combine-upright-digits.enabled", false);
-
 // Is -moz-osx-font-smoothing enabled?
 // Only supported in OSX builds
 #ifdef XP_MACOSX
@@ -2972,11 +2991,7 @@ pref("layout.css.scroll-behavior.damping-ratio", "1.0");
 pref("layout.css.scroll-snap.enabled", true);
 
 // Is support for CSS shape-outside enabled?
-#ifdef NIGHTLY_BUILD
 pref("layout.css.shape-outside.enabled", true);
-#else
-pref("layout.css.shape-outside.enabled", false);
-#endif
 
 // Is support for document.fonts enabled?
 pref("layout.css.font-loading-api.enabled", true);
@@ -3016,7 +3031,11 @@ pref("layout.display-list.dump-content", false);
 pref("layout.display-list.dump-parent", false);
 
 // Toggle retaining display lists between paints
+#if !defined(ANDROID)
+pref("layout.display-list.retain", true);
+#else
 pref("layout.display-list.retain", false);
+#endif
 pref("layout.display-list.retain.chrome", false);
 
 // Set the maximum amount of modified frames allowed before doing a full
@@ -3036,6 +3055,9 @@ pref("layout.idle_period.required_quiescent_frames", 2);
 // The amount of time (milliseconds) needed between an idle period's
 // end and the start of the next tick to avoid jank.
 pref("layout.idle_period.time_limit", 1);
+
+// Whether -webkit-appearance is aliased to -moz-appearance
+pref("layout.css.webkit-appearance.enabled", false);
 
 // Is support for the Web Animations API enabled?
 // Before enabling this by default, make sure also CSSPseudoElement interface
@@ -3097,12 +3119,6 @@ pref("input_event_queue.default_duration_per_event", 1);
 // required to process the following input events.
 pref("input_event_queue.count_for_prediction", 9);
 
-// Hang monitor timeout after which we kill the browser, in seconds
-// (0 is disabled)
-// Disabled on all platforms per bug 705748 until the found issues are
-// resolved.
-pref("hangmonitor.timeout", 0);
-
 pref("plugins.load_appdir_plugins", false);
 // If true, plugins will be click to play
 pref("plugins.click_to_play", false);
@@ -3112,11 +3128,6 @@ pref("plugins.navigator.hidden_ctp_plugin", "");
 
 // The default value for nsIPluginTag.enabledState (STATE_ENABLED = 2)
 pref("plugin.default.state", 2);
-
-// The MIME type that should bind to legacy java-specific invocations like
-// <applet> and <object data="java:foo">. Setting this to a non-java MIME type
-// is undefined behavior.
-pref("plugin.java.mime", "application/x-java-vm");
 
 // How long in minutes we will allow a plugin to work after the user has chosen
 // to allow it "now"
@@ -4397,60 +4408,60 @@ pref("font.size.fixed.x-western", 12);
 #endif
 
 #if defined(ANDROID)
-// We use the bundled fonts for Firefox for Android
+// We use the bundled Charis SIL Compact as serif font for Firefox for Android
 
 pref("font.name-list.emoji", "Noto Color Emoji");
 
 pref("font.name-list.serif.ar", "Noto Naskh Arabic, Noto Serif, Droid Serif");
-pref("font.name-list.sans-serif.ar", "Noto Naskh Arabic, Clear Sans, Roboto, Droid Sans");
+pref("font.name-list.sans-serif.ar", "Noto Naskh Arabic, Roboto, Droid Sans");
 pref("font.name-list.monospace.ar", "Noto Naskh Arabic");
 
 pref("font.name-list.serif.el", "Droid Serif, Noto Serif"); // not Charis SIL Compact, only has a few Greek chars
-pref("font.name-list.sans-serif.el", "Clear Sans, Roboto, Droid Sans");
+pref("font.name-list.sans-serif.el", "Roboto, Droid Sans");
 pref("font.name-list.monospace.el", "Droid Sans Mono");
 
 pref("font.name-list.serif.he", "Droid Serif, Noto Serif");
-pref("font.name-list.sans-serif.he", "Clear Sans, Droid Sans Hebrew, Droid Sans, Arial");
+pref("font.name-list.sans-serif.he", "Roboto, Droid Sans Hebrew, Droid Sans, Arial");
 pref("font.name-list.monospace.he", "Droid Sans Mono");
 
 pref("font.name-list.serif.ja", "Charis SIL Compact, Noto Serif, Droid Serif");
-pref("font.name-list.sans-serif.ja", "Clear Sans, Roboto, Droid Sans, MotoyaLMaru, MotoyaLCedar, Noto Sans JP, Noto Sans CJK JP, Droid Sans Japanese");
+pref("font.name-list.sans-serif.ja", "Roboto, Droid Sans, MotoyaLMaru, MotoyaLCedar, Noto Sans JP, Noto Sans CJK JP, Droid Sans Japanese");
 pref("font.name-list.monospace.ja", "MotoyaLMaru, MotoyaLCedar, Droid Sans Mono CJK JP, Droid Sans Mono");
 
 pref("font.name-list.serif.ko", "Charis SIL Compact, Noto Serif, Droid Serif, HYSerif");
-pref("font.name-list.sans-serif.ko", "Clear Sans, SmartGothic, NanumGothic, Noto Sans KR, Noto Sans CJK KR, DroidSansFallback, Droid Sans Fallback");
+pref("font.name-list.sans-serif.ko", "Roboto, SmartGothic, NanumGothic, Noto Sans KR, Noto Sans CJK KR, DroidSansFallback, Droid Sans Fallback");
 pref("font.name-list.monospace.ko", "Droid Sans Mono, Noto Sans Mono CJK KR");
 
 pref("font.name-list.serif.th", "Charis SIL Compact, Noto Serif, Droid Serif");
-pref("font.name-list.sans-serif.th", "Clear Sans, Droid Sans Thai, Droid Sans");
+pref("font.name-list.sans-serif.th", "Roboto, Droid Sans Thai, Droid Sans");
 pref("font.name-list.monospace.th", "Droid Sans Mono");
 
 pref("font.name-list.serif.x-cyrillic", "Charis SIL Compact, Noto Serif, Droid Serif");
-pref("font.name-list.sans-serif.x-cyrillic", "Clear Sans, Roboto, Droid Sans");
+pref("font.name-list.sans-serif.x-cyrillic", "Roboto, Droid Sans");
 pref("font.name-list.monospace.x-cyrillic", "Droid Sans Mono");
 
 pref("font.name-list.serif.x-unicode", "Charis SIL Compact, Noto Serif, Droid Serif");
-pref("font.name-list.sans-serif.x-unicode", "Clear Sans, Roboto, Droid Sans");
+pref("font.name-list.sans-serif.x-unicode", "Roboto, Droid Sans");
 pref("font.name-list.monospace.x-unicode", "Droid Sans Mono");
 
 pref("font.name-list.serif.x-western", "Charis SIL Compact, Noto Serif, Droid Serif");
-pref("font.name-list.sans-serif.x-western", "Clear Sans, Roboto, Droid Sans");
+pref("font.name-list.sans-serif.x-western", "Roboto, Droid Sans");
 pref("font.name-list.monospace.x-western", "Droid Sans Mono");
 
 pref("font.name-list.serif.zh-CN", "Charis SIL Compact, Noto Serif, Droid Serif, Droid Sans Fallback");
-pref("font.name-list.sans-serif.zh-CN", "Clear Sans, Roboto, Droid Sans, Noto Sans SC, Noto Sans CJK SC, Droid Sans Fallback");
+pref("font.name-list.sans-serif.zh-CN", "Roboto, Droid Sans, Noto Sans SC, Noto Sans CJK SC, Droid Sans Fallback");
 pref("font.name-list.monospace.zh-CN", "Droid Sans Mono, Noto Sans Mono CJK SC, Droid Sans Fallback");
 
 pref("font.name-list.serif.zh-HK", "Charis SIL Compact, Noto Serif, Droid Serif, Droid Sans Fallback");
-pref("font.name-list.sans-serif.zh-HK", "Clear Sans, Roboto, Droid Sans, Noto Sans TC, Noto Sans SC, Noto Sans CJK TC, Droid Sans Fallback");
+pref("font.name-list.sans-serif.zh-HK", "Roboto, Droid Sans, Noto Sans TC, Noto Sans SC, Noto Sans CJK TC, Droid Sans Fallback");
 pref("font.name-list.monospace.zh-HK", "Droid Sans Mono, Noto Sans Mono CJK TC, Droid Sans Fallback");
 
 pref("font.name-list.serif.zh-TW", "Charis SIL Compact, Noto Serif, Droid Serif, Droid Sans Fallback");
-pref("font.name-list.sans-serif.zh-TW", "Clear Sans, Roboto, Droid Sans, Noto Sans TC, Noto Sans SC, Noto Sans CJK TC, Droid Sans Fallback");
+pref("font.name-list.sans-serif.zh-TW", "Roboto, Droid Sans, Noto Sans TC, Noto Sans SC, Noto Sans CJK TC, Droid Sans Fallback");
 pref("font.name-list.monospace.zh-TW", "Droid Sans Mono, Noto Sans Mono CJK TC, Droid Sans Fallback");
 
 pref("font.name-list.serif.x-math", "Latin Modern Math, STIX Two Math, XITS Math, Cambria Math, Libertinus Math, DejaVu Math TeX Gyre, TeX Gyre Bonum Math, TeX Gyre Pagella Math, TeX Gyre Schola, TeX Gyre Termes Math, STIX Math, Asana Math, STIXGeneral, DejaVu Serif, DejaVu Sans, Charis SIL Compact");
-pref("font.name-list.sans-serif.x-math", "Clear Sans");
+pref("font.name-list.sans-serif.x-math", "Roboto");
 pref("font.name-list.monospace.x-math", "Droid Sans Mono");
 
 #endif
@@ -4513,11 +4524,15 @@ pref("toolkit.zoomManager.zoomValues", ".3,.5,.67,.8,.9,1,1.1,1.2,1.33,1.5,1.7,2
 // The maximum size (in kB) that the aggregate frames of an animation can use
 // before it starts to discard already displayed frames and redecode them as
 // necessary.
-pref("image.animated.decode-on-demand.threshold-kb", 4194303);
+pref("image.animated.decode-on-demand.threshold-kb", 20480);
 
 // The minimum number of frames we want to have buffered ahead of an
 // animation's currently displayed frame.
 pref("image.animated.decode-on-demand.batch-size", 6);
+
+// Resume an animated image from the last displayed frame rather than
+// advancing when out of view.
+pref("image.animated.resume-from-last-displayed", true);
 
 // Maximum number of surfaces for an image before entering "factor of 2" mode.
 // This in addition to the number of "native" sizes of an image. A native size
@@ -4797,7 +4812,7 @@ pref("layers.enable-tiles", true);
 #else
 pref("layers.enable-tiles", false);
 #endif
-#if defined(NIGHTLY_BUILD) && defined(XP_WIN)
+#if defined(XP_WIN)
 pref("layers.enable-tiles-if-skia-pomtp", true);
 #else
 pref("layers.enable-tiles-if-skia-pomtp", false);
@@ -4890,13 +4905,8 @@ pref("geo.wifi.xhr.timeout", 60000);
 pref("device.sensors.enabled", true);
 pref("device.sensors.orientation.enabled", true);
 pref("device.sensors.motion.enabled", true);
-#ifdef EARLY_BETA_OR_EARLIER
 pref("device.sensors.proximity.enabled", false);
 pref("device.sensors.ambientLight.enabled", false);
-#else
-pref("device.sensors.proximity.enabled", true);
-pref("device.sensors.ambientLight.enabled", true);
-#endif
 
 // Enable/Disable the device storage API for content
 pref("device.storage.enabled", false);
@@ -4911,7 +4921,6 @@ pref("xpinstall.whitelist.required", true);
 // Only Firefox requires add-on signatures
 pref("xpinstall.signatures.required", false);
 pref("extensions.langpacks.signatures.required", false);
-pref("extensions.minCompatiblePlatformVersion", "2.0");
 pref("extensions.webExtensionsMinPlatformVersion", "42.0a1");
 pref("extensions.legacy.enabled", true);
 
@@ -4934,6 +4943,9 @@ pref("extensions.webextensions.protocol.remote", true);
 pref("extensions.webextensions.tabhide.enabled", true);
 
 pref("extensions.webextensions.background-delayed-startup", false);
+
+// Whether or not the installed extensions should be migrated to the storage.local IndexedDB backend.
+pref("extensions.webextensions.ExtensionStorageIDB.enabled", false);
 
 // Report Site Issue button
 pref("extensions.webcompat-reporter.newIssueEndpoint", "https://webcompat.com/issues/new");
@@ -5117,11 +5129,13 @@ pref("memory.blob_report.stack_frames", 0);
 // observers (bug 780507).
 pref("dom.idle-observers-api.fuzz_time.disabled", true);
 
-// Minimum delay in milliseconds between network activity notifications (0 means
-// no notifications). The delay is the same for both download and upload, though
+// Minimum delay in milliseconds between I/O activity notifications (0 means
+// no notifications). I/O activity includes socket and disk files.
+//
+// The delay is the same for both read and write, though
 // they are handled separately. This pref is only read once at startup:
 // a restart is required to enable a new value.
-pref("network.activity.intervalMilliseconds", 0);
+pref("io.activity.intervalMilliseconds", 0);
 
 // If true, reuse the same global for (almost) everything loaded by the component
 // loader (JS components, JSMs, etc). This saves memory, but makes it possible
@@ -5291,8 +5305,9 @@ pref("network.trr.confirmationNS", "example.com");
 // hardcode the resolution of the hostname in network.trr.uri instead of
 // relying on the system resolver to do it for you
 pref("network.trr.bootstrapAddress", "");
-// TRR blacklist entry expire time (in seconds). Default is 20 minutes.
-pref("network.trr.blacklist-duration", 1200);
+// TRR blacklist entry expire time (in seconds). Default is one minute.
+// Meant to survive basically a page load.
+pref("network.trr.blacklist-duration", 60);
 // Single TRR request timeout, in milliseconds
 pref("network.trr.request-timeout", 3000);
 // Allow AAAA entries to be used "early", before the A results are in
@@ -5414,10 +5429,8 @@ pref("browser.safebrowsing.provider.mozilla.gethashURL", "https://shavar.service
 pref("browser.safebrowsing.provider.mozilla.nextupdatetime", "1");
 // Block lists for tracking protection. The name values will be used as the keys
 // to lookup the localized name in preferences.properties.
-pref("browser.safebrowsing.provider.mozilla.lists.base.name", "mozstdName");
-pref("browser.safebrowsing.provider.mozilla.lists.base.description", "mozstdDesc");
-pref("browser.safebrowsing.provider.mozilla.lists.content.name", "mozfullName");
-pref("browser.safebrowsing.provider.mozilla.lists.content.description", "mozfullDesc2");
+pref("browser.safebrowsing.provider.mozilla.lists.base", "moz-std");
+pref("browser.safebrowsing.provider.mozilla.lists.content", "moz-full");
 
 // The table and global pref for blocking plugin content
 pref("browser.safebrowsing.blockedURIs.enabled", true);
@@ -5468,9 +5481,11 @@ pref("layout.accessiblecaret.use_long_tap_injector", false);
 // By default, carets become tilt only when they are overlapping.
 pref("layout.accessiblecaret.always_tilt", false);
 
-// Selection change notifications generated by Javascript hide
-// AccessibleCarets and close UI interaction by default.
-pref("layout.accessiblecaret.allow_script_change_updates", false);
+// 0 = by default, always hide carets for selection changes due to JS calls.
+// 1 = update any visible carets for selection changes due to JS calls,
+//     but don't show carets if carets are hidden.
+// 2 = always show carets for selection changes due to JS calls.
+pref("layout.accessiblecaret.script_change_update_mode", 0);
 
 // Allow one caret to be dragged across the other caret without any limitation.
 // This matches the built-in convention for all desktop platforms.

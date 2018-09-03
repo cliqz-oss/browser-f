@@ -7,6 +7,7 @@
 #ifndef gc_Rooting_h
 #define gc_Rooting_h
 
+#include "gc/Policy.h"
 #include "js/GCVector.h"
 #include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
@@ -41,7 +42,7 @@ typedef JS::Handle<PropertyName*>           HandlePropertyName;
 typedef JS::Handle<ArrayObject*>            HandleArrayObject;
 typedef JS::Handle<PlainObject*>            HandlePlainObject;
 typedef JS::Handle<SavedFrame*>             HandleSavedFrame;
-typedef JS::Handle<ScriptSourceObject*>     HandleScriptSource;
+typedef JS::Handle<ScriptSourceObject*>     HandleScriptSourceObject;
 typedef JS::Handle<DebuggerArguments*>      HandleDebuggerArguments;
 typedef JS::Handle<DebuggerEnvironment*>    HandleDebuggerEnvironment;
 typedef JS::Handle<DebuggerFrame*>          HandleDebuggerFrame;
@@ -69,7 +70,7 @@ typedef JS::Rooted<ArrayObject*>            RootedArrayObject;
 typedef JS::Rooted<GlobalObject*>           RootedGlobalObject;
 typedef JS::Rooted<PlainObject*>            RootedPlainObject;
 typedef JS::Rooted<SavedFrame*>             RootedSavedFrame;
-typedef JS::Rooted<ScriptSourceObject*>     RootedScriptSource;
+typedef JS::Rooted<ScriptSourceObject*>     RootedScriptSourceObject;
 typedef JS::Rooted<DebuggerArguments*>      RootedDebuggerArguments;
 typedef JS::Rooted<DebuggerEnvironment*>    RootedDebuggerEnvironment;
 typedef JS::Rooted<DebuggerFrame*>          RootedDebuggerFrame;
@@ -89,7 +90,7 @@ class MOZ_RAII FakeRooted : public RootedBase<T, FakeRooted<T>>
     using ElementType = T;
 
     template <typename CX>
-    explicit FakeRooted(CX* cx) : ptr(JS::GCPolicy<T>::initial()) {}
+    explicit FakeRooted(CX* cx) : ptr(JS::SafelyInitialized<T>()) {}
 
     template <typename CX>
     FakeRooted(CX* cx, T initial) : ptr(initial) {}
@@ -133,7 +134,9 @@ class FakeMutableHandle : public js::MutableHandleBase<T, FakeMutableHandle<T>>
     DECLARE_NONPOINTER_MUTABLE_ACCESSOR_METHODS(*ptr);
 
   private:
-    FakeMutableHandle() {}
+    FakeMutableHandle()
+      : ptr(nullptr)
+    {}
     DELETE_ASSIGNMENT_OPS(FakeMutableHandle, T);
 
     T* ptr;

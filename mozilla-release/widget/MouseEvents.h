@@ -13,20 +13,6 @@
 #include "mozilla/dom/DataTransfer.h"
 #include "nsCOMPtr.h"
 
-/******************************************************************************
- * nsDragDropEventStatus
- ******************************************************************************/
-
-enum nsDragDropEventStatus
-{  
-  // The event is a enter
-  nsDragDropEventStatus_eDragEntered,
-  // The event is exit
-  nsDragDropEventStatus_eDragExited,
-  // The event is drop
-  nsDragDropEventStatus_eDrop
-};
-
 namespace mozilla {
 
 namespace dom {
@@ -512,6 +498,7 @@ private:
     , mLineOrPageDeltaY(0)
     , mScrollType(SCROLL_DEFAULT)
     , mCustomizedByUserPrefs(false)
+    , mMayHaveMomentum(false)
     , mIsMomentum(false)
     , mIsNoLineOrPageDelta(false)
     , mViewPortIsOverscrolled(false)

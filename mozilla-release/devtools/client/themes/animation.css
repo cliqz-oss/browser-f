@@ -5,30 +5,33 @@
 /* Animation-inspector specific theme variables */
 
 :root {
-  --animation-even-background-color: rgba(0, 0, 0, 0.05);
+  --animation-item-hover-color: var(--grey-30-a40);
+  --animation-item-selected-color: var(--grey-30-a90);
   --command-pick-image: url(chrome://devtools/skin/images/command-pick.svg);
+  --cssanimation-color: var(--purple-50);
+  --csstransition-color: var(--blue-55);
   --devtools-toolbar-height: 24px;
   --fast-track-image: url("images/animation-fast-track.svg");
-  --fill-color-cssanimation: var(--theme-contrast-background);
-  --fill-color-csstransition: var(--theme-highlight-blue);
-  --fill-color-scriptanimation: var(--theme-graphs-green);
+  --graph-height: 30px;
   --graph-right-offset: 10px;
   --keyframe-marker-shadow-color: #c4c4c4;
   --pause-image: url(chrome://devtools/skin/images/pause.svg);
-  --progress-bar-color: #909090;
+  --progress-bar-color: var(--grey-40);
   --resume-image: url(chrome://devtools/skin/images/play.svg);
   --rewind-image: url(chrome://devtools/skin/images/rewind.svg);
-  --scrubber-color: #dd00a9;
+  --scriptanimation-color: var(--green-60);
+  --scrubber-color: var(--magenta-65);
   --sidebar-width: 200px;
-  --stroke-color-cssanimation: var(--theme-highlight-lightorange);
-  --stroke-color-csstransition: var(--theme-highlight-bluegrey);
-  --stroke-color-scriptanimation: var(--theme-highlight-green);
-  --tick-line-style: 0.5px solid rgba(128, 136, 144, 0.5);
+  --tick-line-style: 0.5px solid var(--theme-splitter-color);
 }
 
 :root.theme-dark {
-  --animation-even-background-color: rgba(255, 255, 255, 0.05);
+  --animation-item-hover-color: var(--grey-60-a50);
+  --animation-item-selected-color: var(--grey-60);
+  --csstransition-color: var(--blue-50);
   --keyframe-marker-shadow-color: #818181;
+  --progress-bar-color: var(--grey-50);
+  --scrubber-color: var(--magenta-50);
 }
 
 /* Root element of animation inspector */
@@ -37,6 +40,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  outline: none;
 }
 
 #animation-container .uncontrolled {
@@ -68,7 +72,7 @@ select.playback-rate-selector.devtools-button {
   background-image: url("chrome://devtools/skin/images/dropmarker.svg");
   background-position: calc(100% - 4px) center;
   background-repeat: no-repeat;
-  padding-right: 1em;
+  padding-inline-end: 1em;
   text-align: center;
 }
 
@@ -87,10 +91,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 
 /* Animation List Container */
 .animation-list-container {
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  position: relative;
+  overflow: hidden;
   width: 100%;
   -moz-user-select: none;
 }
@@ -99,53 +100,14 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   cursor: col-resize;
 }
 
-/* Animation List Header */
-.animation-list-header {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) calc(100% - var(--sidebar-width) - var(--graph-right-offset)) var(--graph-right-offset);
-  line-height: var(--devtools-toolbar-height);
-  min-height: 100%;
-  padding: 0;
-  pointer-events: none;
-  position: sticky;
-  top: 0;
+/* Current Time Scrubber */
+.current-time-scrubber-area {
+  grid-column: 2 / 3;
   z-index: 2;
 }
 
-.animation-list-header .devtools-toolbar {
-  position: absolute;
-  width: 100%;
-}
-
-/* Animation Timeline Tick List */
-.animation-timeline-tick-list {
-  grid-column: 2/3;
-  height: 100%;
-  position: relative;
-}
-
-.animation-timeline-tick-item {
-  height: 100%;
-  position: absolute;
-}
-
-.animation-timeline-tick-item::before {
-  border-left: var(--tick-line-style);
-  content: "";
-  height: 100%;
-  position: absolute;
-}
-
-/* Current Time Scrubber */
-.current-time-scrubber-controller {
-  grid-column: 2 / 3;
-  height: 100%;
-  padding: 0;
-  position: absolute;
-  width: 100%;
-}
-
-.current-time-scrubber-controller::before {
+.current-time-scrubber-area:dir(ltr)::before,
+.current-time-scrubber-area:dir(rtl)::after {
   content: "";
   cursor: col-resize;
   height: var(--devtools-toolbar-height);
@@ -155,82 +117,69 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   width: calc(100% + 1px);
 }
 
-.current-time-scrubber {
+.current-time-scrubber-area:dir(rtl)::after {
+  /* In order to click on the start edge of current-time-scrubber-area element on RTL */
+  margin-inline-start: -1px;
+}
+
+.indication-bar.current-time-scrubber {
   cursor: col-resize;
-  height: 100%;
-  margin-left: -6px;
   pointer-events: auto;
-  position: absolute;
   width: 12px;
-  z-index: 1;
+  transform: translateX(-6px);
 }
 
-.current-time-scrubber::before {
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 5px solid var(--scrubber-color);
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 0;
+.indication-bar.current-time-scrubber:dir(rtl) {
+  transform: translateX(6px);
 }
 
-.current-time-scrubber::after {
-  border-left: 1px solid var(--scrubber-color);
-  content: "";
-  height: 100%;
+.indication-bar.current-time-scrubber::before {
+  border-top-color: var(--scrubber-color);
+  left: 0;
+}
+
+.indication-bar.current-time-scrubber::after {
+  border-inline-start-color: var(--scrubber-color);
   left: 5px;
-  position: absolute;
-  top: 0;
-  width: 0;
-}
-
-/* Animation List */
-.animation-list {
-  list-style-type: none;
-  margin: 0;
-  padding: 0;
-  position: absolute;
-  top: var(--devtools-toolbar-height);
-  width: 100%;
 }
 
 /* Animation Item */
-.animation-item {
-  display: flex;
-  height: 30px;
-}
-
-.animation-item:nth-child(2n+1) {
-  background-color: var(--animation-even-background-color);
-}
-
 .animation-item.cssanimation {
-  --computed-timing-graph-color: var(--fill-color-cssanimation);
-  --effect-timing-graph-color: var(--stroke-color-cssanimation);
+  --graph-color: var(--cssanimation-color);
+  --graph-opacity: 0.7;
 }
 
 .animation-item.csstransition {
-  --computed-timing-graph-color: var(--fill-color-csstransition);
-  --effect-timing-graph-color: var(--stroke-color-csstransition);
+  --graph-color: var(--csstransition-color);
+  --graph-opacity: 0.8;
 }
 
 .animation-item.scriptanimation {
-  --computed-timing-graph-color: var(--fill-color-scriptanimation);
-  --effect-timing-graph-color: var(--stroke-color-scriptanimation);
+  --graph-color: var(--scriptanimation-color);
+  --graph-opacity: 0.5;
+}
+
+.animation-item:hover {
+  background-color: var(--animation-item-hover-color);
 }
 
 .animation-item.selected {
-  background-color: var(--theme-selection-background-hover);
+  background-color: var(--animation-item-selected-color);
 }
 
 /* Animation Target */
 .animation-target {
   align-items: center;
   display: flex;
-  height: 100%;
-  padding-left: 4px;
-  width: var(--sidebar-width);
+  grid-column: 1 / 2;
+  height: var(--graph-height);
+  padding-inline-start: 4px;
+  /* animation-target is tech term, so it should be displayed as ltr. */
+  direction: ltr;
+}
+
+.animation-item:dir(rtl).animation-target {
+  right:0;
 }
 
 /* Reps component */
@@ -250,6 +199,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   background-color: var(--comment-node-color);
 }
 
+.animation-target .objectBox .open-inspector:hover,
 .animation-target.highlighting .objectBox .open-inspector {
   background-color: var(--theme-highlight-blue);
 }
@@ -257,10 +207,11 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 /* Summary Graph */
 .animation-summary-graph {
   cursor: pointer;
-  height: 100%;
-  padding-top: 5px;
+  grid-column: 2 / 3;
+  height: var(--graph-height);
+  padding-bottom: 3px;
+  padding-top: 3px;
   position: relative;
-  width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
 }
 
 .animation-summary-graph.compositor::after {
@@ -275,7 +226,11 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   top: 5px;
   width: 15px;
   -moz-context-properties: fill;
-  z-index: 1;
+}
+
+.animation-summary-graph.compositor:dir(rtl)::after {
+  right: unset;
+  left: 0;
 }
 
 .animation-summary-graph-path {
@@ -283,8 +238,14 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   width: 100%;
 }
 
+.animation-summary-graph:dir(rtl) .animation-summary-graph-path {
+  transform: scaleX(-1.0);
+}
+
 .animation-computed-timing-path path {
-  fill: var(--computed-timing-graph-color);
+  fill: var(--graph-color);
+  fill-opacity: var(--graph-opacity);
+  stroke: var(--graph-color);
   vector-effect: non-scaling-stroke;
   transform: scale(1, -1);
 }
@@ -295,7 +256,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 
 .animation-effect-timing-path path {
   fill: none;
-  stroke: var(--effect-timing-graph-color);
+  stroke: var(--graph-color);
   stroke-dasharray: 2px 2px;
   transform: scale(1, -1);
   vector-effect: non-scaling-stroke;
@@ -303,6 +264,13 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 
 .animation-effect-timing-path path.infinity:nth-child(n+2) {
   opacity: 0.3;
+}
+
+.animation-computed-timing-path path.infinity-duration,
+.animation-effect-timing-path path.infinity-duration {
+  mask-clip: stroke-box;
+  mask-image: linear-gradient(90deg, black, transparent);
+  mask-origin: stroke-box;
 }
 
 .animation-negative-delay-path path,
@@ -319,7 +287,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   background-color: var(--theme-graphs-grey);
   height: 3px;
   position: absolute;
-  top: calc(100% - 1.5px);
+  bottom: 2px;
 }
 
 .animation-delay-sign::before,
@@ -335,21 +303,49 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 
 .animation-delay-sign.fill,
 .animation-end-delay-sign.fill {
-  background-color: var(--effect-timing-graph-color);
+  background-color: var(--graph-color);
 }
 
-.animation-delay-sign.negative::before {
+/* These are delay sign directions. Basically, we can't use
+  the transform due to pseudo element, So we use the left/right align. */
+
+.animation-delay-sign:dir(ltr)::before {
+  left: -3px;
+  right: unset;
+}
+
+.animation-delay-sign:dir(rtl)::before {
   left: unset;
   right: -3px;
 }
 
-.animation-end-delay-sign::before {
+.animation-delay-sign.negative:dir(ltr)::before {
+  left: unset;
   right: -3px;
 }
 
-.animation-end-delay-sign.negative::before {
+.animation-delay-sign.negative:dir(rtl)::before {
   left: -3px;
   right: unset;
+}
+
+.animation-end-delay-sign:dir(ltr)::before {
+  left: unset;
+  right: -3px;
+}
+
+.animation-end-delay-sign:dir(rtl)::before {
+  left: -3px;
+  right: unset;
+}
+
+.animation-end-delay-sign.negative:dir(ltr)::before {
+  left: -3px;
+  right: unset;
+}
+.animation-end-delay-sign.negative:dir(rtl)::before {
+  left: unset;
+  right: -3px;
 }
 
 .animation-name {
@@ -372,19 +368,34 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   text-anchor: end;
 }
 
+.animation-summary-graph:dir(rtl) .animation-name text {
+  transform: translateX(-100%);
+}
+
+.animation-summary-graph:dir(rtl) .animation-name {
+  right:0;
+}
+
 /* Animation Detail */
 .animation-detail-container {
-  background-color: var(--theme-body-background);
+  background-color: var(--theme-sidebar-background);
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
   width: 100%;
-  z-index: 1;
+  z-index: 2;
 }
 
 .animation-detail-header {
   display: flex;
+  padding-inline-end: 0;
+}
+
+/* On OSX the cursor turns into a window-resizing cursor at the edges of the
+ * window, so bring the end of the close button in. */
+:root[platform="mac"] .animation-detail-header {
+  padding-inline-end: 3px;
 }
 
 .animation-detail-title {
@@ -394,132 +405,39 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   white-space: nowrap;
 }
 
+.animation-detail-close-button {
+  margin: 0;
+}
+
 .animation-detail-close-button::before {
+  fill: var(--theme-toolbar-photon-icon-color);
   background-image: url(chrome://devtools/skin/images/close.svg);
 }
 
 /* Animated Property List Container */
 .animated-property-list-container {
-  display: flex;
   flex: 1;
-  flex-direction: column;
-  overflow-y: auto;
-  position: relative;
-}
-
-/* Animated Property List Header */
-.animated-property-list-header {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) calc(100% - var(--sidebar-width) - var(--graph-right-offset)) var(--graph-right-offset);
-  line-height: var(--devtools-toolbar-height);
-  min-height: 100%;
-  padding: 0;
-  pointer-events: none;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.animated-property-list-header .devtools-toolbar {
-  position: absolute;
-  width: 100%;
-}
-
-/* Keyframes Progress Tick List */
-.keyframes-progress-tick-list {
-  grid-column: 2 / 3;
-  height: 100%;
-  position: absolute;
-  width: 100%;
-}
-
-.keyframes-progress-tick-item {
-  position: absolute;
-}
-
-.keyframes-progress-tick-item.left {
-  border-left: var(--tick-line-style);
-}
-
-.keyframes-progress-tick-item.right {
-  border-right: var(--tick-line-style);
+  overflow: hidden;
+  -moz-user-select: none;
 }
 
 /* Keyframes Progress Bar */
 .keyframes-progress-bar-area {
   background: none;
   grid-column: 2 / 3;
-  padding: 0;
-  height: 100%;
-  position: absolute;
-  width: 100%;
+  pointer-events: none;
+  z-index: 2;
 }
 
-.keyframes-progress-bar {
-  height: 100%;
-  position: absolute;
-  z-index: 1;
+.indication-bar.keyframes-progress-bar::before {
+  border-top-color: var(--progress-bar-color);
 }
 
-.keyframes-progress-bar::before {
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 5px solid var(--progress-bar-color);
-  content: "";
-  left: -5px;
-  position: absolute;
-  top: 0;
-  width: 0;
-}
-
-.keyframes-progress-bar::after {
-  border-left: 1px solid var(--progress-bar-color);
-  content: "";
-  height: 100%;
-  position: absolute;
-  top: 0;
-  width: 0;
-}
-
-/* Animated Property List */
-.animated-property-list-background {
-  border-left: var(--tick-line-style);
-  border-right: var(--tick-line-style);
-  bottom: 0;
-	left: var(--sidebar-width);
-  min-height: 100%;
-	position: sticky;
-  top: 0;
-	width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
-}
-
-.animated-property-list-background span {
-  border-left: var(--tick-line-style);
-	height: 100%;
-	left: 50%;
-	position: absolute;
-}
-
-.animated-property-list {
-  flex: 1;
-  list-style-type: none;
-  margin: 0;
-  padding: 0;
-  position: absolute;
-  top: var(--devtools-toolbar-height);
-  width: 100%;
+.indication-bar.keyframes-progress-bar::after {
+  border-inline-start-color: var(--progress-bar-color);
 }
 
 /* Animated Property Item */
-.animated-property-item {
-  display: flex;
-  height: 30px;
-}
-
-.animated-property-item:nth-child(2n+1) {
-  background-color: var(--animation-even-background-color);
-}
-
 .animated-property-item.unchanged {
   opacity: 0.6;
 }
@@ -528,30 +446,30 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 .animated-property-name {
   align-items: center;
   display: flex;
-  height: 100%;
+  height: var(--graph-height);
   justify-content: flex-end;
-  padding-right: 10px;
-  width: var(--sidebar-width);
+  padding-inline-end: 10px;
 }
 
 .animated-property-name.compositor span {
-  padding-left: 15px;
+  padding-inline-start: 15px;
   position: relative;
 }
 
 .animated-property-list-container.cssanimation .animated-property-name.compositor {
-  --fast-track-color: var(--stroke-color-cssanimation);
+  --fast-track-color: var(--cssanimation-color);
 }
 
 .animated-property-list-container.csstransition .animated-property-name.compositor {
-  --fast-track-color: var(--stroke-color-csstransition);
+  --fast-track-color: var(--csstransition-color);
 }
 
 .animated-property-list-container.scriptanimation .animated-property-name.compositor {
-  --fast-track-color: var(--stroke-color-scriptanimation);
+  --fast-track-color: var(--scriptanimation-color);
 }
 
-.animated-property-name.compositor span::before {
+.animated-property-name.compositor span:dir(ltr)::before,
+.animated-property-name.compositor span:dir(rtl)::after {
   background-image: var(--fast-track-image);
   background-repeat: no-repeat;
   background-size: contain;
@@ -559,7 +477,9 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   fill: var(--fast-track-color);
   height: 100%;
   position: absolute;
+  /* In order to support RTL/LTR both of environment, set the left and right to zero */
   left: 0;
+  right: 0;
   width: 15px;
   -moz-context-properties: fill;
 }
@@ -570,10 +490,14 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 
 /* Keyframes Graph */
 .keyframes-graph {
-  padding-top: 3px;
-  height: 100%;
+  grid-column: 2 / 3;
+  height: var(--graph-height);
+  padding-top: 5px;
   position: relative;
-  width: calc(100% - var(--sidebar-width) - var(--graph-right-offset));
+}
+
+.keyframes-graph:dir(rtl) .keyframes-graph-path {
+  transform: scaleX(-1.0);
 }
 
 .keyframes-graph-path {
@@ -582,23 +506,25 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
 }
 
 .keyframes-graph-path path {
-  fill: #00b0bd88;
-  stroke: #00b0bd;
+  fill: var(--teal-60);
+  fill-opacity: 0.5;
+  stroke: var(--teal-70);
   vector-effect: non-scaling-stroke;
   transform: scale(1, -1);
 }
 
 .keyframes-graph.opacity .keyframes-graph-path path {
-  fill: #df00a988;
-  stroke: #df00a9;
+  fill: var(--magenta-50);
+  stroke: var(--magenta-70);
 }
 
 .keyframes-graph.transform .keyframes-graph-path path {
-  fill: #ea800088;
-  stroke: #ea8000;
+  fill: var(--yellow-50);
+  stroke: var(--yellow-60);
 }
 
 .keyframes-graph-path .color-path path {
+  fill-opacity: 1;
   stroke: none;
 }
 
@@ -634,6 +560,7 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   list-style-type: none;
   top: 0%;
   width: 100%;
+  padding-inline-start: 0;
 }
 
 .keyframe-marker-item {
@@ -647,16 +574,114 @@ select.playback-rate-selector.devtools-button:not(:empty):not(:disabled):not(.ch
   width: 10px;
 }
 
+.keyframe-marker-item:dir(rtl) {
+  transform: translate(5px, -3px);
+}
+
 .animated-property-list-container.cssanimation .keyframe-marker-item {
-  background-color: var(--fill-color-cssanimation);
+  background-color: var(--cssanimation-color);
 }
 
 .animated-property-list-container.csstransition .keyframe-marker-item {
-  background-color: var(--fill-color-csstransition);
+  background-color: var(--csstransition-color);
 }
 
 .animated-property-list-container.scriptanimation .keyframe-marker-item {
-  background-color: var(--fill-color-scriptanimation);
+  background-color: var(--scriptanimation-color);
+}
+
+/* Common Components */
+/* Progress Inspection Panel */
+.progress-inspection-panel {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.progress-inspection-panel > .header {
+  padding: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.progress-inspection-panel > ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+
+.progress-inspection-panel > div,
+.progress-inspection-panel > ul > li {
+  display: grid;
+  grid-template-columns:
+    var(--sidebar-width) calc(100% - var(--sidebar-width) - var(--graph-right-offset)) var(--graph-right-offset);
+}
+
+/* Tick Lines */
+.tick-lines {
+  grid-column: 2 / 3;
+  position: relative;
+}
+
+.tick-line {
+  position: absolute;
+}
+
+.tick-line::before {
+  border-inline-start: var(--tick-line-style);
+  content: "";
+  height: 100vh;
+  position: fixed;
+}
+
+/* Tick Labels */
+.tick-labels {
+  grid-column: 2 / 3;
+  height: 100%;
+  position: relative;
+}
+
+.tick-label {
+  border-inline-start: var(--tick-line-style);
+  height: 100%;
+  position: absolute;
+}
+
+.animated-property-list-container .tick-label:last-child {
+  border-inline-start: unset;
+  border-inline-end: var(--tick-line-style);
+  transform: translateX(calc(-100% + 0.5px));
+}
+
+.animated-property-list-container .tick-label:dir(rtl):last-child {
+  transform: translateX(calc(100% - 0.6px));
+}
+
+/* Indication Bar */
+.indication-bar {
+  height: 100%;
+  position: absolute;
+}
+
+.indication-bar::before {
+  border-inline-start: 5px solid transparent;
+  border-inline-end: 5px solid transparent;
+  border-top: 5px solid;
+  content: "";
+  left: -5px;
+  position: absolute;
+  top: 0;
+  width: 0;
+}
+
+.indication-bar::after {
+  border-inline-start: 1px solid;
+  content: "";
+  height: 100%;
+  position: absolute;
+  top: 0;
+  width: 0;
 }
 
 /* No Animation Panel */

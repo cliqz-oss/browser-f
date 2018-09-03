@@ -9,11 +9,9 @@
 #include "nsDOMCSSAttrDeclaration.h"
 
 #include "mozilla/DeclarationBlock.h"
-#include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/InternalMutationEvent.h"
-#include "mozilla/ServoDeclarationBlock.h"
 #include "mozAutoDocUpdate.h"
 #include "nsContentUtils.h"
 #include "nsIDocument.h"
@@ -140,7 +138,7 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
   }
 
   // cannot fail
-  RefPtr<DeclarationBlock> decl = new ServoDeclarationBlock();
+  RefPtr<DeclarationBlock> decl = new DeclarationBlock();
 
   // this *can* fail (inside SetAttrAndNotify, at least).
   nsresult rv;
@@ -157,8 +155,8 @@ nsDOMCSSAttributeDeclaration::GetCSSDeclaration(Operation aOperation)
   return decl;
 }
 
-nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-nsDOMCSSAttributeDeclaration::GetServoCSSParsingEnvironment(
+nsDOMCSSDeclaration::ParsingEnvironment
+nsDOMCSSAttributeDeclaration::GetParsingEnvironment(
     nsIPrincipal* aSubjectPrincipal) const
 {
   return {
@@ -180,7 +178,7 @@ nsDOMCSSAttributeDeclaration::SetSMILValue(const nsCSSPropertyID aPropID,
   if (!olddecl) {
     return NS_ERROR_NOT_AVAILABLE;
   }
-  mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
+  mozAutoDocUpdate autoUpdate(DocToUpdate(), true);
   RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
   bool changed = nsSMILCSSValueType::SetPropertyValues(aValue, *decl);
   if (changed) {

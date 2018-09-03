@@ -98,7 +98,7 @@
      hiding/minimizing the attachment pane, e.g. Alt+M on Windows.
      toggleAttachmentPaneCmd.key and attachments.accesskey must be the same
      for the bucket view state machinery to work. -->
-<!ENTITY toggleAttachmentPaneCmd.key "m">
+<!ENTITY toggleAttachmentPaneCmd.key "g">
 <!ENTITY selectAllCmd.label "Alles auswählen">
 <!ENTITY selectAllCmd.key "A">
 <!ENTITY selectAllCmd.accesskey "u">
@@ -291,7 +291,7 @@
      be taken from the strings in attachmentCount in composeMsgs.properties,
      and it must be the same as toggleAttachmentPaneCmd.key, otherwise it won't
      work, as the shortcut key functionality supersedes the access key. -->
-<!ENTITY attachments.accesskey "n">
+<!ENTITY attachments.accesskey "g">
 
 <!ENTITY attachmentBucketHeader.tooltip "Anhangbereich">
 <!ENTITY attachmentBucketCloseButton.tooltip "Anhangbereich ausblenden">

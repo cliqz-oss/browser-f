@@ -53,6 +53,7 @@
 #include "nsSandboxFlags.h"
 #include "nsContentTypeParser.h"
 #include "nsINetworkPredictor.h"
+#include "nsMimeTypes.h"
 #include "mozilla/ConsoleReportCollector.h"
 #include "mozilla/LoadInfo.h"
 
@@ -192,8 +193,7 @@ ScriptLoader::~ScriptLoader()
 // Collect telemtry data about the cache information, and the kind of source
 // which are being loaded, and where it is being loaded from.
 static void
-CollectScriptTelemetry(nsIIncrementalStreamLoader* aLoader,
-                       ScriptLoadRequest* aRequest)
+CollectScriptTelemetry(ScriptLoadRequest* aRequest)
 {
   using namespace mozilla::Telemetry;
 
@@ -209,43 +209,26 @@ CollectScriptTelemetry(nsIIncrementalStreamLoader* aLoader,
     AccumulateCategorical(LABELS_DOM_SCRIPT_KIND::ClassicScript);
   }
 
-  // Report the type of source, as well as the size of the source.
+  // Report the type of source. This is used to monitor the status of the
+  // JavaScript Start-up Bytecode Cache, with the expectation of an almost zero
+  // source-fallback and alternate-data being roughtly equal to source loads.
   if (aRequest->IsLoadingSource()) {
     if (aRequest->mIsInline) {
       AccumulateCategorical(LABELS_DOM_SCRIPT_LOADING_SOURCE::Inline);
       nsAutoString inlineData;
       aRequest->mElement->GetScriptText(inlineData);
-      Accumulate(DOM_SCRIPT_INLINE_SIZE, inlineData.Length());
-    } else {
+    } else if (aRequest->IsTextSource()) {
       AccumulateCategorical(LABELS_DOM_SCRIPT_LOADING_SOURCE::SourceFallback);
-      Accumulate(DOM_SCRIPT_SOURCE_SIZE, aRequest->mScriptText.length());
     }
+    // TODO: Add telemetry for BinAST encoded source.
   } else {
     MOZ_ASSERT(aRequest->IsLoading());
-    if (aRequest->IsSource()) {
+    if (aRequest->IsTextSource()) {
       AccumulateCategorical(LABELS_DOM_SCRIPT_LOADING_SOURCE::Source);
-      Accumulate(DOM_SCRIPT_SOURCE_SIZE, aRequest->mScriptText.length());
-    } else {
-      MOZ_ASSERT(aRequest->IsBytecode());
+    } else if (aRequest->IsBytecode()) {
       AccumulateCategorical(LABELS_DOM_SCRIPT_LOADING_SOURCE::AltData);
-      Accumulate(DOM_SCRIPT_BYTECODE_SIZE, aRequest->mScriptBytecode.length());
     }
-  }
-
-  // Skip if we do not have any cache information for the given script.
-  if (!aLoader) {
-    return;
-  }
-  nsCOMPtr<nsIRequest> channel;
-  aLoader->GetRequest(getter_AddRefs(channel));
-  nsCOMPtr<nsICacheInfoChannel> cic(do_QueryInterface(channel));
-  if (!cic) {
-    return;
-  }
-
-  int32_t fetchCount = 0;
-  if (NS_SUCCEEDED(cic->GetCacheTokenFetchCount(&fetchCount))) {
-    Accumulate(DOM_SCRIPT_FETCH_COUNT, fetchCount);
+    // TODO: Add telemetry for BinAST encoded source.
   }
 }
 
@@ -447,7 +430,7 @@ ScriptLoader::ProcessFetchedModuleSource(ModuleLoadRequest* aRequest)
   nsresult rv = CreateModuleScript(aRequest);
   MOZ_ASSERT(NS_FAILED(rv) == !aRequest->mModuleScript);
 
-  aRequest->mScriptText.clearAndFree();
+  aRequest->ClearScriptSource();
 
   if (NS_FAILED(rv)) {
     aRequest->LoadFailed();
@@ -769,25 +752,20 @@ ScriptLoader::StartFetchingModuleAndDependencies(ModuleLoadRequest* aParent,
 }
 
 // 8.1.3.8.1 HostResolveImportedModule(referencingModule, specifier)
-bool
-HostResolveImportedModule(JSContext* aCx, unsigned argc, JS::Value* vp)
+JSObject*
+HostResolveImportedModule(JSContext* aCx, JS::Handle<JSObject*> aModule,
+                          JS::Handle<JSString*> aSpecifier)
 {
-
-  MOZ_ASSERT(argc == 2);
-  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-  JS::Rooted<JSObject*> module(aCx, &args[0].toObject());
-  JS::Rooted<JSString*> specifier(aCx, args[1].toString());
-
   // Let referencing module script be referencingModule.[[HostDefined]].
-  JS::Value value = JS::GetModuleHostDefinedField(module);
+  JS::Value value = JS::GetModuleHostDefinedField(aModule);
   auto script = static_cast<ModuleScript*>(value.toPrivate());
-  MOZ_ASSERT(script->ModuleRecord() == module);
+  MOZ_ASSERT(script->ModuleRecord() == aModule);
 
   // Let url be the result of resolving a module specifier given referencing
   // module script and specifier.
   nsAutoJSString string;
-  if (!string.init(aCx, specifier)) {
-    return false;
+  if (!string.init(aCx, aSpecifier)) {
+    return nullptr;
   }
 
   nsCOMPtr<nsIURI> uri = ResolveModuleSpecifier(script, string);
@@ -802,27 +780,49 @@ HostResolveImportedModule(JSContext* aCx, unsigned argc, JS::Value* vp)
   MOZ_ASSERT(ms, "Resolved module not found in module map");
 
   MOZ_ASSERT(!ms->HasParseError());
+  MOZ_ASSERT(ms->ModuleRecord());
 
-  *vp = JS::ObjectValue(*ms->ModuleRecord());
-  return true;
+  return ms->ModuleRecord();
 }
 
-static nsresult
+bool
+HostPopulateImportMeta(JSContext* aCx, JS::Handle<JSObject*> aModule,
+                       JS::Handle<JSObject*> aMetaObject)
+{
+  MOZ_DIAGNOSTIC_ASSERT(aModule);
+
+  JS::Value value = JS::GetModuleHostDefinedField(aModule);
+  if (value.isUndefined()) {
+    JS_ReportErrorASCII(aCx, "Module script not found");
+    return false;
+  }
+
+  auto script = static_cast<ModuleScript*>(value.toPrivate());
+  MOZ_DIAGNOSTIC_ASSERT(script->ModuleRecord() == aModule);
+
+  nsAutoCString url;
+  MOZ_DIAGNOSTIC_ASSERT(script->BaseURL());
+  MOZ_ALWAYS_SUCCEEDS(script->BaseURL()->GetAsciiSpec(url));
+
+  JS::Rooted<JSString*> urlString(aCx, JS_NewStringCopyZ(aCx, url.get()));
+  if (!urlString) {
+    JS_ReportOutOfMemory(aCx);
+    return false;
+  }
+
+  return JS_DefineProperty(aCx, aMetaObject, "url", urlString, JSPROP_ENUMERATE);
+}
+
+static void
 EnsureModuleResolveHook(JSContext* aCx)
 {
-  if (JS::GetModuleResolveHook(aCx)) {
-    return NS_OK;
+  JSRuntime* rt = JS_GetRuntime(aCx);
+  if (JS::GetModuleResolveHook(rt)) {
+    return;
   }
 
-  JS::Rooted<JSFunction*> func(aCx);
-  func = JS_NewFunction(aCx, HostResolveImportedModule, 2, 0,
-                        "HostResolveImportedModule");
-  if (!func) {
-    return NS_ERROR_FAILURE;
-  }
-
-  JS::SetModuleResolveHook(aCx, func);
-  return NS_OK;
+  JS::SetModuleResolveHook(rt, HostResolveImportedModule);
+  JS::SetModuleMetadataHook(rt, HostPopulateImportMeta);
 }
 
 void
@@ -944,8 +944,7 @@ ScriptLoader::InstantiateModuleTree(ModuleLoadRequest* aRequest)
     return false;
   }
 
-  nsresult rv = EnsureModuleResolveHook(jsapi.cx());
-  NS_ENSURE_SUCCESS(rv, false);
+  EnsureModuleResolveHook(jsapi.cx());
 
   JS::Rooted<JSObject*> module(jsapi.cx(), moduleScript->ModuleRecord());
   bool ok = NS_SUCCEEDED(nsJSUtils::ModuleInstantiate(jsapi.cx(), module));
@@ -989,7 +988,7 @@ ScriptLoader::StartLoad(ScriptLoadRequest* aRequest)
 {
   MOZ_ASSERT(aRequest->IsLoading());
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NULL_POINTER);
-  aRequest->mDataType = ScriptLoadRequest::DataType::eUnknown;
+  aRequest->SetUnknownDataType();
 
   // If this document is sandboxed without 'allow-scripts', abort.
   if (mDocument->HasScriptsBlockedBySandbox()) {
@@ -1134,10 +1133,14 @@ ScriptLoader::StartLoad(ScriptLoadRequest* aRequest)
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(channel));
   if (httpChannel) {
     // HTTP content negotation has little value in this context.
+    nsAutoCString acceptTypes("*/*");
+    if (BinASTEncodingEnabled() && aRequest->ShouldAcceptBinASTEncoding()) {
+      acceptTypes = APPLICATION_JAVASCRIPT_BINAST ", */*";
+    }
     rv = httpChannel->SetRequestHeader(NS_LITERAL_CSTRING("Accept"),
-                                       NS_LITERAL_CSTRING("*/*"),
-                                       false);
+                                       acceptTypes, false);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
+
     rv = httpChannel->SetReferrerWithPolicy(aRequest->mReferrer,
                                             aRequest->mReferrerPolicy);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -1378,7 +1381,7 @@ ScriptLoader::ProcessExternalScript(nsIScriptElement* aElement,
     mozilla::net::ReferrerPolicy ourRefPolicy = mDocument->GetReferrerPolicy();
     request = CreateLoadRequest(aScriptKind, scriptURI, aElement,
                                 ourCORSMode, sriMetadata, ourRefPolicy);
-    request->mTriggeringPrincipal = Move(principal);
+    request->mTriggeringPrincipal = std::move(principal);
     request->mIsInline = false;
     request->SetScriptMode(aElement->GetScriptDeferred(),
                            aElement->GetScriptAsync());
@@ -1524,9 +1527,9 @@ ScriptLoader::ProcessInlineScript(nsIScriptElement* aElement,
   request->mTriggeringPrincipal = mDocument->NodePrincipal();
   request->mLineNo = aElement->GetScriptLineNumber();
   request->mProgress = ScriptLoadRequest::Progress::eLoading_Source;
-  request->mDataType = ScriptLoadRequest::DataType::eSource;
+  request->SetTextSource();
   TRACE_FOR_TEST_BOOL(request->mElement, "scriptloader_load_source");
-  CollectScriptTelemetry(nullptr, request);
+  CollectScriptTelemetry(request);
 
   // Only the 'async' attribute is heeded on an inline module script and
   // inline classic scripts ignore both these attributes.
@@ -1660,7 +1663,7 @@ class NotifyOffThreadScriptLoadCompletedRunnable : public Runnable
   RefPtr<ScriptLoadRequest> mRequest;
   RefPtr<ScriptLoader> mLoader;
   RefPtr<DocGroup> mDocGroup;
-  void* mToken;
+  JS::OffThreadToken* mToken;
 
 public:
   NotifyOffThreadScriptLoadCompletedRunnable(ScriptLoadRequest* aRequest,
@@ -1676,7 +1679,7 @@ public:
 
   virtual ~NotifyOffThreadScriptLoadCompletedRunnable();
 
-  void SetToken(void* aToken) {
+  void SetToken(JS::OffThreadToken* aToken) {
     MOZ_ASSERT(aToken && !mToken);
     mToken = aToken;
   }
@@ -1757,7 +1760,7 @@ NotifyOffThreadScriptLoadCompletedRunnable::Run()
 }
 
 static void
-OffThreadScriptLoaderCallback(void* aToken, void* aCallbackData)
+OffThreadScriptLoaderCallback(JS::OffThreadToken* aToken, void* aCallbackData)
 {
   RefPtr<NotifyOffThreadScriptLoadCompletedRunnable> aRunnable =
     dont_AddRef(static_cast<NotifyOffThreadScriptLoadCompletedRunnable*>(aCallbackData));
@@ -1795,11 +1798,18 @@ ScriptLoader::AttemptAsyncScriptCompile(ScriptLoadRequest* aRequest)
     return rv;
   }
 
-  if (aRequest->IsSource()) {
-    if (!JS::CanCompileOffThread(cx, options, aRequest->mScriptText.length())) {
+  if (aRequest->IsTextSource()) {
+    if (!JS::CanCompileOffThread(cx, options, aRequest->ScriptText().length())) {
       return NS_ERROR_FAILURE;
     }
+#ifdef JS_BUILD_BINAST
+  } else if (aRequest->IsBinASTSource()) {
+    if (!JS::CanDecodeBinASTOffThread(cx, options, aRequest->ScriptBinASTData().length())) {
+      return NS_ERROR_FAILURE;
+    }
+#endif
   } else {
+    MOZ_ASSERT(aRequest->IsBytecode());
     size_t length = aRequest->mScriptBytecode.length() - aRequest->mBytecodeOffset;
     if (!JS::CanDecodeOffThread(cx, options, length)) {
       return NS_ERROR_FAILURE;
@@ -1810,29 +1820,40 @@ ScriptLoader::AttemptAsyncScriptCompile(ScriptLoadRequest* aRequest)
     new NotifyOffThreadScriptLoadCompletedRunnable(aRequest, this);
 
   if (aRequest->IsModuleRequest()) {
-    MOZ_ASSERT(aRequest->IsSource());
+    MOZ_ASSERT(aRequest->IsTextSource());
     if (!JS::CompileOffThreadModule(cx, options,
-                                    aRequest->mScriptText.begin(),
-                                    aRequest->mScriptText.length(),
+                                    aRequest->ScriptText().begin(),
+                                    aRequest->ScriptText().length(),
                                     OffThreadScriptLoaderCallback,
                                     static_cast<void*>(runnable))) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
-  } else if (aRequest->IsSource()) {
-    if (!JS::CompileOffThread(cx, options,
-                              aRequest->mScriptText.begin(),
-                              aRequest->mScriptText.length(),
-                              OffThreadScriptLoaderCallback,
-                              static_cast<void*>(runnable))) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-  } else {
-    MOZ_ASSERT(aRequest->IsBytecode());
+  } else if (aRequest->IsBytecode()) {
     if (!JS::DecodeOffThreadScript(cx, options,
                                    aRequest->mScriptBytecode,
                                    aRequest->mBytecodeOffset,
                                    OffThreadScriptLoaderCallback,
                                    static_cast<void*>(runnable))) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+#ifdef JS_BUILD_BINAST
+  } else if (aRequest->IsBinASTSource()) {
+    MOZ_ASSERT(aRequest->IsSource());
+    if (!JS::DecodeBinASTOffThread(cx, options,
+                                   aRequest->ScriptBinASTData().begin(),
+                                   aRequest->ScriptBinASTData().length(),
+                                   OffThreadScriptLoaderCallback,
+                                   static_cast<void*>(runnable))) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
+#endif
+  } else {
+    MOZ_ASSERT(aRequest->IsTextSource());
+    if (!JS::CompileOffThread(cx, options,
+                              aRequest->ScriptText().begin(),
+                              aRequest->ScriptText().length(),
+                              OffThreadScriptLoaderCallback,
+                              static_cast<void*>(runnable))) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
   }
@@ -1881,8 +1902,8 @@ ScriptLoader::GetScriptSource(ScriptLoadRequest* aRequest, nsAutoString& inlineD
                               SourceBufferHolder::NoOwnership);
   }
 
-  return SourceBufferHolder(aRequest->mScriptText.begin(),
-                            aRequest->mScriptText.length(),
+  return SourceBufferHolder(aRequest->ScriptText().begin(),
+                            aRequest->ScriptText().length(),
                             SourceBufferHolder::NoOwnership);
 }
 
@@ -1983,7 +2004,7 @@ ScriptLoader::ProcessRequest(ScriptLoadRequest* aRequest)
 
   // Free any source data, but keep the bytecode content as we might have to
   // save it later.
-  aRequest->mScriptText.clearAndFree();
+  aRequest->ClearScriptSource();
   if (aRequest->IsBytecode()) {
     // We received bytecode as input, thus we were decoding, and we will not be
     // encoding the bytecode once more. We can safely clear the content of this
@@ -2120,6 +2141,7 @@ ScriptLoader::ShouldCacheBytecode(ScriptLoadRequest* aRequest)
   bool hasSourceLengthMin = false;
   bool hasFetchCountMin = false;
   size_t sourceLengthMin = 100;
+  size_t binASTLengthMin = 70;
   int32_t fetchCountMin = 4;
 
   LOG(("ScriptLoadRequest (%p): Bytecode-cache: strategy = %d.", aRequest, strategy));
@@ -2140,6 +2162,7 @@ ScriptLoader::ShouldCacheBytecode(ScriptLoadRequest* aRequest)
       hasSourceLengthMin = true;
       hasFetchCountMin = true;
       sourceLengthMin = 1024;
+      binASTLengthMin = 700;
       // If we were to optimize only for speed, without considering the impact
       // on memory, we should set this threshold to 2. (Bug 900784 comment 120)
       fetchCountMin = 4;
@@ -2150,9 +2173,21 @@ ScriptLoader::ShouldCacheBytecode(ScriptLoadRequest* aRequest)
   // If the script is too small/large, do not attempt at creating a bytecode
   // cache for this script, as the overhead of parsing it might not be worth the
   // effort.
-  if (hasSourceLengthMin && aRequest->mScriptText.length() < sourceLengthMin) {
-    LOG(("ScriptLoadRequest (%p): Bytecode-cache: Script is too small.", aRequest));
-    return false;
+  if (hasSourceLengthMin) {
+    size_t sourceLength;
+    size_t minLength;
+    if (aRequest->IsTextSource()) {
+      sourceLength = aRequest->ScriptText().length();
+      minLength = sourceLengthMin;
+    } else {
+      MOZ_ASSERT(aRequest->IsBinASTSource());
+      sourceLength = aRequest->ScriptBinASTData().length();
+      minLength = binASTLengthMin;
+    }
+    if (sourceLength < minLength) {
+      LOG(("ScriptLoadRequest (%p): Bytecode-cache: Script is too small.", aRequest));
+      return false;
+    }
   }
 
   // Check that we loaded the cache entry a few times before attempting any
@@ -2192,9 +2227,6 @@ ScriptLoader::EvaluateScript(ScriptLoadRequest* aRequest)
     return NS_ERROR_FAILURE;
   }
 
-  // Report telemetry results of the number of scripts evaluated.
-  mDocument->SetDocumentIncCounter(IncCounter::eIncCounter_ScriptTag);
-
   // Get the script-type to be used by this element.
   NS_ASSERTION(scriptContent, "no content - what is default script-type?");
 
@@ -2225,14 +2257,13 @@ ScriptLoader::EvaluateScript(ScriptLoadRequest* aRequest)
     if (aRequest->IsModuleRequest()) {
       // When a module is already loaded, it is not feched a second time and the
       // mDataType of the request might remain set to DataType::Unknown.
-      MOZ_ASSERT(!aRequest->IsBytecode());
+      MOZ_ASSERT(aRequest->IsTextSource() || aRequest->IsUnknownDataType());
       LOG(("ScriptLoadRequest (%p): Evaluate Module", aRequest));
 
       // currentScript is set to null for modules.
       AutoCurrentScriptUpdater scriptUpdater(this, nullptr);
 
-      rv = EnsureModuleResolveHook(cx);
-      NS_ENSURE_SUCCESS(rv, rv);
+      EnsureModuleResolveHook(cx);
 
       ModuleLoadRequest* request = aRequest->AsModuleRequest();
       MOZ_ASSERT(request->mModuleScript);
@@ -2280,11 +2311,9 @@ ScriptLoader::EvaluateScript(ScriptLoadRequest* aRequest)
           nsJSUtils::ExecutionContext exec(cx, global);
           if (aRequest->mOffThreadToken) {
             LOG(("ScriptLoadRequest (%p): Decode Bytecode & Join and Execute", aRequest));
-            AutoTimer<DOM_SCRIPT_OFF_THREAD_DECODE_EXEC_MS> timer;
             rv = exec.DecodeJoinAndExec(&aRequest->mOffThreadToken);
           } else {
             LOG(("ScriptLoadRequest (%p): Decode Bytecode and Execute", aRequest));
-            AutoTimer<DOM_SCRIPT_MAIN_THREAD_DECODE_EXEC_MS> timer;
             rv = exec.DecodeAndExec(options, aRequest->mScriptBytecode,
                                     aRequest->mBytecodeOffset);
           }
@@ -2296,14 +2325,6 @@ ScriptLoader::EvaluateScript(ScriptLoadRequest* aRequest)
           JS::Rooted<JSScript*> script(cx);
           bool encodeBytecode = ShouldCacheBytecode(aRequest);
 
-          TimeStamp start;
-          if (Telemetry::CanRecordExtended()) {
-            // Only record telemetry for scripts which are above the threshold.
-            if (aRequest->mCacheInfo && aRequest->mScriptText.length() >= 1024) {
-              start = TimeStamp::Now();
-            }
-          }
-
           {
             nsJSUtils::ExecutionContext exec(cx, global);
             exec.SetEncodeBytecode(encodeBytecode);
@@ -2312,24 +2333,25 @@ ScriptLoader::EvaluateScript(ScriptLoadRequest* aRequest)
               // Off-main-thread parsing.
               LOG(("ScriptLoadRequest (%p): Join (off-thread parsing) and Execute",
                    aRequest));
-              rv = exec.JoinAndExec(&aRequest->mOffThreadToken, &script);
-              if (start) {
-                AccumulateTimeDelta(encodeBytecode
-                                    ? DOM_SCRIPT_OFF_THREAD_PARSE_ENCODE_EXEC_MS
-                                    : DOM_SCRIPT_OFF_THREAD_PARSE_EXEC_MS,
-                                    start);
+              if (aRequest->IsBinASTSource()) {
+                rv = exec.DecodeBinASTJoinAndExec(&aRequest->mOffThreadToken, &script);
+              } else {
+                MOZ_ASSERT(aRequest->IsTextSource());
+                rv = exec.JoinAndExec(&aRequest->mOffThreadToken, &script);
               }
             } else {
               // Main thread parsing (inline and small scripts)
               LOG(("ScriptLoadRequest (%p): Compile And Exec", aRequest));
-              nsAutoString inlineData;
-              SourceBufferHolder srcBuf = GetScriptSource(aRequest, inlineData);
-              rv = exec.CompileAndExec(options, srcBuf, &script);
-              if (start) {
-                AccumulateTimeDelta(encodeBytecode
-                                    ? DOM_SCRIPT_MAIN_THREAD_PARSE_ENCODE_EXEC_MS
-                                    : DOM_SCRIPT_MAIN_THREAD_PARSE_EXEC_MS,
-                                    start);
+              if (aRequest->IsBinASTSource()) {
+                rv = exec.DecodeBinASTAndExec(options,
+                                              aRequest->ScriptBinASTData().begin(),
+                                              aRequest->ScriptBinASTData().length(),
+                                              &script);
+              } else {
+                MOZ_ASSERT(aRequest->IsTextSource());
+                nsAutoString inlineData;
+                SourceBufferHolder srcBuf = GetScriptSource(aRequest, inlineData);
+                rv = exec.CompileAndExec(options, srcBuf, &script);
               }
             }
           }
@@ -2448,7 +2470,6 @@ ScriptLoader::EncodeBytecode()
     return;
   }
 
-  Telemetry::AutoTimer<Telemetry::DOM_SCRIPT_ENCODING_MS_PER_DOCUMENT> timer;
   AutoEntryScript aes(globalObject, "encode bytecode", true);
   RefPtr<ScriptLoadRequest> request;
   while (!mBytecodeEncodingQueue.isEmpty()) {
@@ -2473,14 +2494,12 @@ ScriptLoader::EncodeRequestBytecode(JSContext* aCx, ScriptLoadRequest* aRequest)
   if (!JS::FinishIncrementalEncoding(aCx, script, aRequest->mScriptBytecode)) {
     LOG(("ScriptLoadRequest (%p): Cannot serialize bytecode",
          aRequest));
-    AccumulateCategorical(LABELS_DOM_SCRIPT_ENCODING_STATUS::EncodingFailure);
     return;
   }
 
   if (aRequest->mScriptBytecode.length() >= UINT32_MAX) {
     LOG(("ScriptLoadRequest (%p): Bytecode cache is too large to be decoded correctly.",
          aRequest));
-    AccumulateCategorical(LABELS_DOM_SCRIPT_ENCODING_STATUS::BufferTooLarge);
     return;
   }
 
@@ -2494,7 +2513,6 @@ ScriptLoader::EncodeRequestBytecode(JSContext* aCx, ScriptLoadRequest* aRequest)
   if (NS_FAILED(rv)) {
     LOG(("ScriptLoadRequest (%p): Cannot open bytecode cache (rv = %X, output = %p)",
          aRequest, unsigned(rv), output.get()));
-    AccumulateCategorical(LABELS_DOM_SCRIPT_ENCODING_STATUS::OpenFailure);
     return;
   }
   MOZ_ASSERT(output);
@@ -2502,9 +2520,6 @@ ScriptLoader::EncodeRequestBytecode(JSContext* aCx, ScriptLoadRequest* aRequest)
     nsresult rv = output->Close();
     LOG(("ScriptLoadRequest (%p): Closing (rv = %X)",
          aRequest, unsigned(rv)));
-    if (NS_FAILED(rv)) {
-      AccumulateCategorical(LABELS_DOM_SCRIPT_ENCODING_STATUS::CloseFailure);
-    }
   });
 
   uint32_t n;
@@ -2513,13 +2528,11 @@ ScriptLoader::EncodeRequestBytecode(JSContext* aCx, ScriptLoadRequest* aRequest)
   LOG(("ScriptLoadRequest (%p): Write bytecode cache (rv = %X, length = %u, written = %u)",
        aRequest, unsigned(rv), unsigned(aRequest->mScriptBytecode.length()), n));
   if (NS_FAILED(rv)) {
-    AccumulateCategorical(LABELS_DOM_SCRIPT_ENCODING_STATUS::WriteFailure);
     return;
   }
 
   bytecodeFailed.release();
   TRACE_FOR_TEST_NONE(aRequest->mElement, "scriptloader_bytecode_saved");
-  AccumulateCategorical(LABELS_DOM_SCRIPT_ENCODING_STATUS::EncodingSuccess);
 }
 
 void
@@ -2765,10 +2778,6 @@ ScriptLoader::ConvertToUTF16(nsIChannel* aChannel, const uint8_t* aData,
   Unused << hadErrors;
   aLengthOut = written;
 
-  nsAutoCString charset;
-  unicodeDecoder->Encoding()->Name(charset);
-  mozilla::Telemetry::Accumulate(mozilla::Telemetry::DOM_SCRIPT_SRC_ENCODING,
-    charset);
   return NS_OK;
 }
 
@@ -3084,7 +3093,7 @@ ScriptLoader::PrepareLoadedRequest(ScriptLoadRequest* aRequest,
     return NS_BINDING_ABORTED;
   }
   MOZ_ASSERT(aRequest->IsLoading());
-  CollectScriptTelemetry(aLoader, aRequest);
+  CollectScriptTelemetry(aRequest);
 
   // If we don't have a document, then we need to abort further
   // evaluation.

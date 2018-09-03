@@ -10,7 +10,6 @@
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIDocShell.h"
-#include "nsIDOMDocument.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIInputStreamPump.h"
@@ -30,7 +29,6 @@
 #include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
 #include "nsDocShellCID.h"
-#include "nsHostObjectProtocolHandler.h"
 #include "nsISupportsPrimitives.h"
 #include "nsNetUtil.h"
 #include "nsIPipe.h"
@@ -47,6 +45,7 @@
 #include "mozilla/LoadContext.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/ipc/BackgroundUtils.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/CacheBinding.h"
 #include "mozilla/dom/cache/CacheTypes.h"
 #include "mozilla/dom/cache/Cache.h"
@@ -162,7 +161,7 @@ ChannelFromScriptURL(nsIPrincipal* principal,
   rv = uri->SchemeIs("data", &isData);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  bool isURIUniqueOrigin = nsIOService::IsDataURIUniqueOpaqueOrigin() && isData;
+  bool isURIUniqueOrigin = net::nsIOService::IsDataURIUniqueOpaqueOrigin() && isData;
   if (inheritAttrs && !isURIUniqueOrigin) {
     secFlags |= nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
   }
@@ -410,7 +409,6 @@ public:
     , mOriginAttributes(aWorkerPrivate->GetOriginAttributes())
   {
     MOZ_ASSERT(aWorkerPrivate->IsServiceWorker());
-    MOZ_ASSERT(aWorkerPrivate->LoadScriptAsPartOfLoadingServiceWorkerScript());
     AssertIsOnMainThread();
   }
 
@@ -607,13 +605,10 @@ private:
 
 NS_IMPL_ISUPPORTS(LoaderListener, nsIStreamLoaderObserver, nsIRequestObserver)
 
-class ScriptLoaderHolder;
-
 class ScriptLoaderRunnable final : public nsIRunnable,
                                    public nsINamed
 {
   friend class ScriptExecutorRunnable;
-  friend class ScriptLoaderHolder;
   friend class CachePromiseHandler;
   friend class CacheScriptLoader;
   friend class LoaderListener;
@@ -626,7 +621,6 @@ class ScriptLoaderRunnable final : public nsIRunnable,
   Maybe<ServiceWorkerDescriptor> mController;
   bool mIsMainScript;
   WorkerScriptType mWorkerScriptType;
-  bool mCanceled;
   bool mCanceledMainThread;
   ErrorResult& mRv;
 
@@ -644,13 +638,19 @@ public:
   : mWorkerPrivate(aWorkerPrivate), mSyncLoopTarget(aSyncLoopTarget),
     mClientInfo(aClientInfo), mController(aController),
     mIsMainScript(aIsMainScript), mWorkerScriptType(aWorkerScriptType),
-    mCanceled(false), mCanceledMainThread(false), mRv(aRv)
+    mCanceledMainThread(false), mRv(aRv)
   {
     aWorkerPrivate->AssertIsOnWorkerThread();
     MOZ_ASSERT(aSyncLoopTarget);
     MOZ_ASSERT_IF(aIsMainScript, aLoadInfos.Length() == 1);
 
     mLoadInfos.SwapElements(aLoadInfos);
+  }
+
+  void
+  CancelMainThreadWithBindingAborted()
+  {
+    CancelMainThread(NS_BINDING_ABORTED);
   }
 
 private:
@@ -779,7 +779,7 @@ private:
       return rv;
     }
 
-    ir->SetPrincipalInfo(Move(principalInfo));
+    ir->SetPrincipalInfo(std::move(principalInfo));
     ir->Headers()->FillResponseHeaders(loadInfo.mChannel);
 
     RefPtr<mozilla::dom::Response> response =
@@ -816,32 +816,15 @@ private:
   }
 
   bool
-  Notify(WorkerStatus aStatus)
-  {
-    mWorkerPrivate->AssertIsOnWorkerThread();
-
-    if (aStatus >= Terminating && !mCanceled) {
-      mCanceled = true;
-
-      MOZ_ALWAYS_SUCCEEDS(
-        NS_DispatchToMainThread(NewRunnableMethod("ScriptLoaderRunnable::CancelMainThreadWithBindingAborted",
-                                                  this,
-                                                  &ScriptLoaderRunnable::CancelMainThreadWithBindingAborted)));
-    }
-
-    return true;
-  }
-
-  bool
   IsMainWorkerScript() const
   {
     return mIsMainScript && mWorkerScriptType == WorkerScript;
   }
 
-  void
-  CancelMainThreadWithBindingAborted()
+  bool
+  IsDebuggerScript() const
   {
-    CancelMainThread(NS_BINDING_ABORTED);
+    return mWorkerScriptType == DebuggerScript;
   }
 
   void
@@ -909,12 +892,11 @@ private:
   {
     AssertIsOnMainThread();
 
-    if (IsMainWorkerScript() && mWorkerPrivate->IsServiceWorker()) {
+    if (IsMainWorkerScript()) {
       mWorkerPrivate->SetLoadingWorkerScript(true);
     }
 
-    if (!mWorkerPrivate->IsServiceWorker() ||
-        !mWorkerPrivate->LoadScriptAsPartOfLoadingServiceWorkerScript()) {
+    if (!mWorkerPrivate->IsServiceWorker() || IsDebuggerScript()) {
       for (uint32_t index = 0, len = mLoadInfos.Length(); index < len;
            ++index) {
         nsresult rv = LoadScript(index);
@@ -1055,7 +1037,7 @@ private:
     if (IsMainWorkerScript()) {
       MOZ_DIAGNOSTIC_ASSERT(loadInfo.mReservedClientInfo.isSome());
       rv = AddClientChannelHelper(channel,
-                                  Move(loadInfo.mReservedClientInfo),
+                                  std::move(loadInfo.mReservedClientInfo),
                                   Maybe<ClientInfo>(),
                                   mWorkerPrivate->HybridEventTarget());
       if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1471,27 +1453,6 @@ private:
 
 NS_IMPL_ISUPPORTS(ScriptLoaderRunnable, nsIRunnable, nsINamed)
 
-class MOZ_STACK_CLASS ScriptLoaderHolder final : public WorkerHolder
-{
-  // Raw pointer because this holder object follows the mRunnable life-time.
-  ScriptLoaderRunnable* mRunnable;
-
-public:
-  explicit ScriptLoaderHolder(ScriptLoaderRunnable* aRunnable)
-    : WorkerHolder("ScriptLoaderHolder")
-    , mRunnable(aRunnable)
-  {
-    MOZ_ASSERT(aRunnable);
-  }
-
-  virtual bool
-  Notify(WorkerStatus aStatus) override
-  {
-    mRunnable->Notify(aStatus);
-    return true;
-  }
-};
-
 NS_IMETHODIMP
 LoaderListener::OnStreamComplete(nsIStreamLoader* aLoader, nsISupports* aContext,
                                  nsresult aStatus, uint32_t aStringLen,
@@ -1790,9 +1751,12 @@ CacheScriptLoader::ResolvedCallback(JSContext* aCx,
   // must handle loading and offlining new importScripts() here, however.
   if (aValue.isUndefined()) {
     // If this is the main script or we're not loading a new service worker
-    // then this is an error.  The storage was probably wiped without
-    // removing the service worker registration.
-    if (NS_WARN_IF(mIsWorkerScript || mState != ServiceWorkerState::Parsed)) {
+    // then this is an error.  This can happen for internal reasons, like
+    // storage was probably wiped without removing the service worker
+    // registration.  It can also happen for exposed reasons like the
+    // service worker script calling importScripts() after install.
+    if (NS_WARN_IF(mIsWorkerScript || (mState != ServiceWorkerState::Parsed &&
+                                       mState != ServiceWorkerState::Installing))) {
       Fail(NS_ERROR_DOM_INVALID_STATE_ERR);
       return;
     }
@@ -1835,7 +1799,7 @@ CacheScriptLoader::ResolvedCallback(JSContext* aCx,
   if (!inputStream) {
     mLoadInfo.mCacheStatus = ScriptLoadInfo::Cached;
     mRunnable->DataReceivedFromCache(mIndex, (uint8_t*)"", 0, mChannelInfo,
-                                     Move(mPrincipalInfo), mCSPHeaderValue,
+                                     std::move(mPrincipalInfo), mCSPHeaderValue,
                                      mCSPReportOnlyHeaderValue,
                                      mReferrerPolicyHeaderValue);
     return;
@@ -1902,7 +1866,7 @@ CacheScriptLoader::OnStreamComplete(nsIStreamLoader* aLoader, nsISupports* aCont
 
   MOZ_ASSERT(mPrincipalInfo);
   mRunnable->DataReceivedFromCache(mIndex, aString, aStringLen, mChannelInfo,
-                                   Move(mPrincipalInfo), mCSPHeaderValue,
+                                   std::move(mPrincipalInfo), mCSPHeaderValue,
                                    mCSPReportOnlyHeaderValue,
                                    mReferrerPolicyHeaderValue);
   return NS_OK;
@@ -2180,7 +2144,7 @@ ScriptExecutorRunnable::ShutdownScriptLoader(JSContext* aCx,
 
   MOZ_ASSERT(mLastIndex == mScriptLoader.mLoadInfos.Length() - 1);
 
-  if (mIsWorkerScript && aWorkerPrivate->IsServiceWorker()) {
+  if (mIsWorkerScript) {
     aWorkerPrivate->SetLoadingWorkerScript(false);
   }
 
@@ -2271,9 +2235,14 @@ LoadAllScripts(WorkerPrivate* aWorkerPrivate,
 
   NS_ASSERTION(aLoadInfos.IsEmpty(), "Should have swapped!");
 
-  ScriptLoaderHolder workerHolder(loader);
+  RefPtr<StrongWorkerRef> workerRef =
+    StrongWorkerRef::Create(aWorkerPrivate, "ScriptLoader", [loader]() {
+      NS_DispatchToMainThread(NewRunnableMethod("ScriptLoader::CancelMainThreadWithBindingAborted",
+                                                loader,
+                                                &ScriptLoaderRunnable::CancelMainThreadWithBindingAborted));
+    });
 
-  if (NS_WARN_IF(!workerHolder.HoldWorker(aWorkerPrivate, Terminating))) {
+  if (NS_WARN_IF(!workerRef)) {
     aRv.Throw(NS_ERROR_FAILURE);
     return;
   }

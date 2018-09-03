@@ -34,6 +34,9 @@ with Files("test/contextMenu/**"):
 with Files("test/forms/**"):
     BUG_COMPONENT = ("Core", "Layout: Form Controls")
 
+with Files("test/historySwipeAnimation/**"):
+    BUG_COMPONENT = ("Core", "Widget: Cocoa")
+
 with Files("test/pageinfo/**"):
     BUG_COMPONENT = ("Firefox", "Page Info Window")
 
@@ -89,11 +92,14 @@ with Files("test/tabs/**"):
 with Files("test/touch/**"):
     BUG_COMPONENT = ("Firefox", "General")
 
+with Files("test/trackingUI/**"):
+    BUG_COMPONENT = ("Firefox", "Tracking Protection")
+
 with Files("test/urlbar/**"):
     BUG_COMPONENT = ("Firefox", "Address Bar")
 
 with Files("test/webextensions/**"):
-    BUG_COMPONENT = ("Toolkit", "WebExtensions: Untriaged")
+    BUG_COMPONENT = ("WebExtensions", "Untriaged")
 
 with Files("test/webrtc/**"):
     BUG_COMPONENT = ("Core", "WebRTC")
@@ -140,9 +146,6 @@ with Files("browser-safebrowsing.js"):
 with Files("browser-sync.js"):
     BUG_COMPONENT = ("Firefox", "Sync")
 
-with Files("browser-tabPreviews.xml"):
-    BUG_COMPONENT = ("Firefox", "Tabbed Browser")
-
 with Files("contentSearch*"):
     BUG_COMPONENT = ("Firefox", "Search")
 
@@ -155,8 +158,11 @@ with Files("macWindow.inc.xul"):
 with Files("tabbrowser*"):
     BUG_COMPONENT = ("Firefox", "Tabbed Browser")
 
+with Files("browser-allTabsMenu.js"):
+    BUG_COMPONENT = ("Firefox", "Tabbed Browser")
+
 with Files("webext-panels*"):
-    BUG_COMPONENT = ("Toolkit", "WebExtensions: Frontend")
+    BUG_COMPONENT = ("WebExtensions", "Frontend")
 
 with Files("webrtcIndicator*"):
     BUG_COMPONENT = ("Firefox", "Device Permissions")

@@ -65,10 +65,10 @@ add_task(async function test_removePagesByTimeframe() {
   Assert.equal(await getFaviconUrlForPage("http://www.places.test/old/"),
                rootIconURI.spec, "Should get the root icon");
 
-  PlacesUtils.history.removePagesByTimeframe(
-    PlacesUtils.toPRTime(Date.now() - 14400000),
-    PlacesUtils.toPRTime(new Date())
-  );
+  await PlacesUtils.history.removeByFilter({
+    beginDate: new Date(Date.now() - 14400000),
+    endDate: new Date()
+  });
 
   // Check database entries.
   await PlacesTestUtils.promiseAsyncUpdates();
@@ -81,13 +81,15 @@ add_task(async function test_removePagesByTimeframe() {
   rows = await db.execute("SELECT * FROM moz_icons_to_pages");
   Assert.equal(rows.length, 0, "There should be no relation entry");
 
-  PlacesUtils.history.removePagesByTimeframe(0, PlacesUtils.toPRTime(new Date()));
+  await PlacesUtils.history.removeByFilter({
+    beginDate: new Date(0),
+    endDt: new Date()
+  });
   await PlacesTestUtils.promiseAsyncUpdates();
   rows = await db.execute("SELECT * FROM moz_icons");
   // Debug logging for possible intermittent failure (bug 1358368).
   if (rows.length != 0) {
     dump_table("moz_icons");
-    dump_table("moz_hosts");
   }
   Assert.equal(rows.length, 0, "There should be no icon entry");
 });
@@ -102,6 +104,11 @@ add_task(async function test_different_host() {
 
   Assert.equal(await getFaviconUrlForPage(pageURI),
                faviconURI.spec, "Should get the png icon");
+  // Check the icon is not marked as a root icon in the database.
+  let db = await PlacesUtils.promiseDBConnection();
+  let rows = await db.execute("SELECT root FROM moz_icons WHERE icon_url = :url",
+                              {url: faviconURI.spec});
+  Assert.strictEqual(rows[0].getResultByName("root"), 0);
 });
 
 add_task(async function test_same_size() {

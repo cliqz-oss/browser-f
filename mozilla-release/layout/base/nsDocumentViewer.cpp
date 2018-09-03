@@ -26,9 +26,9 @@
 #include "nsIWritablePropertyBag2.h"
 #include "nsSubDocumentFrame.h"
 #include "nsGenericHTMLElement.h"
+#include "nsStubMutationObserver.h"
 
 #include "nsILinkHandler.h"
-#include "nsIDOMDocument.h"
 #include "nsISelectionListener.h"
 #include "mozilla/dom/Selection.h"
 #include "nsContentUtils.h"
@@ -204,6 +204,108 @@ private:
     nsDocumentViewer*  mDocViewer;
 };
 
+namespace viewer_detail {
+
+/**
+ * Mutation observer for use until we hand ourselves over to our SHEntry.
+ */
+class BFCachePreventionObserver final : public nsStubMutationObserver
+{
+public:
+  explicit BFCachePreventionObserver(nsIDocument* aDocument)
+    : mDocument(aDocument)
+  {
+  }
+
+  NS_DECL_ISUPPORTS
+
+  NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED
+  NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
+  NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
+  NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
+  NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
+  NS_DECL_NSIMUTATIONOBSERVER_NODEWILLBEDESTROYED
+
+  // Stop observing the document.
+  void Disconnect();
+
+private:
+  ~BFCachePreventionObserver() = default;
+
+  // Helper for the work that needs to happen when mutations happen.
+  void MutationHappened();
+
+  nsIDocument* mDocument; // Weak; we get notified if it dies
+};
+
+NS_IMPL_ISUPPORTS(BFCachePreventionObserver, nsIMutationObserver)
+
+void
+BFCachePreventionObserver::CharacterDataChanged(nsIContent* aContent,
+                                                const CharacterDataChangeInfo&)
+{
+  MutationHappened();
+}
+
+void
+BFCachePreventionObserver::AttributeChanged(Element* aElement,
+                                            int32_t aNameSpaceID,
+                                            nsAtom* aAttribute,
+                                            int32_t aModType,
+                                            const nsAttrValue* aOldValue)
+{
+  MutationHappened();
+}
+
+void
+BFCachePreventionObserver::ContentAppended(nsIContent* aFirstNewContent)
+{
+  MutationHappened();
+}
+
+void
+BFCachePreventionObserver::ContentInserted(nsIContent* aChild)
+{
+  MutationHappened();
+}
+
+void
+BFCachePreventionObserver::ContentRemoved(nsIContent* aChild,
+                                          nsIContent* aPreviousSibling)
+{
+  MutationHappened();
+}
+
+void
+BFCachePreventionObserver::NodeWillBeDestroyed(const nsINode* aNode)
+{
+  mDocument = nullptr;
+}
+
+void
+BFCachePreventionObserver::Disconnect()
+{
+  if (mDocument) {
+    mDocument->RemoveMutationObserver(this);
+    // It will no longer tell us when it goes away, so make sure we're
+    // not holding a dangling ref.
+    mDocument = nullptr;
+  }
+}
+
+void
+BFCachePreventionObserver::MutationHappened()
+{
+  MOZ_ASSERT(mDocument,
+             "How can we not have a document but be getting notified for mutations?");
+  mDocument->DisallowBFCaching();
+  Disconnect();
+}
+
+
+} // namespace viewer_detail
+
+using viewer_detail::BFCachePreventionObserver;
 
 //-------------------------------------------------------------
 class nsDocumentViewer final : public nsIContentViewer,
@@ -341,6 +443,9 @@ protected:
 
   nsCOMPtr<nsIContentViewer> mPreviousViewer;
   nsCOMPtr<nsISHEntry> mSHEntry;
+  // Observer that will prevent bfcaching if it gets notified.  This
+  // is non-null precisely when mSHEntry is non-null.
+  RefPtr<BFCachePreventionObserver> mBFCachePreventionObserver;
 
   nsIWidget* mParentWidget; // purposely won't be ref counted.  May be null
   bool mAttachedToParent; // view is attached to the parent widget
@@ -687,13 +792,10 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
 
   // Now make the shell for the document
   mPresShell = mDocument->CreateShell(mPresContext, mViewManager,
-                                      mozilla::Move(styleSet));
+                                      std::move(styleSet));
   if (!mPresShell) {
     return NS_ERROR_FAILURE;
   }
-
-  // We're done creating the style set
-  mPresShell->StyleSet()->EndUpdate();
 
   if (aDoInitialReflow) {
     // Since Initialize() will create frames for *all* items
@@ -750,9 +852,7 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
     return NS_ERROR_FAILURE;
   }
 
-  nsresult rv = selection->AddSelectionListener(mSelectionListener);
-  if (NS_FAILED(rv))
-    return rv;
+  selection->AddSelectionListener(mSelectionListener);
 
   // Save old listener so we can unregister it
   RefPtr<nsDocViewerFocusListener> oldFocusListener = mFocusListener;
@@ -1568,6 +1668,14 @@ nsDocumentViewer::Close(nsISHEntry *aSHEntry)
   if (!mDocument)
     return NS_OK;
 
+  if (mSHEntry) {
+    if (mBFCachePreventionObserver) {
+      mBFCachePreventionObserver->Disconnect();
+    }
+    mBFCachePreventionObserver = new BFCachePreventionObserver(mDocument);
+    mDocument->AddMutationObserver(mBFCachePreventionObserver);
+  }
+
 #if defined(NS_PRINTING) && defined(NS_PRINT_PREVIEW)
   // Turn scripting back on
   // after PrintPreview had turned it off
@@ -1670,6 +1778,24 @@ nsDocumentViewer::Destroy()
   mAutoBeforeAndAfterPrint = nullptr;
 #endif
 
+  // We want to make sure to disconnect mBFCachePreventionObserver before we
+  // Sanitize() below.
+  if (mBFCachePreventionObserver) {
+    mBFCachePreventionObserver->Disconnect();
+    mBFCachePreventionObserver = nullptr;
+  }
+
+  if (mSHEntry && mDocument && !mDocument->IsBFCachingAllowed()) {
+    // Just drop the SHEntry now and pretend like we never even tried to bfcache
+    // this viewer.  This should only happen when someone calls
+    // DisallowBFCaching() after CanSavePresentation() already ran.  Ensure that
+    // the SHEntry has no viewer and its state is synced up.  We want to do this
+    // via a stack reference, in case those calls mess with our members.
+    nsCOMPtr<nsISHEntry> shEntry = mSHEntry.forget();
+    shEntry->SetContentViewer(nullptr);
+    shEntry->SyncPresentationState();
+  }
+
   // If we were told to put ourselves into session history instead of destroy
   // the presentation, do that now.
   if (mSHEntry) {
@@ -1679,8 +1805,6 @@ nsDocumentViewer::Destroy()
     // Make sure the presentation isn't torn down by Hide().
     mSHEntry->SetSticky(mIsSticky);
     mIsSticky = true;
-
-    bool savePresentation = mDocument ? mDocument->IsBFCachingAllowed() : true;
 
     // Remove our root view from the view hierarchy.
     if (mPresShell) {
@@ -1712,12 +1836,9 @@ nsDocumentViewer::Destroy()
 
     // Grab a reference to mSHEntry before calling into things like
     // SyncPresentationState that might mess with our members.
-    nsCOMPtr<nsISHEntry> shEntry = mSHEntry; // we'll need this below
-    mSHEntry = nullptr;
+    nsCOMPtr<nsISHEntry> shEntry = mSHEntry.forget(); // we'll need this below
 
-    if (savePresentation) {
-      shEntry->SetContentViewer(this);
-    }
+    shEntry->SetContentViewer(this);
 
     // Always sync the presentation state.  That way even if someone screws up
     // and shEntry has no window state at this point we'll be ok; we just won't
@@ -1783,7 +1904,7 @@ nsDocumentViewer::Destroy()
 
 #ifdef NS_PRINTING
   if (mPrintJob) {
-    RefPtr<nsPrintJob> printJob = mozilla::Move(mPrintJob);
+    RefPtr<nsPrintJob> printJob = std::move(mPrintJob);
 #ifdef NS_PRINT_PREVIEW
     bool doingPrintPreview;
     printJob->GetDoingPrintPreview(&doingPrintPreview);
@@ -1839,10 +1960,12 @@ nsDocumentViewer::Stop(void)
 }
 
 NS_IMETHODIMP
-nsDocumentViewer::GetDOMDocument(nsISupports **aResult)
+nsDocumentViewer::GetDOMDocument(nsIDocument **aResult)
 {
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
-  return CallQueryInterface(mDocument, aResult);
+  nsCOMPtr<nsIDocument> document = mDocument;
+  document.forget(aResult);
+  return NS_OK;
 }
 
 nsIDocument*
@@ -2316,24 +2439,7 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
 
   UniquePtr<ServoStyleSet> styleSet = MakeUnique<ServoStyleSet>();
 
-  styleSet->BeginUpdate();
-
   // The document will fill in the document sheets when we create the presshell
-
-  if (aDocument->IsBeingUsedAsImage()) {
-    MOZ_ASSERT(aDocument->IsSVGDocument(),
-               "Do we want to skip most sheets for this new image type?");
-
-    // SVG-as-an-image must be kept as light and small as possible. We
-    // deliberately skip loading everything and leave svg.css (and html.css and
-    // xul.css) to be loaded on-demand.
-    // XXXjwatt Nothing else is loaded on-demand, but I don't think that
-    // should matter for SVG-as-an-image. If it does, I want to know why!
-
-    // Caller will handle calling EndUpdate, per contract.
-    return styleSet;
-  }
-
   auto cache = nsLayoutStylesheetCache::Singleton();
 
   // Handle the user sheets.
@@ -2354,81 +2460,66 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
     styleSet->PrependStyleSheet(SheetType::Agent, sheet);
   }
 
-  if (!aDocument->IsSVGDocument()) {
-    // !!! IMPORTANT - KEEP THIS BLOCK IN SYNC WITH
-    // !!! SVGDocument::EnsureNonSVGUserAgentStyleSheetsLoaded.
+  sheet = cache->FormsSheet();
+  if (sheet) {
+    styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+  }
 
-    // SVGForeignObjectElement::BindToTree calls SVGDocument::
-    // EnsureNonSVGUserAgentStyleSheetsLoaded to loads these UA sheet
-    // on-demand. (Excluding the quirks sheet, which should never be loaded for
-    // an SVG document, and excluding xul.css which will be loaded on demand by
-    // nsXULElement::BindToTree.)
-
-    sheet = cache->FormsSheet();
+  // This is the only place components.css / xul.css get loaded.
+  if (aDocument->LoadsFullXULStyleSheetUpFront()) {
+    sheet = cache->XULComponentsSheet();
     if (sheet) {
       styleSet->PrependStyleSheet(SheetType::Agent, sheet);
     }
 
-    if (aDocument->LoadsFullXULStyleSheetUpFront()) {
-      // This is the only place components.css gets loaded, unlike xul.css
-      sheet = cache->XULComponentsSheet();
-      if (sheet) {
-        styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-      }
-
-      // nsXULElement::BindToTree loads xul.css on-demand if we don't load it
-      // up-front here.
-      sheet = cache->XULSheet();
-      if (sheet) {
-        styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-      }
-    }
-
-    sheet = cache->MinimalXULSheet();
-    if (sheet) {
-      // Load the minimal XUL rules for scrollbars and a few other XUL things
-      // that non-XUL (typically HTML) documents commonly use.
-      styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-    }
-
-    sheet = cache->CounterStylesSheet();
-    if (sheet) {
-      styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-    }
-
-    if (nsLayoutUtils::ShouldUseNoScriptSheet(aDocument)) {
-      sheet = cache->NoScriptSheet();
-      if (sheet) {
-        styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-      }
-    }
-
-    if (nsLayoutUtils::ShouldUseNoFramesSheet(aDocument)) {
-      sheet = cache->NoFramesSheet();
-      if (sheet) {
-        styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-      }
-    }
-
-    // We don't add quirk.css here; nsPresContext::CompatibilityModeChanged will
-    // append it if needed.
-
-    sheet = cache->HTMLSheet();
-    if (sheet) {
-      styleSet->PrependStyleSheet(SheetType::Agent, sheet);
-    }
-
-    styleSet->PrependStyleSheet(SheetType::Agent, cache->UASheet());
-  } else {
-    // SVG documents may have scrollbars and need the scrollbar styling.
-    sheet = cache->MinimalXULSheet();
+    sheet = cache->XULSheet();
     if (sheet) {
       styleSet->PrependStyleSheet(SheetType::Agent, sheet);
     }
   }
 
-  nsStyleSheetService* sheetService = nsStyleSheetService::GetInstance();
-  if (sheetService) {
+  sheet = cache->MinimalXULSheet();
+  if (sheet) {
+    // Load the minimal XUL rules for scrollbars and a few other XUL things
+    // that non-XUL (typically HTML) documents commonly use.
+    styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+  }
+
+  sheet = cache->CounterStylesSheet();
+  if (sheet) {
+    styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+  }
+
+  if (nsLayoutUtils::ShouldUseNoScriptSheet(aDocument)) {
+    sheet = cache->NoScriptSheet();
+    if (sheet) {
+      styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+    }
+  }
+
+  if (nsLayoutUtils::ShouldUseNoFramesSheet(aDocument)) {
+    sheet = cache->NoFramesSheet();
+    if (sheet) {
+      styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+    }
+  }
+
+  // We don't add quirk.css here; nsPresContext::CompatibilityModeChanged will
+  // append it if needed.
+
+  sheet = cache->HTMLSheet();
+  if (sheet) {
+    styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+  }
+
+  sheet = cache->SVGSheet();
+  if (sheet) {
+    styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+  }
+
+  styleSet->PrependStyleSheet(SheetType::Agent, cache->UASheet());
+
+  if (nsStyleSheetService* sheetService = nsStyleSheetService::GetInstance()) {
     for (StyleSheet* sheet : *sheetService->AgentStyleSheets()) {
       styleSet->AppendStyleSheet(SheetType::Agent, sheet);
     }
@@ -2437,7 +2528,6 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
     }
   }
 
-  // Caller will handle calling EndUpdate, per contract.
   return styleSet;
 }
 
@@ -2586,9 +2676,9 @@ nsDocumentViewer::FindContainerView()
 nsresult
 nsDocumentViewer::CreateDeviceContext(nsView* aContainerView)
 {
-  NS_PRECONDITION(!mPresShell && !mWindow,
-                  "This will screw up our existing presentation");
-  NS_PRECONDITION(mDocument, "Gotta have a document here");
+  MOZ_ASSERT(!mPresShell && !mWindow,
+             "This will screw up our existing presentation");
+  MOZ_ASSERT(mDocument, "Gotta have a document here");
 
   nsIDocument* doc = mDocument->GetDisplayDocument();
   if (doc) {
@@ -2643,7 +2733,9 @@ NS_IMETHODIMP nsDocumentViewer::ClearSelection()
     return NS_ERROR_FAILURE;
   }
 
-  return selection->CollapseToStart();
+  ErrorResult rv;
+  selection->CollapseToStart(rv);
+  return rv.StealNSResult();
 }
 
 NS_IMETHODIMP nsDocumentViewer::SelectAll()
@@ -2765,7 +2857,7 @@ NS_IMETHODIMP nsDocumentViewer::GetCanGetContents(bool *aCanGetContents)
   return NS_OK;
 }
 
-NS_IMETHODIMP nsDocumentViewer::SetCommandNode(nsIDOMNode* aNode)
+NS_IMETHODIMP nsDocumentViewer::SetCommandNode(nsINode* aNode)
 {
   nsIDocument* document = GetDocument();
   NS_ENSURE_STATE(document);
@@ -2776,12 +2868,11 @@ NS_IMETHODIMP nsDocumentViewer::SetCommandNode(nsIDOMNode* aNode)
   nsCOMPtr<nsPIWindowRoot> root = window->GetTopWindowRoot();
   NS_ENSURE_STATE(root);
 
-  nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
-  root->SetPopupNode(node);
+  root->SetPopupNode(aNode);
   return NS_OK;
 }
 
-NS_IMETHODIMP nsDocumentViewer::ScrollToNode(nsIDOMNode* aNode)
+NS_IMETHODIMP nsDocumentViewer::ScrollToNode(nsINode* aNode)
 {
   NS_ENSURE_ARG(aNode);
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
@@ -3659,7 +3750,7 @@ NS_IMETHODIMP nsDocumentViewer::GetInImage(bool* aInImage)
   return NS_OK;
 }
 
-NS_IMETHODIMP nsDocViewerSelectionListener::NotifySelectionChanged(nsIDOMDocument *, nsISelection *, int16_t aReason)
+NS_IMETHODIMP nsDocViewerSelectionListener::NotifySelectionChanged(nsIDocument *, Selection *, int16_t aReason)
 {
   if (!mDocViewer) {
     return NS_OK;
@@ -3677,8 +3768,7 @@ NS_IMETHODIMP nsDocViewerSelectionListener::NotifySelectionChanged(nsIDOMDocumen
   nsCOMPtr<nsPIDOMWindowOuter> domWindow = theDoc->GetWindow();
   if (!domWindow) return NS_ERROR_FAILURE;
 
-  bool selectionCollapsed;
-  selection->GetIsCollapsed(&selectionCollapsed);
+  bool selectionCollapsed = selection->IsCollapsed();
   // We only call UpdateCommands when the selection changes from collapsed to
   // non-collapsed or vice versa, however we skip the initializing collapse. We
   // might need another update string for simple selection changes, but that

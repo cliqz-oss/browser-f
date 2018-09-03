@@ -8,15 +8,14 @@
 
 var EXPORTED_SYMBOLS = ["ContextMenu"];
 
-Cu.importGlobalProperties(["URL"]);
-
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+
+XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   E10SUtils: "resource://gre/modules/E10SUtils.jsm",
   BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
-  PlacesUIUtils: "resource:///modules/PlacesUIUtils.jsm",
   findCssSelector: "resource://gre/modules/css-selector.js",
   SpellCheckHelper: "resource://gre/modules/InlineSpellChecker.jsm",
   LoginManagerContent: "resource://gre/modules/LoginManagerContent.jsm",
@@ -36,8 +35,7 @@ const messageListeners = {
     let frame = this.getTarget(aMessage).ownerDocument;
 
     this.global.sendAsyncMessage("ContextMenu:BookmarkFrame:Result",
-                                 { title: frame.title,
-                                 description: PlacesUIUtils.getDescriptionFromDocument(frame) });
+                                 { title: frame.title });
   },
 
   "ContextMenu:Canvas:ToBlobURL": function(aMessage) {
@@ -125,7 +123,6 @@ const messageListeners = {
                          (node.form.enctype == "application/x-www-form-urlencoded" ||
                           node.form.enctype == ""));
     let title = node.ownerDocument.title;
-    let description = PlacesUIUtils.getDescriptionFromDocument(node.ownerDocument);
     let formData = [];
 
     function escapeNameValuePair(aName, aValue, aIsFormUrlEncoded) {
@@ -172,7 +169,7 @@ const messageListeners = {
     }
 
     this.global.sendAsyncMessage("ContextMenu:SearchFieldBookmarkData:Result",
-                                 { spec, title, description, postData, charset });
+                                 { spec, title, postData, charset });
   },
 
   "ContextMenu:SaveVideoFrameAsImage": function(aMessage) {
@@ -231,9 +228,6 @@ class ContextMenu {
     this.context = null;
     this.global = global;
     this.content = global.content;
-
-    Services.els.addSystemEventListener(global, "contextmenu",
-                                        this._handleContentContextMenu.bind(this), false);
 
     Object.keys(messageListeners).forEach(key =>
       global.addMessageListener(key, messageListeners[key].bind(this))
@@ -339,7 +333,7 @@ class ContextMenu {
     let depth = 1;
     while (node && depth > 0) {
       // See if this node is text.
-      if (node.nodeType == Ci.nsIDOMNode.TEXT_NODE) {
+      if (node.nodeType == node.TEXT_NODE) {
         // Add this text to our collection.
         text += " " + node.data;
       } else if (node instanceof this.content.HTMLImageElement) {
@@ -487,7 +481,7 @@ class ContextMenu {
     return selectors;
   }
 
-  _handleContentContextMenu(aEvent) {
+  handleEvent(aEvent) {
     let defaultPrevented = aEvent.defaultPrevented;
 
     if (!Services.prefs.getBoolPref("dom.event.contextmenu.enabled")) {
@@ -538,7 +532,7 @@ class ContextMenu {
     // Media related cache info parent needs for saving
     let contentType = null;
     let contentDisposition = null;
-    if (aEvent.composedTarget.nodeType == Ci.nsIDOMNode.ELEMENT_NODE &&
+    if (aEvent.composedTarget.nodeType == aEvent.composedTarget.ELEMENT_NODE &&
         aEvent.composedTarget instanceof Ci.nsIImageLoadingContent &&
         aEvent.composedTarget.currentURI) {
       disableSetDesktopBg = this._disableSetDesktopBackground(aEvent.composedTarget);
@@ -714,7 +708,7 @@ class ContextMenu {
 
     context.shouldDisplay = true;
 
-    if (node.nodeType == Ci.nsIDOMNode.DOCUMENT_NODE ||
+    if (node.nodeType == node.DOCUMENT_NODE ||
         // Don't display for XUL element unless <label class="text-link">
         (node.namespaceURI == XUL_NS && !this._isXULTextLinkLabel(node))) {
       context.shouldDisplay = false;
@@ -794,7 +788,7 @@ class ContextMenu {
   _setContextForNodesNoChildren(editFlags) {
     const context = this.context;
 
-    if (context.target.nodeType == Ci.nsIDOMNode.TEXT_NODE) {
+    if (context.target.nodeType == context.target.TEXT_NODE) {
       // For text nodes, look at the parent node to determine the spellcheck attribute.
       context.canSpellCheck = context.target.parentNode &&
                               this._isSpellCheckEnabled(context.target);
@@ -803,7 +797,7 @@ class ContextMenu {
 
     // We only deal with TEXT_NODE and ELEMENT_NODE in this function, so return
     // early if we don't have one.
-    if (context.target.nodeType != Ci.nsIDOMNode.ELEMENT_NODE) {
+    if (context.target.nodeType != context.target.ELEMENT_NODE) {
       return;
     }
 
@@ -811,7 +805,7 @@ class ContextMenu {
     // nsDocumentViewer::GetInImage. Make sure to update both if this is
     // changed.
     if (context.target instanceof Ci.nsIImageLoadingContent &&
-        context.target.currentRequestFinalURI) {
+        (context.target.currentRequestFinalURI || context.target.currentURI)) {
       context.onImage = true;
 
       context.imageInfo = {
@@ -835,8 +829,9 @@ class ContextMenu {
 
       // The actual URL the image was loaded from (after redirects) is the
       // currentRequestFinalURI.  We should use that as the URL for purposes of
-      // deciding on the filename.
-      context.mediaURL = context.target.currentRequestFinalURI.spec;
+      // deciding on the filename, if it is present. It might not be present
+      // if images are blocked.
+      context.mediaURL = (context.target.currentRequestFinalURI || context.target.currentURI).spec;
 
       const descURL = context.target.getAttribute("longdesc");
 
@@ -934,7 +929,7 @@ class ContextMenu {
     let elem = context.target;
 
     while (elem) {
-      if (elem.nodeType == Ci.nsIDOMNode.ELEMENT_NODE) {
+      if (elem.nodeType == elem.ELEMENT_NODE) {
         // Link?
         const XLINK_NS = "http://www.w3.org/1999/xlink";
 
@@ -1000,7 +995,7 @@ class ContextMenu {
     // See if the user clicked on MathML
     const MathML_NS = "http://www.w3.org/1998/Math/MathML";
 
-    if ((context.target.nodeType == Ci.nsIDOMNode.TEXT_NODE &&
+    if ((context.target.nodeType == context.target.TEXT_NODE &&
          context.target.parentNode.namespaceURI == MathML_NS) ||
          (context.target.namespaceURI == MathML_NS)) {
       context.onMathML = true;

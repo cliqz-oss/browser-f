@@ -68,8 +68,8 @@ struct AnimatedValue {
                 const TransformData& aData)
     : mType(AnimatedValue::TRANSFORM)
   {
-    mTransform.mTransformInDevSpace = Move(aTransformInDevSpace);
-    mTransform.mFrameTransform = Move(aFrameTransform);
+    mTransform.mTransformInDevSpace = std::move(aTransformInDevSpace);
+    mTransform.mFrameTransform = std::move(aFrameTransform);
     mTransform.mData = aData;
   }
 
@@ -214,6 +214,11 @@ public:
   /**
    * Sample animations based on a given time stamp for a element(layer) with
    * its animation data.
+   * Generally |aPreviousFrameTimeStamp| is used for the sampling if it's
+   * supplied to make the animation more in sync with other animations on the
+   * main-thread.  But in the case where the animation just started at the time
+   * when the animation was sent to the compositor, |aCurrentTime| is used for
+   * the sampling instead to avoid flickering the animation.
    *
    * Returns SampleResult::None if none of the animations are producing a result
    * (e.g. they are in the delay phase with no backwards fill),
@@ -222,10 +227,12 @@ public:
    * SampleResult::Sampled if the animation output was updated.
    */
   static SampleResult
-  SampleAnimationForEachNode(TimeStamp aTime,
+  SampleAnimationForEachNode(TimeStamp aPreviousFrameTime,
+                             TimeStamp aCurrentFrameTime,
                              AnimationArray& aAnimations,
                              InfallibleTArray<AnimData>& aAnimationData,
-                             RefPtr<RawServoAnimationValue>& aAnimationValue);
+                             RefPtr<RawServoAnimationValue>& aAnimationValue,
+                             const AnimatedValue* aPreviousValue);
   /**
    * Populates AnimData stuctures into |aAnimData| and |aBaseAnimationStyle|
    * based on |aAnimations|.
@@ -248,10 +255,16 @@ public:
    * Sample animation based a given time stamp |aTime| and the animation
    * data inside CompositorAnimationStorage |aStorage|. The animated values
    * after sampling will be stored in CompositorAnimationStorage as well.
+   *
+   * Returns true if there is any animation.
+   * Note that even if there are only in-delay phase animations (i.e. not
+   * visually effective), this function returns true to ensure we composite
+   * again on the next tick.
    */
-  static void
+  static bool
   SampleAnimations(CompositorAnimationStorage* aStorage,
-                   TimeStamp aTime);
+                   TimeStamp aPreviousFrameTime,
+                   TimeStamp aCurrentFrameTime);
 };
 
 } // namespace layers

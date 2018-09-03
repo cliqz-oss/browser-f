@@ -86,6 +86,7 @@ nsGIFDecoder2::nsGIFDecoder2(RasterImage* aImage)
   , mOldColor(0)
   , mCurrentFrameIndex(-1)
   , mColorTablePos(0)
+  , mColorMask('\0')
   , mGIFOpen(false)
   , mSawTransparency(false)
 {
@@ -182,6 +183,14 @@ nsGIFDecoder2::BeginImageFrame(const IntRect& aFrameRect,
   // Make sure there's no animation if we're downscaling.
   MOZ_ASSERT_IF(Size() != OutputSize(), !GetImageMetadata().HasAnimation());
 
+  AnimationParams animParams {
+    aFrameRect,
+    FrameTimeout::FromRawMilliseconds(mGIFStruct.delay_time),
+    uint32_t(mGIFStruct.images_decoded),
+    BlendMethod::OVER,
+    DisposalMethod(mGIFStruct.disposal_method)
+  };
+
   SurfacePipeFlags pipeFlags = aIsInterlaced
                              ? SurfacePipeFlags::DEINTERLACE
                              : SurfacePipeFlags();
@@ -196,9 +205,9 @@ nsGIFDecoder2::BeginImageFrame(const IntRect& aFrameRect,
 
     // The first frame is always decoded into an RGB surface.
     pipe =
-      SurfacePipeFactory::CreateSurfacePipe(this, mGIFStruct.images_decoded,
-                                            Size(), OutputSize(),
-                                            aFrameRect, format, pipeFlags);
+      SurfacePipeFactory::CreateSurfacePipe(this, Size(), OutputSize(),
+                                            aFrameRect, format,
+                                            Some(animParams), pipeFlags);
   } else {
     // This is an animation frame (and not the first). To minimize the memory
     // usage of animations, the image data is stored in paletted form.
@@ -210,10 +219,10 @@ nsGIFDecoder2::BeginImageFrame(const IntRect& aFrameRect,
     // historically.
     MOZ_ASSERT(Size() == OutputSize());
     pipe =
-      SurfacePipeFactory::CreatePalettedSurfacePipe(this, mGIFStruct.images_decoded,
-                                                    Size(), aFrameRect,
+      SurfacePipeFactory::CreatePalettedSurfacePipe(this, Size(), aFrameRect,
                                                     SurfaceFormat::B8G8R8A8,
-                                                    aDepth, pipeFlags);
+                                                    aDepth, Some(animParams),
+                                                    pipeFlags);
   }
 
   mCurrentFrameIndex = mGIFStruct.images_decoded;
@@ -223,7 +232,7 @@ nsGIFDecoder2::BeginImageFrame(const IntRect& aFrameRect,
     return NS_ERROR_FAILURE;
   }
 
-  mPipe = Move(*pipe);
+  mPipe = std::move(*pipe);
   return NS_OK;
 }
 
@@ -254,9 +263,7 @@ nsGIFDecoder2::EndImageFrame()
   mGIFStruct.images_decoded++;
 
   // Tell the superclass we finished a frame
-  PostFrameStop(opacity,
-                DisposalMethod(mGIFStruct.disposal_method),
-                FrameTimeout::FromRawMilliseconds(mGIFStruct.delay_time));
+  PostFrameStop(opacity);
 
   // Reset the transparent pixel
   if (mOldColor) {
@@ -292,10 +299,12 @@ nsGIFDecoder2::ColormapIndexToPixel<uint8_t>(uint8_t aIndex)
 }
 
 template <typename PixelSize>
-NextPixel<PixelSize>
-nsGIFDecoder2::YieldPixel(const uint8_t* aData,
-                          size_t aLength,
-                          size_t* aBytesReadOut)
+Tuple<int32_t, Maybe<WriteState>>
+nsGIFDecoder2::YieldPixels(const uint8_t* aData,
+                           size_t aLength,
+                           size_t* aBytesReadOut,
+                           PixelSize* aPixelBlock,
+                           int32_t aBlockSize)
 {
   MOZ_ASSERT(aData);
   MOZ_ASSERT(aBytesReadOut);
@@ -304,108 +313,119 @@ nsGIFDecoder2::YieldPixel(const uint8_t* aData,
   // Advance to the next byte we should read.
   const uint8_t* data = aData + *aBytesReadOut;
 
-  // If we don't have any decoded data to yield, try to read some input and
-  // produce some.
-  if (mGIFStruct.stackp == mGIFStruct.stack) {
-    while (mGIFStruct.bits < mGIFStruct.codesize && *aBytesReadOut < aLength) {
-      // Feed the next byte into the decoder's 32-bit input buffer.
-      mGIFStruct.datum += int32_t(*data) << mGIFStruct.bits;
-      mGIFStruct.bits += 8;
-      data += 1;
-      *aBytesReadOut += 1;
-    }
-
-    if (mGIFStruct.bits < mGIFStruct.codesize) {
-      return AsVariant(WriteState::NEED_MORE_DATA);
-    }
-
-    // Get the leading variable-length symbol from the data stream.
-    int code = mGIFStruct.datum & mGIFStruct.codemask;
-    mGIFStruct.datum >>= mGIFStruct.codesize;
-    mGIFStruct.bits -= mGIFStruct.codesize;
-
-    const int clearCode = ClearCode();
-
-    // Reset the dictionary to its original state, if requested
-    if (code == clearCode) {
-      mGIFStruct.codesize = mGIFStruct.datasize + 1;
-      mGIFStruct.codemask = (1 << mGIFStruct.codesize) - 1;
-      mGIFStruct.avail = clearCode + 2;
-      mGIFStruct.oldcode = -1;
-      return AsVariant(WriteState::NEED_MORE_DATA);
-    }
-
-    // Check for explicit end-of-stream code. It should only appear after all
-    // image data, but if that was the case we wouldn't be in this function, so
-    // this is always an error condition.
-    if (code == (clearCode + 1)) {
-      return AsVariant(WriteState::FAILURE);
-    }
-
-    if (mGIFStruct.oldcode == -1) {
-      if (code >= MAX_BITS) {
-        return AsVariant(WriteState::FAILURE);  // The code's too big; something's wrong.
+  int32_t written = 0;
+  while (aBlockSize > written) {
+    // If we don't have any decoded data to yield, try to read some input and
+    // produce some.
+    if (mGIFStruct.stackp == mGIFStruct.stack) {
+      while (mGIFStruct.bits < mGIFStruct.codesize && *aBytesReadOut < aLength) {
+        // Feed the next byte into the decoder's 32-bit input buffer.
+        mGIFStruct.datum += int32_t(*data) << mGIFStruct.bits;
+        mGIFStruct.bits += 8;
+        data += 1;
+        *aBytesReadOut += 1;
       }
 
-      mGIFStruct.firstchar = mGIFStruct.oldcode = code;
-
-      // Yield a pixel at the appropriate index in the colormap.
-      mGIFStruct.pixels_remaining--;
-      return AsVariant(ColormapIndexToPixel<PixelSize>(mGIFStruct.suffix[code]));
-    }
-
-    int incode = code;
-    if (code >= mGIFStruct.avail) {
-      *mGIFStruct.stackp++ = mGIFStruct.firstchar;
-      code = mGIFStruct.oldcode;
-
-      if (mGIFStruct.stackp >= mGIFStruct.stack + MAX_BITS) {
-        return AsVariant(WriteState::FAILURE);  // Stack overflow; something's wrong.
-      }
-    }
-
-    while (code >= clearCode) {
-      if ((code >= MAX_BITS) || (code == mGIFStruct.prefix[code])) {
-        return AsVariant(WriteState::FAILURE);
+      if (mGIFStruct.bits < mGIFStruct.codesize) {
+        return MakeTuple(written, Some(WriteState::NEED_MORE_DATA));
       }
 
-      *mGIFStruct.stackp++ = mGIFStruct.suffix[code];
-      code = mGIFStruct.prefix[code];
+      // Get the leading variable-length symbol from the data stream.
+      int code = mGIFStruct.datum & mGIFStruct.codemask;
+      mGIFStruct.datum >>= mGIFStruct.codesize;
+      mGIFStruct.bits -= mGIFStruct.codesize;
 
-      if (mGIFStruct.stackp >= mGIFStruct.stack + MAX_BITS) {
-        return AsVariant(WriteState::FAILURE);  // Stack overflow; something's wrong.
+      const int clearCode = ClearCode();
+
+      // Reset the dictionary to its original state, if requested
+      if (code == clearCode) {
+        mGIFStruct.codesize = mGIFStruct.datasize + 1;
+        mGIFStruct.codemask = (1 << mGIFStruct.codesize) - 1;
+        mGIFStruct.avail = clearCode + 2;
+        mGIFStruct.oldcode = -1;
+        return MakeTuple(written, Some(WriteState::NEED_MORE_DATA));
       }
+
+      // Check for explicit end-of-stream code. It should only appear after all
+      // image data, but if that was the case we wouldn't be in this function, so
+      // this is always an error condition.
+      if (code == (clearCode + 1)) {
+        return MakeTuple(written, Some(WriteState::FAILURE));
+      }
+
+      if (mGIFStruct.oldcode == -1) {
+        if (code >= MAX_BITS) {
+          // The code's too big; something's wrong.
+          return MakeTuple(written, Some(WriteState::FAILURE));
+        }
+
+        mGIFStruct.firstchar = mGIFStruct.oldcode = code;
+
+        // Yield a pixel at the appropriate index in the colormap.
+        mGIFStruct.pixels_remaining--;
+        aPixelBlock[written++] =
+          ColormapIndexToPixel<PixelSize>(mGIFStruct.suffix[code]);
+        continue;
+      }
+
+      int incode = code;
+      if (code >= mGIFStruct.avail) {
+        *mGIFStruct.stackp++ = mGIFStruct.firstchar;
+        code = mGIFStruct.oldcode;
+
+        if (mGIFStruct.stackp >= mGIFStruct.stack + MAX_BITS) {
+          // Stack overflow; something's wrong.
+          return MakeTuple(written, Some(WriteState::FAILURE));
+        }
+      }
+
+      while (code >= clearCode) {
+        if ((code >= MAX_BITS) || (code == mGIFStruct.prefix[code])) {
+          return MakeTuple(written, Some(WriteState::FAILURE));
+        }
+
+        *mGIFStruct.stackp++ = mGIFStruct.suffix[code];
+        code = mGIFStruct.prefix[code];
+
+        if (mGIFStruct.stackp >= mGIFStruct.stack + MAX_BITS) {
+          // Stack overflow; something's wrong.
+          return MakeTuple(written, Some(WriteState::FAILURE));
+        }
+      }
+
+      *mGIFStruct.stackp++ = mGIFStruct.firstchar = mGIFStruct.suffix[code];
+
+      // Define a new codeword in the dictionary.
+      if (mGIFStruct.avail < 4096) {
+        mGIFStruct.prefix[mGIFStruct.avail] = mGIFStruct.oldcode;
+        mGIFStruct.suffix[mGIFStruct.avail] = mGIFStruct.firstchar;
+        mGIFStruct.avail++;
+
+        // If we've used up all the codewords of a given length increase the
+        // length of codewords by one bit, but don't exceed the specified maximum
+        // codeword size of 12 bits.
+        if (((mGIFStruct.avail & mGIFStruct.codemask) == 0) &&
+            (mGIFStruct.avail < 4096)) {
+          mGIFStruct.codesize++;
+          mGIFStruct.codemask += mGIFStruct.avail;
+        }
+      }
+
+      mGIFStruct.oldcode = incode;
     }
 
-    *mGIFStruct.stackp++ = mGIFStruct.firstchar = mGIFStruct.suffix[code];
-
-    // Define a new codeword in the dictionary.
-    if (mGIFStruct.avail < 4096) {
-      mGIFStruct.prefix[mGIFStruct.avail] = mGIFStruct.oldcode;
-      mGIFStruct.suffix[mGIFStruct.avail] = mGIFStruct.firstchar;
-      mGIFStruct.avail++;
-
-      // If we've used up all the codewords of a given length increase the
-      // length of codewords by one bit, but don't exceed the specified maximum
-      // codeword size of 12 bits.
-      if (((mGIFStruct.avail & mGIFStruct.codemask) == 0) &&
-          (mGIFStruct.avail < 4096)) {
-        mGIFStruct.codesize++;
-        mGIFStruct.codemask += mGIFStruct.avail;
-      }
+    if (MOZ_UNLIKELY(mGIFStruct.stackp <= mGIFStruct.stack)) {
+      MOZ_ASSERT_UNREACHABLE("No decoded data but we didn't return early?");
+      return MakeTuple(written, Some(WriteState::FAILURE));
     }
 
-    mGIFStruct.oldcode = incode;
+    // Yield a pixel at the appropriate index in the colormap.
+    mGIFStruct.pixels_remaining--;
+    aPixelBlock[written++]
+      = ColormapIndexToPixel<PixelSize>(*--mGIFStruct.stackp);
   }
 
-  if (MOZ_UNLIKELY(mGIFStruct.stackp <= mGIFStruct.stack)) {
-    MOZ_ASSERT_UNREACHABLE("No decoded data but we didn't return early?");
-    return AsVariant(WriteState::FAILURE);
-  }
-
-  // Yield a pixel at the appropriate index in the colormap.
-  mGIFStruct.pixels_remaining--;
-  return AsVariant(ColormapIndexToPixel<PixelSize>(*--mGIFStruct.stackp));
+  return MakeTuple(written, Maybe<WriteState>());
 }
 
 /// Expand the colormap from RGB to Packed ARGB as needed by Cairo.
@@ -1032,8 +1052,12 @@ nsGIFDecoder2::ReadLZWData(const char* aData, size_t aLength)
     size_t bytesRead = 0;
 
     auto result = mGIFStruct.images_decoded == 0
-      ? mPipe.WritePixels<uint32_t>([&]{ return YieldPixel<uint32_t>(data, length, &bytesRead); })
-      : mPipe.WritePixels<uint8_t>([&]{ return YieldPixel<uint8_t>(data, length, &bytesRead); });
+      ? mPipe.WritePixelBlocks<uint32_t>([&](uint32_t* aPixelBlock, int32_t aBlockSize) {
+          return YieldPixels<uint32_t>(data, length, &bytesRead, aPixelBlock, aBlockSize);
+        })
+      : mPipe.WritePixelBlocks<uint8_t>([&](uint8_t* aPixelBlock, int32_t aBlockSize) {
+          return YieldPixels<uint8_t>(data, length, &bytesRead, aPixelBlock, aBlockSize);
+        });
 
     if (MOZ_UNLIKELY(bytesRead > length)) {
       MOZ_ASSERT_UNREACHABLE("Overread?");

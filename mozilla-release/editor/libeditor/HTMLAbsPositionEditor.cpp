@@ -14,7 +14,6 @@
 #include "mozilla/EditorUtils.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/TextEditRules.h"
-#include "mozilla/dom/CSSPrimitiveValueBinding.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/EventTarget.h"
@@ -51,27 +50,31 @@ nsresult
 HTMLEditor::SetSelectionToAbsoluteOrStatic(bool aEnabled)
 {
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this,
-                               aEnabled ? EditAction::setAbsolutePosition :
-                                          EditAction::removeAbsolutePosition,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this,
+                                      aEnabled ?
+                                        EditSubAction::eSetPositionToAbsolute :
+                                        EditSubAction::eSetPositionToStatic,
+                                      nsIEditor::eNext);
 
   // the line below does not match the code; should it be removed?
   // Find out if the selection is collapsed:
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
 
-  RulesInfo ruleInfo(aEnabled ? EditAction::setAbsolutePosition :
-                                EditAction::removeAbsolutePosition);
+  EditSubActionInfo subActionInfo(
+                      aEnabled ? EditSubAction::eSetPositionToAbsolute :
+                                 EditSubAction::eSetPositionToStatic);
   bool cancel, handled;
   // Protect the edit rules object from dying
   RefPtr<TextEditRules> rules(mRules);
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (NS_FAILED(rv) || cancel) {
     return rv;
   }
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 already_AddRefed<Element>
@@ -140,26 +143,29 @@ nsresult
 HTMLEditor::AddZIndex(int32_t aChange)
 {
   AutoPlaceholderBatch beginBatching(this);
-  AutoRules beginRulesSniffing(this,
-                               (aChange < 0) ? EditAction::decreaseZIndex :
-                                               EditAction::increaseZIndex,
-                               nsIEditor::eNext);
+  AutoTopLevelEditSubActionNotifier maybeTopLevelEditSubAction(
+                                      *this,
+                                      aChange < 0 ?
+                                        EditSubAction::eDecreaseZIndex :
+                                        EditSubAction::eIncreaseZIndex,
+                                      nsIEditor::eNext);
 
   // brade: can we get rid of this comment?
   // Find out if the selection is collapsed:
   RefPtr<Selection> selection = GetSelection();
   NS_ENSURE_TRUE(selection, NS_ERROR_NULL_POINTER);
-  RulesInfo ruleInfo(aChange < 0 ? EditAction::decreaseZIndex :
-                                   EditAction::increaseZIndex);
+  EditSubActionInfo subActionInfo(aChange < 0 ? EditSubAction::eDecreaseZIndex :
+                                                EditSubAction::eIncreaseZIndex);
   bool cancel, handled;
   // Protect the edit rules object from dying
   RefPtr<TextEditRules> rules(mRules);
-  nsresult rv = rules->WillDoAction(selection, &ruleInfo, &cancel, &handled);
+  nsresult rv =
+    rules->WillDoAction(selection, subActionInfo, &cancel, &handled);
   if (cancel || NS_FAILED(rv)) {
     return rv;
   }
 
-  return rules->DidDoAction(selection, &ruleInfo, rv);
+  return rules->DidDoAction(selection, subActionInfo, rv);
 }
 
 int32_t
@@ -269,8 +275,8 @@ HTMLEditor::HideGrabber()
   // are no document observers to notify, but we still want to
   // UnbindFromTree.
 
-  DeleteRefToAnonymousNode(Move(mGrabber), ps);
-  DeleteRefToAnonymousNode(Move(mPositioningShadow), ps);
+  DeleteRefToAnonymousNode(std::move(mGrabber), ps);
+  DeleteRefToAnonymousNode(std::move(mPositioningShadow), ps);
 }
 
 nsresult
@@ -304,6 +310,8 @@ HTMLEditor::ShowGrabber(Element& aElement)
 
   mGrabber = CreateGrabber(*parentContent);
   NS_ENSURE_TRUE(mGrabber, NS_ERROR_FAILURE);
+
+  mHasShownGrabber = true;
 
   // and set its position
   return RefreshGrabber();
@@ -377,7 +385,7 @@ HTMLEditor::EndMoving()
     nsCOMPtr<nsIPresShell> ps = GetPresShell();
     NS_ENSURE_TRUE(ps, NS_ERROR_NOT_INITIALIZED);
 
-    DeleteRefToAnonymousNode(Move(mPositioningShadow), ps);
+    DeleteRefToAnonymousNode(std::move(mPositioningShadow), ps);
 
     mPositioningShadow = nullptr;
   }
@@ -526,7 +534,7 @@ HTMLEditor::SetPositionToStatic(Element& aElement)
     RefPtr<HTMLEditRules> htmlRules =
       static_cast<HTMLEditRules*>(mRules.get());
     NS_ENSURE_TRUE(htmlRules, NS_ERROR_FAILURE);
-    nsresult rv = htmlRules->MakeSureElemStartsOrEndsOnCR(aElement);
+    nsresult rv = htmlRules->MakeSureElemStartsAndEndsOnCR(aElement);
     NS_ENSURE_SUCCESS(rv, rv);
     rv = RemoveContainerWithTransaction(aElement);
     NS_ENSURE_SUCCESS(rv, rv);

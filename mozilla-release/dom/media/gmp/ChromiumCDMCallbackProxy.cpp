@@ -21,7 +21,7 @@ void ChromiumCDMCallbackProxy::DispatchToMainThread(const char* const aLabel,
       aLabel,
       mProxy,
       aFunc,
-      Forward<Args>(aArgs)...),
+      std::forward<Args>(aArgs)...),
     NS_DISPATCH_NORMAL);
 }
 
@@ -90,7 +90,7 @@ ChromiumCDMCallbackProxy::SessionMessage(const nsACString& aSessionId,
                        &ChromiumCDMProxy::OnSessionMessage,
                        NS_ConvertUTF8toUTF16(aSessionId),
                        ToDOMMessageType(aMessageType),
-                       Move(aMessage));
+                       std::move(aMessage));
 }
 
 static dom::MediaKeyStatus

@@ -135,38 +135,6 @@ function isDefaultIcon(icon) {
           icon == "chrome://mozapps/skin/extensions/extensionGeneric.svg");
 }
 
-function is_hidden(element) {
-  var style = element.ownerGlobal.getComputedStyle(element);
-  if (style.display == "none")
-    return true;
-  if (style.visibility != "visible")
-    return true;
-  if (style.display == "-moz-popup")
-    return ["hiding", "closed"].includes(element.state);
-
-  // Hiding a parent element will hide all its children
-  if (element.parentNode != element.ownerDocument)
-    return is_hidden(element.parentNode);
-
-  return false;
-}
-
-function is_visible(element) {
-  var style = element.ownerGlobal.getComputedStyle(element);
-  if (style.display == "none")
-    return false;
-  if (style.visibility != "visible")
-    return false;
-  if (style.display == "-moz-popup" && element.state != "open")
-    return false;
-
-  // Hiding a parent element will hide all its children
-  if (element.parentNode != element.ownerDocument)
-    return is_visible(element.parentNode);
-
-  return true;
-}
-
 /**
  * Check the contents of an individual permission string.
  * This function is fairly specific to the use here and probably not
@@ -352,7 +320,7 @@ async function testInstallMethod(installFn, telemetryBase) {
     } else {
       ok(result, "Installation completed");
       isnot(addon, null, "Extension is installed");
-      addon.uninstall();
+      await addon.uninstall();
     }
 
     BrowserTestUtils.removeTab(tab);
@@ -474,7 +442,7 @@ async function interactiveUpdateTest(autoUpdate, checkFn) {
   await checkPromise;
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  addon.uninstall();
+  await addon.uninstall();
   await SpecialPowers.popPrefEnv();
 }
 
@@ -501,7 +469,7 @@ add_task(async function() {
     for (let addon of await AddonManager.getAllAddons()) {
       if (!existingAddons.has(addon.id)) {
         ok(false, `Addon ${addon.id} was left installed at the end of the test`);
-        addon.uninstall();
+        await addon.uninstall();
       }
     }
   });

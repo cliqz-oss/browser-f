@@ -5,6 +5,7 @@
 "use strict";
 
 const { getStr } = require("../utils/l10n");
+const { parseFontVariationAxes } = require("../utils/font-utils");
 
 const {
   APPLY_FONT_VARIATION_INSTANCE,
@@ -12,7 +13,7 @@ const {
   UPDATE_AXIS_VALUE,
   UPDATE_CUSTOM_INSTANCE,
   UPDATE_EDITOR_STATE,
-  UPDATE_EDITOR_VISIBILITY,
+  UPDATE_PROPERTY_VALUE,
 } = require("../actions/index");
 
 const INITIAL_STATE = {
@@ -20,26 +21,30 @@ const INITIAL_STATE = {
   axes: {},
   // Copy of the most recent axes values. Used to revert from a named instance.
   customInstanceValues: [],
-  // Fonts applicable to selected element.
+  // Font families declared on the selected element
+  families: {
+    // Names of font families used
+    used: [],
+    // Names of font families declared but not used
+    notUsed: []
+  },
+  // Fonts whose family names are declared in CSS font-family and used
+  // on the selected element.
   fonts: [],
   // Current selected font variation instance.
   instance: {
     name: getStr("fontinspector.customInstanceName"),
     values: [],
   },
-  // Whether or not the font editor is visible.
-  isVisible: false,
   // CSS font properties defined on the selected rule.
   properties: {},
-  // Selector text of the selected rule where updated font properties will be written.
-  selector: "",
 };
 
-let reducers = {
+const reducers = {
 
   // Update font editor with the axes and values defined by a font variation instance.
   [APPLY_FONT_VARIATION_INSTANCE](state, { name, values }) {
-    let newState = { ...state };
+    const newState = { ...state };
     newState.instance.name = name;
     newState.instance.values = values;
 
@@ -58,7 +63,7 @@ let reducers = {
   },
 
   [UPDATE_AXIS_VALUE](state, { axis, value }) {
-    let newState = { ...state };
+    const newState = { ...state };
     newState.axes[axis] = value;
     return newState;
   },
@@ -73,35 +78,39 @@ let reducers = {
     return newState;
   },
 
-  [UPDATE_EDITOR_STATE](state, { fonts, properties }) {
-    let axes = {};
+  [UPDATE_EDITOR_STATE](state, { fonts, families, properties }) {
+    const axes = parseFontVariationAxes(properties["font-variation-settings"]);
 
-    if (properties["font-variation-settings"]) {
-      // Parse font-variation-settings CSS declaration into an object
-      // with axis tags as keys and axis values as values.
-      axes = properties["font-variation-settings"]
-        .split(",")
-        .reduce((acc, pair) => {
-          // Tags are always in quotes. Split by quote and filter excessive whitespace.
-          pair = pair.split(/["']/).filter(part => part.trim() !== "");
-          const tag = pair[0].trim();
-          const value = pair[1].trim();
-          acc[tag] = value;
-          return acc;
-        }, {});
+    // If not defined in font-variation-settings, setup "wght" axis with the value of
+    // "font-weight" if it is numeric and not a keyword.
+    const weight = properties["font-weight"];
+    if (axes.wght === undefined && parseFloat(weight).toString() === weight.toString()) {
+      axes.wght = weight;
     }
 
-    return { ...state, axes, fonts, properties };
+    // If not defined in font-variation-settings, setup "wdth" axis with the percentage
+    // number from the value of "font-stretch" if it is not a keyword.
+    const stretch = properties["font-stretch"];
+    // Match the number part from values like: 10%, 10.55%, 0.2%
+    // If there's a match, the number is the second item in the match array.
+    const match = stretch.trim().match(/^(\d+(.\d+)?)%$/);
+    if (axes.wdth === undefined && match && match[1]) {
+      axes.wdth = match[1];
+    }
+
+    return { ...state, axes, fonts, families, properties };
   },
 
-  [UPDATE_EDITOR_VISIBILITY](state, { isVisible, selector }) {
-    return { ...state, isVisible, selector };
-  },
+  [UPDATE_PROPERTY_VALUE](state, { property, value }) {
+    const newState = { ...state };
+    newState.properties[property] = value;
+    return newState;
+  }
 
 };
 
 module.exports = function(state = INITIAL_STATE, action) {
-  let reducer = reducers[action.type];
+  const reducer = reducers[action.type];
   if (!reducer) {
     return state;
   }

@@ -68,35 +68,14 @@ enum class TypeCode
     // Type constructor for function types
     Func                                 = 0x60,  // SLEB128(-0x20)
 
+    // Type constructor for structure types - unofficial
+    Struct                               = 0x50,  // SLEB128(-0x30)
+
     // Special code representing the block signature ()->()
     BlockVoid                            = 0x40,  // SLEB128(-0x40)
 
     Limit                                = 0x80
 };
-
-enum class ValType
-{
-    I32                                  = uint8_t(TypeCode::I32),
-    I64                                  = uint8_t(TypeCode::I64),
-    F32                                  = uint8_t(TypeCode::F32),
-    F64                                  = uint8_t(TypeCode::F64),
-
-    AnyRef                               = uint8_t(TypeCode::AnyRef),
-
-    // ------------------------------------------------------------------------
-    // The rest of these types are currently only emitted internally when
-    // compiling asm.js and are rejected by wasm validation.
-
-    I8x16                                = uint8_t(TypeCode::I8x16),
-    I16x8                                = uint8_t(TypeCode::I16x8),
-    I32x4                                = uint8_t(TypeCode::I32x4),
-    F32x4                                = uint8_t(TypeCode::F32x4),
-    B8x16                                = uint8_t(TypeCode::B8x16),
-    B16x8                                = uint8_t(TypeCode::B16x8),
-    B32x4                                = uint8_t(TypeCode::B32x4)
-};
-
-typedef Vector<ValType, 8, SystemAllocPolicy> ValTypeVector;
 
 // The representation of a null reference value throughout the compiler.
 
@@ -323,21 +302,19 @@ enum class Op
     F32ReinterpretI32                    = 0xbe,
     F64ReinterpretI64                    = 0xbf,
 
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
     // Sign extension
     I32Extend8S                          = 0xc0,
     I32Extend16S                         = 0xc1,
     I64Extend8S                          = 0xc2,
     I64Extend16S                         = 0xc3,
     I64Extend32S                         = 0xc4,
-#endif
 
     // GC ops
     RefNull                              = 0xd0,
     RefIsNull                            = 0xd1,
 
     FirstPrefix                          = 0xfc,
-    NumericPrefix                        = 0xfc,
+    MiscPrefix                           = 0xfc,
     ThreadPrefix                         = 0xfe,
     MozPrefix                            = 0xff,
 
@@ -350,8 +327,8 @@ IsPrefixByte(uint8_t b)
     return b >= uint8_t(Op::FirstPrefix);
 }
 
-// Opcodes in the "numeric" opcode space.
-enum class NumericOp
+// Opcodes in the "miscellaneous" opcode space.
+enum class MiscOp
 {
     // Saturating float-to-int conversions
     I32TruncSSatF32                      = 0x00,
@@ -362,6 +339,10 @@ enum class NumericOp
     I64TruncUSatF32                      = 0x05,
     I64TruncSSatF64                      = 0x06,
     I64TruncUSatF64                      = 0x07,
+
+    // Bulk memory operations.  Note, these are unofficial.
+    MemCopy                              = 0x40,
+    MemFill                              = 0x41,
 
     Limit
 };
@@ -447,6 +428,17 @@ enum class ThreadOp
     I64AtomicCmpXchg8U                   = 0x4c,
     I64AtomicCmpXchg16U                  = 0x4d,
     I64AtomicCmpXchg32U                  = 0x4e,
+
+    Limit
+};
+
+// Opcodes from Bulk Memory Operations proposal as at 2 Feb 2018.  Note,
+// the opcodes are not actually assigned in that proposal.  This is just
+// an interim assignment.
+enum class CopyOrFillOp
+{
+    Copy                                 = 0x01,
+    Fill                                 = 0x02,
 
     Limit
 };
@@ -611,16 +603,21 @@ static const unsigned MaxExports             =   100000;
 static const unsigned MaxGlobals             =  1000000;
 static const unsigned MaxDataSegments        =   100000;
 static const unsigned MaxElemSegments        = 10000000;
-static const unsigned MaxTableInitialLength  = 10000000;
-static const unsigned MaxStringBytes         =   100000;
+static const unsigned MaxTableMaximumLength  = 10000000;
 static const unsigned MaxLocals              =    50000;
 static const unsigned MaxParams              =     1000;
-static const unsigned MaxBrTableElems        =  1000000;
-static const unsigned MaxMemoryInitialPages  = 16384;
-static const unsigned MaxMemoryMaximumPages  = 65536;
-static const unsigned MaxCodeSectionBytes    = 1024 * 1024 * 1024;
-static const unsigned MaxModuleBytes         = MaxCodeSectionBytes;
+static const unsigned MaxStructFields        =     1000;
+static const unsigned MaxMemoryMaximumPages  =    65536;
+static const unsigned MaxStringBytes         =   100000;
+static const unsigned MaxModuleBytes         = 1024 * 1024 * 1024;
 static const unsigned MaxFunctionBytes       =  7654321;
+
+// These limits pertain to our WebAssembly implementation only.
+
+static const unsigned MaxTableInitialLength  = 10000000;
+static const unsigned MaxBrTableElems        =  1000000;
+static const unsigned MaxMemoryInitialPages  =    16384;
+static const unsigned MaxCodeSectionBytes    = MaxModuleBytes;
 
 // A magic value of the FramePointer to indicate after a return to the entry
 // stub that an exception has been caught and that we should throw.

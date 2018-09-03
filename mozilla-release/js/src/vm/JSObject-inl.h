@@ -29,7 +29,7 @@
 #include "gc/Marking-inl.h"
 #include "gc/ObjectKind-inl.h"
 #include "vm/JSAtom-inl.h"
-#include "vm/JSCompartment-inl.h"
+#include "vm/Realm-inl.h"
 #include "vm/ShapedObject-inl.h"
 #include "vm/TypeInference-inl.h"
 
@@ -153,19 +153,13 @@ js::NativeObject::updateDictionaryListPointerAfterMinorGC(NativeObject* old)
         shape()->listp = shapePtr();
 }
 
-inline void
-js::gc::MakeAccessibleAfterMovingGC(JSObject* obj)
-{
-    if (obj->isNative())
-        obj->as<NativeObject>().updateShapeAfterMovingGC();
-}
-
 /* static */ inline bool
 JSObject::setSingleton(JSContext* cx, js::HandleObject obj)
 {
     MOZ_ASSERT(!IsInsideNursery(obj));
 
-    js::ObjectGroup* group = js::ObjectGroup::lazySingletonGroup(cx, obj->getClass(),
+    js::ObjectGroupRealm& realm = js::ObjectGroupRealm::get(obj->group_);
+    js::ObjectGroup* group = js::ObjectGroup::lazySingletonGroup(cx, realm, obj->getClass(),
                                                                  obj->taggedProto());
     if (!group)
         return false;
@@ -374,19 +368,19 @@ template <typename T>
 static MOZ_ALWAYS_INLINE MOZ_MUST_USE T*
 SetNewObjectMetadata(JSContext* cx, T* obj)
 {
-    MOZ_ASSERT(!cx->compartment()->hasObjectPendingMetadata());
+    MOZ_ASSERT(!cx->realm()->hasObjectPendingMetadata());
 
     // The metadata builder is invoked for each object created on the active
     // thread, except when analysis/compilation is active, to avoid recursion.
     if (!cx->helperThread()) {
-        if (MOZ_UNLIKELY((size_t)cx->compartment()->hasAllocationMetadataBuilder()) &&
+        if (MOZ_UNLIKELY(cx->realm()->hasAllocationMetadataBuilder()) &&
             !cx->zone()->suppressAllocationMetadataBuilder)
         {
             // Don't collect metadata on objects that represent metadata.
             AutoSuppressAllocationMetadataBuilder suppressMetadata(cx);
 
             Rooted<T*> rooted(cx, obj);
-            cx->compartment()->setNewObjectMetadata(cx, rooted);
+            cx->realm()->setNewObjectMetadata(cx, rooted);
             return rooted;
         }
     }
@@ -397,27 +391,21 @@ SetNewObjectMetadata(JSContext* cx, T* obj)
 } // namespace js
 
 inline js::GlobalObject&
-JSObject::global() const
+JSObject::deprecatedGlobal() const
+{
+    return *deprecatedRealm()->unsafeUnbarrieredMaybeGlobal();
+}
+
+inline js::GlobalObject&
+JSObject::nonCCWGlobal() const
 {
     /*
      * The global is read-barriered so that it is kept live by access through
-     * the JSCompartment. When accessed through a JSObject, however, the global
-     * will be already be kept live by the black JSObject's parent pointer, so
-     * does not need to be read-barriered.
+     * the Realm. When accessed through a JSObject, however, the global will be
+     * already kept live by the black JSObject's group pointer, so does not
+     * need to be read-barriered.
      */
-    return *compartment()->unsafeUnbarrieredMaybeGlobal();
-}
-
-inline js::GlobalObject*
-JSObject::globalForTracing(JSTracer*) const
-{
-    return compartment()->unsafeUnbarrieredMaybeGlobal();
-}
-
-inline bool
-JSObject::isOwnGlobal(JSTracer* trc) const
-{
-    return globalForTracing(trc) == this;
+    return *nonCCWRealm()->unsafeUnbarrieredMaybeGlobal();
 }
 
 inline bool

@@ -8,7 +8,6 @@ VENV_PATH = os.path.join(os.getcwd(), 'venv')
 
 config = {
     "log_name": "talos",
-    "buildbot_json_path": "buildprops.json",
     "installer_path": "installer.exe",
     "virtualenv_path": VENV_PATH,
     "exes": {
@@ -23,10 +22,6 @@ config = {
         "setup-mitmproxy",
         "run-tests",
     ],
-    "default_blob_upload_servers": [
-        "https://blobupload.elasticbeanstalk.com",
-    ],
-    "blob_uploader_auth_file": 'C:/builds/oauth.txt',
     "metro_harness_path_frmt": "%(metro_base_path)s/metro/metrotestharness.exe",
     "download_minidump_stackwalk": True,
     "tooltool_cache": os.path.join('Y:\\', 'tooltool-cache'),

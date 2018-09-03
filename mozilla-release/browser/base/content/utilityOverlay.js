@@ -44,6 +44,7 @@ var gBidiUI = false;
 function isBlankPageURL(aURL) {
   return aURL == "about:blank" ||
          aURL == "about:home" ||
+         aURL == "about:welcome" ||
          aURL == BROWSER_NEW_TAB_URL;
 }
 
@@ -119,12 +120,7 @@ function openUILink(url, event, aIgnoreButton, aIgnoreAlt, aAllowThirdPartyFixup
   }
 
   if (!params.triggeringPrincipal) {
-    let dt = event ? event.dataTransfer : null;
-    if (!!dt && dt.mozSourceNode) {
-      params.triggeringPrincipal = dt.mozSourceNode.nodePrincipal;
-    } else {
-      params.triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
-    }
+    throw new Error("Required argument triggeringPrincipal missing within openUILink");
   }
 
   let where = whereToOpenLink(event, aIgnoreButton, aIgnoreAlt);
@@ -304,6 +300,7 @@ function openLinkIn(url, where, params) {
   var aTriggeringPrincipal  = params.triggeringPrincipal;
   var aForceAboutBlankViewerInCurrent =
       params.forceAboutBlankViewerInCurrent;
+  var aResolveOnNewTabCreated = params.resolveOnNewTabCreated;
 
   if (where == "save") {
     // TODO(1073187): propagate referrerPolicy.
@@ -553,6 +550,10 @@ function openLinkIn(url, where, params) {
       private: aIsPrivate
     });
     targetBrowser = tabUsedForLoad.linkedBrowser;
+
+    if (aResolveOnNewTabCreated) {
+      aResolveOnNewTabCreated(targetBrowser);
+    }
 
     if (params.frameOuterWindowID != undefined && w) {
       // Only notify it as a WebExtensions' webNavigation.onCreatedNavigationTarget

@@ -67,7 +67,7 @@ struct Cell
     inline JSRuntime* runtimeFromAnyThread() const;
 
     // May be overridden by GC thing kinds that have a compartment pointer.
-    inline JSCompartment* maybeCompartment() const { return nullptr; }
+    inline JS::Compartment* maybeCompartment() const { return nullptr; }
 
     // The StoreBuffer used to record incoming pointers from the tenured heap.
     // This will return nullptr for a tenured cell.
@@ -255,7 +255,7 @@ Cell::getTraceKind() const
 {
     if (isTenured())
         return asTenured().getTraceKind();
-    if (js::shadow::String::nurseryCellIsString(this))
+    if (JS::shadow::String::nurseryCellIsString(this))
         return JS::TraceKind::String;
     return JS::TraceKind::Object;
 }
@@ -393,7 +393,7 @@ TenuredCell::readBarrier(TenuredCell* thing)
     if (thing->isMarkedGray()) {
         // There shouldn't be anything marked grey unless we're on the main thread.
         MOZ_ASSERT(CurrentThreadCanAccessRuntime(thing->runtimeFromAnyThread()));
-        if (!JS::CurrentThreadIsHeapCollecting())
+        if (!JS::RuntimeHeapIsCollecting())
             JS::UnmarkGrayGCThingRecursively(JS::GCCellPtr(thing, thing->getTraceKind()));
     }
 }

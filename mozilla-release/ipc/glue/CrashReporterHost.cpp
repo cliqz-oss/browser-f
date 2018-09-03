@@ -6,6 +6,7 @@
 
 #include "CrashReporterHost.h"
 #include "CrashReporterMetadataShmem.h"
+#include "mozilla/dom/Promise.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/SyncRunnable.h"
@@ -167,7 +168,7 @@ CrashReporterHost::GenerateMinidumpAndPair(GeckoChildProcessHost* aChildProcess,
     aCallback(false);
     return;
   }
-  mCreateMinidumpCallback.Init(Move(aCallback), aAsync);
+  mCreateMinidumpCallback.Init(std::move(aCallback), aAsync);
 
   if (!childHandle) {
     NS_WARNING("Failed to get child process handle.");
@@ -213,7 +214,7 @@ CrashReporterHost::GenerateMinidumpAndPair(GeckoChildProcessHost* aChildProcess,
                                         aPairName,
                                         aMinidumpToPair,
                                         getter_AddRefs(mTargetDump),
-                                        Move(callback),
+                                        std::move(callback),
                                         aAsync);
 }
 
@@ -275,7 +276,7 @@ CrashReporterHost::NotifyCrashService(GeckoProcessType aProcessType,
       return;
   }
 
-  nsCOMPtr<nsISupports> promise;
+  RefPtr<Promise> promise;
   crashService->AddCrash(processType, crashType, aChildDumpID, getter_AddRefs(promise));
   Telemetry::Accumulate(Telemetry::SUBPROCESS_CRASHES_WITH_DUMP, telemetryKey, 1);
 }

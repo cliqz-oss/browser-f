@@ -38,14 +38,14 @@ function run_test_with_server(server, callback) {
 function test_column_breakpoint() {
   // Debugger statement
   gClient.addOneTimeListener("paused", function(event, packet) {
-    let source = gThreadClient.source(packet.frame.where.source);
-    let location = {
+    const source = gThreadClient.source(packet.frame.where.source);
+    const location = {
       line: gDebuggee.line0 + 1,
       column: 55
     };
     let timesBreakpointHit = 0;
 
-    source.setBreakpoint(location, function(response, bpClient) {
+    source.setBreakpoint(location).then(function([response, bpClient]) {
       gThreadClient.addListener("paused", function onPaused(event, packet) {
         Assert.equal(packet.type, "paused");
         Assert.equal(packet.why.type, "breakpoint");

@@ -50,6 +50,8 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     this._payerRelatedEls = contents.querySelectorAll(".payer-related");
     this._payerAddressPicker = contents.querySelector("address-picker.payer-related");
 
+    this._header = contents.querySelector("header");
+
     this._errorText = contents.querySelector("#error-text");
 
     this._disabledOverlay = contents.getElementById("disabled-overlay");
@@ -110,6 +112,15 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     });
   }
 
+  _getAdditionalDisplayItems(state) {
+    let methodId = state.selectedPaymentCard;
+    let modifier = paymentRequest.getModifierForPaymentMethod(state, methodId);
+    if (modifier && modifier.additionalDisplayItems) {
+      return modifier.additionalDisplayItems;
+    }
+    return [];
+  }
+
   /**
    * Set some state from the privileged parent process.
    * Other elements that need to set state should use their own `this.requestStore.setState`
@@ -118,26 +129,25 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
    * @param {object} state - See `PaymentsStore.setState`
    */
   setStateFromParent(state) {
-    let oldSavedAddresses = this.requestStore.getState().savedAddresses;
+    let oldAddresses = paymentRequest.getAddresses(this.requestStore.getState());
     this.requestStore.setState(state);
 
     // Check if any foreign-key constraints were invalidated.
     state = this.requestStore.getState();
     let {
-      request: {paymentOptions: {requestShipping: requestShipping}},
-      savedAddresses,
       selectedPayerAddress,
       selectedPaymentCard,
       selectedShippingAddress,
       selectedShippingOption,
     } = state;
+    let addresses = paymentRequest.getAddresses(state);
     let shippingOptions = state.request.paymentDetails.shippingOptions;
-    let shippingAddress = selectedShippingAddress && savedAddresses[selectedShippingAddress];
+    let shippingAddress = selectedShippingAddress && addresses[selectedShippingAddress];
     let oldShippingAddress = selectedShippingAddress &&
-                             oldSavedAddresses[selectedShippingAddress];
+                             oldAddresses[selectedShippingAddress];
 
-    // Ensure `selectedShippingAddress` never refers to a deleted address and refers
-    // to an address if one exists. We also compare address timestamps to handle changes
+    // Ensure `selectedShippingAddress` never refers to a deleted address.
+    // We also compare address timestamps to notify about changes
     // made outside the payments UI.
     if (shippingAddress) {
       // invalidate the cached value if the address was modified
@@ -146,16 +156,12 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
           shippingAddress.timeLastModified != oldShippingAddress.timeLastModified) {
         delete this._cachedState.selectedShippingAddress;
       }
-    } else {
-      // assign selectedShippingAddress as value if it is undefined,
-      // or if the address it pointed to was removed from storage
-      let defaultShippingAddress = null;
-      if (requestShipping) {
-        defaultShippingAddress = Object.keys(savedAddresses)[0];
-        log.debug("selecting the default shipping address");
-      }
+    } else if (selectedShippingAddress !== null) {
+      // null out the `selectedShippingAddress` property if it is undefined,
+      // or if the address it pointed to was removed from storage.
+      log.debug("resetting invalid/deleted shipping address");
       this.requestStore.setState({
-        selectedShippingAddress: defaultShippingAddress || null,
+        selectedShippingAddress: null,
       });
     }
 
@@ -189,9 +195,9 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
 
     // Ensure `selectedPayerAddress` never refers to a deleted address and refers
     // to an address if one exists.
-    if (!savedAddresses[selectedPayerAddress]) {
+    if (!addresses[selectedPayerAddress]) {
       this.requestStore.setState({
-        selectedPayerAddress: Object.keys(savedAddresses)[0] || null,
+        selectedPayerAddress: Object.keys(addresses)[0] || null,
       });
     }
   }
@@ -236,6 +242,10 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     let paymentDetails = request.paymentDetails;
     this._hostNameEl.textContent = request.topLevelPrincipal.URI.displayHost;
 
+    let displayItems = request.paymentDetails.displayItems || [];
+    let additionalItems = this._getAdditionalDisplayItems(state);
+    this._viewAllButton.hidden = !displayItems.length && !additionalItems.length;
+
     let shippingType = state.request.paymentOptions.shippingType || "shipping";
     this._shippingAddressPicker.dataset.addAddressTitle =
       this.dataset[shippingType + "AddressTitleAdd"];
@@ -246,6 +256,10 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     let totalAmountEl = this.querySelector("#total > currency-amount");
     totalAmountEl.value = totalItem.amount.value;
     totalAmountEl.currency = totalItem.amount.currency;
+
+    // Show the total header on the address and basic card pages only during
+    // on-boarding(FTU) and on the payment summary page.
+    this._header.hidden = !state.page.onboardingWizard && state.page.id != "payment-summary";
 
     this._orderDetailsOverlay.hidden = !state.orderDetailsShowing;
     this._errorText.textContent = paymentDetails.error;

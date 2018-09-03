@@ -8,7 +8,7 @@
  */
 
 add_task(async function() {
-  let { tab, monitor } = await initNetMonitor(CURL_URL);
+  const { tab, monitor } = await initNetMonitor(CURL_URL);
   info("Starting test... ");
 
   // Different quote chars are used for Windows and POSIX
@@ -25,8 +25,13 @@ add_task(async function() {
   }
 
   // Construct the expected command
+  const SIMPLE_BASE = [
+    "curl " + quote(SIMPLE_SJS)
+  ];
+  const SLOW_BASE = [
+    "curl " + quote(SLOW_SJS)
+  ];
   const BASE_RESULT = [
-    "curl " + quote(SIMPLE_SJS),
     "--compressed",
     header("User-Agent: " + navigator.userAgent),
     header("Accept: */*"),
@@ -56,11 +61,33 @@ add_task(async function() {
 
   // GET request, no cookies (first request)
   await performRequest("GET");
-  await testClipboardContent(BASE_RESULT);
+  await testClipboardContent([
+    ...SIMPLE_BASE,
+    ...BASE_RESULT
+  ]);
+  // Check to make sure it is still OK after we view the response (bug#1452442)
+  await selectIndexAndWaitForSourceEditor(monitor, 0);
+  await testClipboardContent([
+    ...SIMPLE_BASE,
+    ...BASE_RESULT
+  ]);
 
   // GET request, cookies set by previous response
   await performRequest("GET");
   await testClipboardContent([
+    ...SIMPLE_BASE,
+    ...BASE_RESULT,
+    ...COOKIE_PARTIAL_RESULT
+  ]);
+
+  // Unfinished request (bug#1378464, bug#1420513)
+  const waitSlow = waitForNetworkEvents(monitor, 0);
+  await ContentTask.spawn(tab.linkedBrowser, SLOW_SJS, async function(url) {
+    content.wrappedJSObject.performRequest(url, "GET", null);
+  });
+  await waitSlow;
+  await testClipboardContent([
+    ...SLOW_BASE,
     ...BASE_RESULT,
     ...COOKIE_PARTIAL_RESULT
   ]);
@@ -68,6 +95,7 @@ add_task(async function() {
   // POST request
   await performRequest("POST", POST_PAYLOAD);
   await testClipboardContent([
+    ...SIMPLE_BASE,
     ...BASE_RESULT,
     ...COOKIE_PARTIAL_RESULT,
     ...POST_PARTIAL_RESULT
@@ -76,6 +104,7 @@ add_task(async function() {
   // HEAD request
   await performRequest("HEAD");
   await testClipboardContent([
+    ...SIMPLE_BASE,
     ...BASE_RESULT,
     ...COOKIE_PARTIAL_RESULT,
     ...HEAD_PARTIAL_RESULT
@@ -84,7 +113,7 @@ add_task(async function() {
   await teardown(monitor);
 
   async function performRequest(method, payload) {
-    let wait = waitForNetworkEvents(monitor, 1);
+    const waitRequest = waitForNetworkEvents(monitor, 1);
     await ContentTask.spawn(tab.linkedBrowser, {
       url: SIMPLE_SJS,
       method_: method,
@@ -92,20 +121,25 @@ add_task(async function() {
     }, async function({url, method_, payload_}) {
       content.wrappedJSObject.performRequest(url, method_, payload_);
     });
-    await wait;
+    await waitRequest;
   }
 
   async function testClipboardContent(expectedResult) {
-    let { document } = monitor.panelWin;
+    const { document } = monitor.panelWin;
 
     const items = document.querySelectorAll(".request-list-item");
     EventUtils.sendMouseEvent({ type: "mousedown" }, items[items.length - 1]);
     EventUtils.sendMouseEvent({ type: "contextmenu" },
       document.querySelectorAll(".request-list-item")[0]);
 
+    /* Ensure that the copy as cURL option is always visible */
+    const copyUrlParamsNode = monitor.panelWin.parent.document
+      .querySelector("#request-list-context-copy-as-curl");
+    is(!!copyUrlParamsNode, true,
+      "The \"Copy as cURL\" context menu item should not be hidden.");
+
     await waitForClipboardPromise(function setup() {
-      monitor.panelWin.parent.document
-        .querySelector("#request-list-context-copy-as-curl").click();
+      copyUrlParamsNode.click();
     }, function validate(result) {
       if (typeof result !== "string") {
         return false;
@@ -118,9 +152,9 @@ add_task(async function() {
       // This monster regexp parses the command line into an array of arguments,
       // recognizing quoted args with matching quotes and escaped quotes inside:
       // [ "curl 'url'", "--standalone-arg", "-arg-with-quoted-string 'value\'s'" ]
-      let matchRe = /[-A-Za-z1-9]+(?: ([\"'])(?:\\\1|.)*?\1)?/g;
+      const matchRe = /[-A-Za-z1-9]+(?: ([\"'])(?:\\\1|.)*?\1)?/g;
 
-      let actual = result.match(matchRe);
+      const actual = result.match(matchRe);
       // Must begin with the same "curl 'URL'" segment
       if (!actual || expectedResult[0] != actual[0]) {
         return false;
@@ -131,6 +165,6 @@ add_task(async function() {
         expectedResult.every(param => actual.includes(param));
     });
 
-    info("Clipboard contains a cURL command for the currently selected item's url.");
+    info("Clipboard contains a cURL command for item " + (items.length - 1));
   }
 });

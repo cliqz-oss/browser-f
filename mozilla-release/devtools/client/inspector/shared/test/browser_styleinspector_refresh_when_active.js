@@ -4,7 +4,7 @@
 
 "use strict";
 
-// Test that the style-inspector views only refresh when they are active.
+// Test that the rule and computed view refreshes when they are active.
 
 const TEST_URI = `
   <div id="one" style="color:red;">one</div>
@@ -13,7 +13,7 @@ const TEST_URI = `
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  let {inspector, view} = await openRuleView();
+  const {inspector, view} = await openRuleView();
 
   await selectNode("#one", inspector);
 
@@ -21,20 +21,19 @@ add_task(async function() {
     "The rule-view shows the properties for test node one");
 
   info("Switching to the computed-view");
-  let onComputedViewReady = inspector.once("computed-view-refreshed");
+  const onComputedViewReady = inspector.once("computed-view-refreshed");
   selectComputedView(inspector);
   await onComputedViewReady;
-  let cView = inspector.getPanel("computedview").computedView;
+  const cView = inspector.getPanel("computedview").computedView;
 
-  ok(getComputedViewPropertyValue(cView, "color"), "#F00",
+  is(getComputedViewPropertyValue(cView, "color"), "rgb(255, 0, 0)",
     "The computed-view shows the properties for test node one");
 
   info("Selecting test node two");
   await selectNode("#two", inspector);
 
-  ok(getComputedViewPropertyValue(cView, "color"), "#00F",
+  is(getComputedViewPropertyValue(cView, "color"), "rgb(0, 0, 255)",
     "The computed-view shows the properties for test node two");
-
-  is(getRuleViewPropertyValue(view, "element", "color"), "red",
-    "The rule-view doesn't the properties for test node two");
+  is(getRuleViewPropertyValue(view, "element", "color"), "blue",
+    "The rule-view shows the properties for test node two");
 });

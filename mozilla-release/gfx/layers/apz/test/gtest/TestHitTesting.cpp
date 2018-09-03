@@ -104,7 +104,7 @@ protected:
 
 // A simple hit testing test that doesn't involve any transforms on layers.
 TEST_F(APZHitTestingTester, HitTesting1) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateHitTesting1LayerTree();
   ScopedLayerTreeRegistration registration(manager, LayersId{0}, root, mcc);
@@ -171,7 +171,7 @@ TEST_F(APZHitTestingTester, HitTesting1) {
 
 // A more involved hit testing test that involves css and async transforms.
 TEST_F(APZHitTestingTester, HitTesting2) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
   SCOPED_GFX_PREF(APZVelocityBias, float, 0.0); // Velocity bias can cause extra repaint requests
 
   CreateHitTesting2LayerTree();
@@ -185,7 +185,7 @@ TEST_F(APZHitTestingTester, HitTesting2) {
   // layers[2] has content from (20,60)-(100,100). no clipping as it's not a scrollable layer
   // layers[3] has content from (20,60)-(180,140), clipped by composition bounds (20,60)-(100,100)
 
-  TestAsyncPanZoomController* apzcroot = ApzcOf(root);
+  RefPtr<TestAsyncPanZoomController> apzcroot = ApzcOf(root);
   TestAsyncPanZoomController* apzc1 = ApzcOf(layers[1]);
   TestAsyncPanZoomController* apzc3 = ApzcOf(layers[3]);
 
@@ -238,7 +238,7 @@ TEST_F(APZHitTestingTester, HitTesting2) {
   // This first pan will move the APZC by 50 pixels, and dispatch a paint request.
   // Since this paint request is in the queue to Gecko, transformToGecko will
   // take it into account.
-  ApzcPanNoFling(apzcroot, 100, 50);
+  Pan(apzcroot, 100, 50, PanOptions::NoFling);
 
   // Hit where layers[3] used to be. It should now hit the root.
   hit = GetTargetAPZC(ScreenPoint(75, 75));
@@ -262,7 +262,7 @@ TEST_F(APZHitTestingTester, HitTesting2) {
 
   // This second pan will move the APZC by another 50 pixels.
   EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(1);
-  ApzcPanNoFling(apzcroot, 100, 50);
+  Pan(apzcroot, 100, 50, PanOptions::NoFling);
 
   // Hit where layers[3] used to be. It should now hit the root.
   hit = GetTargetAPZC(ScreenPoint(75, 75));
@@ -282,7 +282,7 @@ TEST_F(APZHitTestingTester, HitTesting2) {
 }
 
 TEST_F(APZHitTestingTester, HitTesting3) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   const char* layerTreeSyntax = "c(t)";
   // LayerID                     0 1
@@ -308,7 +308,7 @@ TEST_F(APZHitTestingTester, HitTesting3) {
 }
 
 TEST_F(APZHitTestingTester, ComplexMultiLayerTree) {
-  SCOPED_GFX_PREF(WebRenderHitTest, bool, false);
+  SCOPED_GFX_VAR(UseWebRender, bool, false);
 
   CreateComplexMultiLayerTree();
   ScopedLayerTreeRegistration registration(manager, LayersId{0}, root, mcc);
@@ -403,7 +403,7 @@ TEST_F(APZHitTestingTester, TestRepaintFlushOnNewInputBlock) {
   CreateSimpleScrollingLayer();
   ScopedLayerTreeRegistration registration(manager, LayersId{0}, root, mcc);
   manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
-  TestAsyncPanZoomController* apzcroot = ApzcOf(root);
+  RefPtr<TestAsyncPanZoomController> apzcroot = ApzcOf(root);
 
   // At this point, the following holds (all coordinates in screen pixels):
   // layers[0] has content from (0,0)-(500,500), clipped by composition bounds (0,0)-(200,200)
@@ -422,7 +422,7 @@ TEST_F(APZHitTestingTester, TestRepaintFlushOnNewInputBlock) {
   }
 
   // This first pan will move the APZC by 50 pixels, and dispatch a paint request.
-  ApzcPanNoFling(apzcroot, 100, 50);
+  Pan(apzcroot, 100, 50, PanOptions::NoFling);
 
   // Verify that a touch start doesn't get untransformed
   ScreenIntPoint touchPoint(50, 50);
@@ -445,10 +445,10 @@ TEST_F(APZHitTestingTester, TestRepaintFlushOnNewInputBlock) {
   // (Note that any outstanding repaint requests from the first half of this test
   // don't impact this half because we advance the time by 1 second, which will trigger
   // the max-wait-exceeded codepath in the paint throttler).
-  ApzcPanNoFling(apzcroot, 100, 50);
+  Pan(apzcroot, 100, 50, PanOptions::NoFling);
   check.Call("post-second-fling");
-  ApzcPanNoFling(apzcroot, 100, 50);
-  
+  Pan(apzcroot, 100, 50, PanOptions::NoFling);
+
   // Ensure that a touch start again doesn't get untransformed by flushing
   // a repaint
   mti.mType = MultiTouchInput::MULTITOUCH_START;

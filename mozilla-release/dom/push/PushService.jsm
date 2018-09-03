@@ -32,6 +32,10 @@ const CONNECTION_PROTOCOLS = (function() {
 XPCOMUtils.defineLazyServiceGetter(this, "gPushNotifier",
                                    "@mozilla.org/push/Notifier;1",
                                    "nsIPushNotifier");
+XPCOMUtils.defineLazyServiceGetter(this, "eTLDService",
+                                   "@mozilla.org/network/effective-tld-service;1",
+                                   "nsIEffectiveTLDService");
+ChromeUtils.defineModuleGetter(this, "pushBroadcastService", "resource://gre/modules/PushBroadcastService.jsm");
 
 var EXPORTED_SYMBOLS = ["PushService"];
 
@@ -83,33 +87,6 @@ function errorWithResult(message, result = Cr.NS_ERROR_FAILURE) {
   let error = new Error(message);
   error.result = result;
   return error;
-}
-
-/**
- * Copied from ForgetAboutSite.jsm.
- *
- * Returns true if the string passed in is part of the root domain of the
- * current string.  For example, if this is "www.mozilla.org", and we pass in
- * "mozilla.org", this will return true.  It would return false the other way
- * around.
- */
-function hasRootDomain(str, aDomain)
-{
-  let index = str.indexOf(aDomain);
-  // If aDomain is not found, we know we do not have it as a root domain.
-  if (index == -1)
-    return false;
-
-  // If the strings are the same, we obviously have a match.
-  if (str == aDomain)
-    return true;
-
-  // Otherwise, we have aDomain as our root domain iff the index of aDomain is
-  // aDomain.length subtracted from our length and (since we do not have an
-  // exact match) the character before the index is a dot or slash.
-  let prevChar = str[index - 1];
-  return (index == (str.length - aDomain.length)) &&
-         (prevChar == "." || prevChar == "/");
 }
 
 /**
@@ -240,13 +217,24 @@ var PushService = {
     }
 
     let records = await this.getAllUnexpired();
+    let broadcastListeners = await pushBroadcastService.getListeners();
 
+    // In principle, a listener could be added to the
+    // pushBroadcastService here, after we have gotten listeners and
+    // before we're RUNNING, but this can't happen in practice because
+    // the only caller that can add listeners is PushBroadcastService,
+    // and it waits on the same promise we are before it can add
+    // listeners. If PushBroadcastService gets woken first, it will
+    // update the value that is eventually returned from
+    // getListeners.
     this._setState(PUSH_SERVICE_RUNNING);
 
     if (records.length > 0 || prefs.get("alwaysConnect")) {
       // Connect if we have existing subscriptions, or if the always-on pref
-      // is set.
-      this._service.connect(records);
+      // is set. We gate on the pref to let us do load testing before
+      // turning it on for everyone, but if the user has push
+      // subscriptions, we need to connect them anyhow.
+      this._service.connect(records, broadcastListeners);
     }
   },
 
@@ -486,13 +474,13 @@ var PushService = {
     if (options.serverURI) {
       // this is use for xpcshell test.
 
-      this._stateChangeProcessEnqueue(_ =>
+      return this._stateChangeProcessEnqueue(_ =>
         this._changeServerURL(options.serverURI, STARTING_SERVICE_EVENT, options));
 
     } else {
       // This is only used for testing. Different tests require connecting to
       // slightly different URLs.
-      this._stateChangeProcessEnqueue(_ =>
+      return this._stateChangeProcessEnqueue(_ =>
         this._changeServerURL(prefs.get("serverURL"), STARTING_SERVICE_EVENT));
     }
   },
@@ -762,6 +750,16 @@ var PushService = {
       console.error("receivedPushMessage: Error notifying app", error);
       return Ci.nsIPushErrorReporter.ACK_NOT_DELIVERED;
     });
+  },
+
+  /**
+   * Dispatches a broadcast notification to the BroadcastService.
+   */
+  receivedBroadcastMessage(message) {
+    pushBroadcastService.receivedBroadcastMessage(message.broadcasts)
+      .catch(e => {
+        console.error(e);
+      });;
   },
 
   /**
@@ -1082,6 +1080,21 @@ var PushService = {
     });
   },
 
+  /*
+   * Called only by the PushBroadcastService on the receipt of a new
+   * subscription. Don't call this directly. Go through PushBroadcastService.
+   */
+  async subscribeBroadcast(broadcastId, version) {
+    if (this._state != PUSH_SERVICE_RUNNING) {
+      // Ignore any request to subscribe before we send a hello.
+      // We'll send all the broadcast listeners as part of the hello
+      // anyhow.
+      return;
+    }
+
+    await this._service.sendSubscribeBroadcast(broadcastId, version);
+  },
+
   /**
    * Called on message from the child process.
    *
@@ -1134,7 +1147,7 @@ var PushService = {
       .then(_ => {
         return this._dropRegistrationsIf(record =>
           info.domain == "*" ||
-          (record.uri && hasRootDomain(record.uri.prePath, info.domain))
+          (record.uri && eTLDService.hasRootDomain(record.uri.prePath, info.domain))
         );
       })
       .catch(e => {

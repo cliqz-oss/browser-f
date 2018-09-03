@@ -77,7 +77,7 @@ public:
     if (mShmem.IsWritable()) {
       // The shmem wasn't extracted to send its data back up to the parent process,
       // so we can reuse the shmem.
-      mProtocol->GiveBuffer(Move(mShmem));
+      mProtocol->GiveBuffer(std::move(mShmem));
     }
   }
 
@@ -197,7 +197,7 @@ ChromiumCDMChild::CallMethod(MethodType aMethod, ParamType&&... aParams)
   MOZ_ASSERT(IsOnMessageLoopThread());
   // Avoid calling member function after destroy.
   if (!mDestroyed) {
-    Unused << (this->*aMethod)(Forward<ParamType>(aParams)...);
+    Unused << (this->*aMethod)(std::forward<ParamType>(aParams)...);
   }
 }
 
@@ -208,7 +208,7 @@ ChromiumCDMChild::CallOnMessageLoopThread(const char* const aName,
                                           ParamType&&... aParams)
 {
   if (IsOnMessageLoopThread()) {
-    CallMethod(aMethod, Forward<ParamType>(aParams)...);
+    CallMethod(aMethod, std::forward<ParamType>(aParams)...);
   } else {
     auto m = &ChromiumCDMChild::CallMethod<
         decltype(aMethod), const typename RemoveReference<ParamType>::Type&...>;
@@ -219,7 +219,7 @@ ChromiumCDMChild::CallOnMessageLoopThread(const char* const aName,
                         this,
                         m,
                         aMethod,
-                        Forward<ParamType>(aParams)...);
+                        std::forward<ParamType>(aParams)...);
     mPlugin->GMPMessageLoop()->PostTask(t.forget());
   }
 }
@@ -1024,7 +1024,7 @@ ChromiumCDMChild::RecvGiveBuffer(ipc::Shmem&& aBuffer)
 {
   MOZ_ASSERT(IsOnMessageLoopThread());
 
-  GiveBuffer(Move(aBuffer));
+  GiveBuffer(std::move(aBuffer));
   return IPC_OK();
 }
 
@@ -1033,7 +1033,7 @@ ChromiumCDMChild::GiveBuffer(ipc::Shmem&& aBuffer)
 {
   MOZ_ASSERT(IsOnMessageLoopThread());
   size_t sz = aBuffer.Size<uint8_t>();
-  mBuffers.AppendElement(Move(aBuffer));
+  mBuffers.AppendElement(std::move(aBuffer));
   GMP_LOG("ChromiumCDMChild::RecvGiveBuffer(capacity=%zu"
           ") bufferSizes={%s} mDecoderInitialized=%d",
           sz,

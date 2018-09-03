@@ -511,10 +511,25 @@ Tester.prototype = {
       "webConsoleCommandController",
     ];
 
-    if (this.tests.length)
-      this.waitForGraphicsTestWindowToBeGone(this.nextTest.bind(this));
-    else
+    if (this.tests.length) {
+      this.waitForWindowsReady().then(() => {
+        this.nextTest();
+      });
+    } else {
       this.finish();
+    }
+  },
+
+  async waitForWindowsReady() {
+    await new Promise(resolve => this.waitForGraphicsTestWindowToBeGone(resolve));
+    await this.promiseMainWindowReady();
+  },
+
+  async promiseMainWindowReady() {
+    if (!gBrowserInit.idleTasksFinished) {
+      await this.TestUtils.topicObserved("browser-idle-startup-tasks-finished",
+                                         subject => subject === window);
+    }
   },
 
   waitForGraphicsTestWindowToBeGone(aCallback) {
@@ -759,7 +774,7 @@ Tester.prototype = {
         if (gdir.exists()) {
           let entries = gdir.directoryEntries;
           while (entries.hasMoreElements()) {
-            let entry = entries.getNext().QueryInterface(Ci.nsIFile);
+            let entry = entries.nextFile;
             if (entry.isFile()) {
               let msg = "this test left a pending crash report; ";
               try {
@@ -1182,13 +1197,7 @@ Tester.prototype = {
     }
   },
 
-  QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsIConsoleListener) ||
-        aIID.equals(Ci.nsISupports))
-      return this;
-
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIConsoleListener"])
 };
 
 /**
@@ -1248,8 +1257,9 @@ function testResult({ name, pass, todo, ex, stack, allowFailure }) {
     let normalized;
     if (stack instanceof Ci.nsIStackFrame) {
       let frames = [];
-      for (let frame = stack; frame; frame = frame.caller) {
-        frames.push(frame.filename + ":" + frame.name + ":" + frame.lineNumber);
+      for (let frame = stack; frame; frame = frame.asyncCaller || frame.caller) {
+        let msg = `${frame.filename}:${frame.name}:${frame.lineNumber}`;
+        frames.push(frame.asyncCause ? `${frame.asyncCause}*${msg}` : msg);
       }
       normalized = frames.join("\n");
     } else {

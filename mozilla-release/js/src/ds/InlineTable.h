@@ -22,7 +22,7 @@ template <typename InlineEntry,
           typename HashPolicy,
           typename AllocPolicy,
           size_t InlineEntries>
-class InlineTable
+class InlineTable : private AllocPolicy
 {
   private:
     using TablePtr    = typename Table::Ptr;
@@ -102,7 +102,8 @@ class InlineTable
     static const size_t SizeOfInlineEntries = sizeof(InlineEntry) * InlineEntries;
 
     explicit InlineTable(AllocPolicy a = AllocPolicy())
-      : inlNext_(0),
+      : AllocPolicy(a),
+        inlNext_(0),
         inlCount_(0),
         table_(a)
     { }
@@ -297,22 +298,26 @@ class InlineTable
             if (addPtr == inlineStart() + InlineEntries) {
                 if (!switchToTable())
                     return false;
-                return table_.putNew(mozilla::Forward<KeyInput>(key),
-                                     mozilla::Forward<Args>(args)...);
+                return table_.putNew(std::forward<KeyInput>(key),
+                                     std::forward<Args>(args)...);
             }
 
             MOZ_ASSERT(!p.found());
             MOZ_ASSERT(uintptr_t(inlineEnd()) == uintptr_t(p.inlAddPtr_));
-            addPtr->update(mozilla::Forward<KeyInput>(key),
-                           mozilla::Forward<Args>(args)...);
+
+            if (!this->checkSimulatedOOM())
+                return false;
+
+            addPtr->update(std::forward<KeyInput>(key),
+                           std::forward<Args>(args)...);
             ++inlCount_;
             ++inlNext_;
             return true;
         }
 
         return table_.add(p.tableAddPtr_,
-                          mozilla::Forward<KeyInput>(key),
-                          mozilla::Forward<Args>(args)...);
+                          std::forward<KeyInput>(key),
+                          std::forward<Args>(args)...);
     }
 
     void remove(Ptr& p) {
@@ -435,12 +440,12 @@ class InlineMap
 
         template <typename KeyInput, typename ValueInput>
         void update(KeyInput&& key, ValueInput&& value) {
-            this->key = mozilla::Forward<KeyInput>(key);
-            this->value = mozilla::Forward<ValueInput>(value);
+            this->key = std::forward<KeyInput>(key);
+            this->value = std::forward<ValueInput>(value);
         }
 
         MOZ_MUST_USE bool moveTo(Map& map) {
-            return map.putNew(mozilla::Move(key), mozilla::Move(value));
+            return map.putNew(std::move(key), std::move(value));
         }
     };
 
@@ -532,17 +537,17 @@ class InlineMap
     template <typename KeyInput, typename ValueInput>
     MOZ_ALWAYS_INLINE
     MOZ_MUST_USE bool add(AddPtr& p, KeyInput&& key, ValueInput&& value) {
-        return impl_.add(p, mozilla::Forward<KeyInput>(key), mozilla::Forward<ValueInput>(value));
+        return impl_.add(p, std::forward<KeyInput>(key), std::forward<ValueInput>(value));
     }
 
     template <typename KeyInput, typename ValueInput>
     MOZ_MUST_USE bool put(KeyInput&& key, ValueInput&& value) {
         AddPtr p = lookupForAdd(key);
         if (p) {
-            p->value() = mozilla::Forward<ValueInput>(value);
+            p->value() = std::forward<ValueInput>(value);
             return true;
         }
-        return add(p, mozilla::Forward<KeyInput>(key), mozilla::Forward<ValueInput>(value));
+        return add(p, std::forward<KeyInput>(key), std::forward<ValueInput>(value));
     }
 
     void remove(Ptr& p) {
@@ -574,11 +579,11 @@ class InlineSet
 
         template <typename TInput>
         void update(TInput&& key) {
-            this->key = mozilla::Forward<TInput>(key);
+            this->key = std::forward<TInput>(key);
         }
 
         MOZ_MUST_USE bool moveTo(Set& set) {
-            return set.putNew(mozilla::Move(key));
+            return set.putNew(std::move(key));
         }
     };
 
@@ -663,13 +668,13 @@ class InlineSet
     template <typename TInput>
     MOZ_ALWAYS_INLINE
     MOZ_MUST_USE bool add(AddPtr& p, TInput&& key) {
-        return impl_.add(p, mozilla::Forward<TInput>(key));
+        return impl_.add(p, std::forward<TInput>(key));
     }
 
     template <typename TInput>
     MOZ_MUST_USE bool put(TInput&& key) {
         AddPtr p = lookupForAdd(key);
-        return p ? true : add(p, mozilla::Forward<TInput>(key));
+        return p ? true : add(p, std::forward<TInput>(key));
     }
 
     void remove(Ptr& p) {

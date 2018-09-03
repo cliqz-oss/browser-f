@@ -8,7 +8,7 @@
 
 #include "gc/GCInternals.h"
 #include "js/HashTable.h"
-#include "vm/JSCompartment.h"
+#include "vm/Realm.h"
 #include "vm/Runtime.h"
 
 #include "gc/PrivateIterators-inl.h"
@@ -18,13 +18,18 @@ using namespace js;
 using namespace js::gc;
 
 static void
-IterateCompartmentsArenasCellsUnbarriered(JSContext* cx, Zone* zone, void* data,
-                                          JSIterateCompartmentCallback compartmentCallback,
-                                          IterateArenaCallback arenaCallback,
-                                          IterateCellCallback cellCallback)
+IterateRealmsArenasCellsUnbarriered(JSContext* cx, Zone* zone, void* data,
+                                    JS::IterateRealmCallback realmCallback,
+                                    IterateArenaCallback arenaCallback,
+                                    IterateCellCallback cellCallback)
 {
-    for (CompartmentsInZoneIter comp(zone); !comp.done(); comp.next())
-        (*compartmentCallback)(cx, data, comp);
+    {
+        Rooted<Realm*> realm(cx);
+        for (RealmsInZoneIter r(zone); !r.done(); r.next()) {
+            realm = r;
+            (*realmCallback)(cx, data, realm);
+        }
+    }
 
     for (auto thingKind : AllAllocKinds()) {
         JS::TraceKind traceKind = MapAllocToTraceKind(thingKind);
@@ -42,31 +47,31 @@ IterateCompartmentsArenasCellsUnbarriered(JSContext* cx, Zone* zone, void* data,
 void
 js::IterateHeapUnbarriered(JSContext* cx, void* data,
                            IterateZoneCallback zoneCallback,
-                           JSIterateCompartmentCallback compartmentCallback,
+                           JS::IterateRealmCallback realmCallback,
                            IterateArenaCallback arenaCallback,
                            IterateCellCallback cellCallback)
 {
-    AutoPrepareForTracing prop(cx);
+    AutoPrepareForTracing prep(cx);
 
     for (ZonesIter zone(cx->runtime(), WithAtoms); !zone.done(); zone.next()) {
         (*zoneCallback)(cx->runtime(), data, zone);
-        IterateCompartmentsArenasCellsUnbarriered(cx, zone, data,
-                                                  compartmentCallback, arenaCallback, cellCallback);
+        IterateRealmsArenasCellsUnbarriered(cx, zone, data,
+                                            realmCallback, arenaCallback, cellCallback);
     }
 }
 
 void
 js::IterateHeapUnbarrieredForZone(JSContext* cx, Zone* zone, void* data,
                                   IterateZoneCallback zoneCallback,
-                                  JSIterateCompartmentCallback compartmentCallback,
+                                  JS::IterateRealmCallback realmCallback,
                                   IterateArenaCallback arenaCallback,
                                   IterateCellCallback cellCallback)
 {
-    AutoPrepareForTracing prop(cx);
+    AutoPrepareForTracing prep(cx);
 
     (*zoneCallback)(cx->runtime(), data, zone);
-    IterateCompartmentsArenasCellsUnbarriered(cx, zone, data,
-                                              compartmentCallback, arenaCallback, cellCallback);
+    IterateRealmsArenasCellsUnbarriered(cx, zone, data,
+                                        realmCallback, arenaCallback, cellCallback);
 }
 
 void
@@ -80,23 +85,23 @@ js::IterateChunks(JSContext* cx, void* data, IterateChunkCallback chunkCallback)
 }
 
 void
-js::IterateScripts(JSContext* cx, JSCompartment* compartment,
-                   void* data, IterateScriptCallback scriptCallback)
+js::IterateScripts(JSContext* cx, Realm* realm, void* data, IterateScriptCallback scriptCallback)
 {
     MOZ_ASSERT(!cx->suppressGC);
     AutoEmptyNursery empty(cx);
     AutoPrepareForTracing prep(cx);
+    JS::AutoSuppressGCAnalysis nogc;
 
-    if (compartment) {
-        Zone* zone = compartment->zone();
+    if (realm) {
+        Zone* zone = realm->zone();
         for (auto script = zone->cellIter<JSScript>(empty); !script.done(); script.next()) {
-            if (script->compartment() == compartment)
-                scriptCallback(cx->runtime(), data, script);
+            if (script->realm() == realm)
+                scriptCallback(cx->runtime(), data, script, nogc);
         }
     } else {
         for (ZonesIter zone(cx->runtime(), SkipAtoms); !zone.done(); zone.next()) {
             for (auto script = zone->cellIter<JSScript>(empty); !script.done(); script.next())
-                scriptCallback(cx->runtime(), data, script);
+                scriptCallback(cx->runtime(), data, script, nogc);
         }
     }
 }
@@ -115,7 +120,7 @@ IterateGrayObjects(Zone* zone, GCThingCallback cellCallback, void* data)
 void
 js::IterateGrayObjects(Zone* zone, GCThingCallback cellCallback, void* data)
 {
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapBusy());
+    MOZ_ASSERT(!JS::RuntimeHeapIsBusy());
     AutoPrepareForTracing prep(TlsContext.get());
     ::IterateGrayObjects(zone, cellCallback, data);
 }
@@ -124,7 +129,7 @@ void
 js::IterateGrayObjectsUnderCC(Zone* zone, GCThingCallback cellCallback, void* data)
 {
     mozilla::DebugOnly<JSRuntime*> rt = zone->runtimeFromMainThread();
-    MOZ_ASSERT(JS::CurrentThreadIsHeapCycleCollecting());
+    MOZ_ASSERT(JS::RuntimeHeapIsCycleCollecting());
     MOZ_ASSERT(!rt->gc.isIncrementalGCInProgress());
     ::IterateGrayObjects(zone, cellCallback, data);
 }
@@ -135,6 +140,31 @@ JS_IterateCompartments(JSContext* cx, void* data,
 {
     AutoTraceSession session(cx->runtime());
 
-    for (CompartmentsIter c(cx->runtime(), WithAtoms); !c.done(); c.next())
+    for (CompartmentsIter c(cx->runtime()); !c.done(); c.next())
         (*compartmentCallback)(cx, data, c);
+}
+
+JS_PUBLIC_API(void)
+JS::IterateRealms(JSContext* cx, void* data, JS::IterateRealmCallback realmCallback)
+{
+    AutoTraceSession session(cx->runtime());
+
+    Rooted<Realm*> realm(cx);
+    for (RealmsIter r(cx->runtime()); !r.done(); r.next()) {
+        realm = r;
+        (*realmCallback)(cx, data, realm);
+    }
+}
+
+JS_PUBLIC_API(void)
+JS::IterateRealmsInCompartment(JSContext* cx, JS::Compartment* compartment, void* data,
+                               JS::IterateRealmCallback realmCallback)
+{
+    AutoTraceSession session(cx->runtime());
+
+    Rooted<Realm*> realm(cx);
+    for (RealmsInCompartmentIter r(compartment); !r.done(); r.next()) {
+        realm = r;
+        (*realmCallback)(cx, data, realm);
+    }
 }

@@ -17,7 +17,6 @@
 #include "nsIContentSecurityPolicy.h"
 #include "nsIDocShell.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsIFrameLoaderOwner.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsISupportsImpl.h"
@@ -69,7 +68,6 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mBrowserWouldUpgradeInsecureRequests(false)
   , mVerifySignedContent(false)
   , mEnforceSRI(false)
-  , mAllowDocumentToBeAgnosticToCSP(false)
   , mForceAllowDataURI(false)
   , mAllowInsecureRedirectToDataURI(false)
   , mSkipContentPolicyCheckForWebRequest(false)
@@ -296,7 +294,6 @@ LoadInfo::LoadInfo(nsPIDOMWindowOuter* aOuterWindow,
   , mBrowserWouldUpgradeInsecureRequests(false)
   , mVerifySignedContent(false)
   , mEnforceSRI(false)
-  , mAllowDocumentToBeAgnosticToCSP(false)
   , mForceAllowDataURI(false)
   , mAllowInsecureRedirectToDataURI(false)
   , mSkipContentPolicyCheckForWebRequest(false)
@@ -375,7 +372,6 @@ LoadInfo::LoadInfo(const LoadInfo& rhs)
   , mBrowserWouldUpgradeInsecureRequests(rhs.mBrowserWouldUpgradeInsecureRequests)
   , mVerifySignedContent(rhs.mVerifySignedContent)
   , mEnforceSRI(rhs.mEnforceSRI)
-  , mAllowDocumentToBeAgnosticToCSP(rhs.mAllowDocumentToBeAgnosticToCSP)
   , mForceAllowDataURI(rhs.mForceAllowDataURI)
   , mAllowInsecureRedirectToDataURI(rhs.mAllowInsecureRedirectToDataURI)
   , mSkipContentPolicyCheckForWebRequest(rhs.mSkipContentPolicyCheckForWebRequest)
@@ -422,7 +418,6 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
                    bool aBrowserWouldUpgradeInsecureRequests,
                    bool aVerifySignedContent,
                    bool aEnforceSRI,
-                   bool aAllowDocumentToBeAgnosticToCSP,
                    bool aForceAllowDataURI,
                    bool aAllowInsecureRedirectToDataURI,
                    bool aSkipContentPolicyCheckForWebRequest,
@@ -462,7 +457,6 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mBrowserWouldUpgradeInsecureRequests(aBrowserWouldUpgradeInsecureRequests)
   , mVerifySignedContent(aVerifySignedContent)
   , mEnforceSRI(aEnforceSRI)
-  , mAllowDocumentToBeAgnosticToCSP(aAllowDocumentToBeAgnosticToCSP)
   , mForceAllowDataURI(aForceAllowDataURI)
   , mAllowInsecureRedirectToDataURI(aAllowInsecureRedirectToDataURI)
   , mSkipContentPolicyCheckForWebRequest(aSkipContentPolicyCheckForWebRequest)
@@ -478,7 +472,7 @@ LoadInfo::LoadInfo(nsIPrincipal* aLoadingPrincipal,
   , mIsThirdPartyContext(aIsThirdPartyContext)
   , mIsDocshellReload(aIsDocshellReload)
   , mOriginAttributes(aOriginAttributes)
-  , mAncestorPrincipals(Move(aAncestorPrincipals))
+  , mAncestorPrincipals(std::move(aAncestorPrincipals))
   , mAncestorOuterWindowIDs(aAncestorOuterWindowIDs)
   , mCorsUnsafeHeaders(aCorsUnsafeHeaders)
   , mForcePreflight(aForcePreflight)
@@ -632,11 +626,11 @@ LoadInfo::GetSandboxedLoadingPrincipal(nsIPrincipal** aPrincipal)
 }
 
 NS_IMETHODIMP
-LoadInfo::GetLoadingDocument(nsIDOMDocument** aResult)
+LoadInfo::GetLoadingDocument(nsIDocument** aResult)
 {
   nsCOMPtr<nsINode> node = do_QueryReferent(mLoadingContext);
   if (node) {
-    nsCOMPtr<nsIDOMDocument> context = do_QueryInterface(node->OwnerDoc());
+    nsCOMPtr<nsIDocument> context = node->OwnerDoc();
     context.forget(aResult);
   }
   return NS_OK;
@@ -649,7 +643,7 @@ LoadInfo::LoadingNode()
   return node;
 }
 
-nsISupports*
+already_AddRefed<nsISupports>
 LoadInfo::ContextForTopLevelLoad()
 {
   // Most likely you want to query LoadingNode() instead of
@@ -657,7 +651,7 @@ LoadInfo::ContextForTopLevelLoad()
   MOZ_ASSERT(mInternalContentPolicyType == nsIContentPolicy::TYPE_DOCUMENT,
             "should only query this context for top level document loads");
   nsCOMPtr<nsISupports> context = do_QueryReferent(mContextForTopLevelLoad);
-  return context;
+  return context.forget();
 }
 
 already_AddRefed<nsISupports>
@@ -1009,25 +1003,6 @@ LoadInfo::ResetPrincipalToInheritToNullPrincipal()
 }
 
 NS_IMETHODIMP
-LoadInfo::SetAllowDocumentToBeAgnosticToCSP(bool aAllowDocumentToBeAgnosticToCSP)
-{
-  if (mInternalContentPolicyType != nsIContentPolicy::TYPE_DOCUMENT) {
-    MOZ_ASSERT(false, "not available for loads other than TYPE_DOCUMENT");
-    return NS_ERROR_UNEXPECTED;
-  }
-  mAllowDocumentToBeAgnosticToCSP = aAllowDocumentToBeAgnosticToCSP;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-LoadInfo::GetAllowDocumentToBeAgnosticToCSP(bool* aAllowDocumentToBeAgnosticToCSP)
-{
-  *aAllowDocumentToBeAgnosticToCSP = mAllowDocumentToBeAgnosticToCSP;
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
 LoadInfo::SetScriptableOriginAttributes(JSContext* aCx,
   JS::Handle<JS::Value> aOriginAttributes)
 {
@@ -1324,7 +1299,7 @@ void
 LoadInfo::GiveReservedClientSource(UniquePtr<ClientSource>&& aClientSource)
 {
   MOZ_DIAGNOSTIC_ASSERT(aClientSource);
-  mReservedClientSource = Move(aClientSource);
+  mReservedClientSource = std::move(aClientSource);
   SetReservedClientInfo(mReservedClientSource->Info());
 }
 
@@ -1336,13 +1311,29 @@ LoadInfo::TakeReservedClientSource()
     // then clear that info object when the ClientSource is taken.
     mReservedClientInfo.reset();
   }
-  return Move(mReservedClientSource);
+  return std::move(mReservedClientSource);
 }
 
 void
 LoadInfo::SetReservedClientInfo(const ClientInfo& aClientInfo)
 {
   MOZ_DIAGNOSTIC_ASSERT(mInitialClientInfo.isNothing());
+  // Treat assignments of the same value as a no-op.  The emplace below
+  // will normally assert when overwriting an existing value.
+  if (mReservedClientInfo.isSome() && mReservedClientInfo.ref() == aClientInfo) {
+    return;
+  }
+  mReservedClientInfo.emplace(aClientInfo);
+}
+
+void
+LoadInfo::OverrideReservedClientInfoInParent(const ClientInfo& aClientInfo)
+{
+  // This should only be called to handle redirects in the parent process.
+  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+
+  mInitialClientInfo.reset();
+  mReservedClientInfo.reset();
   mReservedClientInfo.emplace(aClientInfo);
 }
 
@@ -1357,6 +1348,11 @@ LoadInfo::SetInitialClientInfo(const ClientInfo& aClientInfo)
 {
   MOZ_DIAGNOSTIC_ASSERT(!mReservedClientSource);
   MOZ_DIAGNOSTIC_ASSERT(mReservedClientInfo.isNothing());
+  // Treat assignments of the same value as a no-op.  The emplace below
+  // will normally assert when overwriting an existing value.
+  if (mInitialClientInfo.isSome() && mInitialClientInfo.ref() == aClientInfo) {
+    return;
+  }
   mInitialClientInfo.emplace(aClientInfo);
 }
 

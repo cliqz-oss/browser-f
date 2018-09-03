@@ -100,6 +100,7 @@ public:
     nsCString UAName;
     nsCString ID;
     nsCString vendor;
+    nsCString sourceURL;
   };
 
   nsresult
@@ -120,6 +121,7 @@ public:
 
   bool Init(MessageLoop* aIOLoop,
             base::ProcessId aParentPid,
+            const char* aParentBuildID,
             IPC::Channel* aChannel,
             uint64_t aChildID,
             bool aIsForBrowser);
@@ -403,6 +405,8 @@ public:
   virtual mozilla::ipc::IPCResult RecvUpdateAppLocales(nsTArray<nsCString>&& aAppLocales) override;
   virtual mozilla::ipc::IPCResult RecvUpdateRequestedLocales(nsTArray<nsCString>&& aRequestedLocales) override;
 
+  virtual mozilla::ipc::IPCResult RecvClearSiteDataReloadNeeded(const nsString& aOrigin) override;
+
   virtual mozilla::ipc::IPCResult RecvAddPermission(const IPC::Permission& permission) override;
 
   virtual mozilla::ipc::IPCResult RecvFlushMemory(const nsString& reason) override;
@@ -417,7 +421,8 @@ public:
 
   virtual mozilla::ipc::IPCResult RecvAppInfo(const nsCString& version, const nsCString& buildID,
                                               const nsCString& name, const nsCString& UAName,
-                                              const nsCString& ID, const nsCString& vendor) override;
+                                              const nsCString& ID, const nsCString& vendor,
+                                              const nsCString& sourceURL) override;
 
   virtual mozilla::ipc::IPCResult RecvRemoteType(const nsString& aRemoteType) override;
 

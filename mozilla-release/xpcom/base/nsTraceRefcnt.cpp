@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsTraceRefcnt.h"
+#include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Path.h"
 #include "mozilla/StaticPtr.h"
@@ -305,6 +306,7 @@ class BloatEntry
 public:
   BloatEntry(const char* aClassName, uint32_t aClassSize)
     : mClassSize(aClassSize)
+    , mStats()
   {
     MOZ_ASSERT(strlen(aClassName) > 0, "BloatEntry name must be non-empty");
     mClassName = PL_strdup(aClassName);

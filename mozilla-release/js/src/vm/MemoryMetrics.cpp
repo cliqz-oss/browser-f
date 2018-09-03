@@ -13,10 +13,13 @@
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "vm/ArrayObject.h"
+#ifdef ENABLE_BIGINT
+#include "vm/BigIntType.h"
+#endif
 #include "vm/HelperThreads.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSObject.h"
 #include "vm/JSScript.h"
+#include "vm/Realm.h"
 #include "vm/Runtime.h"
 #include "vm/Shape.h"
 #include "vm/StringType.h"
@@ -27,7 +30,6 @@
 #include "wasm/WasmModule.h"
 
 using mozilla::MallocSizeOf;
-using mozilla::Move;
 using mozilla::PodCopy;
 
 using namespace js;
@@ -35,7 +37,7 @@ using namespace js;
 using JS::RuntimeStats;
 using JS::ObjectPrivateVisitor;
 using JS::ZoneStats;
-using JS::CompartmentStats;
+using JS::RealmStats;
 
 namespace js {
 
@@ -49,19 +51,18 @@ template <typename CharT>
 static uint32_t
 HashStringChars(JSString* s)
 {
-    ScopedJSFreePtr<CharT> ownedChars;
-    const CharT* chars;
-    JS::AutoCheckCannotGC nogc;
+    uint32_t hash = 0;
     if (s->isLinear()) {
-        chars = s->asLinear().chars<CharT>(nogc);
+        JS::AutoCheckCannotGC nogc;
+        const CharT* chars = s->asLinear().chars<CharT>(nogc);
+        hash = mozilla::HashString(chars, s->length());
     } else {
-        // Slowest hash function evar!
-        if (!s->asRope().copyChars<CharT>(/* tcx */ nullptr, ownedChars))
+        // Use rope's non-copying hash function.
+        if (!s->asRope().hash(&hash))
             MOZ_CRASH("oom");
-        chars = ownedChars;
     }
 
-    return mozilla::HashString(chars, s->length());
+    return hash;
 }
 
 /* static */ HashNumber
@@ -80,24 +81,26 @@ EqualStringsPure(JSString* s1, JSString* s2)
         return false;
 
     const Char1* c1;
-    ScopedJSFreePtr<Char1> ownedChars1;
+    UniquePtr<Char1[], JS::FreePolicy> ownedChars1;
     JS::AutoCheckCannotGC nogc;
     if (s1->isLinear()) {
         c1 = s1->asLinear().chars<Char1>(nogc);
     } else {
-        if (!s1->asRope().copyChars<Char1>(/* tcx */ nullptr, ownedChars1))
+        ownedChars1 = s1->asRope().copyChars<Char1>(/* tcx */ nullptr);
+        if (!ownedChars1)
             MOZ_CRASH("oom");
-        c1 = ownedChars1;
+        c1 = ownedChars1.get();
     }
 
     const Char2* c2;
-    ScopedJSFreePtr<Char2> ownedChars2;
+    UniquePtr<Char2[], JS::FreePolicy> ownedChars2;
     if (s2->isLinear()) {
         c2 = s2->asLinear().chars<Char2>(nogc);
     } else {
-        if (!s2->asRope().copyChars<Char2>(/* tcx */ nullptr, ownedChars2))
+        ownedChars2 = s2->asRope().copyChars<Char2>(/* tcx */ nullptr);
+        if (!ownedChars2)
             MOZ_CRASH("oom");
-        c2 = ownedChars2;
+        c2 = ownedChars2.get();
     }
 
     return EqualChars(c1, c2, s1->length());
@@ -147,14 +150,15 @@ static void
 StoreStringChars(char* buffer, size_t bufferSize, JSString* str)
 {
     const CharT* chars;
-    ScopedJSFreePtr<CharT> ownedChars;
+    UniquePtr<CharT[], JS::FreePolicy> ownedChars;
     JS::AutoCheckCannotGC nogc;
     if (str->isLinear()) {
         chars = str->asLinear().chars<CharT>(nogc);
     } else {
-        if (!str->asRope().copyChars<CharT>(/* tcx */ nullptr, ownedChars))
+        ownedChars = str->asRope().copyChars<CharT>(/* tcx */ nullptr);
+        if (!ownedChars)
             MOZ_CRASH("oom");
-        chars = ownedChars;
+        chars = ownedChars.get();
     }
 
     // We might truncate |str| even if it's much shorter than 1024 chars, if
@@ -180,7 +184,7 @@ NotableStringInfo::NotableStringInfo(JSString* str, const StringInfo& info)
 }
 
 NotableStringInfo::NotableStringInfo(NotableStringInfo&& info)
-  : StringInfo(Move(info)),
+  : StringInfo(std::move(info)),
     length(info.length)
 {
     buffer = info.buffer;
@@ -191,7 +195,7 @@ NotableStringInfo& NotableStringInfo::operator=(NotableStringInfo&& info)
 {
     MOZ_ASSERT(this != &info, "self-move assignment is prohibited");
     this->~NotableStringInfo();
-    new (this) NotableStringInfo(Move(info));
+    new (this) NotableStringInfo(std::move(info));
     return *this;
 }
 
@@ -212,7 +216,7 @@ NotableClassInfo::NotableClassInfo(const char* className, const ClassInfo& info)
 }
 
 NotableClassInfo::NotableClassInfo(NotableClassInfo&& info)
-  : ClassInfo(Move(info))
+  : ClassInfo(std::move(info))
 {
     className_ = info.className_;
     info.className_ = nullptr;
@@ -222,7 +226,7 @@ NotableClassInfo& NotableClassInfo::operator=(NotableClassInfo&& info)
 {
     MOZ_ASSERT(this != &info, "self-move assignment is prohibited");
     this->~NotableClassInfo();
-    new (this) NotableClassInfo(Move(info));
+    new (this) NotableClassInfo(std::move(info));
     return *this;
 }
 
@@ -243,7 +247,7 @@ NotableScriptSourceInfo::NotableScriptSourceInfo(const char* filename, const Scr
 }
 
 NotableScriptSourceInfo::NotableScriptSourceInfo(NotableScriptSourceInfo&& info)
-  : ScriptSourceInfo(Move(info))
+  : ScriptSourceInfo(std::move(info))
 {
     filename_ = info.filename_;
     info.filename_ = nullptr;
@@ -253,7 +257,7 @@ NotableScriptSourceInfo& NotableScriptSourceInfo::operator=(NotableScriptSourceI
 {
     MOZ_ASSERT(this != &info, "self-move assignment is prohibited");
     this->~NotableScriptSourceInfo();
-    new (this) NotableScriptSourceInfo(Move(info));
+    new (this) NotableScriptSourceInfo(std::move(info));
     return *this;
 }
 
@@ -307,7 +311,7 @@ DecommittedArenasChunkCallback(JSRuntime* rt, void* data, gc::Chunk* chunk)
 static void
 StatsZoneCallback(JSRuntime* rt, void* data, Zone* zone)
 {
-    // Append a new CompartmentStats to the vector.
+    // Append a new RealmStats to the vector.
     RuntimeStats* rtStats = static_cast<StatsClosure*>(data)->rtStats;
 
     // CollectRuntimeStats reserves enough space.
@@ -326,41 +330,42 @@ StatsZoneCallback(JSRuntime* rt, void* data, Zone* zone)
                                  &zStats.cachedCFG,
                                  &zStats.uniqueIdMap,
                                  &zStats.shapeTables,
-                                 &rtStats->runtime.atomsMarkBitmaps);
+                                 &rtStats->runtime.atomsMarkBitmaps,
+                                 &zStats.compartmentObjects,
+                                 &zStats.crossCompartmentWrappersTables,
+                                 &zStats.compartmentsPrivateData);
 }
 
 static void
-StatsCompartmentCallback(JSContext* cx, void* data, JSCompartment* compartment)
+StatsRealmCallback(JSContext* cx, void* data, Handle<Realm*> realm)
 {
-    // Append a new CompartmentStats to the vector.
+    // Append a new RealmStats to the vector.
     RuntimeStats* rtStats = static_cast<StatsClosure*>(data)->rtStats;
 
     // CollectRuntimeStats reserves enough space.
-    MOZ_ALWAYS_TRUE(rtStats->compartmentStatsVector.growBy(1));
-    CompartmentStats& cStats = rtStats->compartmentStatsVector.back();
-    if (!cStats.initClasses())
+    MOZ_ALWAYS_TRUE(rtStats->realmStatsVector.growBy(1));
+    RealmStats& realmStats = rtStats->realmStatsVector.back();
+    if (!realmStats.initClasses())
         MOZ_CRASH("oom");
-    rtStats->initExtraCompartmentStats(compartment, &cStats);
+    rtStats->initExtraRealmStats(realm, &realmStats);
 
-    compartment->setCompartmentStats(&cStats);
+    realm->setRealmStats(&realmStats);
 
-    // Measure the compartment object itself, and things hanging off it.
-    compartment->addSizeOfIncludingThis(rtStats->mallocSizeOf_,
-                                        &cStats.typeInferenceAllocationSiteTables,
-                                        &cStats.typeInferenceArrayTypeTables,
-                                        &cStats.typeInferenceObjectTypeTables,
-                                        &cStats.compartmentObject,
-                                        &cStats.compartmentTables,
-                                        &cStats.innerViewsTable,
-                                        &cStats.lazyArrayBuffersTable,
-                                        &cStats.objectMetadataTable,
-                                        &cStats.crossCompartmentWrappersTable,
-                                        &cStats.savedStacksSet,
-                                        &cStats.varNamesSet,
-                                        &cStats.nonSyntacticLexicalScopesTable,
-                                        &cStats.jitCompartment,
-                                        &cStats.privateData,
-                                        &cStats.scriptCountsMap);
+    // Measure the realm object itself, and things hanging off it.
+    realm->addSizeOfIncludingThis(rtStats->mallocSizeOf_,
+                                  &realmStats.typeInferenceAllocationSiteTables,
+                                  &realmStats.typeInferenceArrayTypeTables,
+                                  &realmStats.typeInferenceObjectTypeTables,
+                                  &realmStats.realmObject,
+                                  &realmStats.realmTables,
+                                  &realmStats.innerViewsTable,
+                                  &realmStats.lazyArrayBuffersTable,
+                                  &realmStats.objectMetadataTable,
+                                  &realmStats.savedStacksSet,
+                                  &realmStats.varNamesSet,
+                                  &realmStats.nonSyntacticLexicalScopesTable,
+                                  &realmStats.jitRealm,
+                                  &realmStats.scriptCountsMap);
 }
 
 static void
@@ -391,15 +396,15 @@ enum Granularity {
 };
 
 static void
-AddClassInfo(Granularity granularity, CompartmentStats& cStats, const char* className,
+AddClassInfo(Granularity granularity, RealmStats& realmStats, const char* className,
              JS::ClassInfo& info)
 {
     if (granularity == FineGrained) {
         if (!className)
             className = "<no class name>";
-        CompartmentStats::ClassesHashMap::AddPtr p = cStats.allClasses->lookupForAdd(className);
+        RealmStats::ClassesHashMap::AddPtr p = realmStats.allClasses->lookupForAdd(className);
         if (!p) {
-            bool ok = cStats.allClasses->add(p, className, info);
+            bool ok = realmStats.allClasses->add(p, className, info);
             // Ignore failure -- we just won't record the
             // object/shape/base-shape as notable.
             (void)ok;
@@ -459,7 +464,7 @@ StatsCellCallback(JSRuntime* rt, void* data, void* thing, JS::TraceKind traceKin
     switch (traceKind) {
       case JS::TraceKind::Object: {
         JSObject* obj = static_cast<JSObject*>(thing);
-        CompartmentStats& cStats = obj->compartment()->compartmentStats();
+        RealmStats& realmStats = obj->maybeCCWRealm()->realmStats();
         JS::ClassInfo info;        // This zeroes all the sizes.
         info.objectsGCHeap += thingSize;
 
@@ -490,29 +495,29 @@ StatsCellCallback(JSRuntime* rt, void* data, void* thing, JS::TraceKind traceKin
                                    &info.objectsMallocHeapMisc);
         }
 
-        cStats.classInfo.add(info);
+        realmStats.classInfo.add(info);
 
         const Class* clasp = obj->getClass();
         const char* className = clasp->name;
-        AddClassInfo(granularity, cStats, className, info);
+        AddClassInfo(granularity, realmStats, className, info);
 
         if (ObjectPrivateVisitor* opv = closure->opv) {
             nsISupports* iface;
             if (opv->getISupports_(obj, &iface) && iface)
-                cStats.objectsPrivate += opv->sizeOfIncludingThis(iface);
+                realmStats.objectsPrivate += opv->sizeOfIncludingThis(iface);
         }
         break;
       }
 
       case JS::TraceKind::Script: {
         JSScript* script = static_cast<JSScript*>(thing);
-        CompartmentStats& cStats = script->compartment()->compartmentStats();
-        cStats.scriptsGCHeap += thingSize;
-        cStats.scriptsMallocHeapData += script->sizeOfData(rtStats->mallocSizeOf_);
-        cStats.typeInferenceTypeScripts += script->sizeOfTypeScript(rtStats->mallocSizeOf_);
-        jit::AddSizeOfBaselineData(script, rtStats->mallocSizeOf_, &cStats.baselineData,
-                                   &cStats.baselineStubsFallback);
-        cStats.ionData += jit::SizeOfIonData(script, rtStats->mallocSizeOf_);
+        RealmStats& realmStats = script->realm()->realmStats();
+        realmStats.scriptsGCHeap += thingSize;
+        realmStats.scriptsMallocHeapData += script->sizeOfData(rtStats->mallocSizeOf_);
+        realmStats.typeInferenceTypeScripts += script->sizeOfTypeScript(rtStats->mallocSizeOf_);
+        jit::AddSizeOfBaselineData(script, rtStats->mallocSizeOf_, &realmStats.baselineData,
+                                   &realmStats.baselineStubsFallback);
+        realmStats.ionData += jit::SizeOfIonData(script, rtStats->mallocSizeOf_);
         CollectScriptSourceStats<granularity>(closure, script->scriptSource());
         break;
       }
@@ -554,6 +559,15 @@ StatsCellCallback(JSRuntime* rt, void* data, void* thing, JS::TraceKind traceKin
       case JS::TraceKind::Symbol:
         zStats->symbolsGCHeap += thingSize;
         break;
+
+#ifdef ENABLE_BIGINT
+      case JS::TraceKind::BigInt: {
+        JS::BigInt* bi = static_cast<BigInt*>(thing);
+        zStats->bigIntsGCHeap += thingSize;
+        zStats->bigIntsMallocHeap += bi->sizeOfExcludingThis(rtStats->mallocSizeOf_);
+        break;
+      }
+#endif
 
       case JS::TraceKind::BaseShape: {
         JS::ShapeInfo info;        // This zeroes all the sizes.
@@ -633,7 +647,7 @@ ZoneStats::initStrings()
 }
 
 bool
-CompartmentStats::initClasses()
+RealmStats::initClasses()
 {
     isTotals = false;
     allClasses = js_new<ClassesHashMap>();
@@ -678,14 +692,14 @@ FindNotableStrings(ZoneStats& zStats)
 }
 
 static bool
-FindNotableClasses(CompartmentStats& cStats)
+FindNotableClasses(RealmStats& realmStats)
 {
     using namespace JS;
 
     // We should only run FindNotableClasses once per ZoneStats object.
-    MOZ_ASSERT(cStats.notableClasses.empty());
+    MOZ_ASSERT(realmStats.notableClasses.empty());
 
-    for (CompartmentStats::ClassesHashMap::Range r = cStats.allClasses->all();
+    for (RealmStats::ClassesHashMap::Range r = realmStats.allClasses->all();
          !r.empty();
          r.popFront())
     {
@@ -697,19 +711,19 @@ FindNotableClasses(CompartmentStats& cStats)
         if (!info.isNotable())
             continue;
 
-        if (!cStats.notableClasses.growBy(1))
+        if (!realmStats.notableClasses.growBy(1))
             return false;
 
-        cStats.notableClasses.back() = NotableClassInfo(className, info);
+        realmStats.notableClasses.back() = NotableClassInfo(className, info);
 
         // We're moving this class from a non-notable to a notable bucket, so
         // subtract it out of the non-notable tallies.
-        cStats.classInfo.subtract(info);
+        realmStats.classInfo.subtract(info);
     }
     // Delete |allClasses| now, rather than waiting for zStats's destruction,
     // to reduce peak memory consumption during reporting.
-    js_delete(cStats.allClasses);
-    cStats.allClasses = nullptr;
+    js_delete(realmStats.allClasses);
+    realmStats.allClasses = nullptr;
     return true;
 }
 
@@ -752,7 +766,7 @@ CollectRuntimeStatsHelper(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVis
                           bool anonymize, IterateCellCallback statsCellCallback)
 {
     JSRuntime* rt = cx->runtime();
-    if (!rtStats->compartmentStatsVector.reserve(rt->numCompartments))
+    if (!rtStats->realmStatsVector.reserve(rt->numRealms))
         return false;
 
     size_t totalZones = rt->gc.zones().length() + 1; // + 1 for the atoms zone.
@@ -773,10 +787,10 @@ CollectRuntimeStatsHelper(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVis
     if (!closure.init())
         return false;
     IterateHeapUnbarriered(cx, &closure,
-                                                   StatsZoneCallback,
-                                                   StatsCompartmentCallback,
-                                                   StatsArenaCallback,
-                                                   statsCellCallback);
+                           StatsZoneCallback,
+                           StatsRealmCallback,
+                           StatsArenaCallback,
+                           statsCellCallback);
 
     // Take the "explicit/js/runtime/" measurements.
     rt->addSizeOfIncludingThis(rtStats->mallocSizeOf_, &rtStats->runtime);
@@ -799,23 +813,23 @@ CollectRuntimeStatsHelper(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVis
 
     MOZ_ASSERT(!zTotals.allStrings);
 
-    JS::CompartmentStatsVector& cs = rtStats->compartmentStatsVector;
-    CompartmentStats& cTotals = rtStats->cTotals;
+    JS::RealmStatsVector& realmStats = rtStats->realmStatsVector;
+    RealmStats& realmTotals = rtStats->realmTotals;
 
-    // As with the zones, we sum all compartments first, and then get the
+    // As with the zones, we sum all realms first, and then get the
     // notable classes within each zone.
-    for (size_t i = 0; i < cs.length(); i++)
-        cTotals.addSizes(cs[i]);
+    for (size_t i = 0; i < realmStats.length(); i++)
+        realmTotals.addSizes(realmStats[i]);
 
-    for (size_t i = 0; i < cs.length(); i++) {
-        if (!FindNotableClasses(cs[i]))
+    for (size_t i = 0; i < realmStats.length(); i++) {
+        if (!FindNotableClasses(realmStats[i]))
             return false;
     }
 
-    MOZ_ASSERT(!cTotals.allClasses);
+    MOZ_ASSERT(!realmTotals.allClasses);
 
     rtStats->gcHeapGCThings = rtStats->zTotals.sizeOfLiveGCThings() +
-                              rtStats->cTotals.sizeOfLiveGCThings();
+                              rtStats->realmTotals.sizeOfLiveGCThings();
 
 #ifdef DEBUG
     // Check that the in-arena measurements look ok.
@@ -825,8 +839,8 @@ CollectRuntimeStatsHelper(JSContext* cx, RuntimeStats* rtStats, ObjectPrivateVis
     MOZ_ASSERT(totalArenaSize % gc::ArenaSize == 0);
 #endif
 
-    for (CompartmentsIter comp(rt, WithAtoms); !comp.done(); comp.next())
-        comp->nullCompartmentStats();
+    for (RealmsIter realm(rt); !realm.done(); realm.next())
+        realm->nullRealmStats();
 
     size_t numDirtyChunks =
         (rtStats->gcHeapChunkTotal - rtStats->gcHeapUnusedChunks) / gc::ChunkSize;
@@ -872,22 +886,22 @@ JS::CollectRuntimeStats(JSContext* cx, RuntimeStats *rtStats, ObjectPrivateVisit
 }
 
 JS_PUBLIC_API(size_t)
-JS::SystemCompartmentCount(JSContext* cx)
+JS::SystemRealmCount(JSContext* cx)
 {
     size_t n = 0;
-    for (CompartmentsIter comp(cx->runtime(), WithAtoms); !comp.done(); comp.next()) {
-        if (comp->isSystem())
+    for (RealmsIter realm(cx->runtime()); !realm.done(); realm.next()) {
+        if (realm->isSystem())
             ++n;
     }
     return n;
 }
 
 JS_PUBLIC_API(size_t)
-JS::UserCompartmentCount(JSContext* cx)
+JS::UserRealmCount(JSContext* cx)
 {
     size_t n = 0;
-    for (CompartmentsIter comp(cx->runtime(), WithAtoms); !comp.done(); comp.next()) {
-        if (!comp->isSystem())
+    for (RealmsIter realm(cx->runtime()); !realm.done(); realm.next()) {
+        if (!realm->isSystem())
             ++n;
     }
     return n;
@@ -912,8 +926,7 @@ class SimpleJSRuntimeStats : public JS::RuntimeStats
         override
     {}
 
-    virtual void initExtraCompartmentStats(
-        JSCompartment* c, JS::CompartmentStats* cStats) override
+    virtual void initExtraRealmStats(Handle<Realm*> realm, JS::RealmStats* realmStats) override
     {}
 };
 
@@ -925,7 +938,7 @@ AddSizeOfTab(JSContext* cx, HandleObject obj, MallocSizeOf mallocSizeOf, ObjectP
 
     JS::Zone* zone = GetObjectZone(obj);
 
-    if (!rtStats.compartmentStatsVector.reserve(zone->compartments().length()))
+    if (!rtStats.realmStatsVector.reserve(zone->compartments().length()))
         return false;
 
     if (!rtStats.zoneStatsVector.reserve(1))
@@ -937,22 +950,22 @@ AddSizeOfTab(JSContext* cx, HandleObject obj, MallocSizeOf mallocSizeOf, ObjectP
     if (!closure.init())
         return false;
     IterateHeapUnbarrieredForZone(cx, zone, &closure,
-                                                  StatsZoneCallback,
-                                                  StatsCompartmentCallback,
-                                                  StatsArenaCallback,
-                                                  StatsCellCallback<CoarseGrained>);
+                                  StatsZoneCallback,
+                                  StatsRealmCallback,
+                                  StatsArenaCallback,
+                                  StatsCellCallback<CoarseGrained>);
 
     MOZ_ASSERT(rtStats.zoneStatsVector.length() == 1);
     rtStats.zTotals.addSizes(rtStats.zoneStatsVector[0]);
 
-    for (size_t i = 0; i < rtStats.compartmentStatsVector.length(); i++)
-        rtStats.cTotals.addSizes(rtStats.compartmentStatsVector[i]);
+    for (size_t i = 0; i < rtStats.realmStatsVector.length(); i++)
+        rtStats.realmTotals.addSizes(rtStats.realmStatsVector[i]);
 
-    for (CompartmentsInZoneIter comp(zone); !comp.done(); comp.next())
-        comp->nullCompartmentStats();
+    for (RealmsInZoneIter realm(zone); !realm.done(); realm.next())
+        realm->nullRealmStats();
 
     rtStats.zTotals.addToTabSizes(sizes);
-    rtStats.cTotals.addToTabSizes(sizes);
+    rtStats.realmTotals.addToTabSizes(sizes);
 
     return true;
 }
@@ -977,7 +990,7 @@ AddServoSizeOf(JSContext* cx, MallocSizeOf mallocSizeOf, ObjectPrivateVisitor* o
 
     rtStats.addToServoSizes(sizes);
     rtStats.zTotals.addToServoSizes(sizes);
-    rtStats.cTotals.addToServoSizes(sizes);
+    rtStats.realmTotals.addToServoSizes(sizes);
 
 #ifdef DEBUG
     size_t gcHeapTotal = sizes->gcHeapUsed +

@@ -7,14 +7,20 @@
 const TEST_URI = NetUtil.newURI("http://mozilla.com/");
 const TEST_SUBDOMAIN_URI = NetUtil.newURI("http://foobar.mozilla.com/");
 
+async function checkEmptyHistory() {
+  let db = await PlacesUtils.promiseDBConnection();
+  let rows = await db.executeCached("SELECT count(*) FROM moz_historyvisits");
+  return !rows[0].getResultByIndex(0);
+}
+
 add_task(async function test_addPage() {
   await PlacesTestUtils.addVisits(TEST_URI);
-  Assert.equal(1, PlacesUtils.history.hasHistoryEntries);
+  Assert.ok(!await checkEmptyHistory(), "History has entries");
 });
 
 add_task(async function test_removePage() {
   await PlacesUtils.history.remove(TEST_URI);
-  Assert.equal(0, PlacesUtils.history.hasHistoryEntries);
+  Assert.ok(await checkEmptyHistory(), "History is empty");
 });
 
 add_task(async function test_removePages() {
@@ -42,10 +48,10 @@ add_task(async function test_removePages() {
                                             Ci.nsIAnnotationService.EXPIRE_NEVER);
 
   await PlacesUtils.history.remove(pages);
-  Assert.equal(0, PlacesUtils.history.hasHistoryEntries);
+  Assert.ok(await checkEmptyHistory(), "History is empty");
 
   // Check that the bookmark and its annotation still exist.
-  let folder = await PlacesUtils.getFolderContents(PlacesUtils.unfiledBookmarksFolderId);
+  let folder = await PlacesUtils.getFolderContents(PlacesUtils.bookmarks.unfiledGuid);
   Assert.equal(folder.root.childCount, 1);
   Assert.equal(PlacesUtils.annotations.getPageAnnotation(pages[BOOKMARK_INDEX], ANNO_NAME),
                ANNO_VALUE);
@@ -74,7 +80,10 @@ add_task(async function test_removePagesByTimeframe() {
   await PlacesTestUtils.addVisits(visits);
 
   // Delete all pages except the first and the last.
-  PlacesUtils.history.removePagesByTimeframe(startDate + 1000, startDate + 8000);
+  await PlacesUtils.history.removeByFilter({
+    beginDate: PlacesUtils.toDate(startDate + 1000),
+    endDate: PlacesUtils.toDate(startDate + 8000)
+  });
 
   // Check that we have removed the correct pages.
   for (let i = 0; i < 10; i++) {
@@ -83,45 +92,26 @@ add_task(async function test_removePagesByTimeframe() {
   }
 
   // Clear remaining items and check that all pages have been removed.
-  PlacesUtils.history.removePagesByTimeframe(startDate, startDate + 9000);
-  Assert.equal(0, PlacesUtils.history.hasHistoryEntries);
+  await PlacesUtils.history.removeByFilter({
+    beginDate: PlacesUtils.toDate(startDate),
+    endDate: PlacesUtils.toDate(startDate + 9000)
+  });
+  Assert.ok(await checkEmptyHistory(), "History is empty");
 });
 
 add_task(async function test_removePagesFromHost() {
   await PlacesTestUtils.addVisits(TEST_URI);
-  PlacesUtils.history.removePagesFromHost("mozilla.com", true);
-  Assert.equal(0, PlacesUtils.history.hasHistoryEntries);
+  await PlacesUtils.history.removeByFilter({ host: ".mozilla.com" });
+  Assert.ok(await checkEmptyHistory(), "History is empty");
 });
 
 add_task(async function test_removePagesFromHost_keepSubdomains() {
   await PlacesTestUtils.addVisits([{ uri: TEST_URI }, { uri: TEST_SUBDOMAIN_URI }]);
-  PlacesUtils.history.removePagesFromHost("mozilla.com", false);
-  Assert.equal(1, PlacesUtils.history.hasHistoryEntries);
+  await PlacesUtils.history.removeByFilter({ host: "mozilla.com" });
+  Assert.ok(!await checkEmptyHistory(), "History has entries");
 });
 
 add_task(async function test_history_clear() {
   await PlacesUtils.history.clear();
-  Assert.equal(0, PlacesUtils.history.hasHistoryEntries);
-});
-
-add_task(async function test_getObservers() {
-  // Ensure that getObservers() invalidates the hasHistoryEntries cache.
-  await PlacesTestUtils.addVisits(TEST_URI);
-  Assert.equal(1, PlacesUtils.history.hasHistoryEntries);
-  // This is just for testing purposes, never do it.
-  return new Promise((resolve, reject) => {
-    DBConn().executeSimpleSQLAsync("DELETE FROM moz_historyvisits", {
-      handleError(error) {
-        reject(error);
-      },
-      handleResult(result) {
-      },
-      handleCompletion(result) {
-        // Just invoking getObservers should be enough to invalidate the cache.
-        PlacesUtils.history.getObservers();
-        Assert.equal(0, PlacesUtils.history.hasHistoryEntries);
-        resolve();
-      }
-    });
-  });
+  Assert.ok(await checkEmptyHistory(), "History is empty");
 });

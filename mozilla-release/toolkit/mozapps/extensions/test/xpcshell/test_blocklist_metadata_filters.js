@@ -35,13 +35,7 @@ var WindowWatcher = {
 
   },
 
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIWindowWatcher)
-     || iid.equals(Ci.nsISupports))
-      return this;
-
-    throw Cr.NS_ERROR_NO_INTERFACE;
-  }
+  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"])
 };
 
 MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1", WindowWatcher);
@@ -71,7 +65,7 @@ async function run_test() {
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1");
 
   // Should get blocked by name
-  writeInstallRDFForExtension({
+  await promiseWriteInstallRDFForExtension({
     id: "block1@tests.mozilla.org",
     version: "1.0",
     name: "Mozilla Corp.",
@@ -84,7 +78,7 @@ async function run_test() {
   }, profileDir);
 
   // Should get blocked by all the attributes.
-  writeInstallRDFForExtension({
+  await promiseWriteInstallRDFForExtension({
     id: "block2@tests.mozilla.org",
     version: "1.0",
     name: "Moz-addon",
@@ -101,7 +95,7 @@ async function run_test() {
 
   // Fails to get blocked because of a different ID even though other
   // attributes match against a blocklist entry.
-  writeInstallRDFForExtension({
+  await promiseWriteInstallRDFForExtension({
     id: "block3@tests.mozilla.org",
     version: "1.0",
     name: "Moz-addon",
@@ -116,7 +110,7 @@ async function run_test() {
     }]
   }, profileDir);
 
-  startupManager();
+  await promiseStartupManager();
 
   let [a1, a2, a3] = await AddonManager.getAddonsByIDs(["block1@tests.mozilla.org",
                                                         "block2@tests.mozilla.org",
@@ -130,7 +124,7 @@ async function run_test() {
 
 function run_test_1() {
   load_blocklist("test_blocklist_metadata_filters_1.xml", async function() {
-    restartManager();
+    await promiseRestartManager();
 
     let [a1, a2, a3] = await AddonManager.getAddonsByIDs(["block1@tests.mozilla.org",
                                                           "block2@tests.mozilla.org",

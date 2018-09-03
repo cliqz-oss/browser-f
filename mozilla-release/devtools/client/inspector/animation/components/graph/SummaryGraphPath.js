@@ -121,10 +121,6 @@ class SummaryGraphPath extends Component {
     });
   }
 
-  getTotalDuration(animation, timeScale) {
-    return animation.state.playbackRate * timeScale.getDuration();
-  }
-
   /**
    * Return true if given keyframes have same length, offset and easing.
    *
@@ -159,9 +155,11 @@ class SummaryGraphPath extends Component {
     } = props;
 
     let animatedPropertyMap = null;
+    let thisEl = null;
 
     try {
       animatedPropertyMap = await getAnimatedPropertyMap(animation);
+      thisEl = ReactDOM.findDOMNode(this);
     } catch (e) {
       // Expected if we've already been destroyed or other node have been selected
       // in the meantime.
@@ -170,9 +168,7 @@ class SummaryGraphPath extends Component {
     }
 
     const keyframesList = this.getOffsetAndEasingOnlyKeyframes(animatedPropertyMap);
-
-    const thisEl = ReactDOM.findDOMNode(this);
-    const totalDuration = this.getTotalDuration(animation, timeScale);
+    const totalDuration = timeScale.getDuration() * animation.state.playbackRate;
     const durationPerPixel = totalDuration / thisEl.parentNode.clientWidth;
 
     this.setState(
@@ -188,21 +184,28 @@ class SummaryGraphPath extends Component {
 
   render() {
     const { durationPerPixel, keyframesList } = this.state;
+    const { animation, simulateAnimation, timeScale } = this.props;
 
-    if (!durationPerPixel) {
+    if (!durationPerPixel || !animation.state.type) {
+      // Undefined animation.state.type means that the animation had been removed already.
+      // Even if the animation was removed, we still need the empty svg since the
+      // component might be re-used.
       return dom.svg();
     }
 
-    const {
-      animation,
-      simulateAnimation,
-      timeScale,
-    } = this.props;
+    const { createdTime, playbackRate } = animation.state;
 
-    const totalDuration = this.getTotalDuration(animation, timeScale);
-    const { playbackRate, previousStartTime = 0 } = animation.state;
+    // If createdTime is not defined (which happens when connected to server older
+    // than FF62), use previousStartTime instead. See bug 1454392
+    const baseTime = typeof createdTime === "undefined"
+                       ? (animation.state.previousStartTime || 0)
+                       : createdTime;
+    // Absorb the playbackRate in viewBox of SVG and offset of child path elements
+    // in order to each graph path components can draw without considering to the
+    // playbackRate.
+    const offset = baseTime * playbackRate;
     const startTime = timeScale.minStartTime * playbackRate;
-    const offset = previousStartTime * playbackRate;
+    const totalDuration = timeScale.getDuration() * playbackRate;
     const opacity = Math.max(1 / keyframesList.length, MIN_KEYFRAMES_EASING_OPACITY);
 
     return dom.svg(

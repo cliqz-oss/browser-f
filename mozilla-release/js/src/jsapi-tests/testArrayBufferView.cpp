@@ -5,10 +5,10 @@
 #include "jsfriendapi.h"
 
 #include "jsapi-tests/tests.h"
-#include "vm/JSCompartment.h"
 #include "vm/ProxyObject.h"
+#include "vm/Realm.h"
 
-#include "vm/JSCompartment-inl.h"
+#include "vm/Realm-inl.h"
 
 using namespace js;
 
@@ -137,14 +137,14 @@ bool TestViewType(JSContext* cx)
         CHECK(len == ExpectedLength);
     }
 
-    JS::CompartmentOptions options;
+    JS::RealmOptions options;
     JS::RootedObject otherGlobal(cx, JS_NewGlobalObject(cx, basicGlobalClass(), nullptr,
                                                         JS::DontFireOnNewGlobalHook, options));
     CHECK(otherGlobal);
 
     JS::Rooted<JSObject*> buffer(cx);
     {
-        AutoCompartment ac(cx, otherGlobal);
+        AutoRealm ar(cx, otherGlobal);
         buffer = JS_NewArrayBuffer(cx, 8);
         CHECK(buffer);
         CHECK(buffer->as<ArrayBufferObject>().byteLength() == 8);

@@ -56,6 +56,7 @@ class LayerMetricsWrapper;
 class InputQueue;
 class GeckoContentController;
 class HitTestingTreeNode;
+class HitTestingTreeNodeAutoLock;
 class WebRenderScrollDataWrapper;
 struct AncestorTransform;
 struct ScrollThumbData;
@@ -320,12 +321,6 @@ public:
       const nsTArray<ScrollableLayerGuid>& aTargets) override;
 
   /**
-   * Helper function for SetTargetAPZC when used with single-target events,
-   * such as mouse wheel events.
-   */
-  void SetTargetAPZC(uint64_t aInputBlockId, const ScrollableLayerGuid& aTarget);
-
-  /**
    * Updates any zoom constraints contained in the <meta name="viewport"> tag.
    * If the |aConstraints| is Nothing() then previously-provided constraints for
    * the given |aGuid| are cleared.
@@ -376,9 +371,10 @@ public:
 
   /**
    * Find the hit testing node for the scrollbar thumb that matches these
-   * drag metrics.
+   * drag metrics. Initializes aOutThumbNode with the node, if there is one.
    */
-  RefPtr<HitTestingTreeNode> FindScrollThumbNode(const AsyncDragMetrics& aDragMetrics);
+  void FindScrollThumbNode(const AsyncDragMetrics& aDragMetrics,
+                           HitTestingTreeNodeAutoLock& aOutThumbNode);
 
   /**
    * Sets allowed touch behavior values for current touch-session for specific
@@ -584,7 +580,7 @@ public:
   RefPtr<HitTestingTreeNode> GetRootNode() const;
   already_AddRefed<AsyncPanZoomController> GetTargetAPZC(const ScreenPoint& aPoint,
                                                          gfx::CompositorHitTestInfo* aOutHitResult,
-                                                         RefPtr<HitTestingTreeNode>* aOutScrollbarNode = nullptr);
+                                                         HitTestingTreeNodeAutoLock* aOutScrollbarNode = nullptr);
   already_AddRefed<AsyncPanZoomController> GetTargetAPZC(const LayersId& aLayersId,
                                                          const FrameMetrics::ViewID& aScrollId);
   ScreenToParentLayerMatrix4x4 GetScreenToApzcTransform(const AsyncPanZoomController *aApzc) const;
@@ -652,7 +648,7 @@ private:
   already_AddRefed<AsyncPanZoomController> GetTouchInputBlockAPZC(const MultiTouchInput& aEvent,
                                                                   nsTArray<TouchBehaviorFlags>* aOutTouchBehaviors,
                                                                   gfx::CompositorHitTestInfo* aOutHitResult,
-                                                                  RefPtr<HitTestingTreeNode>* aOutHitScrollbarNode);
+                                                                  HitTestingTreeNodeAutoLock* aOutHitScrollbarNode);
   nsEventStatus ProcessTouchInput(MultiTouchInput& aInput,
                                   ScrollableLayerGuid* aOutTargetGuid,
                                   uint64_t* aOutInputBlockId);
@@ -670,7 +666,7 @@ private:
    *     target scroll frame being layerized.) Otherwise, an enclosing APZC.
    */
   void SetupScrollbarDrag(MouseInput& aMouseInput,
-                          const HitTestingTreeNode* aScrollThumbNode,
+                          const HitTestingTreeNodeAutoLock& aScrollThumbNode,
                           AsyncPanZoomController* aApzc);
   /**
    * Process a touch event that's part of a scrollbar touch-drag gesture.
@@ -687,7 +683,7 @@ private:
    * @return See ReceiveInputEvent() for what the return value means.
    */
   nsEventStatus ProcessTouchInputForScrollbarDrag(MultiTouchInput& aInput,
-                                                  const HitTestingTreeNode* aScrollThumbNode,
+                                                  const HitTestingTreeNodeAutoLock& aScrollThumbNode,
                                                   ScrollableLayerGuid* aOutTargetGuid,
                                                   uint64_t* aOutInputBlockId);
   void FlushRepaintsToClearScreenToGeckoTransform();
@@ -696,11 +692,13 @@ private:
                                             const RefPtr<AsyncPanZoomController>& aTarget);
 
 
-  already_AddRefed<HitTestingTreeNode> RecycleOrCreateNode(TreeBuildingState& aState,
+  already_AddRefed<HitTestingTreeNode> RecycleOrCreateNode(const RecursiveMutexAutoLock& aProofOfTreeLock,
+                                                           TreeBuildingState& aState,
                                                            AsyncPanZoomController* aApzc,
                                                            LayersId aLayersId);
   template<class ScrollNode>
-  HitTestingTreeNode* PrepareNodeForLayer(const ScrollNode& aLayer,
+  HitTestingTreeNode* PrepareNodeForLayer(const RecursiveMutexAutoLock& aProofOfTreeLock,
+                                          const ScrollNode& aLayer,
                                           const FrameMetrics& aMetrics,
                                           LayersId aLayersId,
                                           const AncestorTransform& aAncestorTransform,

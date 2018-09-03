@@ -4,10 +4,16 @@
 
 "use strict";
 
+const { openDocLink, openTrustedLink } = require("devtools/client/shared/link");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
-const { Component } = require("devtools/client/shared/vendor/react");
-const { a, div, li, ul } = require("devtools/client/shared/vendor/react-dom-factories");
-const DOC_URL = "https://developer.mozilla.org/docs/Web/API/Service_Worker_API/Using_Service_Workers";
+const { createFactory, Component } = require("devtools/client/shared/vendor/react");
+const { a, article, h1, li, p, ul } = require("devtools/client/shared/vendor/react-dom-factories");
+
+const FluentReact = require("devtools/client/shared/vendor/fluent-react");
+const Localized = createFactory(FluentReact.Localized);
+
+const DOC_URL = "https://developer.mozilla.org/docs/Web/API/Service_Worker_API/Using_Service_Workers" +
+  "?utm_source=devtools&utm_medium=sw-panel-blank";
 
 /**
  * This component displays help information when no service workers are found for the
@@ -29,55 +35,48 @@ class WorkerListEmpty extends Component {
   }
 
   openAboutDebugging() {
-    this.props.serviceContainer.openTrustedLink("about:debugging#workers");
+    openTrustedLink("about:debugging#workers");
   }
 
   openDocumentation() {
-    this.props.serviceContainer.openWebLink(DOC_URL);
+    openDocLink(DOC_URL);
   }
 
   render() {
-    return div(
+    return article(
       { className: "worker-list-empty" },
-      div(
-        {},
-        "You need to register a Service Worker to inspect it here.",
-        a(
-          { className: "external-link", onClick: () => this.openDocumentation() },
-          "Learn More"
-        )
+      Localized({
+        id: "serviceworker-empty-intro",
+        a: a({ className: "external-link", onClick: () => this.openDocumentation() })
+      },
+        h1({ className: "worker-list-empty__title" })
       ),
-      div(
-        {},
-        `If the current page should have a service worker, ` +
-        `here are some things you can try`,
+      Localized(
+        { id: "serviceworker-empty-suggestions" },
+        p({})
       ),
       ul(
-        {},
-        li(
-          {},
-          "Look for errors in the Console.",
-          a(
-            { className: "link", onClick: () => this.switchToConsole() },
-            "Open the Console"
-          )
+        { className: "worker-list-empty__tips" },
+        Localized({
+          id: "serviceworker-empty-suggestions-console",
+          a: a({ className: "link", onClick: () => this.switchToConsole() })
+        },
+          li({ className: "worker-list-empty__tips__item" })
         ),
-        li(
-          {},
-          "Step through you Service Worker registration and look for exceptions.",
-          a(
-            { className: "link", onClick: () => this.switchToDebugger()},
-            "Open the Debugger"
-          )
+        Localized({
+          id: "serviceworker-empty-suggestions-debugger",
+          a: a({ className: "link", onClick: () => this.switchToDebugger() })
+        },
+          li({ className: "worker-list-empty__tips__item" })
         ),
-        li(
-          {},
-          "Inspect Service Workers from other domains.",
-          a(
-            { className: "external-link", onClick: () => this.openAboutDebugging() },
-            "Open about:debugging"
-          )
-        )
+        Localized({
+          id: "serviceworker-empty-suggestions-aboutdebugging",
+          a: a({
+            className: "link js-trusted-link",
+            onClick: () => this.openAboutDebugging() })
+        },
+          li({ className: "worker-list-empty__tips__item" })
+        ),
       )
     );
   }

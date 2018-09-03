@@ -30,12 +30,14 @@ ADD topsrcdir/tools/lint/eslint/manifest.tt /tmp/eslint.tt
 ADD topsrcdir/tools/lint/eslint/eslint-plugin-mozilla/manifest.tt /tmp/eslint-plugin-mozilla.tt
 # %include tools/lint/python/flake8_requirements.txt
 ADD topsrcdir/tools/lint/python/flake8_requirements.txt /tmp/flake8_requirements.txt
+# %include tools/lint/spell/codespell_requirements.txt
+ADD topsrcdir/tools/lint/spell/codespell_requirements.txt /tmp/codespell_requirements.txt
 # %include tools/lint/tox/tox_requirements.txt
 ADD topsrcdir/tools/lint/tox/tox_requirements.txt /tmp/tox_requirements.txt
 RUN bash /tmp/system-setup.sh
 
-# %include taskcluster/docker/recipes/run-task
-ADD topsrcdir/taskcluster/docker/recipes/run-task /builds/worker/bin/run-task
+# %include taskcluster/scripts/run-task
+ADD topsrcdir/taskcluster/scripts/run-task /builds/worker/bin/run-task
 RUN chown -R worker:worker /builds/worker/bin && chmod 755 /builds/worker/bin/*
 
 # Set variable normally configured at login, by the shells parent process, these

@@ -207,6 +207,11 @@ getenv(const char* name)
 #endif
 
 #ifndef XP_WIN
+// Newer Linux systems support MADV_FREE, but we're not supporting
+// that properly. bug #1406304.
+#if defined(XP_LINUX) && defined(MADV_FREE)
+#undef MADV_FREE
+#endif
 #ifndef MADV_FREE
 #define MADV_FREE MADV_DONTNEED
 #endif
@@ -1645,9 +1650,13 @@ pages_copy(void* dest, const void* src, size_t n)
   MOZ_ASSERT(n >= VM_COPY_MIN);
   MOZ_ASSERT((void*)((uintptr_t)src & ~gPageSizeMask) == src);
 
-  vm_copy(
+  kern_return_t r = vm_copy(
     mach_task_self(), (vm_address_t)src, (vm_size_t)n, (vm_address_t)dest);
+  if (r != KERN_SUCCESS) {
+    MOZ_CRASH("vm_copy() failed");
+  }
 }
+
 #endif
 
 template<size_t Bits>

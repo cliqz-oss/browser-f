@@ -627,6 +627,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   // We rely on the fact that InitializeChannel() has already been processed
   // on the IO thread before this point is reached.
   if (!GetChannel()) {
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(1 == 2);
+#endif
     return false;
   }
 
@@ -643,6 +646,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   PRFileDesc* crashAnnotationReadPipe;
   PRFileDesc* crashAnnotationWritePipe;
   if (PR_CreatePipe(&crashAnnotationReadPipe, &crashAnnotationWritePipe) != PR_SUCCESS) {
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(2 == 3);
+#endif
     return false;
   }
 
@@ -811,6 +817,12 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
 
   childArgv.push_back(childProcessType);
 
+# ifdef MOZ_WIDGET_COCOA
+  // Register the listening port before launching the child, to ensure
+  // that it's there when the child tries to look it up.
+  ReceivePort parent_recv_port(mach_connection_name.c_str());
+# endif // MOZ_WIDGET_COCOA
+
 # if defined(MOZ_WIDGET_ANDROID)
   LaunchAndroidService(childProcessType, childArgv,
                        mLaunchOptions->fds_to_remap, &process);
@@ -828,22 +840,30 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   const int kTimeoutMs = 10000;
 
   MachReceiveMessage child_message;
-  ReceivePort parent_recv_port(mach_connection_name.c_str());
   kern_return_t err = parent_recv_port.WaitForMessage(&child_message, kTimeoutMs);
   if (err != KERN_SUCCESS) {
     std::string errString = StringPrintf("0x%x %s", err, mach_error_string(err));
     CHROMIUM_LOG(ERROR) << "parent WaitForMessage() failed: " << errString;
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(3 == 4);
+#endif
     return false;
   }
 
   task_t child_task = child_message.GetTranslatedPort(0);
   if (child_task == MACH_PORT_NULL) {
     CHROMIUM_LOG(ERROR) << "parent GetTranslatedPort(0) failed.";
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(4 == 5);
+#endif
     return false;
   }
 
   if (child_message.GetTranslatedPort(1) == MACH_PORT_NULL) {
     CHROMIUM_LOG(ERROR) << "parent GetTranslatedPort(1) failed.";
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(5 == 6);
+#endif
     return false;
   }
   MachPortSender parent_sender(child_message.GetTranslatedPort(1));
@@ -861,18 +881,27 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   MachSendMessage parent_message(/* id= */0);
   if (!parent_message.AddDescriptor(MachMsgPortDescriptor(bootstrap_port))) {
     CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << bootstrap_port << ") failed.";
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(6 == 7);
+#endif
     return false;
   }
 
   auto* parent_recv_port_memory = new ReceivePort();
   if (!parent_message.AddDescriptor(MachMsgPortDescriptor(parent_recv_port_memory->GetPort()))) {
     CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << parent_recv_port_memory->GetPort() << ") failed.";
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(7 == 8);
+#endif
     return false;
   }
 
   auto* parent_send_port_memory_ack = new ReceivePort();
   if (!parent_message.AddDescriptor(MachMsgPortDescriptor(parent_send_port_memory_ack->GetPort()))) {
     CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << parent_send_port_memory_ack->GetPort() << ") failed.";
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(8 == 9);
+#endif
     return false;
   }
 
@@ -880,6 +909,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   if (err != KERN_SUCCESS) {
     std::string errString = StringPrintf("0x%x %s", err, mach_error_string(err));
     CHROMIUM_LOG(ERROR) << "parent SendMessage() failed: " << errString;
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(9 == 10);
+#endif
     return false;
   }
 
@@ -948,6 +980,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
           !PR_GetEnv("MOZ_DISABLE_NPAPI_SANDBOX")) {
         bool ok = mSandboxBroker.SetSecurityLevelForPluginProcess(mSandboxLevel);
         if (!ok) {
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+          MOZ_RELEASE_ASSERT(10 == 11);
+#endif
           return false;
         }
         shouldSandboxCurrentProcess = true;
@@ -958,6 +993,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
       if (!PR_GetEnv("MOZ_DISABLE_PDFIUM_SANDBOX")) {
         bool ok = mSandboxBroker.SetSecurityLevelForPDFiumProcess();
         if (!ok) {
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+          MOZ_RELEASE_ASSERT(11 == 12);
+#endif
           return false;
         }
         shouldSandboxCurrentProcess = true;
@@ -978,6 +1016,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
         auto level = isWidevine ? SandboxBroker::Restricted : SandboxBroker::LockDown;
         bool ok = mSandboxBroker.SetSecurityLevelForGMPlugin(level);
         if (!ok) {
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+          MOZ_RELEASE_ASSERT(12 == 13);
+#endif
           return false;
         }
         shouldSandboxCurrentProcess = true;
@@ -1087,6 +1128,9 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
 #endif // defined(OS_POSIX)
 
   if (!process) {
+#ifdef ASYNC_CONTENTPROC_LAUNCH
+    MOZ_RELEASE_ASSERT(13 == 14);
+#endif
     return false;
   }
   // NB: on OS X, we block much longer than we need to in order to
@@ -1162,7 +1206,7 @@ GeckoChildProcessHost::OnMessageReceived(IPC::Message&& aMsg)
 {
   // We never process messages ourself, just save them up for the next
   // listener.
-  mQueue.push(Move(aMsg));
+  mQueue.push(std::move(aMsg));
 }
 
 void

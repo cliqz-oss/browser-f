@@ -56,7 +56,7 @@ public:
 
   template <typename... Args>
   MOZ_IMPLICIT EnumeratedArray(Args&&... aArgs)
-    : mArray{mozilla::Forward<Args>(aArgs)...}
+    : mArray{std::forward<Args>(aArgs)...}
   {}
 
   explicit EnumeratedArray(const EnumeratedArray& aOther)
@@ -69,7 +69,7 @@ public:
   EnumeratedArray(EnumeratedArray&& aOther)
   {
     for (size_t i = 0; i < kSize; i++) {
-      mArray[i] = Move(aOther.mArray[i]);
+      mArray[i] = std::move(aOther.mArray[i]);
     }
   }
 
@@ -86,7 +86,7 @@ public:
   EnumeratedArray& operator =(EnumeratedArray&& aOther)
   {
     for (size_t i = 0; i < kSize; i++) {
-      mArray[i] = Move(aOther.mArray[i]);
+      mArray[i] = std::move(aOther.mArray[i]);
     }
     return *this;
   }

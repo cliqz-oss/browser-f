@@ -87,6 +87,8 @@
 @BINPATH@/application.ini
 @BINPATH@/platform.ini
 @BINPATH@/blocklist.xml
+@BINPATH@/defaults/settings/blocklists/addons.json
+@BINPATH@/defaults/settings/blocklists/certificates.json
 
 ; [Components]
 @BINPATH@/components/components.manifest
@@ -156,6 +158,9 @@
 #endif
 #endif
 
+@BINPATH@/components/ClearDataService.manifest
+@BINPATH@/components/ClearDataService.js
+
 @BINPATH@/components/nsUpdateTimerManager.manifest
 @BINPATH@/components/nsUpdateTimerManager.js
 
@@ -182,6 +187,7 @@
 @BINPATH@/components/nsINIProcessor.manifest
 @BINPATH@/components/nsINIProcessor.js
 @BINPATH@/components/servicesComponents.manifest
+@BINPATH@/components/servicesSettings.manifest
 
 #ifndef MOZ_GECKOVIEW_JAR
 @BINPATH@/components/TelemetryStartup.js
@@ -384,7 +390,7 @@
 
 ; NOTE: This must match the config checks in
 ; /toolkit/components/backgroundhangmonitor/moz.build.
-#if defined(NIGHTLY_BUILD) && !defined(MOZ_DEBUG) && !defined(MOZ_TSAN)
+#if defined(NIGHTLY_BUILD) && !defined(MOZ_DEBUG) && !defined(MOZ_TSAN) && !defined(MOZ_ASAN)
 @BINPATH@/components/BHRTelemetryService.js
 @BINPATH@/components/BHRTelemetryService.manifest
 #endif

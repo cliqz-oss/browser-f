@@ -231,8 +231,6 @@ interface nsIHttpChannelInternal : nsISupports
 
     [must_use] readonly attribute PRTime lastModifiedTime;
 
-    [must_use] readonly attribute boolean responseSynthesized;
-
     /**
      * Set by nsCORSListenerProxy if credentials should be included in
      * cross-origin requests. false indicates "same-origin", users should still
@@ -283,11 +281,6 @@ interface nsIHttpChannelInternal : nsISupports
      * Note that the current usage of this method is only for xpcshell test.
      */
     [must_use] void setTopWindowURIIfUnknown(in nsIURI topWindowURI);
-
-    /**
-     * The network interface id that's associated with this channel.
-     */
-    [must_use] attribute ACString networkInterfaceId;
 
     /**
      * Read the proxy URI, which, if non-null, will be used to resolve

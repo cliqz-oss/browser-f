@@ -4,7 +4,7 @@
 
 pref("security.tls.version.min", 1);
 pref("security.tls.version.max", 4);
-pref("security.tls.version.fallback-limit", 3);
+pref("security.tls.version.fallback-limit", 4);
 pref("security.tls.insecure_fallback_hosts", "");
 pref("security.tls.enable_0rtt_data", false);
 
@@ -53,7 +53,6 @@ pref("security.enterprise_roots.enabled", false);
 // 2: fetch OCSP only for EV certificates
 pref("security.OCSP.enabled", 1);
 pref("security.OCSP.require", false);
-pref("security.OCSP.GET.enabled", false);
 #ifdef RELEASE_OR_BETA
 pref("security.OCSP.timeoutMilliseconds.soft", 2000);
 #else
@@ -90,11 +89,7 @@ pref("security.signed_app_signatures.policy", 2);
 // 2: fall back to the subject common name for certificates valid before 23
 //    August 2015 if necessary
 // 3: only use name information from the subject alternative name extension
-#ifdef RELEASE_OR_BETA
-pref("security.pki.name_matching_mode", 1);
-#else
-pref("security.pki.name_matching_mode", 2);
-#endif
+pref("security.pki.name_matching_mode", 3);
 
 // security.pki.netscape_step_up_policy controls how the platform handles the
 // id-Netscape-stepUp OID in extended key usage extensions of CA certificates.

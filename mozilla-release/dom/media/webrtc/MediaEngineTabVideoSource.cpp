@@ -20,7 +20,6 @@
 #include "ImageContainer.h"
 #include "Layers.h"
 #include "nsIInterfaceRequestorUtils.h"
-#include "nsIDOMDocument.h"
 #include "nsITabSource.h"
 #include "VideoUtils.h"
 #include "nsServiceManagerUtils.h"
@@ -395,6 +394,12 @@ MediaEngineTabVideoSource::Draw() {
   MutexAutoLock lock(mMutex);
   mImage = image;
   mImageSize = size;
+}
+
+nsresult
+MediaEngineTabVideoSource::FocusOnSelectedSource(const RefPtr<const AllocationHandle>& aHandle)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsresult

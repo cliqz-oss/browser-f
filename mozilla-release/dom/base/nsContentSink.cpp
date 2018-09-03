@@ -11,7 +11,6 @@
 
 #include "nsContentSink.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "mozilla/css/Loader.h"
 #include "mozilla/dom/SRILogHelper.h"
 #include "nsStyleLinkElement.h"
@@ -41,7 +40,6 @@
 #include "nsIAppShell.h"
 #include "nsIWidget.h"
 #include "nsWidgetsCID.h"
-#include "nsIDOMNode.h"
 #include "mozAutoDocUpdate.h"
 #include "nsIWebNavigation.h"
 #include "nsGenericHTMLElement.h"
@@ -56,6 +54,7 @@
 #include "HTMLLinkElement.h"
 
 using namespace mozilla;
+using namespace mozilla::css;
 using namespace mozilla::dom;
 
 LazyLogModule gContentSinkLogModuleInfo("nscontentsink");
@@ -195,8 +194,8 @@ nsContentSink::Init(nsIDocument* aDoc,
                     nsISupports* aContainer,
                     nsIChannel* aChannel)
 {
-  NS_PRECONDITION(aDoc, "null ptr");
-  NS_PRECONDITION(aURI, "null ptr");
+  MOZ_ASSERT(aDoc, "null ptr");
+  MOZ_ASSERT(aURI, "null ptr");
 
   if (!aDoc || !aURI) {
     return NS_ERROR_NULL_POINTER;
@@ -783,18 +782,22 @@ nsContentSink::ProcessStyleLinkFromHeader(const nsAString& aHref,
     return NS_OK;
   }
 
-  mozilla::net::ReferrerPolicy referrerPolicy =
-    mozilla::net::AttributeReferrerPolicyFromString(aReferrerPolicy);
-  if (referrerPolicy == net::RP_Unset) {
-    referrerPolicy = mDocument->GetReferrerPolicy();
-  }
-  // If this is a fragment parser, we don't want to observe.
-  // We don't support CORS for processing instructions
+
+  Loader::SheetInfo info {
+    *mDocument,
+    nullptr,
+    url.forget(),
+    nullptr,
+    net::AttributeReferrerPolicyFromString(aReferrerPolicy),
+    CORS_NONE,
+    aTitle,
+    aMedia,
+    aAlternate ? Loader::HasAlternateRel::Yes : Loader::HasAlternateRel::No,
+    Loader::IsInline::No,
+  };
+
   auto loadResultOrErr =
-    mCSSLoader->LoadStyleLink(nullptr, url, nullptr, aTitle, aMedia, aAlternate,
-                              CORS_NONE, referrerPolicy,
-                              /* integrity = */ EmptyString(),
-                              mRunsToCompletion ? nullptr : this);
+    mCSSLoader->LoadStyleLink(info, mRunsToCompletion ? nullptr : this);
   if (loadResultOrErr.isErr()) {
     return loadResultOrErr.unwrapErr();
   }
@@ -874,7 +877,6 @@ nsContentSink::PrefetchPreloadHref(const nsAString &aHref,
     NS_NewURI(getter_AddRefs(uri), aHref, encoding,
               mDocument->GetDocBaseURI());
     if (uri) {
-      nsCOMPtr<nsIDOMNode> domNode = do_QueryInterface(aSource);
       if (aLinkTypes & nsStyleLinkElement::ePRELOAD) {
         nsAttrValue asAttr;
         Link::ParseAsValue(aAs, asAttr);
@@ -893,9 +895,9 @@ nsContentSink::PrefetchPreloadHref(const nsAString &aHref,
           policyType = nsIContentPolicy::TYPE_INVALID;
         }
 
-        prefetchService->PreloadURI(uri, mDocumentURI, domNode, policyType);
+        prefetchService->PreloadURI(uri, mDocumentURI, aSource, policyType);
       } else {
-        prefetchService->PrefetchURI(uri, mDocumentURI, domNode,
+        prefetchService->PrefetchURI(uri, mDocumentURI, aSource,
                                      aLinkTypes & nsStyleLinkElement::ePREFETCH);
       }
     }
@@ -1196,9 +1198,8 @@ nsContentSink::ProcessOfflineManifest(const nsAString& aManifestSpec)
       do_GetService(NS_OFFLINECACHEUPDATESERVICE_CONTRACTID);
 
     if (updateService) {
-      nsCOMPtr<nsIDOMDocument> domdoc = do_QueryInterface(mDocument);
       updateService->ScheduleOnDocumentStop(manifestURI, mDocumentURI,
-                                            mDocument->NodePrincipal(), domdoc);
+                                            mDocument->NodePrincipal(), mDocument);
     }
     break;
   }
@@ -1234,6 +1235,9 @@ nsContentSink::ScrollToRef()
 void
 nsContentSink::StartLayout(bool aIgnorePendingSheets)
 {
+  AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING("nsContentSink::StartLayout", LAYOUT,
+                                        mDocumentURI->GetSpecOrDefault());
+
   if (mLayoutStarted) {
     // Nothing to do here
     return;
@@ -1292,7 +1296,7 @@ nsContentSink::NotifyAppend(nsIContent* aContainer, uint32_t aStartIndex)
 
   {
     // Scope so we call EndUpdate before we decrease mInNotification
-    MOZ_AUTO_DOC_UPDATE(mDocument, UPDATE_CONTENT_MODEL, !mBeganUpdate);
+    MOZ_AUTO_DOC_UPDATE(mDocument, !mBeganUpdate);
     nsNodeUtils::ContentAppended(aContainer,
                                  aContainer->GetChildAt_Deprecated(aStartIndex));
     mLastNotificationTime = PR_Now();
@@ -1484,7 +1488,7 @@ nsContentSink::FavorPerformanceHint(bool perfOverStarvation, uint32_t starvation
 }
 
 void
-nsContentSink::BeginUpdate(nsIDocument *aDocument, nsUpdateType aUpdateType)
+nsContentSink::BeginUpdate(nsIDocument* aDocument)
 {
   // Remember nested updates from updates that we started.
   if (mInNotification > 0 && mUpdatesInNotification < 2) {
@@ -1503,7 +1507,7 @@ nsContentSink::BeginUpdate(nsIDocument *aDocument, nsUpdateType aUpdateType)
 }
 
 void
-nsContentSink::EndUpdate(nsIDocument *aDocument, nsUpdateType aUpdateType)
+nsContentSink::EndUpdate(nsIDocument* aDocument)
 {
   // If we're in a script and we didn't do the notification,
   // something else in the script processing caused the
@@ -1652,9 +1656,8 @@ nsContentSink::NotifyDocElementCreated(nsIDocument* aDoc)
   nsCOMPtr<nsIObserverService> observerService =
     mozilla::services::GetObserverService();
   if (observerService) {
-    nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(aDoc);
     observerService->
-      NotifyObservers(domDoc, "document-element-inserted",
+      NotifyObservers(aDoc, "document-element-inserted",
                       EmptyString().get());
   }
 

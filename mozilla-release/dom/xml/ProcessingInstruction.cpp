@@ -20,7 +20,7 @@ NS_NewXMLProcessingInstruction(nsNodeInfoManager *aNodeInfoManager,
   using mozilla::dom::ProcessingInstruction;
   using mozilla::dom::XMLStylesheetProcessingInstruction;
 
-  NS_PRECONDITION(aNodeInfoManager, "Missing nodeinfo manager");
+  MOZ_ASSERT(aNodeInfoManager, "Missing nodeinfo manager");
 
   RefPtr<nsAtom> target = NS_Atomize(aTarget);
   MOZ_ASSERT(target);
@@ -48,7 +48,7 @@ namespace dom {
 
 ProcessingInstruction::ProcessingInstruction(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
                                              const nsAString& aData)
-  : CharacterData(Move(aNodeInfo))
+  : CharacterData(std::move(aNodeInfo))
 {
   MOZ_ASSERT(mNodeInfo->NodeType() == nsINode::PROCESSING_INSTRUCTION_NODE,
              "Bad NodeType in aNodeInfo");
@@ -62,7 +62,9 @@ ProcessingInstruction::~ProcessingInstruction()
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED(ProcessingInstruction, CharacterData, nsIDOMNode)
+// If you add nsIStyleSheetLinkingElement here, make sure we actually
+// implement the nsStyleLinkElement methods.
+NS_IMPL_ISUPPORTS_INHERITED0(ProcessingInstruction, CharacterData)
 
 JSObject*
 ProcessingInstruction::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
@@ -87,6 +89,16 @@ ProcessingInstruction::CloneDataNode(mozilla::dom::NodeInfo *aNodeInfo,
   GetData(data);
   RefPtr<mozilla::dom::NodeInfo> ni = aNodeInfo;
   return do_AddRef(new ProcessingInstruction(ni.forget(), data));
+}
+
+Maybe<nsStyleLinkElement::SheetInfo>
+ProcessingInstruction::GetStyleSheetInfo()
+{
+  MOZ_ASSERT_UNREACHABLE("XMLStylesheetProcessingInstruction should override "
+                         "this and we don't try to do stylesheet stuff.  In "
+                         "particular, we do not implement "
+                         "nsIStyleSheetLinkingElement");
+  return Nothing();
 }
 
 #ifdef DEBUG

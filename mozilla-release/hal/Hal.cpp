@@ -9,7 +9,6 @@
 #include "HalImpl.h"
 #include "HalLog.h"
 #include "HalSandbox.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMWindow.h"
 #include "nsIDocument.h"
 #include "nsIDocShell.h"
@@ -21,10 +20,7 @@
 #include "nsJSUtils.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Observer.h"
-#include "mozilla/Services.h"
-#include "mozilla/StaticPtr.h"
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ScreenOrientation.h"
 #include "WindowIdentifier.h"
 
@@ -430,6 +426,7 @@ UnregisterSensorObserver(SensorType aSensor, ISensorObserver *aObserver) {
   AssertMainThread();
 
   if (!gSensorObservers) {
+    HAL_ERR("Un-registering a sensor when none have been registered");
     return;
   }
 

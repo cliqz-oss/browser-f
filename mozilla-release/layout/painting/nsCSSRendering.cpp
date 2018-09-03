@@ -77,7 +77,10 @@ static int gFrameTreeLockCount = 0;
 struct InlineBackgroundData
 {
   InlineBackgroundData()
-      : mFrame(nullptr), mLineContainer(nullptr)
+      : mFrame(nullptr), mLineContainer(nullptr),
+        mContinuationPoint(0), mUnbrokenMeasure(0), 
+        mLineContinuationPoint(0), mPIStartBorderData{},
+        mBidiEnabled(false), mVertical(false)
   {
   }
 
@@ -257,7 +260,7 @@ protected:
 
   void SetFrame(nsIFrame* aFrame)
   {
-    NS_PRECONDITION(aFrame, "Need a frame");
+    MOZ_ASSERT(aFrame, "Need a frame");
     NS_ASSERTION(gFrameTreeLockCount > 0,
                  "Can't call this when frame tree is not locked");
 
@@ -655,7 +658,7 @@ nsCSSRendering::PaintBorder(nsPresContext* aPresContext,
   NS_FOR_CSS_SIDES(side) {
     nscolor color = aComputedStyle->
       GetVisitedDependentColor(nsStyleBorder::BorderColorFieldFor(side));
-    newStyleBorder.mBorderColor[side] = StyleComplexColor::FromColor(color);
+    newStyleBorder.BorderColorFor(side) = StyleComplexColor::FromColor(color);
   }
   return PaintBorderWithStyleBorder(aPresContext, aRenderingContext, aForFrame,
                                     aDirtyRect, aBorderArea, newStyleBorder,
@@ -689,7 +692,7 @@ nsCSSRendering::CreateBorderRenderer(nsPresContext* aPresContext,
   NS_FOR_CSS_SIDES(side) {
     nscolor color = aComputedStyle->
       GetVisitedDependentColor(nsStyleBorder::BorderColorFieldFor(side));
-    newStyleBorder.mBorderColor[side] = StyleComplexColor::FromColor(color);
+    newStyleBorder.BorderColorFor(side) = StyleComplexColor::FromColor(color);
   }
   return CreateBorderRendererWithStyleBorder(aPresContext, aDrawTarget,
                                              aForFrame, aDirtyRect, aBorderArea,
@@ -767,7 +770,7 @@ nsCSSRendering::CreateWebRenderCommandsForBorder(nsDisplayItem* aItem,
                                                         aForFrame,
                                                         aBorderArea,
                                                         *styleBorder,
-                                                        aItem->GetVisibleRect(),
+                                                        aItem->GetPaintRect(),
                                                         aForFrame->GetSkipSides(),
                                                         flags,
                                                         &result);
@@ -799,9 +802,6 @@ ConstructBorderRenderer(nsPresContext* aPresContext,
                         bool* aNeedsClip)
 {
   nsMargin border = aStyleBorder.GetComputedBorder();
-
-  // Get our ComputedStyle's color struct.
-  const nsStyleColor* ourColor = aComputedStyle->StyleColor();
 
   // In NavQuirks mode we want to use the parent's context as a starting point
   // for determining the background color.
@@ -861,7 +861,7 @@ ConstructBorderRenderer(nsPresContext* aPresContext,
   // pull out styles, colors
   NS_FOR_CSS_SIDES (i) {
     borderStyles[i] = aStyleBorder.GetBorderStyle(i);
-    borderColors[i] = ourColor->CalcComplexColor(aStyleBorder.mBorderColor[i]);
+    borderColors[i] = aStyleBorder.BorderColorFor(i).CalcColor(aComputedStyle);
   }
 
   PrintAsFormatString(" borderStyles: %d %d %d %d\n", borderStyles[0], borderStyles[1], borderStyles[2], borderStyles[3]);
@@ -2023,8 +2023,8 @@ nsCSSRendering::PaintStyleImageLayer(const PaintBGParams& aParams,
 {
   AUTO_PROFILER_LABEL("nsCSSRendering::PaintStyleImageLayer", GRAPHICS);
 
-  NS_PRECONDITION(aParams.frame,
-                  "Frame is expected to be provided to PaintStyleImageLayer");
+  MOZ_ASSERT(aParams.frame,
+             "Frame is expected to be provided to PaintStyleImageLayer");
 
   ComputedStyle *sc;
   if (!FindBackground(aParams.frame, &sc)) {
@@ -2116,7 +2116,7 @@ nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayer(const PaintBGParams
                                                              mozilla::layers::WebRenderLayerManager* aManager,
                                                              nsDisplayItem* aItem)
 {
-  NS_PRECONDITION(aParams.frame,
+  MOZ_ASSERT(aParams.frame,
                   "Frame is expected to be provided to BuildWebRenderDisplayItemsForStyleImageLayer");
 
   ComputedStyle *sc;
@@ -2165,13 +2165,10 @@ IsOpaqueBorderEdge(const nsStyleBorder& aBorder, mozilla::Side aSide)
   if (aBorder.mBorderImageSource.GetType() != eStyleImageType_Null)
     return false;
 
-  StyleComplexColor color = aBorder.mBorderColor[aSide];
+  StyleComplexColor color = aBorder.BorderColorFor(aSide);
   // We don't know the foreground color here, so if it's being used
   // we must assume it might be transparent.
-  if (!color.IsNumericColor()) {
-    return false;
-  }
-  return NS_GET_A(color.mColor) == 255;
+  return !color.MaybeTransparent();
 }
 
 /**
@@ -2337,7 +2334,7 @@ nsCSSRendering::GetImageLayerClip(const nsStyleImageLayers::Layer& aLayer,
   aClipState->mBGClipArea = clipBorderArea;
 
   if (aForFrame->IsScrollFrame() &&
-      NS_STYLE_IMAGELAYER_ATTACHMENT_LOCAL == aLayer.mAttachment) {
+      StyleImageLayerAttachment::Local == aLayer.mAttachment) {
     // As of this writing, this is still in discussion in the CSS Working Group
     // http://lists.w3.org/Archives/Public/www-style/2013Jul/0250.html
 
@@ -2621,8 +2618,8 @@ nsCSSRendering::PaintStyleImageLayerWithSC(const PaintBGParams& aParams,
                                            ComputedStyle *aBackgroundSC,
                                            const nsStyleBorder& aBorder)
 {
-  NS_PRECONDITION(aParams.frame,
-                  "Frame is expected to be provided to PaintStyleImageLayerWithSC");
+  MOZ_ASSERT(aParams.frame,
+             "Frame is expected to be provided to PaintStyleImageLayerWithSC");
 
   // If we're drawing all layers, aCompositonOp is ignored, so make sure that
   // it was left at its default value.
@@ -2950,7 +2947,7 @@ nsCSSRendering::ComputeImageLayerPositioningArea(nsPresContext* aPresContext,
   LayoutFrameType frameType = aForFrame->Type();
   nsIFrame* geometryFrame = aForFrame;
   if (MOZ_UNLIKELY(frameType == LayoutFrameType::Scroll &&
-                   NS_STYLE_IMAGELAYER_ATTACHMENT_LOCAL == aLayer.mAttachment)) {
+                   StyleImageLayerAttachment::Local == aLayer.mAttachment)) {
     nsIScrollableFrame* scrollableFrame = do_QueryFrame(aForFrame);
     positionArea = nsRect(
       scrollableFrame->GetScrolledFrame()->GetPosition()
@@ -3011,7 +3008,7 @@ nsCSSRendering::ComputeImageLayerPositioningArea(nsPresContext* aPresContext,
   }
 
   nsIFrame* attachedToFrame = aForFrame;
-  if (NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED == aLayer.mAttachment) {
+  if (StyleImageLayerAttachment::Fixed == aLayer.mAttachment) {
     // If it's a fixed background attachment, then the image is placed
     // relative to the viewport, which is the area of the root frame
     // in a screen context or the page content frame in a print context.
@@ -3264,7 +3261,7 @@ nsCSSRendering::PrepareImageLayer(nsPresContext* aPresContext,
   if (!state.mImageRenderer.PrepareImage()) {
     // There's no image or it's not ready to be painted.
     if (aOutIsTransformedFixed &&
-        NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED == aLayer.mAttachment) {
+        StyleImageLayerAttachment::Fixed == aLayer.mAttachment) {
 
       nsIFrame* attachedToFrame = aPresContext->PresShell()->GetRootFrame();
       NS_ASSERTION(attachedToFrame, "no root frame");
@@ -3300,7 +3297,7 @@ nsCSSRendering::PrepareImageLayer(nsPresContext* aPresContext,
   // where the background can be drawn to the viewport.
   nsRect bgClipRect = aBGClipRect;
 
-  if (NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED == aLayer.mAttachment &&
+  if (StyleImageLayerAttachment::Fixed == aLayer.mAttachment &&
       !transformedFixed &&
       (aFlags & nsCSSRendering::PAINTBG_TO_WINDOW)) {
     bgClipRect = positionArea + aBorderArea.TopLeft();

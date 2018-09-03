@@ -22,7 +22,6 @@ JSTerm.prototype = {
   },
 
   openVariablesView() { },
-  clearOutput() { },
 
   init() {
     this.doc = this.hud.window.document;
@@ -70,27 +69,27 @@ JSTerm.prototype = {
         return;
       }
 
-      let message = new ConsoleCommand({
+      const message = new ConsoleCommand({
         messageText: executeString,
       });
       this.hud.proxy.dispatchMessageAdd(message);
 
       let selectedNodeActor = null;
-      let inspectorSelection = this.hud.owner.getInspectorSelection();
+      const inspectorSelection = this.hud.owner.getInspectorSelection();
       if (inspectorSelection && inspectorSelection.nodeFront) {
         selectedNodeActor = inspectorSelection.nodeFront.actorID;
       }
 
-      let onResult = (response) => {
+      const onResult = (response) => {
         if (response.error) {
           console.error("Evaluation error " + response.error + ": " +
                         response.message);
           return;
         }
-        this.hud.newConsoleOutput.dispatchMessageAdd(response, true).then(resolve);
+        this.hud.consoleOutput.dispatchMessageAdd(response, true).then(resolve);
       };
 
-      let options = {
+      const options = {
         frame: this.SELECTED_FRAME,
         selectedNodeActor: selectedNodeActor,
       };
@@ -130,13 +129,13 @@ JSTerm.prototype = {
       if ("frame" in options) {
         frameActor = this.getFrameActor(options.frame);
       }
-      let evalOptions = {
+      const evalOptions = {
         bindObjectActor: options.bindObjectActor,
         frameActor: frameActor,
         selectedNodeActor: options.selectedNodeActor,
         selectedObjectActor: options.selectedObjectActor,
       };
-      let onResponse = response => {
+      const onResponse = response => {
         if (!response.error) {
           resolve(response);
         } else {
@@ -157,7 +156,7 @@ JSTerm.prototype = {
    *         The FrameActor ID for the given frame depth.
    */
   getFrameActor(frame) {
-    let state = this.hud.owner.getDebuggerFrames();
+    const state = this.hud.owner.getDebuggerFrames();
     if (!state) {
       return null;
     }

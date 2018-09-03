@@ -8,6 +8,7 @@
 #include "mozilla/EventStates.h"
 #include "mozilla/Logging.h"
 #include "mozilla/WindowsVersion.h"
+#include "nsColor.h"
 #include "nsDeviceContext.h"
 #include "nsRect.h"
 #include "nsSize.h"
@@ -18,6 +19,7 @@
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
 #include "nsIFrame.h"
+#include "nsLayoutUtils.h"
 #include "nsNameSpaceManager.h"
 #include "nsLookAndFeel.h"
 #include "nsMenuFrame.h"
@@ -608,18 +610,19 @@ nsNativeThemeWin::DrawThemedProgressMeter(nsIFrame* aFrame, int aWidgetType,
   }
 }
 
-nsresult nsNativeThemeWin::GetCachedWidgetBorder(nsIFrame * aFrame, HTHEME aTheme,
-                                                 nsUXThemeClass aThemeClass, uint8_t aWidgetType,
-                                                 int32_t aPart, int32_t aState,
-                                                 nsIntMargin * aResult)
+LayoutDeviceIntMargin
+nsNativeThemeWin::GetCachedWidgetBorder(HTHEME aTheme,
+                                        nsUXThemeClass aThemeClass,
+                                        uint8_t aWidgetType,
+                                        int32_t aPart,
+                                        int32_t aState)
 {
   int32_t cacheIndex = aThemeClass * THEME_PART_DISTINCT_VALUE_COUNT + aPart;
   int32_t cacheBitIndex = cacheIndex / 8;
   uint8_t cacheBit = 1u << (cacheIndex % 8);
 
   if (mBorderCacheValid[cacheBitIndex] & cacheBit) {
-    *aResult = mBorderCache[cacheIndex];
-    return NS_OK;
+    return mBorderCache[cacheIndex];
   }
 
   // Get our info.
@@ -630,20 +633,21 @@ nsresult nsNativeThemeWin::GetCachedWidgetBorder(nsIFrame * aFrame, HTHEME aThem
   HRESULT res = GetThemeBackgroundContentRect(aTheme, nullptr, aPart, aState, &outerRect, &contentRect);
 
   if (FAILED(res)) {
-    return NS_ERROR_FAILURE;
+    return LayoutDeviceIntMargin();
   }
 
   // Now compute the delta in each direction and place it in our
   // nsIntMargin struct.
-  aResult->top = contentRect.top - outerRect.top;
-  aResult->bottom = outerRect.bottom - contentRect.bottom;
-  aResult->left = contentRect.left - outerRect.left;
-  aResult->right = outerRect.right - contentRect.right;
+  LayoutDeviceIntMargin result;
+  result.top = contentRect.top - outerRect.top;
+  result.bottom = outerRect.bottom - contentRect.bottom;
+  result.left = contentRect.left - outerRect.left;
+  result.right = outerRect.right - contentRect.right;
 
   mBorderCacheValid[cacheBitIndex] |= cacheBit;
-  mBorderCache[cacheIndex] = *aResult;
+  mBorderCache[cacheIndex] = result;
 
-  return NS_OK;
+  return result;
 }
 
 nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(nsIFrame * aFrame, HANDLE aTheme,
@@ -759,6 +763,7 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(uint8_t aWidgetTy
     case NS_THEME_SCROLLBARBUTTON_RIGHT:
     case NS_THEME_SCROLLBARTHUMB_VERTICAL:
     case NS_THEME_SCROLLBARTHUMB_HORIZONTAL:
+    case NS_THEME_SCROLLCORNER:
       return Some(eUXScrollbar);
     case NS_THEME_RANGE:
     case NS_THEME_RANGE_THUMB:
@@ -1165,7 +1170,8 @@ nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame, uint8_t aWidgetType,
     case NS_THEME_WIN_BROWSERTABBAR_TOOLBOX:
     case NS_THEME_STATUSBAR:
     case NS_THEME_SCROLLBAR:
-    case NS_THEME_SCROLLBAR_SMALL: {
+    case NS_THEME_SCROLLBAR_SMALL:
+    case NS_THEME_SCROLLCORNER: {
       aState = 0;
       aPart = RP_BACKGROUND;
       return NS_OK;
@@ -1520,6 +1526,27 @@ GetThemeDpiScaleFactor(nsIFrame* aFrame)
   return 1.0;
 }
 
+static bool
+IsWidgetScrollbarPart(uint8_t aWidgetType)
+{
+  switch (aWidgetType) {
+    case NS_THEME_SCROLLBAR:
+    case NS_THEME_SCROLLBAR_SMALL:
+    case NS_THEME_SCROLLBAR_VERTICAL:
+    case NS_THEME_SCROLLBAR_HORIZONTAL:
+    case NS_THEME_SCROLLBARBUTTON_UP:
+    case NS_THEME_SCROLLBARBUTTON_DOWN:
+    case NS_THEME_SCROLLBARBUTTON_LEFT:
+    case NS_THEME_SCROLLBARBUTTON_RIGHT:
+    case NS_THEME_SCROLLBARTHUMB_VERTICAL:
+    case NS_THEME_SCROLLBARTHUMB_HORIZONTAL:
+    case NS_THEME_SCROLLCORNER:
+      return true;
+    default:
+      return false;
+  }
+}
+
 NS_IMETHODIMP
 nsNativeThemeWin::DrawWidgetBackground(gfxContext* aContext,
                                        nsIFrame* aFrame,
@@ -1527,6 +1554,14 @@ nsNativeThemeWin::DrawWidgetBackground(gfxContext* aContext,
                                        const nsRect& aRect,
                                        const nsRect& aDirtyRect)
 {
+  if (IsWidgetScrollbarPart(aWidgetType)) {
+    ComputedStyle* style = nsLayoutUtils::StyleForScrollbar(aFrame);
+    if (style->StyleUserInterface()->HasCustomScrollbars()) {
+      return DrawCustomScrollbarPart(aContext, aFrame, style,
+                                     aWidgetType, aRect, aDirtyRect);
+    }
+  }
+
   HANDLE theme = GetTheme(aWidgetType);
   if (!theme)
     return ClassicDrawWidgetBackground(aContext, aFrame, aWidgetType, aRect, aDirtyRect); 
@@ -1839,14 +1874,13 @@ RENDER_AGAIN:
   }
   else if (aWidgetType == NS_THEME_FOCUS_OUTLINE) {
     // Inflate 'widgetRect' with the focus outline size.
-    nsIntMargin border;
-    if (NS_SUCCEEDED(GetWidgetBorder(aFrame->PresContext()->DeviceContext(),
-                                     aFrame, aWidgetType, &border))) {
-      widgetRect.left -= border.left;
-      widgetRect.right += border.right;
-      widgetRect.top -= border.top;
-      widgetRect.bottom += border.bottom;
-    }
+    LayoutDeviceIntMargin border =
+      GetWidgetBorder(aFrame->PresContext()->DeviceContext(),
+                      aFrame, aWidgetType);
+    widgetRect.left -= border.left;
+    widgetRect.right += border.right;
+    widgetRect.top -= border.top;
+    widgetRect.bottom += border.bottom;
 
     DTBGOPTS opts = {
       sizeof(DTBGOPTS),
@@ -1924,6 +1958,59 @@ RENDER_AGAIN:
   return NS_OK;
 }
 
+static nscolor
+GetScrollbarFaceColorForAuto()
+{
+  // Do we want to derive from scrollbar-track-color when possible?
+  DWORD sysColor = ::GetSysColor(COLOR_SCROLLBAR);
+  return NS_RGB(GetRValue(sysColor),
+                GetGValue(sysColor),
+                GetBValue(sysColor));
+}
+
+static nscolor
+GetScrollbarTrackColorForAuto(ComputedStyle* aStyle)
+{
+  // Fallback to background color for now. Do we want to derive from
+  // scrollbar-face-color somehow?
+  return aStyle->StyleBackground()->BackgroundColor(aStyle);
+}
+
+nscolor
+nsNativeThemeWin::GetWidgetAutoColor(ComputedStyle* aStyle, uint8_t aWidgetType)
+{
+  switch (aWidgetType) {
+    case NS_THEME_SCROLLBAR:
+    case NS_THEME_SCROLLBAR_SMALL:
+    case NS_THEME_SCROLLBAR_VERTICAL:
+    case NS_THEME_SCROLLBAR_HORIZONTAL:
+    case NS_THEME_SCROLLBARBUTTON_UP:
+    case NS_THEME_SCROLLBARBUTTON_DOWN:
+    case NS_THEME_SCROLLBARBUTTON_LEFT:
+    case NS_THEME_SCROLLBARBUTTON_RIGHT:
+      return GetScrollbarTrackColorForAuto(aStyle);
+
+    case NS_THEME_SCROLLBARTHUMB_VERTICAL:
+    case NS_THEME_SCROLLBARTHUMB_HORIZONTAL:
+      return GetScrollbarFaceColorForAuto();
+
+    default:
+      return nsITheme::GetWidgetAutoColor(aStyle, aWidgetType);
+  }
+}
+
+static void
+ScaleForFrameDPI(LayoutDeviceIntMargin* aMargin, nsIFrame* aFrame)
+{
+  double themeScale = GetThemeDpiScaleFactor(aFrame);
+  if (themeScale != 1.0) {
+    aMargin->top = NSToIntRound(aMargin->top * themeScale);
+    aMargin->left = NSToIntRound(aMargin->left * themeScale);
+    aMargin->bottom = NSToIntRound(aMargin->bottom * themeScale);
+    aMargin->right = NSToIntRound(aMargin->right * themeScale);
+  }
+}
+
 static void
 ScaleForFrameDPI(nsIntMargin* aMargin, nsIFrame* aFrame)
 {
@@ -1946,25 +2033,22 @@ ScaleForFrameDPI(LayoutDeviceIntSize* aSize, nsIFrame* aFrame)
   }
 }
 
-NS_IMETHODIMP
+LayoutDeviceIntMargin
 nsNativeThemeWin::GetWidgetBorder(nsDeviceContext* aContext, 
                                   nsIFrame* aFrame,
-                                  uint8_t aWidgetType,
-                                  nsIntMargin* aResult)
+                                  uint8_t aWidgetType)
 {
+  LayoutDeviceIntMargin result;
   mozilla::Maybe<nsUXThemeClass> themeClass = GetThemeClass(aWidgetType);
   HTHEME theme = NULL;
   if (!themeClass.isNothing()) {
     theme = nsUXThemeData::GetTheme(themeClass.value());
   }
-  nsresult rv = NS_OK;
   if (!theme) {
-    rv = ClassicGetWidgetBorder(aContext, aFrame, aWidgetType, aResult);
-    ScaleForFrameDPI(aResult, aFrame);
-    return rv;
+    result = ClassicGetWidgetBorder(aContext, aFrame, aWidgetType);
+    ScaleForFrameDPI(&result, aFrame);
+    return result;
   }
-
-  aResult->top = aResult->bottom = aResult->left = aResult->right = 0;
 
   if (!WidgetIsContainer(aWidgetType) ||
       aWidgetType == NS_THEME_TOOLBOX || 
@@ -1975,6 +2059,7 @@ nsNativeThemeWin::GetWidgetBorder(nsDeviceContext* aContext,
       aWidgetType == NS_THEME_RESIZER || aWidgetType == NS_THEME_TABPANEL ||
       aWidgetType == NS_THEME_SCROLLBAR_HORIZONTAL ||
       aWidgetType == NS_THEME_SCROLLBAR_VERTICAL ||
+      aWidgetType == NS_THEME_SCROLLCORNER ||
       aWidgetType == NS_THEME_MENUITEM || aWidgetType == NS_THEME_CHECKMENUITEM ||
       aWidgetType == NS_THEME_RADIOMENUITEM || aWidgetType == NS_THEME_MENUPOPUP ||
       aWidgetType == NS_THEME_MENUIMAGE || aWidgetType == NS_THEME_MENUITEMTEXT ||
@@ -1982,31 +2067,30 @@ nsNativeThemeWin::GetWidgetBorder(nsDeviceContext* aContext,
       aWidgetType == NS_THEME_WINDOW_TITLEBAR ||
       aWidgetType == NS_THEME_WINDOW_TITLEBAR_MAXIMIZED ||
       aWidgetType == NS_THEME_WIN_GLASS || aWidgetType == NS_THEME_WIN_BORDERLESS_GLASS)
-    return NS_OK; // Don't worry about it.
+    return result; // Don't worry about it.
 
   int32_t part, state;
-  rv = GetThemePartAndState(aFrame, aWidgetType, part, state);
+  nsresult rv = GetThemePartAndState(aFrame, aWidgetType, part, state);
   if (NS_FAILED(rv))
-    return rv;
+    return result;
 
   if (aWidgetType == NS_THEME_TOOLBAR) {
     // make space for the separator line above all toolbars but the first
     if (state == 0)
-      aResult->top = TB_SEPARATOR_HEIGHT;
-    return NS_OK;
+      result.top = TB_SEPARATOR_HEIGHT;
+    return result;
   }
 
-  rv = GetCachedWidgetBorder(aFrame, theme, themeClass.value(), aWidgetType, part, state, aResult);
-  NS_ENSURE_SUCCESS(rv, rv);
+  result = GetCachedWidgetBorder(theme, themeClass.value(), aWidgetType, part, state);
 
   // Remove the edges for tabs that are before or after the selected tab,
   if (aWidgetType == NS_THEME_TAB) {
     if (IsLeftToSelectedTab(aFrame))
       // Remove the right edge, since we won't be drawing it.
-      aResult->right = 0;
+      result.right = 0;
     else if (IsRightToSelectedTab(aFrame))
       // Remove the left edge, since we won't be drawing it.
-      aResult->left = 0;
+      result.left = 0;
   }
 
   if (aFrame && (aWidgetType == NS_THEME_NUMBER_INPUT ||
@@ -2016,22 +2100,22 @@ nsNativeThemeWin::GetWidgetBorder(nsDeviceContext* aContext,
     if (content && content->IsHTMLElement()) {
       // We need to pad textfields by 1 pixel, since the caret will draw
       // flush against the edge by default if we don't.
-      aResult->top++;
-      aResult->left++;
-      aResult->bottom++;
-      aResult->right++;
+      result.top++;
+      result.left++;
+      result.bottom++;
+      result.right++;
     }
   }
 
-  ScaleForFrameDPI(aResult, aFrame);
-  return rv;
+  ScaleForFrameDPI(&result, aFrame);
+  return result;
 }
 
 bool
 nsNativeThemeWin::GetWidgetPadding(nsDeviceContext* aContext, 
                                    nsIFrame* aFrame,
                                    uint8_t aWidgetType,
-                                   nsIntMargin* aResult)
+                                   LayoutDeviceIntMargin* aResult)
 {
   switch (aWidgetType) {
     // Radios and checkboxes return a fixed size in GetMinimumWidgetSize
@@ -2207,17 +2291,15 @@ nsNativeThemeWin::GetWidgetOverflow(nsDeviceContext* aContext,
 #endif
 
   if (aWidgetType == NS_THEME_FOCUS_OUTLINE) {
-    nsIntMargin border;
-    nsresult rv = GetWidgetBorder(aContext, aFrame, aWidgetType, &border);
-    if (NS_SUCCEEDED(rv)) {
-      int32_t p2a = aContext->AppUnitsPerDevPixel();
-      nsMargin m(NSIntPixelsToAppUnits(border.top, p2a),
-                 NSIntPixelsToAppUnits(border.right, p2a),
-                 NSIntPixelsToAppUnits(border.bottom, p2a),
-                 NSIntPixelsToAppUnits(border.left, p2a));
-      aOverflowRect->Inflate(m);
-      return true;
-    }
+    LayoutDeviceIntMargin border =
+      GetWidgetBorder(aContext, aFrame, aWidgetType);
+    int32_t p2a = aContext->AppUnitsPerDevPixel();
+    nsMargin m(NSIntPixelsToAppUnits(border.top, p2a),
+               NSIntPixelsToAppUnits(border.right, p2a),
+               NSIntPixelsToAppUnits(border.bottom, p2a),
+               NSIntPixelsToAppUnits(border.left, p2a));
+    aOverflowRect->Inflate(m);
+    return true;
   }
 
   return false;
@@ -2346,6 +2428,7 @@ nsNativeThemeWin::GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* aF
     }
 
     case NS_THEME_SCROLLBAR:
+    case NS_THEME_SCROLLCORNER:
     {
       if (nsLookAndFeel::GetInt(
             nsLookAndFeel::eIntID_UseOverlayScrollbars) != 0) {
@@ -2622,18 +2705,13 @@ nsNativeThemeWin::ThemeGeometryTypeForWidget(nsIFrame* aFrame,
   }
 }
 
-bool
-nsNativeThemeWin::ShouldHideScrollbars()
-{
-  return WinUtils::ShouldHideScrollbars();
-}
-
 nsITheme::Transparency
 nsNativeThemeWin::GetWidgetTransparency(nsIFrame* aFrame, uint8_t aWidgetType)
 {
   switch (aWidgetType) {
   case NS_THEME_SCROLLBAR_SMALL:
   case NS_THEME_SCROLLBAR:
+  case NS_THEME_SCROLLCORNER:
   case NS_THEME_STATUSBAR:
     // Knowing that scrollbars and statusbars are opaque improves
     // performance, because we create layers for them. This better be
@@ -2716,6 +2794,7 @@ nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case NS_THEME_SCROLLBAR_VERTICAL:
     case NS_THEME_SCROLLBAR_HORIZONTAL:
     case NS_THEME_SCROLLBAR_NON_DISAPPEARING:
+    case NS_THEME_SCROLLCORNER:
     case NS_THEME_SCALE_HORIZONTAL:
     case NS_THEME_SCALE_VERTICAL:
     case NS_THEME_SCALETHUMB_HORIZONTAL:
@@ -2763,20 +2842,20 @@ nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
   return false;
 }
 
-nsresult
+LayoutDeviceIntMargin
 nsNativeThemeWin::ClassicGetWidgetBorder(nsDeviceContext* aContext, 
-                                  nsIFrame* aFrame,
-                                  uint8_t aWidgetType,
-                                  nsIntMargin* aResult)
+                                         nsIFrame* aFrame,
+                                         uint8_t aWidgetType)
 {
+  LayoutDeviceIntMargin result;
   switch (aWidgetType) {
     case NS_THEME_GROUPBOX:
     case NS_THEME_BUTTON:
-      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 2; 
+      result.top = result.left = result.bottom = result.right = 2;
       break;
     case NS_THEME_STATUSBAR:
-      (*aResult).bottom = (*aResult).left = (*aResult).right = 0;
-      (*aResult).top = 2;
+      result.bottom = result.left = result.right = 0;
+      result.top = 2;
       break;
     case NS_THEME_LISTBOX:
     case NS_THEME_TREEVIEW:
@@ -2787,41 +2866,41 @@ nsNativeThemeWin::ClassicGetWidgetBorder(nsDeviceContext* aContext,
     case NS_THEME_TEXTFIELD:
     case NS_THEME_TEXTFIELD_MULTILINE:
     case NS_THEME_FOCUS_OUTLINE:
-      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 2;
+      result.top = result.left = result.bottom = result.right = 2;
       break;
     case NS_THEME_STATUSBARPANEL:
     case NS_THEME_RESIZERPANEL: {
-      (*aResult).top = 1;      
-      (*aResult).left = 1;
-      (*aResult).bottom = 1;
-      (*aResult).right = aFrame->GetNextSibling() ? 3 : 1;
+      result.top = 1;
+      result.left = 1;
+      result.bottom = 1;
+      result.right = aFrame->GetNextSibling() ? 3 : 1;
       break;
-    }    
+    }
     case NS_THEME_TOOLTIP:
-      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 1;
+      result.top = result.left = result.bottom = result.right = 1;
       break;
     case NS_THEME_PROGRESSBAR:
     case NS_THEME_PROGRESSBAR_VERTICAL:
-      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 1;
+      result.top = result.left = result.bottom = result.right = 1;
       break;
     case NS_THEME_MENUBAR:
-      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 0;
+      result.top = result.left = result.bottom = result.right = 0;
       break;
     case NS_THEME_MENUPOPUP:
-      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 3;
+      result.top = result.left = result.bottom = result.right = 3;
       break;
     default:
-      (*aResult).top = (*aResult).bottom = (*aResult).left = (*aResult).right = 0;
+      result.top = result.bottom = result.left = result.right = 0;
       break;
   }
-  return NS_OK;
+  return result;
 }
 
 bool
 nsNativeThemeWin::ClassicGetWidgetPadding(nsDeviceContext* aContext,
                                    nsIFrame* aFrame,
                                    uint8_t aWidgetType,
-                                   nsIntMargin* aResult)
+                                   LayoutDeviceIntMargin* aResult)
 {
   switch (aWidgetType) {
     case NS_THEME_MENUITEM:
@@ -3189,6 +3268,7 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(nsIFrame* aFrame, uint8_t
     case NS_THEME_SCROLLBARTHUMB_HORIZONTAL:     
     case NS_THEME_SCROLLBAR_VERTICAL:
     case NS_THEME_SCROLLBAR_HORIZONTAL:      
+    case NS_THEME_SCROLLCORNER:
     case NS_THEME_SCALE_HORIZONTAL:
     case NS_THEME_SCALE_VERTICAL:
     case NS_THEME_SCALETHUMB_HORIZONTAL:
@@ -3710,6 +3790,9 @@ RENDER_AGAIN:
 
       break;
     }
+    case NS_THEME_SCROLLCORNER: {
+      ::FillRect(hdc, &widgetRect, (HBRUSH) (COLOR_SCROLLBAR + 1));
+    }
     // Draw scale track background
     case NS_THEME_RANGE:
     case NS_THEME_SCALE_VERTICAL:
@@ -3991,6 +4074,7 @@ nsNativeThemeWin::GetWidgetNativeDrawingFlags(uint8_t aWidgetType)
     case NS_THEME_SCROLLBARTHUMB_HORIZONTAL:
     case NS_THEME_SCROLLBAR_VERTICAL:
     case NS_THEME_SCROLLBAR_HORIZONTAL:
+    case NS_THEME_SCROLLCORNER:
     case NS_THEME_SCALE_HORIZONTAL:
     case NS_THEME_SCALE_VERTICAL:
     case NS_THEME_SCALETHUMB_HORIZONTAL:
@@ -4040,6 +4124,261 @@ nsNativeThemeWin::GetWidgetNativeDrawingFlags(uint8_t aWidgetType)
     gfxWindowsNativeDrawing::CANNOT_DRAW_TO_COLOR_ALPHA |
     gfxWindowsNativeDrawing::CANNOT_AXIS_ALIGNED_SCALE |
     gfxWindowsNativeDrawing::CANNOT_COMPLEX_TRANSFORM;
+}
+
+static COLORREF
+ToColorRef(nscolor aColor)
+{
+  return RGB(NS_GET_R(aColor), NS_GET_G(aColor), NS_GET_B(aColor));
+}
+
+static nscolor
+GetOpaqueBackgroundColor(ComputedStyle* aStyle)
+{
+  nscolor color = aStyle->StyleBackground()->BackgroundColor(aStyle);
+  if (NS_GET_A(color) == 255) {
+    return color;
+  }
+  // Compose white background with the background color.
+  return NS_ComposeColors(NS_RGB(255, 255, 255), color);
+}
+
+static nscolor
+GetScrollbarFaceColor(ComputedStyle* aStyle)
+{
+  StyleComplexColor complexColor =
+    aStyle->StyleUserInterface()->mScrollbarFaceColor;
+  if (complexColor.IsAuto()) {
+    return GetScrollbarFaceColorForAuto();
+  }
+  nscolor color = complexColor.CalcColor(aStyle);
+  if (NS_GET_A(color) == 255) {
+    return color;
+  }
+  nscolor bgColor = GetOpaqueBackgroundColor(aStyle);
+  return NS_ComposeColors(bgColor, color);
+}
+
+static nscolor
+GetScrollbarTrackColor(ComputedStyle* aStyle)
+{
+  StyleComplexColor complexColor =
+    aStyle->StyleUserInterface()->mScrollbarTrackColor;
+  nscolor color;
+  if (complexColor.IsAuto()) {
+    color = GetScrollbarTrackColorForAuto(aStyle);
+  } else {
+    color = complexColor.CalcColor(aStyle);
+  }
+  if (NS_GET_A(color) == 255) {
+    return color;
+  }
+  nscolor bgColor = GetOpaqueBackgroundColor(aStyle);
+  return NS_ComposeColors(bgColor, color);
+}
+
+static float
+ComputeColorComponentLuminance(uint8_t aComponent)
+{
+  float v = float(aComponent) / 255.0f;
+  if (v <= 0.03928f) {
+    return v / 12.92f;
+  }
+  return std::pow((v + 0.055f) / 1.055f, 2.4f);
+}
+
+static constexpr float
+ComputeRelativeLuminanceFromComponents(float aR, float aG, float aB)
+{
+  return 0.2126f * aR + 0.7152f * aG + 0.0722f * aB;
+}
+
+// This function is written according to the algorithm defined in
+// https://www.w3.org/TR/WCAG20/#relativeluminancedef
+static float
+ComputeRelativeLuminance(nscolor aColor)
+{
+  float r = ComputeColorComponentLuminance(NS_GET_R(aColor));
+  float g = ComputeColorComponentLuminance(NS_GET_G(aColor));
+  float b = ComputeColorComponentLuminance(NS_GET_B(aColor));
+  return ComputeRelativeLuminanceFromComponents(r, g, b);
+}
+
+// Inverse function of ComputeColorComponentLuminance.
+static uint8_t
+DecomputeColorComponentLuminance(float aComponent)
+{
+  if (aComponent <= 0.03928f / 12.92f) {
+    aComponent *= 12.92f;
+  } else {
+    aComponent = std::pow(aComponent, 1.0f / 2.4f) * 1.055f - 0.055f;
+  }
+  return ClampColor(aComponent * 255.0f);
+}
+
+// Adjust the luminance of the color to the given value.
+static nscolor
+AdjustColorLuminance(nscolor aColor, float aLuminance)
+{
+  float r = ComputeColorComponentLuminance(NS_GET_R(aColor));
+  float g = ComputeColorComponentLuminance(NS_GET_G(aColor));
+  float b = ComputeColorComponentLuminance(NS_GET_B(aColor));
+  float luminance = ComputeRelativeLuminanceFromComponents(r, g, b);
+  float factor = aLuminance / luminance;
+  uint8_t r1 = DecomputeColorComponentLuminance(r * factor);
+  uint8_t g1 = DecomputeColorComponentLuminance(g * factor);
+  uint8_t b1 = DecomputeColorComponentLuminance(b * factor);
+  return NS_RGB(r1, g1, b1);
+}
+
+static nscolor
+GetScrollbarArrowColor(nscolor aTrackColor)
+{
+  // In Windows 10 scrollbar, there are several gray colors used:
+  //
+  // State  | Background (lum) | Arrow   | Contrast
+  // -------+------------------+---------+---------
+  // Normal | Gray 240 (87.1%) | Gray 96 |     5.5
+  // Hover  | Gray 218 (70.1%) | Black   |    15.0
+  // Active | Gray 96  (11.7%) | White   |     6.3
+  //
+  // Contrast value is computed based on the definition in
+  // https://www.w3.org/TR/WCAG20/#contrast-ratiodef
+  //
+  // This function is written based on these values.
+
+  float luminance = ComputeRelativeLuminance(aTrackColor);
+  // Color with luminance larger than 0.72 has contrast ratio over 4.6
+  // to color with luminance of gray 96, so this value is chosen for
+  // this range. It is the luminance of gray 221.
+  if (luminance >= 0.72) {
+    // ComputeRelativeLuminanceFromComponents(96). That function cannot
+    // be constexpr because of std::pow.
+    const float GRAY96_LUMINANCE = 0.117f;
+    return AdjustColorLuminance(aTrackColor, GRAY96_LUMINANCE);
+  }
+  // The contrast ratio of a color to black equals that to white when its
+  // luminance is around 0.18, with a contrast ratio ~4.6 to both sides,
+  // thus the value below. It's the lumanince of gray 118.
+  if (luminance >= 0.18) {
+    return NS_RGB(0, 0, 0);
+  }
+  return NS_RGB(255, 255, 255);
+}
+
+// This tries to draw a Windows 10 style scrollbar with given colors.
+nsresult
+nsNativeThemeWin::DrawCustomScrollbarPart(gfxContext* aContext,
+                                          nsIFrame* aFrame,
+                                          ComputedStyle* aStyle,
+                                          uint8_t aWidgetType,
+                                          const nsRect& aRect,
+                                          const nsRect& aClipRect)
+{
+  MOZ_ASSERT(!aStyle->StyleUserInterface()->mScrollbarFaceColor.IsAuto() ||
+             !aStyle->StyleUserInterface()->mScrollbarTrackColor.IsAuto());
+
+  gfxRect tr(aRect.X(), aRect.Y(), aRect.Width(), aRect.Height()),
+          dr(aClipRect.X(), aClipRect.Y(),
+             aClipRect.Width(), aClipRect.Height());
+
+  nscolor trackColor = GetScrollbarTrackColor(aStyle);
+  HBRUSH dcBrush = (HBRUSH) GetStockObject(DC_BRUSH);
+
+  gfxFloat p2a = gfxFloat(aFrame->PresContext()->AppUnitsPerDevPixel());
+  tr.Scale(1.0 / p2a);
+  dr.Scale(1.0 / p2a);
+
+  RefPtr<gfxContext> ctx = aContext;
+
+  uint32_t flags = GetWidgetNativeDrawingFlags(aWidgetType);
+  gfxWindowsNativeDrawing nativeDrawing(ctx, dr, flags);
+
+  do {
+    HDC hdc = nativeDrawing.BeginNativeDrawing();
+    if (!hdc) {
+      return NS_ERROR_FAILURE;
+    }
+
+    RECT widgetRect;
+    nativeDrawing.TransformToNativeRect(tr, widgetRect);
+    ::SetDCBrushColor(hdc, ToColorRef(trackColor));
+    ::SelectObject(hdc, dcBrush);
+    ::FillRect(hdc, &widgetRect, dcBrush);
+
+    switch (aWidgetType) {
+      case NS_THEME_SCROLLBARTHUMB_VERTICAL:
+      case NS_THEME_SCROLLBARTHUMB_HORIZONTAL: {
+        // Scrollbar thumb is two CSS pixels thinner than the track.
+        gfxRect tr2 = tr;
+        gfxFloat dev2css = round(AppUnitsPerCSSPixel() / p2a);
+        if (aWidgetType == NS_THEME_SCROLLBARTHUMB_VERTICAL) {
+          tr2.Deflate(dev2css, 0);
+        } else {
+          tr2.Deflate(0, dev2css);
+        }
+        nativeDrawing.TransformToNativeRect(tr2, widgetRect);
+        nscolor faceColor = GetScrollbarFaceColor(aStyle);
+        ::SetDCBrushColor(hdc, ToColorRef(faceColor));
+        ::FillRect(hdc, &widgetRect, dcBrush);
+        break;
+      }
+      case NS_THEME_SCROLLBARBUTTON_UP:
+      case NS_THEME_SCROLLBARBUTTON_DOWN:
+      case NS_THEME_SCROLLBARBUTTON_LEFT:
+      case NS_THEME_SCROLLBARBUTTON_RIGHT: {
+        // kPath is the path of scrollbar up arrow on Windows 10
+        // in a 17x17 area.
+        const LONG kSize = 17;
+        const POINT kPath[] = {
+          { 5, 9 }, { 8, 6 }, { 11, 9 }, { 11, 11 }, { 8, 8 }, { 5, 11 },
+        };
+        const size_t kCount = ArrayLength(kPath);
+        // Calculate necessary parameters for positioning the arrow.
+        LONG width = widgetRect.right - widgetRect.left;
+        LONG height = widgetRect.bottom - widgetRect.top;
+        LONG size = std::min(width, height);
+        LONG left = (width - size) / 2 + widgetRect.left;
+        LONG top = (height - size) / 2 + widgetRect.top;
+        float unit = float(size) / kSize;
+        POINT path[kCount];
+        // Flip the path for different direction, then resize and align
+        // it to the middle of the area.
+        for (size_t i = 0; i < kCount; i++) {
+          if (aWidgetType == NS_THEME_SCROLLBARBUTTON_UP) {
+            path[i] = kPath[i];
+          } else if (aWidgetType == NS_THEME_SCROLLBARBUTTON_DOWN) {
+            path[i].x = kPath[i].x;
+            path[i].y = kSize - kPath[i].y;
+          } else if (aWidgetType == NS_THEME_SCROLLBARBUTTON_LEFT) {
+            path[i].x = kPath[i].y;
+            path[i].y = kPath[i].x;
+          } else {
+            path[i].x = kSize - kPath[i].y;
+            path[i].y = kPath[i].x;
+          }
+          path[i].x = left + (LONG) round(unit * path[i].x);
+          path[i].y = top + (LONG) round(unit * path[i].y);
+        }
+        // Paint the arrow.
+        COLORREF arrowColor = ToColorRef(GetScrollbarArrowColor(trackColor));
+        // XXX Somehow we need to paint with both pen and brush to get
+        //     the desired shape. Can we do so only with brush?
+        ::SetDCPenColor(hdc, arrowColor);
+        ::SetDCBrushColor(hdc, arrowColor);
+        ::SelectObject(hdc, GetStockObject(DC_PEN));
+        ::Polygon(hdc, path, kCount);
+        break;
+      }
+      default:
+        break;
+    }
+
+    nativeDrawing.EndNativeDrawing();
+  } while (nativeDrawing.ShouldRenderAgain());
+
+  nativeDrawing.PaintToContext();
+  return NS_OK;
 }
 
 ///////////////////////////////////////////

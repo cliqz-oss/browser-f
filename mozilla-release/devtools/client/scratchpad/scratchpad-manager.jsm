@@ -14,6 +14,8 @@ const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {}
 const Services = require("Services");
 const Telemetry = require("devtools/client/shared/telemetry");
 
+const TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT = "DEVTOOLS_SCRATCHPAD_WINDOW_OPENED_COUNT";
+
 /**
  * The ScratchpadManager object opens new Scratchpad windows and manages the state
  * of open scratchpads for session restore. There's only one ScratchpadManager in
@@ -52,9 +54,9 @@ this.ScratchpadManager = {
       return [];
     }
 
-    let wins = [];
+    const wins = [];
     aSession.forEach(function(state) {
-      let win = this.openScratchpad(state);
+      const win = this.openScratchpad(state);
       wins.push(win);
     }, this);
 
@@ -68,9 +70,9 @@ this.ScratchpadManager = {
     this._scratchpads = [];
 
     function clone(src) {
-      let dest = {};
+      const dest = {};
 
-      for (let key in src) {
+      for (const key in src) {
         if (src.hasOwnProperty(key)) {
           dest[key] = src[key];
         }
@@ -85,9 +87,9 @@ this.ScratchpadManager = {
     // such objects are not primitive-values-only anymore so they
     // can leak.
 
-    let enumerator = Services.wm.getEnumerator("devtools:scratchpad");
+    const enumerator = Services.wm.getEnumerator("devtools:scratchpad");
     while (enumerator.hasMoreElements()) {
-      let win = enumerator.getNext();
+      const win = enumerator.getNext();
       if (!win.closed && win.Scratchpad.initialized) {
         this._scratchpads.push(clone(win.Scratchpad.getState()));
       }
@@ -105,7 +107,7 @@ this.ScratchpadManager = {
    *         The opened scratchpad window.
    */
   openScratchpad: function SPM_openScratchpad(aState) {
-    let params = Cc["@mozilla.org/embedcomp/dialogparam;1"]
+    const params = Cc["@mozilla.org/embedcomp/dialogparam;1"]
                  .createInstance(Ci.nsIDialogParamBlock);
 
     params.SetNumberStrings(2);
@@ -119,14 +121,10 @@ this.ScratchpadManager = {
       params.SetString(1, JSON.stringify(aState));
     }
 
-    let win = Services.ww.openWindow(null, SCRATCHPAD_WINDOW_URL, "_blank",
+    const win = Services.ww.openWindow(null, SCRATCHPAD_WINDOW_URL, "_blank",
                                      SCRATCHPAD_WINDOW_FEATURES, params);
 
-    this._telemetry.toolOpened("scratchpad-window");
-    let onClose = () => {
-      this._telemetry.toolClosed("scratchpad-window");
-    };
-    win.addEventListener("unload", onClose);
+    this._telemetry.getHistogramById(TELEMETRY_SCRATCHPAD_WIN_OPEN_COUNT).add(true);
 
     // Only add the shutdown observer if we've opened a scratchpad window.
     ShutdownObserver.init();

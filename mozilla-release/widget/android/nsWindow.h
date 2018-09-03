@@ -229,8 +229,7 @@ public:
     virtual void ConstrainPosition(bool aAllowSlop,
                                    int32_t *aX,
                                    int32_t *aY) override;
-    virtual void Move(double aX,
-                      double aY) override;
+    virtual void Move(double aX, double aY) override;
     virtual void Resize(double aWidth,
                         double aHeight,
                         bool   aRepaint) override;
@@ -341,7 +340,7 @@ protected:
     static void LogWindow(nsWindow *win, int index, int indent);
 
 private:
-    void CreateLayerManager(int aCompositorWidth, int aCompositorHeight);
+    void CreateLayerManager();
     void RedrawAll();
 
     mozilla::layers::LayersId GetRootLayerId() const;

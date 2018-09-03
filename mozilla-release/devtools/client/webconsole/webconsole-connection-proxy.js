@@ -119,10 +119,10 @@ WebConsoleConnectionProxy.prototype = {
 
     this._connectDefer = defer();
 
-    let timeout = Services.prefs.getIntPref(PREF_CONNECTION_TIMEOUT);
+    const timeout = Services.prefs.getIntPref(PREF_CONNECTION_TIMEOUT);
     this._connectTimer = setTimeout(this._connectionTimeout, timeout);
 
-    let connPromise = this._connectDefer.promise;
+    const connPromise = this._connectDefer.promise;
     connPromise.then(() => {
       clearTimeout(this._connectTimer);
       this._connectTimer = null;
@@ -131,7 +131,7 @@ WebConsoleConnectionProxy.prototype = {
       this._connectTimer = null;
     });
 
-    let client = this.client = this.target.client;
+    const client = this.client = this.target.client;
 
     client.addListener("logMessage", this._onLogMessage);
     client.addListener("pageError", this._onPageError);
@@ -145,8 +145,8 @@ WebConsoleConnectionProxy.prototype = {
     this.target.on("navigate", this._onTabNavigated);
 
     this._consoleActor = this.target.form.consoleActor;
-    if (this.target.isTabActor) {
-      let tab = this.target.form;
+    if (this.target.isBrowsingContext) {
+      const tab = this.target.form;
       this.webConsoleFrame.onLocationChange(tab.url, tab.title);
     }
     this._attachConsole();
@@ -159,7 +159,7 @@ WebConsoleConnectionProxy.prototype = {
    * @private
    */
   _connectionTimeout: function() {
-    let error = {
+    const error = {
       error: "timeout",
       message: l10n.getStr("connectionTimeout"),
     };
@@ -172,15 +172,21 @@ WebConsoleConnectionProxy.prototype = {
    * @private
    */
   _attachConsole: function() {
-    let listeners = ["PageError", "ConsoleAPI", "NetworkActivity",
-                     "FileActivity"];
+    const listeners = ["PageError", "ConsoleAPI", "NetworkActivity",
+                       "FileActivity"];
     // Enable the forwarding of console messages to the parent process
     // when we open the Browser Console or Toolbox.
     if (this.target.chrome && !this.target.isAddon) {
       listeners.push("ContentProcessMessages");
     }
-    this.client.attachConsole(this._consoleActor, listeners,
-                              this._onAttachConsole);
+    this.client.attachConsole(this._consoleActor, listeners)
+      .then(this._onAttachConsole, response => {
+        if (response.error) {
+          console.error("attachConsole failed: " + response.error + " " +
+                        response.message);
+          this._connectDefer.reject(response);
+        }
+      });
   },
 
   /**
@@ -193,14 +199,7 @@ WebConsoleConnectionProxy.prototype = {
    *        The WebConsoleClient instance for the attached console, for the
    *        specific tab we work with.
    */
-  _onAttachConsole: function(response, webConsoleClient) {
-    if (response.error) {
-      console.error("attachConsole failed: " + response.error + " " +
-                    response.message);
-      this._connectDefer.reject(response);
-      return;
-    }
-
+  _onAttachConsole: function([response, webConsoleClient]) {
     this.webConsoleClient = webConsoleClient;
     this._hasNativeConsoleAPI = response.nativeConsoleAPI;
 
@@ -218,7 +217,7 @@ WebConsoleConnectionProxy.prototype = {
     this.webConsoleClient.on("networkEvent", this._onNetworkEvent);
     this.webConsoleClient.on("networkEventUpdate", this._onNetworkEventUpdate);
 
-    let msgs = ["PageError", "ConsoleAPI"];
+    const msgs = ["PageError", "ConsoleAPI"];
     this.webConsoleClient.getCachedMessages(msgs, this._onCachedMessages);
 
     this.webConsoleFrame._onUpdateListeners();
@@ -228,25 +227,25 @@ WebConsoleConnectionProxy.prototype = {
    * Dispatch a message add on the new frontend and emit an event for tests.
    */
   dispatchMessageAdd: function(packet) {
-    this.webConsoleFrame.newConsoleOutput.dispatchMessageAdd(packet);
+    this.webConsoleFrame.consoleOutput.dispatchMessageAdd(packet);
   },
 
   /**
    * Batched dispatch of messages.
    */
   dispatchMessagesAdd: function(packets) {
-    this.webConsoleFrame.newConsoleOutput.dispatchMessagesAdd(packets);
+    this.webConsoleFrame.consoleOutput.dispatchMessagesAdd(packets);
   },
 
   /**
    * Dispatch a message event on the new frontend and emit an event for tests.
    */
   dispatchMessageUpdate: function(networkInfo, response) {
-    this.webConsoleFrame.newConsoleOutput.dispatchMessageUpdate(networkInfo, response);
+    this.webConsoleFrame.consoleOutput.dispatchMessageUpdate(networkInfo, response);
   },
 
   dispatchRequestUpdate: function(id, data) {
-    this.webConsoleFrame.newConsoleOutput.dispatchRequestUpdate(id, data);
+    this.webConsoleFrame.consoleOutput.dispatchRequestUpdate(id, data);
   },
 
   /**
@@ -270,7 +269,7 @@ WebConsoleConnectionProxy.prototype = {
       console.error("Web Console getCachedMessages error: invalid state.");
     }
 
-    let messages =
+    const messages =
       response.messages.concat(...this.webConsoleClient.getNetworkEvents());
     messages.sort((a, b) => a.timeStamp - b.timeStamp);
 
@@ -387,7 +386,7 @@ WebConsoleConnectionProxy.prototype = {
    */
   _onLastPrivateContextExited: function(type, packet) {
     if (this.webConsoleFrame && packet.from == this._consoleActor) {
-      this.webConsoleFrame.jsterm.clearPrivateMessages();
+      this.webConsoleFrame.clearPrivateMessages();
     }
   },
 

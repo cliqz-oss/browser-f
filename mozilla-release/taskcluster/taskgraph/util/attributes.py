@@ -27,6 +27,7 @@ RELEASE_PROMOTION_PROJECTS = {
     'jamun',
     'maple',
     'try',
+    'try-comm-central',
 } | RELEASE_PROJECTS
 
 _OPTIONAL_ATTRIBUTES = (
@@ -36,6 +37,7 @@ _OPTIONAL_ATTRIBUTES = (
     'signed',
     'shipping_phase',
     'shipping_product',
+    'stub-installer',
 )
 
 

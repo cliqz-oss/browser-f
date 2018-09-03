@@ -23,13 +23,13 @@ import sys
 
 sys.path.insert(1, os.path.dirname(os.path.dirname(sys.path[0])))
 from mozharness.base.vcs.vcsbase import MercurialScript
-from mozharness.mozilla.buildbot import BuildbotMixin
+from mozharness.mozilla.automation import AutomationMixin
 from mozharness.mozilla.repo_manipulation import MercurialRepoManipulationMixin
 from mozharness.mozilla.release import get_previous_version
 
 
 # UpdatesBumper {{{1
-class UpdatesBumper(MercurialScript, BuildbotMixin,
+class UpdatesBumper(MercurialScript, AutomationMixin,
                     MercurialRepoManipulationMixin):
     config_options = [
         [['--hg-user', ], {
@@ -76,36 +76,8 @@ class UpdatesBumper(MercurialScript, BuildbotMixin,
                 'push',
                 'submit-to-balrog',
             ],
-            config={
-                'buildbot_json_path': 'buildprops.json',
-                'credentials_file': 'oauth.txt',
-            },
             require_config_file=require_config_file
         )
-
-    def _pre_config_lock(self, rw_config):
-        super(UpdatesBumper, self)._pre_config_lock(rw_config)
-        # override properties from buildbot properties here as defined by
-        # taskcluster properties
-        self.read_buildbot_config()
-        if not self.buildbot_config:
-            self.warning("Skipping buildbot properties overrides")
-            return
-        # TODO: version and appVersion should come from repo
-        props = self.buildbot_config["properties"]
-        for prop in ['product', 'version', 'build_number', 'revision',
-                     'appVersion', 'balrog_api_root', "channels",
-                     'generate_bz2_blob', 'updater_platform']:
-            if props.get(prop):
-                self.info("Overriding %s with %s" % (prop, props[prop]))
-                self.config[prop] = props.get(prop)
-
-        partials = [v.strip() for v in props["partial_versions"].split(",")]
-        self.config["partial_versions"] = [v.split("build") for v in partials]
-        self.config["platforms"] = [p.strip() for p in
-                                    props["platforms"].split(",")]
-        self.config["channels"] = [c.strip() for c in
-                                   props["channels"].split(",")]
 
     def query_abs_dirs(self):
         if self.abs_dirs:

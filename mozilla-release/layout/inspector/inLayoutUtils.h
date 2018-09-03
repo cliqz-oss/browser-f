@@ -8,8 +8,6 @@
 #define __inLayoutUtils_h__
 
 class nsIDocument;
-class nsIDOMDocument;
-class nsIDOMNode;
 class nsINode;
 
 namespace mozilla {
@@ -24,7 +22,7 @@ class inLayoutUtils
 public:
   static mozilla::EventStateManager* GetEventStateManagerFor(
       mozilla::dom::Element& aElement);
-  static nsIDOMDocument* GetSubDocumentFor(nsIDOMNode* aNode);
+  static nsIDocument* GetSubDocumentFor(nsINode* aNode);
   static nsINode* GetContainerFor(const nsIDocument& aDoc);
 };
 

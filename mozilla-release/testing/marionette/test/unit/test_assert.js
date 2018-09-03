@@ -18,36 +18,11 @@ const {
 
 add_test(function test_acyclic() {
   assert.acyclic({});
-  assert.acyclic(new Object());
-  assert.acyclic([]);
-  assert.acyclic(new Array());
 
-  // object
   Assert.throws(() => {
     let obj = {};
     obj.reference = obj;
     assert.acyclic(obj);
-  }, JavaScriptError);
-
-  // array
-  Assert.throws(() => {
-    let arr = [];
-    arr.push(arr);
-    assert.acyclic(arr);
-  }, JavaScriptError);
-
-  // array in object
-  Assert.throws(() => {
-    let arr = [];
-    arr.push(arr);
-    assert.acyclic({arr});
-  }, JavaScriptError);
-
-  // object in array
-  Assert.throws(() => {
-    let obj = {};
-    obj.reference = obj;
-    assert.acyclic([obj]);
   }, JavaScriptError);
 
   // custom message
@@ -224,8 +199,8 @@ add_test(function test_array() {
 
 add_test(function test_that() {
   equal(1, assert.that(n => n + 1)(1));
-  Assert.throws(() => assert.that(() => false)());
-  Assert.throws(() => assert.that(val => val)(false));
+  Assert.throws(() => assert.that(() => false)(), InvalidArgumentError);
+  Assert.throws(() => assert.that(val => val)(false), InvalidArgumentError);
   Assert.throws(() => assert.that(val => val, "foo", SessionNotCreatedError)(false),
       SessionNotCreatedError);
 

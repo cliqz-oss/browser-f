@@ -16,14 +16,15 @@ use time::precise_time_ns;
 use {AlphaType, BorderDetails, BorderDisplayItem, BorderRadius, BorderWidths, BoxShadowClipMode};
 use {BoxShadowDisplayItem, ClipAndScrollInfo, ClipChainId, ClipChainItem, ClipDisplayItem, ClipId};
 use {ColorF, ComplexClipRegion, DisplayItem, ExtendMode, ExternalScrollId, FilterOp};
-use {FontInstanceKey, GlyphInstance, GlyphOptions, GlyphRasterSpace, Gradient, GradientDisplayItem, GradientStop};
-use {IframeDisplayItem, ImageDisplayItem, ImageKey, ImageMask, ImageRendering};
-use {LayoutPoint, LayoutPrimitiveInfo, LayoutRect, LayoutSize, LayoutTransform, LayoutVector2D};
-use {LineDisplayItem, LineOrientation, LineStyle, MixBlendMode, PipelineId, PropertyBinding};
-use {PushStackingContextDisplayItem, RadialGradient, RadialGradientDisplayItem};
-use {RectangleDisplayItem, ScrollFrameDisplayItem, ScrollPolicy, ScrollSensitivity, Shadow};
-use {SpecificDisplayItem, StackingContext, StickyFrameDisplayItem, StickyOffsetBounds};
-use {TextDisplayItem, TransformStyle, YuvColorSpace, YuvData, YuvImageDisplayItem};
+use {FontInstanceKey, GlyphInstance, GlyphOptions, GlyphRasterSpace, Gradient};
+use {GradientDisplayItem, GradientStop, IframeDisplayItem, ImageDisplayItem, ImageKey, ImageMask};
+use {ImageRendering, LayoutPoint, LayoutPrimitiveInfo, LayoutRect, LayoutSize, LayoutTransform};
+use {LayoutVector2D, LineDisplayItem, LineOrientation, LineStyle, MixBlendMode, PipelineId};
+use {PropertyBinding, PushReferenceFrameDisplayListItem, PushStackingContextDisplayItem};
+use {RadialGradient, RadialGradientDisplayItem, RectangleDisplayItem, ReferenceFrame};
+use {ScrollFrameDisplayItem, ScrollSensitivity, Shadow, SpecificDisplayItem, StackingContext};
+use {StickyFrameDisplayItem, StickyOffsetBounds, TextDisplayItem, TransformStyle, YuvColorSpace};
+use {YuvData, YuvImageDisplayItem};
 
 // We don't want to push a long text-run. If a text-run is too long, split it into several parts.
 // This needs to be set to (renderer::MAX_VERTEX_TEXTURE_WIDTH - VECS_PER_PRIM_HEADER - VECS_PER_TEXT_RUN) * 2
@@ -236,35 +237,46 @@ impl<'a> BuiltDisplayListIter<'a> {
         self.cur_clip_chain_items = ItemRange::default();
 
         loop {
-            if self.data.is_empty() {
-                return None;
+            self.next_raw()?;
+            if let SetGradientStops = self.cur_item.item {
+                // SetGradientStops is a dummy item that most consumers should ignore
+                continue;
             }
-
-            {
-                let reader = bincode::IoReader::new(UnsafeReader::new(&mut self.data));
-                bincode::deserialize_in_place(reader, &mut self.cur_item)
-                    .expect("MEH: malicious process?");
-            }
-
-            match self.cur_item.item {
-                SetGradientStops => {
-                    self.cur_stops = skip_slice::<GradientStop>(self.list, &mut self.data).0;
-
-                    // This is a dummy item, skip over it
-                    continue;
-                }
-                ClipChain(_) => {
-                    self.cur_clip_chain_items = skip_slice::<ClipId>(self.list, &mut self.data).0;
-                }
-                Clip(_) | ScrollFrame(_) => {
-                    self.cur_complex_clip = self.skip_slice::<ComplexClipRegion>()
-                }
-                Text(_) => self.cur_glyphs = self.skip_slice::<GlyphInstance>().0,
-                PushStackingContext(_) => self.cur_filters = self.skip_slice::<FilterOp>().0,
-                _ => { /* do nothing */ }
-            }
-
             break;
+        }
+
+        Some(self.as_ref())
+    }
+
+    /// Gets the next display item, even if it's a dummy. Also doesn't handle peeking
+    /// and may leave irrelevant ranges live (so a Clip may have GradientStops if
+    /// for some reason you ask).
+    pub fn next_raw<'b>(&'b mut self) -> Option<DisplayItemRef<'a, 'b>> {
+        use SpecificDisplayItem::*;
+
+        if self.data.is_empty() {
+            return None;
+        }
+
+        {
+            let reader = bincode::IoReader::new(UnsafeReader::new(&mut self.data));
+            bincode::deserialize_in_place(reader, &mut self.cur_item)
+                .expect("MEH: malicious process?");
+        }
+
+        match self.cur_item.item {
+            SetGradientStops => {
+                self.cur_stops = skip_slice::<GradientStop>(self.list, &mut self.data).0;
+            }
+            ClipChain(_) => {
+                self.cur_clip_chain_items = skip_slice::<ClipId>(self.list, &mut self.data).0;
+            }
+            Clip(_) | ScrollFrame(_) => {
+                self.cur_complex_clip = self.skip_slice::<ComplexClipRegion>()
+            }
+            Text(_) => self.cur_glyphs = self.skip_slice::<GlyphInstance>().0,
+            PushStackingContext(_) => self.cur_filters = self.skip_slice::<FilterOp>().0,
+            _ => { /* do nothing */ }
         }
 
         Some(self.as_ref())
@@ -434,7 +446,7 @@ impl Serialize for BuiltDisplayList {
 
         let mut seq = serializer.serialize_seq(None)?;
         let mut traversal = self.iter();
-        while let Some(item) = traversal.next() {
+        while let Some(item) = traversal.next_raw() {
             let display_item = item.display_item();
             let serial_di = GenericDisplayItem {
                 item: match display_item.item {
@@ -470,6 +482,8 @@ impl Serialize for BuiltDisplayList {
                         item.iter.list.get(item.iter.cur_filters).collect()
                     ),
                     SpecificDisplayItem::PopStackingContext => PopStackingContext,
+                    SpecificDisplayItem::PushReferenceFrame(v) => PushReferenceFrame(v),
+                    SpecificDisplayItem::PopReferenceFrame => PopReferenceFrame,
                     SpecificDisplayItem::SetGradientStops => SetGradientStops(
                         item.iter.list.get(item.iter.cur_stops).collect()
                     ),
@@ -544,13 +558,15 @@ impl<'de> Deserialize<'de> for BuiltDisplayList {
                         SpecificDisplayItem::Iframe(specific_item)
                     }
                     PushStackingContext(specific_item, filters) => {
-                        if specific_item.stacking_context.reference_frame_id.is_some() {
-                            total_clip_ids += 1;
-                        }
                         DisplayListBuilder::push_iter_impl(&mut temp, filters);
                         SpecificDisplayItem::PushStackingContext(specific_item)
                     },
                     PopStackingContext => SpecificDisplayItem::PopStackingContext,
+                    PushReferenceFrame(specific_item) => {
+                        total_clip_ids += 1;
+                        SpecificDisplayItem::PushReferenceFrame(specific_item)
+                    }
+                    PopReferenceFrame => SpecificDisplayItem::PopReferenceFrame,
                     SetGradientStops(stops) => {
                         DisplayListBuilder::push_iter_impl(&mut temp, stops);
                         SpecificDisplayItem::SetGradientStops
@@ -886,7 +902,7 @@ impl DisplayListBuilder {
 
         {
             let mut iter = BuiltDisplayListIter::new(&temp);
-            while let Some(item) = iter.next() {
+            while let Some(item) = iter.next_raw() {
                 println!("{:?}", item.display_item());
             }
         }
@@ -1266,32 +1282,41 @@ impl DisplayListBuilder {
         self.push_item(item, info);
     }
 
+    pub fn push_reference_frame(
+        &mut self,
+        info: &LayoutPrimitiveInfo,
+        transform: Option<PropertyBinding<LayoutTransform>>,
+        perspective: Option<LayoutTransform>,
+    ) -> ClipId {
+        let id = self.generate_clip_id();
+        let item = SpecificDisplayItem::PushReferenceFrame(PushReferenceFrameDisplayListItem {
+            reference_frame: ReferenceFrame {
+                transform,
+                perspective,
+                id,
+            },
+        });
+        self.push_item(item, info);
+        id
+    }
+
+    pub fn pop_reference_frame(&mut self) {
+        self.push_new_empty_item(SpecificDisplayItem::PopReferenceFrame);
+    }
+
     pub fn push_stacking_context(
         &mut self,
         info: &LayoutPrimitiveInfo,
         clip_node_id: Option<ClipId>,
-        scroll_policy: ScrollPolicy,
-        transform: Option<PropertyBinding<LayoutTransform>>,
         transform_style: TransformStyle,
-        perspective: Option<LayoutTransform>,
         mix_blend_mode: MixBlendMode,
         filters: Vec<FilterOp>,
         glyph_raster_space: GlyphRasterSpace,
-    ) -> Option<ClipId> {
-        let reference_frame_id = if transform.is_some() || perspective.is_some() {
-            Some(self.generate_clip_id())
-        } else {
-            None
-        };
-
+    ) {
         let item = SpecificDisplayItem::PushStackingContext(PushStackingContextDisplayItem {
             stacking_context: StackingContext {
-                scroll_policy,
-                transform,
                 transform_style,
-                perspective,
                 mix_blend_mode,
-                reference_frame_id,
                 clip_node_id,
                 glyph_raster_space,
             },
@@ -1299,8 +1324,6 @@ impl DisplayListBuilder {
 
         self.push_item(item, info);
         self.push_iter(&filters);
-
-        reference_frame_id
     }
 
     pub fn pop_stacking_context(&mut self) {
@@ -1482,10 +1505,16 @@ impl DisplayListBuilder {
         assert!(!self.clip_stack.is_empty());
     }
 
-    pub fn push_iframe(&mut self, info: &LayoutPrimitiveInfo, pipeline_id: PipelineId) {
+    pub fn push_iframe(
+        &mut self,
+        info: &LayoutPrimitiveInfo,
+        pipeline_id: PipelineId,
+        ignore_missing_pipeline: bool
+    ) {
         let item = SpecificDisplayItem::Iframe(IframeDisplayItem {
             clip_id: self.generate_clip_id(),
             pipeline_id,
+            ignore_missing_pipeline,
         });
         self.push_item(item, info);
     }

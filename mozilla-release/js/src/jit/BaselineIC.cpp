@@ -306,14 +306,14 @@ DoTypeUpdateFallback(JSContext* cx, BaselineFrame* frame, ICUpdatedStub* stub, H
         MOZ_ALWAYS_TRUE(structDescr->fieldIndex(id, &fieldIndex));
 
         TypeDescr* fieldDescr = &structDescr->fieldDescr(fieldIndex);
-        ReferenceTypeDescr::Type type = fieldDescr->as<ReferenceTypeDescr>().type();
-        if (type == ReferenceTypeDescr::TYPE_ANY) {
+        ReferenceType type = fieldDescr->as<ReferenceTypeDescr>().type();
+        if (type == ReferenceType::TYPE_ANY) {
             // Ignore undefined values, which are included implicitly in type
             // information for this property.
             if (value.isUndefined())
                 addType = false;
         } else {
-            MOZ_ASSERT(type == ReferenceTypeDescr::TYPE_OBJECT);
+            MOZ_ASSERT(type == ReferenceType::TYPE_OBJECT);
 
             // Ignore null values being written here. Null is included
             // implicitly in type information for this property. Note that
@@ -1376,7 +1376,7 @@ DoGetIntrinsicFallback(JSContext* cx, BaselineFrame* frame, ICGetIntrinsic_Fallb
 
     MOZ_ASSERT(op == JSOP_GETINTRINSIC);
 
-    if (!GetIntrinsicOperation(cx, pc, res))
+    if (!GetIntrinsicOperation(cx, script, pc, res))
         return false;
 
     // An intrinsic operation will always produce the same result, so only
@@ -1646,7 +1646,7 @@ ICSetProp_Fallback::Compiler::postGenerateStubCode(MacroAssembler& masm, Handle<
 {
     BailoutReturnStub kind = BailoutReturnStub::SetProp;
     void* address = code->raw() + bailoutReturnOffset_.offset();
-    cx->compartment()->jitCompartment()->initBailoutReturnAddr(address, getKey(), kind);
+    cx->realm()->jitRealm()->initBailoutReturnAddr(address, getKey(), kind);
 }
 
 //
@@ -1798,7 +1798,7 @@ GetTemplateObjectForSimd(JSContext* cx, JSFunction* target, MutableHandleObject 
     // Create a template object based on retType.
     RootedGlobalObject global(cx, cx->global());
     Rooted<SimdTypeDescr*> descr(cx, GlobalObject::getOrCreateSimdTypeDescr(cx, global, retType));
-    res.set(cx->compartment()->jitCompartment()->getSimdTemplateObjectFor(cx, descr));
+    res.set(cx->realm()->jitRealm()->getSimdTemplateObjectFor(cx, descr));
     return true;
 }
 
@@ -1863,21 +1863,6 @@ GetTemplateObjectForNative(JSContext* cx, HandleFunction target, const CallArgs&
         }
     }
 
-    if (native == js::intrinsic_StringSplitString && args.length() == 2 && args[0].isString() &&
-        args[1].isString())
-    {
-        ObjectGroup* group = ObjectGroup::callingAllocationSiteGroup(cx, JSProto_Array);
-        if (!group)
-            return false;
-        if (group->maybePreliminaryObjectsDontCheckGeneration()) {
-            *skipAttach = true;
-            return true;
-        }
-
-        res.set(NewFullyAllocatedArrayForCallingAllocationSite(cx, 0, TenuredObject));
-        return !!res;
-    }
-
     if (native == StringConstructor) {
         RootedString emptyString(cx, cx->runtime()->emptyString);
         res.set(StringObject::create(cx, emptyString, /* proto = */ nullptr, TenuredObject));
@@ -1912,13 +1897,13 @@ GetTemplateObjectForClassHook(JSContext* cx, JSNative hook, CallArgs& args,
 {
     if (hook == TypedObject::construct) {
         Rooted<TypeDescr*> descr(cx, &args.callee().as<TypeDescr>());
-        templateObject.set(TypedObject::createZeroed(cx, descr, 1, gc::TenuredHeap));
+        templateObject.set(TypedObject::createZeroed(cx, descr, gc::TenuredHeap));
         return !!templateObject;
     }
 
     if (hook == SimdTypeDescr::call && JitSupportsSimd()) {
         Rooted<SimdTypeDescr*> descr(cx, &args.callee().as<SimdTypeDescr>());
-        templateObject.set(cx->compartment()->jitCompartment()->getSimdTemplateObjectFor(cx, descr));
+        templateObject.set(cx->realm()->jitRealm()->getSimdTemplateObjectFor(cx, descr));
         return !!templateObject;
     }
 
@@ -2120,7 +2105,7 @@ TryAttachCallStub(JSContext* cx, ICCall_Fallback* stub, HandleScript script, jsb
                     fun->native(), constructing ? "yes" : "no", isSpread ? "yes" : "no");
         } else {
             JitSpew(JitSpew_BaselineIC,
-                    "  Generating Call_Scripted stub (fun=%p, %s:%zu, cons=%s, spread=%s)",
+                    "  Generating Call_Scripted stub (fun=%p, %s:%u, cons=%s, spread=%s)",
                     fun.get(), fun->nonLazyScript()->filename(), fun->nonLazyScript()->lineno(),
                     constructing ? "yes" : "no", isSpread ? "yes" : "no");
         }
@@ -2219,10 +2204,14 @@ TryAttachCallStub(JSContext* cx, ICCall_Fallback* stub, HandleScript script, jsb
 }
 
 static bool
-CopyArray(JSContext* cx, HandleArrayObject arr, MutableHandleValue result)
+CopyStringSplitArray(JSContext* cx, HandleArrayObject arr, MutableHandleValue result)
 {
-    uint32_t length = arr->length();
-    ArrayObject* nobj = NewFullyAllocatedArrayTryReuseGroup(cx, arr, length, TenuredObject);
+    MOZ_ASSERT(arr->isTenured(), "ConstStringSplit needs a tenured template object");
+
+    uint32_t length = arr->getDenseInitializedLength();
+    MOZ_ASSERT(length == arr->length(), "template object is a fully initialized array");
+
+    ArrayObject* nobj = NewFullyAllocatedArrayTryReuseGroup(cx, arr, length);
     if (!nobj)
         return false;
     nobj->initDenseElements(arr, 0, length);
@@ -2241,34 +2230,35 @@ TryAttachConstStringSplit(JSContext* cx, ICCall_Fallback* stub, HandleScript scr
 
     Value* args = vp + 2;
 
-    // String.prototype.split will not yield a constructable.
-    if (JSOp(*pc) == JSOP_NEW)
-        return true;
-
     if (!IsOptimizableConstStringSplit(callee, argc, args))
         return true;
 
-    MOZ_ASSERT(callee.isObject());
-    MOZ_ASSERT(callee.toObject().is<JSFunction>());
-
     RootedString str(cx, args[0].toString());
     RootedString sep(cx, args[1].toString());
-    RootedObject obj(cx, &res.toObject());
-    RootedValue arr(cx);
+    RootedArrayObject obj(cx, &res.toObject().as<ArrayObject>());
+    uint32_t initLength = obj->getDenseInitializedLength();
+    MOZ_ASSERT(initLength == obj->length(), "string-split result is a fully initialized array");
 
     // Copy the array before storing in stub.
-    if (!CopyArray(cx, obj.as<ArrayObject>(), &arr))
+    RootedArrayObject arrObj(cx);
+    arrObj = NewFullyAllocatedArrayTryReuseGroup(cx, obj, initLength, TenuredObject);
+    if (!arrObj)
         return false;
+    arrObj->ensureDenseInitializedLength(cx, 0, initLength);
 
     // Atomize all elements of the array.
-    RootedArrayObject arrObj(cx, &arr.toObject().as<ArrayObject>());
-    uint32_t initLength = arrObj->length();
-    for (uint32_t i = 0; i < initLength; i++) {
-        JSAtom* str = js::AtomizeString(cx, arrObj->getDenseElement(i).toString());
-        if (!str)
-            return false;
+    if (initLength > 0) {
+        // Mimic NewFullyAllocatedStringArray() and directly inform TI about
+        // the element type.
+        AddTypePropertyId(cx, arrObj, JSID_VOID, TypeSet::StringType());
 
-        arrObj->setDenseElementWithType(cx, i, StringValue(str));
+        for (uint32_t i = 0; i < initLength; i++) {
+            JSAtom* str = js::AtomizeString(cx, obj->getDenseElement(i).toString());
+            if (!str)
+                return false;
+
+            arrObj->initDenseElement(i, StringValue(str));
+        }
     }
 
     ICTypeMonitor_Fallback* typeMonitorFallback = stub->getFallbackMonitorStub(cx, script);
@@ -2360,9 +2350,7 @@ DoCallFallback(JSContext* cx, BaselineFrame* frame, ICCall_Fallback* stub_, uint
         if (!ConstructFromStack(cx, callArgs))
             return false;
         res.set(callArgs.rval());
-    } else if ((op == JSOP_EVAL || op == JSOP_STRICTEVAL) &&
-               frame->environmentChain()->global().valueIsEval(callee))
-    {
+    } else if ((op == JSOP_EVAL || op == JSOP_STRICTEVAL) && cx->global()->valueIsEval(callee)) {
         if (!DirectEval(cx, callArgs.get(0), res))
             return false;
     } else {
@@ -2401,7 +2389,7 @@ DoCallFallback(JSContext* cx, BaselineFrame* frame, ICCall_Fallback* stub_, uint
         stub->discardStubs(cx);
     canAttachStub = stub->state().canAttachStub();
 
-    if (!handled && canAttachStub) {
+    if (!handled && canAttachStub && !constructing) {
         // If 'callee' is a potential Call_ConstStringSplit, try to attach an
         // optimized ConstStringSplit stub. Note that vp[0] now holds the return value
         // instead of the callee, so we pass the callee as well.
@@ -2742,7 +2730,7 @@ ICCallStubCompiler::pushArrayArguments(MacroAssembler& masm, Address arrayVal,
     // no holes.
     Register startReg = regs.takeAny();
     Register endReg = regs.takeAny();
-    masm.extractObject(arrayVal, startReg);
+    masm.unboxObject(arrayVal, startReg);
     masm.loadPtr(Address(startReg, NativeObject::offsetOfElements()), startReg);
     masm.load32(Address(startReg, ObjectElements::offsetOfInitializedLength()), endReg);
     masm.alignJitStackBasedOnNArgs(endReg);
@@ -2890,7 +2878,7 @@ ICCall_Fallback::Compiler::postGenerateStubCode(MacroAssembler& masm, Handle<Jit
     void* address = code->raw() + bailoutReturnOffset_.offset();
     BailoutReturnStub kind = isConstructing_ ? BailoutReturnStub::New
                                              : BailoutReturnStub::Call;
-    cx->compartment()->jitCompartment()->initBailoutReturnAddr(address, getKey(), kind);
+    cx->realm()->jitRealm()->initBailoutReturnAddr(address, getKey(), kind);
 }
 
 typedef bool (*CreateThisFn)(JSContext* cx, HandleObject callee, HandleObject newTarget,
@@ -3156,8 +3144,9 @@ ICCallScriptedCompiler::generateStubCode(MacroAssembler& masm)
     return true;
 }
 
-typedef bool (*CopyArrayFn)(JSContext*, HandleArrayObject, MutableHandleValue);
-static const VMFunction CopyArrayInfo = FunctionInfo<CopyArrayFn>(CopyArray, "CopyArray");
+typedef bool (*CopyStringSplitArrayFn)(JSContext*, HandleArrayObject, MutableHandleValue);
+static const VMFunction CopyStringSplitArrayInfo =
+    FunctionInfo<CopyStringSplitArrayFn>(CopyStringSplitArray, "CopyStringSplitArray");
 
 bool
 ICCall_ConstStringSplit::Compiler::generateStubCode(MacroAssembler& masm)
@@ -3211,7 +3200,8 @@ ICCall_ConstStringSplit::Compiler::generateStubCode(MacroAssembler& masm)
         masm.loadValue(sepAddr, sepVal);
         masm.branchTestString(Assembler::NotEqual, sepVal, &failureRestoreArgc);
 
-        Register sep = masm.extractString(sepVal, ExtractTemp0);
+        Register sep = sepVal.scratchReg();
+        masm.unboxString(sepVal, sep);
         masm.branchPtr(Assembler::NotEqual, Address(ICStubReg, offsetOfExpectedSep()),
                        sep, &failureRestoreArgc);
         regs.add(sepVal);
@@ -3226,7 +3216,8 @@ ICCall_ConstStringSplit::Compiler::generateStubCode(MacroAssembler& masm)
         masm.loadValue(strAddr, strVal);
         masm.branchTestString(Assembler::NotEqual, strVal, &failureRestoreArgc);
 
-        Register str = masm.extractString(strVal, ExtractTemp0);
+        Register str = strVal.scratchReg();
+        masm.unboxString(strVal, str);
         masm.branchPtr(Assembler::NotEqual, Address(ICStubReg, offsetOfExpectedStr()),
                        str, &failureRestoreArgc);
         regs.add(strVal);
@@ -3241,7 +3232,7 @@ ICCall_ConstStringSplit::Compiler::generateStubCode(MacroAssembler& masm)
         masm.loadPtr(Address(ICStubReg, offsetOfTemplateObject()), paramReg);
         masm.push(paramReg);
 
-        if (!callVM(CopyArrayInfo, masm))
+        if (!callVM(CopyStringSplitArrayInfo, masm))
             return false;
         leaveStubFrame(masm);
         regs.add(paramReg);
@@ -3555,7 +3546,7 @@ ICCall_ScriptedApplyArray::Compiler::generateStubCode(MacroAssembler& masm)
     EmitBaselineCreateStubFrameDescriptor(masm, scratch, JitFrameLayout::Size());
 
     // Reload argc from length of array.
-    masm.extractObject(arrayVal, argcReg);
+    masm.unboxObject(arrayVal, argcReg);
     masm.loadPtr(Address(argcReg, NativeObject::offsetOfElements()), argcReg);
     masm.load32(Address(argcReg, ObjectElements::offsetOfInitializedLength()), argcReg);
 
@@ -4053,11 +4044,11 @@ ICIteratorMore_Native::Compiler::generateStubCode(MacroAssembler& masm)
                             obj, &failure);
     masm.loadObjPrivate(obj, JSObject::ITER_CLASS_NFIXED_SLOTS, nativeIterator);
 
-    // If props_cursor < props_end, load the next string and advance the cursor.
-    // Else, return MagicValue(JS_NO_ITER_VALUE).
+    // If propertyCursor_ < propertiesEnd_, load the next string and advance
+    // the cursor.  Otherwise return MagicValue(JS_NO_ITER_VALUE).
     Label iterDone;
-    Address cursorAddr(nativeIterator, offsetof(NativeIterator, props_cursor));
-    Address cursorEndAddr(nativeIterator, offsetof(NativeIterator, props_end));
+    Address cursorAddr(nativeIterator, NativeIterator::offsetOfPropertyCursor());
+    Address cursorEndAddr(nativeIterator, NativeIterator::offsetOfPropertiesEnd());
     masm.loadPtr(cursorAddr, scratch);
     masm.branchPtr(Assembler::BelowOrEqual, cursorEndAddr, scratch, &iterDone);
 

@@ -27,7 +27,13 @@ const actionTypes = {
   SIDEBAR_CLOSE: "SIDEBAR_CLOSE",
   SHOW_OBJECT_IN_SIDEBAR: "SHOW_OBJECT_IN_SIDEBAR",
   TIMESTAMPS_TOGGLE: "TIMESTAMPS_TOGGLE",
+  APPEND_NOTIFICATION: "APPEND_NOTIFICATION",
+  REMOVE_NOTIFICATION: "REMOVE_NOTIFICATION",
   SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE: "SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE",
+  APPEND_TO_HISTORY: "APPEND_TO_HISTORY",
+  CLEAR_HISTORY: "CLEAR_HISTORY",
+  HISTORY_LOADED: "HISTORY_LOADED",
+  UPDATE_HISTORY_PLACEHOLDER: "UPDATE_HISTORY_PLACEHOLDER",
 };
 
 const prefs = {
@@ -50,8 +56,13 @@ const prefs = {
       FILTER_BAR: "ui.filterbar",
       // Persist is only used by the webconsole.
       PERSIST: "devtools.webconsole.persistlog",
+      // Max number of entries in history list.
+      INPUT_HISTORY_COUNT: "devtools.webconsole.inputHistoryCount",
+    },
+    FEATURES: {
       // We use the same pref to enable the sidebar on webconsole and browser console.
       SIDEBAR_TOGGLE: "devtools.webconsole.sidebarToggle",
+      JSTERM_CODE_MIRROR: "devtools.webconsole.jsterm.codeMirror",
     }
   }
 };
@@ -133,6 +144,12 @@ const jstermCommands = {
   }
 };
 
+// Constants used for defining the direction of JSTerm input history navigation.
+const historyCommands = {
+  HISTORY_BACK: -1,
+  HISTORY_FORWARD: 1,
+};
+
 // Combine into a single constants object
 module.exports = Object.assign({
   FILTERS,
@@ -143,4 +160,5 @@ module.exports = Object.assign({
   chromeRDPEnums,
   jstermCommands,
   prefs,
+  historyCommands,
 );

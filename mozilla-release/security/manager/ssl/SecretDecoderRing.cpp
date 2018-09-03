@@ -20,6 +20,7 @@
 #include "nsITokenPasswordDialogs.h"
 #include "nsNSSComponent.h"
 #include "nsNSSHelper.h"
+#include "nsPK11TokenDB.h"
 #include "pk11func.h"
 #include "pk11sdr.h" // For PK11SDR_Encrypt, PK11SDR_Decrypt
 #include "ssl.h" // For SSL_ClearSessionCache
@@ -50,7 +51,7 @@ void BackgroundSdrEncryptStrings(const nsTArray<nsCString>& plaintexts,
 
   nsCOMPtr<nsIRunnable> runnable(
     NS_NewRunnableFunction("BackgroundSdrEncryptStringsResolve",
-                           [rv, aPromise = Move(aPromise), cipherTexts = Move(cipherTexts)]() {
+                           [rv, aPromise = std::move(aPromise), cipherTexts = std::move(cipherTexts)]() {
                              if (NS_FAILED(rv)) {
                                aPromise->MaybeReject(rv);
                              } else {
@@ -145,7 +146,7 @@ NS_IMETHODIMP
 SecretDecoderRing::AsyncEncryptStrings(uint32_t plaintextsCount,
                                        const char16_t** plaintexts,
                                        JSContext* aCx,
-                                       nsISupports** aPromise) {
+                                       Promise** aPromise) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   NS_ENSURE_ARG(plaintextsCount);
   NS_ENSURE_ARG_POINTER(plaintexts);
@@ -170,7 +171,7 @@ SecretDecoderRing::AsyncEncryptStrings(uint32_t plaintextsCount,
   }
   nsCOMPtr<nsIRunnable> runnable(
     NS_NewRunnableFunction("BackgroundSdrEncryptStrings",
-      [promise, plaintextsUtf8 = Move(plaintextsUtf8)]() mutable {
+      [promise, plaintextsUtf8 = std::move(plaintextsUtf8)]() mutable {
         BackgroundSdrEncryptStrings(plaintextsUtf8, promise);
       }));
 
@@ -212,7 +213,9 @@ SecretDecoderRing::ChangePassword()
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  NS_ConvertUTF8toUTF16 tokenName(PK11_GetTokenName(slot.get()));
+  // nsPK11Token::nsPK11Token takes its own reference to slot, so we pass a
+  // non-owning pointer here.
+  nsCOMPtr<nsIPK11Token> token = new nsPK11Token(slot.get());
 
   nsCOMPtr<nsITokenPasswordDialogs> dialogs;
   nsresult rv = getNSSDialogs(getter_AddRefs(dialogs),
@@ -224,7 +227,7 @@ SecretDecoderRing::ChangePassword()
 
   nsCOMPtr<nsIInterfaceRequestor> ctx = new PipUIContext();
   bool canceled; // Ignored
-  return dialogs->SetPassword(ctx, tokenName, &canceled);
+  return dialogs->SetPassword(ctx, token, &canceled);
 }
 
 NS_IMETHODIMP

@@ -258,6 +258,7 @@ nsPluginInstanceOwner::GetCurrentImageSize()
 
 nsPluginInstanceOwner::nsPluginInstanceOwner()
   : mPluginWindow(nullptr)
+  , mLastEventloopNestingLevel(0)
 {
   // create nsPluginNativeWindow object, it is derived from NPWindow
   // struct and allows to manipulate native window procedure
@@ -485,7 +486,7 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
   }
 
   rv = lh->OnLinkClick(content, uri, unitarget.get(), VoidString(),
-                       aPostStream, -1, headersDataStream,
+                       aPostStream, headersDataStream,
                        /* isUserTriggered */ false,
                        /* isTrusted */ true, triggeringPrincipal);
 
@@ -891,11 +892,56 @@ nsPluginInstanceOwner::RequestCommitOrCancel(bool aCommitted)
     }
   }
 
-  if (aCommitted) {
-    widget->NotifyIME(widget::REQUEST_TO_COMMIT_COMPOSITION);
-  } else {
-    widget->NotifyIME(widget::REQUEST_TO_CANCEL_COMPOSITION);
+  // Retrieve TextComposition for the widget with IMEStateManager instead of
+  // using GetTextComposition() because we cannot know whether the method
+  // failed due to no widget or no composition.
+  RefPtr<TextComposition> composition =
+    IMEStateManager::GetTextCompositionFor(widget);
+  if (!composition) {
+    // If there is composition, we should just ignore this request since
+    // the composition may have been committed after the plugin process
+    // sent this request.
+    return true;
   }
+
+  nsCOMPtr<nsIContent> content = do_QueryReferent(mContent);
+  if (content != composition->GetEventTargetNode()) {
+    // If the composition is handled in different node, that means that
+    // the composition for the plugin has gone and new composition has
+    // already started.  So, request from the plugin should be ignored
+    // since user inputs different text now.
+    return true;
+  }
+
+  // If active composition is being handled in the plugin, let's request to
+  // commit/cancel the composition via both IMEStateManager and TextComposition
+  // for avoid breaking the status management of composition.  I.e., don't
+  // call nsIWidget::NotifyIME() directly from here.
+  IMEStateManager::NotifyIME(aCommitted ?
+                                widget::REQUEST_TO_COMMIT_COMPOSITION :
+                                widget::REQUEST_TO_CANCEL_COMPOSITION,
+                             widget, composition->GetTabParent());
+  // FYI: This instance may have been destroyed.  Be careful if you need to
+  //      access members of this class.
+  return true;
+}
+
+bool
+nsPluginInstanceOwner::EnableIME(bool aEnable)
+{
+  if (NS_WARN_IF(!mPluginFrame)) {
+    return false;
+  }
+
+  nsCOMPtr<nsIWidget> widget = GetContainingWidgetIfOffset();
+  if (!widget) {
+    widget = GetRootWidgetForPluginFrame(mPluginFrame);
+    if (NS_WARN_IF(!widget)) {
+      return false;
+    }
+  }
+
+  widget->EnableIMEForPlugin(aEnable);
   return true;
 }
 

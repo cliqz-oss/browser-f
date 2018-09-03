@@ -10,6 +10,8 @@ const actionModules = [
   require("./filters"),
   require("./messages"),
   require("./ui"),
+  require("./notifications"),
+  require("./history"),
 ];
 
 const actions = Object.assign({}, ...actionModules);

@@ -67,7 +67,7 @@ RenderDXGITextureHostOGL::EnsureLockable()
     return true;
   }
 
-  const auto& egl = &gl::sEGLLibrary;
+  auto* egl = gl::GLLibraryEGL::Get();
 
   // We use EGLStream to get the converted gl handle from d3d texture. The
   // NV_stream_consumer_gltexture_yuv and ANGLE_stream_producer_d3d_texture
@@ -164,7 +164,7 @@ RenderDXGITextureHostOGL::Lock(uint8_t aChannelIndex, gl::GLContext* aGL)
 
   if (!mLocked) {
     if (mKeyedMutex) {
-      HRESULT hr = mKeyedMutex->AcquireSync(0, 100);
+      HRESULT hr = mKeyedMutex->AcquireSync(0, 10000);
       if (hr != S_OK) {
         gfxCriticalError() << "RenderDXGITextureHostOGL AcquireSync timeout, hr=" << gfx::hexa(hr);
         return InvalidToWrExternalImage();
@@ -190,6 +190,13 @@ RenderDXGITextureHostOGL::Unlock()
 }
 
 void
+RenderDXGITextureHostOGL::ClearCachedResources()
+{
+  DeleteTextureHandle();
+  mGL = nullptr;
+}
+
+void
 RenderDXGITextureHostOGL::DeleteTextureHandle()
 {
   if (mTextureHandle[0] == 0) {
@@ -203,7 +210,7 @@ RenderDXGITextureHostOGL::DeleteTextureHandle()
     mTextureHandle[i] = 0;
   }
 
-  const auto& egl = &gl::sEGLLibrary;
+  auto* egl = gl::GLLibraryEGL::Get();
   if (mSurface) {
     egl->fDestroySurface(egl->Display(), mSurface);
     mSurface = 0;
@@ -273,7 +280,7 @@ RenderDXGIYCbCrTextureHostOGL::EnsureLockable()
     return true;
   }
 
-  const auto& egl = &gl::sEGLLibrary;
+  auto* egl = gl::GLLibraryEGL::Get();
 
   // The eglCreatePbufferFromClientBuffer doesn't support R8 format, so we
   // use EGLStream to get the converted gl handle from d3d R8 texture.
@@ -350,7 +357,7 @@ RenderDXGIYCbCrTextureHostOGL::Lock(uint8_t aChannelIndex, gl::GLContext* aGL)
   if (!mLocked) {
     if (mKeyedMutexs[0]) {
       for (const auto& mutex : mKeyedMutexs) {
-        HRESULT hr = mutex->AcquireSync(0, 100);
+        HRESULT hr = mutex->AcquireSync(0, 10000);
         if (hr != S_OK) {
           gfxCriticalError() << "RenderDXGIYCbCrTextureHostOGL AcquireSync timeout, hr=" << gfx::hexa(hr);
           return InvalidToWrExternalImage();
@@ -376,6 +383,13 @@ RenderDXGIYCbCrTextureHostOGL::Unlock()
     }
     mLocked = false;
   }
+}
+
+void
+RenderDXGIYCbCrTextureHostOGL::ClearCachedResources()
+{
+  DeleteTextureHandle();
+  mGL = nullptr;
 }
 
 GLuint
@@ -413,7 +427,7 @@ RenderDXGIYCbCrTextureHostOGL::DeleteTextureHandle()
     mTextures[i] = nullptr;
     mKeyedMutexs[i] = nullptr;
 
-    const auto& egl = &gl::sEGLLibrary;
+    auto* egl = gl::GLLibraryEGL::Get();
     if (mSurfaces[i]) {
       egl->fDestroySurface(egl->Display(), mSurfaces[i]);
       mSurfaces[i] = 0;

@@ -48,14 +48,8 @@ class WebAuthnTransaction
 {
 public:
   WebAuthnTransaction(const RefPtr<Promise>& aPromise,
-                      const nsTArray<uint8_t>& aRpIdHash,
-                      const nsCString& aClientData,
-                      bool aDirectAttestation,
                       AbortSignal* aSignal)
     : mPromise(aPromise)
-    , mRpIdHash(aRpIdHash)
-    , mClientData(aClientData)
-    , mDirectAttestation(aDirectAttestation)
     , mSignal(aSignal)
     , mId(NextId())
   {
@@ -64,16 +58,6 @@ public:
 
   // JS Promise representing the transaction status.
   RefPtr<Promise> mPromise;
-
-  // The RP ID hash.
-  nsTArray<uint8_t> mRpIdHash;
-
-  // Client data used to assemble reply objects.
-  nsCString mClientData;
-
-  // The RP might request direct attestation.
-  // Only used by the MakeCredential operation.
-  bool mDirectAttestation;
 
   // An optional AbortSignal instance.
   RefPtr<AbortSignal> mSignal;

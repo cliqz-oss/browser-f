@@ -148,7 +148,7 @@ struct GetOrInternStringMatcher
     auto tempString = reinterpret_cast<const CharT*>(str->data());
 
     UniqueFreePtr<CharT[]> owned(NS_strndup(tempString, length));
-    if (!owned || !internedStrings.append(Move(owned)))
+    if (!owned || !internedStrings.append(std::move(owned)))
       return nullptr;
 
     return internedStrings.back().get();
@@ -285,7 +285,7 @@ HeapSnapshot::saveNode(const protobuf::Node& node, NodeIdSet& edgeReferents)
   }
 
   if (NS_WARN_IF(!nodes.putNew(id, DeserializedNode(id, coarseType, typeName,
-                                                    size, Move(edges),
+                                                    size, std::move(edges),
                                                     allocationStack,
                                                     jsObjectClassName,
                                                     scriptFilename, *this))))
@@ -568,7 +568,7 @@ HeapSnapshot::ComputeDominatorTree(ErrorResult& rv)
     return nullptr;
   }
 
-  return MakeAndAddRef<DominatorTree>(Move(*maybeTree), this, mParent);
+  return MakeAndAddRef<DominatorTree>(std::move(*maybeTree), this, mParent);
 }
 
 void
@@ -624,7 +624,7 @@ HeapSnapshot::ComputeShortestPaths(JSContext*cx, uint64_t start,
   {
     JS::AutoCheckCannotGC nogc(cx);
     maybeShortestPaths = ShortestPaths::Create(cx, nogc, maxNumPaths, *startNode,
-                                               Move(targetsSet));
+                                               std::move(targetsSet));
   }
 
   if (NS_WARN_IF(maybeShortestPaths.isNothing())) {
@@ -918,13 +918,13 @@ class TwoByteString : public Variant<JSAtom*, const char16_t*, JS::ubi::EdgeName
 
 public:
   template<typename T>
-  MOZ_IMPLICIT TwoByteString(T&& rhs) : Base(Forward<T>(rhs)) { }
+  MOZ_IMPLICIT TwoByteString(T&& rhs) : Base(std::forward<T>(rhs)) { }
 
   template<typename T>
   TwoByteString& operator=(T&& rhs) {
     MOZ_ASSERT(this != &rhs, "self-move disallowed");
     this->~TwoByteString();
-    new (this) TwoByteString(Forward<T>(rhs));
+    new (this) TwoByteString(std::forward<T>(rhs));
     return *this;
   }
 
@@ -1032,7 +1032,7 @@ struct TwoByteString::HashPolicy {
   }
 
   static void rekey(TwoByteString& k, TwoByteString&& newKey) {
-    k = Move(newKey);
+    k = std::move(newKey);
   }
 };
 
@@ -1069,7 +1069,7 @@ ShouldIncludeEdge(JS::CompartmentSet* compartments,
   // Shape's getter/setter JSObjects). However, we do not serialize nodes in other
   // compartments that are reachable from these non-compartment nodes.
 
-  JSCompartment* compartment = edge.referent.compartment();
+  JS::Compartment* compartment = edge.referent.compartment();
 
   if (!compartment || compartments->has(compartment)) {
     return true;
@@ -1137,7 +1137,7 @@ class MOZ_STACK_CLASS StreamWriter : public CoreDumpWriter
     string.copyToBuffer(RangedPtr<char16_t>(buf, length), length);
 
     uint64_t ref = twoByteStringsAlreadySerialized.count();
-    if (!twoByteStringsAlreadySerialized.add(ptr, Move(string), ref))
+    if (!twoByteStringsAlreadySerialized.add(ptr, std::move(string), ref))
       return false;
 
     setString(stringData.release());
@@ -1303,7 +1303,7 @@ public:
         protobufEdge->set_referent(ubiEdge.referent.identifier());
 
         if (wantNames && ubiEdge.name) {
-          TwoByteString edgeName(Move(ubiEdge.name));
+          TwoByteString edgeName(std::move(ubiEdge.name));
           if (NS_WARN_IF(!attachTwoByteString(edgeName,
                                               [&] (std::string* name) { protobufEdge->set_allocated_name(name); },
                                               [&] (uint64_t ref) { protobufEdge->set_nameref(ref); })))
@@ -1359,7 +1359,9 @@ public:
   HeapSnapshotHandler(CoreDumpWriter& writer,
                       JS::CompartmentSet* compartments)
     : writer(writer),
-      compartments(compartments)
+      compartments(compartments),
+      nodeCount(0),
+      edgeCount(0)
   { }
 
   // JS::ubi::BreadthFirst handler interface.

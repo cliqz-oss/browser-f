@@ -25,15 +25,23 @@ NS_INTERFACE_MAP_BEGIN(PartiallySeekableInputStream)
                                      mWeakAsyncInputStream)
   NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIInputStreamCallback,
                                      mWeakAsyncInputStream)
+  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIInputStreamLength,
+                                     mWeakInputStreamLength)
+  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIAsyncInputStreamLength,
+                                     mWeakAsyncInputStreamLength)
+  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIInputStreamLengthCallback,
+                                     mWeakAsyncInputStreamLength)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIInputStream)
 NS_INTERFACE_MAP_END
 
 PartiallySeekableInputStream::PartiallySeekableInputStream(already_AddRefed<nsIInputStream> aInputStream,
                                                            uint64_t aBufferSize)
-  : mInputStream(Move(aInputStream))
+  : mInputStream(std::move(aInputStream))
   , mWeakCloneableInputStream(nullptr)
   , mWeakIPCSerializableInputStream(nullptr)
   , mWeakAsyncInputStream(nullptr)
+  , mWeakInputStreamLength(nullptr)
+  , mWeakAsyncInputStreamLength(nullptr)
   , mBufferSize(aBufferSize)
   , mPos(0)
   , mClosed(false)
@@ -44,7 +52,7 @@ PartiallySeekableInputStream::PartiallySeekableInputStream(already_AddRefed<nsII
 
 PartiallySeekableInputStream::PartiallySeekableInputStream(already_AddRefed<nsIInputStream> aClonedBaseStream,
                                                            PartiallySeekableInputStream* aClonedFrom)
-  : mInputStream(Move(aClonedBaseStream))
+  : mInputStream(std::move(aClonedBaseStream))
   , mWeakCloneableInputStream(nullptr)
   , mWeakIPCSerializableInputStream(nullptr)
   , mWeakAsyncInputStream(nullptr)
@@ -84,6 +92,19 @@ PartiallySeekableInputStream::Init()
     do_QueryInterface(mInputStream);
   if (asyncInputStream && SameCOMIdentity(mInputStream, asyncInputStream)) {
     mWeakAsyncInputStream = asyncInputStream;
+  }
+
+  nsCOMPtr<nsIInputStreamLength> inputStreamLength =
+    do_QueryInterface(mInputStream);
+  if (inputStreamLength && SameCOMIdentity(mInputStream, inputStreamLength)) {
+    mWeakInputStreamLength = inputStreamLength;
+  }
+
+  nsCOMPtr<nsIAsyncInputStreamLength> asyncInputStreamLength =
+    do_QueryInterface(mInputStream);
+  if (asyncInputStreamLength &&
+      SameCOMIdentity(mInputStream, asyncInputStreamLength)) {
+    mWeakAsyncInputStreamLength = asyncInputStreamLength;
   }
 }
 
@@ -350,6 +371,50 @@ NS_IMETHODIMP
 PartiallySeekableInputStream::SetEOF()
 {
   return Close();
+}
+
+// nsIInputStreamLength
+
+NS_IMETHODIMP
+PartiallySeekableInputStream::Length(int64_t* aLength)
+{
+  NS_ENSURE_STATE(mWeakInputStreamLength);
+  return mWeakInputStreamLength->Length(aLength);
+}
+
+// nsIAsyncInputStreamLength
+
+NS_IMETHODIMP
+PartiallySeekableInputStream::AsyncLengthWait(nsIInputStreamLengthCallback* aCallback,
+                                              nsIEventTarget* aEventTarget)
+{
+  NS_ENSURE_STATE(mWeakAsyncInputStreamLength);
+
+  nsCOMPtr<nsIInputStreamLengthCallback> callback = aCallback ? this : nullptr;
+  {
+    MutexAutoLock lock(mMutex);
+    mAsyncInputStreamLengthCallback = aCallback;
+  }
+
+  return mWeakAsyncInputStreamLength->AsyncLengthWait(callback, aEventTarget);
+}
+
+NS_IMETHODIMP
+PartiallySeekableInputStream::OnInputStreamLengthReady(nsIAsyncInputStreamLength* aStream,
+                                                       int64_t aLength)
+{
+  nsCOMPtr<nsIInputStreamLengthCallback> callback;
+  {
+    MutexAutoLock lock(mMutex);
+    // We have been canceled in the meanwhile.
+    if (!mAsyncInputStreamLengthCallback) {
+      return NS_OK;
+    }
+
+    callback.swap(mAsyncInputStreamLengthCallback);
+  }
+
+  return callback->OnInputStreamLengthReady(this, aLength);
 }
 
 } // net namespace

@@ -49,7 +49,23 @@
 }
 
 #navigator-toolbox {
+  -moz-appearance: none;
   --tabs-border-color: rgba(0,0,0,.3);
+}
+
+/*
+  This is a workaround for Bug 1482157
+  -moz-appearance: toolbox; makes the macOS sheets attached to the element's
+  bottom border. We cannot put this property on the toolbox itself as it
+  cancels all backgrounds that are there, so we set it on the toolbox bottom
+  border.
+*/
+#navigator-toolbox::after {
+  -moz-appearance: toolbox;
+  height: 1px;
+  /* use inset box-shadow instead of border because -moz-appearance hides the border */
+  border: none;
+  box-shadow: inset 0 -1px var(--toolbox-border-bottom-color);
 }
 
 #tabbrowser-tabs {
@@ -202,24 +218,13 @@
 #bookmarksToolbarFolderMenu,
 #BMB_bookmarksToolbar,
 #panelMenu_bookmarksToolbar {
-  list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.png");
+  list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.svg");
 }
 
 #menu_unsortedBookmarks,
 #BMB_unsortedBookmarks,
 #panelMenu_unsortedBookmarks {
-  list-style-image: url("chrome://browser/skin/places/unfiledBookmarks.png");
-}
-
-@media (min-resolution: 2dppx) {
-  #bookmarksToolbarFolderMenu,
-  #BMB_bookmarksToolbar {
-    list-style-image: url("chrome://browser/skin/places/bookmarksToolbar@2x.png");
-  }
-
-  #BMB_unsortedBookmarks {
-    list-style-image: url("chrome://browser/skin/places/unfiledBookmarks@2x.png");
-  }
+  list-style-image: url("chrome://browser/skin/places/unfiledBookmarks.svg");
 }
 
 %include ../shared/toolbarbuttons.inc.css
@@ -392,33 +397,12 @@ html|input.urlbar-input {
   margin-bottom: -26px;
 }
 
-/* BOOKMARKING PANEL */
-#editBookmarkPanelStarIcon {
-  list-style-image: url("chrome://browser/skin/bookmark.svg");
-  -moz-context-properties: fill;
-  fill: var(--toolbarbutton-icon-fill-attention);
-  width: 40px;
-  height: 40px;
-  margin: 4px;
-}
+/* Bookmarking panel */
 
-#editBookmarkPanelTitle {
-  font-size: 130%;
-  font-weight: bold;
-}
+%include ../shared/places/editBookmarkPanel.inc.css
 
-#editBMPanel_rows > row {
-  margin-bottom: 8px;
-}
-
-#editBMPanel_rows > row:last-of-type {
-  margin-bottom: 0;
-}
-
-/**** Input elements ****/
-
-#editBMPanel_rows > row > textbox,
-#editBMPanel_rows > row > hbox > textbox {
+#editBookmarkPanelRows > vbox > textbox,
+#editBookmarkPanelRows > vbox > hbox > textbox {
   -moz-appearance: none;
   background: linear-gradient(#fafafa, #fff);
   background-clip: padding-box;
@@ -430,42 +414,10 @@ html|input.urlbar-input {
   padding: 3px 6px;
 }
 
-#editBMPanel_rows > row > textbox[focused="true"],
-#editBMPanel_rows > row > hbox > textbox[focused="true"] {
+#editBookmarkPanelRows > vbox > textbox[focused="true"],
+#editBookmarkPanelRows > vbox > hbox > textbox[focused="true"] {
   border-color: -moz-mac-focusring !important;
   box-shadow: var(--focus-ring-box-shadow);
-}
-
-/**** HUD style buttons ****/
-
-.editBookmarkPanelHeaderButton,
-.editBookmarkPanelBottomButton {
-  @hudButton@
-  margin: 0;
-  min-width: 82px;
-  min-height: 22px;
-}
-
-.editBookmarkPanelHeaderButton:hover:active,
-.editBookmarkPanelBottomButton:hover:active {
-  @hudButtonPressed@
-}
-
-.editBookmarkPanelHeaderButton:-moz-focusring,
-.editBookmarkPanelBottomButton:-moz-focusring {
-  box-shadow: var(--focus-ring-box-shadow);
-}
-
-.editBookmarkPanelBottomButton[default="true"] {
-  background-color: #666;
-}
-
-#editBookmarkPanelHeader {
-  margin-bottom: 6px;
-}
-
-.editBookmarkPanelBottomButton:last-child {
-  margin-inline-start: 8px;
 }
 
 /* The following elements come from editBookmarkPanel.inc.xul. Styling that's
@@ -637,22 +589,6 @@ html|input.urlbar-input {
   opacity: 1.0;
   color: #bbb;
 }
-
-.editBMPanel_rowLabel {
-  text-align: end;
-}
-
-/* History Swipe Animation */
-
-#historySwipeAnimationCurrentPage,
-#historySwipeAnimationNextPage {
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.6);
-}
-
-#historySwipeAnimationContainer {
-  background: url("chrome://browser/skin/subtle-pattern.png") #B3B9C1;
-}
-
 
 /* ----- SIDEBAR ELEMENTS ----- */
 
@@ -1049,20 +985,6 @@ html|*.addon-webext-perm-list {
 .click-to-play-plugins-notification-description-box > .popup-notification-closebutton {
   margin-inline-end: -6px;
   margin-top: -7px;
-}
-
-.gclitoolbar-input-node > .textbox-input-box > html|*.textbox-input::-moz-selection {
-  color: hsl(210,11%,16%);
-}
-
-/* Error counter */
-
-#developer-toolbar-toolbox-button[error-count]:before {
-  color: #FDF3DE;
-  min-width: 16px;
-  text-shadow: none;
-  background-image: linear-gradient(#B4211B, #8A1915);
-  border-radius: 1px;
 }
 
 /* Customization mode */

@@ -68,8 +68,8 @@ struct ModuleEnvironment
     MemoryUsage               memoryUsage;
     uint32_t                  minMemoryLength;
     Maybe<uint32_t>           maxMemoryLength;
-    SigWithIdVector           sigs;
-    SigWithIdPtrVector        funcSigs;
+    TypeDefVector             types;
+    FuncTypeWithIdPtrVector   funcTypes;
     Uint32Vector              funcImportGlobalDataOffsets;
     GlobalDescVector          globals;
     TableDescVector           tables;
@@ -82,6 +82,7 @@ struct ModuleEnvironment
     // Fields decoded as part of the wasm module tail:
     ElemSegmentVector         elemSegments;
     DataSegmentVector         dataSegments;
+    Maybe<NameInBytecode>     moduleName;
     NameInBytecodeVector      funcNames;
     CustomSectionVector       customSections;
 
@@ -104,17 +105,17 @@ struct ModuleEnvironment
     size_t numTables() const {
         return tables.length();
     }
-    size_t numSigs() const {
-        return sigs.length();
+    size_t numTypes() const {
+        return types.length();
     }
     size_t numFuncs() const {
-        return funcSigs.length();
+        return funcTypes.length();
     }
     size_t numFuncImports() const {
         return funcImportGlobalDataOffsets.length();
     }
     size_t numFuncDefs() const {
-        return funcSigs.length() - funcImportGlobalDataOffsets.length();
+        return funcTypes.length() - funcImportGlobalDataOffsets.length();
     }
     bool usesMemory() const {
         return memoryUsage != MemoryUsage::None;
@@ -131,8 +132,8 @@ struct ModuleEnvironment
     bool funcIsImport(uint32_t funcIndex) const {
         return funcIndex < funcImportGlobalDataOffsets.length();
     }
-    uint32_t funcIndexToSigIndex(uint32_t funcIndex) const {
-        return funcSigs[funcIndex] - sigs.begin();
+    uint32_t funcIndexToFuncTypeIndex(uint32_t funcIndex) const {
+        return TypeDef::fromFuncTypeWithIdPtr(funcTypes[funcIndex]) - types.begin();
     }
 };
 
@@ -268,8 +269,8 @@ class Encoder
     }
     MOZ_MUST_USE bool writeValType(ValType type) {
         static_assert(size_t(TypeCode::Limit) <= UINT8_MAX, "fits");
-        MOZ_ASSERT(size_t(type) < size_t(TypeCode::Limit));
-        return writeFixedU8(uint8_t(type));
+        MOZ_ASSERT(size_t(type.bitsUnsafe()) < size_t(TypeCode::Limit));
+        return writeFixedU8(uint8_t(type.bitsUnsafe()));
     }
     MOZ_MUST_USE bool writeBlockType(ExprType type) {
         static_assert(size_t(TypeCode::Limit) <= UINT8_MAX, "fits");
@@ -281,22 +282,22 @@ class Encoder
         MOZ_ASSERT(size_t(op) < size_t(Op::Limit));
         return writeFixedU8(uint8_t(op));
     }
-    MOZ_MUST_USE bool writeOp(MozOp op) {
-        static_assert(size_t(MozOp::Limit) <= 256, "fits");
-        MOZ_ASSERT(size_t(op) < size_t(MozOp::Limit));
-        return writeFixedU8(uint8_t(Op::MozPrefix)) &&
-               writeFixedU8(uint8_t(op));
-    }
-    MOZ_MUST_USE bool writeOp(NumericOp op) {
-        static_assert(size_t(NumericOp::Limit) <= 256, "fits");
-        MOZ_ASSERT(size_t(op) < size_t(NumericOp::Limit));
-        return writeFixedU8(uint8_t(Op::NumericPrefix)) &&
+    MOZ_MUST_USE bool writeOp(MiscOp op) {
+        static_assert(size_t(MiscOp::Limit) <= 256, "fits");
+        MOZ_ASSERT(size_t(op) < size_t(MiscOp::Limit));
+        return writeFixedU8(uint8_t(Op::MiscPrefix)) &&
                writeFixedU8(uint8_t(op));
     }
     MOZ_MUST_USE bool writeOp(ThreadOp op) {
         static_assert(size_t(ThreadOp::Limit) <= 256, "fits");
         MOZ_ASSERT(size_t(op) < size_t(ThreadOp::Limit));
         return writeFixedU8(uint8_t(Op::ThreadPrefix)) &&
+               writeFixedU8(uint8_t(op));
+    }
+    MOZ_MUST_USE bool writeOp(MozOp op) {
+        static_assert(size_t(MozOp::Limit) <= 256, "fits");
+        MOZ_ASSERT(size_t(op) < size_t(MozOp::Limit));
+        return writeFixedU8(uint8_t(Op::MozPrefix)) &&
                writeFixedU8(uint8_t(op));
     }
 
@@ -671,7 +672,7 @@ class Decoder
         return i64;
     }
     ValType uncheckedReadValType() {
-        return (ValType)uncheckedReadFixedU8();
+        return ValType::fromTypeCode(uncheckedReadFixedU8());
     }
     Op uncheckedReadOp() {
         static_assert(size_t(Op::Limit) == 256, "fits");

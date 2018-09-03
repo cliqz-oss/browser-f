@@ -67,8 +67,11 @@ tasks:
               - "index.gecko.v2.${repository.project}.revision.${push.revision}.firefox.decision"
             else:
               $if: 'tasks_for == "action"'
-              then: "index.gecko.v2.${repository.project}.pushlog-id.${push.pushlog_id}.actions.${ownTaskId}"
-              else:
+              then:
+              - "notify.email.taskcluster-notifications+action-task@mozilla.com.on-failed"
+              - "notify.email.taskcluster-notifications+action-task@mozilla.com.on-exception"
+              - "index.gecko.v2.${repository.project}.pushlog-id.${push.pushlog_id}.actions.${ownTaskId}"
+              else:  # cron
               - "index.gecko.v2.${repository.project}.latest.taskgraph.decision-${cron.job_name}"
               - "index.gecko.v2.${repository.project}.latest.firefox.decision-${cron.job_name}"
 
@@ -77,9 +80,11 @@ tasks:
         then:
           - 'assume:repo:${repoUrl[8:]}:branch:default'
           - 'queue:route:notify.email.${ownerEmail}.*'
+          - 'in-tree:hook-action:project-gecko/in-tree-action-${repository.level}-*'
         else:
           $if: 'tasks_for == "action"'
           then:
+            # when all actions are hooks, we can calculate this directly rather than using a variable
             - '${action.repo_scope}'
           else:
             - 'assume:repo:${repoUrl[8:]}:cron:${cron.job_name}'
@@ -104,9 +109,8 @@ tasks:
               TASKCLUSTER_CACHES: /builds/worker/checkouts
             - $if: 'tasks_for == "action"'
               then:
-                ACTION_TASK_GROUP_ID: '${ownTaskId}'
-                ACTION_TASK_ID: {$json: {$eval: 'taskId'}}
-                ACTION_TASK: {$json: {$eval: 'task'}}
+                ACTION_TASK_GROUP_ID: '${taskGroupId}'     # taskGroupId of the target task
+                ACTION_TASK_ID: {$json: {$eval: 'taskId'}} # taskId of the target task (JSON-encoded)
                 ACTION_INPUT: {$json: {$eval: 'input'}}
                 ACTION_CALLBACK: '${action.cb_name}'
                 ACTION_PARAMETERS: {$json: {$eval: 'parameters'}}
@@ -120,8 +124,6 @@ tasks:
 
         # Note: This task is built server side without the context or tooling that
         # exist in tree so we must hard code the hash
-        # XXX Changing this will break Chain of Trust without an associated puppet and
-        # scriptworker patch!
         image: 'taskcluster/decision:2.1.0@sha256:6db3b697d7a3c7aba440d72f04199331b872111cefff57206b8b8b1d53230360'
 
         maxRunTime: 1800

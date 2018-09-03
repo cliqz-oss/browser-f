@@ -34,6 +34,11 @@ a custom action task can be more efficient.
 
 Creating a Callback Action
 --------------------------
+
+.. note:
+
+    You can generate ``actions.json`` on the command line with ``./mach taskgraph actions``.
+
 A *callback action* is an action that calls back into in-tree logic. That is,
 you register the action with name, title, description, context, input schema and a
 python callback. When the action is triggered in a user interface,
@@ -187,6 +192,11 @@ all properties as ``required`` in the JSON schema. Furthermore, it's good
 practice to provide ``default`` values for properties, as user interface generators
 will often take advantage of such properties.
 
+It is possible to specify the ``schema`` parameter as a callable that returns
+the JSON schema. It will be called with a keyword parameter ``graph_config``
+with the `graph configuration <taskgraph-graph-config>` of the current
+taskgraph.
+
 Once you have specified input and context as applicable for your action you can
 do pretty much anything you want from within your callback. Whether you want
 to create one or more tasks or run a specific piece of code like a test.
@@ -269,7 +279,9 @@ The example below illustrates how to create such an action in Python::
           ...
       },
 
-An equivalent in yaml. Notice that we can't inspect parameters in this case::
+An equivalent in yaml. Notice that we can't inspect parameters in this case:
+
+.. code-block: yaml
 
   ---
   name: retrigger

@@ -35,7 +35,7 @@ The first step to adding a new histogram is to choose the histogram type that be
 
 .. note::
 
-    Ony ``flag`` and ``count`` histograms have default values. All other histograms start out empty and are only submitted if a value is recorded.
+    Only ``flag`` and ``count`` histograms have default values. All other histograms start out empty and are only submitted if a value is recorded.
 
 ``boolean``
 -----------
@@ -201,6 +201,17 @@ Optional. This is one of:
 
 
     **Every** new data collection in Firefox needs a `data collection review <https://wiki.mozilla.org/Firefox/Data_Collection#Requesting_Approval>`_ from a data collection peer. Just set the feedback? flag for one of the data peers.
+
+``products``
+-------------
+Optional. This field is a list of products this histogram can be recorded on. Currently-supported values are:
+
+- ``firefox``
+- ``fennec``
+- ``geckoview``
+- ``all`` (record on all products)
+
+If this field is left out it defaults to ``all``.
 
 Changing a histogram
 ====================

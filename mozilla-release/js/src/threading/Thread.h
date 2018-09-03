@@ -101,7 +101,7 @@ public:
   explicit Thread(O&& options = Options())
     : idMutex_(mutexid::ThreadId)
     , id_(Id())
-    , options_(mozilla::Forward<O>(options))
+    , options_(std::forward<O>(options))
   {
     MOZ_ASSERT(js::IsInitialized());
   }
@@ -109,7 +109,7 @@ public:
   // Start a thread of execution at functor |f| with parameters |args|. This
   // method will return false if thread creation fails. This Thread must not
   // already have been created. Note that the arguments must be either POD or
-  // rvalue references (mozilla::Move). Attempting to pass a reference will
+  // rvalue references (std::move). Attempting to pass a reference will
   // result in the value being copied, which may not be the intended behavior.
   // See the comment below on ThreadTrampoline::args for an explanation.
   template <typename F, typename... Args>
@@ -117,8 +117,8 @@ public:
     MOZ_RELEASE_ASSERT(id_ == Id());
     using Trampoline = detail::ThreadTrampoline<F, Args...>;
     AutoEnterOOMUnsafeRegion oom;
-    auto trampoline = js_new<Trampoline>(mozilla::Forward<F>(f),
-                                         mozilla::Forward<Args>(args)...);
+    auto trampoline = js_new<Trampoline>(std::forward<F>(f),
+                                         std::forward<Args>(args)...);
     if (!trampoline)
       oom.crash("js::Thread::init");
     return create(Trampoline::Start, trampoline);
@@ -225,8 +225,8 @@ public:
   // even if the class template arguments are correct.
   template <typename G, typename... ArgsT>
   explicit ThreadTrampoline(G&& aG, ArgsT&&... aArgsT)
-    : f(mozilla::Forward<F>(aG)),
-      args(mozilla::Forward<Args>(aArgsT)...)
+    : f(std::forward<F>(aG)),
+      args(std::forward<Args>(aArgsT)...)
   {
   }
 

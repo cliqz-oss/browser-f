@@ -25,6 +25,8 @@ this.globalImportContext = globalImportContext;
 // }
 const actionTypes = {};
 for (const type of [
+  "ADDONS_INFO_REQUEST",
+  "ADDONS_INFO_RESPONSE",
   "ARCHIVE_FROM_POCKET",
   "AS_ROUTER_TELEMETRY_USER_EVENT",
   "BLOCK_URL",
@@ -37,6 +39,7 @@ for (const type of [
   "DIALOG_OPEN",
   "DISABLE_ONBOARDING",
   "DOWNLOAD_CHANGED",
+  "FILL_SEARCH_TERM",
   "INIT",
   "MIGRATION_CANCEL",
   "MIGRATION_COMPLETED",
@@ -51,6 +54,7 @@ for (const type of [
   "OPEN_LINK",
   "OPEN_NEW_WINDOW",
   "OPEN_PRIVATE_WINDOW",
+  "OPEN_WEBEXT_SETTINGS",
   "PAGE_PRERENDERED",
   "PLACES_BOOKMARK_ADDED",
   "PLACES_BOOKMARK_REMOVED",
@@ -82,11 +86,13 @@ for (const type of [
   "SET_PREF",
   "SHOW_DOWNLOAD_FILE",
   "SHOW_FIREFOX_ACCOUNTS",
+  "SKIPPED_SIGNIN",
   "SNIPPETS_BLOCKLIST_CLEARED",
   "SNIPPETS_BLOCKLIST_UPDATED",
   "SNIPPETS_DATA",
   "SNIPPETS_RESET",
   "SNIPPET_BLOCKED",
+  "SUBMIT_EMAIL",
   "SYSTEM_TICK",
   "TELEMETRY_IMPRESSION_STATS",
   "TELEMETRY_PERFORMANCE_EVENT",
@@ -94,8 +100,10 @@ for (const type of [
   "TELEMETRY_USER_EVENT",
   "THEME_UPDATE",
   "TOP_SITES_CANCEL_EDIT",
+  "TOP_SITES_CLOSE_SEARCH_SHORTCUTS_MODAL",
   "TOP_SITES_EDIT",
   "TOP_SITES_INSERT",
+  "TOP_SITES_OPEN_SEARCH_SHORTCUTS_MODAL",
   "TOP_SITES_PIN",
   "TOP_SITES_PREFS_UPDATED",
   "TOP_SITES_UNPIN",
@@ -103,6 +111,8 @@ for (const type of [
   "TOTAL_BOOKMARKS_REQUEST",
   "TOTAL_BOOKMARKS_RESPONSE",
   "UNINIT",
+  "UPDATE_PINNED_SEARCH_SHORTCUTS",
+  "UPDATE_SEARCH_SHORTCUTS",
   "UPDATE_SECTION_PREFS",
   "WEBEXT_CLICK",
   "WEBEXT_DISMISS"
@@ -110,10 +120,21 @@ for (const type of [
   actionTypes[type] = type;
 }
 
+// These are acceptable actions for AS Router messages to have. They can show up
+// as call-to-action buttons in snippets, onboarding tour, etc.
+const ASRouterActions = {};
+for (const type of [
+  "OPEN_PRIVATE_BROWSER_WINDOW",
+  "OPEN_URL",
+  "OPEN_ABOUT_PAGE"
+]) {
+  ASRouterActions[type] = type;
+}
+
 // Helper function for creating routed actions between content and main
 // Not intended to be used by consumers
 function _RouteMessage(action, options) {
-  const meta = action.meta ? Object.assign({}, action.meta) : {};
+  const meta = action.meta ? {...action.meta} : {};
   if (!options || !options.from || !options.to) {
     throw new Error("Routed Messages must have options as the second parameter, and must at least include a .from and .to property.");
   }
@@ -126,7 +147,7 @@ function _RouteMessage(action, options) {
       delete meta[o];
     }
   });
-  return Object.assign({}, action, {meta});
+  return {...action, meta};
 }
 
 /**
@@ -305,6 +326,7 @@ function WebExtEvent(type, data, importContext = globalImportContext) {
 }
 
 this.actionTypes = actionTypes;
+this.ASRouterActions = ASRouterActions;
 
 this.actionCreators = {
   BroadcastToContent,
@@ -372,6 +394,7 @@ const EXPORTED_SYMBOLS = [
   "actionTypes",
   "actionCreators",
   "actionUtils",
+  "ASRouterActions",
   "globalImportContext",
   "UI_CODE",
   "BACKGROUND_PROCESS",

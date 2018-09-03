@@ -12,13 +12,13 @@ var { DebuggerServer } = require("devtools/server/main");
 var DevToolsUtils = require("devtools/shared/DevToolsUtils");
 
 loader.lazyRequireGetter(this, "RootActor", "devtools/server/actors/root", true);
-loader.lazyRequireGetter(this, "BrowserAddonActor", "devtools/server/actors/addon", true);
-loader.lazyRequireGetter(this, "WebExtensionParentActor", "devtools/server/actors/webextension-parent", true);
-loader.lazyRequireGetter(this, "WorkerActorList", "devtools/server/actors/worker-list", true);
-loader.lazyRequireGetter(this, "ServiceWorkerRegistrationActorList", "devtools/server/actors/worker-list", true);
+loader.lazyRequireGetter(this, "FrameTargetActorProxy", "devtools/server/actors/targets/frame-proxy", true);
+loader.lazyRequireGetter(this, "AddonTargetActor", "devtools/server/actors/targets/addon", true);
+loader.lazyRequireGetter(this, "WebExtensionActor", "devtools/server/actors/addon/webextension", true);
+loader.lazyRequireGetter(this, "WorkerTargetActorList", "devtools/server/actors/worker/worker-list", true);
+loader.lazyRequireGetter(this, "ServiceWorkerRegistrationActorList", "devtools/server/actors/worker/worker-list", true);
 loader.lazyRequireGetter(this, "ProcessActorList", "devtools/server/actors/process", true);
 loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
-loader.lazyImporter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
 
 /**
  * Browser-specific actors.
@@ -30,7 +30,7 @@ loader.lazyImporter(this, "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm
  * interested in "navigator:browser" windows.
  */
 function* allAppShellDOMWindows(windowType) {
-  let e = Services.wm.getEnumerator(windowType);
+  const e = Services.wm.getEnumerator(windowType);
   while (e.hasMoreElements()) {
     yield e.getNext();
   }
@@ -50,8 +50,8 @@ function appShellDOMWindowType(window) {
  * Send Debugger:Shutdown events to all "navigator:browser" windows.
  */
 function sendShutdownEvent() {
-  for (let win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
-    let evt = win.document.createEvent("Event");
+  for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+    const evt = win.document.createEvent("Event");
     evt.initEvent("Debugger:Shutdown", true, false);
     win.document.documentElement.dispatchEvent(evt);
   }
@@ -74,7 +74,7 @@ function createRootActor(connection) {
   return new RootActor(connection, {
     tabList: new BrowserTabList(connection),
     addonList: new BrowserAddonList(connection),
-    workerList: new WorkerActorList(connection, {}),
+    workerList: new WorkerTargetActorList(connection, {}),
     serviceWorkerRegistrationList:
       new ServiceWorkerRegistrationActorList(connection),
     processList: new ProcessActorList(),
@@ -84,11 +84,11 @@ function createRootActor(connection) {
 }
 
 /**
- * A live list of BrowserTabActors representing the current browser tabs,
+ * A live list of FrameTargetActorProxys representing the current browser tabs,
  * to be provided to the root actor to answer 'listTabs' requests.
  *
  * This object also takes care of listening for TabClose events and
- * onCloseWindow notifications, and exiting the BrowserTabActors concerned.
+ * onCloseWindow notifications, and exiting the target actors concerned.
  *
  * (See the documentation for RootActor for the definition of the "live
  * list" interface.)
@@ -228,12 +228,10 @@ BrowserTabList.prototype._getSelectedBrowser = function(window) {
  */
 BrowserTabList.prototype._getBrowsers = function* () {
   // Iterate over all navigator:browser XUL windows.
-  for (let win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+  for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
     // For each tab in this XUL window, ensure that we have an actor for
-    // it, reusing existing actors where possible. We actually iterate
-    // over 'browser' XUL elements, and BrowserTabActor uses
-    // browser.contentWindow as the debuggee global.
-    for (let browser of this._getChildren(win)) {
+    // it, reusing existing actors where possible.
+    for (const browser of this._getChildren(win)) {
       yield browser;
     }
   }
@@ -243,20 +241,20 @@ BrowserTabList.prototype._getChildren = function(window) {
   if (!window.gBrowser) {
     return [];
   }
-  let { gBrowser } = window;
+  const { gBrowser } = window;
   if (!gBrowser.browsers) {
     return [];
   }
   return gBrowser.browsers.filter(browser => {
     // Filter tabs that are closing. listTabs calls made right after TabClose
     // events still list tabs in process of being closed.
-    let tab = gBrowser.getTabForBrowser(browser);
+    const tab = gBrowser.getTabForBrowser(browser);
     return !tab.closing;
   });
 };
 
 BrowserTabList.prototype.getList = function(browserActorOptions) {
-  let topXULWindow = Services.wm.getMostRecentWindow(
+  const topXULWindow = Services.wm.getMostRecentWindow(
     DebuggerServer.chromeWindowType);
   let selectedBrowser = null;
   if (topXULWindow) {
@@ -265,7 +263,7 @@ BrowserTabList.prototype.getList = function(browserActorOptions) {
 
   // As a sanity check, make sure all the actors presently in our map get
   // picked up when we iterate over all windows' tabs.
-  let initialMapSize = this._actorByBrowser.size;
+  const initialMapSize = this._actorByBrowser.size;
   this._foundCount = 0;
 
   // To avoid mysterious behavior if tabs are closed or opened mid-iteration,
@@ -273,10 +271,10 @@ BrowserTabList.prototype.getList = function(browserActorOptions) {
   // the actors. Thus, the sequence yielded is always a snapshot of the
   // actors that were live when we began the iteration.
 
-  let actorPromises = [];
+  const actorPromises = [];
 
-  for (let browser of this._getBrowsers()) {
-    let selected = browser === selectedBrowser;
+  for (const browser of this._getBrowsers()) {
+    const selected = browser === selectedBrowser;
     actorPromises.push(
       this._getActorForBrowser(browser, browserActorOptions)
           .then(actor => {
@@ -309,7 +307,7 @@ BrowserTabList.prototype.getList = function(browserActorOptions) {
 };
 
 /**
- * @param browserActorOptions see options argument of BrowserTabActor constructor.
+ * @param browserActorOptions see options argument of FrameTargetActorProxy constructor.
  */
 BrowserTabList.prototype._getActorForBrowser = function(browser, browserActorOptions) {
   // Do we have an existing actor for this browser? If not, create one.
@@ -319,7 +317,7 @@ BrowserTabList.prototype._getActorForBrowser = function(browser, browserActorOpt
     return actor.update(browserActorOptions);
   }
 
-  actor = new BrowserTabActor(this._connection, browser, browserActorOptions);
+  actor = new FrameTargetActorProxy(this._connection, browser, browserActorOptions);
   this._actorByBrowser.set(browser, actor);
   this._checkListening();
   return actor.connect();
@@ -328,7 +326,7 @@ BrowserTabList.prototype._getActorForBrowser = function(browser, browserActorOpt
 BrowserTabList.prototype.getTab = function({ outerWindowID, tabId }) {
   if (typeof outerWindowID == "number") {
     // First look for in-process frames with this ID
-    let window = Services.wm.getOuterWindowWithId(outerWindowID);
+    const window = Services.wm.getOuterWindowWithId(outerWindowID);
     // Safety check to prevent debugging top level window via getTab
     if (window && window.isChromeWindow) {
       return Promise.reject({
@@ -337,7 +335,7 @@ BrowserTabList.prototype.getTab = function({ outerWindowID, tabId }) {
       });
     }
     if (window) {
-      let iframe = window.QueryInterface(Ci.nsIInterfaceRequestor)
+      const iframe = window.QueryInterface(Ci.nsIInterfaceRequestor)
                          .getInterface(Ci.nsIDOMWindowUtils)
                          .containerElement;
       if (iframe) {
@@ -346,7 +344,7 @@ BrowserTabList.prototype.getTab = function({ outerWindowID, tabId }) {
     }
     // Then also look on registered <xul:browsers> when using outerWindowID for
     // OOP tabs
-    for (let browser of this._getBrowsers()) {
+    for (const browser of this._getBrowsers()) {
       if (browser.outerWindowID == outerWindowID) {
         return this._getActorForBrowser(browser);
       }
@@ -357,7 +355,7 @@ BrowserTabList.prototype.getTab = function({ outerWindowID, tabId }) {
     });
   } else if (typeof tabId == "number") {
     // Tabs OOP
-    for (let browser of this._getBrowsers()) {
+    for (const browser of this._getBrowsers()) {
       if (browser.frameLoader &&
           browser.frameLoader.tabParent &&
           browser.frameLoader.tabParent.tabId === tabId) {
@@ -370,10 +368,10 @@ BrowserTabList.prototype.getTab = function({ outerWindowID, tabId }) {
     });
   }
 
-  let topXULWindow = Services.wm.getMostRecentWindow(
+  const topXULWindow = Services.wm.getMostRecentWindow(
     DebuggerServer.chromeWindowType);
   if (topXULWindow) {
-    let selectedBrowser = this._getSelectedBrowser(topXULWindow);
+    const selectedBrowser = this._getSelectedBrowser(topXULWindow);
     return this._getActorForBrowser(selectedBrowser);
   }
   return Promise.reject({
@@ -419,7 +417,7 @@ BrowserTabList.prototype._notifyListChanged = function() {
 BrowserTabList.prototype._handleActorClose = function(actor, browser) {
   if (this._testing) {
     if (this._actorByBrowser.get(browser) !== actor) {
-      throw new Error("BrowserTabActor not stored in map under given browser");
+      throw new Error("FrameTargetActorProxy not stored in map under given browser");
     }
     if (actor.browser !== browser) {
       throw new Error("actor's browser and map key don't match");
@@ -491,9 +489,9 @@ BrowserTabList.prototype._checkListening = function() {
 BrowserTabList.prototype._listenForEventsIf =
   function(shouldListen, guard, eventNames) {
     if (!shouldListen !== !this[guard]) {
-      let op = shouldListen ? "addEventListener" : "removeEventListener";
-      for (let win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
-        for (let name of eventNames) {
+      const op = shouldListen ? "addEventListener" : "removeEventListener";
+      for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+        for (const name of eventNames) {
           win[op](name, this, false);
         }
       }
@@ -515,9 +513,9 @@ BrowserTabList.prototype._listenForEventsIf =
 BrowserTabList.prototype._listenForMessagesIf =
   function(shouldListen, guard, messageNames) {
     if (!shouldListen !== !this[guard]) {
-      let op = shouldListen ? "addMessageListener" : "removeMessageListener";
-      for (let win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
-        for (let name of messageNames) {
+      const op = shouldListen ? "addMessageListener" : "removeMessageListener";
+      for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+        for (const name of messageNames) {
           win.messageManager[op](name, this);
         }
       }
@@ -530,10 +528,10 @@ BrowserTabList.prototype._listenForMessagesIf =
  */
 BrowserTabList.prototype.receiveMessage = DevToolsUtils.makeInfallible(
   function(message) {
-    let browser = message.target;
+    const browser = message.target;
     switch (message.name) {
       case "DOMTitleChanged": {
-        let actor = this._actorByBrowser.get(browser);
+        const actor = this._actorByBrowser.get(browser);
         if (actor) {
           this._notifyListChanged();
           this._checkListening();
@@ -548,7 +546,7 @@ BrowserTabList.prototype.receiveMessage = DevToolsUtils.makeInfallible(
  */
 BrowserTabList.prototype.handleEvent =
 DevToolsUtils.makeInfallible(function(event) {
-  let browser = event.target.linkedBrowser;
+  const browser = event.target.linkedBrowser;
   switch (event.type) {
     case "TabOpen":
     case "TabSelect": {
@@ -558,7 +556,7 @@ DevToolsUtils.makeInfallible(function(event) {
       break;
     }
     case "TabClose": {
-      let actor = this._actorByBrowser.get(browser);
+      const actor = this._actorByBrowser.get(browser);
       if (actor) {
         this._handleActorClose(actor, browser);
       }
@@ -566,7 +564,7 @@ DevToolsUtils.makeInfallible(function(event) {
     }
     case "TabRemotenessChange": {
       // We have to remove the cached actor as we have to create a new instance.
-      let actor = this._actorByBrowser.get(browser);
+      const actor = this._actorByBrowser.get(browser);
       if (actor) {
         this._actorByBrowser.delete(browser);
         // Don't create a new actor; iterate will take care of that. Just notify.
@@ -582,7 +580,7 @@ DevToolsUtils.makeInfallible(function(event) {
       if (browser.isRemoteBrowser) {
         break;
       }
-      let actor = this._actorByBrowser.get(browser);
+      const actor = this._actorByBrowser.get(browser);
       if (actor) {
         // TabAttrModified is fired in various cases, here only care about title
         // changes
@@ -602,7 +600,7 @@ DevToolsUtils.makeInfallible(function(event) {
  */
 BrowserTabList.prototype._listenToMediatorIf = function(shouldListen) {
   if (!shouldListen !== !this._listeningToMediator) {
-    let op = shouldListen ? "addListener" : "removeListener";
+    const op = shouldListen ? "addListener" : "removeListener";
     Services.wm[op](this);
     this._listeningToMediator = shouldListen;
   }
@@ -619,7 +617,7 @@ BrowserTabList.prototype._listenToMediatorIf = function(shouldListen) {
  */
 BrowserTabList.prototype.onOpenWindow =
 DevToolsUtils.makeInfallible(function(window) {
-  let handleLoad = DevToolsUtils.makeInfallible(() => {
+  const handleLoad = DevToolsUtils.makeInfallible(() => {
     /* We don't want any further load events from this window. */
     window.removeEventListener("load", handleLoad);
 
@@ -678,7 +676,7 @@ DevToolsUtils.makeInfallible(function(window) {
      * Scan the entire map for actors representing tabs that were in this
      * top-level window, and exit them.
      */
-    for (let [browser, actor] of this._actorByBrowser) {
+    for (const [browser, actor] of this._actorByBrowser) {
       /* The browser document of a closed window has no default view. */
       if (!browser.ownerGlobal) {
         this._handleActorClose(actor, browser);
@@ -689,173 +687,6 @@ DevToolsUtils.makeInfallible(function(window) {
 
 exports.BrowserTabList = BrowserTabList;
 
-/**
- * Creates a tab actor for handling requests to a single browser frame.
- * Both <xul:browser> and <iframe mozbrowser> are supported.
- * This actor is a shim that connects to a ContentActor in a remote browser process.
- * All RDP packets get forwarded using the message manager.
- *
- * @param connection The main RDP connection.
- * @param browser <xul:browser> or <iframe mozbrowser> element to connect to.
- * @param options
- *        - {Boolean} favicons: true if the form should include the favicon for the tab.
- */
-function BrowserTabActor(connection, browser, options = {}) {
-  this._conn = connection;
-  this._browser = browser;
-  this._form = null;
-  this.exited = false;
-  this.options = options;
-}
-
-BrowserTabActor.prototype = {
-  async connect() {
-    let onDestroy = () => {
-      if (this._deferredUpdate) {
-        // Reject the update promise if the tab was destroyed while requesting an update
-        this._deferredUpdate.reject({
-          error: "tabDestroyed",
-          message: "Tab destroyed while performing a BrowserTabActor update"
-        });
-      }
-      this.exit();
-    };
-    let connect = DebuggerServer.connectToFrame(this._conn, this._browser, onDestroy);
-    let form = await connect;
-
-    this._form = form;
-    if (this.options.favicons) {
-      this._form.favicon = await this.getFaviconData();
-    }
-
-    return this;
-  },
-
-  get _tabbrowser() {
-    if (this._browser && typeof this._browser.getTabBrowser == "function") {
-      return this._browser.getTabBrowser();
-    }
-    return null;
-  },
-
-  get _mm() {
-    // Get messageManager from XUL browser (which might be a specialized tunnel for RDM)
-    // or else fallback to asking the frameLoader itself.
-    return this._browser.messageManager ||
-           this._browser.frameLoader.messageManager;
-  },
-
-  async getFaviconData() {
-    try {
-      let { data } = await PlacesUtils.promiseFaviconData(this._form.url);
-      return data;
-    } catch (e) {
-      // Favicon unavailable for this url.
-      return null;
-    }
-  },
-
-  /**
-   * @param {Object} options
-   *        See BrowserTabActor constructor.
-   */
-  async update(options = {}) {
-    // Update the BrowserTabActor options.
-    this.options = options;
-
-    // If the child happens to be crashed/close/detach, it won't have _form set,
-    // so only request form update if some code is still listening on the other
-    // side.
-    if (this.exited) {
-      return this.connect();
-    }
-
-    let form = await new Promise(resolve => {
-      let onFormUpdate = msg => {
-        // There may be more than just one content.js (ContentActor) up and running
-        if (this._form.actor != msg.json.actor) {
-          return;
-        }
-        this._mm.removeMessageListener("debug:form", onFormUpdate);
-
-        resolve(msg.json);
-      };
-
-      this._mm.addMessageListener("debug:form", onFormUpdate);
-      this._mm.sendAsyncMessage("debug:form");
-    });
-
-    this._form = form;
-    if (this.options.favicons) {
-      this._form.favicon = await this.getFaviconData();
-    }
-
-    return this;
-  },
-
-  /**
-   * If we don't have a title from the content side because it's a zombie tab, try to find
-   * it on the chrome side.
-   */
-  get title() {
-    // On Fennec, we can check the session store data for zombie tabs
-    if (this._browser && this._browser.__SS_restore) {
-      let sessionStore = this._browser.__SS_data;
-      // Get the last selected entry
-      let entry = sessionStore.entries[sessionStore.index - 1];
-      return entry.title;
-    }
-    // If contentTitle is empty (e.g. on a not-yet-restored tab), but there is a
-    // tabbrowser (i.e. desktop Firefox, but not Fennec), we can use the label
-    // as the title.
-    if (this._tabbrowser) {
-      let tab = this._tabbrowser.getTabForBrowser(this._browser);
-      if (tab) {
-        return tab.label;
-      }
-    }
-    return "";
-  },
-
-  /**
-   * If we don't have a url from the content side because it's a zombie tab, try to find
-   * it on the chrome side.
-   */
-  get url() {
-    // On Fennec, we can check the session store data for zombie tabs
-    if (this._browser && this._browser.__SS_restore) {
-      let sessionStore = this._browser.__SS_data;
-      // Get the last selected entry
-      let entry = sessionStore.entries[sessionStore.index - 1];
-      return entry.url;
-    }
-    return null;
-  },
-
-  form() {
-    let form = Object.assign({}, this._form);
-    // In some cases, the title and url fields might be empty.  Zombie tabs (not yet
-    // restored) are a good example.  In such cases, try to look up values for these
-    // fields using other data in the parent process.
-    if (!form.title) {
-      form.title = this.title;
-    }
-    if (!form.url) {
-      form.url = this.url;
-    }
-
-    return form;
-  },
-
-  exit() {
-    this._browser = null;
-    this._form = null;
-    this.exited = true;
-  },
-};
-
-exports.BrowserTabActor = BrowserTabActor;
-
 function BrowserAddonList(connection) {
   this._connection = connection;
   this._actorByAddonId = new Map();
@@ -863,14 +694,14 @@ function BrowserAddonList(connection) {
 }
 
 BrowserAddonList.prototype.getList = async function() {
-  let addons = await AddonManager.getAllAddons();
-  for (let addon of addons) {
+  const addons = await AddonManager.getAllAddons();
+  for (const addon of addons) {
     let actor = this._actorByAddonId.get(addon.id);
     if (!actor) {
       if (addon.isWebExtension) {
-        actor = new WebExtensionParentActor(this._connection, addon);
+        actor = new WebExtensionActor(this._connection, addon);
       } else {
-        actor = new BrowserAddonActor(this._connection, addon);
+        actor = new AddonTargetActor(this._connection, addon);
       }
 
       this._actorByAddonId.set(addon.id, actor);

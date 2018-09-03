@@ -24,6 +24,7 @@
 #include "wasm/WasmSerialize.h"
 
 #include "vm/JSObject-inl.h"
+#include "vm/NativeObject-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -46,15 +47,23 @@ using mozilla::MakeEnumeratedRange;
 #  endif
 #endif
 
-// Another sanity check.
+// More sanity checks.
 
 static_assert(MaxMemoryInitialPages <= ArrayBufferObject::MaxBufferByteLength / PageSize,
               "Memory sizing constraint");
 
+// All plausible targets must be able to do at least IEEE754 double
+// loads/stores, hence the lower limit of 8.  Some Intel processors support
+// AVX-512 loads/stores, hence the upper limit of 64.
+static_assert(MaxMemoryAccessSize >= 8,  "MaxMemoryAccessSize too low");
+static_assert(MaxMemoryAccessSize <= 64, "MaxMemoryAccessSize too high");
+static_assert((MaxMemoryAccessSize & (MaxMemoryAccessSize-1)) == 0,
+              "MaxMemoryAccessSize is not a power of two");
+
 void
 Val::writePayload(uint8_t* dst) const
 {
-    switch (type_) {
+    switch (type_.code()) {
       case ValType::I32:
       case ValType::F32:
         memcpy(dst, &u.i32_, sizeof(u.i32_));
@@ -142,14 +151,14 @@ GetCPUID()
 }
 
 size_t
-Sig::serializedSize() const
+FuncType::serializedSize() const
 {
     return sizeof(ret_) +
            SerializedPodVectorSize(args_);
 }
 
 uint8_t*
-Sig::serialize(uint8_t* cursor) const
+FuncType::serialize(uint8_t* cursor) const
 {
     cursor = WriteScalar<ExprType>(cursor, ret_);
     cursor = SerializePodVector(cursor, args_);
@@ -157,7 +166,7 @@ Sig::serialize(uint8_t* cursor) const
 }
 
 const uint8_t*
-Sig::deserialize(const uint8_t* cursor)
+FuncType::deserialize(const uint8_t* cursor)
 {
     (cursor = ReadScalar<ExprType>(cursor, &ret_)) &&
     (cursor = DeserializePodVector(cursor, &args_));
@@ -165,7 +174,7 @@ Sig::deserialize(const uint8_t* cursor)
 }
 
 size_t
-Sig::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
+FuncType::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
     return args_.sizeOfExcludingThis(mallocSizeOf);
 }
@@ -181,7 +190,7 @@ static const unsigned sMaxTypes = (sTotalBits - sTagBits - sReturnBit - sLengthB
 static bool
 IsImmediateType(ValType vt)
 {
-    switch (vt) {
+    switch (vt.code()) {
       case ValType::I32:
       case ValType::I64:
       case ValType::F32:
@@ -204,7 +213,7 @@ static unsigned
 EncodeImmediateType(ValType vt)
 {
     static_assert(4 < (1 << sTypeBits), "fits");
-    switch (vt) {
+    switch (vt.code()) {
       case ValType::I32:
         return 0;
       case ValType::I64:
@@ -228,17 +237,17 @@ EncodeImmediateType(ValType vt)
 }
 
 /* static */ bool
-SigIdDesc::isGlobal(const Sig& sig)
+FuncTypeIdDesc::isGlobal(const FuncType& funcType)
 {
-    unsigned numTypes = (sig.ret() == ExprType::Void ? 0 : 1) +
-                        (sig.args().length());
+    unsigned numTypes = (funcType.ret() == ExprType::Void ? 0 : 1) +
+                        (funcType.args().length());
     if (numTypes > sMaxTypes)
         return true;
 
-    if (sig.ret() != ExprType::Void && !IsImmediateType(NonVoidToValType(sig.ret())))
+    if (funcType.ret() != ExprType::Void && !IsImmediateType(NonVoidToValType(funcType.ret())))
         return true;
 
-    for (ValType v : sig.args()) {
+    for (ValType v : funcType.args()) {
         if (!IsImmediateType(v))
             return true;
     }
@@ -246,11 +255,11 @@ SigIdDesc::isGlobal(const Sig& sig)
     return false;
 }
 
-/* static */ SigIdDesc
-SigIdDesc::global(const Sig& sig, uint32_t globalDataOffset)
+/* static */ FuncTypeIdDesc
+FuncTypeIdDesc::global(const FuncType& funcType, uint32_t globalDataOffset)
 {
-    MOZ_ASSERT(isGlobal(sig));
-    return SigIdDesc(Kind::Global, globalDataOffset);
+    MOZ_ASSERT(isGlobal(funcType));
+    return FuncTypeIdDesc(Kind::Global, globalDataOffset);
 }
 
 static ImmediateType
@@ -261,61 +270,91 @@ LengthToBits(uint32_t length)
     return length;
 }
 
-/* static */ SigIdDesc
-SigIdDesc::immediate(const Sig& sig)
+/* static */ FuncTypeIdDesc
+FuncTypeIdDesc::immediate(const FuncType& funcType)
 {
     ImmediateType immediate = ImmediateBit;
     uint32_t shift = sTagBits;
 
-    if (sig.ret() != ExprType::Void) {
+    if (funcType.ret() != ExprType::Void) {
         immediate |= (1 << shift);
         shift += sReturnBit;
 
-        immediate |= EncodeImmediateType(NonVoidToValType(sig.ret())) << shift;
+        immediate |= EncodeImmediateType(NonVoidToValType(funcType.ret())) << shift;
         shift += sTypeBits;
     } else {
         shift += sReturnBit;
     }
 
-    immediate |= LengthToBits(sig.args().length()) << shift;
+    immediate |= LengthToBits(funcType.args().length()) << shift;
     shift += sLengthBits;
 
-    for (ValType argType : sig.args()) {
+    for (ValType argType : funcType.args()) {
         immediate |= EncodeImmediateType(argType) << shift;
         shift += sTypeBits;
     }
 
     MOZ_ASSERT(shift <= sTotalBits);
-    return SigIdDesc(Kind::Immediate, immediate);
+    return FuncTypeIdDesc(Kind::Immediate, immediate);
 }
 
 size_t
-SigWithId::serializedSize() const
+FuncTypeWithId::serializedSize() const
 {
-    return Sig::serializedSize() +
+    return FuncType::serializedSize() +
            sizeof(id);
 }
 
 uint8_t*
-SigWithId::serialize(uint8_t* cursor) const
+FuncTypeWithId::serialize(uint8_t* cursor) const
 {
-    cursor = Sig::serialize(cursor);
+    cursor = FuncType::serialize(cursor);
     cursor = WriteBytes(cursor, &id, sizeof(id));
     return cursor;
 }
 
 const uint8_t*
-SigWithId::deserialize(const uint8_t* cursor)
+FuncTypeWithId::deserialize(const uint8_t* cursor)
 {
-    (cursor = Sig::deserialize(cursor)) &&
+    (cursor = FuncType::deserialize(cursor)) &&
     (cursor = ReadBytes(cursor, &id, sizeof(id)));
     return cursor;
 }
 
 size_t
-SigWithId::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
+FuncTypeWithId::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 {
-    return Sig::sizeOfExcludingThis(mallocSizeOf);
+    return FuncType::sizeOfExcludingThis(mallocSizeOf);
+}
+
+size_t
+StructType::serializedSize() const
+{
+    return SerializedPodVectorSize(fields_) +
+           SerializedPodVectorSize(fieldOffsets_);
+}
+
+uint8_t*
+StructType::serialize(uint8_t* cursor) const
+{
+    cursor = SerializePodVector(cursor, fields_);
+    cursor = SerializePodVector(cursor, fieldOffsets_);
+    return cursor;
+}
+
+const uint8_t*
+StructType::deserialize(const uint8_t* cursor)
+{
+    (cursor = DeserializePodVector(cursor, &fields_));
+    (cursor = DeserializePodVector(cursor, &fieldOffsets_));
+    return cursor;
+}
+
+size_t
+StructType::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
+{
+    return fields_.sizeOfExcludingThis(mallocSizeOf) +
+           fieldOffsets_.sizeOfExcludingThis(mallocSizeOf);
 }
 
 size_t
@@ -352,14 +391,14 @@ Import::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 }
 
 Export::Export(UniqueChars fieldName, uint32_t index, DefinitionKind kind)
-  : fieldName_(Move(fieldName))
+  : fieldName_(std::move(fieldName))
 {
     pod.kind_ = kind;
     pod.index_ = index;
 }
 
 Export::Export(UniqueChars fieldName, DefinitionKind kind)
-  : fieldName_(Move(fieldName))
+  : fieldName_(std::move(fieldName))
 {
     pod.kind_ = kind;
     pod.index_ = 0;
@@ -446,7 +485,7 @@ ElemSegment::sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const
 
 Assumptions::Assumptions(JS::BuildIdCharVector&& buildId)
   : cpuId(GetCPUID()),
-    buildId(Move(buildId))
+    buildId(std::move(buildId))
 {}
 
 Assumptions::Assumptions()
@@ -647,6 +686,9 @@ DebugFrame::getLocal(uint32_t localIndex, MutableHandleValue vp)
       case jit::MIRType::Double:
           vp.set(NumberValue(JS::CanonicalizeNaN(*static_cast<double*>(dataPtr))));
           break;
+      case jit::MIRType::Pointer:
+          vp.set(ObjectOrNullValue(*(JSObject**)dataPtr));
+          break;
       default:
           MOZ_CRASH("local type");
     }
@@ -674,6 +716,9 @@ DebugFrame::updateReturnJSValue()
           break;
       case ExprType::F64:
           cachedReturnJSValue_.setDouble(JS::CanonicalizeNaN(resultF64_));
+          break;
+      case ExprType::AnyRef:
+          cachedReturnJSValue_ = ObjectOrNullValue(*(JSObject**)&resultRef_);
           break;
       default:
           MOZ_CRASH("result type");

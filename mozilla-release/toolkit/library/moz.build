@@ -24,6 +24,8 @@ def Libxul(name):
 
     DELAYLOAD_DLLS += [
         'comdlg32.dll',
+        'hid.dll',
+        'msimg32.dll',
         'netapi32.dll',
         'secur32.dll',
         'wininet.dll',
@@ -75,7 +77,10 @@ def Libxul(name):
     # Rust 1.12 has been released.
     # We're also linking against libresolv to solve bug 1367932.
     if CONFIG['OS_ARCH'] == 'Darwin':
-        LDFLAGS += ['-Wl,-no_compact_unwind,-lresolv']
+        LDFLAGS += ['-lresolv']
+
+    if CONFIG['MOZ_DEBUG_SYMBOLS'] and CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+        LDFLAGS += ['-NATVIS:%s/toolkit/library/gecko.natvis' % TOPSRCDIR]
 
 Libxul('xul')
 
@@ -234,9 +239,6 @@ if CONFIG['MOZ_SYSTEM_JPEG']:
 
 if CONFIG['MOZ_SYSTEM_PNG']:
     OS_LIBS += CONFIG['MOZ_PNG_LIBS']
-
-if CONFIG['MOZ_SYSTEM_HUNSPELL']:
-    OS_LIBS += CONFIG['MOZ_HUNSPELL_LIBS']
 
 if CONFIG['MOZ_SYSTEM_LIBEVENT']:
     OS_LIBS += CONFIG['MOZ_LIBEVENT_LIBS']

@@ -22,7 +22,7 @@ const TEST_DATA = [
     input: "blue !  important",
     expected: {value: "blue", priority: "important"}
   },
-  {input: "blue !", expected: {value: "blue", priority: ""}},
+  {input: "blue !", expected: {value: "blue !", priority: ""}},
   {input: "blue !mportant", expected: {value: "blue !mportant", priority: ""}},
   {
     input: "  blue   !important ",
@@ -66,10 +66,10 @@ const TEST_DATA = [
 ];
 
 function run_test() {
-  for (let test of TEST_DATA) {
+  for (const test of TEST_DATA) {
     info("Test input value " + test.input);
     try {
-      let output = parseSingleValue(isCssPropertyKnown, test.input);
+      const output = parseSingleValue(isCssPropertyKnown, test.input);
       assertOutput(output, test.expected);
     } catch (e) {
       info("parseSingleValue threw an exception with the given input " +

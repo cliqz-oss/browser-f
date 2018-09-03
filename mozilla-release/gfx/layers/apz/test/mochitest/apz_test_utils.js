@@ -194,6 +194,10 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
     var testIndex = -1;
     var w = null;
 
+    // If the "apz.subtest" pref has been set, only a single subtest whose name matches
+    // the pref's value (if any) will be run.
+    var onlyOneSubtest = SpecialPowers.getCharPref("apz.subtest", /* default = */ "");
+
     function advanceSubtestExecution() {
       var test = aSubtests[testIndex];
       if (w) {
@@ -226,6 +230,13 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
       }
 
       test = aSubtests[testIndex];
+
+      if (onlyOneSubtest && onlyOneSubtest != test.file) {
+        SimpleTest.ok(true, "Skipping " + test.file + " because only " + onlyOneSubtest + " is being run");
+        setTimeout(function() { advanceSubtestExecution(); }, 0);
+        return;
+      }
+
       if (typeof test.dp_suppression != 'undefined') {
         // Normally during a test, the displayport will get suppressed during page
         // load, and unsuppressed at a non-deterministic time during the test. The
@@ -273,6 +284,8 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
     }
 
     advanceSubtestExecution();
+  }).catch(function(e) {
+    SimpleTest.ok(false, "Error occurred while running subtests: " + e);
   });
 }
 
@@ -522,8 +535,13 @@ function getHitTestConfig() {
   return window.hitTestConfig;
 }
 
-// Compute the coordinates of the center of the given element.
+// Compute the coordinates of the center of the given element. The argument
+// can either be a string (the id of the element desired) or the element
+// itself.
 function centerOf(element) {
+  if (typeof element === "string") {
+    element = document.getElementById(element);
+  }
   var bounds = element.getBoundingClientRect();
   return { x: bounds.x + (bounds.width / 2), y: bounds.y + (bounds.height / 2) };
 }
@@ -540,6 +558,31 @@ function hitTest(point) {
   ok(data.hitResults.length >= 1, "Expected at least one hit result in the APZTestData");
   var result = data.hitResults[data.hitResults.length - 1];
   return { hitInfo: result.hitResult, scrollId: result.scrollId };
+}
+
+// Returns a canonical stringification of the hitInfo bitfield.
+function hitInfoToString(hitInfo) {
+  var strs = [];
+  for (var flag in APZHitResultFlags) {
+    if ((hitInfo & APZHitResultFlags[flag]) != 0) {
+      strs.push(flag);
+    }
+  }
+  if (strs.length == 0) {
+    return "INVISIBLE";
+  }
+  strs.sort(function(a, b) {
+    return APZHitResultFlags[a] - APZHitResultFlags[b];
+  });
+  return strs.join(" | ");
+}
+
+// Takes an object returned by hitTest, along with the expected values, and
+// asserts that they match. Notably, it uses hitInfoToString to provide a
+// more useful message for the case that the hit info doesn't match
+function checkHitResult(hitResult, expectedHitInfo, expectedScrollId, desc) {
+  is(hitInfoToString(hitResult.hitInfo), hitInfoToString(expectedHitInfo), desc + " hit info");
+  is(hitResult.scrollId, expectedScrollId, desc + " scrollid");
 }
 
 // Symbolic constants used by hitTestScrollbar().
@@ -597,17 +640,10 @@ function hitTestScrollbar(params) {
   // behaviour on different platforms which makes testing harder.
   var expectedHitInfo = APZHitResultFlags.VISIBLE | APZHitResultFlags.SCROLLBAR;
   if (params.expectThumb) {
-    // WebRender will hit-test scroll thumbs even inside inactive scrollframes,
-    // because the hit-test is based on display items and we do in fact generate
-    // the display items for the scroll thumb. The user-observed behaviour is
-    // going to be unaffected because the dispatch-to-content flag will also be
-    // set on these thumbs so it's not like APZ will allow async-scrolling them
-    // before the scrollframe has been activated/layerized. In non-WebRender we
-    // do not generate the layers for thumbs on inactive scrollframes, so the
-    // hit test will be accordingly different.
+    // We do not generate the layers for thumbs on inactive scrollframes.
     expectedHitInfo |= APZHitResultFlags.DISPATCH_TO_CONTENT;
-    if (config.isWebRender || params.layerState == LayerState.ACTIVE) {
-        expectedHitInfo |= APZHitResultFlags.SCROLLBAR_THUMB;
+    if (params.layerState == LayerState.ACTIVE) {
+      expectedHitInfo |= APZHitResultFlags.SCROLLBAR_THUMB;
     }
   }
 
@@ -623,11 +659,10 @@ function hitTestScrollbar(params) {
              ? (boundingClientRect.y + scrollbarArrowButtonHeight + 5)
              : (boundingClientRect.bottom - horizontalScrollbarHeight - scrollbarArrowButtonHeight - 5)
     };
-    var {hitInfo, scrollId} = hitTest(verticalScrollbarPoint);
-    is(hitInfo, expectedHitInfo | APZHitResultFlags.SCROLLBAR_VERTICAL,
-       scrollframeMsg + " - vertical scrollbar hit info");
-    is(scrollId, params.expectedScrollId,
-       scrollframeMsg + " - vertical scrollbar scrollid");
+    checkHitResult(hitTest(verticalScrollbarPoint),
+                   expectedHitInfo | APZHitResultFlags.SCROLLBAR_VERTICAL,
+                   params.expectedScrollId,
+                   scrollframeMsg + " - vertical scrollbar");
   }
 
   if (params.directions.horizontal && horizontalScrollbarHeight > 0) {
@@ -637,11 +672,40 @@ function hitTestScrollbar(params) {
              : (boundingClientRect.right - verticalScrollbarWidth - scrollbarArrowButtonWidth - 5),
         y: boundingClientRect.bottom - (horizontalScrollbarHeight / 2),
     };
-    var {hitInfo, scrollId} = hitTest(horizontalScrollbarPoint);
-    is(hitInfo, expectedHitInfo,
-       scrollframeMsg + " - horizontal scrollbar hit info");
-    is(scrollId, params.expectedScrollId,
-       scrollframeMsg + " - horizontal scrollbar scrollid");
+    checkHitResult(hitTest(horizontalScrollbarPoint),
+                   expectedHitInfo,
+                   params.expectedScrollId,
+                   scrollframeMsg + " - horizontal scrollbar");
+  }
+}
+
+// Return a list of prefs for the given test identifier.
+function getPrefs(ident) {
+  switch (ident) {
+    case "TOUCH_EVENTS:PAN":
+      return [
+        // Dropping the touch slop to 0 makes the tests easier to write because
+        // we can just do a one-pixel drag to get over the pan threshold rather
+        // than having to hard-code some larger value.
+        ["apz.touch_start_tolerance", "0.0"],
+        // The touchstart from the drag can turn into a long-tap if the touch-move
+        // events get held up. Try to prevent that by making long-taps require
+        // a 10 second hold. Note that we also cannot enable chaos mode on this
+        // test for this reason, since chaos mode can cause the long-press timer
+        // to fire sooner than the pref dictates.
+        ["ui.click_hold_context_menus.delay", 10000],
+        // The subtests in this test do touch-drags to pan the page, but we don't
+        // want those pans to turn into fling animations, so we increase the
+        // fling min velocity requirement absurdly high.
+        ["apz.fling_min_velocity_threshold", "10000"],
+        // The helper_div_pan's div gets a displayport on scroll, but if the
+        // test takes too long the displayport can expire before the new scroll
+        // position is synced back to the main thread. So we disable displayport
+        // expiry for these tests.
+        ["apz.displayport_expiry_ms", 0],
+      ];
+    default:
+      return [];
   }
 }
 

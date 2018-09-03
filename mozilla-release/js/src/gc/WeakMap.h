@@ -15,8 +15,8 @@
 #include "gc/DeletePolicy.h"
 #include "gc/StoreBuffer.h"
 #include "js/HashTable.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSObject.h"
+#include "vm/Realm.h"
 
 namespace js {
 
@@ -200,7 +200,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, ZoneAllocPolicy>,
     }
 
     void trace(JSTracer* trc) override {
-        MOZ_ASSERT_IF(JS::CurrentThreadIsHeapBusy(), isInList());
+        MOZ_ASSERT_IF(JS::RuntimeHeapIsBusy(), isInList());
 
         TraceNullableEdge(trc, &memberOf, "WeakMap owner");
 
@@ -237,12 +237,12 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, ZoneAllocPolicy>,
         auto p = zone->gcWeakKeys().get(key);
         if (p) {
             gc::WeakEntryVector& weakEntries = p->value;
-            if (!weakEntries.append(Move(markable)))
+            if (!weakEntries.append(std::move(markable)))
                 marker->abortLinearWeakMarking();
         } else {
             gc::WeakEntryVector weakEntries;
-            MOZ_ALWAYS_TRUE(weakEntries.append(Move(markable)));
-            if (!zone->gcWeakKeys().put(JS::GCCellPtr(key), Move(weakEntries)))
+            MOZ_ALWAYS_TRUE(weakEntries.append(std::move(markable)));
+            if (!zone->gcWeakKeys().put(JS::GCCellPtr(key), std::move(weakEntries)))
                 marker->abortLinearWeakMarking();
         }
     }

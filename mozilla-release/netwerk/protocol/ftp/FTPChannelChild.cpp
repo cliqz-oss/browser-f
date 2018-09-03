@@ -193,11 +193,15 @@ FTPChannelChild::AsyncOpen(::nsIStreamListener* listener, nsISupports* aContext)
   autoStream.Serialize(mUploadStream,
                        static_cast<ContentChild*>(gNeckoChild->Manager()));
 
+  uint32_t loadFlags = 0;
+  GetLoadFlags(&loadFlags);
+
   FTPChannelOpenArgs openArgs;
   SerializeURI(nsBaseChannel::URI(), openArgs.uri());
   openArgs.startPos() = mStartPos;
   openArgs.entityID() = mEntityID;
   openArgs.uploadStream() = autoStream.TakeOptionalValue();
+  openArgs.loadFlags() = loadFlags;
 
   nsCOMPtr<nsILoadInfo> loadInfo;
   GetLoadInfo(getter_AddRefs(loadInfo));
@@ -308,6 +312,12 @@ FTPChannelChild::DoOnStartRequest(const nsresult& aChannelStatus,
                                   const nsCString& aEntityID,
                                   const URIParams& aURI)
 {
+  mDuringOnStart = true;
+  RefPtr<FTPChannelChild> self = this;
+  auto clearDuringFlag = mozilla::MakeScopeExit([self] {
+    self->mDuringOnStart = false;
+  });
+
   LOG(("FTPChannelChild::DoOnStartRequest [this=%p]\n", this));
 
   // mFlushedForDiversion and mDivertingToParent should NEVER be set at this
@@ -887,6 +897,11 @@ FTPChannelChild::DivertToParent(ChannelDiverterChild **aChild)
                    IsShuttingDown(), NS_ERROR_FAILURE);
 
   LOG(("FTPChannelChild::DivertToParent [this=%p]\n", this));
+
+  // This method should only be called during OnStartRequest.
+  if (!mDuringOnStart) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   // We must fail DivertToParent() if there's no parent end of the channel (and
   // won't be!) due to early failure.

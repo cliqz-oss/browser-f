@@ -62,14 +62,6 @@ AVD_DICT = {
                    'testing/config/tooltool-manifests/androidarm_4_3/mach-emulator.manifest',
                    ['-skip-adb-auth', '-verbose', '-show-kernel'],
                    False),
-    '6.0': AvdInfo('Android 6.0',
-                   'mozemulator-6.0',
-                   'testing/config/tooltool-manifests/androidarm_6_0/mach-emulator.manifest',
-                   ['-skip-adb-auth', '-verbose', '-show-kernel'
-                    # -ranchu fails
-                    # -memory has no effect
-                    ],
-                   False),
     '7.0': AvdInfo('Android 7.0',
                    'mozemulator-7.0',
                    'testing/config/tooltool-manifests/androidarm_7_0/mach-emulator.manifest',
@@ -85,22 +77,13 @@ AVD_DICT = {
                    ['-skip-adb-auth', '-verbose', '-show-kernel',
                     '-qemu', '-m', '1024', '-enable-kvm'],
                    True),
-    'x86-6.0': AvdInfo('Android 6.0 x86',
-                       'mozemulator-x86-6.0',
-                       'testing/config/tooltool-manifests/androidx86_6_0/mach-emulator.manifest',
-                       ['-skip-adb-auth', '-verbose', '-show-kernel',
-                        '-ranchu',
-                        # does not boot if '-engine', 'qemu2',
-                        '-memory', '3072', '-cores', '4',
-                        '-qemu', '-enable-kvm'],
-                       True),
     'x86-7.0': AvdInfo('Android 7.0 x86',
                        'mozemulator-x86-7.0',
                        'testing/config/tooltool-manifests/androidx86_7_0/mach-emulator.manifest',
                        ['-skip-adb-auth', '-verbose', '-show-kernel',
                         '-ranchu',
+                        '-engine', 'qemu2',
                         '-selinux', 'permissive',
-                        # does not boot if '-engine', 'qemu2',
                         '-memory', '3072', '-cores', '4',
                         '-qemu', '-enable-kvm'],
                        True)
@@ -412,7 +395,7 @@ class AndroidEmulator(object):
                 emulator.wait()
     """
 
-    def __init__(self, avd_type='4.3', verbose=False, substs=None, device_serial=None):
+    def __init__(self, avd_type=None, verbose=False, substs=None, device_serial=None):
         global verbose_logging
         self.emulator_log = None
         self.emulator_path = 'emulator'
@@ -499,6 +482,8 @@ class AndroidEmulator(object):
         """
            Launch the emulator.
         """
+        if self.avd_info.x86 and 'linux' in _get_host_platform():
+            _verify_kvm(self.substs)
         if os.path.exists(EMULATOR_AUTH_FILE):
             os.remove(EMULATOR_AUTH_FILE)
             _log_debug("deleted %s" % EMULATOR_AUTH_FILE)
@@ -528,7 +513,7 @@ class AndroidEmulator(object):
                    log_path)
         self.proc = ProcessHandler(
             command, storeOutput=False, processOutputLine=outputHandler,
-            env=env)
+            env=env, ignore_children=True)
         self.proc.run()
         _log_debug("Emulator started with pid %d" %
                    int(self.proc.proc.pid))
@@ -685,8 +670,10 @@ class AndroidEmulator(object):
             return requested
         if self.substs:
             if not self.substs['TARGET_CPU'].startswith('arm'):
-                return 'x86'
-        return '4.3'
+                return 'x86-7.0'
+            else:
+                return '7.0'
+        return 'x86-7.0'
 
 
 def _find_sdk_exe(substs, exe, tools):
@@ -890,3 +877,26 @@ def _update_gdbinit(substs, path):
                 f.write("python feninit.default.objdir = '%s'\n" % substs['MOZ_BUILD_ROOT'])
             if substs and 'top_srcdir' in substs:
                 f.write("python feninit.default.srcroot = '%s'\n" % substs['top_srcdir'])
+
+
+def _verify_kvm(substs):
+    # 'emulator -accel-check' should produce output like:
+    # accel:
+    # 0
+    # KVM (version 12) is installed and usable
+    # accel
+    emulator_path = _find_sdk_exe(substs, 'emulator', True)
+    if not emulator_path:
+        emulator_path = 'emulator'
+    command = [emulator_path, '-accel-check']
+    try:
+        p = ProcessHandler(command, storeOutput=True)
+        p.run()
+        p.wait()
+        out = p.output
+        if 'is installed and usable' in ''.join(out):
+            return
+    except Exception as e:
+        _log_warning(str(e))
+    _log_warning("Unable to verify kvm acceleration!")
+    _log_warning("The x86 emulator may fail to start without kvm.")

@@ -243,7 +243,8 @@ add_task(async function test_devtools_page_panels_create() {
   }
 
   const longPrefix = (new Array(80)).fill("x").join("");
-  const EXTENSION_ID = `${longPrefix}@create-devtools-panel.test`;
+  // Extension ID includes "inspector" to verify Bug 1474379 doesn't regress.
+  const EXTENSION_ID = `${longPrefix}-inspector@create-devtools-panel.test`;
 
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "temporary",
@@ -506,8 +507,8 @@ add_task(async function test_devtools_page_panels_switch_toolbox_host() {
 
   const originalToolboxHostType = toolbox.hostType;
 
-  info("Switch the toolbox from docked on bottom to docked on side");
-  toolbox.switchHost("side");
+  info("Switch the toolbox from docked on bottom to docked on right");
+  toolbox.switchHost("right");
 
   info("Wait for the panel to emit hide, show and load messages once docked on side");
   await extension.awaitMessage("devtools_panel_hidden");
