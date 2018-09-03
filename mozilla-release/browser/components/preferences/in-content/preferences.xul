@@ -156,10 +156,11 @@
                       class="category"
                       value="paneConnect"
                       helpTopic="prefs-connect"
-                      tooltiptext="&paneConnect.title;"
+                      data-l10n-id="category-connect"
+                      data-l10n-attrs="tooltiptext"
                       align="center">
           <image class="category-icon"/>
-          <label class="category-name" flex="1">&paneConnect.title;</label>
+          <label class="category-name" flex="1" data-l10n-id="pane-connect-title"></label>
         </richlistitem>
       </richlistbox>
 

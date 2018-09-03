@@ -341,7 +341,7 @@
 
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-  <caption><label data-l10n-id="tracking-header"/></caption>
+  <caption><label data-l10n-id="tracking-header-donottrack"/></caption>
 #if 0
   <vbox data-subcategory="trackingprotection">
     <hbox align="start">

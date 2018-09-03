@@ -60,7 +60,10 @@ category-privacy =
 pane-sync-title = Firefox-Konto
 category-sync =
     .tooltiptext = { pane-sync-title }
-help-button-label = Hilfe für { -brand-short-name }
+pane-connect-title = Connect
+category-connect =
+    .tooltiptext = { pane-connect-title }
+help-button-label = Mozilla Support
 focus-search =
     .key = f
 close-button =
@@ -128,14 +131,14 @@ startup-header = Start
 # since this setting is only exposed in Firefox Developer Edition
 separate-profile-mode =
     .label = Gleichzeitiges Ausführen von { -brand-short-name } und Firefox erlauben
-use-firefox-sync = Tipp: Dabei werden getrennte Profile verwendet. Verwenden Sie { -sync-brand-short-name }, um Daten zwischen diesen zu synchronisieren.
+use-firefox-sync = Tipp: Dabei werden getrennte Profile verwendet. Verwende Sync, um Daten zwischen diesen zu synchronisieren.
 get-started-not-logged-in = Bei { -sync-brand-short-name } anmelden…
 get-started-configured = { -sync-brand-short-name }-Einstellungen öffnen
 always-check-default =
     .label = Immer überprüfen, ob { -brand-short-name } der Standardbrowser ist
     .accesskey = p
 is-default = { -brand-short-name } ist derzeit der Standardbrowser
-is-not-default = { -brand-short-name } ist nicht Ihr Standardbrowser
+is-not-default = { -brand-short-name } ist nicht dein Standardbrowser
 set-as-my-default-browser =
     .label = Als Standard festlegen…
     .accesskey = g
@@ -157,7 +160,7 @@ disable-extension =
 home-page-header = Startseite
 tabs-group-header = Tabs
 ctrl-tab-recently-used-order =
-    .label = Bei Strg+Tab die Tabs nach letzter Nutzung in absteigender Reihenfolge anzeigen
+    .label = Strg+Tab zeigt die Tabs nach letzter Nutzung geordnet an.
     .accesskey = z
 open-new-link-as-tabs =
     .label = Links in Tabs anstatt in neuen Fenstern öffnen
@@ -258,7 +261,7 @@ download-always-ask-where =
     .label = Jedes Mal nachfragen, wo eine Datei gespeichert werden soll
     .accesskey = n
 applications-header = Anwendungen
-applications-description = Legen Sie fest, wie { -brand-short-name } mit Dateien verfährt, die Sie aus dem Web oder aus Anwendungen, die Sie beim Surfen verwenden, herunterladen.
+applications-description = Lege fest, wie { -brand-short-name } mit Dateien verfährt, die du aus dem Web oder aus Anwendungen, die du beim Surfen verwendest, herunterlädst.
 applications-filter =
     .placeholder = Dateitypen oder Anwendungen suchen
 applications-type-column =
@@ -310,8 +313,8 @@ performance-allow-hw-accel =
 performance-limit-content-process-option = Maximale Anzahl an Inhaltsprozessen
     .accesskey = M
 performance-limit-content-process-enabled-desc = Mehr Inhaltsprozesse verbessern die Leistung bei Verwendung mehrerer Tabs, aber nutzen auch mehr Arbeitsspeicher.
-performance-limit-content-process-disabled-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a>Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird</a>
-performance-limit-content-process-blocked-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a data-l10n-name="learn-more">Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird</a>
+performance-limit-content-process-disabled-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a>Wie du herausfindest, ob Cliqz mit mehreren Prozessen ausgeführt wird</a>
+performance-limit-content-process-blocked-desc = Das Ändern der Anzahl der Inhaltsprozesse ist nur in { -brand-short-name } mit mehreren Prozessen möglich. <a data-l10n-name="learn-more">Wie du herausfindest, ob Cliqz mit mehreren Prozessen ausgeführt wird</a>
 # Variables:
 #   $num - default value of the `dom.ipc.processCount` pref.
 performance-default-content-process-count =
@@ -436,8 +439,8 @@ search-find-more-desc = Cliqz unterstützt viele Suchmaschinen aus dem offiziell
 search-keyword-warning-title = Schlüsselwort duplizieren
 # Variables:
 #   $name (String) - Name of a search engine.
-search-keyword-warning-engine = Sie haben ein Schlüsselwort ausgewählt, das bereits von "{ $name }" verwendet wird, bitte wählen Sie ein anderes.
-search-keyword-warning-bookmark = Sie haben ein Schlüsselwort ausgewählt, das bereits von einem Lesezeichen verwendet wird, bitte wählen Sie ein anderes.
+search-keyword-warning-engine = Du hast ein Schlüsselwort ausgewählt, das bereits von "{ $name }" verwendet wird, bitte wähle ein anderes.
+search-keyword-warning-bookmark = Du hast ein Schlüsselwort ausgewählt, das bereits von einem Lesezeichen verwendet wird, bitte wähle ein anderes.
 
 ## Containers Section
 
@@ -580,7 +583,7 @@ history-header = Chronik
 #     This will result in "Firefox" + "Will remember history", etc.
 #   - As a stand-alone message, for example "Firefox history settings:".
 history-remember-label = { -brand-short-name } wird eine Chronik
-    .accesskey = F
+    .accesskey = C
 history-remember-option-all =
     .label = anlegen
 history-remember-option-never =
@@ -588,10 +591,10 @@ history-remember-option-never =
 history-remember-option-custom =
     .label = nach benutzerdefinierten Einstellungen anlegen
 history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.
+history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzen.
 history-private-browsing-permanent =
-    .label = Immer den Privaten Modus verwenden
-    .accesskey = M
+    .label = Immer den Vergessen Modus verwenden
+    .accesskey = V
 history-remember-option =
     .label = Besuchte Seiten und Download-Chronik speichern
     .accesskey = w
@@ -669,7 +672,7 @@ addressbar-locbar-openpage-option =
 addressbar-suggestions-settings = Einstellungen für Suchvorschläge ändern
 
 ## Privacy Section - Tracking
-
+tracking-header-donottrack = Do Not Track
 tracking-header = Schutz vor Aktivitätenverfolgung
 tracking-desc = Der Schutz vor Aktivitätenverfolgung blockiert nur Systeme, welche Ihr Surfverhalten über mehrere Websites verteilt aufzeichnen. <a data-l10n-name="learn-more">Weitere Informationen zum Schutz Ihrer Privatsphäre und vor Aktivitätenverfolgung</a>
 tracking-mode-label = Schutz vor Aktivitätenverfolgung verwenden, um bekannte Aktivitäten verfolgende Systeme zu blockieren
@@ -677,7 +680,7 @@ tracking-mode-always =
     .label = Immer
     .accesskey = m
 tracking-mode-private =
-    .label = Nur in privaten Fenstern
+    .label = Nur in Vergessen Fenstern
     .accesskey = P
 tracking-mode-never =
     .label = Nie
@@ -736,14 +739,14 @@ permissions-addon-exceptions =
     .label = Ausnahmen…
     .accesskey = A
 permissions-a11y-privacy-checkbox =
-    .label = Externen Anwendungen den Zugriff auf den Dienst für Barrierefreiheit in Firefox verweigern
+    .label = Externen Anwendungen den Zugriff auf den Dienst für Barrierefreiheit in { -brand-short-name } verweigern
     .accesskey = B
 permissions-a11y-privacy-link = Weitere Informationen
 
 ## Privacy Section - Data Collection
 
 collection-header = Datenerhebung durch { -brand-short-name } und deren Verwendung
-collection-description = Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um { -brand-short-name } für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.
+collection-description = Wir lassen dir die Wahl, ob du uns Daten sendest, und sammeln nur die Daten, welche erforderlich sind, um { -brand-short-name } für jeden anbieten und verbessern zu können. Wir fragen immer um deine Erlaubnis, bevor wir persönliche Daten senden.
 collection-privacy-notice = Datenschutzhinweis
 collection-health-report =
     .label = { -brand-short-name } erlauben, Daten zu technischen Details und Interaktionen an { -vendor-short-name } zu senden
