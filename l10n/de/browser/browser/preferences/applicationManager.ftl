@@ -8,13 +8,13 @@ app-manager-window =
 app-manager-remove =
     .label = Entfernen
     .accesskey = E
-app-manager-handle-webfeeds = Sie können Web-Feeds mit folgenden Anwendungen benutzen.
+app-manager-handle-webfeeds = Du kannst Web-Feeds mit folgenden Anwendungen benutzen.
 # Variables:
 #   $type (String) - the URI scheme of the link (e.g. mailto:)
-app-manager-handle-protocol = Sie können { $type }-Links mit folgenden Anwendungen benutzen.
+app-manager-handle-protocol = Du kannst { $type }-Links mit folgenden Anwendungen benutzen.
 # Variables:
 #   $type (String) - the MIME type (e.g. application/binary)
-app-manager-handle-file = Sie können { $type }-Inhalte mit folgenden Anwendungen benutzen.
+app-manager-handle-file = Du kannst { $type }-Inhalte mit folgenden Anwendungen benutzen.
 
 ## These strings are followed, on a new line,
 ## by the URL or path of the application.

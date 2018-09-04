@@ -59,7 +59,11 @@ pane-sync-title = Firefox Account
 category-sync =
     .tooltiptext = { pane-sync-title }
 
-help-button-label = { -brand-short-name } Support
+pane-connect-title = Connect
+category-connect =
+    .tooltiptext = { pane-connect-title }
+
+help-button-label = Mozilla Support
 
 focus-search =
     .key = f
@@ -787,7 +791,7 @@ addressbar-locbar-openpage-option =
 addressbar-suggestions-settings = Change preferences for search engine suggestions
 
 ## Privacy Section - Tracking
-
+tracking-header-donottrack = Do Not Track
 tracking-header = Tracking Protection
 
 tracking-desc = Tracking Protection blocks online trackers that collect your browsing data across multiple websites. <a data-l10n-name="learn-more">Learn more about Tracking Protection and your privacy</a>
