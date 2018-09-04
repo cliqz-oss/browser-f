@@ -56,6 +56,10 @@ label {
   margin-bottom: 0 !important;
 }
 
+description > b {
+  font-weight: bold;
+}
+
 .tip-caption {
   font-size: .9em;
 }
