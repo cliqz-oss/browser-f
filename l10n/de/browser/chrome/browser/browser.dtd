@@ -926,16 +926,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY trackingProtection.off "Schutz vor Aktivitätenverfolgung: AUS">
 
 <!ENTITY trackingProtection.title "Schutz vor Aktivitätenverfolgung">
-<<<<<<< HEAD
-<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Teile der Seite, die deine Surfaktivitäten verfolgen könnten.">
+<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Seitenelemente, die deine Surfaktivitäten verfolgen könnten.">
 <!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die deine Surfaktivitäten verfolgen könnten. Du hast den Schutz deaktiviert.">
-||||||| merged common ancestors
-<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Teile der Seite, die Ihre Surfaktivitäten verfolgen könnten.">
-<!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die Ihre Surfaktivitäten verfolgen könnten. Sie haben den Schutz deaktiviert.">
-=======
-<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Seitenelemente, die Ihre Surfaktivitäten verfolgen könnten.">
-<!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die Ihre Surfaktivitäten verfolgen könnten. Sie haben den Schutz deaktiviert.">
->>>>>>> origin/upstream-releases
 <!ENTITY trackingProtection.notDetected3 "Keine Inhalte zur Aktivitätenverfolgung auf dieser Seite gefunden.">
 <!-- LOCALIZATION NOTE (trackingProtection.unblock.label, trackingProtection.unblock.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
