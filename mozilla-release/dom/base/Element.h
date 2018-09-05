@@ -167,6 +167,8 @@ public:
 
   NS_DECL_ADDSIZEOFEXCLUDINGTHIS
 
+  NS_IMPL_FROMNODE_HELPER(Element, IsElement())
+
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
 
   /**
@@ -361,7 +363,7 @@ public:
    * Note: This method is analogous to the 'GetStyle' method in
    * nsGenericHTMLElement and nsStyledElement.
    */
-  nsDOMCSSAttributeDeclaration* GetSMILOverrideStyle();
+  nsDOMCSSAttributeDeclaration* SMILOverrideStyle();
 
   /**
    * Returns if the element is labelable as per HTML specification.
@@ -603,22 +605,22 @@ protected:
   // those in EXTERNALLY_MANAGED_STATES.
   virtual void AddStates(EventStates aStates)
   {
-    NS_PRECONDITION(!aStates.HasAtLeastOneOfStates(INTRINSIC_STATES),
-                    "Should only be adding externally-managed states here");
+    MOZ_ASSERT(!aStates.HasAtLeastOneOfStates(INTRINSIC_STATES),
+               "Should only be adding externally-managed states here");
     AddStatesSilently(aStates);
     NotifyStateChange(aStates);
   }
   virtual void RemoveStates(EventStates aStates)
   {
-    NS_PRECONDITION(!aStates.HasAtLeastOneOfStates(INTRINSIC_STATES),
-                    "Should only be removing externally-managed states here");
+    MOZ_ASSERT(!aStates.HasAtLeastOneOfStates(INTRINSIC_STATES),
+               "Should only be removing externally-managed states here");
     RemoveStatesSilently(aStates);
     NotifyStateChange(aStates);
   }
   virtual void ToggleStates(EventStates aStates, bool aNotify)
   {
-    NS_PRECONDITION(!aStates.HasAtLeastOneOfStates(INTRINSIC_STATES),
-                    "Should only be removing externally-managed states here");
+    MOZ_ASSERT(!aStates.HasAtLeastOneOfStates(INTRINSIC_STATES),
+               "Should only be removing externally-managed states here");
     mState ^= aStates;
     if (aNotify) {
       NotifyStateChange(aStates);
@@ -1261,6 +1263,10 @@ public:
   // Shadow DOM v1
   already_AddRefed<ShadowRoot> AttachShadow(const ShadowRootInit& aInit,
                                             ErrorResult& aError);
+
+  already_AddRefed<ShadowRoot> AttachShadowWithoutNameChecks(ShadowRootMode aMode);
+  void UnattachShadow();
+
   ShadowRoot* GetShadowRootByMode() const;
   void SetSlot(const nsAString& aName, ErrorResult& aError);
   void GetSlot(nsAString& aName);
@@ -1369,7 +1375,6 @@ public:
 
   virtual void GetInnerHTML(nsAString& aInnerHTML, OOMReporter& aError);
   virtual void SetInnerHTML(const nsAString& aInnerHTML, nsIPrincipal* aSubjectPrincipal, ErrorResult& aError);
-  void UnsafeSetInnerHTML(const nsAString& aInnerHTML, ErrorResult& aError);
   void GetOuterHTML(nsAString& aOuterHTML);
   void SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError);
   void InsertAdjacentHTML(const nsAString& aPosition, const nsAString& aText,
@@ -1964,6 +1969,10 @@ private:
   nsIScrollableFrame* GetScrollFrame(nsIFrame **aStyledFrame = nullptr,
                                      FlushType aFlushType = FlushType::Layout);
 
+  // Prevent people from doing pointless checks/casts on Element instances.
+  void IsElement() = delete;
+  void AsElement() = delete;
+
   // Data members
   EventStates mState;
   // Per-node data managed by Servo.
@@ -2044,7 +2053,7 @@ inline const mozilla::dom::Element* nsINode::AsElement() const
 
 inline mozilla::dom::Element* nsINode::GetParentElement() const
 {
-  return mParent && mParent->IsElement() ? mParent->AsElement() : nullptr;
+  return mozilla::dom::Element::FromNodeOrNull(mParent);
 }
 
 /**

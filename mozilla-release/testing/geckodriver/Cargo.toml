@@ -1,6 +1,6 @@
 [package]
 name = "geckodriver"
-version = "0.20.1"
+version = "0.21.0"
 description = "Proxy for using WebDriver clients to interact with Gecko-based browsers."
 keywords = ["webdriver", "w3c", "httpd", "mozilla", "firefox"]
 repository = "https://hg.mozilla.org/mozilla-central/file/tip/testing/geckodriver"
@@ -17,7 +17,7 @@ log = { version = "0.4", features = ["std"] }
 mozprofile = { path = "../mozbase/rust/mozprofile" }
 mozrunner = { path = "../mozbase/rust/mozrunner" }
 mozversion = { path = "../mozbase/rust/mozversion" }
-regex = "0.2"
+regex = "1.0"
 rustc-serialize = "0.3"
 uuid = "0.1.18"
 webdriver = { path = "../webdriver" }

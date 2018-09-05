@@ -19,7 +19,7 @@
 
 // This is the schema version. Update it at any schema change and add a
 // corresponding migrateVxx method below.
-#define DATABASE_SCHEMA_VERSION 47
+#define DATABASE_SCHEMA_VERSION 52
 
 // Fired after Places inited.
 #define TOPIC_PLACES_INIT_COMPLETE "places-init-complete"
@@ -240,25 +240,12 @@ protected:
   bool IsShutdownStarted() const;
 
   /**
-   * Initializes the database file.  If the database does not exist or is
-   * corrupt, a new one is created.  In case of corruption it also creates a
-   * backup copy of the database.
-   *
-   * @param aStorage
-   *        mozStorage service instance.
-   * @param aNewDatabaseCreated
-   *        whether a new database file has been created.
-   */
-  nsresult InitDatabaseFile(nsCOMPtr<mozIStorageService>& aStorage,
-                            bool* aNewDatabaseCreated);
-
-  /**
    * Ensure the favicons database file exists.
    *
    * @param aStorage
    *        mozStorage service instance.
    */
-  nsresult EnsureFaviconsDatabaseFile(nsCOMPtr<mozIStorageService>& aStorage);
+  nsresult EnsureFaviconsDatabaseAttached(const nsCOMPtr<mozIStorageService>& aStorage);
 
   /**
    * Creates a database backup and replaces the original file with a new
@@ -266,19 +253,28 @@ protected:
    *
    * @param aStorage
    *        mozStorage service instance.
+   * @param aDbfilename
+   *        the database file name to replace.
    * @param aTryToClone
    *        whether we should try to clone a corrupt database.
+   * @param aReopenConnection
+   *        whether we should open a new connection to the replaced database.
    */
   nsresult BackupAndReplaceDatabaseFile(nsCOMPtr<mozIStorageService>& aStorage,
-                                        bool aTryToClone);
+                                        const nsString& aDbFilename,
+                                        bool aTryToClone,
+                                        bool aReopenConnection);
 
   /**
    * Tries to recover tables and their contents from a corrupt database.
    *
    * @param aStorage
    *        mozStorage service instance.
+   * @param aDatabaseFile
+   *        nsIFile pointing to the places.sqlite file considered corrupt.
    */
-  nsresult TryToCloneTablesFromCorruptDatabase(nsCOMPtr<mozIStorageService>& aStorage);
+  nsresult TryToCloneTablesFromCorruptDatabase(const nsCOMPtr<mozIStorageService>& aStorage,
+                                               const nsCOMPtr<nsIFile>& aDatabaseFile);
 
   /**
    * Set up the connection environment through PRAGMAs.
@@ -338,12 +334,20 @@ protected:
   nsresult MigrateV45Up();
   nsresult MigrateV46Up();
   nsresult MigrateV47Up();
+  nsresult MigrateV48Up();
+  nsresult MigrateV49Up();
+  nsresult MigrateV50Up();
+  nsresult MigrateV51Up();
+  nsresult MigrateV52Up();
+
+  void MigrateV52OriginFrecencies();
 
   nsresult UpdateBookmarkRootTitles();
 
   friend class ConnectionShutdownBlocker;
 
   int64_t CreateMobileRoot();
+  nsresult ConvertOldStyleQuery(nsCString& aURL);
   nsresult GetItemsWithAnno(const nsACString& aAnnoName, int32_t aItemType,
                             nsTArray<int64_t>& aItemIds);
   nsresult DeleteBookmarkItem(int32_t aItemId);

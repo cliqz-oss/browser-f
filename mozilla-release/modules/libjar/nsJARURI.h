@@ -99,6 +99,7 @@ protected:
     nsCString        mCharsetHint;
 
 private:
+    nsresult Clone(nsIURI** aURI);
     nsresult SetSpecInternal(const nsACString &input);
     nsresult SetScheme(const nsACString &input);
     nsresult SetUserPass(const nsACString &input);
@@ -111,7 +112,7 @@ private:
     nsresult SetRef(const nsACString &input);
     nsresult SetFilePath(const nsACString &input);
     nsresult SetQuery(const nsACString &input);
-    nsresult SetQueryWithEncoding(const nsACString &input, const Encoding* encoding);
+    nsresult SetQueryWithEncoding(const nsACString &input, const mozilla::Encoding* encoding);
     bool Deserialize(const mozilla::ipc::URIParams&);
     nsresult ReadPrivate(nsIObjectInputStream *aStream);
 

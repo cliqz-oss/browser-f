@@ -1,6 +1,4 @@
 # This is a template config file for marionette production.
-import os
-
 HG_SHARE_BASE_DIR = "/builds/hg-shared"
 
 config = {
@@ -10,20 +8,13 @@ config = {
 
     "vcs_share_base": HG_SHARE_BASE_DIR,
 
-    "buildbot_json_path": "buildprops.json",
-
     "default_actions": [
         'clobber',
-        'read-buildbot-config',
         'download-and-extract',
         'create-virtualenv',
         'install',
         'run-tests',
     ],
-    "default_blob_upload_servers": [
-        "https://blobupload.elasticbeanstalk.com",
-    ],
-    "blob_uploader_auth_file": os.path.join(os.getcwd(), "oauth.txt"),
     "download_symbols": "ondemand",
     "download_minidump_stackwalk": True,
     "tooltool_cache": "/builds/worker/tooltool-cache",

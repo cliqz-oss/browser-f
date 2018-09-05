@@ -14,6 +14,7 @@
 #include "nsContentUtils.h"
 #include "nsGkAtoms.h"
 #include "nsSVGString.h"
+#include "nsIContentInlines.h"
 #include "nsIURI.h"
 
 NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(A)
@@ -45,7 +46,6 @@ const DOMTokenListSupportedToken SVGAElement::sSupportedRelValues[] = {
 // nsISupports methods
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SVGAElement)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMNode)
   NS_INTERFACE_MAP_ENTRY(Link)
 NS_INTERFACE_MAP_END_INHERITING(SVGAElementBase)
 

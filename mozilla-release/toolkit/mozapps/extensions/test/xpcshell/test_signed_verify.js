@@ -35,7 +35,7 @@ function verifySignatures() {
 
     info("Verifying signatures");
     let XPIscope = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
-    XPIscope.XPIProvider.verifySignatures();
+    XPIscope.XPIDatabase.verifySignatures();
   });
 }
 
@@ -50,8 +50,8 @@ function verify_no_change([startFile, startState], [endFile, endState]) {
     info("A switch from " + startFile + " to " + endFile + " should cause no change.");
 
     // Install the first add-on
-    manuallyInstall(do_get_file(DATA + startFile), profileDir, ID);
-    startupManager();
+    await manuallyInstall(do_get_file(DATA + startFile), profileDir, ID);
+    await promiseStartupManager();
 
     let addon = await promiseAddonByID(ID);
     Assert.notEqual(addon, null);
@@ -62,7 +62,7 @@ function verify_no_change([startFile, startState], [endFile, endState]) {
 
     // Swap in the files from the next add-on
     manuallyUninstall(profileDir, ID);
-    manuallyInstall(do_get_file(DATA + endFile), profileDir, ID);
+    await manuallyInstall(do_get_file(DATA + endFile), profileDir, ID);
 
     let events = {
       [ID]: []
@@ -90,75 +90,13 @@ function verify_no_change([startFile, startState], [endFile, endState]) {
   });
 }
 
-function verify_enables([startFile, startState], [endFile, endState]) {
-  add_task(async function() {
-    info("A switch from " + startFile + " to " + endFile + " should enable the add-on.");
-
-    // Install the first add-on
-    manuallyInstall(do_get_file(DATA + startFile), profileDir, ID);
-    startupManager();
-
-    let addon = await promiseAddonByID(ID);
-    Assert.notEqual(addon, null);
-    Assert.ok(!addon.isActive);
-    Assert.equal(addon.pendingOperations, AddonManager.PENDING_NONE);
-    Assert.equal(addon.signedState, startState);
-
-    // Swap in the files from the next add-on
-    manuallyUninstall(profileDir, ID);
-    manuallyInstall(do_get_file(DATA + endFile), profileDir, ID);
-
-    let needsRestart = hasFlag(addon.operationsRequiringRestart, AddonManager.OP_NEEDS_RESTART_ENABLE);
-    info(needsRestart);
-
-    let events = {};
-    if (!needsRestart) {
-      events[ID] = [
-        ["onPropertyChanged", ["appDisabled"]],
-        ["onEnabling", false],
-        "onEnabled"
-      ];
-    } else {
-      events[ID] = [
-        ["onPropertyChanged", ["appDisabled"]],
-        "onEnabling"
-      ];
-    }
-
-    if (startState != endState)
-      events[ID].unshift(["onPropertyChanged", ["signedState"]]);
-
-    prepare_test(events);
-
-    // Trigger the check
-    let changes = await verifySignatures();
-    Assert.equal(changes.enabled.length, 1);
-    Assert.equal(changes.enabled[0], ID);
-    Assert.equal(changes.disabled.length, 0);
-
-    Assert.ok(!addon.appDisabled);
-    if (needsRestart)
-      Assert.notEqual(addon.pendingOperations, AddonManager.PENDING_NONE);
-    else
-      Assert.ok(addon.isActive);
-    Assert.equal(addon.signedState, endState);
-
-    ensure_test_completed();
-
-    // Remove the add-on and restart to let it go away
-    manuallyUninstall(profileDir, ID);
-    await promiseRestartManager();
-    await promiseShutdownManager();
-  });
-}
-
 function verify_disables([startFile, startState], [endFile, endState]) {
   add_task(async function() {
     info("A switch from " + startFile + " to " + endFile + " should disable the add-on.");
 
     // Install the first add-on
-    manuallyInstall(do_get_file(DATA + startFile), profileDir, ID);
-    startupManager();
+    await manuallyInstall(do_get_file(DATA + startFile), profileDir, ID);
+    await promiseStartupManager();
 
     let addon = await promiseAddonByID(ID);
     Assert.notEqual(addon, null);
@@ -170,7 +108,7 @@ function verify_disables([startFile, startState], [endFile, endState]) {
 
     // Swap in the files from the next add-on
     manuallyUninstall(profileDir, ID);
-    manuallyInstall(do_get_file(DATA + endFile), profileDir, ID);
+    await manuallyInstall(do_get_file(DATA + endFile), profileDir, ID);
 
     let events = {};
     if (!needsRestart) {
@@ -219,20 +157,8 @@ for (let start of GOOD) {
   }
 }
 
-for (let start of BAD) {
-  for (let end of GOOD) {
-    verify_enables(start, end);
-  }
-}
-
 for (let start of GOOD) {
   for (let end of GOOD.filter(f => f != start)) {
-    verify_no_change(start, end);
-  }
-}
-
-for (let start of BAD) {
-  for (let end of BAD.filter(f => f != start)) {
     verify_no_change(start, end);
   }
 }

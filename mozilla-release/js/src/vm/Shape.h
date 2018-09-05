@@ -388,11 +388,6 @@ class MOZ_RAII AutoKeepShapeTables
 };
 
 /*
- * Use the reserved attribute bit to mean shadowability.
- */
-#define JSPROP_SHADOWABLE       JSPROP_INTERNAL_USE_BIT
-
-/*
  * Shapes encode information about both a property lineage *and* a particular
  * property. This information is split across the Shape and the BaseShape
  * at shape->base(). Both Shape and BaseShape can be either owned or unowned
@@ -451,7 +446,6 @@ class BaseShape : public gc::TenuredCell
     friend class Shape;
     friend struct StackBaseShape;
     friend struct StackShape;
-    friend void gc::MergeCompartments(JSCompartment* source, JSCompartment* target);
 
     enum Flag {
         /* Owned by the referring shape. */
@@ -702,6 +696,7 @@ class Shape : public gc::TenuredCell
 
   protected:
     GCPtrBaseShape base_;
+    GCPtrShape parent;
     PreBarrieredId propid_;
 
     // Flags that are not modified after the Shape is created. Off-thread Ion
@@ -751,7 +746,6 @@ class Shape : public gc::TenuredCell
     uint8_t             attrs;          /* attributes, see jsapi.h JSPROP_* */
     uint8_t             mutableFlags;   /* mutable flags, see below for defines */
 
-    GCPtrShape   parent;          /* parent node, reverse for..in order */
     /* kids is valid when !inDictionary(), listp is valid when inDictionary(). */
     union {
         KidsPointer kids;         /* null, single child, or a tagged ptr
@@ -1079,8 +1073,6 @@ class Shape : public gc::TenuredCell
         return (attrs & (JSPROP_SETTER | JSPROP_GETTER)) != 0;
     }
 
-    bool hasShadowable() const { return attrs & JSPROP_SHADOWABLE; }
-
     uint32_t entryCount() {
         JS::AutoCheckCannotGC nogc;
         if (ShapeTable* table = maybeTable(nogc))
@@ -1216,9 +1208,6 @@ class MOZ_RAII AutoRooterGetterSetter
   public:
     inline AutoRooterGetterSetter(JSContext* cx, uint8_t attrs,
                                   GetterOp* pgetter, SetterOp* psetter
-                                  MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
-    inline AutoRooterGetterSetter(JSContext* cx, uint8_t attrs,
-                                  JSNative* pgetter, JSNative* psetter
                                   MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
 
   private:
@@ -1531,11 +1520,12 @@ class MutableWrappedPtrOperations<StackShape, Wrapper>
 inline
 Shape::Shape(const StackShape& other, uint32_t nfixed)
   : base_(other.base),
+    parent(nullptr),
     propid_(other.propid),
     immutableFlags(other.immutableFlags),
     attrs(other.attrs),
     mutableFlags(other.mutableFlags),
-    parent(nullptr)
+    listp(nullptr)
 {
     setNumFixedSlots(nfixed);
 
@@ -1565,11 +1555,12 @@ class NurseryShapesRef : public gc::BufferableRef
 inline
 Shape::Shape(UnownedBaseShape* base, uint32_t nfixed)
   : base_(base),
+    parent(nullptr),
     propid_(JSID_EMPTY),
     immutableFlags(SHAPE_INVALID_SLOT | (nfixed << FIXED_SLOTS_SHIFT)),
     attrs(0),
     mutableFlags(0),
-    parent(nullptr)
+    listp(nullptr)
 {
     MOZ_ASSERT(base);
     kids.setNull();

@@ -10,12 +10,13 @@ const profileDir = gProfD.clone();
 profileDir.append("extensions");
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "49");
-startupManager();
 
 /**
  *  Schema change with no application update reloads metadata.
  */
 add_task(async function schema_change() {
+  await promiseStartupManager();
+
   const ID = "schema-change@tests.mozilla.org";
 
   let xpiFile = createTempXPIFile({
@@ -69,7 +70,7 @@ add_task(async function schema_change() {
   equal(addon.version, "2.0", "Got the expected version");
 
   let waitUninstall = promiseAddonEvent("onUninstalled");
-  addon.uninstall();
+  await addon.uninstall();
   await waitUninstall;
 });
 
@@ -129,7 +130,7 @@ add_task(async function schema_change() {
   equal(addon.version, "1.0", "Got the expected version");
 
   let waitUninstall = promiseAddonEvent("onUninstalled");
-  addon.uninstall();
+  await addon.uninstall();
   await waitUninstall;
 });
 
@@ -192,7 +193,7 @@ add_task(async function schema_change_app_update() {
   equal(addon.version, "2.0", "Got the expected version");
 
   let waitUninstall = promiseAddonEvent("onUninstalled");
-  addon.uninstall();
+  await addon.uninstall();
   await waitUninstall;
 });
 
@@ -251,7 +252,7 @@ add_task(async function schema_change() {
   equal(addon.version, "1.0", "Got the expected version");
 
   let waitUninstall = promiseAddonEvent("onUninstalled");
-  addon.uninstall();
+  await addon.uninstall();
   await waitUninstall;
 });
 
@@ -312,6 +313,6 @@ add_task(async function schema_change() {
   equal(addon.version, "2.0", "Got the expected version");
 
   let waitUninstall = promiseAddonEvent("onUninstalled");
-  addon.uninstall();
+  await addon.uninstall();
   await waitUninstall;
 });

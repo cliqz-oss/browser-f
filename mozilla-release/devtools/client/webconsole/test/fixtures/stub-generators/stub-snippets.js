@@ -27,7 +27,7 @@ const consoleApiCommands = [
   "console.error('error message');",
 ];
 
-let consoleApi = new Map(consoleApiCommands.map(
+const consoleApi = new Map(consoleApiCommands.map(
   cmd => [cmd, {keys: [cmd], code: cmd}]));
 
 consoleApi.set("console.log('mymap')", {
@@ -59,13 +59,23 @@ foo()
 `});
 
 consoleApi.set("console.time('bar')", {
-  keys: ["console.time('bar')", "timerAlreadyExists",
-         "console.timeEnd('bar')", "timerDoesntExist"],
+  keys: [
+    "console.time('bar')",
+    "timerAlreadyExists",
+    "console.timeLog('bar') - 1",
+    "console.timeLog('bar') - 2",
+    "console.timeEnd('bar')",
+    "timeEnd.timerDoesntExist",
+    "timeLog.timerDoesntExist",
+  ],
   code: `
 console.time("bar");
 console.time("bar");
+console.timeLog("bar");
+console.timeLog("bar", "second call", {state: 1});
 console.timeEnd("bar");
 console.timeEnd("bar");
+console.timeLog("bar");
 `});
 
 consoleApi.set("console.table('bar')", {
@@ -157,6 +167,8 @@ consoleApi.set("console.count", {
     "console.count | clear",
     "console.count | default: 4",
     "console.count | test counter: 3",
+    "console.countReset | test counter: 0",
+    "console.countReset | counterDoesntExist",
   ],
   code: `
     console.count();
@@ -167,6 +179,8 @@ consoleApi.set("console.count", {
     console.clear();
     console.count();
     console.count("test counter");
+    console.countReset("test counter");
+    console.countReset("test counter");
 `});
 
 // CSS messages
@@ -194,7 +208,7 @@ const evaluationResultCommands = [
   "undefined"
 ];
 
-let evaluationResult = new Map(evaluationResultCommands.map(cmd => [cmd, cmd]));
+const evaluationResult = new Map(evaluationResultCommands.map(cmd => [cmd, cmd]));
 evaluationResult.set("longString message Error",
   `throw new Error("Long error ".repeat(10000))`);
 
@@ -203,7 +217,7 @@ evaluationResult.set(`eval throw "tomato"`, `throw "tomato"`);
 
 // Network Event
 
-let networkEvent = new Map();
+const networkEvent = new Map();
 
 networkEvent.set("GET request", {
   keys: ["GET request"],
@@ -230,7 +244,7 @@ xhr.send();
 
 // Page Error
 
-let pageError = new Map();
+const pageError = new Map();
 
 pageError.set("ReferenceError: asdf is not defined", `
   function bar() {

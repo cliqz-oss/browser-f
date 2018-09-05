@@ -8,7 +8,6 @@
 #define jit_shared_Assembler_shared_h
 
 #include "mozilla/CheckedInt.h"
-#include "mozilla/PodOperations.h"
 
 #include <limits.h>
 
@@ -158,8 +157,8 @@ struct Imm64
 static inline bool
 IsCompilingWasm()
 {
-    // wasm compilation pushes a JitContext with a null JSCompartment.
-    return GetJitContext()->compartment == nullptr;
+    // wasm compilation pushes a JitContext with a null Zone.
+    return GetJitContext()->zone == nullptr;
 }
 #endif
 
@@ -597,10 +596,10 @@ typedef Vector<CodeLabel, 0, SystemAllocPolicy> CodeLabelVector;
 
 class CodeOffsetJump
 {
-    size_t offset_;
+    size_t offset_ = 0;
 
 #ifdef JS_SMALL_BRANCH
-    size_t jumpTableIndex_;
+    size_t jumpTableIndex_ = 0;
 #endif
 
   public:
@@ -616,9 +615,7 @@ class CodeOffsetJump
     explicit CodeOffsetJump(size_t offset) : offset_(offset) {}
 #endif
 
-    CodeOffsetJump() {
-        mozilla::PodZero(this);
-    }
+    CodeOffsetJump() = default;
 
     size_t offset() const {
         return offset_;
@@ -930,7 +927,7 @@ class AssemblerShared
     template <typename... Args>
     void append(const wasm::CallSiteDesc& desc, CodeOffset retAddr, Args&&... args) {
         enoughMemory_ &= callSites_.emplaceBack(desc, retAddr.offset());
-        enoughMemory_ &= callSiteTargets_.emplaceBack(mozilla::Forward<Args>(args)...);
+        enoughMemory_ &= callSiteTargets_.emplaceBack(std::forward<Args>(args)...);
     }
     void append(wasm::Trap trap, wasm::TrapSite site) {
         enoughMemory_ &= trapSites_[trap].append(site);

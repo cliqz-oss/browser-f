@@ -25,6 +25,12 @@ class GeneratorObject;
 class RegExpObject;
 class TypedArrayObject;
 
+namespace gc {
+
+struct Cell;
+
+}
+
 namespace jit {
 
 enum DataType : uint8_t {
@@ -744,8 +750,8 @@ CreateThis(JSContext* cx, HandleObject callee, HandleObject newTarget, MutableHa
 
 void GetDynamicName(JSContext* cx, JSObject* scopeChain, JSString* str, Value* vp);
 
-void PostWriteBarrier(JSRuntime* rt, JSObject* obj);
-void PostGlobalWriteBarrier(JSRuntime* rt, JSObject* obj);
+void PostWriteBarrier(JSRuntime* rt, js::gc::Cell* cell);
+void PostGlobalWriteBarrier(JSRuntime* rt, GlobalObject* obj);
 
 enum class IndexInBounds { Yes, Maybe };
 
@@ -886,9 +892,6 @@ MOZ_MUST_USE bool
 ThrowRuntimeLexicalError(JSContext* cx, unsigned errorNumber);
 
 MOZ_MUST_USE bool
-ThrowReadOnlyError(JSContext* cx, HandleObject obj, int32_t index);
-
-MOZ_MUST_USE bool
 BaselineThrowUninitializedThis(JSContext* cx, BaselineFrame* frame);
 
 MOZ_MUST_USE bool
@@ -949,6 +952,9 @@ void
 CloseIteratorFromIon(JSContext* cx, JSObject* obj);
 
 extern const VMFunction SetObjectElementInfo;
+
+extern const VMFunction StringsEqualInfo;
+extern const VMFunction StringsNotEqualInfo;
 
 } // namespace jit
 } // namespace js

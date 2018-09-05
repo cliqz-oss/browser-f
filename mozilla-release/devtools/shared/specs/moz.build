@@ -4,10 +4,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+DIRS += [
+    'addon',
+    'targets',
+    'worker',
+]
+
 DevToolsModules(
     'accessibility.js',
     'actor-registry.js',
-    'addons.js',
     'animation.js',
     'breakpoint.js',
     'call-watcher.js',
@@ -26,6 +31,7 @@ DevToolsModules(
     'inspector.js',
     'layout.js',
     'memory.js',
+    'network-event.js',
     'node.js',
     'perf.js',
     'performance-recording.js',
@@ -42,11 +48,8 @@ DevToolsModules(
     'stylesheets.js',
     'symbol-iterator.js',
     'symbol.js',
-    'tab.js',
     'timeline.js',
     'webaudio.js',
-    'webextension-inspected-window.js',
-    'webextension-parent.js',
+    'webconsole.js',
     'webgl.js',
-    'worker.js'
 )

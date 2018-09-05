@@ -9,7 +9,8 @@ var EXPORTED_SYMBOLS = [
 ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-Cu.importGlobalProperties(["DOMParser"]);
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+XPCOMUtils.defineLazyGlobalGetters(this, ["DOMParser"]);
 
 // We use a preferences whitelist to make sure we only show preferences that
 // are useful for support and won't compromise the user's privacy.  Note that
@@ -48,6 +49,7 @@ const PREFS_WHITELIST = [
   "browser.zoom.",
   "dom.",
   "extensions.checkCompatibility",
+  "extensions.formautofill.",
   "extensions.lastAppVersion",
   "font.",
   "general.autoScroll",
@@ -75,6 +77,7 @@ const PREFS_WHITELIST = [
   "services.sync.lastSync",
   "services.sync.numClients",
   "services.sync.engine.",
+  "signon.",
   "storage.vacuum.last.",
   "svg.",
   "toolkit.startup.recent_crashes",

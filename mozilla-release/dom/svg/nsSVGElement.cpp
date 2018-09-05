@@ -53,7 +53,6 @@
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/SVGElementBinding.h"
 #include "mozilla/DeclarationBlock.h"
-#include "mozilla/DeclarationBlockInlines.h"
 #include "mozilla/Unused.h"
 #include "mozilla/RestyleManager.h"
 
@@ -227,12 +226,6 @@ nsSVGElement::Init()
 
   return NS_OK;
 }
-
-//----------------------------------------------------------------------
-// nsISupports methods
-
-NS_IMPL_ISUPPORTS_INHERITED(nsSVGElement, nsSVGElementBase,
-                            nsIDOMNode)
 
 //----------------------------------------------------------------------
 // Implementation
@@ -1194,7 +1187,7 @@ MappedAttrParser::ParseMappedAttrValue(nsAtom* aMappedAttrName,
                                        const nsAString& aMappedAttrValue)
 {
   if (!mDecl) {
-    mDecl = new ServoDeclarationBlock();
+    mDecl = new DeclarationBlock();
   }
 
   // Get the nsCSSPropertyID ID for our mapped attribute.
@@ -1208,8 +1201,9 @@ MappedAttrParser::ParseMappedAttrValue(nsAtom* aMappedAttrName,
     RefPtr<URLExtraData> data = new URLExtraData(mBaseURI, mDocURI,
                                                  mElement->NodePrincipal());
     changed = Servo_DeclarationBlock_SetPropertyById(
-      mDecl->AsServo()->Raw(), propertyID, &value, false, data,
-      ParsingMode::AllowUnitlessLength, mElement->OwnerDoc()->GetCompatibilityMode(), mLoader);
+      mDecl->Raw(), propertyID, &value, false, data,
+      ParsingMode::AllowUnitlessLength,
+      mElement->OwnerDoc()->GetCompatibilityMode(), mLoader, { });
 
     if (changed) {
       // The normal reporting of use counters by the nsCSSParser won't happen
@@ -1237,7 +1231,7 @@ MappedAttrParser::ParseMappedAttrValue(nsAtom* aMappedAttrName,
   if (aMappedAttrName == nsGkAtoms::lang) {
     propertyID = eCSSProperty__x_lang;
     RefPtr<nsAtom> atom = NS_Atomize(aMappedAttrValue);
-    Servo_DeclarationBlock_SetIdentStringValue(mDecl->AsServo()->Raw(), propertyID, atom);
+    Servo_DeclarationBlock_SetIdentStringValue(mDecl->Raw(), propertyID, atom);
   }
 }
 
@@ -1433,8 +1427,7 @@ nsSVGElement::DidChangeValue(nsAtom* aName,
                   : static_cast<uint8_t>(MutationEventBinding::ADDITION);
 
   nsIDocument* document = GetComposedDoc();
-  mozAutoDocUpdate updateBatch(document, UPDATE_CONTENT_MODEL,
-                               kNotifyDocumentObservers);
+  mozAutoDocUpdate updateBatch(document, kNotifyDocumentObservers);
   // XXX Really, the fourth argument to SetAttrAndNotify should be null if
   // aEmptyOrOldValue does not represent the actual previous value of the
   // attribute, but currently SVG elements do not even use the old attribute
@@ -2405,7 +2398,7 @@ nsSVGElement::WillChangeStringList(bool aIsConditionalProcessingAttribute,
 {
   nsAtom* name;
   if (aIsConditionalProcessingAttribute) {
-    nsCOMPtr<SVGTests> tests(do_QueryInterface(static_cast<nsIDOMNode*>(this)));
+    nsCOMPtr<SVGTests> tests(do_QueryInterface(this));
     name = tests->GetAttrName(aAttrEnum);
   } else {
     name = *GetStringListInfo().mStringListInfo[aAttrEnum].mName;

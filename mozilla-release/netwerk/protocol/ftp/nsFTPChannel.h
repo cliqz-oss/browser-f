@@ -43,6 +43,7 @@ public:
         , mResumeRequested(false)
         , mLastModifiedTime(0)
         , mForcePending(false)
+        , mSuspendCount(0)
     {
         SetURI(uri);
     }
@@ -122,6 +123,9 @@ private:
     PRTime                           mLastModifiedTime;
     bool                             mForcePending;
     RefPtr<ADivertableParentChannel> mParentChannel;
+
+    // Current suspension depth for this channel object
+    uint32_t                          mSuspendCount;
 };
 
 #endif /* nsFTPChannel_h___ */

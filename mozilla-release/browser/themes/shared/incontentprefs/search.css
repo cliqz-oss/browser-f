@@ -34,6 +34,12 @@
 }
 
 #defaultEngine > .menulist-label-box > .menulist-icon {
+  /* Preferences -> Search engine list
+   * Cliqz browser uses an svg icon.
+   * xul:image does not display it if a width value
+   * is not provided.
+   * */
+  width: 16px;
   height: 16px;
 }
 

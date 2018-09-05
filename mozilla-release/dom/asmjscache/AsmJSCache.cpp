@@ -1539,7 +1539,7 @@ ChildRunnable::Run()
         return NS_OK;
       }
 
-      mPrincipalInfo = Move(principalInfo);
+      mPrincipalInfo = std::move(principalInfo);
 
       PBackgroundChild* actor = BackgroundChild::GetOrCreateForCurrentThread();
       if (NS_WARN_IF(!actor)) {
@@ -1874,26 +1874,15 @@ Client::GetUsageForOrigin(PersistenceType aPersistenceType,
   DebugOnly<bool> exists;
   MOZ_ASSERT(NS_SUCCEEDED(directory->Exists(&exists)) && exists);
 
-  nsCOMPtr<nsISimpleEnumerator> entries;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = directory->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
 
-  bool hasMore;
-  while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) &&
-         hasMore && !aCanceled) {
-    nsCOMPtr<nsISupports> entry;
-    rv = entries->GetNext(getter_AddRefs(entry));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
-    if (NS_WARN_IF(!file)) {
-      return NS_NOINTERFACE;
-    }
-
+  nsCOMPtr<nsIFile> file;
+  while (NS_SUCCEEDED((rv = entries->GetNextFile(getter_AddRefs(file)))) &&
+         file && !aCanceled) {
     int64_t fileSize;
     rv = file->GetFileSize(&fileSize);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1948,6 +1937,9 @@ void
 Client::ShutdownWorkThreads()
 {
   AssertIsOnBackgroundThread();
+  MOZ_ASSERT(!mShutdownRequested);
+
+  mShutdownRequested = true;
 
   if (sLiveParentActors) {
     MOZ_ALWAYS_TRUE(SpinEventLoopUntil([&]() {

@@ -8,11 +8,11 @@
 #include "nsIContentPolicy.idl"
 
 interface nsIChannel;
-interface nsIDOMDocument;
 interface nsINode;
 interface nsIPrincipal;
 interface nsIRedirectHistoryEntry;
 interface nsIURI;
+webidl Document;
 native LoadContextRef(already_AddRefed<nsISupports>);
 %{C++
 #include "nsTArray.h"
@@ -206,7 +206,7 @@ interface nsILoadInfo : nsISupports
 
   /**
    * Load an error page, it should be one of following : about:neterror,
-   * about:certerror, about:blocked, or about:tabcrashed.
+   * about:certerror, about:blocked, about:tabcrashed or about:restartrequired.
    */
   const unsigned long SEC_LOAD_ERROR_PAGE = (1<<13);
 
@@ -337,7 +337,7 @@ interface nsILoadInfo : nsISupports
    * LoadingDocument is null. When the LoadingDocument is not null, the
    * LoadingPrincipal is set to the principal of the LoadingDocument.
    */
-  readonly attribute nsIDOMDocument loadingDocument;
+  readonly attribute Document loadingDocument;
 
   /**
    * A C++-friendly version of loadingDocument (loadingNode).
@@ -370,7 +370,7 @@ interface nsILoadInfo : nsISupports
    * ContextForTopLevelLoad will always return null.
    */
   [noscript, notxpcom, nostdcall, binaryname(ContextForTopLevelLoad)]
-  nsISupports binaryContextForTopLevelLoad();
+  LoadContextRef binaryContextForTopLevelLoad();
 
   /**
    * For all loads except loads of TYPE_DOCUMENT, the loadingContext
@@ -627,18 +627,6 @@ interface nsILoadInfo : nsISupports
    * you are doing!!!
    */
   void resetPrincipalToInheritToNullPrincipal();
-
-  /**
-   * Allows certain top-level channels to be agnostic to CSP. If set,
-   * this attribute needs to be set before the CSP is initialized
-   * within nsDocument. If set after, this attribute has no effect.
-   * Please note, that this logic is only available for loads of TYPE_DOCUMENT,
-   * and is discarded for other loads.
-   *
-   * WARNING: Please only use that function if you know exactly what
-   * you are doing!!!
-   */
-  [infallible] attribute boolean allowDocumentToBeAgnosticToCSP;
 
   /**
    * Customized OriginAttributes within LoadInfo to allow overwriting of the
@@ -942,6 +930,22 @@ interface nsILoadInfo : nsISupports
   void SetReservedClientInfo(in const_ClientInfoRef aClientInfo);
 
   /**
+   * This will clear any existing reserved or initial client and override
+   * it with the given reserved client.  This is similar to calling
+   * TakeReservedClientSource() and then GiveReservedClientSource() with
+   * a new client as ClientChannelHelper does.  This method is needed,
+   * though, to perform this operation in the parent process where
+   * the LoadInfo does not have direct access to a ClientSource.
+   *
+   * If in doubt, do not call this method.  Its really only needed for
+   * a specific redirect case where the child has created a new client on
+   * redirect and we need to override the parent side's reserved client
+   * to match.
+   */
+  [noscript, nostdcall, notxpcom]
+  void OverrideReservedClientInfoInParent(in const_ClientInfoRef aClientInfo);
+
+  /**
    * Return the reserved ClientInfo for this load, if one has been set.
    */
   [noscript, nostdcall, notxpcom]
@@ -1005,12 +1009,13 @@ interface nsILoadInfo : nsISupports
   [noscript, nostdcall, notxpcom]
   PerformanceStoragePtr GetPerformanceStorage();
 
-  /* The service worker and fetch specifications require returning the
-   * exact tainting level of the Response passed to FetchEvent.respondWith().
-   * This method allows us to override the tainting level in that case.
-   *
-   * NOTE: This should not be used outside of service worker code! Use
-   *       nsILoadInfo::MaybeIncreaseTainting() instead.
+  /**
+    * The service worker and fetch specifications require returning the
+    * exact tainting level of the Response passed to FetchEvent.respondWith().
+    * This method allows us to override the tainting level in that case.
+    *
+    * NOTE: This should not be used outside of service worker code! Use
+    *       nsILoadInfo::MaybeIncreaseTainting() instead.
    */
   [noscript, nostdcall, notxpcom]
   void SynthesizeServiceWorkerTainting(in LoadTainting aTainting);

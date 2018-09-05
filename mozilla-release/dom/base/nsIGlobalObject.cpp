@@ -6,11 +6,11 @@
 
 #include "nsIGlobalObject.h"
 
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/ServiceWorker.h"
 #include "mozilla/dom/ServiceWorkerRegistration.h"
 #include "nsContentUtils.h"
 #include "nsThreadUtils.h"
-#include "nsHostObjectProtocolHandler.h"
 
 using mozilla::MallocSizeOf;
 using mozilla::Maybe;
@@ -67,7 +67,7 @@ public:
     MOZ_ASSERT(NS_IsMainThread());
 
     for (uint32_t index = 0; index < mURIs.Length(); ++index) {
-      nsHostObjectProtocolHandler::RemoveDataEntry(mURIs[index]);
+      BlobURLProtocolHandler::RemoveDataEntry(mURIs[index]);
     }
 
     return NS_OK;
@@ -90,14 +90,14 @@ nsIGlobalObject::UnlinkHostObjectURIs()
 
   if (NS_IsMainThread()) {
     for (uint32_t index = 0; index < mHostObjectURIs.Length(); ++index) {
-      nsHostObjectProtocolHandler::RemoveDataEntry(mHostObjectURIs[index]);
+      BlobURLProtocolHandler::RemoveDataEntry(mHostObjectURIs[index]);
     }
 
     mHostObjectURIs.Clear();
     return;
   }
 
-  // nsHostObjectProtocolHandler is main-thread only.
+  // BlobURLProtocolHandler is main-thread only.
 
   RefPtr<UnlinkHostObjectURIsRunnable> runnable =
     new UnlinkHostObjectURIsRunnable(mHostObjectURIs);
@@ -123,7 +123,7 @@ nsIGlobalObject::TraverseHostObjectURIs(nsCycleCollectionTraversalCallback &aCb)
   }
 
   for (uint32_t index = 0; index < mHostObjectURIs.Length(); ++index) {
-    nsHostObjectProtocolHandler::Traverse(mHostObjectURIs[index], aCb);
+    BlobURLProtocolHandler::Traverse(mHostObjectURIs[index], aCb);
   }
 }
 
@@ -150,7 +150,7 @@ nsIGlobalObject::ForEachEventTargetObject(const std::function<void(DOMEventTarge
   // Protect against the function call triggering a mutation of the list
   // while we are iterating by copying the DETH references to a temporary
   // list.
-  AutoTArray<DOMEventTargetHelper*, 64> targetList;
+  AutoTArray<RefPtr<DOMEventTargetHelper>, 64> targetList;
   for (const DOMEventTargetHelper* deth = mEventTargetObjects.getFirst();
        deth; deth = deth->getNext()) {
     targetList.AppendElement(const_cast<DOMEventTargetHelper*>(deth));

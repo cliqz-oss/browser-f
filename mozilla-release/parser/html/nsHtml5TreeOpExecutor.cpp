@@ -25,7 +25,6 @@
 #include "nsHtml5TreeOpExecutor.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIContentViewer.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIHTMLDocument.h"
@@ -756,7 +755,7 @@ nsHtml5TreeOpExecutor::RunScript(nsIContent* aScriptElement)
 void
 nsHtml5TreeOpExecutor::Start()
 {
-  NS_PRECONDITION(!mStarted, "Tried to start when already started.");
+  MOZ_ASSERT(!mStarted, "Tried to start when already started.");
   mStarted = true;
 }
 
@@ -863,7 +862,7 @@ nsHtml5TreeOpExecutor::MoveOpsFrom(nsTArray<nsHtml5TreeOperation>& aOpQueue)
 {
   MOZ_RELEASE_ASSERT(mFlushState == eNotFlushing,
                      "Ops added to mOpQueue during tree op execution.");
-  mOpQueue.AppendElements(Move(aOpQueue));
+  mOpQueue.AppendElements(std::move(aOpQueue));
 }
 
 void
@@ -1144,8 +1143,7 @@ nsHtml5TreeOpExecutor::AddSpeculationCSP(const nsAString& aCSP)
 
   nsIPrincipal* principal = mDocument->NodePrincipal();
   nsCOMPtr<nsIContentSecurityPolicy> preloadCsp;
-  nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(mDocument);
-  nsresult rv = principal->EnsurePreloadCSP(domDoc, getter_AddRefs(preloadCsp));
+  nsresult rv = principal->EnsurePreloadCSP(mDocument, getter_AddRefs(preloadCsp));
   NS_ENSURE_SUCCESS_VOID(rv);
 
   // please note that meta CSPs and CSPs delivered through a header need
@@ -1155,15 +1153,6 @@ nsHtml5TreeOpExecutor::AddSpeculationCSP(const nsAString& aCSP)
                              false, // csp via meta tag can not be report only
                              true); // delivered through the meta tag
   NS_ENSURE_SUCCESS_VOID(rv);
-
-  // Record "speculated" referrer policy for preloads
-  bool hasReferrerPolicy = false;
-  uint32_t referrerPolicy = mozilla::net::RP_Unset;
-  rv = preloadCsp->GetReferrerPolicy(&referrerPolicy, &hasReferrerPolicy);
-  NS_ENSURE_SUCCESS_VOID(rv);
-  if (hasReferrerPolicy) {
-    SetSpeculationReferrerPolicy(static_cast<ReferrerPolicy>(referrerPolicy));
-  }
 
   mDocument->ApplySettingsFromCSP(true);
 }

@@ -87,27 +87,28 @@ class CompileZone
     void setMinorGCShouldCancelIonCompilations();
 };
 
-class JitCompartment;
+class JitRealm;
 
-class CompileCompartment
+class CompileRealm
 {
-    JSCompartment* compartment();
+    JS::Realm* realm();
 
   public:
-    static CompileCompartment* get(JSCompartment* comp);
+    static CompileRealm* get(JS::Realm* realm);
 
     CompileZone* zone();
     CompileRuntime* runtime();
 
     const void* addressOfRandomNumberGenerator();
 
-    const JitCompartment* jitCompartment();
+    const JitRealm* jitRealm();
 
     const GlobalObject* maybeGlobal();
+    const uint32_t* addressOfGlobalWriteBarriered();
 
     bool hasAllocationMetadataBuilder();
 
-    // Mirror CompartmentOptions.
+    // Mirror RealmOptions.
     void setSingletonsAsValues();
 };
 

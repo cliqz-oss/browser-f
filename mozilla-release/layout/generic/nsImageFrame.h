@@ -105,6 +105,8 @@ public:
   void OnVisibilityChange(Visibility aNewVisibility,
                           const Maybe<OnNonvisible>& aNonvisibleAction = Nothing()) override;
 
+  void ResponsiveContentDensityChanged();
+
 #ifdef ACCESSIBILITY
   virtual mozilla::a11y::AccType AccessibleType() override;
 #endif
@@ -138,6 +140,7 @@ public:
     NS_IF_RELEASE(sIOService);
   }
 
+  already_AddRefed<imgIRequest> GetCurrentRequest() const;
   nsresult Notify(imgIRequest *aRequest, int32_t aType, const nsIntRect* aData);
 
   /**
@@ -187,6 +190,11 @@ protected:
   virtual ~nsImageFrame();
 
   void EnsureIntrinsicSizeAndRatio();
+
+  bool GotInitialReflow() const
+  {
+    return !HasAnyStateBits(NS_FRAME_FIRST_REFLOW);
+  }
 
   virtual mozilla::LogicalSize
   ComputeSize(gfxContext *aRenderingContext,
@@ -328,7 +336,7 @@ private:
 
   RefPtr<nsImageMap> mImageMap;
 
-  nsCOMPtr<imgINotificationObserver> mListener;
+  RefPtr<nsImageListener> mListener;
 
   nsCOMPtr<imgIContainer> mImage;
   nsCOMPtr<imgIContainer> mPrevImage;

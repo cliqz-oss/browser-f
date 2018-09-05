@@ -60,7 +60,7 @@ template<class T, class U>
 inline constexpr T
 narrow_cast(U&& u)
 {
-  return static_cast<T>(mozilla::Forward<U>(u));
+  return static_cast<T>(std::forward<U>(u));
 }
 
 // end gsl_util
@@ -839,9 +839,10 @@ private:
     constexpr storage_type(pointer elements,
                                               OtherExtentType ext)
       : ExtentType(ext)
-      // Replace nullptr with 0x1 for Rust slice compatibility. See
+      // Replace nullptr with aligned bogus pointer for Rust slice
+      // compatibility. See
       // https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html
-      , data_(elements ? elements : reinterpret_cast<pointer>(0x1))
+      , data_(elements ? elements : reinterpret_cast<pointer>(alignof(element_type)))
     {
       const size_t extentSize = ExtentType::size();
       MOZ_RELEASE_ASSERT(

@@ -19,11 +19,12 @@
 #include "frontend/Parser.h"
 #include "frontend/SharedContext.h"
 
+#include "js/Result.h"
 #include "vm/RegExpObject.h"
 
 #include "frontend/ParseContext-inl.h"
 #include "frontend/ParseNode-inl.h"
-
+#include "vm/JSContext-inl.h"
 
 // # About compliance with EcmaScript
 //
@@ -69,12 +70,39 @@
 //
 // They should be treated lazily (whenever we open a subscope), like bindings.
 
-using namespace mozilla;
-
 namespace js {
 namespace frontend {
 
 using UsedNamePtr = UsedNameTracker::UsedNameMap::Ptr;
+
+BinASTParserBase::BinASTParserBase(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames)
+  : AutoGCRooter(cx, AutoGCRooter::Tag::BinParser)
+  , cx_(cx)
+  , alloc_(alloc)
+  , traceListHead_(nullptr)
+  , usedNames_(usedNames)
+  , nodeAlloc_(cx, alloc)
+  , keepAtoms_(cx)
+  , parseContext_(nullptr)
+  , factory_(cx, alloc, nullptr, SourceKind::Binary)
+{
+    cx->frontendCollectionPool().addActiveCompilation();
+    tempPoolMark_ = alloc.mark();
+}
+
+BinASTParserBase::~BinASTParserBase()
+{
+    alloc_.release(tempPoolMark_);
+
+    /*
+     * The parser can allocate enormous amounts of memory for large functions.
+     * Eagerly free the memory now (which otherwise won't be freed until the
+     * next GC) to avoid unnecessary OOMs.
+     */
+    alloc_.freeAllIfHugeAndUnused();
+
+    cx_->frontendCollectionPool().removeActiveCompilation();
+}
 
 // ------------- Toplevel constructions
 
@@ -114,7 +142,8 @@ BinASTParser<Tok>::parseAux(const uint8_t* start, const size_t length)
     ParseNode* result(nullptr);
     MOZ_TRY_VAR(result, parseProgram());
 
-    Maybe<GlobalScope::Data*> bindings = NewGlobalScopeData(cx_, varScope, alloc_, parseContext_);
+    mozilla::Maybe<GlobalScope::Data*> bindings = NewGlobalScopeData(cx_, varScope, alloc_,
+                                                                     parseContext_);
     if (!bindings)
         return cx_->alreadyReportedError();
     globalsc.bindings = *bindings;
@@ -456,7 +485,7 @@ BinASTParser<Tok>::reportErrorNoOffsetVA(unsigned errorNumber, va_list args)
     metadata.lineNumber = 0;
     metadata.columnNumber = offset();
     metadata.isMuted = options().mutedErrors();
-    ReportCompileError(cx_, Move(metadata), nullptr, JSREPORT_ERROR, errorNumber, args);
+    ReportCompileError(cx_, std::move(metadata), nullptr, JSREPORT_ERROR, errorNumber, args);
 }
 
 template<typename Tok> void
@@ -467,7 +496,7 @@ BinASTParser<Tok>::errorAtVA(uint32_t offset, unsigned errorNumber, va_list* arg
     metadata.lineNumber = 0;
     metadata.columnNumber = offset;
     metadata.isMuted = options().mutedErrors();
-    ReportCompileError(cx_, Move(metadata), nullptr, JSREPORT_ERROR, errorNumber, *args);
+    ReportCompileError(cx_, std::move(metadata), nullptr, JSREPORT_ERROR, errorNumber, *args);
 }
 
 template<typename Tok> bool
@@ -483,11 +512,11 @@ BinASTParser<Tok>::reportExtraWarningErrorNumberVA(UniquePtr<JSErrorNotes> notes
     metadata.isMuted = options().mutedErrors();
 
     if (options().werrorOption) {
-        ReportCompileError(cx_, Move(metadata), Move(notes), JSREPORT_STRICT, errorNumber, *args);
+        ReportCompileError(cx_, std::move(metadata), std::move(notes), JSREPORT_STRICT, errorNumber, *args);
         return false;
     }
 
-    return ReportCompileWarning(cx_, Move(metadata), Move(notes), JSREPORT_STRICT | JSREPORT_WARNING, errorNumber, *args);
+    return ReportCompileWarning(cx_, std::move(metadata), std::move(notes), JSREPORT_STRICT | JSREPORT_WARNING, errorNumber, *args);
 }
 
 bool
@@ -500,7 +529,7 @@ BinASTParserBase::hasUsedName(HandlePropertyName name)
 }
 
 void
-TraceBinParser(JSTracer* trc, AutoGCRooter* parser)
+TraceBinParser(JSTracer* trc, JS::AutoGCRooter* parser)
 {
     static_cast<BinASTParserBase*>(parser)->trace(trc);
 }

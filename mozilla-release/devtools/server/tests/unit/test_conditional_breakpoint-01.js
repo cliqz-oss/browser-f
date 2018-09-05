@@ -28,11 +28,11 @@ function run_test() {
 
 function test_simple_breakpoint() {
   gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    let source = gThreadClient.source(packet.frame.where.source);
+    const source = gThreadClient.source(packet.frame.where.source);
     source.setBreakpoint({
       line: 3,
       condition: "a === 1"
-    }, function(response, bpClient) {
+    }).then(function([response, bpClient]) {
       gThreadClient.addOneTimeListener("paused", function(event, packet) {
         // Check the return value.
         Assert.equal(packet.why.type, "breakpoint");

@@ -30,11 +30,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-
-static char *RCSSTRING __UNUSED__="$Id: transport_addr.c,v 1.2 2008/04/28 17:59:03 ekr Exp $";
-
-
 #include <csi_platform.h>
 #include <stdio.h>
 #include <memory.h>
@@ -472,7 +467,7 @@ int nr_transport_addr_is_teredo(nr_transport_addr *addr)
       case NR_IPV6:
         {
           UINT4* addrTop = (UINT4*)(addr->u.addr6.sin6_addr.s6_addr);
-          if ((*addrTop & htonl(0xFFFF0000)) == htonl(0x20010000))
+          if ((*addrTop & htonl(0xFFFFFFFF)) == htonl(0x20010000))
             return(1);
         }
         break;
@@ -537,7 +532,7 @@ int nr_transport_addr_get_private_addr_range(nr_transport_addr *addr)
       case NR_IPV4:
         {
           UINT4 ip = ntohl(addr->u.addr4.sin_addr.s_addr);
-          for (int i=0; i<(sizeof(nr_private_ipv4_addrs)/sizeof(nr_transport_addr_mask)); i++) {
+          for (size_t i=0; i<(sizeof(nr_private_ipv4_addrs)/sizeof(nr_transport_addr_mask)); i++) {
             if ((ip & nr_private_ipv4_addrs[i].mask) == nr_private_ipv4_addrs[i].addr)
               return i + 1;
           }

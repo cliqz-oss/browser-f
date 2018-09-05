@@ -91,7 +91,7 @@ class ExtensionStreamGetter : public RefCounted<ExtensionStreamGetter>
                           nsIFile* aJarFile)
       : mURI(aURI)
       , mLoadInfo(aLoadInfo)
-      , mJarChannel(Move(aJarChannel))
+      , mJarChannel(std::move(aJarChannel))
       , mJarFile(aJarFile)
       , mIsJarChannel(true)
     {
@@ -270,7 +270,7 @@ ExtensionStreamGetter::OnStream(already_AddRefed<nsIInputStream> aStream)
   MOZ_ASSERT(mListener);
   MOZ_ASSERT(mMainThreadEventTarget);
 
-  nsCOMPtr<nsIInputStream> stream = Move(aStream);
+  nsCOMPtr<nsIInputStream> stream = std::move(aStream);
 
   // We must keep an owning reference to the listener
   // until we pass it on to AsyncRead.
@@ -375,7 +375,9 @@ ExtensionProtocolHandler::GetFlagsForURI(nsIURI* aURI, uint32_t* aFlags)
     loadableByAnyone = policy->IsPathWebAccessible(url.FilePath());
   }
 
-  *aFlags = URI_STD | URI_IS_LOCAL_RESOURCE | (loadableByAnyone ? (URI_LOADABLE_BY_ANYONE | URI_FETCHABLE_BY_ANYONE) : URI_DANGEROUS_TO_LOAD);
+  *aFlags = URI_STD | URI_IS_LOCAL_RESOURCE | URI_IS_POTENTIALLY_TRUSTWORTHY |
+    (loadableByAnyone ? (URI_LOADABLE_BY_ANYONE |
+                         URI_FETCHABLE_BY_ANYONE) : URI_DANGEROUS_TO_LOAD);
   return NS_OK;
 }
 

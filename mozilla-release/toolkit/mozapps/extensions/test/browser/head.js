@@ -621,14 +621,7 @@ CertOverrideListener.prototype = {
     return this.QueryInterface(aIID);
   },
 
-  QueryInterface(aIID) {
-    if (aIID.equals(Ci.nsIBadCertListener2) ||
-        aIID.equals(Ci.nsIInterfaceRequestor) ||
-        aIID.equals(Ci.nsISupports))
-      return this;
-
-    throw Components.Exception("No interface", Cr.NS_ERROR_NO_INTERFACE);
-  },
+  QueryInterface: ChromeUtils.generateQI(["nsIBadCertListener2", "nsIInterfaceRequestor"]),
 
   notifyCertProblem(socketInfo, sslStatus, targetHost) {
     var cert = sslStatus.QueryInterface(Ci.nsISSLStatus)
@@ -796,13 +789,13 @@ MockProvider.prototype = {
           continue;
         if (prop == "applyBackgroundUpdates") {
           addon._applyBackgroundUpdates = addonProp[prop];
-          continue;
-        }
-        if (prop == "appDisabled") {
+        } else if (prop == "appDisabled") {
           addon._appDisabled = addonProp[prop];
-          continue;
+        } else if (prop == "userDisabled") {
+          addon.setUserDisabled(addonProp[prop]);
+        } else {
+          addon[prop] = addonProp[prop];
         }
-        addon[prop] = addonProp[prop];
       }
       if (!addon.optionsType && !!addon.optionsURL)
         addon.optionsType = AddonManager.OPTIONS_TYPE_DIALOG;
@@ -911,21 +904,6 @@ MockProvider.prototype = {
       if (aTypes && aTypes.length > 0 && !aTypes.includes(aAddon.type))
         return false;
       return true;
-    });
-    return addons;
-  },
-
-  /**
-   * Called to get Addons that have pending operations.
-   *
-   * @param  aTypes
-   *         An array of types to fetch. Can be null to get all types
-   */
-  async getAddonsWithOperationsByTypes(aTypes, aCallback) {
-    var addons = this.addons.filter(function(aAddon) {
-      if (aTypes && aTypes.length > 0 && !aTypes.includes(aAddon.type))
-        return false;
-      return aAddon.pendingOperations != 0;
     });
     return addons;
   },
@@ -1102,15 +1080,28 @@ MockAddon.prototype = {
   },
 
   set userDisabled(val) {
+    throw new Error("No. Bad.");
+  },
+
+  setUserDisabled(val) {
     if (val == this._userDisabled)
-      return val;
+      return;
 
     var currentActive = this.shouldBeActive;
     this._userDisabled = val;
     var newActive = this.shouldBeActive;
     this._updateActiveState(currentActive, newActive);
+  },
 
-    return val;
+  async enable() {
+    await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
+
+    this.setUserDisabled(false);
+  },
+  async disable() {
+    await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
+
+    this.setUserDisabled(true);
   },
 
   get permissions() {

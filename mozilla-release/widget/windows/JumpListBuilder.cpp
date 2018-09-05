@@ -275,21 +275,17 @@ nsresult JumpListBuilder::RemoveIconCacheForAllItems()
   rv = jumpListCacheDir->AppendNative(nsDependentCString(
                          mozilla::widget::FaviconHelper::kJumpListCacheDir));
   NS_ENSURE_SUCCESS(rv, rv);
-  nsCOMPtr<nsISimpleEnumerator> entries;
+
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = jumpListCacheDir->GetDirectoryEntries(getter_AddRefs(entries));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Loop through each directory entry and remove all ICO files found
   do {
-    bool hasMore = false;
-    if (NS_FAILED(entries->HasMoreElements(&hasMore)) || !hasMore)
+    nsCOMPtr<nsIFile> currFile;
+    if (NS_FAILED(entries->GetNextFile(getter_AddRefs(currFile))) || !currFile)
       break;
 
-    nsCOMPtr<nsISupports> supp;
-    if (NS_FAILED(entries->GetNext(getter_AddRefs(supp))))
-      break;
-
-    nsCOMPtr<nsIFile> currFile(do_QueryInterface(supp));
     nsAutoString path;
     if (NS_FAILED(currFile->GetPath(path)))
       continue;
@@ -487,7 +483,7 @@ NS_IMETHODIMP JumpListBuilder::CommitListBuild(nsIJumpListCommittedCallback* aCa
   RefPtr<nsIRunnable> event =
     NewNonOwningRunnableMethod<RefPtr<detail::DoneCommitListBuildCallback>>
       ("JumpListBuilder::DoCommitListBuild", this,
-       &JumpListBuilder::DoCommitListBuild, Move(callback));
+       &JumpListBuilder::DoCommitListBuild, std::move(callback));
   Unused << mIOThread->Dispatch(event, NS_DISPATCH_NORMAL);
 
   return NS_OK;

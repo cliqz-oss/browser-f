@@ -15,10 +15,6 @@ typedef unsigned long long DOMTimeStamp;
 typedef double DOMHighResTimeStamp;
 typedef unsigned long long nsViewID;
 
-// Core
-interface nsIDOMDocument;
-interface nsIDOMNode;
-
 // Needed for raises() in our IDL
 %{C++
 namespace mozilla {
@@ -30,13 +26,9 @@ class DOMException;
 
 // Base
 interface nsIDOMWindow;
-interface nsIDOMWindowCollection;
 
 // Events
 interface nsIDOMEventListener;
 
 // HTML
 interface nsIDOMHTMLHeadElement;
-
-// Range
-interface nsIDOMRange;

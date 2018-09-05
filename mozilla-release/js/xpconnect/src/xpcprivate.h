@@ -293,12 +293,10 @@ public:
 class XPCRootSetElem
 {
 public:
-    XPCRootSetElem()
+    XPCRootSetElem() :
+        mNext(nullptr),
+        mSelfp(nullptr)
     {
-#ifdef DEBUG
-        mNext = nullptr;
-        mSelfp = nullptr;
-#endif
     }
 
     ~XPCRootSetElem()
@@ -331,52 +329,6 @@ MOZ_DEFINE_ENUM(WatchdogTimestampCategory, (
 ));
 
 class AsyncFreeSnowWhite;
-
-template <class StringType>
-class ShortLivedStringBuffer
-{
-public:
-    StringType* Create()
-    {
-        for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
-            if (!mStrings[i]) {
-                mStrings[i].emplace();
-                return mStrings[i].ptr();
-            }
-        }
-
-        // All our internal string wrappers are used, allocate a new string.
-        return new StringType();
-    }
-
-    void Destroy(StringType* string)
-    {
-        for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
-            if (mStrings[i] && mStrings[i].ptr() == string) {
-                // One of our internal strings is no longer in use, mark
-                // it as such and free its data.
-                mStrings[i].reset();
-                return;
-            }
-        }
-
-        // We're done with a string that's not one of our internal
-        // strings, delete it.
-        delete string;
-    }
-
-    ~ShortLivedStringBuffer()
-    {
-#ifdef DEBUG
-        for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
-            MOZ_ASSERT(!mStrings[i], "Short lived string still in use");
-        }
-#endif
-    }
-
-private:
-    mozilla::Maybe<StringType> mStrings[2];
-};
 
 class XPCJSContext final : public mozilla::CycleCollectedJSContext
                          , public mozilla::LinkedListElement<XPCJSContext>
@@ -469,9 +421,6 @@ public:
 
     inline JS::HandleId GetStringID(unsigned index) const;
     inline const char* GetStringName(unsigned index) const;
-
-    ShortLivedStringBuffer<nsString> mScratchStrings;
-    ShortLivedStringBuffer<nsCString> mScratchCStrings;
 
 private:
     XPCJSContext();
@@ -609,7 +558,7 @@ public:
                                  JSFinalizeStatus status,
                                  void* data);
     static void WeakPointerZonesCallback(JSContext* cx, void* data);
-    static void WeakPointerCompartmentCallback(JSContext* cx, JSCompartment* comp, void* data);
+    static void WeakPointerCompartmentCallback(JSContext* cx, JS::Compartment* comp, void* data);
 
     inline void AddVariantRoot(XPCTraceableVariant* variant);
     inline void AddWrappedJSRoot(nsXPCWrappedJS* wrappedJS);
@@ -833,8 +782,7 @@ private:
 // visibility from more than one .cpp file.
 
 extern const js::Class XPC_WN_NoHelper_JSClass;
-extern const js::Class XPC_WN_NoMods_Proto_JSClass;
-extern const js::Class XPC_WN_ModsAllowed_Proto_JSClass;
+extern const js::Class XPC_WN_Proto_JSClass;
 extern const js::Class XPC_WN_Tearoff_JSClass;
 #define XPC_WN_TEAROFF_RESERVED_SLOTS 1
 #define XPC_WN_TEAROFF_FLAT_OBJECT_SLOT 0
@@ -845,15 +793,6 @@ XPC_WN_CallMethod(JSContext* cx, unsigned argc, JS::Value* vp);
 
 extern bool
 XPC_WN_GetterSetter(JSContext* cx, unsigned argc, JS::Value* vp);
-
-// Maybe this macro should check for class->enumerate ==
-// XPC_WN_Shared_Proto_Enumerate or something rather than checking for
-// 4 classes?
-static inline bool IS_PROTO_CLASS(const js::Class* clazz)
-{
-    return clazz == &XPC_WN_NoMods_Proto_JSClass ||
-           clazz == &XPC_WN_ModsAllowed_Proto_JSClass;
-}
 
 /***************************************************************************/
 // XPCWrappedNativeScope is one-to-one with a JS global object.
@@ -896,7 +835,7 @@ public:
 
     nsIPrincipal*
     GetPrincipal() const {
-        JSCompartment* c = js::GetObjectCompartment(mGlobalJSObject);
+        JS::Compartment* c = js::GetObjectCompartment(mGlobalJSObject);
         return nsJSPrincipals::get(JS_GetCompartmentPrincipals(c));
     }
 
@@ -978,7 +917,7 @@ public:
 
     nsAutoPtr<JSObject2JSObjectMap> mWaiverWrapperMap;
 
-    JSCompartment* Compartment() const { return js::GetObjectCompartment(mGlobalJSObject); }
+    JS::Compartment* Compartment() const { return js::GetObjectCompartment(mGlobalJSObject); }
 
     bool IsContentXBLScope() { return xpc::IsContentXBLCompartment(Compartment()); }
     bool AllowContentXBLScope();
@@ -1326,8 +1265,7 @@ public:
     static XPCWrappedNativeProto*
     GetNewOrUsed(XPCWrappedNativeScope* scope,
                  nsIClassInfo* classInfo,
-                 nsIXPCScriptable* scriptable,
-                 bool callPostCreatePrototype = true);
+                 nsIXPCScriptable* scriptable);
 
     XPCWrappedNativeScope*
     GetScope()   const {return mScope;}
@@ -1350,7 +1288,6 @@ public:
     nsIXPCScriptable*
     GetScriptable() const { return mScriptable; }
 
-    bool CallPostCreatePrototype();
     void JSProtoObjectFinalized(js::FreeOp* fop, JSObject* obj);
     void JSProtoObjectMoved(JSObject* obj, const JSObject* old);
 
@@ -1394,7 +1331,7 @@ protected:
                           nsIClassInfo* ClassInfo,
                           already_AddRefed<XPCNativeSet>&& Set);
 
-    bool Init(nsIXPCScriptable* scriptable, bool callPostCreatePrototype);
+    bool Init(nsIXPCScriptable* scriptable);
 
 private:
 #ifdef DEBUG
@@ -1584,7 +1521,7 @@ public:
     static nsresult
     WrapNewGlobal(xpcObjectHelper& nativeHelper,
                   nsIPrincipal* principal, bool initStandardClasses,
-                  JS::CompartmentOptions& aOptions,
+                  JS::RealmOptions& aOptions,
                   XPCWrappedNative** wrappedGlobal);
 
     static nsresult
@@ -1799,31 +1736,19 @@ private:
         {if (b) mDescriptors[i/32] |= (1 << (i%32));
          else mDescriptors[i/32] &= ~(1 << (i%32));}
 
-    bool GetArraySizeFromParam(JSContext* cx,
-                               const nsXPTMethodInfo* method,
-                               const nsXPTParamInfo& param,
-                               uint16_t methodIndex,
-                               uint8_t paramIndex,
+    bool GetArraySizeFromParam(const nsXPTMethodInfo* method,
+                               const nsXPTType& type,
                                nsXPTCMiniVariant* params,
                                uint32_t* result) const;
 
-    bool GetInterfaceTypeFromParam(JSContext* cx,
-                                   const nsXPTMethodInfo* method,
-                                   const nsXPTParamInfo& param,
-                                   uint16_t methodIndex,
+    bool GetInterfaceTypeFromParam(const nsXPTMethodInfo* method,
                                    const nsXPTType& type,
                                    nsXPTCMiniVariant* params,
                                    nsID* result) const;
 
-    static void CleanupPointerArray(const nsXPTType& datum_type,
-                                    uint32_t array_count,
-                                    void** arrayp);
-
-    static void CleanupPointerTypeObject(const nsXPTType& type,
-                                         void** pp);
-
-    void CleanupOutparams(JSContext* cx, uint16_t methodIndex, const nsXPTMethodInfo* info,
-                          nsXPTCMiniVariant* nativeParams, bool inOutOnly, uint8_t n) const;
+    void CleanupOutparams(const nsXPTMethodInfo* info,
+                          nsXPTCMiniVariant* nativeParams,
+                          bool inOutOnly, uint8_t n) const;
 
 private:
     XPCJSRuntime* mRuntime;
@@ -1943,7 +1868,7 @@ protected:
     void Unlink();
 
 private:
-    JSCompartment* Compartment() const {
+    JS::Compartment* Compartment() const {
         return js::GetObjectCompartment(mJSObj.unbarrieredGet());
     }
 
@@ -1999,11 +1924,13 @@ public:
 
     static bool NativeData2JS(JS::MutableHandleValue d,
                               const void* s, const nsXPTType& type,
-                              const nsID* iid, nsresult* pErr);
+                              const nsID* iid, uint32_t arrlen,
+                              nsresult* pErr);
 
     static bool JSData2Native(void* d, JS::HandleValue s,
                               const nsXPTType& type,
                               const nsID* iid,
+                              uint32_t arrlen,
                               nsresult* pErr);
 
     /**
@@ -2049,7 +1976,7 @@ public:
      * @param scope the default scope to put on the new JSObjects' parent chain
      * @param pErr [out] relevant error code, if any.
      */
-    static bool NativeArray2JS(JS::MutableHandleValue d, const void** s,
+    static bool NativeArray2JS(JS::MutableHandleValue d, const void* const* s,
                                const nsXPTType& type, const nsID* iid,
                                uint32_t count, nsresult* pErr);
 
@@ -2062,15 +1989,6 @@ public:
                                     uint32_t count,
                                     const nsXPTType& type,
                                     nsresult* pErr);
-
-    static bool NativeStringWithSize2JS(JS::MutableHandleValue d, const void* s,
-                                        const nsXPTType& type,
-                                        uint32_t count,
-                                        nsresult* pErr);
-
-    static bool JSStringWithSize2Native(void* d, JS::HandleValue s,
-                                        uint32_t count, const nsXPTType& type,
-                                        nsresult* pErr);
 
     static nsresult JSValToXPCException(JS::MutableHandleValue s,
                                         const char* ifaceName,
@@ -2327,7 +2245,7 @@ private:
     JSContext* mJSContext;
     mozilla::Maybe<JS::AutoSaveExceptionState> mState;
     bool mEvaluated;
-    mozilla::Maybe<JSAutoCompartment> mAutoCompartment;
+    mozilla::Maybe<JSAutoRealm> mAutoRealm;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
     // No copying or assignment allowed
@@ -2622,6 +2540,7 @@ struct GlobalProperties {
     bool FormData : 1;
     bool InspectorUtils : 1;
     bool MessageChannel: 1;
+    bool Node : 1;
     bool NodeFilter : 1;
     bool TextDecoder : 1;
     bool TextEncoder : 1;
@@ -2807,7 +2726,7 @@ public:
 
 JSObject*
 CreateGlobalObject(JSContext* cx, const JSClass* clasp, nsIPrincipal* principal,
-                   JS::CompartmentOptions& aOptions);
+                   JS::RealmOptions& aOptions);
 
 // Modify the provided compartment options, consistent with |aPrincipal| and
 // with globally-cached values of various preferences.
@@ -2815,10 +2734,10 @@ CreateGlobalObject(JSContext* cx, const JSClass* clasp, nsIPrincipal* principal,
 // Call this function *before* |aOptions| is used to create the corresponding
 // global object, as not all of the options it sets can be modified on an
 // existing global object.  (The type system should make this obvious, because
-// you can't get a *mutable* JS::CompartmentOptions& from an existing global
+// you can't get a *mutable* JS::RealmOptions& from an existing global
 // object.)
 void
-InitGlobalObjectOptions(JS::CompartmentOptions& aOptions,
+InitGlobalObjectOptions(JS::RealmOptions& aOptions,
                         nsIPrincipal* aPrincipal);
 
 // Finish initializing an already-created, not-yet-exposed-to-script global
@@ -2913,16 +2832,11 @@ class CompartmentPrivate
     CompartmentPrivate(const CompartmentPrivate&) = delete;
 
 public:
-    enum LocationHint {
-        LocationHintRegular,
-        LocationHintAddon
-    };
-
-    explicit CompartmentPrivate(JSCompartment* c);
+    explicit CompartmentPrivate(JS::Compartment* c);
 
     ~CompartmentPrivate();
 
-    static CompartmentPrivate* Get(JSCompartment* compartment)
+    static CompartmentPrivate* Get(JS::Compartment* compartment)
     {
         MOZ_ASSERT(compartment);
         void* priv = JS_GetCompartmentPrivate(compartment);
@@ -2931,7 +2845,7 @@ public:
 
     static CompartmentPrivate* Get(JSObject* object)
     {
-        JSCompartment* compartment = js::GetObjectCompartment(object);
+        JS::Compartment* compartment = js::GetObjectCompartment(object);
         return Get(compartment);
     }
 
@@ -2990,48 +2904,6 @@ public:
     // by a security wrapper. See XrayWrapper.cpp.
     bool wrapperDenialWarnings[WrapperDenialTypeCount];
 
-    const nsACString& GetLocation() {
-        if (location.IsEmpty() && locationURI) {
-
-            nsCOMPtr<nsIXPConnectWrappedJS> jsLocationURI =
-                 do_QueryInterface(locationURI);
-            if (jsLocationURI) {
-                // We cannot call into JS-implemented nsIURI objects, because
-                // we are iterating over the JS heap at this point.
-                location =
-                    NS_LITERAL_CSTRING("<JS-implemented nsIURI location>");
-            } else if (NS_FAILED(locationURI->GetSpec(location))) {
-                location = NS_LITERAL_CSTRING("<unknown location>");
-            }
-        }
-        return location;
-    }
-    bool GetLocationURI(nsIURI** aURI) {
-        return GetLocationURI(LocationHintRegular, aURI);
-    }
-    bool GetLocationURI(LocationHint aLocationHint, nsIURI** aURI) {
-        if (locationURI) {
-            nsCOMPtr<nsIURI> rval = locationURI;
-            rval.forget(aURI);
-            return true;
-        }
-        return TryParseLocationURI(aLocationHint, aURI);
-    }
-    void SetLocation(const nsACString& aLocation) {
-        if (aLocation.IsEmpty())
-            return;
-        if (!location.IsEmpty() || locationURI)
-            return;
-        location = aLocation;
-    }
-    void SetLocationURI(nsIURI* aLocationURI) {
-        if (!aLocationURI)
-            return;
-        if (locationURI)
-            return;
-        locationURI = aLocationURI;
-    }
-
     JSObject2WrappedJSMap* GetWrappedJSMap() const { return mWrappedJSMap; }
     void UpdateWeakPointersAfterGC();
 
@@ -3040,14 +2912,10 @@ public:
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
 private:
-    nsCString location;
-    nsCOMPtr<nsIURI> locationURI;
     JSObject2WrappedJSMap* mWrappedJSMap;
-
-    bool TryParseLocationURI(LocationHint aType, nsIURI** aURI);
 };
 
-bool IsUniversalXPConnectEnabled(JSCompartment* compartment);
+bool IsUniversalXPConnectEnabled(JS::Compartment* compartment);
 bool IsUniversalXPConnectEnabled(JSContext* cx);
 bool EnableUniversalXPConnect(JSContext* cx);
 
@@ -3063,13 +2931,18 @@ CrashIfNotInAutomation()
 //
 // Following the ECMAScript spec, a realm contains a global (e.g. an inner
 // Window) and its associated scripts and objects; a compartment may contain
-// several same-origin, same-principal realms.
+// several same-origin realms.
 class RealmPrivate
 {
     RealmPrivate() = delete;
     RealmPrivate(const RealmPrivate&) = delete;
 
 public:
+    enum LocationHint {
+        LocationHintRegular,
+        LocationHintAddon
+    };
+
     explicit RealmPrivate(JS::Realm* realm);
 
     static RealmPrivate* Get(JS::Realm* realm)
@@ -3094,6 +2967,55 @@ public:
     // Our XPCWrappedNativeScope. This is non-null if and only if this is an
     // XPConnect realm.
     XPCWrappedNativeScope* scope;
+
+    const nsACString& GetLocation() {
+        if (location.IsEmpty() && locationURI) {
+
+            nsCOMPtr<nsIXPConnectWrappedJS> jsLocationURI =
+                 do_QueryInterface(locationURI);
+            if (jsLocationURI) {
+                // We cannot call into JS-implemented nsIURI objects, because
+                // we are iterating over the JS heap at this point.
+                location =
+                    NS_LITERAL_CSTRING("<JS-implemented nsIURI location>");
+            } else if (NS_FAILED(locationURI->GetSpec(location))) {
+                location = NS_LITERAL_CSTRING("<unknown location>");
+            }
+        }
+        return location;
+    }
+    bool GetLocationURI(LocationHint aLocationHint, nsIURI** aURI) {
+        if (locationURI) {
+            nsCOMPtr<nsIURI> rval = locationURI;
+            rval.forget(aURI);
+            return true;
+        }
+        return TryParseLocationURI(aLocationHint, aURI);
+    }
+    bool GetLocationURI(nsIURI** aURI) {
+        return GetLocationURI(LocationHintRegular, aURI);
+    }
+
+    void SetLocation(const nsACString& aLocation) {
+        if (aLocation.IsEmpty())
+            return;
+        if (!location.IsEmpty() || locationURI)
+            return;
+        location = aLocation;
+    }
+    void SetLocationURI(nsIURI* aLocationURI) {
+        if (!aLocationURI)
+            return;
+        if (locationURI)
+            return;
+        locationURI = aLocationURI;
+    }
+
+private:
+    nsCString location;
+    nsCOMPtr<nsIURI> locationURI;
+
+    bool TryParseLocationURI(LocationHint aType, nsIURI** aURI);
 };
 
 inline XPCWrappedNativeScope*
@@ -3108,6 +3030,39 @@ bool IsOutObject(JSContext* cx, JSObject* obj);
 nsresult HasInstance(JSContext* cx, JS::HandleObject objArg, const nsID* iid, bool* bp);
 
 nsIPrincipal* GetObjectPrincipal(JSObject* obj);
+
+// Attempt to clean up the passed in value pointer. The pointer `value` must be
+// a pointer to a value described by the type `nsXPTType`.
+//
+// This method expects a value of the following types:
+//   TD_PNSIID
+//     value : nsID* (free)
+//   TD_DOMSTRING, TD_ASTRING, TD_CSTRING, TD_UTF8STRING
+//     value : ns[C]String* (truncate)
+//   TD_PSTRING, TD_PWSTRING, TD_PSTRING_SIZE_IS, TD_PWSTRING_SIZE_IS
+//     value : char[16_t]** (free)
+//   TD_INTERFACE_TYPE, TD_INTERFACE_IS_TYPE
+//     value : nsISupports** (release)
+//   TD_ARRAY (NOTE: aArrayLen should be passed)
+//     value : void** (cleanup elements & free)
+//   TD_DOMOBJECT
+//     value : T** (cleanup)
+//   TD_PROMISE
+//     value : dom::Promise** (release)
+//
+// Other types are ignored.
+//
+// Custom behaviour may be desired in some situations:
+//  - This method Truncate()s nsStrings, it does not free them.
+//  - This method does not unroot JSValues.
+inline void CleanupValue(const nsXPTType& aType,
+                         void* aValue,
+                         uint32_t aArrayLen = 0);
+
+// Out-of-line internals for xpc::CleanupValue. Defined in XPCConvert.cpp.
+void InnerCleanupValue(const nsXPTType& aType,
+                       void* aValue,
+                       uint32_t aArrayLen);
 
 } // namespace xpc
 

@@ -15,6 +15,8 @@ NS_IMPL_ISUPPORTS(NullHttpChannel, nsINullChannel,
                   nsIHttpChannel, nsITimedChannel)
 
 NullHttpChannel::NullHttpChannel()
+  : mAllRedirectsSameOrigin(false)
+  , mAllRedirectsPassTimingAllowCheck(false)
 {
   mChannelCreationTime = PR_Now();
   mChannelCreationTimestamp = TimeStamp::Now();
@@ -22,6 +24,8 @@ NullHttpChannel::NullHttpChannel()
 }
 
 NullHttpChannel::NullHttpChannel(nsIHttpChannel * chan)
+  : mAllRedirectsSameOrigin(false)
+  , mAllRedirectsPassTimingAllowCheck(false)
 {
   nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
   ssm->GetChannelURIPrincipal(chan, getter_AddRefs(mResourcePrincipal));
@@ -95,6 +99,12 @@ NullHttpChannel::SetTopLevelOuterContentWindowId(uint64_t aWindowId)
 
 NS_IMETHODIMP
 NullHttpChannel::GetIsTrackingResource(bool* aIsTrackingResource)
+{
+    return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::OverrideTrackingResource(bool aIsTracking)
 {
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -601,9 +611,25 @@ NullHttpChannel::GetChannelCreation(mozilla::TimeStamp *aChannelCreation)
 }
 
 NS_IMETHODIMP
+NullHttpChannel::SetChannelCreation(TimeStamp aValue) {
+  MOZ_DIAGNOSTIC_ASSERT(!aValue.IsNull());
+  TimeDuration adjust = aValue - mChannelCreationTimestamp;
+  mChannelCreationTimestamp = aValue;
+  mChannelCreationTime += (PRTime)adjust.ToMicroseconds();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 NullHttpChannel::GetAsyncOpen(mozilla::TimeStamp *aAsyncOpen)
 {
   *aAsyncOpen = mAsyncOpenTime;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+NullHttpChannel::SetAsyncOpen(TimeStamp aValue) {
+  MOZ_DIAGNOSTIC_ASSERT(!aValue.IsNull());
+  mAsyncOpenTime = aValue;
   return NS_OK;
 }
 
@@ -880,7 +906,8 @@ NullHttpChannel::SetIsMainDocumentChannel(bool aValue)
 }
 
 NS_IMETHODIMP
-NullHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage)
+NullHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage,
+                                       const nsACString& aCategory)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

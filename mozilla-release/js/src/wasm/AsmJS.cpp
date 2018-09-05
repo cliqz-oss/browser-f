@@ -66,7 +66,6 @@ using mozilla::IsNaN;
 using mozilla::IsNegativeZero;
 using mozilla::IsPositiveZero;
 using mozilla::IsPowerOfTwo;
-using mozilla::Move;
 using mozilla::PodEqual;
 using mozilla::PodZero;
 using mozilla::PositiveInfinity;
@@ -139,6 +138,7 @@ class AsmJSGlobal
                 union U {
                     ValType importType_;
                     Val val_;
+                    U() : val_(Val()) {}
                 } u;
             } var;
             uint32_t ffiIndex_;
@@ -154,6 +154,7 @@ class AsmJSGlobal
                 ConstantKind kind_;
                 double value_;
             } constant;
+            V() : ffiIndex_(0) {}
         } u;
     } pod;
     CacheableChars field_;
@@ -165,7 +166,7 @@ class AsmJSGlobal
     AsmJSGlobal(Which which, UniqueChars field) {
         mozilla::PodZero(&pod);  // zero padding for Valgrind
         pod.which_ = which;
-        field_ = Move(field);
+        field_ = std::move(field);
     }
     const char* field() const {
         return field_.get();
@@ -253,14 +254,14 @@ typedef Vector<AsmJSImport, 0, SystemAllocPolicy> AsmJSImportVector;
 // case the function is toString()ed.
 class AsmJSExport
 {
-    uint32_t funcIndex_;
+    uint32_t funcIndex_ = 0;
 
     // All fields are treated as cacheable POD:
-    uint32_t startOffsetInModule_;  // Store module-start-relative offsets
-    uint32_t endOffsetInModule_;    // so preserved by serialization.
+    uint32_t startOffsetInModule_ = 0;  // Store module-start-relative offsets
+    uint32_t endOffsetInModule_ = 0;    // so preserved by serialization.
 
   public:
-    AsmJSExport() { PodZero(this); }
+    AsmJSExport() = default;
     AsmJSExport(uint32_t funcIndex, uint32_t startOffsetInModule, uint32_t endOffsetInModule)
       : funcIndex_(funcIndex),
         startOffsetInModule_(startOffsetInModule),
@@ -292,12 +293,12 @@ enum class CacheResult
 
 struct AsmJSMetadataCacheablePod
 {
-    uint32_t                numFFIs;
-    uint32_t                srcLength;
-    uint32_t                srcLengthWithRightBrace;
-    bool                    usesSimd;
+    uint32_t                numFFIs = 0;
+    uint32_t                srcLength = 0;
+    uint32_t                srcLengthWithRightBrace = 0;
+    bool                    usesSimd = false;
 
-    AsmJSMetadataCacheablePod() { PodZero(this); }
+    AsmJSMetadataCacheablePod() = default;
 };
 
 struct js::AsmJSMetadata : Metadata, AsmJSMetadataCacheablePod
@@ -337,6 +338,7 @@ struct js::AsmJSMetadata : Metadata, AsmJSMetadataCacheablePod
     AsmJSMetadata()
       : Metadata(ModuleKind::AsmJS),
         cacheResult(CacheResult::Miss),
+        toStringStart(0),
         srcStart(0),
         strict(false)
     {}
@@ -362,7 +364,9 @@ struct js::AsmJSMetadata : Metadata, AsmJSMetadataCacheablePod
     ScriptSource* maybeScriptSource() const override {
         return scriptSource.get();
     }
-    bool getFuncName(const Bytes* maybeBytecode, uint32_t funcIndex, UTF8Bytes* name) const override {
+    bool getFuncName(NameContext ctx, const Bytes* maybeBytecode, uint32_t funcIndex,
+                     UTF8Bytes* name) const override
+    {
         const char* p = asmJSFuncNames[funcIndex].get();
         if (!p)
             return true;
@@ -1381,7 +1385,7 @@ static const unsigned VALIDATION_LIFO_DEFAULT_CHUNK_SIZE = 4 * 1024;
 //
 // ModuleValidator is marked as rooted in the rooting analysis.  Don't add
 // non-JSAtom pointers, or this will break!
-class MOZ_STACK_CLASS ModuleValidator
+class MOZ_STACK_CLASS JS_HAZ_ROOTED ModuleValidator
 {
   public:
     class Func
@@ -1418,8 +1422,8 @@ class MOZ_STACK_CLASS ModuleValidator
             srcBegin_ = fn->pn_pos.begin;
             srcEnd_ = fn->pn_pos.end;
             line_ = line;
-            bytes_ = Move(bytes);
-            callSiteLineNums_ = Move(callSiteLineNums);
+            bytes_ = std::move(bytes);
+            callSiteLineNums_ = std::move(callSiteLineNums);
         }
 
         uint32_t srcBegin() const { MOZ_ASSERT(defined_); return srcBegin_; }
@@ -1521,7 +1525,7 @@ class MOZ_STACK_CLASS ModuleValidator
             // non-trivial constructor and therefore MUST be placement-new'd
             // into existence.
             MOZ_PUSH_DISABLE_NONTRIVIAL_UNION_WARNINGS
-            U() {}
+            U() : funcDefIndex_(0) {}
             MOZ_POP_DISABLE_NONTRIVIAL_UNION_WARNINGS
         } u;
 
@@ -1612,7 +1616,7 @@ class MOZ_STACK_CLASS ModuleValidator
             AsmJSMathBuiltinFunction func;
         } u;
 
-        MathBuiltin() : kind(Kind(-1)) {}
+        MathBuiltin() : kind(Kind(-1)), u{} {}
         explicit MathBuiltin(double cst) : kind(Constant) {
             u.cst = cst;
         }
@@ -1635,26 +1639,26 @@ class MOZ_STACK_CLASS ModuleValidator
     class HashableSig
     {
         uint32_t sigIndex_;
-        const SigWithIdVector& sigs_;
+        const TypeDefVector& types_;
 
       public:
-        HashableSig(uint32_t sigIndex, const SigWithIdVector& sigs)
-          : sigIndex_(sigIndex), sigs_(sigs)
+        HashableSig(uint32_t sigIndex, const TypeDefVector& types)
+          : sigIndex_(sigIndex), types_(types)
         {}
         uint32_t sigIndex() const {
             return sigIndex_;
         }
-        const Sig& sig() const {
-            return sigs_[sigIndex_];
+        const FuncType& funcType() const {
+            return types_[sigIndex_].funcType();
         }
 
         // Implement HashPolicy:
-        typedef const Sig& Lookup;
+        typedef const FuncType& Lookup;
         static HashNumber hash(Lookup l) {
             return l.hash();
         }
         static bool match(HashableSig lhs, Lookup rhs) {
-            return lhs.sig() == rhs;
+            return lhs.funcType() == rhs;
         }
     };
 
@@ -1663,8 +1667,8 @@ class MOZ_STACK_CLASS ModuleValidator
         PropertyName* name_;
 
       public:
-        NamedSig(PropertyName* name, uint32_t sigIndex, const SigWithIdVector& sigs)
-          : HashableSig(sigIndex, sigs), name_(name)
+        NamedSig(PropertyName* name, uint32_t sigIndex, const TypeDefVector& types)
+          : HashableSig(sigIndex, types), name_(name)
         {}
         PropertyName* name() const {
             return name_;
@@ -1673,14 +1677,14 @@ class MOZ_STACK_CLASS ModuleValidator
         // Implement HashPolicy:
         struct Lookup {
             PropertyName* name;
-            const Sig& sig;
-            Lookup(PropertyName* name, const Sig& sig) : name(name), sig(sig) {}
+            const FuncType& funcType;
+            Lookup(PropertyName* name, const FuncType& funcType) : name(name), funcType(funcType) {}
         };
         static HashNumber hash(Lookup l) {
-            return HashGeneric(l.name, l.sig.hash());
+            return HashGeneric(l.name, l.funcType.hash());
         }
         static bool match(NamedSig lhs, Lookup rhs) {
-            return lhs.name() == rhs.name && lhs.sig() == rhs.sig;
+            return lhs.name() == rhs.name && lhs.funcType() == rhs.funcType;
         }
     };
 
@@ -1751,23 +1755,23 @@ class MOZ_STACK_CLASS ModuleValidator
             return false;
         return standardLibrarySimdOpNames_.putNew(atom->asPropertyName(), op);
     }
-    bool newSig(Sig&& sig, uint32_t* sigIndex) {
-        if (env_.sigs.length() >= MaxTypes)
+    bool newSig(FuncType&& sig, uint32_t* sigIndex) {
+        if (env_.types.length() >= MaxTypes)
             return failCurrentOffset("too many signatures");
 
-        *sigIndex = env_.sigs.length();
-        return env_.sigs.append(Move(sig));
+        *sigIndex = env_.types.length();
+        return env_.types.append(std::move(sig));
     }
-    bool declareSig(Sig&& sig, uint32_t* sigIndex) {
+    bool declareSig(FuncType&& sig, uint32_t* sigIndex) {
         SigSet::AddPtr p = sigSet_.lookupForAdd(sig);
         if (p) {
             *sigIndex = p->sigIndex();
-            MOZ_ASSERT(env_.sigs[*sigIndex] == sig);
+            MOZ_ASSERT(env_.types[*sigIndex].funcType() == sig);
             return true;
         }
 
-        return newSig(Move(sig), sigIndex) &&
-               sigSet_.add(p, HashableSig(*sigIndex, env_.sigs));
+        return newSig(std::move(sig), sigIndex) &&
+               sigSet_.add(p, HashableSig(*sigIndex, env_.types));
     }
 
   public:
@@ -1793,7 +1797,7 @@ class MOZ_STACK_CLASS ModuleValidator
         atomicsPresent_(false),
         simdPresent_(false),
         env_(CompileMode::Once, Tier::Ion, DebugEnabled::False, HasGcTypes::False,
-             cx->compartment()->creationOptions().getSharedMemoryAndAtomicsEnabled()
+             cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled()
                ? Shareable::True
                : Shareable::False,
              ModuleKind::AsmJS),
@@ -1822,7 +1826,7 @@ class MOZ_STACK_CLASS ModuleValidator
         ErrorMetadata metadata;
         if (ts.computeErrorMetadata(&metadata, offset)) {
             if (ts.anyCharsAccess().options().throwOnAsmJSValidationFailureOption) {
-                ReportCompileError(cx_, Move(metadata), nullptr, JSREPORT_ERROR,
+                ReportCompileError(cx_, std::move(metadata), nullptr, JSREPORT_ERROR,
                                    JSMSG_USE_ASM_TYPE_FAIL, args);
             } else {
                 // asm.js type failure is indicated by calling one of the fail*
@@ -1833,7 +1837,7 @@ class MOZ_STACK_CLASS ModuleValidator
                 // If warning succeeds, no exception is set.  If warning fails,
                 // an exception is set and execution will halt.  Thus it's safe
                 // and correct to ignore the return value here.
-                Unused << ts.anyCharsAccess().compileWarning(Move(metadata), nullptr,
+                Unused << ts.anyCharsAccess().compileWarning(std::move(metadata), nullptr,
                                                              JSREPORT_WARNING,
                                                              JSMSG_USE_ASM_TYPE_FAIL, args);
             }
@@ -2001,7 +2005,7 @@ class MOZ_STACK_CLASS ModuleValidator
         AsmJSGlobal g(AsmJSGlobal::Variable, nullptr);
         g.pod.u.var.initKind_ = AsmJSGlobal::InitConstant;
         g.pod.u.var.u.val_ = lit.value();
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addGlobalVarImport(PropertyName* var, PropertyName* field, Type type, bool isConst) {
         MOZ_ASSERT(type.isGlobalVarType());
@@ -2023,10 +2027,10 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::Variable, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::Variable, std::move(fieldChars));
         g.pod.u.var.initKind_ = AsmJSGlobal::InitImport;
         g.pod.u.var.u.importType_ = valType;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addArrayView(PropertyName* var, Scalar::Type vt, PropertyName* maybeField) {
         UniqueChars fieldChars;
@@ -2046,9 +2050,9 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::ArrayView, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::ArrayView, std::move(fieldChars));
         g.pod.u.viewType_ = vt;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addMathBuiltinFunction(PropertyName* var, AsmJSMathBuiltinFunction func,
                                 PropertyName* field)
@@ -2064,9 +2068,9 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::MathBuiltinFunction, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::MathBuiltinFunction, std::move(fieldChars));
         g.pod.u.mathBuiltinFunc_ = func;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
   private:
     bool addGlobalDoubleConstant(PropertyName* var, double constant) {
@@ -2085,10 +2089,10 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!addGlobalDoubleConstant(var, constant))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::Constant, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::Constant, std::move(fieldChars));
         g.pod.u.constant.value_ = constant;
         g.pod.u.constant.kind_ = AsmJSGlobal::MathConstant;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addGlobalConstant(PropertyName* var, double constant, PropertyName* field) {
         UniqueChars fieldChars = StringToNewUTF8CharsZ(cx_, *field);
@@ -2098,10 +2102,10 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!addGlobalDoubleConstant(var, constant))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::Constant, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::Constant, std::move(fieldChars));
         g.pod.u.constant.value_ = constant;
         g.pod.u.constant.kind_ = AsmJSGlobal::GlobalConstant;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addAtomicsBuiltinFunction(PropertyName* var, AsmJSAtomicsBuiltinFunction func,
                                    PropertyName* field)
@@ -2122,9 +2126,9 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::AtomicsBuiltinFunction, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::AtomicsBuiltinFunction, std::move(fieldChars));
         g.pod.u.atomicsBuiltinFunc_ = func;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addSimdCtor(PropertyName* var, SimdType type, PropertyName* field) {
         simdPresent_ = true;
@@ -2140,9 +2144,9 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::SimdCtor, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::SimdCtor, std::move(fieldChars));
         g.pod.u.simdCtorType_ = type;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addSimdOperation(PropertyName* var, SimdType type, SimdOperation op, PropertyName* field) {
         simdPresent_ = true;
@@ -2158,10 +2162,10 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::SimdOp, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::SimdOp, std::move(fieldChars));
         g.pod.u.simdOp.type_ = type;
         g.pod.u.simdOp.which_ = op;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addArrayViewCtor(PropertyName* var, Scalar::Type vt, PropertyName* field) {
         UniqueChars fieldChars = StringToNewUTF8CharsZ(cx_, *field);
@@ -2175,9 +2179,9 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::ArrayViewCtor, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::ArrayViewCtor, std::move(fieldChars));
         g.pod.u.viewType_ = vt;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addFFI(PropertyName* var, PropertyName* field) {
         UniqueChars fieldChars = StringToNewUTF8CharsZ(cx_, *field);
@@ -2195,9 +2199,9 @@ class MOZ_STACK_CLASS ModuleValidator
         if (!globalMap_.putNew(var, global))
             return false;
 
-        AsmJSGlobal g(AsmJSGlobal::FFI, Move(fieldChars));
+        AsmJSGlobal g(AsmJSGlobal::FFI, std::move(fieldChars));
         g.pod.u.ffiIndex_ = ffiIndex;
-        return asmJSMetadata_->asmJSGlobals.append(Move(g));
+        return asmJSMetadata_->asmJSGlobals.append(std::move(g));
     }
     bool addExportField(const Func& func, PropertyName* maybeField) {
         // Record the field name of this export.
@@ -2212,7 +2216,7 @@ class MOZ_STACK_CLASS ModuleValidator
         // Declare which function is exported which gives us an index into the
         // module ExportVector.
         uint32_t funcIndex = funcImportMap_.count() + func.funcDefIndex();
-        if (!env_.exports.emplaceBack(Move(fieldChars), funcIndex, DefinitionKind::Function))
+        if (!env_.exports.emplaceBack(std::move(fieldChars), funcIndex, DefinitionKind::Function))
             return false;
 
         // The exported function might have already been exported in which case
@@ -2221,9 +2225,9 @@ class MOZ_STACK_CLASS ModuleValidator
                                                         func.srcBegin() - asmJSMetadata_->srcStart,
                                                         func.srcEnd() - asmJSMetadata_->srcStart);
     }
-    bool addFuncDef(PropertyName* name, uint32_t firstUse, Sig&& sig, Func** func) {
+    bool addFuncDef(PropertyName* name, uint32_t firstUse, FuncType&& sig, Func** func) {
         uint32_t sigIndex;
-        if (!declareSig(Move(sig), &sigIndex))
+        if (!declareSig(std::move(sig), &sigIndex))
             return false;
 
         uint32_t funcDefIndex = funcDefs_.length();
@@ -2241,7 +2245,7 @@ class MOZ_STACK_CLASS ModuleValidator
         *func = &funcDefs_.back();
         return true;
     }
-    bool declareFuncPtrTable(Sig&& sig, PropertyName* name, uint32_t firstUse, uint32_t mask,
+    bool declareFuncPtrTable(FuncType&& sig, PropertyName* name, uint32_t firstUse, uint32_t mask,
                              uint32_t* tableIndex)
     {
         if (mask > MaxTableInitialLength)
@@ -2251,7 +2255,7 @@ class MOZ_STACK_CLASS ModuleValidator
         *tableIndex = env_.tables.length();
 
         uint32_t sigIndex;
-        if (!newSig(Move(sig), &sigIndex))
+        if (!newSig(std::move(sig), &sigIndex))
             return false;
 
         MOZ_ASSERT(sigIndex >= env_.asmJSSigToTableIndex.length());
@@ -2283,9 +2287,9 @@ class MOZ_STACK_CLASS ModuleValidator
         for (uint32_t& index : elems)
             index += funcImportMap_.count();
 
-        return env_.elemSegments.emplaceBack(tableIndex, InitExpr(Val(uint32_t(0))), Move(elems));
+        return env_.elemSegments.emplaceBack(tableIndex, InitExpr(Val(uint32_t(0))), std::move(elems));
     }
-    bool declareImport(PropertyName* name, Sig&& sig, unsigned ffiIndex, uint32_t* importIndex) {
+    bool declareImport(PropertyName* name, FuncType&& sig, unsigned ffiIndex, uint32_t* importIndex) {
         FuncImportMap::AddPtr p = funcImportMap_.lookupForAdd(NamedSig::Lookup(name, sig));
         if (p) {
             *importIndex = p->value();
@@ -2302,10 +2306,10 @@ class MOZ_STACK_CLASS ModuleValidator
             return false;
 
         uint32_t sigIndex;
-        if (!declareSig(Move(sig), &sigIndex))
+        if (!declareSig(std::move(sig), &sigIndex))
             return false;
 
-        return funcImportMap_.add(p, NamedSig(name, sigIndex, env_.sigs), *importIndex);
+        return funcImportMap_.add(p, NamedSig(name, sigIndex, env_.types), *importIndex);
     }
 
     bool tryConstantAccess(uint64_t start, uint64_t width) {
@@ -2448,18 +2452,18 @@ class MOZ_STACK_CLASS ModuleValidator
         return true;
     }
     SharedModule finish() {
-        MOZ_ASSERT(env_.funcSigs.empty());
-        if (!env_.funcSigs.resize(funcImportMap_.count() + funcDefs_.length()))
+        MOZ_ASSERT(env_.funcTypes.empty());
+        if (!env_.funcTypes.resize(funcImportMap_.count() + funcDefs_.length()))
             return nullptr;
         for (FuncImportMap::Range r = funcImportMap_.all(); !r.empty(); r.popFront()) {
             uint32_t funcIndex = r.front().value();
-            MOZ_ASSERT(!env_.funcSigs[funcIndex]);
-            env_.funcSigs[funcIndex] = &env_.sigs[r.front().key().sigIndex()];
+            MOZ_ASSERT(!env_.funcTypes[funcIndex]);
+            env_.funcTypes[funcIndex] = &env_.types[r.front().key().sigIndex()].funcType();
         }
         for (const Func& func : funcDefs_) {
             uint32_t funcIndex = funcImportMap_.count() + func.funcDefIndex();
-            MOZ_ASSERT(!env_.funcSigs[funcIndex]);
-            env_.funcSigs[funcIndex] = &env_.sigs[func.sigIndex()];
+            MOZ_ASSERT(!env_.funcTypes[funcIndex]);
+            env_.funcTypes[funcIndex] = &env_.types[func.sigIndex()].funcType();
         }
 
         if (!env_.funcImportGlobalDataOffsets.resize(funcImportMap_.count()))
@@ -2472,7 +2476,7 @@ class MOZ_STACK_CLASS ModuleValidator
             return nullptr;
         for (const Func& func : funcDefs_) {
             CacheableChars funcName = StringToNewUTF8CharsZ(cx_, *func.name());
-            if (!funcName || !asmJSMetadata_->asmJSFuncNames.emplaceBack(Move(funcName)))
+            if (!funcName || !asmJSMetadata_->asmJSFuncNames.emplaceBack(std::move(funcName)))
                 return nullptr;
         }
 
@@ -2486,14 +2490,14 @@ class MOZ_STACK_CLASS ModuleValidator
 
         ScriptedCaller scriptedCaller;
         if (parser_.ss->filename()) {
-            scriptedCaller.line = scriptedCaller.column = 0;  // unused
+            scriptedCaller.line = 0;  // unused
             scriptedCaller.filename = DuplicateString(parser_.ss->filename());
             if (!scriptedCaller.filename)
                 return nullptr;
         }
 
         MutableCompileArgs args = cx_->new_<CompileArgs>();
-        if (!args || !args->initFromContext(cx_, Move(scriptedCaller)))
+        if (!args || !args->initFromContext(cx_, std::move(scriptedCaller)))
             return nullptr;
 
         uint32_t codeSectionSize = 0;
@@ -2517,7 +2521,7 @@ class MOZ_STACK_CLASS ModuleValidator
         for (Func& func : funcDefs_) {
             if (!mg.compileFuncDef(funcImportMap_.count() + func.funcDefIndex(), func.line(),
                                    func.bytes().begin(), func.bytes().end(),
-                                   Move(func.callSiteLineNums()))) {
+                                   std::move(func.callSiteLineNums()))) {
                 return nullptr;
             }
         }
@@ -3070,7 +3074,7 @@ class MOZ_STACK_CLASS FunctionValidator
         MOZ_ASSERT(continuableStack_.empty());
         MOZ_ASSERT(breakLabels_.empty());
         MOZ_ASSERT(continueLabels_.empty());
-        func->define(fn_, line, Move(bytes_), Move(callSiteLineNums_));
+        func->define(fn_, line, std::move(bytes_), std::move(callSiteLineNums_));
     }
 
     bool fail(ParseNode* pn, const char* str) {
@@ -4852,7 +4856,8 @@ CheckCallArgs(FunctionValidator& f, ParseNode* callNode, ValTypeVector* args)
 }
 
 static bool
-CheckSignatureAgainstExisting(ModuleValidator& m, ParseNode* usepn, const Sig& sig, const Sig& existing)
+CheckSignatureAgainstExisting(ModuleValidator& m, ParseNode* usepn, const FuncType& sig,
+                              const FuncType& existing)
 {
     if (sig.args().length() != existing.args().length()) {
         return m.failf(usepn, "incompatible number of arguments (%zu"
@@ -4877,7 +4882,7 @@ CheckSignatureAgainstExisting(ModuleValidator& m, ParseNode* usepn, const Sig& s
 }
 
 static bool
-CheckFunctionSignature(ModuleValidator& m, ParseNode* usepn, Sig&& sig, PropertyName* name,
+CheckFunctionSignature(ModuleValidator& m, ParseNode* usepn, FuncType&& sig, PropertyName* name,
                        ModuleValidator::Func** func)
 {
     if (sig.args().length() > MaxParams)
@@ -4887,10 +4892,10 @@ CheckFunctionSignature(ModuleValidator& m, ParseNode* usepn, Sig&& sig, Property
     if (!existing) {
         if (!CheckModuleLevelName(m, usepn, name))
             return false;
-        return m.addFuncDef(name, usepn->pn_pos.begin, Move(sig), func);
+        return m.addFuncDef(name, usepn->pn_pos.begin, std::move(sig), func);
     }
 
-    const SigWithId& existingSig = m.env().sigs[existing->sigIndex()];
+    const FuncTypeWithId& existingSig = m.env().types[existing->sigIndex()].funcType();
 
     if (!CheckSignatureAgainstExisting(m, usepn, sig, existingSig))
         return false;
@@ -4920,10 +4925,10 @@ CheckInternalCall(FunctionValidator& f, ParseNode* callNode, PropertyName* calle
     if (!CheckCallArgs<CheckIsArgType>(f, callNode, &args))
         return false;
 
-    Sig sig(Move(args), ret.canonicalToExprType());
+    FuncType sig(std::move(args), ret.canonicalToExprType());
 
     ModuleValidator::Func* callee;
-    if (!CheckFunctionSignature(f.m(), callNode, Move(sig), calleeName, &callee))
+    if (!CheckFunctionSignature(f.m(), callNode, std::move(sig), calleeName, &callee))
         return false;
 
     if (!f.writeCall(callNode, MozOp::OldCallDirect))
@@ -4938,7 +4943,7 @@ CheckInternalCall(FunctionValidator& f, ParseNode* callNode, PropertyName* calle
 
 static bool
 CheckFuncPtrTableAgainstExisting(ModuleValidator& m, ParseNode* usepn, PropertyName* name,
-                                 Sig&& sig, unsigned mask, uint32_t* tableIndex)
+                                 FuncType&& sig, unsigned mask, uint32_t* tableIndex)
 {
     if (const ModuleValidator::Global* existing = m.lookupGlobal(name)) {
         if (existing->which() != ModuleValidator::Global::Table)
@@ -4948,7 +4953,7 @@ CheckFuncPtrTableAgainstExisting(ModuleValidator& m, ParseNode* usepn, PropertyN
         if (mask != table.mask())
             return m.failf(usepn, "mask does not match previous value (%u)", table.mask());
 
-        if (!CheckSignatureAgainstExisting(m, usepn, sig, m.env().sigs[table.sigIndex()]))
+        if (!CheckSignatureAgainstExisting(m, usepn, sig, m.env().types[table.sigIndex()].funcType()))
             return false;
 
         *tableIndex = existing->tableIndex();
@@ -4958,7 +4963,7 @@ CheckFuncPtrTableAgainstExisting(ModuleValidator& m, ParseNode* usepn, PropertyN
     if (!CheckModuleLevelName(m, usepn, name))
         return false;
 
-    if (!m.declareFuncPtrTable(Move(sig), name, usepn->pn_pos.begin, mask, tableIndex))
+    if (!m.declareFuncPtrTable(std::move(sig), name, usepn->pn_pos.begin, mask, tableIndex))
         return false;
 
     return true;
@@ -5003,10 +5008,10 @@ CheckFuncPtrCall(FunctionValidator& f, ParseNode* callNode, Type ret, Type* type
     if (!CheckCallArgs<CheckIsArgType>(f, callNode, &args))
         return false;
 
-    Sig sig(Move(args), ret.canonicalToExprType());
+    FuncType sig(std::move(args), ret.canonicalToExprType());
 
     uint32_t tableIndex;
-    if (!CheckFuncPtrTableAgainstExisting(f.m(), tableNode, name, Move(sig), mask, &tableIndex))
+    if (!CheckFuncPtrTableAgainstExisting(f.m(), tableNode, name, std::move(sig), mask, &tableIndex))
         return false;
 
     if (!f.writeCall(callNode, MozOp::OldCallIndirect))
@@ -5044,10 +5049,10 @@ CheckFFICall(FunctionValidator& f, ParseNode* callNode, unsigned ffiIndex, Type 
     if (!CheckCallArgs<CheckIsExternType>(f, callNode, &args))
         return false;
 
-    Sig sig(Move(args), ret.canonicalToExprType());
+    FuncType sig(std::move(args), ret.canonicalToExprType());
 
     uint32_t importIndex;
-    if (!f.m().declareImport(calleeName, Move(sig), ffiIndex, &importIndex))
+    if (!f.m().declareImport(calleeName, std::move(sig), ffiIndex, &importIndex))
         return false;
 
     if (!f.writeCall(callNode, Op::Call))
@@ -7302,8 +7307,11 @@ CheckFunction(ModuleValidator& m)
         return false;
 
     ModuleValidator::Func* func = nullptr;
-    if (!CheckFunctionSignature(m, fn, Sig(Move(args), f.returnedType()), FunctionName(fn), &func))
+    if (!CheckFunctionSignature(m, fn, FuncType(std::move(args), f.returnedType()),
+                                FunctionName(fn), &func))
+    {
         return false;
+    }
 
     if (func->defined())
         return m.failName(fn, "function '%s' already defined", FunctionName(fn));
@@ -7363,7 +7371,7 @@ CheckFuncPtrTable(ModuleValidator& m, ParseNode* var)
     unsigned mask = length - 1;
 
     Uint32Vector elemFuncDefIndices;
-    const Sig* sig = nullptr;
+    const FuncType* sig = nullptr;
     for (ParseNode* elem = ListHead(arrayLiteral); elem; elem = NextNode(elem)) {
         if (!elem->isKind(ParseNodeKind::Name))
             return m.fail(elem, "function-pointer table's elements must be names of functions");
@@ -7373,7 +7381,7 @@ CheckFuncPtrTable(ModuleValidator& m, ParseNode* var)
         if (!func)
             return m.fail(elem, "function-pointer table's elements must be names of functions");
 
-        const Sig& funcSig = m.env().sigs[func->sigIndex()];
+        const FuncType& funcSig = m.env().types[func->sigIndex()].funcType();
         if (sig) {
             if (*sig != funcSig)
                 return m.fail(elem, "all functions in table must have same signature");
@@ -7385,15 +7393,15 @@ CheckFuncPtrTable(ModuleValidator& m, ParseNode* var)
             return false;
     }
 
-    Sig copy;
+    FuncType copy;
     if (!copy.clone(*sig))
         return false;
 
     uint32_t tableIndex;
-    if (!CheckFuncPtrTableAgainstExisting(m, var, var->name(), Move(copy), mask, &tableIndex))
+    if (!CheckFuncPtrTableAgainstExisting(m, var, var->name(), std::move(copy), mask, &tableIndex))
         return false;
 
-    if (!m.defineFuncPtrTable(tableIndex, Move(elemFuncDefIndices)))
+    if (!m.defineFuncPtrTable(tableIndex, std::move(elemFuncDefIndices)))
         return m.fail(var, "duplicate function-pointer definition");
 
     return true;
@@ -7678,7 +7686,7 @@ ValidateGlobalVariable(JSContext* cx, const AsmJSGlobal& global, HandleValue imp
         if (!v.isPrimitive() && !HasPureCoercion(cx, v))
             return LinkFail(cx, "Imported values must be primitives");
 
-        switch (global.varInitImportType()) {
+        switch (global.varInitImportType().code()) {
           case ValType::I32: {
             int32_t i32;
             if (!ToInt32(cx, v, &i32))
@@ -8453,7 +8461,7 @@ class ModuleCharsForStore : ModuleChars
         if (!compressedBuffer_.resize(maxCompressedSize))
             return false;
 
-        const char16_t* chars = parser.tokenStream.rawCharPtrAt(beginOffset(parser));
+        const char16_t* chars = parser.tokenStream.codeUnitPtrAt(beginOffset(parser));
         const char* source = reinterpret_cast<const char*>(chars);
         size_t compressedSize = LZ4::compress(source, uncompressedSize_, compressedBuffer_.begin());
         if (!compressedSize || compressedSize > UINT32_MAX)
@@ -8480,7 +8488,7 @@ class ModuleCharsForStore : ModuleChars
             ParseNode* arg = FunctionFormalParametersList(functionNode, &numArgs);
             for (unsigned i = 0; i < numArgs; i++, arg = arg->pn_next) {
                 UniqueChars name = StringToNewUTF8CharsZ(nullptr, *arg->name());
-                if (!name || !funCtorArgs_.append(Move(name)))
+                if (!name || !funCtorArgs_.append(std::move(name)))
                     return false;
             }
         }
@@ -8537,7 +8545,7 @@ class ModuleCharsForLookup : ModuleChars
     }
 
     bool match(AsmJSParser& parser) const {
-        const char16_t* parseBegin = parser.tokenStream.rawCharPtrAt(beginOffset(parser));
+        const char16_t* parseBegin = parser.tokenStream.codeUnitPtrAt(beginOffset(parser));
         const char16_t* parseLimit = parser.tokenStream.rawLimit();
         MOZ_ASSERT(parseLimit >= parseBegin);
         if (uint32_t(parseLimit - parseBegin) < chars_.length())
@@ -8628,8 +8636,8 @@ StoreAsmJSModuleInCache(AsmJSParser& parser, Module& module, JSContext* cx)
     if (!open)
         return JS::AsmJSCache_Disabled_Internal;
 
-    const char16_t* begin = parser.tokenStream.rawCharPtrAt(ModuleChars::beginOffset(parser));
-    const char16_t* end = parser.tokenStream.rawCharPtrAt(ModuleChars::endOffset(parser));
+    const char16_t* begin = parser.tokenStream.codeUnitPtrAt(ModuleChars::beginOffset(parser));
+    const char16_t* end = parser.tokenStream.codeUnitPtrAt(ModuleChars::endOffset(parser));
 
     ScopedCacheEntryOpenedForWrite entry(cx, serializedSize);
     JS::AsmJSCacheResult openResult =
@@ -8667,7 +8675,7 @@ LookupAsmJSModuleInCache(JSContext* cx, AsmJSParser& parser, bool* loadedFromCac
     if (!open)
         return true;
 
-    const char16_t* begin = parser.tokenStream.rawCharPtrAt(ModuleChars::beginOffset(parser));
+    const char16_t* begin = parser.tokenStream.codeUnitPtrAt(ModuleChars::beginOffset(parser));
     const char16_t* limit = parser.tokenStream.rawLimit();
 
     ScopedCacheEntryOpenedForRead entry(cx);
@@ -8906,7 +8914,7 @@ js::CompileAsmJS(JSContext* cx, AsmJSParser& parser, ParseNode* stmtList, bool* 
 
     // Success! Write to the console with a "warning" message.
     *validated = true;
-    SuccessfulValidation(parser, Move(message));
+    SuccessfulValidation(parser, std::move(message));
     return NoExceptionPending(cx);
 }
 

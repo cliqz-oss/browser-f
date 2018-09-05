@@ -88,7 +88,10 @@ interface mozISpellCheckingEngine : nsISupports {
   void removeDirectory(in nsIFile dir);
 
   /**
-   * Add a dictionary with the given language code and file URI.
+   * Add a dictionary with the given language code and source URI. The URI
+   * must point to an affix file, with the ".aff" extension. The word list
+   * file must be in the same directory, with the same base name, and the
+   * ".dic" extension.
    */
   void addDictionary(in AString lang, in nsIURI file);
 
@@ -96,14 +99,13 @@ interface mozISpellCheckingEngine : nsISupports {
    * Remove a dictionary with the given language code and path. If the path does
    * not match that of the current entry with the given language code, it is not
    * removed.
+   *
+   * @returns True if the dictionary was found and removed.
    */
-  void removeDictionary(in AString lang, in nsIURI file);
+  bool removeDictionary(in AString lang, in nsIURI file);
 };
 
 %{C++
-#define DICTIONARY_SEARCH_DIRECTORY "DictD"
-#define DICTIONARY_SEARCH_DIRECTORY_LIST "DictDL"
-
 #define SPELLCHECK_DICTIONARY_REMOVE_NOTIFICATION \
   "spellcheck-dictionary-remove"
 %}

@@ -38,7 +38,6 @@ protected:
   virtual ~nsFind();
 
   // Parameters set from the interface:
-  //nsCOMPtr<nsIDOMRange> mRange;   // search only in this range
   bool mFindBackward;
   bool mCaseSensitive;
 
@@ -52,11 +51,6 @@ protected:
   // Last block parent, so that we will notice crossing block boundaries:
   nsCOMPtr<nsINode> mLastBlockParent;
   nsresult GetBlockParent(nsINode* aNode, nsINode** aParent);
-
-  // Utility routines:
-  bool IsBlockNode(nsIContent* aNode);
-  bool SkipNode(nsIContent* aNode);
-  bool IsVisibleNode(nsINode* aNode);
 
   // Move in the right direction for our search:
   nsresult NextNode(nsRange* aSearchRange,
@@ -72,8 +66,8 @@ protected:
   void ResetAll();
 
   // The iterator we use to move through the document:
-  nsresult InitIterator(nsIDOMNode* aStartNode, int32_t aStartOffset,
-                        nsIDOMNode* aEndNode, int32_t aEndOffset);
+  nsresult InitIterator(nsINode* aStartNode, int32_t aStartOffset,
+                        nsINode* aEndNode, int32_t aEndOffset);
   RefPtr<nsFindContentIterator> mIterator;
 
   friend class PeekNextCharRestoreState;

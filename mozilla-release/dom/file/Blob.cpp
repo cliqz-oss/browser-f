@@ -34,8 +34,8 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Blob)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMBlob)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMBlob)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIMutable)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(Blob)
   NS_INTERFACE_MAP_ENTRY(nsIMutable)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END
@@ -140,7 +140,7 @@ Blob::ToFile(const nsAString& aName, ErrorResult& aRv) const
   mImpl->GetType(contentType);
 
   RefPtr<MultipartBlobImpl> impl =
-    MultipartBlobImpl::Create(Move(blobImpls), aName, contentType, aRv);
+    MultipartBlobImpl::Create(std::move(blobImpls), aName, contentType, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }

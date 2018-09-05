@@ -184,6 +184,10 @@ class JSFunction : public js::NativeObject
     js::GCPtrAtom atom_;
 
   public:
+    static inline JS::Result<JSFunction*, JS::OOM&>
+    create(JSContext* cx, js::gc::AllocKind kind, js::gc::InitialHeap heap,
+           js::HandleShape shape, js::HandleObjectGroup group);
+
     /* Call objects must be created for each invocation of this function. */
     bool needsCallObject() const {
         MOZ_ASSERT(!isInterpretedLazy());
@@ -560,13 +564,13 @@ class JSFunction : public js::NativeObject
     // The state of a JSFunction whose script errored out during bytecode
     // compilation. Such JSFunctions are only reachable via GC iteration and
     // not from script.
-    bool hasUncompiledScript() const {
+    bool hasUncompletedScript() const {
         MOZ_ASSERT(hasScript());
         return !u.scripted.s.script_;
     }
 
     JSScript* nonLazyScript() const {
-        MOZ_ASSERT(!hasUncompiledScript());
+        MOZ_ASSERT(!hasUncompletedScript());
         return u.scripted.s.script_;
     }
 
@@ -927,7 +931,7 @@ class FunctionExtended : public JSFunction
 };
 
 extern bool
-CanReuseScriptForClone(JSCompartment* compartment, HandleFunction fun, HandleObject newParent);
+CanReuseScriptForClone(JS::Realm* realm, HandleFunction fun, HandleObject newParent);
 
 extern JSFunction*
 CloneFunctionReuseScript(JSContext* cx, HandleFunction fun, HandleObject parent,
@@ -1004,7 +1008,7 @@ JSString* FunctionToString(JSContext* cx, HandleFunction fun, bool isToSource);
 template<XDRMode mode>
 XDRResult
 XDRInterpretedFunction(XDRState<mode>* xdr, HandleScope enclosingScope,
-                       HandleScriptSource sourceObject, MutableHandleFunction objp);
+                       HandleScriptSourceObject sourceObject, MutableHandleFunction objp);
 
 /*
  * Report an error that call.thisv is not compatible with the specified class,

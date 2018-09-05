@@ -13,10 +13,8 @@
 #include "nscore.h"
 
 class nsAtom;
-class nsIDOMNode;
-class nsIDOMRange;
+class nsComposeTxtSrvFilter;
 class nsINode;
-class nsITextServicesFilter;
 class nsRange;
 
 class nsFilteredContentIterator final : public nsIContentIterator
@@ -27,11 +25,11 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS(nsFilteredContentIterator)
 
-  explicit nsFilteredContentIterator(nsITextServicesFilter* aFilter);
+  explicit nsFilteredContentIterator(nsComposeTxtSrvFilter* aFilter);
 
   /* nsIContentIterator */
   virtual nsresult Init(nsINode* aRoot) override;
-  virtual nsresult Init(nsIDOMRange* aRange) override;
+  virtual nsresult Init(nsRange* aRange) override;
   virtual nsresult Init(nsINode* aStartContainer, uint32_t aStartOffset,
                         nsINode* aEndContainer, uint32_t aEndOffset) override;
   virtual nsresult Init(const mozilla::RawRangeBoundary& aStart,
@@ -49,7 +47,12 @@ public:
   void         ClearDidSkip() {  mDidSkip = false; }
 
 protected:
-  nsFilteredContentIterator() : mDidSkip(false), mIsOutOfRange(false) { }
+  nsFilteredContentIterator()
+    : mDidSkip(false)
+    , mIsOutOfRange(false)
+    , mDirection{eDirNotSet}
+  {
+  }
 
   virtual ~nsFilteredContentIterator();
 
@@ -74,7 +77,7 @@ protected:
   RefPtr<nsAtom> mSelectAreaAtom;
   RefPtr<nsAtom> mMapAtom;
 
-  nsCOMPtr<nsITextServicesFilter> mFilter;
+  RefPtr<nsComposeTxtSrvFilter> mFilter;
   RefPtr<nsRange>               mRange;
   bool                            mDidSkip;
   bool                            mIsOutOfRange;

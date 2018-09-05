@@ -14,15 +14,15 @@ const WebGLPrimitivesType = {
 };
 
 /**
- * A utility for monitoring WebGL primitive draws. Takes a `tabActor`
+ * A utility for monitoring WebGL primitive draws. Takes a `targetActor`
  * and monitors primitive draws over time.
  */
 const WebGLDrawArrays = "drawArrays";
 const WebGLDrawElements = "drawElements";
 
 exports.WebGLPrimitiveCounter = class WebGLPrimitiveCounter {
-  constructor(tabActor) {
-    this.tabActor = tabActor;
+  constructor(targetActor) {
+    this.targetActor = targetActor;
   }
 
   destroy() {}
@@ -35,14 +35,14 @@ exports.WebGLPrimitiveCounter = class WebGLPrimitiveCounter {
     this._vertices = 0;
     this._points = 0;
     this._lines = 0;
-    this._startTime = this.tabActor.docShell.now();
+    this._startTime = this.targetActor.docShell.now();
   }
 
   /**
    * Stops monitoring primitive draws, returning the recorded values.
    */
   getCounts() {
-    let result = {
+    const result = {
       tris: this._tris,
       vertices: this._vertices,
       points: this._points,
@@ -60,7 +60,7 @@ exports.WebGLPrimitiveCounter = class WebGLPrimitiveCounter {
    * Handles WebGL draw primitive functions to catch primitive info.
    */
   handleDrawPrimitive(functionCall) {
-    let { name, args } = functionCall.details;
+    const { name, args } = functionCall.details;
 
     if (name === WebGLDrawArrays) {
       this._processDrawArrays(args);
@@ -73,8 +73,8 @@ exports.WebGLPrimitiveCounter = class WebGLPrimitiveCounter {
    * Processes WebGL drawArrays method to count primitve numbers
    */
   _processDrawArrays(args) {
-    let mode = args[0];
-    let count = args[2];
+    const mode = args[0];
+    const count = args[2];
 
     switch (mode) {
       case WebGLPrimitivesType.POINTS:
@@ -115,8 +115,8 @@ exports.WebGLPrimitiveCounter = class WebGLPrimitiveCounter {
    * Processes WebGL drawElements method to count primitve numbers
    */
   _processDrawElements(args) {
-    let mode = args[0];
-    let count = args[1];
+    const mode = args[0];
+    const count = args[1];
 
     switch (mode) {
       case WebGLPrimitivesType.POINTS:
@@ -136,7 +136,7 @@ exports.WebGLPrimitiveCounter = class WebGLPrimitiveCounter {
         this._lines += (count - 1);
         break;
       case WebGLPrimitivesType.TRIANGLES:
-        let tris = count / 3;
+        const tris = count / 3;
         let vertex = tris * 3;
 
         if (tris > 1) {

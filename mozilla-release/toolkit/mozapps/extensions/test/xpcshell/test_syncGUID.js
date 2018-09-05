@@ -13,39 +13,22 @@ this.__defineGetter__("XPIProvider", function() {
 
 const addonId = "addon1@tests.mozilla.org";
 
-function run_test() {
+add_task(async function setup() {
   Services.prefs.setBoolPref("extensions.checkUpdateSecurity", false);
 
   createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9");
-  startupManager();
-
-  run_next_test();
-}
+  await promiseStartupManager();
+});
 
 const ADDONS = [
   {
     id: "addon1@tests.mozilla.org",
-    version: "1.0",
     name: "Test 1",
-    bootstrap: true,
-    description: "Test Description",
-
-    targetApplications: [{
-      id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "1"}],
   },
   {
     id: "addon2@tests.mozilla.org",
     version: "2.0",
     name: "Real Test 2",
-    bootstrap: true,
-    description: "Test Description",
-
-    targetApplications: [{
-      id: "xpcshell@tests.mozilla.org",
-      minVersion: "1",
-      maxVersion: "1"}],
   },
 ];
 
@@ -60,7 +43,7 @@ add_test(async function test_getter_and_setter() {
      AddonManager.removeInstallListener(listener);
      // never restart directly inside an onInstallEnded handler!
      executeSoon(async function getter_setter_install_ended() {
-      restartManager();
+      await promiseRestartManager();
 
       let addon = await AddonManager.getAddonByID(addonId);
       Assert.notEqual(addon, null);
@@ -108,7 +91,7 @@ add_test(async function test_error_on_duplicate_syncguid_insert() {
       if (installCount == installNames.length) {
        AddonManager.removeInstallListener(listener);
        executeSoon(async function duplicate_syncguid_install_ended() {
-        restartManager();
+        await promiseRestartManager();
 
         let addons = await AddonManager.getAddonsByIDs(installIDs);
         let initialGUID = addons[1].syncGUID;
@@ -118,7 +101,7 @@ add_test(async function test_error_on_duplicate_syncguid_insert() {
           do_throw("Should not get here.");
         } catch (e) {
           Assert.ok(e.message.startsWith("Addon sync GUID conflict"));
-          restartManager();
+          await promiseRestartManager();
 
           let addon = await AddonManager.getAddonByID(installIDs[1]);
           Assert.equal(initialGUID, addon.syncGUID);

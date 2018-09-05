@@ -13,6 +13,7 @@ from collections import defaultdict
 from mozprocess import ProcessHandlerMixin
 
 from mozlint import result
+from mozlint.util import pip
 from mozlint.pathutils import get_ancestors_by_name
 
 
@@ -98,32 +99,6 @@ class Flake8Process(ProcessHandlerMixin):
         signal.signal(signal.SIGINT, orig)
 
 
-def _run_pip(*args):
-    """
-    Helper function that runs pip with subprocess
-    """
-    try:
-        subprocess.check_output([os.path.join(bindir, 'pip')] + list(args),
-                                stderr=subprocess.STDOUT)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        return False
-
-
-def reinstall_flake8():
-    """
-    Try to install flake8 at the target version, returns True on success
-    otherwise prints the otuput of the pip command and returns False
-    """
-    if _run_pip('install', '-U',
-                '--require-hashes', '-r',
-                FLAKE8_REQUIREMENTS_PATH):
-        return True
-
-    return False
-
-
 def run_process(config, cmd):
     proc = Flake8Process(config, cmd)
     proc.run()
@@ -135,7 +110,7 @@ def run_process(config, cmd):
 
 
 def setup(root):
-    if not reinstall_flake8():
+    if not pip.reinstall_program(FLAKE8_REQUIREMENTS_PATH):
         print(FLAKE8_INSTALL_ERROR)
         return 1
 
@@ -151,6 +126,15 @@ def lint(paths, config, **lintargs):
                     '"column":%(col)s,"rule":"%(code)s","message":"%(text)s"}',
     ]
 
+    fix_cmdargs = [
+        os.path.join(bindir, 'autopep8'),
+        '--global-config', os.path.join(lintargs['root'], '.flake8'),
+        '--in-place', '--recursive',
+    ]
+
+    if 'exclude' in lintargs:
+        fix_cmdargs.extend(['--exclude', ','.join(lintargs['exclude'])])
+
     # Run any paths with a .flake8 file in the directory separately so
     # it gets picked up. This means only .flake8 files that live in
     # directories that are explicitly included will be considered.
@@ -161,8 +145,10 @@ def lint(paths, config, **lintargs):
         paths_by_config[os.pathsep.join(configs) if configs else 'default'].append(path)
 
     for configs, paths in paths_by_config.items():
-        cmd = cmdargs[:]
+        if lintargs.get('fix'):
+            subprocess.call(fix_cmdargs + paths)
 
+        cmd = cmdargs[:]
         if configs != 'default':
             configs = reversed(configs.split(os.pathsep))
             cmd.extend(['--append-config={}'.format(c) for c in configs])

@@ -5,8 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jit/Bailouts.h"
-#include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "jit/Linker.h"
 #ifdef JS_ION_PERF
 # include "jit/PerfSpewer.h"
@@ -686,7 +686,6 @@ JitRuntime::generateVMWrapper(JSContext* cx, MacroAssembler& masm, const VMFunct
 
     // Copy arguments.
     for (uint32_t explicitArg = 0; explicitArg < f.explicitArgs; explicitArg++) {
-        MoveOperand from;
         switch (f.argProperties(explicitArg)) {
           case VMFunction::WordByValue:
             if (f.argPassedInFloatReg(explicitArg))

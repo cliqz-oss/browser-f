@@ -65,7 +65,6 @@ const startupPhases = {
       "chrome://webcompat/content/data/ua_overrides.jsm",
       "chrome://webcompat/content/lib/ua_overrider.jsm",
       "resource:///modules/AboutNewTab.jsm",
-      "resource:///modules/BrowserUITelemetry.jsm",
       "resource:///modules/BrowserUsageTelemetry.jsm",
       "resource:///modules/ContentCrashHandlers.jsm",
       "resource:///modules/ShellService.jsm",
@@ -119,6 +118,7 @@ const startupPhases = {
       "resource://gre/modules/AsyncPrefs.jsm",
       "resource://gre/modules/LoginManagerContextMenu.jsm",
       "resource://gre/modules/Task.jsm",
+      "resource://pdf.js/PdfStreamConverter.jsm",
     ]),
   }},
 };

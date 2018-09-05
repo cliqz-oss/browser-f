@@ -9,13 +9,15 @@
 
 #include "vm/JSScript.h"
 
+#include <utility>
+
 #include "jit/BaselineJIT.h"
 #include "jit/IonAnalysis.h"
 #include "vm/EnvironmentObject.h"
 #include "vm/RegExpObject.h"
 #include "wasm/AsmJS.h"
 
-#include "vm/JSCompartment-inl.h"
+#include "vm/Realm-inl.h"
 #include "vm/Shape-inl.h"
 
 namespace js {
@@ -28,16 +30,16 @@ ScriptCounts::ScriptCounts()
 }
 
 ScriptCounts::ScriptCounts(PCCountsVector&& jumpTargets)
-  : pcCounts_(Move(jumpTargets)),
+  : pcCounts_(std::move(jumpTargets)),
     throwCounts_(),
     ionCounts_(nullptr)
 {
 }
 
 ScriptCounts::ScriptCounts(ScriptCounts&& src)
-  : pcCounts_(Move(src.pcCounts_)),
-    throwCounts_(Move(src.throwCounts_)),
-    ionCounts_(Move(src.ionCounts_))
+  : pcCounts_(std::move(src.pcCounts_)),
+    throwCounts_(std::move(src.throwCounts_)),
+    ionCounts_(std::move(src.ionCounts_))
 {
     src.ionCounts_ = nullptr;
 }
@@ -45,9 +47,9 @@ ScriptCounts::ScriptCounts(ScriptCounts&& src)
 ScriptCounts&
 ScriptCounts::operator=(ScriptCounts&& src)
 {
-    pcCounts_ = Move(src.pcCounts_);
-    throwCounts_ = Move(src.throwCounts_);
-    ionCounts_ = Move(src.ionCounts_);
+    pcCounts_ = std::move(src.pcCounts_);
+    throwCounts_ = std::move(src.throwCounts_);
+    ionCounts_ = std::move(src.ionCounts_);
     src.ionCounts_ = nullptr;
     return *this;
 }
@@ -65,8 +67,8 @@ ScriptAndCounts::ScriptAndCounts(JSScript* script)
 }
 
 ScriptAndCounts::ScriptAndCounts(ScriptAndCounts&& sac)
-  : script(Move(sac.script)),
-    scriptCounts(Move(sac.scriptCounts))
+  : script(std::move(sac.script)),
+    scriptCounts(std::move(sac.scriptCounts))
 {
 }
 
@@ -138,10 +140,10 @@ inline js::GlobalObject&
 JSScript::global() const
 {
     /*
-     * A JSScript always marks its compartment's global (via bindings) so we
-     * can assert that maybeGlobal is non-null here.
+     * A JSScript always marks its realm's global (via bindings) so we can
+     * assert that maybeGlobal is non-null here.
      */
-    return *compartment()->maybeGlobal();
+    return *realm()->maybeGlobal();
 }
 
 inline js::LexicalScope*
@@ -179,7 +181,7 @@ JSScript::initialEnvironmentShape() const
 inline JSPrincipals*
 JSScript::principals()
 {
-    return compartment()->principals();
+    return realm()->principals();
 }
 
 inline void
@@ -204,7 +206,7 @@ JSScript::ensureHasAnalyzedArgsUsage(JSContext* cx)
 inline bool
 JSScript::isDebuggee() const
 {
-    return compartment_->debuggerObservesAllExecution() || hasDebugScript_;
+    return realm_->debuggerObservesAllExecution() || bitFields_.hasDebugScript_;
 }
 
 #endif /* vm_JSScript_inl_h */

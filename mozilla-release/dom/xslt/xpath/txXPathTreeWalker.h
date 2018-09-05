@@ -12,7 +12,6 @@
 #include "nsTArray.h"
 
 class nsAtom;
-class nsIDOMDocument;
 
 class txXPathTreeWalker
 {
@@ -97,12 +96,8 @@ public:
                                         bool aKeepRootAlive = false);
     static txXPathNode* createXPathNode(nsIContent* aContent,
                                         bool aKeepRootAlive = false);
-    static txXPathNode* createXPathNode(nsIDOMDocument* aDocument);
+    static txXPathNode* createXPathNode(nsIDocument* aDocument);
     static nsINode* getNode(const txXPathNode& aNode);
-    static nsresult getNode(const txXPathNode& aNode, nsIDOMNode** aResult)
-    {
-        return CallQueryInterface(getNode(aNode), aResult);
-    }
     static nsIContent* getContent(const txXPathNode& aNode);
     static nsIDocument* getDocument(const txXPathNode& aNode);
     static void addRef(const txXPathNode& aNode)
@@ -177,8 +172,7 @@ txXPathTreeWalker::isOnNode(const txXPathNode& aNode) const
 inline int32_t
 txXPathNodeUtils::getUniqueIdentifier(const txXPathNode& aNode)
 {
-    NS_PRECONDITION(!aNode.isAttribute(),
-                    "Not implemented for attributes.");
+    MOZ_ASSERT(!aNode.isAttribute(), "Not implemented for attributes.");
     return NS_PTR_TO_INT32(aNode.mNode);
 }
 

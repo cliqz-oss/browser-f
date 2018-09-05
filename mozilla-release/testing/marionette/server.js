@@ -11,8 +11,8 @@ const ServerSocket = CC(
     "nsIServerSocket",
     "initSpecialConnection");
 
-ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.import("chrome://marionette/content/assert.js");
 const {GeckoDriver} = ChromeUtils.import("chrome://marionette/content/driver.js", {});
@@ -26,10 +26,11 @@ const {
   Message,
   Response,
 } = ChromeUtils.import("chrome://marionette/content/message.js", {});
+const {Log} = ChromeUtils.import("chrome://marionette/content/log.js", {});
 const {MarionettePrefs} = ChromeUtils.import("chrome://marionette/content/prefs.js", {});
 const {DebuggerTransport} = ChromeUtils.import("chrome://marionette/content/transport.js", {});
 
-const logger = Log.repository.getLogger("Marionette");
+XPCOMUtils.defineLazyGetter(this, "logger", Log.get);
 
 const {KeepWhenOffline, LoopbackOnly} = Ci.nsIServerSocket;
 
@@ -90,13 +91,15 @@ class TCPListener {
         this.port = this.socket.port;
 
         this.socket.asyncListen(this);
-        logger.debug("New connections are accepted");
+        logger.info(`Listening on port ${this.port}`);
       }
 
     } else if (this.socket) {
+      // Note that closing the server socket will not close currently active
+      // connections.
       this.socket.close();
       this.socket = null;
-      logger.debug("New connections will no longer be accepted");
+      logger.info(`Stopped listening on port ${this.port}`);
     }
   }
 
@@ -291,9 +294,9 @@ class TCPConnection {
       assert.session(this.driver);
     }
 
-    let rv = await fn.bind(this.driver)(cmd, resp);
+    let rv = await fn.bind(this.driver)(cmd);
 
-    if (typeof rv != "undefined") {
+    if (rv != null) {
       if (rv instanceof WebElement || typeof rv != "object") {
         resp.body = {value: rv};
       } else {

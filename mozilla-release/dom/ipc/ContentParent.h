@@ -78,6 +78,9 @@ class OptionalURIParams;
 class PFileDescriptorSetParent;
 class URIParams;
 class TestShellParent;
+#ifdef FUZZING
+class ProtocolFuzzerHelper;
+#endif
 } // namespace ipc
 
 namespace jsipc {
@@ -123,6 +126,9 @@ class ContentParent final : public PContentParent
 
   friend class ContentProcessHost;
   friend class mozilla::PreallocatedProcessManagerImpl;
+#ifdef FUZZING
+  friend class mozilla::ipc::ProtocolFuzzerHelper;
+#endif
 
 public:
 
@@ -199,10 +205,9 @@ public:
 
   const nsAString& GetRemoteType() const;
 
-  virtual nsresult DoGetRemoteType(nsAString& aRemoteType) const override
+  virtual void DoGetRemoteType(nsAString& aRemoteType, ErrorResult& aError) const override
   {
     aRemoteType = GetRemoteType();
-    return NS_OK;
   }
 
   enum CPIteratorPolicy {
@@ -639,7 +644,7 @@ public:
                     nsTArray<nsCString>* aResults) override;
 
   // Use the PHangMonitor channel to ask the child to repaint a tab.
-  void ForceTabPaint(TabParent* aTabParent, uint64_t aLayerObserverEpoch);
+  void PaintTabWhileInterruptingJS(TabParent* aTabParent, bool aForceRepaint, uint64_t aLayerObserverEpoch);
 
   // This function is called when we are about to load a document from an
   // HTTP(S), FTP or wyciwyg channel for a content process.  It is a useful

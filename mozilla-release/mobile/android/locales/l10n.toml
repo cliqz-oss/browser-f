@@ -25,6 +25,7 @@ locales = [
     "de",
     "dsb",
     "el",
+    "en-CA",
     "en-GB",
     "en-ZA",
     "eo",
@@ -61,12 +62,14 @@ locales = [
     "km",
     "kn",
     "ko",
+    "lij",
     "lo",
     "lt",
     "ltg",
     "lv",
     "mai",
     "meh",
+    "mix",
     "ml",
     "mr",
     "ms",
@@ -110,10 +113,13 @@ locales = [
 [build]
 exclude-multi-locale = [
     "ach",
+    "en-CA",
     "ia",
     "km",
+    "lij",
     "ltg",
     "meh",
+    "mix",
     "tl",
 ]
 

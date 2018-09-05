@@ -43,7 +43,7 @@ namespace xpc {
 
 class Scriptability {
 public:
-    explicit Scriptability(JSCompartment* c);
+    explicit Scriptability(JS::Realm* realm);
     bool Allowed();
     bool IsImmuneToScriptPolicy();
 
@@ -79,7 +79,7 @@ TransplantObject(JSContext* cx, JS::HandleObject origobj, JS::HandleObject targe
 JSObject*
 TransplantObjectRetainingXrayExpandos(JSContext* cx, JS::HandleObject origobj, JS::HandleObject target);
 
-bool IsContentXBLCompartment(JSCompartment* compartment);
+bool IsContentXBLCompartment(JS::Compartment* compartment);
 bool IsContentXBLScope(JS::Realm* realm);
 bool IsInContentXBLScope(JSObject* obj);
 
@@ -141,23 +141,6 @@ IsXrayWrapper(JSObject* obj);
 JSObject*
 XrayAwareCalleeGlobal(JSObject* fun);
 
-// A version of XrayAwareCalleeGlobal that can be used from a binding
-// specialized getter.  We need this function because in a specialized getter we
-// don't have a callee JSFunction, so can't use xpc::XrayAwareCalleeGlobal.
-// Instead we do something a bit hacky using our current compartment and "this"
-// value.  Note that for the Xray case thisObj will NOT be in the compartment of
-// "cx".
-//
-// As expected, the outparam "global" need not be same-compartment with either
-// thisObj or cx, though it _will_ be same-compartment with one of them.
-//
-// This function can fail; the return value indicates success or failure.
-bool
-XrayAwareCalleeGlobalForSpecializedGetters(JSContext* cx,
-                                           JS::Handle<JSObject*> thisObj,
-                                           JS::MutableHandle<JSObject*> global);
-
-
 void
 TraceXPCGlobal(JSTracer* trc, JSObject* obj);
 
@@ -181,7 +164,7 @@ InitClassesWithNewWrappedGlobal(JSContext* aJSContext,
                                 nsISupports* aCOMObj,
                                 nsIPrincipal* aPrincipal,
                                 uint32_t aFlags,
-                                JS::CompartmentOptions& aOptions,
+                                JS::RealmOptions& aOptions,
                                 JS::MutableHandleObject aNewGlobal);
 
 enum InitClassesFlag {
@@ -398,9 +381,10 @@ bool StringToJsval(JSContext* cx, mozilla::dom::DOMString& str,
     return NonVoidStringToJsval(cx, str, rval);
 }
 
-nsIPrincipal* GetCompartmentPrincipal(JSCompartment* compartment);
+nsIPrincipal* GetCompartmentPrincipal(JS::Compartment* compartment);
+nsIPrincipal* GetRealmPrincipal(JS::Realm* realm);
 
-void NukeAllWrappersForCompartment(JSContext* cx, JSCompartment* compartment,
+void NukeAllWrappersForCompartment(JSContext* cx, JS::Compartment* compartment,
                                    js::NukeReferencesToWindow nukeReferencesToWindow = js::NukeWindowReferences);
 
 void SetLocationForGlobal(JSObject* global, const nsACString& location);
@@ -420,24 +404,24 @@ private:
 };
 
 // ReportJSRuntimeExplicitTreeStats will expect this in the |extra| member
-// of JS::CompartmentStats.
-class CompartmentStatsExtras {
+// of JS::RealmStats.
+class RealmStatsExtras {
 public:
-    CompartmentStatsExtras() {}
+    RealmStatsExtras() {}
 
     nsCString jsPathPrefix;
     nsCString domPathPrefix;
     nsCOMPtr<nsIURI> location;
 
 private:
-    CompartmentStatsExtras(const CompartmentStatsExtras& other) = delete;
-    CompartmentStatsExtras& operator=(const CompartmentStatsExtras& other) = delete;
+    RealmStatsExtras(const RealmStatsExtras& other) = delete;
+    RealmStatsExtras& operator=(const RealmStatsExtras& other) = delete;
 };
 
 // This reports all the stats in |rtStats| that belong in the "explicit" tree,
 // (which isn't all of them).
 // @see ZoneStatsExtras
-// @see CompartmentStatsExtras
+// @see RealmStatsExtras
 void
 ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats& rtStats,
                                  const nsACString& rtPath,
@@ -614,11 +598,11 @@ JSObject*
 FindExceptionStackForConsoleReport(nsPIDOMWindowInner* win,
                                    JS::HandleValue exceptionValue);
 
-// Return a name for the compartment.
+// Return a name for the realm.
 // This function makes reasonable efforts to make this name both mostly human-readable
 // and unique. However, there are no guarantees of either property.
 extern void
-GetCurrentCompartmentName(JSContext*, nsCString& name);
+GetCurrentRealmName(JSContext*, nsCString& name);
 
 void AddGCCallback(xpcGCCallback cb);
 void RemoveGCCallback(xpcGCCallback cb);

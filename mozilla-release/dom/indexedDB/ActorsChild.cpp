@@ -731,7 +731,7 @@ DispatchErrorEvent(IDBRequest* aRequest,
   MOZ_ASSERT(NS_FAILED(aErrorCode));
   MOZ_ASSERT(NS_ERROR_GET_MODULE(aErrorCode) == NS_ERROR_MODULE_DOM_INDEXEDDB);
 
-  AUTO_PROFILER_LABEL("IndexedDB:DispatchErrorEvent", STORAGE);
+  AUTO_PROFILER_LABEL("IndexedDB:DispatchErrorEvent", DOM);
 
   RefPtr<IDBRequest> request = aRequest;
   RefPtr<IDBTransaction> transaction = aTransaction;
@@ -804,7 +804,7 @@ DispatchSuccessEvent(ResultHelper* aResultHelper,
 {
   MOZ_ASSERT(aResultHelper);
 
-  AUTO_PROFILER_LABEL("IndexedDB:DispatchSuccessEvent", STORAGE);
+  AUTO_PROFILER_LABEL("IndexedDB:DispatchSuccessEvent", DOM);
 
   RefPtr<IDBRequest> request = aResultHelper->Request();
   MOZ_ASSERT(request);
@@ -3058,7 +3058,7 @@ BackgroundRequestChild::HandleResponse(
   auto& serializedCloneInfo =
     const_cast<SerializedStructuredCloneReadInfo&>(aResponse);
 
-  StructuredCloneReadInfo cloneReadInfo(Move(serializedCloneInfo));
+  StructuredCloneReadInfo cloneReadInfo(std::move(serializedCloneInfo));
 
   DeserializeStructuredCloneFiles(mTransaction->Database(),
                                   aResponse.files(),
@@ -3093,7 +3093,7 @@ BackgroundRequestChild::HandleResponse(
       StructuredCloneReadInfo* cloneReadInfo = cloneReadInfos.AppendElement();
 
       // Move relevant data into the cloneReadInfo
-      *cloneReadInfo = Move(serializedCloneInfo);
+      *cloneReadInfo = std::move(serializedCloneInfo);
 
       // Get the files
       nsTArray<StructuredCloneFile> files;
@@ -3102,7 +3102,7 @@ BackgroundRequestChild::HandleResponse(
                                       GetNextModuleSet(*cloneReadInfo),
                                       files);
 
-      cloneReadInfo->mFiles = Move(files);
+      cloneReadInfo->mFiles = std::move(files);
     }
   }
 
@@ -3427,7 +3427,7 @@ PreprocessHelper::Init(const nsTArray<StructuredCloneFile>& aFiles)
     streamPairs.AppendElement(StreamPair(bytecodeStream, compiledStream));
   }
 
-  mStreamPairs = Move(streamPairs);
+  mStreamPairs = std::move(streamPairs);
 
   return NS_OK;
 }
@@ -3530,9 +3530,8 @@ PreprocessHelper::ProcessCurrentStreamPair()
   RefPtr<JS::WasmModule> module =
     JS::DeserializeWasmModule(mCurrentBytecodeFileDesc,
                               mCurrentCompiledFileDesc,
-                              Move(buildId),
+                              std::move(buildId),
                               nullptr,
-                              0,
                               0);
   if (NS_WARN_IF(!module)) {
     ContinueWithStatus(NS_ERROR_FAILURE);
@@ -3861,7 +3860,7 @@ BackgroundCursorChild::HandleResponse(
     const_cast<nsTArray<ObjectStoreCursorResponse>&>(aResponses);
 
   for (ObjectStoreCursorResponse& response : responses) {
-    StructuredCloneReadInfo cloneReadInfo(Move(response.cloneInfo()));
+    StructuredCloneReadInfo cloneReadInfo(std::move(response.cloneInfo()));
     cloneReadInfo.mDatabase = mTransaction->Database();
 
     DeserializeStructuredCloneFiles(mTransaction->Database(),
@@ -3872,11 +3871,11 @@ BackgroundCursorChild::HandleResponse(
     RefPtr<IDBCursor> newCursor;
 
     if (mCursor) {
-      mCursor->Reset(Move(response.key()), Move(cloneReadInfo));
+      mCursor->Reset(std::move(response.key()), std::move(cloneReadInfo));
     } else {
       newCursor = IDBCursor::Create(this,
-                                    Move(response.key()),
-                                    Move(cloneReadInfo));
+                                    std::move(response.key()),
+                                    std::move(cloneReadInfo));
       mCursor = newCursor;
     }
   }
@@ -3902,9 +3901,9 @@ BackgroundCursorChild::HandleResponse(
   RefPtr<IDBCursor> newCursor;
 
   if (mCursor) {
-    mCursor->Reset(Move(response.key()));
+    mCursor->Reset(std::move(response.key()));
   } else {
-    newCursor = IDBCursor::Create(this, Move(response.key()));
+    newCursor = IDBCursor::Create(this, std::move(response.key()));
     mCursor = newCursor;
   }
 
@@ -3925,7 +3924,7 @@ BackgroundCursorChild::HandleResponse(const IndexCursorResponse& aResponse)
   // XXX Fix this somehow...
   auto& response = const_cast<IndexCursorResponse&>(aResponse);
 
-  StructuredCloneReadInfo cloneReadInfo(Move(response.cloneInfo()));
+  StructuredCloneReadInfo cloneReadInfo(std::move(response.cloneInfo()));
   cloneReadInfo.mDatabase = mTransaction->Database();
 
   DeserializeStructuredCloneFiles(mTransaction->Database(),
@@ -3936,16 +3935,16 @@ BackgroundCursorChild::HandleResponse(const IndexCursorResponse& aResponse)
   RefPtr<IDBCursor> newCursor;
 
   if (mCursor) {
-    mCursor->Reset(Move(response.key()),
-                   Move(response.sortKey()),
-                   Move(response.objectKey()),
-                   Move(cloneReadInfo));
+    mCursor->Reset(std::move(response.key()),
+                   std::move(response.sortKey()),
+                   std::move(response.objectKey()),
+                   std::move(cloneReadInfo));
   } else {
     newCursor = IDBCursor::Create(this,
-                                  Move(response.key()),
-                                  Move(response.sortKey()),
-                                  Move(response.objectKey()),
-                                  Move(cloneReadInfo));
+                                  std::move(response.key()),
+                                  std::move(response.sortKey()),
+                                  std::move(response.objectKey()),
+                                  std::move(cloneReadInfo));
     mCursor = newCursor;
   }
 
@@ -3969,14 +3968,14 @@ BackgroundCursorChild::HandleResponse(const IndexKeyCursorResponse& aResponse)
   RefPtr<IDBCursor> newCursor;
 
   if (mCursor) {
-    mCursor->Reset(Move(response.key()),
-                   Move(response.sortKey()),
-                   Move(response.objectKey()));
+    mCursor->Reset(std::move(response.key()),
+                   std::move(response.sortKey()),
+                   std::move(response.objectKey()));
   } else {
     newCursor = IDBCursor::Create(this,
-                                  Move(response.key()),
-                                  Move(response.sortKey()),
-                                  Move(response.objectKey()));
+                                  std::move(response.key()),
+                                  std::move(response.sortKey()),
+                                  std::move(response.objectKey()));
     mCursor = newCursor;
   }
 

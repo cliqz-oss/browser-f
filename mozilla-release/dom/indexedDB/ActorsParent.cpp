@@ -762,7 +762,7 @@ MakeCompressedIndexDataValues(
   MOZ_ASSERT(!aCompressedIndexDataValues);
   MOZ_ASSERT(aCompressedIndexDataValuesLength);
 
-  AUTO_PROFILER_LABEL("MakeCompressedIndexDataValues", STORAGE);
+  AUTO_PROFILER_LABEL("MakeCompressedIndexDataValues", DOM);
 
   const uint32_t arrayLength = aIndexValues.Length();
   if (!arrayLength) {
@@ -854,7 +854,7 @@ ReadCompressedIndexDataValuesFromBlob(const uint8_t* aBlobData,
   MOZ_ASSERT(aBlobDataLength);
   MOZ_ASSERT(aIndexValues.IsEmpty());
 
-  AUTO_PROFILER_LABEL("ReadCompressedIndexDataValuesFromBlob", STORAGE);
+  AUTO_PROFILER_LABEL("ReadCompressedIndexDataValuesFromBlob", DOM);
 
   if (uintptr_t(aBlobData) > UINTPTR_MAX - aBlobDataLength) {
     IDB_REPORT_INTERNAL_ERR();
@@ -995,7 +995,7 @@ CreateFileTables(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("CreateFileTables", STORAGE);
+  AUTO_PROFILER_LABEL("CreateFileTables", DOM);
 
   // Table `file`
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
@@ -1067,7 +1067,7 @@ CreateTables(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("CreateTables", STORAGE);
+  AUTO_PROFILER_LABEL("CreateTables", DOM);
 
   // Table `database`
 
@@ -1215,7 +1215,7 @@ UpgradeSchemaFrom4To5(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom4To5", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom4To5", DOM);
 
   nsresult rv;
 
@@ -1332,7 +1332,7 @@ UpgradeSchemaFrom5To6(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom5To6", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom5To6", DOM);
 
   // First, drop all the indexes we're no longer going to use.
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
@@ -1780,7 +1780,7 @@ UpgradeSchemaFrom6To7(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom6To7", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom6To7", DOM);
 
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "CREATE TEMPORARY TABLE temp_upgrade ("
@@ -1853,7 +1853,7 @@ UpgradeSchemaFrom7To8(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom7To8", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom7To8", DOM);
 
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "CREATE TEMPORARY TABLE temp_upgrade ("
@@ -1946,7 +1946,7 @@ private:
     MOZ_ASSERT(aArguments);
     MOZ_ASSERT(aResult);
 
-    AUTO_PROFILER_LABEL("CompressDataBlobsFunction::OnFunctionCall", STORAGE);
+    AUTO_PROFILER_LABEL("CompressDataBlobsFunction::OnFunctionCall", DOM);
 
     uint32_t argc;
     nsresult rv = aArguments->GetNumEntries(&argc);
@@ -2005,7 +2005,7 @@ UpgradeSchemaFrom8To9_0(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom8To9_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom8To9_0", DOM);
 
   // We no longer use the dataVersion column.
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
@@ -2058,7 +2058,7 @@ UpgradeSchemaFrom9_0To10_0(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom9_0To10_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom9_0To10_0", DOM);
 
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "ALTER TABLE object_data ADD COLUMN file_ids TEXT;"
@@ -2093,7 +2093,7 @@ UpgradeSchemaFrom10_0To11_0(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom10_0To11_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom10_0To11_0", DOM);
 
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "CREATE TEMPORARY TABLE temp_upgrade ("
@@ -2271,7 +2271,7 @@ private:
     MOZ_ASSERT(aArguments);
     MOZ_ASSERT(aResult);
 
-    AUTO_PROFILER_LABEL("EncodeKeysFunction::OnFunctionCall", STORAGE);
+    AUTO_PROFILER_LABEL("EncodeKeysFunction::OnFunctionCall", DOM);
 
     uint32_t argc;
     nsresult rv = aArguments->GetNumEntries(&argc);
@@ -2322,7 +2322,7 @@ UpgradeSchemaFrom11_0To12_0(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom11_0To12_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom11_0To12_0", DOM);
 
   NS_NAMED_LITERAL_CSTRING(encoderName, "encode");
 
@@ -2591,7 +2591,7 @@ UpgradeSchemaFrom12_0To13_0(mozIStorageConnection* aConnection,
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom12_0To13_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom12_0To13_0", DOM);
 
   nsresult rv;
 
@@ -3577,7 +3577,7 @@ UpgradeSchemaFrom17_0To18_0(mozIStorageConnection* aConnection,
   MOZ_ASSERT(aConnection);
   MOZ_ASSERT(!aOrigin.IsEmpty());
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom17_0To18_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom17_0To18_0", DOM);
 
   return UpgradeSchemaFrom17_0To18_0Helper::DoUpgrade(aConnection, aOrigin);
 }
@@ -3589,7 +3589,7 @@ UpgradeSchemaFrom18_0To19_0(mozIStorageConnection* aConnection)
   MOZ_ASSERT(aConnection);
 
   nsresult rv;
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom18_0To19_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom18_0To19_0", DOM);
 
   rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(
     "ALTER TABLE object_store_index "
@@ -3688,7 +3688,7 @@ UpgradeSchemaFrom19_0To20_0(nsIFile* aFMDirectory,
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom19_0To20_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom19_0To20_0", DOM);
 
   nsCOMPtr<mozIStorageStatement> stmt;
   nsresult rv = aConnection->CreateStatement(NS_LITERAL_CSTRING(
@@ -3904,7 +3904,7 @@ UpgradeIndexDataValuesFunction::OnFunctionCall(mozIStorageValueArray* aArguments
   MOZ_ASSERT(aResult);
 
   AUTO_PROFILER_LABEL(
-    "UpgradeIndexDataValuesFunction::OnFunctionCall", STORAGE);
+    "UpgradeIndexDataValuesFunction::OnFunctionCall", DOM);
 
   uint32_t argc;
   nsresult rv = aArguments->GetNumEntries(&argc);
@@ -3963,7 +3963,7 @@ UpgradeSchemaFrom20_0To21_0(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom20_0To21_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom20_0To21_0", DOM);
 
   RefPtr<UpgradeIndexDataValuesFunction> function =
     new UpgradeIndexDataValuesFunction();
@@ -4018,7 +4018,7 @@ UpgradeSchemaFrom22_0To23_0(mozIStorageConnection* aConnection,
   MOZ_ASSERT(aConnection);
   MOZ_ASSERT(!aOrigin.IsEmpty());
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom22_0To23_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom22_0To23_0", DOM);
 
   nsCOMPtr<mozIStorageStatement> stmt;
   nsresult rv = aConnection->CreateStatement(NS_LITERAL_CSTRING(
@@ -4092,7 +4092,7 @@ private:
     MOZ_ASSERT(aResult);
 
     AUTO_PROFILER_LABEL(
-      "StripObsoleteOriginAttributesFunction::OnFunctionCall", STORAGE);
+      "StripObsoleteOriginAttributesFunction::OnFunctionCall", DOM);
 
 #ifdef DEBUG
   {
@@ -4139,7 +4139,7 @@ UpgradeSchemaFrom25_0To26_0(mozIStorageConnection* aConnection)
   AssertIsOnIOThread();
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("UpgradeSchemaFrom25_0To26_0", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeSchemaFrom25_0To26_0", DOM);
 
   NS_NAMED_LITERAL_CSTRING(functionName, "strip_obsolete_attributes");
 
@@ -4482,7 +4482,7 @@ CreateStorageConnection(nsIFile* aDBFile,
   MOZ_ASSERT(aFMDirectory);
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("CreateStorageConnection", STORAGE);
+  AUTO_PROFILER_LABEL("CreateStorageConnection", DOM);
 
   nsresult rv;
   bool exists;
@@ -4947,7 +4947,7 @@ GetStorageConnection(nsIFile* aDatabaseFile,
   MOZ_ASSERT(aDatabaseFile);
   MOZ_ASSERT(aConnection);
 
-  AUTO_PROFILER_LABEL("GetStorageConnection", STORAGE);
+  AUTO_PROFILER_LABEL("GetStorageConnection", DOM);
 
   bool exists;
   nsresult rv = aDatabaseFile->Exists(&exists);
@@ -7791,7 +7791,7 @@ public:
   DeleteDatabaseOp(Factory* aFactory,
                    already_AddRefed<ContentParent> aContentParent,
                    const CommonFactoryRequestParams& aParams)
-    : FactoryOp(aFactory, Move(aContentParent), aParams, /* aDeleting */ true)
+    : FactoryOp(aFactory, std::move(aContentParent), aParams, /* aDeleting */ true)
     , mPreviousVersion(0)
   { }
 
@@ -8430,7 +8430,7 @@ private:
   void
   GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
-    aResponse = Move(mResponse);
+    aResponse = std::move(mResponse);
     *aResponseSize = 0;
   }
 };
@@ -8456,7 +8456,7 @@ private:
   void
   GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
-    aResponse = Move(mResponse);
+    aResponse = std::move(mResponse);
     *aResponseSize = 0;
   }
 };
@@ -8484,7 +8484,7 @@ private:
   void
   GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
-    aResponse = Move(mResponse);
+    aResponse = std::move(mResponse);
     *aResponseSize = sizeof(uint64_t);
   }
 };
@@ -8587,7 +8587,7 @@ private:
   void
   GetResponse(RequestResponse& aResponse, size_t* aResponseSize) override
   {
-    aResponse = Move(mResponse);
+    aResponse = std::move(mResponse);
     *aResponseSize = sizeof(uint64_t);
   }
 };
@@ -9351,7 +9351,7 @@ struct Maintenance::DirectoryInfo final
                 nsTArray<nsString>&& aDatabasePaths)
    : mGroup(aGroup)
    , mOrigin(aOrigin)
-   , mDatabasePaths(Move(aDatabasePaths))
+   , mDatabasePaths(std::move(aDatabasePaths))
    , mPersistenceType(aPersistenceType)
   {
     MOZ_ASSERT(aPersistenceType != PERSISTENCE_TYPE_INVALID);
@@ -9368,10 +9368,10 @@ struct Maintenance::DirectoryInfo final
   }
 
   DirectoryInfo(DirectoryInfo&& aOther)
-    : mGroup(Move(aOther.mGroup))
-    , mOrigin(Move(aOther.mOrigin))
-    , mDatabasePaths(Move(aOther.mDatabasePaths))
-    , mPersistenceType(Move(aOther.mPersistenceType))
+    : mGroup(std::move(aOther.mGroup))
+    , mOrigin(std::move(aOther.mOrigin))
+    , mDatabasePaths(std::move(aOther.mDatabasePaths))
+    , mPersistenceType(std::move(aOther.mPersistenceType))
   {
 #ifdef DEBUG
     MOZ_ASSERT(!mDatabasePaths.IsEmpty());
@@ -9763,7 +9763,7 @@ CheckWasmModule(FileHelper* aFileHelper,
     }
 
     match = JS::CompiledWasmModuleAssumptionsMatch(compiledFileDesc,
-                                                   Move(buildId));
+                                                   std::move(buildId));
   }
   if (match) {
     return NS_OK;
@@ -9796,9 +9796,8 @@ CheckWasmModule(FileHelper* aFileHelper,
 
   RefPtr<JS::WasmModule> module = JS::DeserializeWasmModule(bytecodeFileDesc,
                                                             nullptr,
-                                                            Move(buildId),
+                                                            std::move(buildId),
                                                             nullptr,
-                                                            0,
                                                             0);
   if (NS_WARN_IF(!module)) {
     return NS_ERROR_FAILURE;
@@ -10526,7 +10525,7 @@ DatabaseConnection::GetCachedStatement(const nsACString& aQuery,
   MOZ_ASSERT(aCachedStatement);
   MOZ_ASSERT(mStorageConnection);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::GetCachedStatement", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::GetCachedStatement", DOM);
 
   nsCOMPtr<mozIStorageStatement> stmt;
 
@@ -10563,7 +10562,7 @@ DatabaseConnection::BeginWriteTransaction()
   MOZ_ASSERT(mInReadTransaction);
   MOZ_ASSERT(!mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::BeginWriteTransaction", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::BeginWriteTransaction", DOM);
 
   // Release our read locks.
   CachedStatement rollbackStmt;
@@ -10640,7 +10639,7 @@ DatabaseConnection::CommitWriteTransaction()
   MOZ_ASSERT(!mInReadTransaction);
   MOZ_ASSERT(mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::CommitWriteTransaction", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::CommitWriteTransaction", DOM);
 
   CachedStatement stmt;
   nsresult rv = GetCachedStatement(NS_LITERAL_CSTRING("COMMIT;"), &stmt);
@@ -10664,7 +10663,7 @@ DatabaseConnection::RollbackWriteTransaction()
   MOZ_ASSERT(!mInReadTransaction);
   MOZ_ASSERT(mStorageConnection);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::RollbackWriteTransaction", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::RollbackWriteTransaction", DOM);
 
   if (!mInWriteTransaction) {
     return;
@@ -10691,7 +10690,7 @@ DatabaseConnection::FinishWriteTransaction()
   MOZ_ASSERT(!mInReadTransaction);
   MOZ_ASSERT(!mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::FinishWriteTransaction", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::FinishWriteTransaction", DOM);
 
   if (mUpdateRefcountFunction) {
     mUpdateRefcountFunction->Reset();
@@ -10719,7 +10718,7 @@ DatabaseConnection::StartSavepoint()
   MOZ_ASSERT(mUpdateRefcountFunction);
   MOZ_ASSERT(mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::StartSavepoint", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::StartSavepoint", DOM);
 
   CachedStatement stmt;
   nsresult rv = GetCachedStatement(NS_LITERAL_CSTRING(SAVEPOINT_CLAUSE), &stmt);
@@ -10750,7 +10749,7 @@ DatabaseConnection::ReleaseSavepoint()
   MOZ_ASSERT(mUpdateRefcountFunction);
   MOZ_ASSERT(mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::ReleaseSavepoint", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::ReleaseSavepoint", DOM);
 
   CachedStatement stmt;
   nsresult rv = GetCachedStatement(
@@ -10779,7 +10778,7 @@ DatabaseConnection::RollbackSavepoint()
   MOZ_ASSERT(mUpdateRefcountFunction);
   MOZ_ASSERT(mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::RollbackSavepoint", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::RollbackSavepoint", DOM);
 
 #ifdef DEBUG
   MOZ_ASSERT(mDEBUGSavepointCount);
@@ -10810,7 +10809,7 @@ DatabaseConnection::CheckpointInternal(CheckpointMode aMode)
   MOZ_ASSERT(!mInReadTransaction);
   MOZ_ASSERT(!mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::CheckpointInternal", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::CheckpointInternal", DOM);
 
   nsAutoCString stmtString;
   stmtString.AssignLiteral("PRAGMA wal_checkpoint(");
@@ -10860,7 +10859,7 @@ DatabaseConnection::DoIdleProcessing(bool aNeedsCheckpoint)
   MOZ_ASSERT(mInReadTransaction);
   MOZ_ASSERT(!mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::DoIdleProcessing", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::DoIdleProcessing", DOM);
 
   DatabaseConnection::CachedStatement freelistStmt;
   uint32_t freelistCount;
@@ -10939,7 +10938,7 @@ DatabaseConnection::ReclaimFreePagesWhileIdle(
   MOZ_ASSERT(!mInReadTransaction);
   MOZ_ASSERT(!mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::ReclaimFreePagesWhileIdle", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::ReclaimFreePagesWhileIdle", DOM);
 
   // Make sure we don't keep working if anything else needs this thread.
   nsIThread* currentThread = NS_GetCurrentThread();
@@ -11051,7 +11050,7 @@ DatabaseConnection::GetFreelistCount(CachedStatement& aCachedStatement,
   AssertIsOnConnectionThread();
   MOZ_ASSERT(aFreelistCount);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::GetFreelistCount", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::GetFreelistCount", DOM);
 
   nsresult rv;
 
@@ -11095,7 +11094,7 @@ DatabaseConnection::Close()
   MOZ_ASSERT(!mDEBUGSavepointCount);
   MOZ_ASSERT(!mInWriteTransaction);
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::Close", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::Close", DOM);
 
   if (mUpdateRefcountFunction) {
     MOZ_ALWAYS_SUCCEEDS(
@@ -11380,7 +11379,7 @@ UpdateRefcountFunction::WillCommit()
   MOZ_ASSERT(mConnection);
   mConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("DatabaseConnection::UpdateRefcountFunction::WillCommit", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseConnection::UpdateRefcountFunction::WillCommit", DOM);
 
   DatabaseUpdateFunction function(this);
   for (auto iter = mFileInfoEntries.ConstIter(); !iter.Done(); iter.Next()) {
@@ -11414,7 +11413,7 @@ UpdateRefcountFunction::DidCommit()
   mConnection->AssertIsOnConnectionThread();
 
   AUTO_PROFILER_LABEL(
-    "DatabaseConnection::UpdateRefcountFunction::DidCommit", STORAGE);
+    "DatabaseConnection::UpdateRefcountFunction::DidCommit", DOM);
 
   for (auto iter = mFileInfoEntries.ConstIter(); !iter.Done(); iter.Next()) {
     FileInfoEntry* value = iter.Data();
@@ -11439,7 +11438,7 @@ UpdateRefcountFunction::DidAbort()
   mConnection->AssertIsOnConnectionThread();
 
   AUTO_PROFILER_LABEL(
-    "DatabaseConnection::UpdateRefcountFunction::DidAbort", STORAGE);
+    "DatabaseConnection::UpdateRefcountFunction::DidAbort", DOM);
 
   if (NS_FAILED(RemoveJournals(mJournalsToRemoveAfterAbort))) {
     NS_WARNING("RemoveJournals failed!");
@@ -11600,7 +11599,7 @@ UpdateRefcountFunction::ProcessValue(mozIStorageValueArray* aValues,
   MOZ_ASSERT(aValues);
 
   AUTO_PROFILER_LABEL(
-    "DatabaseConnection::UpdateRefcountFunction::ProcessValue", STORAGE);
+    "DatabaseConnection::UpdateRefcountFunction::ProcessValue", DOM);
 
   int32_t type;
   nsresult rv = aValues->GetTypeOfIndex(aIndex, &type);
@@ -11669,7 +11668,7 @@ UpdateRefcountFunction::CreateJournals()
   mConnection->AssertIsOnConnectionThread();
 
   AUTO_PROFILER_LABEL(
-    "DatabaseConnection::UpdateRefcountFunction::CreateJournals", STORAGE);
+    "DatabaseConnection::UpdateRefcountFunction::CreateJournals", DOM);
 
   nsCOMPtr<nsIFile> journalDirectory = mFileManager->GetJournalDirectory();
   if (NS_WARN_IF(!journalDirectory)) {
@@ -11704,7 +11703,7 @@ UpdateRefcountFunction::RemoveJournals(const nsTArray<int64_t>& aJournals)
   mConnection->AssertIsOnConnectionThread();
 
   AUTO_PROFILER_LABEL(
-    "DatabaseConnection::UpdateRefcountFunction::RemoveJournals", STORAGE);
+    "DatabaseConnection::UpdateRefcountFunction::RemoveJournals", DOM);
 
   nsCOMPtr<nsIFile> journalDirectory = mFileManager->GetJournalDirectory();
   if (NS_WARN_IF(!journalDirectory)) {
@@ -11738,7 +11737,7 @@ UpdateRefcountFunction::OnFunctionCall(mozIStorageValueArray* aValues,
   MOZ_ASSERT(_retval);
 
   AUTO_PROFILER_LABEL(
-    "DatabaseConnection::UpdateRefcountFunction::OnFunctionCall", STORAGE);
+    "DatabaseConnection::UpdateRefcountFunction::OnFunctionCall", DOM);
 
   uint32_t numEntries;
   nsresult rv = aValues->GetNumEntries(&numEntries);
@@ -11798,7 +11797,7 @@ DatabaseUpdateFunction::UpdateInternal(int64_t aId,
   AUTO_PROFILER_LABEL(
     "DatabaseConnection::UpdateRefcountFunction::"
     "DatabaseUpdateFunction::UpdateInternal",
-    STORAGE);
+    DOM);
 
   DatabaseConnection* connection = mFunction->mConnection;
   MOZ_ASSERT(connection);
@@ -11945,7 +11944,7 @@ ConnectionPool::IdleTimerCallback(nsITimer* aTimer, void* aClosure)
 {
   MOZ_ASSERT(aTimer);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::IdleTimerCallback", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::IdleTimerCallback", DOM);
 
   auto* self = static_cast<ConnectionPool*>(aClosure);
   MOZ_ASSERT(self);
@@ -12009,7 +12008,7 @@ ConnectionPool::GetOrCreateConnection(const Database* aDatabase,
   MOZ_ASSERT(!IsOnBackgroundThread());
   MOZ_ASSERT(aDatabase);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::GetOrCreateConnection", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::GetOrCreateConnection", DOM);
 
   DatabaseInfo* dbInfo;
   {
@@ -12074,7 +12073,7 @@ ConnectionPool::Start(const nsID& aBackgroundChildLoggingId,
   MOZ_ASSERT(mNextTransactionId < UINT64_MAX);
   MOZ_ASSERT(!mShutdownRequested);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::Start", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::Start", DOM);
 
   const uint64_t transactionId = ++mNextTransactionId;
 
@@ -12169,7 +12168,7 @@ ConnectionPool::Dispatch(uint64_t aTransactionId, nsIRunnable* aRunnable)
   AssertIsOnOwningThread();
   MOZ_ASSERT(aRunnable);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::Dispatch", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::Dispatch", DOM);
 
   TransactionInfo* transactionInfo = mTransactions.Get(aTransactionId);
   MOZ_ASSERT(transactionInfo);
@@ -12202,7 +12201,7 @@ ConnectionPool::Finish(uint64_t aTransactionId, FinishCallback* aCallback)
   MOZ_ASSERT(!transactionInfo->mFinished);
 #endif
 
-  AUTO_PROFILER_LABEL("ConnectionPool::Finish", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::Finish", DOM);
 
   RefPtr<FinishCallbackWrapper> wrapper =
     new FinishCallbackWrapper(this, aTransactionId, aCallback);
@@ -12223,7 +12222,7 @@ ConnectionPool::WaitForDatabasesToComplete(nsTArray<nsCString>&& aDatabaseIds,
   MOZ_ASSERT(!aDatabaseIds.IsEmpty());
   MOZ_ASSERT(aCallback);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::WaitForDatabasesToComplete", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::WaitForDatabasesToComplete", DOM);
 
   bool mayRunCallbackImmediately = true;
 
@@ -12244,7 +12243,7 @@ ConnectionPool::WaitForDatabasesToComplete(nsTArray<nsCString>&& aDatabaseIds,
   }
 
   nsAutoPtr<DatabasesCompleteCallback> callback(
-    new DatabasesCompleteCallback(Move(aDatabaseIds), aCallback));
+    new DatabasesCompleteCallback(std::move(aDatabaseIds), aCallback));
   mCompleteCallbacks.AppendElement(callback.forget());
 }
 
@@ -12255,7 +12254,7 @@ ConnectionPool::Shutdown()
   MOZ_ASSERT(!mShutdownRequested);
   MOZ_ASSERT(!mShutdownComplete);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::Shutdown", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::Shutdown", DOM);
 
   mShutdownRequested = true;
 
@@ -12290,7 +12289,7 @@ ConnectionPool::Cleanup()
   MOZ_ASSERT(!mTransactions.Count());
   MOZ_ASSERT(mIdleThreads.IsEmpty());
 
-  AUTO_PROFILER_LABEL("ConnectionPool::Cleanup", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::Cleanup", DOM);
 
   if (!mCompleteCallbacks.IsEmpty()) {
     // Run all callbacks manually now.
@@ -12323,7 +12322,7 @@ ConnectionPool::AdjustIdleTimer()
   AssertIsOnOwningThread();
   MOZ_ASSERT(mIdleTimer);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::AdjustIdleTimer", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::AdjustIdleTimer", DOM);
 
   // Figure out the next time at which we should release idle resources. This
   // includes both databases and threads.
@@ -12423,7 +12422,7 @@ ConnectionPool::CloseIdleDatabases()
   AssertIsOnOwningThread();
   MOZ_ASSERT(mShutdownRequested);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::CloseIdleDatabases", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::CloseIdleDatabases", DOM);
 
   if (!mIdleDatabases.IsEmpty()) {
     for (IdleDatabaseInfo& idleInfo : mIdleDatabases) {
@@ -12447,7 +12446,7 @@ ConnectionPool::ShutdownIdleThreads()
   AssertIsOnOwningThread();
   MOZ_ASSERT(mShutdownRequested);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::ShutdownIdleThreads", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::ShutdownIdleThreads", DOM);
 
   if (!mIdleThreads.IsEmpty()) {
     for (uint32_t threadCount = mIdleThreads.Length(), threadIndex = 0;
@@ -12466,7 +12465,7 @@ ConnectionPool::ScheduleTransaction(TransactionInfo* aTransactionInfo,
   AssertIsOnOwningThread();
   MOZ_ASSERT(aTransactionInfo);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::ScheduleTransaction", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::ScheduleTransaction", DOM);
 
   DatabaseInfo* dbInfo = aTransactionInfo->mDatabaseInfo;
   MOZ_ASSERT(dbInfo);
@@ -12597,7 +12596,7 @@ ConnectionPool::NoteFinishedTransaction(uint64_t aTransactionId)
 {
   AssertIsOnOwningThread();
 
-  AUTO_PROFILER_LABEL("ConnectionPool::NoteFinishedTransaction", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::NoteFinishedTransaction", DOM);
 
   TransactionInfo* transactionInfo = mTransactions.Get(aTransactionId);
   MOZ_ASSERT(transactionInfo);
@@ -12683,7 +12682,7 @@ ConnectionPool::ScheduleQueuedTransactions(ThreadInfo& aThreadInfo)
   MOZ_ASSERT(!mQueuedTransactions.IsEmpty());
   MOZ_ASSERT(!mIdleThreads.Contains(aThreadInfo));
 
-  AUTO_PROFILER_LABEL("ConnectionPool::ScheduleQueuedTransactions", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::ScheduleQueuedTransactions", DOM);
 
   mIdleThreads.InsertElementSorted(aThreadInfo);
 
@@ -12715,7 +12714,7 @@ ConnectionPool::NoteIdleDatabase(DatabaseInfo* aDatabaseInfo)
   MOZ_ASSERT(aDatabaseInfo->mThreadInfo.mRunnable);
   MOZ_ASSERT(!mIdleDatabases.Contains(aDatabaseInfo));
 
-  AUTO_PROFILER_LABEL("ConnectionPool::NoteIdleDatabase", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::NoteIdleDatabase", DOM);
 
   const bool otherDatabasesWaiting = !mQueuedTransactions.IsEmpty();
 
@@ -12752,7 +12751,7 @@ ConnectionPool::NoteClosedDatabase(DatabaseInfo* aDatabaseInfo)
   MOZ_ASSERT(aDatabaseInfo->mClosing);
   MOZ_ASSERT(!mIdleDatabases.Contains(aDatabaseInfo));
 
-  AUTO_PROFILER_LABEL("ConnectionPool::NoteClosedDatabase", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::NoteClosedDatabase", DOM);
 
   aDatabaseInfo->mClosing = false;
 
@@ -12856,7 +12855,7 @@ ConnectionPool::MaybeFireCallback(DatabasesCompleteCallback* aCallback)
   MOZ_ASSERT(!aCallback->mDatabaseIds.IsEmpty());
   MOZ_ASSERT(aCallback->mCallback);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::MaybeFireCallback", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::MaybeFireCallback", DOM);
 
   for (uint32_t count = aCallback->mDatabaseIds.Length(), index = 0;
        index < count;
@@ -12927,7 +12926,7 @@ ConnectionPool::CloseDatabaseWhenIdleInternal(const nsACString& aDatabaseId)
   AssertIsOnOwningThread();
   MOZ_ASSERT(!aDatabaseId.IsEmpty());
 
-  AUTO_PROFILER_LABEL("ConnectionPool::CloseDatabaseWhenIdleInternal", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::CloseDatabaseWhenIdleInternal", DOM);
 
   if (DatabaseInfo* dbInfo = mDatabases.Get(aDatabaseId)) {
     if (mIdleDatabases.RemoveElement(dbInfo) ||
@@ -13004,7 +13003,7 @@ CloseConnectionRunnable::Run()
 {
   MOZ_ASSERT(mDatabaseInfo);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::CloseConnectionRunnable::Run", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::CloseConnectionRunnable::Run", DOM);
 
   if (mOwningEventTarget) {
     MOZ_ASSERT(mDatabaseInfo->mClosing);
@@ -13083,7 +13082,7 @@ ConnectionPool::
 DatabasesCompleteCallback::DatabasesCompleteCallback(
                                              nsTArray<nsCString>&& aDatabaseIds,
                                              nsIRunnable* aCallback)
-  : mDatabaseIds(Move(aDatabaseIds))
+  : mDatabaseIds(std::move(aDatabaseIds))
   , mCallback(aCallback)
 {
   AssertIsOnBackgroundThread();
@@ -13133,7 +13132,7 @@ FinishCallbackWrapper::Run()
   MOZ_ASSERT(mCallback);
   MOZ_ASSERT(mOwningEventTarget);
 
-  AUTO_PROFILER_LABEL("ConnectionPool::FinishCallbackWrapper::Run", STORAGE);
+  AUTO_PROFILER_LABEL("ConnectionPool::FinishCallbackWrapper::Run", DOM);
 
   if (!mHasRunOnce) {
     MOZ_ASSERT(!IsOnBackgroundThread());
@@ -13151,8 +13150,8 @@ FinishCallbackWrapper::Run()
   mConnectionPool->AssertIsOnOwningThread();
   MOZ_ASSERT(mHasRunOnce);
 
-  RefPtr<ConnectionPool> connectionPool = Move(mConnectionPool);
-  RefPtr<FinishCallback> callback = Move(mCallback);
+  RefPtr<ConnectionPool> connectionPool = std::move(mConnectionPool);
+  RefPtr<FinishCallback> callback = std::move(mCallback);
 
   callback->TransactionFinishedBeforeUnblock();
 
@@ -13197,7 +13196,7 @@ ThreadRunnable::Run()
 
   {
     // Scope for the profiler label.
-    AUTO_PROFILER_LABEL("ConnectionPool::ThreadRunnable::Run", STORAGE);
+    AUTO_PROFILER_LABEL("ConnectionPool::ThreadRunnable::Run", DOM);
 
     DebugOnly<nsIThread*> currentThread = NS_GetCurrentThread();
     MOZ_ASSERT(currentThread);
@@ -13541,7 +13540,7 @@ DatabaseLoggingInfo::~DatabaseLoggingInfo()
  ******************************************************************************/
 
 Factory::Factory(already_AddRefed<DatabaseLoggingInfo> aLoggingInfo)
-  : mLoggingInfo(Move(aLoggingInfo))
+  : mLoggingInfo(std::move(aLoggingInfo))
 #ifdef DEBUG
   , mActorDestroyed(false)
 #endif
@@ -13781,7 +13780,7 @@ WaitForTransactionsHelper::MaybeWaitForTransactions()
 
     mState = State::WaitingForTransactions;
 
-    connectionPool->WaitForDatabasesToComplete(Move(ids), this);
+    connectionPool->WaitForDatabasesToComplete(std::move(ids), this);
     return;
   }
 
@@ -13802,7 +13801,7 @@ WaitForTransactionsHelper::MaybeWaitForFileHandles()
 
     mState = State::WaitingForFileHandles;
 
-    fileHandleThreadPool->WaitForDirectoriesToComplete(Move(ids), this);
+    fileHandleThreadPool->WaitForDirectoriesToComplete(std::move(ids), this);
     return;
   }
 
@@ -13869,7 +13868,7 @@ Database::Database(Factory* aFactory,
   : mFactory(aFactory)
   , mMetadata(aMetadata)
   , mFileManager(aFileManager)
-  , mDirectoryLock(Move(aDirectoryLock))
+  , mDirectoryLock(std::move(aDirectoryLock))
   , mPrincipalInfo(aPrincipalInfo)
   , mOptionalContentParentId(aOptionalContentParentId)
   , mGroup(aGroup)
@@ -14005,7 +14004,7 @@ Database::EnsureConnection()
   MOZ_ASSERT(!NS_IsMainThread());
   MOZ_ASSERT(!IsOnBackgroundThread());
 
-  AUTO_PROFILER_LABEL("Database::EnsureConnection", STORAGE);
+  AUTO_PROFILER_LABEL("Database::EnsureConnection", DOM);
 
   if (!mConnection || !mConnection->GetStorageConnection()) {
     nsresult rv =
@@ -17405,7 +17404,7 @@ FileManager::GetUsage(nsIFile* aDirectory, uint64_t* aUsage)
     return NS_OK;
   }
 
-  nsCOMPtr<nsISimpleEnumerator> entries;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   rv = aDirectory->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -17413,17 +17412,8 @@ FileManager::GetUsage(nsIFile* aDirectory, uint64_t* aUsage)
 
   uint64_t usage = 0;
 
-  bool hasMore;
-  while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) && hasMore) {
-    nsCOMPtr<nsISupports> entry;
-    rv = entries->GetNext(getter_AddRefs(entry));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
-    MOZ_ASSERT(file);
-
+  nsCOMPtr<nsIFile> file;
+  while (NS_SUCCEEDED((rv = entries->GetNextFile(getter_AddRefs(file)))) && file) {
     nsString leafName;
     rv = file->GetLeafName(leafName);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -17512,7 +17502,7 @@ QuotaClient::GetOrCreateThreadPool()
 
     MOZ_ALWAYS_SUCCEEDS(threadPool->SetName(NS_LITERAL_CSTRING("IndexedDB Mnt")));
 
-    mMaintenanceThreadPool = Move(threadPool);
+    mMaintenanceThreadPool = std::move(threadPool);
   }
 
   return mMaintenanceThreadPool;
@@ -17985,7 +17975,7 @@ QuotaClient::GetDatabaseFilenames(
   AssertIsOnIOThread();
   MOZ_ASSERT(aDirectory);
 
-  nsCOMPtr<nsISimpleEnumerator> entries;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   nsresult rv = aDirectory->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -18001,19 +17991,10 @@ QuotaClient::GetDatabaseFilenames(
   const NS_ConvertASCIItoUTF16 walSuffix(kSQLiteWALSuffix,
                                          LiteralStringLength(kSQLiteWALSuffix));
 
-  bool hasMore;
-  while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) &&
-         hasMore &&
+  nsCOMPtr<nsIFile> file;
+  while (NS_SUCCEEDED((rv = entries->GetNextFile(getter_AddRefs(file)))) &&
+         file &&
          !aCanceled) {
-    nsCOMPtr<nsISupports> entry;
-    rv = entries->GetNext(getter_AddRefs(entry));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
-    MOZ_ASSERT(file);
-
     nsString leafName;
     rv = file->GetLeafName(leafName);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -18088,7 +18069,7 @@ QuotaClient::GetUsageForDirectoryInternal(nsIFile* aDirectory,
   MOZ_ASSERT(aDirectory);
   MOZ_ASSERT(aUsageInfo);
 
-  nsCOMPtr<nsISimpleEnumerator> entries;
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
   nsresult rv = aDirectory->GetDirectoryEntries(getter_AddRefs(entries));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -18104,19 +18085,10 @@ QuotaClient::GetUsageForDirectoryInternal(nsIFile* aDirectory,
   const NS_ConvertASCIItoUTF16 shmSuffix(kSQLiteSHMSuffix,
                                          LiteralStringLength(kSQLiteSHMSuffix));
 
-  bool hasMore;
-  while (NS_SUCCEEDED((rv = entries->HasMoreElements(&hasMore))) &&
-         hasMore &&
+  nsCOMPtr<nsIFile> file;
+  while (NS_SUCCEEDED((rv = entries->GetNextFile(getter_AddRefs(file)))) &&
+         file &&
          !aCanceled) {
-    nsCOMPtr<nsISupports> entry;
-    rv = entries->GetNext(getter_AddRefs(entry));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    nsCOMPtr<nsIFile> file = do_QueryInterface(entry);
-    MOZ_ASSERT(file);
-
     nsString leafName;
     rv = file->GetLeafName(leafName);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -18439,7 +18411,7 @@ Maintenance::DirectoryWork()
       continue;
     }
 
-    nsCOMPtr<nsISimpleEnumerator> persistenceDirEntries;
+    nsCOMPtr<nsIDirectoryEnumerator> persistenceDirEntries;
     rv = persistenceDir->GetDirectoryEntries(
                                          getter_AddRefs(persistenceDirEntries));
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -18456,25 +18428,15 @@ Maintenance::DirectoryWork()
         return NS_ERROR_ABORT;
       }
 
-      bool persistenceDirHasMoreEntries;
-      rv = persistenceDirEntries->HasMoreElements(
-                                                 &persistenceDirHasMoreEntries);
+      nsCOMPtr<nsIFile> originDir;
+      rv = persistenceDirEntries->GetNextFile(getter_AddRefs(originDir));
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
 
-      if (!persistenceDirHasMoreEntries) {
+      if (!originDir) {
         break;
       }
-
-      nsCOMPtr<nsISupports> persistenceDirEntry;
-      rv = persistenceDirEntries->GetNext(getter_AddRefs(persistenceDirEntry));
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-
-      nsCOMPtr<nsIFile> originDir = do_QueryInterface(persistenceDirEntry);
-      MOZ_ASSERT(originDir);
 
       rv = originDir->Exists(&exists);
       if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -18521,7 +18483,7 @@ Maintenance::DirectoryWork()
         continue;
       }
 
-      nsCOMPtr<nsISimpleEnumerator> idbDirEntries;
+      nsCOMPtr<nsIDirectoryEnumerator> idbDirEntries;
       rv = idbDir->GetDirectoryEntries(getter_AddRefs(idbDirEntries));
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
@@ -18542,24 +18504,15 @@ Maintenance::DirectoryWork()
           return NS_ERROR_ABORT;
         }
 
-        bool idbDirHasMoreEntries;
-        rv = idbDirEntries->HasMoreElements(&idbDirHasMoreEntries);
+        nsCOMPtr<nsIFile> idbDirFile;
+        rv = idbDirEntries->GetNextFile(getter_AddRefs(idbDirFile));
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return rv;
         }
 
-        if (!idbDirHasMoreEntries) {
+        if (!idbDirFile) {
           break;
         }
-
-        nsCOMPtr<nsISupports> idbDirEntry;
-        rv = idbDirEntries->GetNext(getter_AddRefs(idbDirEntry));
-        if (NS_WARN_IF(NS_FAILED(rv))) {
-          return rv;
-        }
-
-        nsCOMPtr<nsIFile> idbDirFile = do_QueryInterface(idbDirEntry);
-        MOZ_ASSERT(idbDirFile);
 
         nsString idbFilePath;
         rv = idbDirFile->GetPath(idbFilePath);
@@ -18616,7 +18569,7 @@ Maintenance::DirectoryWork()
         mDirectoryInfos.AppendElement(DirectoryInfo(persistenceType,
                                                     group,
                                                     origin,
-                                                    Move(databasePaths)));
+                                                    std::move(databasePaths)));
 
         nsCOMPtr<nsIFile> directory;
 
@@ -19513,7 +19466,7 @@ UpgradeFileIdsFunction::OnFunctionCall(mozIStorageValueArray* aArguments,
   MOZ_ASSERT(aResult);
   MOZ_ASSERT(mFileManager);
 
-  AUTO_PROFILER_LABEL("UpgradeFileIdsFunction::OnFunctionCall", STORAGE);
+  AUTO_PROFILER_LABEL("UpgradeFileIdsFunction::OnFunctionCall", DOM);
 
   uint32_t argc;
   nsresult rv = aArguments->GetNumEntries(&argc);
@@ -19686,7 +19639,7 @@ DatabaseOperationBase::GetStructuredCloneReadInfoFromBlob(
   MOZ_ASSERT(aInfo);
 
   AUTO_PROFILER_LABEL(
-    "DatabaseOperationBase::GetStructuredCloneReadInfoFromBlob", STORAGE);
+    "DatabaseOperationBase::GetStructuredCloneReadInfoFromBlob", DOM);
 
   const char* compressed = reinterpret_cast<const char*>(aBlobData);
   size_t compressedLength = size_t(aBlobDataLength);
@@ -19740,7 +19693,7 @@ DatabaseOperationBase::GetStructuredCloneReadInfoFromExternalBlob(
 
   AUTO_PROFILER_LABEL(
     "DatabaseOperationBase::GetStructuredCloneReadInfoFromExternalBlob",
-    STORAGE);
+    DOM);
 
   nsresult rv;
 
@@ -19969,7 +19922,7 @@ DatabaseOperationBase::IndexDataValuesFromUpdateInfos(
   MOZ_ASSERT_IF(!aUpdateInfos.IsEmpty(), aUniqueIndexTable.Count());
 
   AUTO_PROFILER_LABEL(
-    "DatabaseOperationBase::IndexDataValuesFromUpdateInfos", STORAGE);
+    "DatabaseOperationBase::IndexDataValuesFromUpdateInfos", DOM);
 
   const uint32_t count = aUpdateInfos.Length();
 
@@ -20012,7 +19965,7 @@ DatabaseOperationBase::InsertIndexTableRows(
   aConnection->AssertIsOnConnectionThread();
   MOZ_ASSERT(!aObjectStoreKey.IsUnset());
 
-  AUTO_PROFILER_LABEL("DatabaseOperationBase::InsertIndexTableRows", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseOperationBase::InsertIndexTableRows", DOM);
 
   const uint32_t count = aIndexValues.Length();
   if (!count) {
@@ -20120,7 +20073,7 @@ DatabaseOperationBase::DeleteIndexDataTableRows(
   MOZ_ASSERT(!aObjectStoreKey.IsUnset());
 
   AUTO_PROFILER_LABEL(
-    "DatabaseOperationBase::DeleteIndexDataTableRows", STORAGE);
+    "DatabaseOperationBase::DeleteIndexDataTableRows", DOM);
 
   const uint32_t count = aIndexValues.Length();
   if (!count) {
@@ -20214,7 +20167,7 @@ DatabaseOperationBase::DeleteObjectStoreDataTableRowsWithIndexes(
 
   AUTO_PROFILER_LABEL(
     "DatabaseOperationBase::DeleteObjectStoreDataTableRowsWithIndexes",
-    STORAGE);
+    DOM);
 
   const bool singleRowOnly =
     aKeyRange.type() == OptionalKeyRange::TSerializedKeyRange &&
@@ -20354,7 +20307,7 @@ DatabaseOperationBase::UpdateIndexValues(
   aConnection->AssertIsOnConnectionThread();
   MOZ_ASSERT(!aObjectStoreKey.IsUnset());
 
-  AUTO_PROFILER_LABEL("DatabaseOperationBase::UpdateIndexValues", STORAGE);
+  AUTO_PROFILER_LABEL("DatabaseOperationBase::UpdateIndexValues", DOM);
 
   UniqueFreePtr<uint8_t> indexDataValues;
   uint32_t indexDataValuesLength;
@@ -20704,7 +20657,7 @@ FactoryOp::FactoryOp(Factory* aFactory,
   : DatabaseOperationBase(aFactory->GetLoggingInfo()->Id(),
                           aFactory->GetLoggingInfo()->NextRequestSN())
   , mFactory(aFactory)
-  , mContentParent(Move(aContentParent))
+  , mContentParent(std::move(aContentParent))
   , mCommonParams(aCommonParams)
   , mState(State::Initial)
   , mEnforcingQuota(true)
@@ -21474,7 +21427,7 @@ FactoryOp::RecvPermissionRetry()
 OpenDatabaseOp::OpenDatabaseOp(Factory* aFactory,
                                already_AddRefed<ContentParent> aContentParent,
                                const CommonFactoryRequestParams& aParams)
-  : FactoryOp(aFactory, Move(aContentParent), aParams, /* aDeleting */ false)
+  : FactoryOp(aFactory, std::move(aContentParent), aParams, /* aDeleting */ false)
   , mMetadata(new FullDatabaseMetadata(aParams.metadata()))
   , mRequestedVersion(aParams.metadata().version())
   , mVersionChangeOp(nullptr)
@@ -21519,7 +21472,7 @@ OpenDatabaseOp::DoDatabaseWork()
   AssertIsOnIOThread();
   MOZ_ASSERT(mState == State::DatabaseWorkOpen);
 
-  AUTO_PROFILER_LABEL("OpenDatabaseOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("OpenDatabaseOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
       !OperationMayProceed()) {
@@ -22711,7 +22664,7 @@ VersionChangeOp::DoDatabaseWork(DatabaseConnection* aConnection)
   }
 
   AUTO_PROFILER_LABEL(
-    "OpenDatabaseOp::VersionChangeOp::DoDatabaseWork", STORAGE);
+    "OpenDatabaseOp::VersionChangeOp::DoDatabaseWork", DOM);
 
   IDB_LOG_MARK("IndexedDB %s: Parent Transaction[%lld]: "
                  "Beginning database work",
@@ -22812,7 +22765,7 @@ DeleteDatabaseOp::LoadPreviousVersion(nsIFile* aDatabaseFile)
   MOZ_ASSERT(mState == State::DatabaseWorkOpen);
   MOZ_ASSERT(!mPreviousVersion);
 
-  AUTO_PROFILER_LABEL("DeleteDatabaseOp::LoadPreviousVersion", STORAGE);
+  AUTO_PROFILER_LABEL("DeleteDatabaseOp::LoadPreviousVersion", DOM);
 
   nsresult rv;
 
@@ -22899,7 +22852,7 @@ DeleteDatabaseOp::DoDatabaseWork()
   AssertIsOnIOThread();
   MOZ_ASSERT(mState == State::DatabaseWorkOpen);
 
-  AUTO_PROFILER_LABEL("DeleteDatabaseOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("DeleteDatabaseOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
       !OperationMayProceed()) {
@@ -23149,7 +23102,7 @@ VersionChangeOp::DeleteFile(nsIFile* aDirectory,
 
   MOZ_ASSERT(mDeleteDatabaseOp->mState == State::DatabaseWorkVersionChange);
 
-  AUTO_PROFILER_LABEL("DeleteDatabaseOp::VersionChangeOp::DeleteFile", STORAGE);
+  AUTO_PROFILER_LABEL("DeleteDatabaseOp::VersionChangeOp::DeleteFile", DOM);
 
   nsCOMPtr<nsIFile> file;
   nsresult rv = aDirectory->Clone(getter_AddRefs(file));
@@ -23209,7 +23162,7 @@ VersionChangeOp::RunOnIOThread()
   MOZ_ASSERT(mDeleteDatabaseOp->mState == State::DatabaseWorkVersionChange);
 
   AUTO_PROFILER_LABEL(
-    "DeleteDatabaseOp::VersionChangeOp::RunOnIOThread", STORAGE);
+    "DeleteDatabaseOp::VersionChangeOp::RunOnIOThread", DOM);
 
   if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
       !OperationMayProceed()) {
@@ -23541,7 +23494,7 @@ TransactionDatabaseOperationBase::RunOnConnectionThread()
   MOZ_ASSERT(NS_SUCCEEDED(mResultCode));
 
   AUTO_PROFILER_LABEL(
-    "TransactionDatabaseOperationBase::RunOnConnectionThread", STORAGE);
+    "TransactionDatabaseOperationBase::RunOnConnectionThread", DOM);
 
   // There are several cases where we don't actually have to to any work here.
 
@@ -23929,7 +23882,7 @@ CommitOp::Run()
   MOZ_ASSERT(mTransaction);
   mTransaction->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("TransactionBase::CommitOp::Run", STORAGE);
+  AUTO_PROFILER_LABEL("TransactionBase::CommitOp::Run", DOM);
 
   IDB_LOG_MARK("IndexedDB %s: Parent Transaction[%lld] Request[%llu]: "
                  "Beginning database work",
@@ -24021,7 +23974,7 @@ CommitOp::TransactionFinishedBeforeUnblock()
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(mTransaction);
 
-  AUTO_PROFILER_LABEL("CommitOp::TransactionFinishedBeforeUnblock", STORAGE);
+  AUTO_PROFILER_LABEL("CommitOp::TransactionFinishedBeforeUnblock", DOM);
 
   if (!IsActorDestroyed()) {
     mTransaction->UpdateMetadata(mResultCode);
@@ -24186,7 +24139,7 @@ CreateFileOp::DoDatabaseWork()
   AssertIsOnIOThread();
   MOZ_ASSERT(mState == State::DatabaseWork);
 
-  AUTO_PROFILER_LABEL("CreateFileOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("CreateFileOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(IndexedDatabaseManager::InLowDiskSpaceMode())) {
     NS_WARNING("Refusing to create file because disk space is low!");
@@ -24329,7 +24282,7 @@ CreateObjectStoreOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("CreateObjectStoreOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("CreateObjectStoreOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(IndexedDatabaseManager::InLowDiskSpaceMode())) {
     return NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR;
@@ -24431,7 +24384,7 @@ DeleteObjectStoreOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("DeleteObjectStoreOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("DeleteObjectStoreOp::DoDatabaseWork", DOM);
 
   NS_NAMED_LITERAL_CSTRING(objectStoreIdString, "object_store_id");
 
@@ -24652,7 +24605,7 @@ RenameObjectStoreOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("RenameObjectStoreOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("RenameObjectStoreOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(IndexedDatabaseManager::InLowDiskSpaceMode())) {
     return NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR;
@@ -24748,7 +24701,7 @@ CreateIndexOp::InsertDataFromObjectStore(DatabaseConnection* aConnection)
   MOZ_ASSERT(!IndexedDatabaseManager::InLowDiskSpaceMode());
   MOZ_ASSERT(mMaybeUniqueIndexTable);
 
-  AUTO_PROFILER_LABEL("CreateIndexOp::InsertDataFromObjectStore", STORAGE);
+  AUTO_PROFILER_LABEL("CreateIndexOp::InsertDataFromObjectStore", DOM);
 
   nsCOMPtr<mozIStorageConnection> storageConnection =
     aConnection->GetStorageConnection();
@@ -24838,7 +24791,7 @@ CreateIndexOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("CreateIndexOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("CreateIndexOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(IndexedDatabaseManager::InLowDiskSpaceMode())) {
     return NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR;
@@ -24980,7 +24933,7 @@ UpdateIndexDataValuesFunction::OnFunctionCall(mozIStorageValueArray* aValues,
   MOZ_ASSERT(mOp);
 
   AUTO_PROFILER_LABEL(
-    "CreateIndexOp::UpdateIndexDataValuesFunction::OnFunctionCall", STORAGE);
+    "CreateIndexOp::UpdateIndexDataValuesFunction::OnFunctionCall", DOM);
 
 #ifdef DEBUG
   {
@@ -25209,7 +25162,7 @@ DeleteIndexOp::RemoveReferencesToIndex(DatabaseConnection* aConnection,
     };
   };
 
-  AUTO_PROFILER_LABEL("DeleteIndexOp::RemoveReferencesToIndex", STORAGE);
+  AUTO_PROFILER_LABEL("DeleteIndexOp::RemoveReferencesToIndex", DOM);
 
   if (mIsLastIndex) {
     // There is no need to parse the previous entry in the index_data_values
@@ -25349,7 +25302,7 @@ DeleteIndexOp::DoDatabaseWork(DatabaseConnection* aConnection)
   }
 #endif
 
-  AUTO_PROFILER_LABEL("DeleteIndexOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("DeleteIndexOp::DoDatabaseWork", DOM);
 
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
@@ -25606,7 +25559,7 @@ RenameIndexOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("RenameIndexOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("RenameIndexOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(IndexedDatabaseManager::InLowDiskSpaceMode())) {
     return NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR;
@@ -26106,7 +26059,7 @@ ObjectStoreAddOrPutRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
   aConnection->AssertIsOnConnectionThread();
   MOZ_ASSERT(aConnection->GetStorageConnection());
 
-  AUTO_PROFILER_LABEL("ObjectStoreAddOrPutRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("ObjectStoreAddOrPutRequestOp::DoDatabaseWork", DOM);
 
   if (NS_WARN_IF(IndexedDatabaseManager::InLowDiskSpaceMode())) {
     return NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR;
@@ -26557,7 +26510,7 @@ MoveData<SerializedStructuredCloneReadInfo>(
                                      StructuredCloneReadInfo& aInfo,
                                      SerializedStructuredCloneReadInfo& aResult)
 {
-  aResult.data().data = Move(aInfo.mData);
+  aResult.data().data = std::move(aInfo.mData);
   aResult.hasPreprocessInfo() = aInfo.mHasPreprocessInfo;
 }
 
@@ -26602,7 +26555,7 @@ ObjectStoreGetRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
                   OptionalKeyRange::TSerializedKeyRange);
   MOZ_ASSERT_IF(!mGetAll, mLimit == 1);
 
-  AUTO_PROFILER_LABEL("ObjectStoreGetRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("ObjectStoreGetRequestOp::DoDatabaseWork", DOM);
 
   const bool hasKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -26816,7 +26769,7 @@ ObjectStoreGetKeyRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("ObjectStoreGetKeyRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("ObjectStoreGetKeyRequestOp::DoDatabaseWork", DOM);
 
   const bool hasKeyRange =
       mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -26911,7 +26864,7 @@ ObjectStoreGetKeyRequestOp::GetResponse(RequestResponse& aResponse,
 
   if (!mResponse.IsEmpty()) {
     *aResponseSize = mResponse[0].GetBuffer().Length();
-    aResponse.get_ObjectStoreGetKeyResponse().key() = Move(mResponse[0]);
+    aResponse.get_ObjectStoreGetKeyResponse().key() = std::move(mResponse[0]);
   }
 }
 
@@ -26937,7 +26890,7 @@ ObjectStoreDeleteRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
 {
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
-  AUTO_PROFILER_LABEL("ObjectStoreDeleteRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("ObjectStoreDeleteRequestOp::DoDatabaseWork", DOM);
 
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
@@ -27028,7 +26981,7 @@ ObjectStoreClearRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("ObjectStoreClearRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("ObjectStoreClearRequestOp::DoDatabaseWork", DOM);
 
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
@@ -27089,7 +27042,7 @@ ObjectStoreCountRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("ObjectStoreCountRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("ObjectStoreCountRequestOp::DoDatabaseWork", DOM);
 
   const bool hasKeyRange =
     mParams.optionalKeyRange().type() == OptionalKeyRange::TSerializedKeyRange;
@@ -27252,7 +27205,7 @@ IndexGetRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
                   OptionalKeyRange::TSerializedKeyRange);
   MOZ_ASSERT_IF(!mGetAll, mLimit == 1);
 
-  AUTO_PROFILER_LABEL("IndexGetRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("IndexGetRequestOp::DoDatabaseWork", DOM);
 
   const bool hasKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -27368,7 +27321,7 @@ IndexGetRequestOp::GetResponse(RequestResponse& aResponse,
         SerializedStructuredCloneReadInfo& serializedInfo =
           fallibleCloneInfos[index];
 
-        serializedInfo.data().data = Move(info.mData);
+        serializedInfo.data().data = std::move(info.mData);
 
         FallibleTArray<SerializedStructuredCloneFile> serializedFiles;
         nsresult rv = SerializeStructuredCloneFiles(mBackgroundParent,
@@ -27405,7 +27358,7 @@ IndexGetRequestOp::GetResponse(RequestResponse& aResponse,
     SerializedStructuredCloneReadInfo& serializedInfo =
       aResponse.get_IndexGetResponse().cloneInfo();
 
-    serializedInfo.data().data = Move(info.mData);
+    serializedInfo.data().data = std::move(info.mData);
 
     FallibleTArray<SerializedStructuredCloneFile> serializedFiles;
     nsresult rv =
@@ -27453,7 +27406,7 @@ IndexGetKeyRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
                   OptionalKeyRange::TSerializedKeyRange);
   MOZ_ASSERT_IF(!mGetAll, mLimit == 1);
 
-  AUTO_PROFILER_LABEL("IndexGetKeyRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("IndexGetKeyRequestOp::DoDatabaseWork", DOM);
 
   const bool hasKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -27554,7 +27507,7 @@ IndexGetKeyRequestOp::GetResponse(RequestResponse& aResponse,
 
   if (!mResponse.IsEmpty()) {
     *aResponseSize = mResponse[0].GetBuffer().Length();
-    aResponse.get_IndexGetKeyResponse().key() = Move(mResponse[0]);
+    aResponse.get_IndexGetKeyResponse().key() = std::move(mResponse[0]);
   }
 }
 
@@ -27564,7 +27517,7 @@ IndexCountRequestOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(aConnection);
   aConnection->AssertIsOnConnectionThread();
 
-  AUTO_PROFILER_LABEL("IndexCountRequestOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("IndexCountRequestOp::DoDatabaseWork", DOM);
 
   const bool hasKeyRange =
     mParams.optionalKeyRange().type() == OptionalKeyRange::TSerializedKeyRange;
@@ -27728,10 +27681,10 @@ CursorOpBase::PopulateResponseFromStatement(
 
       auto& responses = mResponse.get_ArrayOfObjectStoreCursorResponse();
       auto& response = *responses.AppendElement();
-      response.cloneInfo().data().data = Move(cloneInfo.mData);
+      response.cloneInfo().data().data = std::move(cloneInfo.mData);
       response.key() = mCursor->mKey;
 
-      mFiles.AppendElement(Move(cloneInfo.mFiles));
+      mFiles.AppendElement(std::move(cloneInfo.mFiles));
       break;
     }
 
@@ -27771,12 +27724,12 @@ CursorOpBase::PopulateResponseFromStatement(
       mResponse = IndexCursorResponse();
 
       auto& response = mResponse.get_IndexCursorResponse();
-      response.cloneInfo().data().data = Move(cloneInfo.mData);
+      response.cloneInfo().data().data = std::move(cloneInfo.mData);
       response.key() = mCursor->mKey;
       response.sortKey() = mCursor->mSortKey;
       response.objectKey() = mCursor->mObjectKey;
 
-      mFiles.AppendElement(Move(cloneInfo.mFiles));
+      mFiles.AppendElement(std::move(cloneInfo.mFiles));
       break;
     }
 
@@ -27850,7 +27803,7 @@ OpenOp::DoObjectStoreDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(mCursor->mObjectStoreId);
   MOZ_ASSERT(mCursor->mFileManager);
 
-  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoObjectStoreDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoObjectStoreDatabaseWork", DOM);
 
   const bool usingKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -28008,7 +27961,7 @@ OpenOp::DoObjectStoreKeyDatabaseWork(DatabaseConnection* aConnection)
                OpenCursorParams::TObjectStoreOpenKeyCursorParams);
   MOZ_ASSERT(mCursor->mObjectStoreId);
 
-  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoObjectStoreKeyDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoObjectStoreKeyDatabaseWork", DOM);
 
   const bool usingKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -28164,7 +28117,7 @@ OpenOp::DoIndexDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(mCursor->mObjectStoreId);
   MOZ_ASSERT(mCursor->mIndexId);
 
-  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoIndexDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoIndexDatabaseWork", DOM);
 
   const bool usingKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -28411,7 +28364,7 @@ OpenOp::DoIndexKeyDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(mCursor->mObjectStoreId);
   MOZ_ASSERT(mCursor->mIndexId);
 
-  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoIndexKeyDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoIndexKeyDatabaseWork", DOM);
 
   const bool usingKeyRange =
     mOptionalKeyRange.type() == OptionalKeyRange::TSerializedKeyRange;
@@ -28651,7 +28604,7 @@ OpenOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT(mCursor->mKey.IsUnset());
   MOZ_ASSERT(mCursor->mRangeKey.IsUnset());
 
-  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("Cursor::OpenOp::DoDatabaseWork", DOM);
 
   nsresult rv;
 
@@ -28735,7 +28688,7 @@ ContinueOp::DoDatabaseWork(DatabaseConnection* aConnection)
   MOZ_ASSERT_IF(isIndex, mCursor->mIndexId);
   MOZ_ASSERT_IF(isIndex, !mCursor->mObjectKey.IsUnset());
 
-  AUTO_PROFILER_LABEL("Cursor::ContinueOp::DoDatabaseWork", STORAGE);
+  AUTO_PROFILER_LABEL("Cursor::ContinueOp::DoDatabaseWork", DOM);
 
   // We need to pick a query based on whether or not a key was passed to the
   // continue function. If not we'll grab the the next item in the database that
@@ -29152,8 +29105,8 @@ FileHelper::Init()
   MOZ_ASSERT(NS_SUCCEEDED(journalDirectory->IsDirectory(&isDirectory)));
   MOZ_ASSERT(isDirectory);
 
-  mFileDirectory = Move(fileDirectory);
-  mJournalDirectory= Move(journalDirectory);
+  mFileDirectory = std::move(fileDirectory);
+  mJournalDirectory= std::move(journalDirectory);
 
   return NS_OK;
 }
@@ -29522,7 +29475,7 @@ FileHelper::SyncCopy(nsIInputStream* aInputStream,
   MOZ_ASSERT(aInputStream);
   MOZ_ASSERT(aOutputStream);
 
-  AUTO_PROFILER_LABEL("FileHelper::SyncCopy", STORAGE);
+  AUTO_PROFILER_LABEL("FileHelper::SyncCopy", DOM);
 
   nsresult rv;
 

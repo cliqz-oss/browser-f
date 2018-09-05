@@ -7,6 +7,9 @@
  * http://dev.w3.org/csswg/cssom/
  */
 
+ // Because of getComputedStyle, many CSSStyleDeclaration objects can be
+ // short-living.
+[ProbablyShortLivingWrapper]
 interface CSSStyleDeclaration {
   [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, SetterThrows]
   attribute DOMString cssText;
@@ -19,9 +22,6 @@ interface CSSStyleDeclaration {
 
   [Throws]
   DOMString getPropertyValue(DOMString property);
-  // Mozilla extension, sort of
-  [Throws, Pref="layout.css.getPropertyCSSValue.enabled"]
-  CSSValue? getPropertyCSSValue(DOMString property);
   DOMString getPropertyPriority(DOMString property);
   [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   void setProperty(DOMString property, [TreatNullAs=EmptyString] DOMString value, [TreatNullAs=EmptyString] optional DOMString priority = "");

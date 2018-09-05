@@ -12,19 +12,19 @@ const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
                  "test/mochitest/test-jsterm-dollar.html";
 
 add_task(async function() {
-  let hud = await openNewTabAndConsole(TEST_URI);
+  const hud = await openNewTabAndConsole(TEST_URI);
   await test$(hud);
   await test$$(hud);
 });
 
 async function test$(hud) {
-  hud.jsterm.clearOutput();
+  hud.ui.clearOutput();
   const msg = await hud.jsterm.execute("$(document.body)");
   ok(msg.textContent.includes("<p>"), "jsterm output is correct for $()");
 }
 
 async function test$$(hud) {
-  hud.jsterm.clearOutput();
+  hud.ui.clearOutput();
   hud.jsterm.setInputValue();
   const msg = await hud.jsterm.execute("$$(document)");
   ok(msg.textContent.includes("621644"), "jsterm output is correct for $$()");

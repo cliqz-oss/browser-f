@@ -114,12 +114,52 @@ var paymentRequest = {
 
     log.debug("onShowPaymentRequest: domReadyPromise resolved");
     log.debug("onShowPaymentRequest, isPrivate?", detail.isPrivate);
-    document.querySelector("payment-dialog").setStateFromParent({
+
+    let paymentDialog = document.querySelector("payment-dialog");
+    let hasSavedAddresses = Object.keys(detail.savedAddresses).length != 0;
+    let hasSavedCards = Object.keys(detail.savedBasicCards).length != 0;
+    let shippingRequested = detail.request.paymentOptions.requestShipping;
+    let state = {
       request: detail.request,
       savedAddresses: detail.savedAddresses,
       savedBasicCards: detail.savedBasicCards,
       isPrivate: detail.isPrivate,
-    });
+      page: {
+        id: "payment-summary",
+      },
+    };
+
+    // Onboarding wizard flow.
+    if (!hasSavedAddresses && (shippingRequested || !hasSavedCards)) {
+      state.page = {
+        id: "address-page",
+        onboardingWizard: true,
+      };
+
+      state["address-page"] = {
+        addressFields: null,
+        guid: null,
+      };
+
+      if (shippingRequested) {
+        Object.assign(state["address-page"], {
+          title: paymentDialog.dataset.shippingAddressTitleAdd,
+        });
+        state.page.selectedStateKey = ["selectedShippingAddress"];
+      } else {
+        Object.assign(state["address-page"], {
+          title: paymentDialog.dataset.billingAddressTitleAdd,
+        });
+        state.page.selectedStateKey = ["basic-card-page", "billingAddressGUID"];
+      }
+    } else if (!hasSavedCards) {
+      state.page = {
+        id: "basic-card-page",
+        onboardingWizard: true,
+      };
+    }
+
+    paymentDialog.setStateFromParent(state);
   },
 
   cancel() {
@@ -204,6 +244,11 @@ var paymentRequest = {
   onPaymentRequestUnload() {
     // remove listeners that may be used multiple times here
     window.removeEventListener("paymentChromeToContent", this);
+  },
+
+  getAddresses(state) {
+    let addresses = Object.assign({}, state.savedAddresses, state.tempAddresses);
+    return addresses;
   },
 
   getBasicCards(state) {

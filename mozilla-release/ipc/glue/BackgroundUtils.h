@@ -49,12 +49,11 @@ struct ParamTraits<mozilla::OriginAttributes>
 
 namespace mozilla {
 namespace net {
+class ChildLoadInfoForwarderArgs;
 class OptionalLoadInfoArgs;
 class ParentLoadInfoForwarderArgs;
 class RedirectHistoryEntryInfo;
 } // namespace net
-
-using namespace mozilla::net;
 
 namespace ipc {
 
@@ -90,7 +89,7 @@ IsPincipalInfoPrivate(const PrincipalInfo& aPrincipalInfo);
  */
 
 already_AddRefed<nsIRedirectHistoryEntry>
-RHEntryInfoToRHEntry(const RedirectHistoryEntryInfo& aRHEntryInfo);
+RHEntryInfoToRHEntry(const mozilla::net::RedirectHistoryEntryInfo& aRHEntryInfo);
 
 /**
  * Convert an nsIRedirectHistoryEntry to a RedirectHistoryEntryInfo.
@@ -98,20 +97,20 @@ RHEntryInfoToRHEntry(const RedirectHistoryEntryInfo& aRHEntryInfo);
 
 nsresult
 RHEntryToRHEntryInfo(nsIRedirectHistoryEntry* aRHEntry,
-                     RedirectHistoryEntryInfo* aRHEntryInfo);
+                     mozilla::net::RedirectHistoryEntryInfo* aRHEntryInfo);
 
 /**
  * Convert a LoadInfo to LoadInfoArgs struct.
  */
 nsresult
 LoadInfoToLoadInfoArgs(nsILoadInfo *aLoadInfo,
-                       OptionalLoadInfoArgs* outOptionalLoadInfoArgs);
+                       mozilla::net::OptionalLoadInfoArgs* outOptionalLoadInfoArgs);
 
 /**
  * Convert LoadInfoArgs to a LoadInfo.
  */
 nsresult
-LoadInfoArgsToLoadInfo(const OptionalLoadInfoArgs& aOptionalLoadInfoArgs,
+LoadInfoArgsToLoadInfo(const mozilla::net::OptionalLoadInfoArgs& aOptionalLoadInfoArgs,
                        nsILoadInfo** outLoadInfo);
 
 /**
@@ -119,15 +118,31 @@ LoadInfoArgsToLoadInfo(const OptionalLoadInfoArgs& aOptionalLoadInfoArgs,
  */
 void
 LoadInfoToParentLoadInfoForwarder(nsILoadInfo *aLoadInfo,
-                                  ParentLoadInfoForwarderArgs* outLoadInfoChildForwardArgs);
+                                  mozilla::net::ParentLoadInfoForwarderArgs* aForwarderArgsOut);
 
 /**
  * Merges (replaces) properties of an existing LoadInfo on a child process
  * with properties carried down through ParentLoadInfoForwarderArgs.
  */
 nsresult
-MergeParentLoadInfoForwarder(ParentLoadInfoForwarderArgs const& outLoadInfoChildForwardArgs,
+MergeParentLoadInfoForwarder(mozilla::net::ParentLoadInfoForwarderArgs const& aForwarderArgs,
                              nsILoadInfo *aLoadInfo);
+
+/**
+ * Fills ChildLoadInfoForwarderArgs with properties we want to carry to the
+ * parent process after the initial channel creation.
+ */
+void
+LoadInfoToChildLoadInfoForwarder(nsILoadInfo* aLoadInfo,
+                                 mozilla::net::ChildLoadInfoForwarderArgs* aForwarderArgsOut);
+
+/**
+ * Merges (replaces) properties of an existing LoadInfo on the parent process
+ * with properties contained in a ChildLoadInfoForwarderArgs.
+ */
+nsresult
+MergeChildLoadInfoForwarder(const mozilla::net::ChildLoadInfoForwarderArgs& aForwardArgs,
+                            nsILoadInfo* aLoadInfo);
 
 } // namespace ipc
 } // namespace mozilla

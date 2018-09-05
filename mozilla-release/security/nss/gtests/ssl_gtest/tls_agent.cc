@@ -33,6 +33,7 @@ const char* TlsAgent::states[] = {"INIT", "CONNECTING", "CONNECTED", "ERROR"};
 
 const std::string TlsAgent::kClient = "client";    // both sign and encrypt
 const std::string TlsAgent::kRsa2048 = "rsa2048";  // bigger
+const std::string TlsAgent::kRsa8192 = "rsa8192";  // biggest allowed
 const std::string TlsAgent::kServerRsa = "rsa";    // both sign and encrypt
 const std::string TlsAgent::kServerRsaSign = "rsa_sign";
 const std::string TlsAgent::kServerRsaPss = "rsa_pss";
@@ -184,15 +185,15 @@ bool TlsAgent::EnsureTlsSetup(PRFileDesc* modelSocket) {
     if (rv != SECSuccess) return false;
   }
 
+  ScopedCERTCertList anchors(CERT_NewCertList());
+  rv = SSL_SetTrustAnchors(ssl_fd(), anchors.get());
+  if (rv != SECSuccess) return false;
+
   if (role_ == SERVER) {
     EXPECT_TRUE(ConfigServerCert(name_, true));
 
     rv = SSL_SNISocketConfigHook(ssl_fd(), SniHook, this);
     EXPECT_EQ(SECSuccess, rv);
-    if (rv != SECSuccess) return false;
-
-    ScopedCERTCertList anchors(CERT_NewCertList());
-    rv = SSL_SetTrustAnchors(ssl_fd(), anchors.get());
     if (rv != SECSuccess) return false;
 
     rv = SSL_SetMaxEarlyDataSize(ssl_fd(), 1024);
@@ -255,6 +256,17 @@ void TlsAgent::SetupClientAuth() {
                                       reinterpret_cast<void*>(this)));
 }
 
+void CheckCertReqAgainstDefaultCAs(const CERTDistNames* caNames) {
+  ScopedCERTDistNames expected(CERT_GetSSLCACerts(nullptr));
+
+  ASSERT_EQ(expected->nnames, caNames->nnames);
+
+  for (size_t i = 0; i < static_cast<size_t>(expected->nnames); ++i) {
+    EXPECT_EQ(SECEqual,
+              SECITEM_CompareItem(&(expected->names[i]), &(caNames->names[i])));
+  }
+}
+
 SECStatus TlsAgent::GetClientAuthDataHook(void* self, PRFileDesc* fd,
                                           CERTDistNames* caNames,
                                           CERTCertificate** clientCert,
@@ -262,6 +274,9 @@ SECStatus TlsAgent::GetClientAuthDataHook(void* self, PRFileDesc* fd,
   TlsAgent* agent = reinterpret_cast<TlsAgent*>(self);
   ScopedCERTCertificate peerCert(SSL_PeerCertificate(agent->ssl_fd()));
   EXPECT_TRUE(peerCert) << "Client should be able to see the server cert";
+
+  // See bug 1457716
+  // CheckCertReqAgainstDefaultCAs(caNames);
 
   ScopedCERTCertificate cert;
   ScopedSECKEYPrivateKey priv;
@@ -924,9 +939,9 @@ static bool ErrorIsNonFatal(PRErrorCode code) {
 }
 
 void TlsAgent::SendData(size_t bytes, size_t blocksize) {
-  uint8_t block[4096];
+  uint8_t block[16385];  // One larger than the maximum record size.
 
-  ASSERT_LT(blocksize, sizeof(block));
+  ASSERT_LE(blocksize, sizeof(block));
 
   while (bytes) {
     size_t tosend = std::min(blocksize, bytes);

@@ -813,7 +813,7 @@ void
 MacroAssembler::checkAllocatorState(Label* fail)
 {
     // Don't execute the inline path if we are tracing allocations.
-    if (js::gc::TraceEnabled())
+    if (js::gc::gcTracer.traceEnabled())
         jump(fail);
 
 #ifdef JS_GC_ZEAL
@@ -823,9 +823,9 @@ MacroAssembler::checkAllocatorState(Label* fail)
              fail);
 #endif
 
-    // Don't execute the inline path if the compartment has an object metadata callback,
+    // Don't execute the inline path if the realm has an object metadata callback,
     // as the metadata to use for the object may vary between executions of the op.
-    if (GetJitContext()->compartment->hasAllocationMetadataBuilder())
+    if (GetJitContext()->realm->hasAllocationMetadataBuilder())
         jump(fail);
 }
 
@@ -859,7 +859,7 @@ MacroAssembler::nurseryAllocateObject(Register result, Register temp, gc::AllocK
 
     // No explicit check for nursery.isEnabled() is needed, as the comparison
     // with the nursery's end will always fail in such cases.
-    CompileZone* zone = GetJitContext()->compartment->zone();
+    CompileZone* zone = GetJitContext()->realm->zone();
     int thingSize = int(gc::Arena::thingSize(allocKind));
     int totalSize = thingSize + nDynamicSlots * sizeof(HeapSlot);
     MOZ_ASSERT(totalSize % gc::CellAlignBytes == 0);
@@ -878,7 +878,7 @@ MacroAssembler::nurseryAllocateObject(Register result, Register temp, gc::AllocK
 void
 MacroAssembler::freeListAllocate(Register result, Register temp, gc::AllocKind allocKind, Label* fail)
 {
-    CompileZone* zone = GetJitContext()->compartment->zone();
+    CompileZone* zone = GetJitContext()->realm->zone();
     int thingSize = int(gc::Arena::thingSize(allocKind));
 
     Label fallback;
@@ -932,7 +932,7 @@ MacroAssembler::callMallocStub(size_t nbytes, Register result, Label* fail)
         push(regNBytes);
 
     move32(Imm32(nbytes), regNBytes);
-    movePtr(ImmPtr(GetJitContext()->compartment->zone()), regZone);
+    movePtr(ImmPtr(GetJitContext()->realm->zone()), regZone);
     call(GetJitContext()->runtime->jitRuntime()->mallocStub());
     if (regReturn != result)
         movePtr(regReturn, result);
@@ -1041,7 +1041,7 @@ MacroAssembler::nurseryAllocateString(Register result, Register temp, gc::AllocK
     // No explicit check for nursery.isEnabled() is needed, as the comparison
     // with the nursery's end will always fail in such cases.
 
-    CompileZone* zone = GetJitContext()->compartment->zone();
+    CompileZone* zone = GetJitContext()->realm->zone();
     int thingSize = int(gc::Arena::thingSize(allocKind));
     int totalSize = js::Nursery::stringHeaderSize() + thingSize;
     MOZ_ASSERT(totalSize % gc::CellAlignBytes == 0);
@@ -1364,6 +1364,15 @@ MacroAssembler::initGCSlots(Register obj, Register temp, const NativeTemplateObj
     }
 }
 
+#ifdef JS_GC_TRACE
+static void
+TraceCreateObject(JSObject *obj)
+{
+    AutoUnsafeCallWithABI unsafe;
+    js::gc::gcTracer.traceCreateObject(obj);
+}
+#endif
+
 void
 MacroAssembler::initGCThing(Register obj, Register temp, const TemplateObject& templateObj,
                             bool initContents)
@@ -1456,18 +1465,18 @@ MacroAssembler::initGCThing(Register obj, Register temp, const TemplateObject& t
     }
 
 #ifdef JS_GC_TRACE
-    RegisterSet regs = RegisterSet::Volatile();
-    PushRegsInMask(regs);
+    AllocatableRegisterSet regs(RegisterSet::Volatile());
+    LiveRegisterSet save(regs.asLiveSet());
+    PushRegsInMask(save);
+
     regs.takeUnchecked(obj);
-    Register temp = regs.takeAnyGeneral();
+    Register temp2 = regs.takeAnyGeneral();
 
-    setupUnalignedABICall(temp);
+    setupUnalignedABICall(temp2);
     passABIArg(obj);
-    movePtr(ImmGCPtr(templateObj->type()), temp);
-    passABIArg(temp);
-    callWithABI(JS_FUNC_TO_DATA_PTR(void*, js::gc::TraceCreateObject));
+    callWithABI(JS_FUNC_TO_DATA_PTR(void*, TraceCreateObject));
 
-    PopRegsInMask(RegisterSet::Volatile());
+    PopRegsInMask(save);
 #endif
 }
 
@@ -1496,6 +1505,8 @@ void
 MacroAssembler::compareStrings(JSOp op, Register left, Register right, Register result,
                                Label* fail)
 {
+    MOZ_ASSERT(left != result);
+    MOZ_ASSERT(right != result);
     MOZ_ASSERT(IsEqualityOp(op));
 
     Label done;
@@ -2797,6 +2808,7 @@ MacroAssembler::MacroAssembler(JSContext* cx)
 #ifdef DEBUG
     inCall_(false),
 #endif
+    dynamicAlignment_(false),
     emitProfilingInstrumentation_(false)
 {
     jitContext_.emplace(cx, (js::jit::TempAllocator*)nullptr);
@@ -2816,6 +2828,7 @@ MacroAssembler::MacroAssembler()
 #ifdef DEBUG
     inCall_(false),
 #endif
+    dynamicAlignment_(false),
     emitProfilingInstrumentation_(false)
 {
     JitContext* jcx = GetJitContext();
@@ -2842,6 +2855,7 @@ MacroAssembler::MacroAssembler(WasmToken, TempAllocator& alloc)
 #ifdef DEBUG
     inCall_(false),
 #endif
+    dynamicAlignment_(false),
     emitProfilingInstrumentation_(false)
 {
     moveResolver_.setAllocator(alloc);
@@ -2906,7 +2920,8 @@ MacroAssembler::Push(jsid id, Register scratchReg)
         if (JSID_IS_STRING(id)) {
             JSString* str = JSID_TO_STRING(id);
             MOZ_ASSERT(((size_t)str & JSID_TYPE_MASK) == 0);
-            MOZ_ASSERT(JSID_TYPE_STRING == 0x0);
+            static_assert(JSID_TYPE_STRING == 0,
+                          "need to orPtr JSID_TYPE_STRING tag if it's not 0");
             Push(ImmGCPtr(str));
         } else {
             MOZ_ASSERT(JSID_IS_SYMBOL(id));
@@ -3167,7 +3182,7 @@ MacroAssembler::callWithABINoProfiler(void* fun, MoveOp::Type result, CheckUnsaf
         loadJSContext(ReturnReg);
         Address flagAddr(ReturnReg, JSContext::offsetOfInUnsafeCallWithABI());
         branch32(Assembler::Equal, flagAddr, Imm32(0), &ok);
-        assumeUnreachable("callWithABI: callee did not use AutoInUnsafeCallWithABI");
+        assumeUnreachable("callWithABI: callee did not use AutoUnsafeCallWithABI");
         bind(&ok);
         pop(ReturnReg);
     }
@@ -3264,18 +3279,20 @@ MacroAssembler::branchTestObjCompartment(Condition cond, Register obj, const Add
 {
     MOZ_ASSERT(obj != scratch);
     loadPtr(Address(obj, JSObject::offsetOfGroup()), scratch);
-    loadPtr(Address(scratch, ObjectGroup::offsetOfCompartment()), scratch);
+    loadPtr(Address(scratch, ObjectGroup::offsetOfRealm()), scratch);
+    loadPtr(Address(scratch, Realm::offsetOfCompartment()), scratch);
     branchPtr(cond, compartment, scratch, label);
 }
 
 void
 MacroAssembler::branchTestObjCompartment(Condition cond, Register obj,
-                                         const JSCompartment* compartment, Register scratch,
+                                         const JS::Compartment* compartment, Register scratch,
                                          Label* label)
 {
     MOZ_ASSERT(obj != scratch);
     loadPtr(Address(obj, JSObject::offsetOfGroup()), scratch);
-    loadPtr(Address(scratch, ObjectGroup::offsetOfCompartment()), scratch);
+    loadPtr(Address(scratch, ObjectGroup::offsetOfRealm()), scratch);
+    loadPtr(Address(scratch, Realm::offsetOfCompartment()), scratch);
     branchPtr(cond, scratch, ImmPtr(compartment), label);
 }
 
@@ -3508,16 +3525,16 @@ MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc, const wasm::Cal
 
     MOZ_ASSERT(callee.which() == wasm::CalleeDesc::WasmTable);
 
-    // Write the sig-id into the ABI sig-id register.
-    wasm::SigIdDesc sigId = callee.wasmTableSigId();
-    switch (sigId.kind()) {
-      case wasm::SigIdDesc::Kind::Global:
-        loadWasmGlobalPtr(sigId.globalDataOffset(), WasmTableCallSigReg);
+    // Write the functype-id into the ABI functype-id register.
+    wasm::FuncTypeIdDesc funcTypeId = callee.wasmTableSigId();
+    switch (funcTypeId.kind()) {
+      case wasm::FuncTypeIdDesc::Kind::Global:
+        loadWasmGlobalPtr(funcTypeId.globalDataOffset(), WasmTableCallSigReg);
         break;
-      case wasm::SigIdDesc::Kind::Immediate:
-        move32(Imm32(sigId.immediate()), WasmTableCallSigReg);
+      case wasm::FuncTypeIdDesc::Kind::Immediate:
+        move32(Imm32(funcTypeId.immediate()), WasmTableCallSigReg);
         break;
-      case wasm::SigIdDesc::Kind::None:
+      case wasm::FuncTypeIdDesc::Kind::None:
         break;
     }
 
@@ -3772,6 +3789,29 @@ MacroAssembler::debugAssertObjHasFixedSlots(Register obj, Register scratch)
     assumeUnreachable("Expected a fixed slot");
     bind(&hasFixedSlots);
 #endif
+}
+
+void
+MacroAssembler::branchIfNativeIteratorNotReusable(Register ni, Label* notReusable)
+{
+    // See NativeIterator::isReusable.
+    Address flagsAddr(ni, NativeIterator::offsetOfFlags());
+
+#ifdef DEBUG
+    Label niIsInitialized;
+    branchTest32(Assembler::NonZero,
+                 flagsAddr,
+                 Imm32(NativeIterator::Flags::Initialized),
+                 &niIsInitialized);
+    assumeUnreachable("Expected a NativeIterator that's been completely "
+                      "initialized");
+    bind(&niIsInitialized);
+#endif
+
+    branchTest32(Assembler::NonZero,
+                 flagsAddr,
+                 Imm32(NativeIterator::Flags::NotReusable),
+                 notReusable);
 }
 
 template <typename T, size_t N, typename P>

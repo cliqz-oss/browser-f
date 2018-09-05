@@ -6,6 +6,7 @@
 package org.mozilla.geckoview.test;
 
 import org.mozilla.geckoview.GeckoResponse;
+import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
@@ -43,16 +44,15 @@ public class TestRunnerActivity extends Activity {
         }
 
         @Override
-        public void onLoadRequest(GeckoSession session, String uri, int target,
-                                  int flags,
-                                  GeckoResponse<Boolean> response) {
+        public GeckoResult<Boolean> onLoadRequest(GeckoSession session, String uri, int target,
+                                                  int flags) {
             // Allow Gecko to load all URIs
-            response.respond(false);
+            return GeckoResult.fromValue(false);
         }
 
         @Override
-        public void onNewSession(GeckoSession session, String uri, GeckoResponse<GeckoSession> response) {
-            response.respond(createSession(session.getSettings()));
+        public GeckoResult<GeckoSession> onNewSession(GeckoSession session, String uri) {
+            return GeckoResult.fromValue(createSession(session.getSettings()));
         }
     };
 
@@ -84,6 +84,10 @@ public class TestRunnerActivity extends Activity {
 
         @Override
         public void onExternalResponse(GeckoSession session, GeckoSession.WebResponseInfo request) {
+        }
+
+        @Override
+        public void onCrash(GeckoSession session) {
         }
     };
 
@@ -119,6 +123,10 @@ public class TestRunnerActivity extends Activity {
             if (extras != null) {
                 runtimeSettingsBuilder.extras(extras);
             }
+
+            runtimeSettingsBuilder
+                    .nativeCrashReportingEnabled(true)
+                    .javaCrashReportingEnabled(true);
 
             sRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
             sRuntime.setDelegate(new GeckoRuntime.Delegate() {

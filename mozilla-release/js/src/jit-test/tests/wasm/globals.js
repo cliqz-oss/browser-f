@@ -106,14 +106,6 @@ module = wasmEvalText(`(module
 }).exports;
 assertEq(module.f, module.tbl.get(1));
 
-// Import/export rules.
-if (typeof WebAssembly.Global === "undefined") {
-    wasmFailValidateText(`(module (import "globals" "x" (global (mut i32))))`,
-             /can't import.* mutable globals in the MVP/);
-    wasmFailValidateText(`(module (global (mut i32) (i32.const 42)) (export "" global 0))`,
-             /can't .*export mutable globals in the MVP/);
-}
-
 // Import/export semantics.
 module = wasmEvalText(`(module
  (import $g "globals" "x" (global i32))
@@ -123,12 +115,9 @@ module = wasmEvalText(`(module
 )`, { globals: {x: 42} }).exports;
 
 assertEq(module.getter(), 42);
-// Adapt to ongoing experiment with WebAssembly.Global.
+
 // assertEq() will not trigger @@toPrimitive, so we must have a cast here.
-if (typeof WebAssembly.Global === "function")
-    assertEq(Number(module.value), 42);
-else
-    assertEq(module.value, 42);
+assertEq(Number(module.value), 42);
 
 // Can only import numbers (no implicit coercions).
 module = new Module(wasmTextToBinary(`(module
@@ -183,14 +172,8 @@ module = wasmEvalText(`(module
  (export "defined" global 1)
 )`, { globals: {x: 42} }).exports;
 
-// See comment earlier about WebAssembly.Global
-if (typeof WebAssembly.Global === "function") {
-    assertEq(Number(module.imported), 42);
-    assertEq(Number(module.defined), 1337);
-} else {
-    assertEq(module.imported, 42);
-    assertEq(module.defined, 1337);
-}
+assertEq(Number(module.imported), 42);
+assertEq(Number(module.defined), 1337);
 
 // Initializer expressions can reference an imported immutable global.
 wasmFailValidateText(`(module (global f32 (f32.const 13.37)) (global i32 (get_global 0)))`, /must reference a global immutable import/);
@@ -227,20 +210,12 @@ function testInitExpr(type, initialValue, nextValue, coercion, assertFunc = asse
 
     assertFunc(module.get0(), coercion(initialValue));
     assertFunc(module.get1(), coercion(initialValue));
-    // See comment earlier about WebAssembly.Global
-    if (typeof WebAssembly.Global === "function")
-        assertFunc(Number(module.global_imm), coercion(initialValue));
-    else
-        assertFunc(module.global_imm, coercion(initialValue));
+    assertFunc(Number(module.global_imm), coercion(initialValue));
 
     assertEq(module.set1(coercion(nextValue)), undefined);
     assertFunc(module.get1(), coercion(nextValue));
     assertFunc(module.get0(), coercion(initialValue));
-    // See comment earlier about WebAssembly.Global
-    if (typeof WebAssembly.Global === "function")
-        assertFunc(Number(module.global_imm), coercion(initialValue));
-    else
-        assertFunc(module.global_imm, coercion(initialValue));
+    assertFunc(Number(module.global_imm), coercion(initialValue));
 
     assertFunc(module.get_cst(), coercion(initialValue));
 }
@@ -267,18 +242,7 @@ assertErrorMessage(() => wasmEvalText(`(module
                    LinkError,
                    /cannot pass i64 to or from JS/);
 
-if (typeof WebAssembly.Global === "undefined") {
-
-    // Cannot export int64 at all.
-
-    assertErrorMessage(() => wasmEvalText(`(module
-                                            (global i64 (i64.const 42))
-                                            (export "" global 0))`),
-                       LinkError,
-                       /cannot pass i64 to or from JS/);
-
-} else {
-
+{
     // We can import and export i64 globals as cells.  They cannot be created
     // from JS because there's no way to specify a non-zero initial value; that
     // restriction is tested later.  But we can export one from a module and
@@ -343,34 +307,37 @@ wasmAssert(`(module
     assertEq(dv.getUint32(0, true), 0x7fc00000);
 }
 
-// WebAssembly.Global experiment
-
-if (typeof WebAssembly.Global === "function") {
-
+// WebAssembly.Global
+{
     const Global = WebAssembly.Global;
 
     // These types should work:
-    assertEq(new Global({type: "i32"}) instanceof Global, true);
-    assertEq(new Global({type: "f32"}) instanceof Global, true);
-    assertEq(new Global({type: "f64"}) instanceof Global, true);
+    assertEq(new Global({value: "i32"}) instanceof Global, true);
+    assertEq(new Global({value: "f32"}) instanceof Global, true);
+    assertEq(new Global({value: "f64"}) instanceof Global, true);
 
     // These types should not work:
-    assertErrorMessage(() => new Global({type: "i64"}),   TypeError, /bad type for a WebAssembly.Global/);
-    assertErrorMessage(() => new Global({}),              TypeError, /bad type for a WebAssembly.Global/);
-    assertErrorMessage(() => new Global({type: "fnord"}), TypeError, /bad type for a WebAssembly.Global/);
-    assertErrorMessage(() => new Global(),                TypeError, /Global requires more than 0 arguments/);
+    assertErrorMessage(() => new Global({value: "i64"}),   TypeError, /bad type for a WebAssembly.Global/);
+    assertErrorMessage(() => new Global({}),               TypeError, /bad type for a WebAssembly.Global/);
+    assertErrorMessage(() => new Global({value: "fnord"}), TypeError, /bad type for a WebAssembly.Global/);
+    assertErrorMessage(() => new Global(),                 TypeError, /Global requires more than 0 arguments/);
 
     // Coercion of init value; ".value" accessor
-    assertEq((new Global({type: "i32", value: 3.14})).value, 3);
-    assertEq((new Global({type: "f32", value: { valueOf: () => 33.5 }})).value, 33.5);
-    assertEq((new Global({type: "f64", value: "3.25"})).value, 3.25);
+    assertEq((new Global({value: "i32"}, 3.14)).value, 3);
+    assertEq((new Global({value: "f32"}, { valueOf: () => 33.5 })).value, 33.5);
+    assertEq((new Global({value: "f64"}, "3.25")).value, 3.25);
 
     // Nothing special about NaN, it coerces just fine
-    assertEq((new Global({type: "i32", value: NaN})).value, 0);
+    assertEq((new Global({value: "i32"}, NaN)).value, 0);
+
+    // The default init value is zero.
+    assertEq((new Global({value: "i32"})).value, 0);
+    assertEq((new Global({value: "f32"})).value, 0);
+    assertEq((new Global({value: "f64"})).value, 0);
 
     {
         // "value" is enumerable
-        let x = new Global({type: "i32"});
+        let x = new Global({value: "i32"});
         let s = "";
         for ( let i in x )
             s = s + i + ",";
@@ -381,20 +348,20 @@ if (typeof WebAssembly.Global === "function") {
     assertEq("value" in Global.prototype, true);
 
     // Can't set the value of an immutable global
-    assertErrorMessage(() => (new Global({type: "i32"})).value = 10,
+    assertErrorMessage(() => (new Global({value: "i32"})).value = 10,
                        TypeError,
                        /can't set value of immutable global/);
 
     {
         // Can set the value of a mutable global
-        let g = new Global({type: "i32", mutable: true, value: 37});
+        let g = new Global({value: "i32", mutable: true}, 37);
         g.value = 10;
         assertEq(g.value, 10);
     }
 
     {
         // Misc internal conversions
-        let g = new Global({type: "i32", value: 42});
+        let g = new Global({value: "i32"}, 42);
 
         // valueOf
         assertEq(g - 5, 37);
@@ -508,7 +475,7 @@ if (typeof WebAssembly.Global === "function") {
                                                (import "m" "g" (global i32)))`));
 
         // Mutable Global matched to immutable import
-        let gm = new Global({type: "i32", value: 42, mutable: true});
+        let gm = new Global({value: "i32", mutable: true}, 42);
         assertErrorMessage(() => new Instance(m1, {m: {g: gm}}),
                            LinkError,
                            mutErr);
@@ -517,7 +484,7 @@ if (typeof WebAssembly.Global === "function") {
                                                (import "m" "g" (global (mut i32))))`));
 
         // Immutable Global matched to mutable import
-        let gi = new Global({type: "i32", value: 42, mutable: false});
+        let gi = new Global({value: "i32", mutable: false}, 42);
         assertErrorMessage(() => new Instance(m2, {m: {g: gi}}),
                            LinkError,
                            mutErr);

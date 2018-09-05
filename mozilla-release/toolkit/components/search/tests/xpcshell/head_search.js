@@ -232,18 +232,25 @@ function isUSTimezone() {
 
 const kDefaultenginenamePref = "browser.search.defaultenginename";
 const kTestEngineName = "Test search engine";
-const REQ_LOCALES_CHANGED_TOPIC = "intl:requested-locales-changed";
+const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 
 function getDefaultEngineName(isUS) {
-  const nsIPLS = Ci.nsIPrefLocalizedString;
-  // Copy the logic from nsSearchService
-  let pref = kDefaultenginenamePref;
+  // The list of visibleDefaultEngines needs to match or the cache will be ignored.
+  let chan = NetUtil.newChannel({
+    uri: "resource://search-plugins/list.json",
+    loadUsingSystemPrincipal: true
+  });
+  let searchSettings = parseJsonFromStream(chan.open2());
+  let defaultEngineName = searchSettings.default.searchDefault;
+
   if (isUS === undefined)
     isUS = Services.locale.getRequestedLocale() == "en-US" && isUSTimezone();
-  if (isUS) {
-    pref += ".US";
+
+  if (isUS && ("US" in searchSettings &&
+               "searchDefault" in searchSettings.US)) {
+    defaultEngineName = searchSettings.US.searchDefault;
   }
-  return Services.prefs.getComplexValue(pref, nsIPLS).data;
+  return defaultEngineName;
 }
 
 /**
@@ -406,7 +413,6 @@ function setLocalizedDefaultPref(aPrefName, aValue) {
           .setCharPref(aPrefName, value);
 }
 
-
 /**
  * Installs two test engines, sets them as default for US vs. general.
  */
@@ -457,7 +463,7 @@ function asyncReInit() {
   let promise = waitForSearchNotification("reinit-complete");
 
   Services.search.QueryInterface(Ci.nsIObserver)
-          .observe(null, REQ_LOCALES_CHANGED_TOPIC, null);
+          .observe(null, TOPIC_LOCALES_CHANGE, null);
 
   return promise;
 }

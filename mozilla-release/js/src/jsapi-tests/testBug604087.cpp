@@ -19,7 +19,7 @@ const js::Class OuterWrapperClass = PROXY_CLASS_DEF(
 static JSObject*
 wrap(JSContext* cx, JS::HandleObject toWrap, JS::HandleObject target)
 {
-    JSAutoCompartment ac(cx, target);
+    JSAutoRealm ar(cx, target);
     JS::RootedObject wrapper(cx, toWrap);
     if (!JS_WrapObject(cx, &wrapper))
         return nullptr;
@@ -54,7 +54,7 @@ BEGIN_TEST(testBug604087)
     options.setClass(&OuterWrapperClass);
     options.setSingleton(true);
     JS::RootedObject outerObj(cx, js::Wrapper::New(cx, global, &js::Wrapper::singleton, options));
-    JS::CompartmentOptions globalOptions;
+    JS::RealmOptions globalOptions;
     JS::RootedObject compartment2(cx, JS_NewGlobalObject(cx, getGlobalClass(), nullptr,
                                                          JS::FireOnNewGlobalHook, globalOptions));
     CHECK(compartment2 != nullptr);
@@ -80,7 +80,7 @@ BEGIN_TEST(testBug604087)
 
     JS::RootedObject next(cx);
     {
-        JSAutoCompartment ac(cx, compartment2);
+        JSAutoRealm ar(cx, compartment2);
         next = js::Wrapper::New(cx, compartment2, &js::Wrapper::singleton, options);
         CHECK(next);
     }

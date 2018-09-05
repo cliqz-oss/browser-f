@@ -31,7 +31,7 @@
 #include "imgIContainer.h"
 #include "CounterStyleManager.h"
 
-#include "mozilla/dom/AnimationEffectReadOnlyBinding.h" // for PlaybackDirection
+#include "mozilla/dom/AnimationEffectBinding.h" // for PlaybackDirection
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/ImageTracker.h"
 #include "mozilla/CORSMode.h"
@@ -44,10 +44,6 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-
-static_assert((((1 << nsStyleStructID_Length) - 1) &
-               ~(NS_STYLE_INHERIT_MASK)) == 0,
-              "Not enough bits in NS_STYLE_INHERIT_MASK");
 
 /* static */ const int32_t nsStyleGridLine::kMinLine;
 /* static */ const int32_t nsStyleGridLine::kMaxLine;
@@ -310,6 +306,10 @@ nsStyleBorder::nsStyleBorder(const nsPresContext* aContext)
   , mBorderImageRepeatV(StyleBorderImageRepeat::Stretch)
   , mFloatEdge(StyleFloatEdge::ContentBox)
   , mBoxDecorationBreak(StyleBoxDecorationBreak::Slice)
+  , mBorderTopColor(StyleComplexColor::CurrentColor())
+  , mBorderRightColor(StyleComplexColor::CurrentColor())
+  , mBorderBottomColor(StyleComplexColor::CurrentColor())
+  , mBorderLeftColor(StyleComplexColor::CurrentColor())
   , mComputedBorder(0, 0, 0, 0)
 {
   MOZ_COUNT_CTOR(nsStyleBorder);
@@ -327,7 +327,6 @@ nsStyleBorder::nsStyleBorder(const nsPresContext* aContext)
 
     mBorder.Side(side) = medium;
     mBorderStyle[side] = NS_STYLE_BORDER_STYLE_NONE;
-    mBorderColor[side] = StyleComplexColor::CurrentColor();
   }
 
   mTwipsPerPixel = aContext->DevPixelsToAppUnits(1);
@@ -344,6 +343,10 @@ nsStyleBorder::nsStyleBorder(const nsStyleBorder& aSrc)
   , mBorderImageRepeatV(aSrc.mBorderImageRepeatV)
   , mFloatEdge(aSrc.mFloatEdge)
   , mBoxDecorationBreak(aSrc.mBoxDecorationBreak)
+  , mBorderTopColor(aSrc.mBorderTopColor)
+  , mBorderRightColor(aSrc.mBorderRightColor)
+  , mBorderBottomColor(aSrc.mBorderBottomColor)
+  , mBorderLeftColor(aSrc.mBorderLeftColor)
   , mComputedBorder(aSrc.mComputedBorder)
   , mBorder(aSrc.mBorder)
   , mTwipsPerPixel(aSrc.mTwipsPerPixel)
@@ -351,7 +354,6 @@ nsStyleBorder::nsStyleBorder(const nsStyleBorder& aSrc)
   MOZ_COUNT_CTOR(nsStyleBorder);
   NS_FOR_CSS_SIDES(side) {
     mBorderStyle[side] = aSrc.mBorderStyle[side];
-    mBorderColor[side] = aSrc.mBorderColor[side];
   }
 }
 
@@ -433,7 +435,7 @@ nsStyleBorder::CalcDifference(const nsStyleBorder& aNewData) const
   // style or the color flags differ we want to repaint.
   NS_FOR_CSS_SIDES(ix) {
     if (mBorderStyle[ix] != aNewData.mBorderStyle[ix] ||
-        mBorderColor[ix] != aNewData.mBorderColor[ix]) {
+        BorderColorFor(ix) != aNewData.BorderColorFor(ix)) {
       return nsChangeHint_RepaintFrame;
     }
   }
@@ -626,7 +628,7 @@ void
 nsStyleList::SetQuotes(nsStyleQuoteValues::QuotePairArray&& aValues)
 {
   mQuotes = new nsStyleQuoteValues;
-  mQuotes->mQuotePairs = Move(aValues);
+  mQuotes->mQuotePairs = std::move(aValues);
 }
 
 const nsStyleQuoteValues::QuotePairArray&
@@ -1051,7 +1053,7 @@ void
 StyleShapeSource::SetShapeImage(UniquePtr<nsStyleImage> aShapeImage)
 {
   MOZ_ASSERT(aShapeImage);
-  mShapeImage = Move(aShapeImage);
+  mShapeImage = std::move(aShapeImage);
   mType = StyleShapeSourceType::Image;
 }
 
@@ -1072,7 +1074,7 @@ StyleShapeSource::SetBasicShape(UniquePtr<StyleBasicShape> aBasicShape,
                                 StyleGeometryBox aReferenceBox)
 {
   MOZ_ASSERT(aBasicShape);
-  mBasicShape = Move(aBasicShape);
+  mBasicShape = std::move(aBasicShape);
   mReferenceBox = aReferenceBox;
   mType = StyleShapeSourceType::Shape;
 }
@@ -1228,9 +1230,9 @@ nsStyleFilter::SetDropShadow(nsCSSShadowArray* aDropShadow)
 //
 nsStyleSVGReset::nsStyleSVGReset(const nsPresContext* aContext)
   : mMask(nsStyleImageLayers::LayerType::Mask)
-  , mStopColor(NS_RGB(0, 0, 0))
-  , mFloodColor(NS_RGB(0, 0, 0))
-  , mLightingColor(NS_RGB(255, 255, 255))
+  , mStopColor(StyleComplexColor::FromColor(NS_RGB(0, 0, 0)))
+  , mFloodColor(StyleComplexColor::FromColor(NS_RGB(0, 0, 0)))
+  , mLightingColor(StyleComplexColor::FromColor(NS_RGB(255, 255, 255)))
   , mStopOpacity(1.0f)
   , mFloodOpacity(1.0f)
   , mDominantBaseline(NS_STYLE_DOMINANT_BASELINE_AUTO)
@@ -2011,7 +2013,9 @@ bool
 nsStyleGradient::IsOpaque()
 {
   for (uint32_t i = 0; i < mStops.Length(); i++) {
-    if (NS_GET_A(mStops[i].mColor) < 255) {
+    if (mStops[i].mColor.MaybeTransparent()) {
+      // We don't know the foreground color here, so if it's being used
+      // we must assume it might be transparent.
       return false;
     }
   }
@@ -2100,27 +2104,7 @@ private:
 };
 
 nsStyleImageRequest::nsStyleImageRequest(Mode aModeFlags,
-                                         imgRequestProxy* aRequestProxy,
-                                         css::ImageValue* aImageValue,
-                                         ImageTracker* aImageTracker)
-  : mRequestProxy(aRequestProxy)
-  , mImageValue(aImageValue)
-  , mImageTracker(aImageTracker)
-  , mModeFlags(aModeFlags)
-  , mResolved(true)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aImageValue);
-  MOZ_ASSERT(!!(aModeFlags & Mode::Track) == !!aImageTracker);
-
-  if (mRequestProxy) {
-    MaybeTrackAndLock();
-  }
-}
-
-nsStyleImageRequest::nsStyleImageRequest(
-    Mode aModeFlags,
-    mozilla::css::ImageValue* aImageValue)
+                                         css::ImageValue* aImageValue)
   : mImageValue(aImageValue)
   , mModeFlags(aModeFlags)
   , mResolved(false)
@@ -2199,11 +2183,12 @@ nsStyleImageRequest::Resolve(
   } else {
     mDocGroup = doc->GetDocGroup();
     mImageValue->Initialize(doc);
-
-    nsCSSValue value;
-    value.SetImageValue(mImageValue);
-    mRequestProxy = value.GetPossiblyStaticImageValue(aPresContext->Document(),
-                                                      aPresContext);
+    imgRequestProxy* request = mImageValue->mRequests.GetWeak(doc);
+    if (aPresContext->IsDynamic()) {
+      mRequestProxy = request;
+    } else if (request) {
+      request->GetStaticRequest(doc, getter_AddRefs(mRequestProxy));
+    }
   }
 
   if (!mRequestProxy) {
@@ -2304,6 +2289,7 @@ CachedBorderImageData::GetSubImage(uint8_t aIndex)
 
 nsStyleImage::nsStyleImage()
   : mType(eStyleImageType_Null)
+  , mImage(nullptr)
   , mCropRect(nullptr)
 {
   MOZ_COUNT_CTOR(nsStyleImage);
@@ -2356,7 +2342,7 @@ nsStyleImage::DoCopy(const nsStyleImage& aOther)
   if (aOther.mCropRect) {
     cropRectCopy = MakeUnique<nsStyleSides>(*aOther.mCropRect.get());
   }
-  SetCropRect(Move(cropRectCopy));
+  SetCropRect(std::move(cropRectCopy));
 }
 
 void
@@ -2427,7 +2413,7 @@ nsStyleImage::SetElementId(already_AddRefed<nsAtom> aElementId)
 void
 nsStyleImage::SetCropRect(UniquePtr<nsStyleSides> aCropRect)
 {
-    mCropRect = Move(aCropRect);
+    mCropRect = std::move(aCropRect);
 }
 
 void
@@ -2907,7 +2893,7 @@ nsStyleImageLayers::operator=(nsStyleImageLayers&& aOther)
   mMaskModeCount = aOther.mMaskModeCount;
   mBlendModeCount = aOther.mBlendModeCount;
   mCompositeCount = aOther.mCompositeCount;
-  mLayers = Move(aOther.mLayers);
+  mLayers = std::move(aOther.mLayers);
 
   uint32_t count = mLayers.Length();
   if (count != aOther.mLayers.Length()) {
@@ -3111,7 +3097,7 @@ nsStyleImageLayers::Size::operator==(const Size& aOther) const
 
 nsStyleImageLayers::Layer::Layer()
   : mClip(StyleGeometryBox::BorderBox)
-  , mAttachment(NS_STYLE_IMAGELAYER_ATTACHMENT_SCROLL)
+  , mAttachment(StyleImageLayerAttachment::Scroll)
   , mBlendMode(NS_STYLE_BLEND_NORMAL)
   , mComposite(NS_STYLE_MASK_COMPOSITE_ADD)
   , mMaskMode(NS_STYLE_MASK_MODE_MATCH_SOURCE)
@@ -3174,7 +3160,7 @@ FillImageLayerList(
     ComputedValueItem nsStyleImageLayers::Layer::* aResultLocation,
     uint32_t aItemCount, uint32_t aFillCount)
 {
-  NS_PRECONDITION(aFillCount <= aLayers.Length(), "unexpected array length");
+  MOZ_ASSERT(aFillCount <= aLayers.Length(), "unexpected array length");
   for (uint32_t sourceLayer = 0, destLayer = aItemCount;
        destLayer < aFillCount;
        ++sourceLayer, ++destLayer) {
@@ -3192,7 +3178,7 @@ FillImageLayerPositionCoordList(
         Position::* aResultLocation,
     uint32_t aItemCount, uint32_t aFillCount)
 {
-  NS_PRECONDITION(aFillCount <= aLayers.Length(), "unexpected array length");
+  MOZ_ASSERT(aFillCount <= aLayers.Length(), "unexpected array length");
   for (uint32_t sourceLayer = 0, destLayer = aItemCount;
        destLayer < aFillCount;
        ++sourceLayer, ++destLayer) {
@@ -3350,7 +3336,7 @@ nsStyleBackground::HasFixedBackground(nsIFrame* aFrame) const
 {
   NS_FOR_VISIBLE_IMAGE_LAYERS_BACK_TO_FRONT(i, mImage) {
     const nsStyleImageLayers::Layer &layer = mImage.mLayers[i];
-    if (layer.mAttachment == NS_STYLE_IMAGELAYER_ATTACHMENT_FIXED &&
+    if (layer.mAttachment == StyleImageLayerAttachment::Fixed &&
         !layer.mImage.IsEmpty() &&
         !nsLayoutUtils::IsTransformed(aFrame)) {
       return true;
@@ -3362,17 +3348,13 @@ nsStyleBackground::HasFixedBackground(nsIFrame* aFrame) const
 nscolor
 nsStyleBackground::BackgroundColor(const nsIFrame* aFrame) const
 {
-  return BackgroundColor(aFrame->Style());
+  return mBackgroundColor.CalcColor(aFrame);
 }
 
 nscolor
 nsStyleBackground::BackgroundColor(mozilla::ComputedStyle* aStyle) const
 {
-  // In majority of cases, background-color should just be a numeric color.
-  // In that case, we can skip resolving StyleColor().
-  return mBackgroundColor.IsNumericColor()
-    ? mBackgroundColor.mColor
-    : aStyle->StyleColor()->CalcComplexColor(mBackgroundColor);
+  return mBackgroundColor.CalcColor(aStyle);
 }
 
 bool
@@ -3451,29 +3433,6 @@ StyleTransition::SetInitialValues()
   mDuration = 0.0;
   mDelay = 0.0;
   mProperty = eCSSPropertyExtra_all_properties;
-}
-
-void
-StyleTransition::SetUnknownProperty(nsCSSPropertyID aProperty,
-                                    const nsAString& aPropertyString)
-{
-  MOZ_ASSERT(nsCSSProps::LookupProperty(aPropertyString,
-                                        CSSEnabledState::eForAllContent) ==
-               aProperty,
-             "property and property string should match");
-  RefPtr<nsAtom> temp = NS_Atomize(aPropertyString);
-  SetUnknownProperty(aProperty, temp);
-}
-
-void
-StyleTransition::SetUnknownProperty(nsCSSPropertyID aProperty,
-                                    nsAtom* aPropertyString)
-{
-  MOZ_ASSERT(aProperty == eCSSProperty_UNKNOWN ||
-             aProperty == eCSSPropertyExtra_variable,
-             "should be either unknown or custom property");
-  mProperty = aProperty;
-  mUnknownProperty = aPropertyString;
 }
 
 bool
@@ -3716,7 +3675,7 @@ nsStyleDisplay::FinishStyle(
       // ImageValue is created, in both Gecko and Stylo. That will
       // avoid doing a mutation here.
       if (shapeImage->GetType() == eStyleImageType_Image) {
-        shapeImage->GetImageRequest()->GetImageValue()->SetCORSMode(
+        shapeImage->ImageRequest()->GetImageValue()->SetCORSMode(
           CORSMode::CORS_ANONYMOUS);
       }
       const nsStyleImage* oldShapeImage =
@@ -3902,13 +3861,7 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
       }
     }
 
-    if (HasPerspectiveStyle() != aNewData.HasPerspectiveStyle()) {
-      // A change from/to being a containing block for position:fixed.
-      hint |= nsChangeHint_UpdateContainingBlock;
-    }
-
-    if (mChildPerspective != aNewData.mChildPerspective ||
-        mTransformStyle != aNewData.mTransformStyle ||
+    if (mTransformStyle != aNewData.mTransformStyle ||
         mTransformBox != aNewData.mTransformBox) {
       transformHint |= kUpdateOverflowAndRepaintHint;
     }
@@ -3924,6 +3877,16 @@ nsStyleDisplay::CalcDifference(const nsStyleDisplay& aNewData) const
         hint |= nsChangeHint_NeutralChange;
       }
     }
+  }
+
+  if (HasPerspectiveStyle() != aNewData.HasPerspectiveStyle()) {
+    // A change from/to being a containing block for position:fixed.
+    hint |= nsChangeHint_UpdateContainingBlock |
+            nsChangeHint_UpdateOverflow |
+            nsChangeHint_RepaintFrame;
+  } else if (mChildPerspective != aNewData.mChildPerspective) {
+    hint |= nsChangeHint_UpdateOverflow |
+            nsChangeHint_RepaintFrame;
   }
 
   // Note that the HasTransformStyle() != aNewData.HasTransformStyle()
@@ -4311,7 +4274,8 @@ nsStyleContent::CalcDifference(const nsStyleContent& aNewData) const
 //
 
 nsStyleTextReset::nsStyleTextReset(const nsPresContext* aContext)
-  : mTextDecorationLine(NS_STYLE_TEXT_DECORATION_LINE_NONE)
+  : mTextOverflow()
+  , mTextDecorationLine(NS_STYLE_TEXT_DECORATION_LINE_NONE)
   , mTextDecorationStyle(NS_STYLE_TEXT_DECORATION_STYLE_SOLID)
   , mUnicodeBidi(NS_STYLE_UNICODE_BIDI_NORMAL)
   , mInitialLetterSink(0)
@@ -4322,9 +4286,15 @@ nsStyleTextReset::nsStyleTextReset(const nsPresContext* aContext)
 }
 
 nsStyleTextReset::nsStyleTextReset(const nsStyleTextReset& aSource)
+  : mTextOverflow(aSource.mTextOverflow)
+  , mTextDecorationLine(aSource.mTextDecorationLine)
+  , mTextDecorationStyle(aSource.mTextDecorationStyle)
+  , mUnicodeBidi(aSource.mUnicodeBidi)
+  , mInitialLetterSink(aSource.mInitialLetterSink)
+  , mInitialLetterSize(aSource.mInitialLetterSize)
+  , mTextDecorationColor(aSource.mTextDecorationColor)
 {
   MOZ_COUNT_CTOR(nsStyleTextReset);
-  *this = aSource;
 }
 
 nsStyleTextReset::~nsStyleTextReset()
@@ -4619,6 +4589,8 @@ nsStyleUserInterface::nsStyleUserInterface(const nsPresContext* aContext)
   , mPointerEvents(NS_STYLE_POINTER_EVENTS_AUTO)
   , mCursor(NS_STYLE_CURSOR_AUTO)
   , mCaretColor(StyleComplexColor::Auto())
+  , mScrollbarFaceColor(StyleComplexColor::Auto())
+  , mScrollbarTrackColor(StyleComplexColor::Auto())
 {
   MOZ_COUNT_CTOR(nsStyleUserInterface);
 }
@@ -4631,6 +4603,8 @@ nsStyleUserInterface::nsStyleUserInterface(const nsStyleUserInterface& aSource)
   , mCursor(aSource.mCursor)
   , mCursorImages(aSource.mCursorImages)
   , mCaretColor(aSource.mCaretColor)
+  , mScrollbarFaceColor(aSource.mScrollbarFaceColor)
+  , mScrollbarTrackColor(aSource.mScrollbarTrackColor)
 {
   MOZ_COUNT_CTOR(nsStyleUserInterface);
 }
@@ -4699,7 +4673,9 @@ nsStyleUserInterface::CalcDifference(const nsStyleUserInterface& aNewData) const
     hint |= nsChangeHint_NeutralChange;
   }
 
-  if (mCaretColor != aNewData.mCaretColor) {
+  if (mCaretColor != aNewData.mCaretColor ||
+      mScrollbarFaceColor != aNewData.mScrollbarFaceColor ||
+      mScrollbarTrackColor != aNewData.mScrollbarTrackColor) {
     hint |= nsChangeHint_RepaintFrame;
   }
 

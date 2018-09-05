@@ -1,6 +1,7 @@
 import {EventEmitter, FakePerformance, FakePrefs, GlobalOverrider} from "test/unit/utils";
 import Adapter from "enzyme-adapter-react-16";
 import {chaiAssertions} from "test/schemas/pings";
+import chaiJsonSchema from "chai-json-schema";
 import enzyme from "enzyme";
 enzyme.configure({adapter: new Adapter()});
 
@@ -31,6 +32,7 @@ const files = req.keys();
 sinon.assert.expose(assert, {prefix: ""});
 
 chai.use(chaiAssertions);
+chai.use(chaiJsonSchema);
 
 const overrider = new GlobalOverrider();
 const TEST_GLOBAL = {
@@ -159,7 +161,8 @@ const TEST_GLOBAL = {
     search: {
       init(cb) { cb(); },
       getVisibleEngines: () => [{identifier: "google"}, {identifier: "bing"}],
-      defaultEngine: {identifier: "google"}
+      defaultEngine: {identifier: "google"},
+      currentEngine: {identifier: "google", searchForm: "https://www.google.com/search?q=&ie=utf-8&oe=utf-8&client=firefox-b"}
     },
     scriptSecurityManager: {
       createNullPrincipal() {},
@@ -168,13 +171,21 @@ const TEST_GLOBAL = {
     wm: {getMostRecentWindow: () => window}
   },
   XPCOMUtils: {
-    defineLazyGetter(_1, _2, f) { f(); },
+    defineLazyGetter(object, name, f) {
+      if (object && name) {
+        object[name] = f();
+      } else {
+        f();
+      }
+    },
+    defineLazyGlobalGetters() {},
     defineLazyModuleGetter() {},
     defineLazyServiceGetter() {},
     generateQI() { return {}; }
   },
   EventEmitter,
-  ShellService: {isDefaultBrowser: () => true}
+  ShellService: {isDefaultBrowser: () => true},
+  FilterExpressions: {eval() { return Promise.resolve(true); }}
 };
 overrider.set(TEST_GLOBAL);
 

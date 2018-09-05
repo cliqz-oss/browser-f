@@ -13,9 +13,7 @@
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "Units.h"
 
-class nsDisplayListBuilder;
-class nsDisplayItem;
-class nsDisplayList;
+class nsDisplayTransform;
 
 namespace mozilla {
 namespace layers {
@@ -33,13 +31,13 @@ public:
                         const LayoutDeviceRect& aBounds = LayoutDeviceRect(),
                         const gfx::Matrix4x4* aBoundTransform = nullptr,
                         const wr::WrAnimationProperty* aAnimation = nullptr,
-                        float* aOpacityPtr = nullptr,
-                        gfx::Matrix4x4* aTransformPtr = nullptr,
-                        gfx::Matrix4x4* aPerspectivePtr = nullptr,
+                        const float* aOpacityPtr = nullptr,
+                        const gfx::Matrix4x4* aTransformPtr = nullptr,
+                        const gfx::Matrix4x4* aPerspectivePtr = nullptr,
                         const gfx::CompositionOp& aMixBlendMode = gfx::CompositionOp::OP_OVER,
                         bool aBackfaceVisible = true,
                         bool aIsPreserve3D = false,
-                        const Maybe<gfx::Matrix4x4>& aTransformForScrollData = Nothing(),
+                        const Maybe<nsDisplayTransform*>& aDeferredTransformItem = Nothing(),
                         const wr::WrClipId* aClipNodeId = nullptr,
                         bool aRasterizeLocally = false);
   // This version of the constructor should only be used at the root level
@@ -59,16 +57,30 @@ public:
     return mInheritedTransform;
   }
 
-  const Maybe<gfx::Matrix4x4>& GetTransformForScrollData() const;
+  const gfx::Matrix& GetSnappingSurfaceTransform() const
+  {
+    return mSnappingSurfaceTransform;
+  }
+
+  const Maybe<nsDisplayTransform*>& GetDeferredTransformItem() const;
 
   bool AffectsClipPositioning() const { return mAffectsClipPositioning; }
+  Maybe<wr::WrClipId> ReferenceFrameId() const { return mReferenceFrameId; }
 
 private:
   wr::DisplayListBuilder* mBuilder;
   gfx::Size mScale;
   gfx::Matrix mInheritedTransform;
+
+  // The "snapping surface" defines the space that we want to snap in.
+  // You can think of it as the nearest physical surface.
+  // Animated transforms create a new snapping surface, so that changes to their transform don't affect the snapping of their contents.
+  // Non-animated transforms do *not* create a new snapping surface,
+  // so that for example the existence of a non-animated identity transform does not affect snapping.
+  gfx::Matrix mSnappingSurfaceTransform;
   bool mAffectsClipPositioning;
-  Maybe<gfx::Matrix4x4> mTransformForScrollData;
+  Maybe<wr::WrClipId> mReferenceFrameId;
+  Maybe<nsDisplayTransform*> mDeferredTransformItem;
   bool mIsPreserve3D;
   bool mRasterizeLocally;
 };

@@ -35,7 +35,6 @@ from ..frontend.data import (
     ComputedFlags,
     ConfigFileSubstitution,
     ContextDerived,
-    ContextWrapped,
     Defines,
     DirectoryTraversal,
     ExternalLibrary,
@@ -51,7 +50,6 @@ from ..frontend.data import (
     HostSources,
     InstallationTarget,
     JARManifest,
-    JavaJarData,
     Library,
     Linkable,
     LocalInclude,
@@ -535,6 +533,10 @@ class RecursiveMakeBackend(CommonBackend):
 
             first_output = outputs[0]
             dep_file = "%s.pp" % first_output
+            # The stub target file needs to go in MDDEPDIR so that it doesn't
+            # get written into generated Android resource directories, breaking
+            # Gradle tooling and/or polluting the Android packages.
+            stub_file = "$(MDDEPDIR)/%s.stub" % first_output
 
             if obj.inputs:
                 if obj.localized:
@@ -564,21 +566,6 @@ class RecursiveMakeBackend(CommonBackend):
             if needs_AB_rCD:
                 backend_file.write_once('include $(topsrcdir)/config/AB_rCD.mk\n')
 
-            # If we're doing this during export that means we need it during
-            # compile, but if we have an artifact build we don't run compile,
-            # so we can skip it altogether or let the rule run as the result of
-            # something depending on it.
-            if tier != 'export' or not self.environment.is_artifact_build:
-                if not needs_AB_rCD:
-                    # Android localized resources have special Makefile
-                    # handling.
-                    backend_file.write('%s:: %s\n' % (tier, first_output))
-            for output in outputs:
-                if output != first_output:
-                    backend_file.write('%s: %s ;\n' % (output, first_output))
-                backend_file.write('GARBAGE += %s\n' % output)
-            backend_file.write('EXTRA_MDDEPEND_FILES += %s\n' % dep_file)
-
             force = ''
             if obj.force:
                 force = ' FORCE'
@@ -586,11 +573,28 @@ class RecursiveMakeBackend(CommonBackend):
                 force = ' $(if $(IS_LANGUAGE_REPACK),FORCE)'
 
             if obj.script:
-                backend_file.write("""{output}: {script}{inputs}{backend}{force}
-\t$(REPORT_BUILD)
-\t$(call py_action,file_generate,{locale}{script} {method} {output} $(MDDEPDIR)/{dep_file}{inputs}{flags})
+                # If we're doing this during export that means we need it during
+                # compile, but if we have an artifact build we don't run compile,
+                # so we can skip it altogether or let the rule run as the result of
+                # something depending on it.
+                if tier != 'export' or not self.environment.is_artifact_build:
+                    if not needs_AB_rCD:
+                        # Android localized resources have special Makefile
+                        # handling.
+                        backend_file.write('%s:: %s\n' % (tier, stub_file))
+                for output in outputs:
+                    backend_file.write('%s: %s ;\n' % (output, stub_file))
+                    backend_file.write('GARBAGE += %s\n' % output)
+                backend_file.write('GARBAGE += %s\n' % stub_file)
+                backend_file.write('EXTRA_MDDEPEND_FILES += %s\n' % dep_file)
 
-""".format(output=first_output,
+                backend_file.write("""{stub}: {script}{inputs}{backend}{force}
+\t$(REPORT_BUILD)
+\t$(call py_action,file_generate,{locale}{script} {method} {output} $(MDDEPDIR)/{dep_file} {stub}{inputs}{flags})
+\t@$(TOUCH) $@
+
+""".format(stub=stub_file,
+           output=first_output,
            dep_file=dep_file,
            inputs=' ' + ' '.join(inputs) if inputs else '',
            flags=' ' + ' '.join(shell_quote(f) for f in obj.flags) if obj.flags else '',
@@ -629,7 +633,7 @@ class RecursiveMakeBackend(CommonBackend):
             self._no_skip['syms'].add(backend_file.relobjdir)
 
         elif isinstance(obj, HostProgram):
-            self._process_host_program(obj.program, backend_file)
+            self._process_host_program(obj, backend_file)
             self._process_linked_libraries(obj, backend_file)
 
         elif isinstance(obj, SimpleProgram):
@@ -652,17 +656,6 @@ class RecursiveMakeBackend(CommonBackend):
 
         elif isinstance(obj, InstallationTarget):
             self._process_installation_target(obj, backend_file)
-
-        elif isinstance(obj, ContextWrapped):
-            # Process a rich build system object from the front-end
-            # as-is.  Please follow precedent and handle CamelCaseData
-            # in a function named _process_camel_case_data.  At some
-            # point in the future, this unwrapping process may be
-            # automated.
-            if isinstance(obj.wrapped, JavaJarData):
-                self._process_java_jar_data(obj.wrapped, backend_file)
-            else:
-                return False
 
         elif isinstance(obj, RustLibrary):
             self.backend_input_files.add(obj.cargo_file)
@@ -1052,8 +1045,6 @@ class RecursiveMakeBackend(CommonBackend):
             build_files.add_optional_exists(p)
 
         for idl in manager.idls.values():
-            self._install_manifests['dist_idl'].add_link(idl['source'],
-                idl['basename'])
             self._install_manifests['dist_include'].add_optional_exists('%s.h'
                 % idl['root'])
 
@@ -1065,9 +1056,11 @@ class RecursiveMakeBackend(CommonBackend):
         xpt_modules = sorted(modules.keys())
 
         mk = Makefile()
+        all_directories = set()
 
         for module in xpt_modules:
-            install_target, sources = modules[module]
+            sources, directories = modules[module]
+            all_directories |= directories
             deps = sorted(sources)
 
             # It may seem strange to have the .idl files listed as
@@ -1083,6 +1076,8 @@ class RecursiveMakeBackend(CommonBackend):
             mk.add_statement('%s_deps = %s' % (module, ' '.join(deps)))
 
             build_files.add_optional_exists('%s.xpt' % module)
+
+        mk.add_statement('all_idl_dirs = %s' % ' '.join(sorted(all_directories)))
 
         rules = StringIO()
         mk.dump(rules, removal_guard=False)
@@ -1111,7 +1106,8 @@ class RecursiveMakeBackend(CommonBackend):
             backend_file.write('PROG_IS_C_ONLY_%s := 1\n' % obj.program)
 
     def _process_host_program(self, program, backend_file):
-        backend_file.write('HOST_PROGRAM = %s\n' % program)
+        backend_file.write('HOST_PROGRAM = %s\n' %
+                           self._pretty_path(program.output_path, backend_file))
 
     def _process_rust_program_base(self, obj, backend_file,
                                    target_variable,
@@ -1236,23 +1232,6 @@ class RecursiveMakeBackend(CommonBackend):
         for var, flags in computed_flags.get_flags():
             backend_file.write('COMPUTED_%s += %s\n' % (var,
                                                         ' '.join(make_quote(shell_quote(f)) for f in flags)))
-
-    def _process_java_jar_data(self, jar, backend_file):
-        target = jar.name
-        backend_file.write('JAVA_JAR_TARGETS += %s\n' % target)
-        backend_file.write('%s_DEST := %s.jar\n' % (target, jar.name))
-        if jar.sources:
-            backend_file.write('%s_JAVAFILES := %s\n' %
-                (target, ' '.join(jar.sources)))
-        if jar.generated_sources:
-            backend_file.write('%s_PP_JAVAFILES := %s\n' %
-                (target, ' '.join(jar.generated_sources)))
-        if jar.extra_jars:
-            backend_file.write('%s_EXTRA_JARS := %s\n' %
-                (target, ' '.join(sorted(set(jar.extra_jars)))))
-        if jar.javac_flags:
-            backend_file.write('%s_JAVAC_FLAGS := %s\n' %
-                (target, ' '.join(jar.javac_flags)))
 
     def _process_shared_library(self, libdef, backend_file):
         backend_file.write_once('LIBRARY_NAME := %s\n' % libdef.basename)

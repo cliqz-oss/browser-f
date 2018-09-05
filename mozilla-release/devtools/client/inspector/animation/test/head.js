@@ -190,7 +190,7 @@ const clickOnCurrentTimeScrubberController = async function(animationInspector,
                                                             panel,
                                                             mouseDownPosition,
                                                             mouseMovePosition) {
-  const controllerEl = panel.querySelector(".current-time-scrubber-controller");
+  const controllerEl = panel.querySelector(".current-time-scrubber-area");
   const bounds = controllerEl.getBoundingClientRect();
   const mousedonwX = bounds.width * mouseDownPosition;
 
@@ -277,8 +277,10 @@ const clickOnTargetNode = async function(animationInspector, panel, index) {
   const targetEl = panel.querySelectorAll(".animation-target .objectBox")[index];
   targetEl.scrollIntoView(false);
   const onHighlight = animationInspector.inspector.toolbox.once("node-highlight");
+  const onAnimationTargetUpdated = animationInspector.once("animation-target-rendered");
   EventUtils.synthesizeMouseAtCenter(targetEl, {}, targetEl.ownerGlobal);
-  await waitForRendering(animationInspector);
+  await onAnimationTargetUpdated;
+  await waitForSummaryAndDetail(animationInspector);
   await onHighlight;
 };
 
@@ -337,7 +339,7 @@ const dragOnCurrentTimeScrubberController = async function(animationInspector,
                                                             panel,
                                                             mouseDownPosition,
                                                             mouseMovePosition) {
-  const controllerEl = panel.querySelector(".current-time-scrubber-controller");
+  const controllerEl = panel.querySelector(".current-time-scrubber-area");
   const bounds = controllerEl.getBoundingClientRect();
   const mousedonwX = bounds.width * mouseDownPosition;
   const mousemoveX = bounds.width * mouseMovePosition;
@@ -368,7 +370,7 @@ const dragOnCurrentTimeScrubberController = async function(animationInspector,
  *         }
  */
 const getDurationAndRate = function(animationInspector, panel, pixels) {
-  const controllerEl = panel.querySelector(".current-time-scrubber-controller");
+  const controllerEl = panel.querySelector(".current-time-scrubber-area");
   const bounds = controllerEl.getBoundingClientRect();
   const duration =
     animationInspector.state.timeScale.getDuration() / bounds.width * pixels;
@@ -544,7 +546,15 @@ const waitForAnimationDetail = async function(animationInspector) {
  * @param {AnimationInspector} animationInspector
  */
 const waitForAllAnimationTargets = async function(animationInspector) {
-  for (let i = 0; i < animationInspector.state.animations.length; i++) {
+  const panel =
+    animationInspector.inspector.panelWin.document.getElementById("animation-container");
+  const objectBoxCount = panel.querySelectorAll(".animation-target .objectBox").length;
+
+  if (objectBoxCount === animationInspector.state.animations.length) {
+    return;
+  }
+
+  for (let i = 0; i < animationInspector.state.animations.length - objectBoxCount; i++) {
     await animationInspector.once("animation-target-rendered");
   }
 };
@@ -752,4 +762,76 @@ function findStopElement(linearGradientEl, offset) {
   }
 
   return null;
+}
+
+/**
+ * Do test for keyframes-graph_computed-value-path-1/2.
+ *
+ * @param {Array} testData
+ */
+async function testKeyframesGraphComputedValuePath(testData) {
+  await addTab(URL_ROOT + "doc_multi_keyframes.html");
+  await removeAnimatedElementsExcept(testData.map(t => `.${ t.targetClass }`));
+  const { animationInspector, panel } = await openAnimationInspector();
+
+  for (const { properties, targetClass } of testData) {
+    info(`Checking keyframes graph for ${ targetClass }`);
+    await clickOnAnimationByTargetSelector(animationInspector,
+                                           panel, `.${ targetClass }`);
+
+    for (const property of properties) {
+      const {
+        name,
+        computedValuePathClass,
+        expectedPathSegments,
+        expectedStopColors,
+      } = property;
+
+      const testTarget = `${ name } in ${ targetClass }`;
+      info(`Checking keyframes graph for ${ testTarget }`);
+      info(`Checking keyframes graph path existence for ${ testTarget }`);
+      const keyframesGraphPathEl = panel.querySelector(`.${ name }`);
+      ok(keyframesGraphPathEl,
+         `The keyframes graph path element of ${ testTarget } should be existence`);
+
+      info(`Checking computed value path existence for ${ testTarget }`);
+      const computedValuePathEl =
+        keyframesGraphPathEl.querySelector(`.${ computedValuePathClass }`);
+      ok(computedValuePathEl,
+         `The computed value path element of ${ testTarget } should be existence`);
+
+      info(`Checking path segments for ${ testTarget }`);
+      const pathEl = computedValuePathEl.querySelector("path");
+      ok(pathEl, `The <path> element of ${ testTarget } should be existence`);
+      assertPathSegments(pathEl, true, expectedPathSegments);
+
+      if (!expectedStopColors) {
+        continue;
+      }
+
+      info(`Checking linearGradient for ${ testTarget }`);
+      const linearGradientEl = computedValuePathEl.querySelector("linearGradient");
+      ok(linearGradientEl,
+         `The <linearGradientEl> element of ${ testTarget } should be existence`);
+
+      for (const expectedStopColor of expectedStopColors) {
+        const { offset, color } = expectedStopColor;
+        assertLinearGradient(linearGradientEl, offset, color);
+      }
+    }
+  }
+}
+
+/**
+ * Check the adjusted current time and created time from specified two animations.
+ *
+ * @param {AnimationPlayerFront.state} animation1
+ * @param {AnimationPlayerFront.state} animation2
+ */
+function checkAdjustingTheTime(animation1, animation2) {
+  const adjustedCurrentTimeDiff = animation2.currentTime / animation2.playbackRate
+                                  - animation1.currentTime / animation1.playbackRate;
+  const createdTimeDiff = animation1.createdTime - animation2.createdTime;
+  ok(Math.abs(adjustedCurrentTimeDiff - createdTimeDiff) < 0.1,
+     "Adjusted time is correct");
 }

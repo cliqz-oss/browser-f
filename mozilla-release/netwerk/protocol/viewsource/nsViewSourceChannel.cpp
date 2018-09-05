@@ -837,6 +837,13 @@ nsViewSourceChannel::GetIsTrackingResource(bool* aIsTrackingResource)
 }
 
 NS_IMETHODIMP
+nsViewSourceChannel::OverrideTrackingResource(bool aIsTracking)
+{
+  return !mHttpChannel ? NS_ERROR_NULL_POINTER :
+      mHttpChannel->OverrideTrackingResource(aIsTracking);
+}
+
+NS_IMETHODIMP
 nsViewSourceChannel::GetRequestMethod(nsACString & aRequestMethod)
 {
     return !mHttpChannel ? NS_ERROR_NULL_POINTER :
@@ -1126,11 +1133,12 @@ nsViewSourceChannel::SetAltDataForChild(bool aIsForChild)
 }
 
 NS_IMETHODIMP
-nsViewSourceChannel::LogBlockedCORSRequest(const nsAString& aMessage)
+nsViewSourceChannel::LogBlockedCORSRequest(const nsAString& aMessage,
+                                           const nsACString& aCategory)
 {
   if (!mHttpChannel) {
     NS_WARNING("nsViewSourceChannel::LogBlockedCORSRequest mHttpChannel is null");
     return NS_ERROR_UNEXPECTED;
   }
-  return mHttpChannel->LogBlockedCORSRequest(aMessage);
+  return mHttpChannel->LogBlockedCORSRequest(aMessage, aCategory);
 }

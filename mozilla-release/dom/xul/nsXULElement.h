@@ -18,7 +18,6 @@
 #include "nsAtom.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "nsIControllers.h"
-#include "nsIDOMNode.h"
 #include "nsIDOMXULMultSelectCntrlEl.h"
 #include "nsIURI.h"
 #include "nsLayoutCID.h"
@@ -150,7 +149,8 @@ public:
           mHasIdAttribute(false),
           mHasClassAttribute(false),
           mHasStyleAttribute(false),
-          mAttributes(nullptr)
+          mAttributes(nullptr),
+          mIsAtom(nullptr)
     {
     }
 
@@ -193,6 +193,7 @@ public:
     uint32_t                 mHasClassAttribute:1;
     uint32_t                 mHasStyleAttribute:1;
     nsXULPrototypeAttribute* mAttributes;         // [OWNER]
+    RefPtr<nsAtom>           mIsAtom;
 };
 
 namespace mozilla {
@@ -332,8 +333,7 @@ ASSERT_NODE_FLAGS_SPACE(ELEMENT_TYPE_SPECIFIC_BITS_OFFSET + 2);
 
 #undef XUL_ELEMENT_FLAG_BIT
 
-class nsXULElement : public nsStyledElement,
-                     public nsIDOMNode
+class nsXULElement : public nsStyledElement
 {
 protected:
     // Use Construct to construct elements instead of this constructor.
@@ -368,7 +368,6 @@ public:
                                 nsIContent* aBindingParent,
                                 bool aCompileEventHandlers) override;
     virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
-    virtual void RemoveChildAt_Deprecated(uint32_t aIndex, bool aNotify) override;
     virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
     virtual void DestroyContent() override;
 
@@ -410,8 +409,6 @@ public:
     {
       mBindingParent = aBindingParent;
     }
-
-    virtual nsIDOMNode* AsDOMNode() override { return this; }
 
     virtual bool IsEventAttributeNameInternal(nsAtom* aName) override;
 
@@ -668,9 +665,9 @@ protected:
 
     /**
      * The nearest enclosing content node with a binding
-     * that created us. [Weak]
+     * that created us.
      */
-    nsIContent*                         mBindingParent;
+    nsCOMPtr<nsIContent> mBindingParent;
 
     /**
      * Abandon our prototype linkage, and copy all attributes locally

@@ -541,14 +541,13 @@ PresentationService::HandleSessionRequest(nsIPresentationSessionRequest* aReques
     ctrlChannel->Disconnect(NS_ERROR_DOM_OPERATION_ERR);
     return info->ReplyError(NS_ERROR_DOM_OPERATION_ERR);
   }
-  nsCOMPtr<nsISupports> promise;
+  RefPtr<Promise> promise;
   rv = glue->SendRequest(url, sessionId, device, getter_AddRefs(promise));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     ctrlChannel->Disconnect(rv);
     return info->ReplyError(NS_ERROR_DOM_OPERATION_ERR);
   }
-  nsCOMPtr<Promise> realPromise = do_QueryInterface(promise);
-  static_cast<PresentationPresentingInfo*>(info.get())->SetPromise(realPromise);
+  static_cast<PresentationPresentingInfo*>(info.get())->SetPromise(promise);
 
   return NS_OK;
 }
@@ -809,7 +808,7 @@ PresentationService::SendSessionBinaryMsg(const nsAString& aSessionId,
 NS_IMETHODIMP
 PresentationService::SendSessionBlob(const nsAString& aSessionId,
                                      uint8_t aRole,
-                                     nsIDOMBlob* aBlob)
+                                     Blob* aBlob)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!aSessionId.IsEmpty());

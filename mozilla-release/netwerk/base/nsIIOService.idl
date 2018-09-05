@@ -9,9 +9,10 @@ interface nsIProtocolHandler;
 interface nsIChannel;
 interface nsIURI;
 interface nsIFile;
-interface nsIDOMNode;
 interface nsIPrincipal;
 interface nsILoadInfo;
+
+webidl Node;
 
 %{C++
 #include "mozilla/Maybe.h"
@@ -101,7 +102,7 @@ interface nsIIOService : nsISupports
      * systemPrincipal as the loadingPrincipal.
      */
     nsIChannel newChannelFromURI2(in nsIURI aURI,
-                                  in nsIDOMNode aLoadingNode,
+                                  in Node aLoadingNode,
                                   in nsIPrincipal aLoadingPrincipal,
                                   in nsIPrincipal aTriggeringPrincipal,
                                   in unsigned long aSecurityFlags,
@@ -109,7 +110,7 @@ interface nsIIOService : nsISupports
 
     [noscript, nostdcall, notxpcom]
     nsresult NewChannelFromURIWithClientAndController(in nsIURI aURI,
-                                                      in nsIDOMNode aLoadingNode,
+                                                      in Node aLoadingNode,
                                                       in nsIPrincipal aLoadingPrincipal,
                                                       in nsIPrincipal aTriggeringPrincipal,
                                                       in const_MaybeClientInfoRef aLoadingClientInfo,
@@ -130,33 +131,11 @@ interface nsIIOService : nsISupports
     nsIChannel newChannel2(in AUTF8String aSpec,
                            in string aOriginCharset,
                            in nsIURI aBaseURI,
-                           in nsIDOMNode aLoadingNode,
+                           in Node aLoadingNode,
                            in nsIPrincipal aLoadingPrincipal,
                            in nsIPrincipal aTriggeringPrincipal,
                            in unsigned long aSecurityFlags,
                            in unsigned long aContentPolicyType);
-
-    /**
-     * ***** DEPRECATED *****
-     * Please use NewChannelFromURI2()
-     *
-     * Creates a channel for a given URI.
-     *
-     * @param aURI nsIURI from which to make a channel
-     * @return reference to the new nsIChannel object
-     */
-    nsIChannel newChannelFromURI(in nsIURI aURI);
-
-    /**
-     * ***** DEPRECATED *****
-     * Please use newChannel2().
-     *
-     * Equivalent to newChannelFromURI(newURI(...))
-     */
-    nsIChannel newChannel(in AUTF8String aSpec,
-                          in string aOriginCharset,
-                          in nsIURI aBaseURI);
-
 
     /**
      * Returns true if networking is in "offline" mode. When in offline mode, 
@@ -250,7 +229,7 @@ interface nsIIOService : nsISupports
     nsIChannel newChannelFromURIWithProxyFlags2(in nsIURI aURI,
                                                 in nsIURI aProxyURI,
                                                 in unsigned long aProxyFlags,
-                                                in nsIDOMNode aLoadingNode,
+                                                in Node aLoadingNode,
                                                 in nsIPrincipal aLoadingPrincipal,
                                                 in nsIPrincipal aTriggeringPrincipal,
                                                 in unsigned long aSecurityFlags,

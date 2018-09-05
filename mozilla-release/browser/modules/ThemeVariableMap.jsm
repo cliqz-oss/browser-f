@@ -27,23 +27,14 @@ const ThemeVariableMap = [
     lwtProperty: "tab_line",
     optionalElementID: "tabbrowser-tabs"
   }],
+  ["--lwt-background-tab-separator-color", {
+    lwtProperty: "tab_background_separator",
+  }],
   ["--toolbar-bgcolor", {
     lwtProperty: "toolbarColor"
   }],
   ["--toolbar-color", {
     lwtProperty: "toolbar_text"
-  }],
-  ["--lwt-toolbar-field-border-color", {
-    lwtProperty: "toolbar_field_border"
-  }],
-  ["--lwt-toolbar-field-focus", {
-    lwtProperty: "toolbar_field_focus"
-  }],
-  ["--lwt-toolbar-field-focus-color", {
-    lwtProperty: "toolbar_field_text_focus"
-  }],
-  ["--toolbar-field-focus-border-color", {
-    lwtProperty: "toolbar_field_border_focus"
   }],
   ["--urlbar-separator-color", {
     lwtProperty: "toolbar_field_separator"

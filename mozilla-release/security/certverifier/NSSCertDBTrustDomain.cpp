@@ -10,7 +10,6 @@
 
 #include "ExtendedValidation.h"
 #include "NSSErrorsService.h"
-#include "OCSPRequestor.h"
 #include "OCSPVerificationTrustDomain.h"
 #include "PublicKeyPinningService.h"
 #include "cert.h"
@@ -22,8 +21,9 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Unused.h"
 #include "nsCRTGlue.h"
-#include "nsNSSCertificate.h"
+#include "nsNSSCertHelper.h"
 #include "nsNSSCertValidity.h"
+#include "nsNSSCertificate.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
 #include "nss.h"
@@ -53,7 +53,6 @@ NSSCertDBTrustDomain::NSSCertDBTrustDomain(SECTrustType certDBTrustType,
                                            OCSPFetching ocspFetching,
                                            OCSPCache& ocspCache,
              /*optional but shouldn't be*/ void* pinArg,
-                                           CertVerifier::OcspGetConfig ocspGETConfig,
                                            TimeDuration ocspTimeoutSoft,
                                            TimeDuration ocspTimeoutHard,
                                            uint32_t certShortLifetimeInDays,
@@ -71,7 +70,6 @@ NSSCertDBTrustDomain::NSSCertDBTrustDomain(SECTrustType certDBTrustType,
   , mOCSPFetching(ocspFetching)
   , mOCSPCache(ocspCache)
   , mPinArg(pinArg)
-  , mOCSPGetConfig(ocspGETConfig)
   , mOCSPTimeoutSoft(ocspTimeoutSoft)
   , mOCSPTimeoutHard(ocspTimeoutHard)
   , mCertShortLifetimeInDays(certShortLifetimeInDays)
@@ -305,20 +303,19 @@ NSSCertDBTrustDomain::GetOCSPTimeout() const
 
 // Copied and modified from CERT_GetOCSPAuthorityInfoAccessLocation and
 // CERT_GetGeneralNameByType. Returns a non-Result::Success result on error,
-// Success with url == nullptr when an OCSP URI was not found, and Success with
-// url != nullptr when an OCSP URI was found. The output url will be owned
-// by the arena.
+// Success with result.IsVoid() == true when an OCSP URI was not found, and
+// Success with result.IsVoid() == false when an OCSP URI was found.
 static Result
 GetOCSPAuthorityInfoAccessLocation(const UniquePLArenaPool& arena,
                                    Input aiaExtension,
-                                   /*out*/ char const*& url)
+                                   /*out*/ nsCString& result)
 {
   MOZ_ASSERT(arena.get());
   if (!arena.get()) {
     return Result::FATAL_ERROR_INVALID_ARGS;
   }
 
-  url = nullptr;
+  result.Assign(VoidCString());
   SECItem aiaExtensionSECItem = UnsafeMapInputToSECItem(aiaExtension);
   CERTAuthInfoAccess** aia =
     CERT_DecodeAuthInfoAccessExtension(arena.get(), &aiaExtensionSECItem);
@@ -341,15 +338,9 @@ GetOCSPAuthorityInfoAccessLocation(const UniquePLArenaPool& arena,
             // Reject embedded nulls. (NSS doesn't do this)
             return Result::ERROR_CERT_BAD_ACCESS_LOCATION;
           }
-          // Copy the non-null-terminated SECItem into a null-terminated string.
-          char* nullTerminatedURL(
-            static_cast<char*>(PORT_ArenaAlloc(arena.get(), location.len + 1)));
-          if (!nullTerminatedURL) {
-            return Result::FATAL_ERROR_NO_MEMORY;
-          }
-          memcpy(nullTerminatedURL, location.data, location.len);
-          nullTerminatedURL[location.len] = 0;
-          url = nullTerminatedURL;
+          result.Assign(nsDependentCSubstring(
+                          reinterpret_cast<const char*>(location.data),
+                          location.len));
           return Success;
         }
         current = CERT_GetNextGeneralName(current);
@@ -537,16 +528,16 @@ NSSCertDBTrustDomain::CheckRevocation(EndEntityOrCA endEntityOrCA,
   }
 
   Result rv;
-  const char* url = nullptr; // owned by the arena
+  nsCString aiaLocation(VoidCString());
 
   if (aiaExtension) {
-    rv = GetOCSPAuthorityInfoAccessLocation(arena, *aiaExtension, url);
+    rv = GetOCSPAuthorityInfoAccessLocation(arena, *aiaExtension, aiaLocation);
     if (rv != Success) {
       return rv;
     }
   }
 
-  if (!url) {
+  if (aiaLocation.IsVoid()) {
     if (mOCSPFetching == FetchOCSPForEV ||
         cachedResponseResult == Result::ERROR_OCSP_UNKNOWN_CERT) {
       return Result::ERROR_OCSP_UNKNOWN_CERT;
@@ -567,34 +558,30 @@ NSSCertDBTrustDomain::CheckRevocation(EndEntityOrCA endEntityOrCA,
 
   // Only request a response if we didn't have a cached indication of failure
   // (don't keep requesting responses from a failing server).
-  Input response;
   bool attemptedRequest;
+  Vector<uint8_t> ocspResponse;
+  Input response;
   if (cachedResponseResult == Success ||
       cachedResponseResult == Result::ERROR_OCSP_UNKNOWN_CERT ||
       cachedResponseResult == Result::ERROR_OCSP_OLD_RESPONSE) {
-    uint8_t ocspRequest[OCSP_REQUEST_MAX_LENGTH];
+    uint8_t ocspRequestBytes[OCSP_REQUEST_MAX_LENGTH];
     size_t ocspRequestLength;
-    rv = CreateEncodedOCSPRequest(*this, certID, ocspRequest,
+    rv = CreateEncodedOCSPRequest(*this, certID, ocspRequestBytes,
                                   ocspRequestLength);
     if (rv != Success) {
       return rv;
     }
-    SECItem ocspRequestItem = {
-      siBuffer,
-      ocspRequest,
-      static_cast<unsigned int>(ocspRequestLength)
-    };
-    // Owned by arena
-    SECItem* responseSECItem = nullptr;
-    Result tempRV =
-      DoOCSPRequest(arena, url, mOriginAttributes, &ocspRequestItem,
-                    GetOCSPTimeout(),
-                    mOCSPGetConfig == CertVerifier::ocspGetEnabled,
-                    responseSECItem);
-    MOZ_ASSERT((tempRV != Success) || responseSECItem);
+    Vector<uint8_t> ocspRequest;
+    if (!ocspRequest.append(ocspRequestBytes, ocspRequestLength)) {
+      return Result::FATAL_ERROR_NO_MEMORY;
+    }
+    Result tempRV = DoOCSPRequest(aiaLocation, mOriginAttributes,
+                                  std::move(ocspRequest), GetOCSPTimeout(),
+                                  ocspResponse);
+    MOZ_ASSERT((tempRV != Success) || ocspResponse.length() > 0);
     if (tempRV != Success) {
       rv = tempRV;
-    } else if (response.Init(responseSECItem->data, responseSECItem->len)
+    } else if (response.Init(ocspResponse.begin(), ocspResponse.length())
                  != Success) {
       rv = Result::ERROR_OCSP_MALFORMED_RESPONSE; // too big
     }
@@ -797,7 +784,7 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
   UniqueCERTCertList certListCopy = nsNSSCertList::DupCertList(certList);
 
   // This adopts the list
-  RefPtr<nsNSSCertList> nssCertList = new nsNSSCertList(Move(certListCopy));
+  RefPtr<nsNSSCertList> nssCertList = new nsNSSCertList(std::move(certListCopy));
   if (!nssCertList) {
     return Result::FATAL_ERROR_LIBRARY_FAILURE;
   }
@@ -891,7 +878,8 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
   // handshake. To determine this, we check mHostname: If it isn't set, this is
   // not TLS, so don't run the algorithm.
   if (mHostname && CertDNIsInList(root.get(), RootSymantecDNs) &&
-      mDistrustedCAPolicy == DistrustedCAPolicy::DistrustSymantecRoots) {
+      ((mDistrustedCAPolicy & DistrustedCAPolicy::DistrustSymantecRoots) ||
+       (mDistrustedCAPolicy & DistrustedCAPolicy::DistrustSymantecRootsRegardlessOfDate))) {
 
     rootCert = nullptr; // Clear the state for Segment...
     nsCOMPtr<nsIX509CertList> intCerts;
@@ -907,8 +895,13 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
     // (new Date("2016-06-01T00:00:00Z")).getTime() * 1000
     static const PRTime JUNE_1_2016 = 1464739200000000;
 
+    PRTime permitAfterDate = JUNE_1_2016;
+    if (mDistrustedCAPolicy & DistrustedCAPolicy::DistrustSymantecRootsRegardlessOfDate) {
+      permitAfterDate = 0; // 0 indicates there is no permitAfterDate
+    }
+
     bool isDistrusted = false;
-    nsrv = CheckForSymantecDistrust(intCerts, eeCert, JUNE_1_2016,
+    nsrv = CheckForSymantecDistrust(intCerts, eeCert, permitAfterDate,
                                     RootAppleAndGoogleSPKIs, isDistrusted);
     if (NS_FAILED(nsrv)) {
       return Result::FATAL_ERROR_LIBRARY_FAILURE;
@@ -919,7 +912,7 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time,
     }
   }
 
-  mBuiltChain = Move(certList);
+  mBuiltChain = std::move(certList);
 
   return Success;
 }
@@ -1187,13 +1180,13 @@ DisableMD5()
 }
 
 bool
-LoadLoadableRoots(const nsCString& dir, const nsCString& modNameUTF8)
+LoadLoadableRoots(const nsCString& dir)
 {
   // If a module exists with the same name, make a best effort attempt to delete
   // it. Note that it isn't possible to delete the internal module, so checking
   // the return value would be detrimental in that case.
   int unusedModType;
-  Unused << SECMOD_DeleteModule(modNameUTF8.get(), &unusedModType);
+  Unused << SECMOD_DeleteModule(kRootModuleName, &unusedModType);
   // Some NSS command-line utilities will load a roots module under the name
   // "Root Certs" if there happens to be a `DLL_PREFIX "nssckbi" DLL_SUFFIX`
   // file in the directory being operated on. In some cases this can cause us to
@@ -1212,7 +1205,7 @@ LoadLoadableRoots(const nsCString& dir, const nsCString& modNameUTF8)
   fullLibraryPath.ReplaceSubstring("\"", "\\\"");
 
   nsAutoCString pkcs11ModuleSpec("name=\"");
-  pkcs11ModuleSpec.Append(modNameUTF8);
+  pkcs11ModuleSpec.Append(kRootModuleName);
   pkcs11ModuleSpec.AppendLiteral("\" library=\"");
   pkcs11ModuleSpec.Append(fullLibraryPath);
   pkcs11ModuleSpec.AppendLiteral("\"");
@@ -1232,10 +1225,9 @@ LoadLoadableRoots(const nsCString& dir, const nsCString& modNameUTF8)
 }
 
 void
-UnloadLoadableRoots(const char* modNameUTF8)
+UnloadLoadableRoots()
 {
-  MOZ_ASSERT(modNameUTF8);
-  UniqueSECMODModule rootsModule(SECMOD_FindModule(modNameUTF8));
+  UniqueSECMODModule rootsModule(SECMOD_FindModule(kRootModuleName));
 
   if (rootsModule) {
     SECMOD_UnloadUserModule(rootsModule.get());

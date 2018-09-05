@@ -76,9 +76,8 @@
                 disabled="true"
                 />
       </hbox>
-      <hbox id="addEnginesBox" pack="start">
+      <vbox id="addEnginesBox" pack="start">
         <label id="addEngines" class="text-link" data-l10n-id="search-find-more-link"></label>
-        <html:br/>
         <label data-l10n-id="search-find-more-desc"/>
-      </hbox>
+      </vbox>
     </groupbox>

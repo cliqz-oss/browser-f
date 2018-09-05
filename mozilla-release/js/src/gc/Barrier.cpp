@@ -12,8 +12,8 @@
 #include "js/HashTable.h"
 #include "js/Value.h"
 #include "vm/EnvironmentObject.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSObject.h"
+#include "vm/Realm.h"
 #include "vm/SharedArrayObject.h"
 #include "vm/SymbolType.h"
 #include "wasm/WasmJS.h"
@@ -24,7 +24,7 @@ bool
 RuntimeFromMainThreadIsHeapMajorCollecting(JS::shadow::Zone* shadowZone)
 {
     MOZ_ASSERT(CurrentThreadCanAccessRuntime(shadowZone->runtimeFromMainThread()));
-    return JS::CurrentThreadIsHeapMajorCollecting();
+    return JS::RuntimeHeapIsMajorCollecting();
 }
 
 #ifdef DEBUG

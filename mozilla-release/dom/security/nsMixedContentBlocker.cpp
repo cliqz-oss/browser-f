@@ -275,7 +275,7 @@ nsMixedContentBlocker::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
                                               uint32_t aFlags,
                                               nsIAsyncVerifyRedirectCallback* aCallback)
 {
-  nsAsyncRedirectAutoCallback autoCallback(aCallback);
+  mozilla::net::nsAsyncRedirectAutoCallback autoCallback(aCallback);
 
   if (!aOldChannel) {
     NS_ERROR("No channel when evaluating mixed content!");
@@ -359,13 +359,13 @@ nsMixedContentBlocker::ShouldLoad(nsIURI* aContentLocation,
                                   const nsACString& aMimeGuess,
                                   int16_t* aDecision)
 {
-  uint32_t aContentType = aLoadInfo->InternalContentPolicyType();
-  nsCOMPtr<nsISupports> aRequestingContext = aLoadInfo->GetLoadingContext();
-  nsCOMPtr<nsIPrincipal> aRequestPrincipal = aLoadInfo->TriggeringPrincipal();
-  nsCOMPtr<nsIURI> aRequestingLocation;
+  uint32_t contentType = aLoadInfo->InternalContentPolicyType();
+  nsCOMPtr<nsISupports> requestingContext = aLoadInfo->GetLoadingContext();
+  nsCOMPtr<nsIPrincipal> requestPrincipal = aLoadInfo->TriggeringPrincipal();
+  nsCOMPtr<nsIURI> requestingLocation;
   nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadInfo->LoadingPrincipal();
   if (loadingPrincipal) {
-    loadingPrincipal->GetURI(getter_AddRefs(aRequestingLocation));
+    loadingPrincipal->GetURI(getter_AddRefs(requestingLocation));
   }
 
   // We pass in false as the first parameter to ShouldLoad(), because the
@@ -373,13 +373,13 @@ nsMixedContentBlocker::ShouldLoad(nsIURI* aContentLocation,
   // image redirects.  This is handled by direct callers of the static
   // ShouldLoad.
   nsresult rv = ShouldLoad(false,   // aHadInsecureImageRedirect
-                           aContentType,
+                           contentType,
                            aContentLocation,
-                           aRequestingLocation,
-                           aRequestingContext,
+                           requestingLocation,
+                           requestingContext,
                            aMimeGuess,
                            nullptr, // aExtra,
-                           aRequestPrincipal,
+                           requestPrincipal,
                            aDecision);
   return rv;
 }
@@ -597,7 +597,7 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   *   "moz-icon"
   * URI_INHERITS_SECURITY_CONTEXT - e.g.
   *   "javascript"
-  * URI_SAFE_TO_LOAD_IN_SECURE_CONTEXT - e.g.
+  * URI_IS_POTENTIALLY_TRUSTWORTHY - e.g.
   *   "https",
   *   "moz-safe-about"
   *
@@ -609,7 +609,7 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   if (NS_FAILED(NS_URIChainHasFlags(innerContentLocation, nsIProtocolHandler::URI_IS_LOCAL_RESOURCE , &schemeLocal))  ||
       NS_FAILED(NS_URIChainHasFlags(innerContentLocation, nsIProtocolHandler::URI_DOES_NOT_RETURN_DATA, &schemeNoReturnData)) ||
       NS_FAILED(NS_URIChainHasFlags(innerContentLocation, nsIProtocolHandler::URI_INHERITS_SECURITY_CONTEXT, &schemeInherits)) ||
-      NS_FAILED(NS_URIChainHasFlags(innerContentLocation, nsIProtocolHandler::URI_SAFE_TO_LOAD_IN_SECURE_CONTEXT, &schemeSecure))) {
+      NS_FAILED(NS_URIChainHasFlags(innerContentLocation, nsIProtocolHandler::URI_IS_POTENTIALLY_TRUSTWORTHY, &schemeSecure))) {
     *aDecision = REJECT_REQUEST;
     return NS_ERROR_FAILURE;
   }
@@ -805,7 +805,8 @@ nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
                         EmptyString(), // aScriptSample
                         0, // aLineNumber
                         0, // aColumnNumber
-                        nsIScriptError::errorFlag, "CSP",
+                        nsIScriptError::errorFlag,
+                        NS_LITERAL_CSTRING("blockAllMixedContent"),
                         document->InnerWindowID(),
                         !!document->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId);
     *aDecision = REJECT_REQUEST;
@@ -1060,17 +1061,15 @@ nsMixedContentBlocker::ShouldProcess(nsIURI* aContentLocation,
                                      const nsACString& aMimeGuess,
                                      int16_t* aDecision)
 {
-  uint32_t aContentType = aLoadInfo->GetExternalContentPolicyType();
-
   if (!aContentLocation) {
     // aContentLocation may be null when a plugin is loading without an associated URI resource
-    if (aContentType == TYPE_OBJECT) {
+    if ( aLoadInfo->GetExternalContentPolicyType() == TYPE_OBJECT) {
        *aDecision = ACCEPT;
        return NS_OK;
-    } else {
-       *aDecision = REJECT_REQUEST;
-       return NS_ERROR_FAILURE;
     }
+
+     *aDecision = REJECT_REQUEST;
+     return NS_ERROR_FAILURE;
   }
 
   return ShouldLoad(aContentLocation, aLoadInfo, aMimeGuess, aDecision);

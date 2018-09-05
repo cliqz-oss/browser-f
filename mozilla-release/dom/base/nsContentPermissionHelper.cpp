@@ -432,7 +432,7 @@ nsContentPermissionUtils::GetContentPermissionRequestParentById(const TabId& aTa
     }
   }
 
-  return Move(parentArray);
+  return parentArray;
 }
 
 /* static */ void
@@ -455,7 +455,7 @@ nsContentPermissionUtils::GetContentPermissionRequestChildById(const TabId& aTab
     }
   }
 
-  return Move(childArray);
+  return childArray;
 }
 
 /* static */ void
@@ -714,7 +714,7 @@ nsContentPermissionRequestProxy::Allow(JS::HandleValue aChoices)
 
       JSContext* cx = jsapi.cx();
       JS::Rooted<JSObject*> obj(cx, &aChoices.toObject());
-      JSAutoCompartment ac(cx, obj);
+      JSAutoRealm ar(cx, obj);
 
       JS::Rooted<JS::Value> val(cx);
 

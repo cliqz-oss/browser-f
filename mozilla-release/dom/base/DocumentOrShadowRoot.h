@@ -7,10 +7,13 @@
 #ifndef mozilla_dom_DocumentOrShadowRoot_h__
 #define mozilla_dom_DocumentOrShadowRoot_h__
 
+#include "mozilla/dom/NameSpaceConstants.h"
+#include "nsContentListDeclarations.h"
 #include "nsTArray.h"
 #include "nsIdentifierMapEntry.h"
 
 class nsContentList;
+class nsIDocument;
 class nsINode;
 
 namespace mozilla {
@@ -18,6 +21,7 @@ class StyleSheet;
 
 namespace dom {
 
+class Element;
 class StyleSheetList;
 class ShadowRoot;
 
@@ -65,21 +69,6 @@ public:
     return mStyleSheets.IndexOf(&aSheet);
   }
 
-  void InsertSheetAt(size_t aIndex, StyleSheet& aSheet)
-  {
-    mStyleSheets.InsertElementAt(aIndex, &aSheet);
-  }
-
-  void RemoveSheet(StyleSheet& aSheet)
-  {
-    mStyleSheets.RemoveElement(&aSheet);
-  }
-
-  void AppendStyleSheet(StyleSheet& aSheet)
-  {
-    mStyleSheets.AppendElement(&aSheet);
-  }
-
   StyleSheetList& EnsureDOMStyleSheets();
 
   Element* GetElementById(const nsAString& aElementId);
@@ -121,7 +110,7 @@ public:
                          nsTArray<RefPtr<mozilla::dom::Element>>& aElements);
 
   /**
-   * Helper for nsIDOMDocument::elementFromPoint implementation that allows
+   * Helper for elementFromPoint implementation that allows
    * ignoring the scroll frame and/or avoiding layout flushes.
    *
    * @see nsIDOMWindowUtils::elementFromPoint
@@ -139,7 +128,59 @@ public:
   void ElementsFromPointHelper(float aX, float aY, uint32_t aFlags,
                                nsTArray<RefPtr<mozilla::dom::Element>>& aElements);
 
+  /**
+   * This gets fired when the element that an id refers to changes.
+   * This fires at difficult times. It is generally not safe to do anything
+   * which could modify the DOM in any way. Use
+   * nsContentUtils::AddScriptRunner.
+   * @return true to keep the callback in the callback set, false
+   * to remove it.
+   */
+  typedef bool (* IDTargetObserver)(Element* aOldElement,
+                                    Element* aNewelement, void* aData);
+
+  /**
+   * Add an IDTargetObserver for a specific ID. The IDTargetObserver
+   * will be fired whenever the content associated with the ID changes
+   * in the future. If aForImage is true, mozSetImageElement can override
+   * what content is associated with the ID. In that case the IDTargetObserver
+   * will be notified at those times when the result of LookupImageElement
+   * changes.
+   * At most one (aObserver, aData, aForImage) triple can be
+   * registered for each ID.
+   * @return the content currently associated with the ID.
+   */
+  Element* AddIDTargetObserver(nsAtom* aID, IDTargetObserver aObserver,
+                               void* aData, bool aForImage);
+
+  /**
+   * Remove the (aObserver, aData, aForImage) triple for a specific ID, if
+   * registered.
+   */
+  void RemoveIDTargetObserver(nsAtom* aID, IDTargetObserver aObserver,
+                              void* aData, bool aForImage);
+
+  /**
+   * Check that aId is not empty and log a message to the console
+   * service if it is.
+   * @returns true if aId looks correct, false otherwise.
+   */
+  inline bool CheckGetElementByIdArg(const nsAString& aId)
+  {
+    if (aId.IsEmpty()) {
+      ReportEmptyGetElementByIdArg();
+      return false;
+    }
+    return true;
+  }
+
+  void ReportEmptyGetElementByIdArg();
+
 protected:
+  // Returns the reference to the sheet, if found in mStyleSheets.
+  already_AddRefed<StyleSheet> RemoveSheet(StyleSheet& aSheet);
+  void InsertSheetAt(size_t aIndex, StyleSheet& aSheet);
+
   nsIContent* Retarget(nsIContent* aContent) const;
 
   /**

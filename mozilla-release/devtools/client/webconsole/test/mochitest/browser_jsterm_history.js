@@ -8,16 +8,19 @@
 "use strict";
 
 const TEST_URI = "data:text/html;charset=UTF-8,test";
-const HISTORY_BACK = -1;
-const HISTORY_FORWARD = 1;
 const COMMANDS = ["document", "window", "window.location"];
 
-add_task(async function() {
-  const { jsterm } = await openNewTabAndConsole(TEST_URI);
-  const { inputNode } = jsterm;
-  jsterm.clearOutput();
+const {
+  HISTORY_BACK,
+  HISTORY_FORWARD,
+} = require("devtools/client/webconsole/constants");
 
-  for (let command of COMMANDS) {
+add_task(async function() {
+  const { jsterm, ui } = await openNewTabAndConsole(TEST_URI);
+  const { inputNode } = jsterm;
+  ui.clearOutput();
+
+  for (const command of COMMANDS) {
     info(`Executing command ${command}`);
     jsterm.setInputValue(command);
     await jsterm.execute();
@@ -50,7 +53,7 @@ add_task(async function() {
 
   is(inputNode.value, "", "check input is still empty");
 
-  let idxLast = COMMANDS.length - 1;
+  const idxLast = COMMANDS.length - 1;
   jsterm.historyPeruse(HISTORY_BACK);
   is(inputNode.value, COMMANDS[idxLast], "check history next idx:" + idxLast);
 });

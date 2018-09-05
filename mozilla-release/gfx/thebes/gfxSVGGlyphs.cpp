@@ -6,7 +6,6 @@
 
 #include "mozilla/SVGContextPaint.h"
 #include "nsError.h"
-#include "nsIDOMDocument.h"
 #include "nsString.h"
 #include "nsIDocument.h"
 #include "nsICategoryManager.h"
@@ -23,10 +22,10 @@
 #include "nsIPrincipal.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/FontTableURIProtocolHandler.h"
 #include "mozilla/dom/SVGDocument.h"
 #include "mozilla/LoadInfo.h"
 #include "nsSVGUtils.h"
-#include "nsHostObjectProtocolHandler.h"
 #include "nsContentUtils.h"
 #include "gfxFont.h"
 #include "nsSMILAnimationController.h"
@@ -352,17 +351,15 @@ gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer, uint32_t aBufLen)
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIURI> uri;
-    nsHostObjectProtocolHandler::GenerateURIString(NS_LITERAL_CSTRING(FONTTABLEURI_SCHEME),
-                                                   nullptr,
-                                                   mSVGGlyphsDocumentURI);
+    mozilla::dom::FontTableURIProtocolHandler::GenerateURIString(mSVGGlyphsDocumentURI);
 
     rv = NS_NewURI(getter_AddRefs(uri), mSVGGlyphsDocumentURI);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIPrincipal> principal = NullPrincipal::CreateWithoutOriginAttributes();
 
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    rv = NS_NewDOMDocument(getter_AddRefs(domDoc),
+    nsCOMPtr<nsIDocument> document;
+    rv = NS_NewDOMDocument(getter_AddRefs(document),
                            EmptyString(),   // aNamespaceURI
                            EmptyString(),   // aQualifiedName
                            nullptr,          // aDoctype
@@ -371,11 +368,6 @@ gfxSVGGlyphsDocument::ParseDocument(const uint8_t *aBuffer, uint32_t aBufLen)
                            nullptr,          // aEventObject
                            DocumentFlavorSVG);
     NS_ENSURE_SUCCESS(rv, rv);
-
-    nsCOMPtr<nsIDocument> document(do_QueryInterface(domDoc));
-    if (!document) {
-        return NS_ERROR_FAILURE;
-    }
 
     nsCOMPtr<nsIChannel> channel;
     rv = NS_NewInputStreamChannel(getter_AddRefs(channel),

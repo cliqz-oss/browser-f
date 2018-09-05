@@ -18,12 +18,13 @@ define(function(require, exports, module) {
   let prettyURL;
 
   // Application state object.
-  let input = {
+  const input = {
     jsonText: JSONView.json,
     jsonPretty: null,
     headers: JSONView.headers,
     tabActive: 0,
-    prettified: false
+    prettified: false,
+    expandedNodes: new Set()
   };
 
   /**
@@ -32,7 +33,7 @@ define(function(require, exports, module) {
    */
   input.actions = {
     onCopyJson: function() {
-      let text = input.prettified ? input.jsonPretty : input.jsonText;
+      const text = input.prettified ? input.jsonPretty : input.jsonText;
       copyString(text.textContent);
     },
 
@@ -45,20 +46,20 @@ define(function(require, exports, module) {
 
     onCopyHeaders: function() {
       let value = "";
-      let isWinNT = document.documentElement.getAttribute("platform") === "win";
-      let eol = isWinNT ? "\r\n" : "\n";
+      const isWinNT = document.documentElement.getAttribute("platform") === "win";
+      const eol = isWinNT ? "\r\n" : "\n";
 
-      let responseHeaders = input.headers.response;
+      const responseHeaders = input.headers.response;
       for (let i = 0; i < responseHeaders.length; i++) {
-        let header = responseHeaders[i];
+        const header = responseHeaders[i];
         value += header.name + ": " + header.value + eol;
       }
 
       value += eol;
 
-      let requestHeaders = input.headers.request;
+      const requestHeaders = input.headers.request;
       for (let i = 0; i < requestHeaders.length; i++) {
-        let header = requestHeaders[i];
+        const header = requestHeaders[i];
         value += header.name + ": " + header.value + eol;
       }
 
@@ -85,6 +86,16 @@ define(function(require, exports, module) {
 
       input.prettified = !input.prettified;
     },
+
+    onCollapse: function(data) {
+      input.expandedNodes.clear();
+      theApp.forceUpdate();
+    },
+
+    onExpand: function(data) {
+      input.expandedNodes = TreeViewClass.getExpandedNodes(input.json);
+      theApp.setState({expandedNodes: input.expandedNodes});
+    }
   };
 
   /**
@@ -108,14 +119,14 @@ define(function(require, exports, module) {
    * @param {Object} value Event detail value
    */
   function dispatchEvent(type, value) {
-    let data = {
+    const data = {
       detail: {
         type,
         value,
       }
     };
 
-    let contentMessageEvent = new CustomEvent("contentMessage", data);
+    const contentMessageEvent = new CustomEvent("contentMessage", data);
     window.dispatchEvent(contentMessageEvent);
   }
 
@@ -123,12 +134,11 @@ define(function(require, exports, module) {
    * Render the main application component. It's the main tab bar displayed
    * at the top of the window. This component also represents ReacJS root.
    */
-  let content = document.getElementById("content");
-  let promise = (async function parseJSON() {
+  const content = document.getElementById("content");
+  const promise = (async function parseJSON() {
     if (document.readyState == "loading") {
       // If the JSON has not been loaded yet, render the Raw Data tab first.
       input.json = {};
-      input.expandedNodes = new Set();
       input.tabActive = 1;
       return new Promise(resolve => {
         document.addEventListener("DOMContentLoaded", resolve, {once: true});
@@ -143,7 +153,7 @@ define(function(require, exports, module) {
     }
 
     // If the JSON has been loaded, parse it immediately before loading the app.
-    let jsonString = input.jsonText.textContent;
+    const jsonString = input.jsonText.textContent;
     try {
       input.json = JSON.parse(jsonString);
     } catch (err) {
@@ -160,7 +170,7 @@ define(function(require, exports, module) {
     return undefined;
   })();
 
-  let theApp = render(MainTabbedArea(input), content);
+  const theApp = render(MainTabbedArea(input), content);
 
   // Send readyState change notification event to the window. Can be useful for
   // tests as well as extensions.

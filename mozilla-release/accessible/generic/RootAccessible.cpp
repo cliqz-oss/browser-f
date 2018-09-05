@@ -8,7 +8,6 @@
 #include "mozilla/ArrayUtils.h"
 
 #define CreateEvent CreateEventA
-#include "nsIDOMDocument.h"
 
 #include "Accessible-inl.h"
 #include "DocAccessible-inl.h"
@@ -74,7 +73,7 @@ RootAccessible::~RootAccessible()
 // Accessible
 
 ENameValueFlag
-RootAccessible::Name(nsString& aName)
+RootAccessible::Name(nsString& aName) const
 {
   aName.Truncate();
 
@@ -89,7 +88,7 @@ RootAccessible::Name(nsString& aName)
 }
 
 role
-RootAccessible::NativeRole()
+RootAccessible::NativeRole() const
 {
   // If it's a <dialog> or <wizard>, use roles::DIALOG instead
   dom::Element* rootElm = mDocumentNode->GetRootElement();
@@ -103,7 +102,7 @@ RootAccessible::NativeRole()
 // RootAccessible protected member
 #ifdef MOZ_XUL
 uint32_t
-RootAccessible::GetChromeFlags()
+RootAccessible::GetChromeFlags() const
 {
   // Return the flag set for the top level window as defined
   // by nsIWebBrowserChrome::CHROME_WINDOW_[FLAGNAME]
@@ -124,7 +123,7 @@ RootAccessible::GetChromeFlags()
 #endif
 
 uint64_t
-RootAccessible::NativeState()
+RootAccessible::NativeState() const
 {
   uint64_t state = DocAccessibleWrap::NativeState();
   if (state & states::DEFUNCT)
@@ -481,7 +480,7 @@ RootAccessible::Shutdown()
 }
 
 Relation
-RootAccessible::RelationByType(RelationType aType)
+RootAccessible::RelationByType(RelationType aType) const
 {
   if (!mDocumentNode || aType != RelationType::EMBEDS)
     return DocAccessibleWrap::RelationByType(aType);

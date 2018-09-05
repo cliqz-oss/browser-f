@@ -256,6 +256,7 @@ public:
 
 #if defined(XP_WIN)
     NPError DefaultAudioDeviceChanged(NPAudioDeviceChangeDetails& details);
+    NPError AudioDeviceStateChanged(NPAudioDeviceStateChanged& aDeviceState);
 #endif
 
 private:
@@ -341,6 +342,8 @@ private:
                                                  LPCANDIDATEFORM plCandidate);
     static BOOL WINAPI ImmNotifyIME(HIMC aIMC, DWORD aAction, DWORD aIndex,
                                     DWORD aValue);
+    static BOOL WINAPI ImmAssociateContextExProc(HWND hWnd, HIMC aIMC,
+                                                 DWORD dwFlags);
 
     class FlashThrottleMsg : public CancelableRunnable
     {
@@ -646,6 +649,10 @@ private:
     // shortcut key in the chrome process, we shouldn't send the following
     // WM_*CHAR messages to the plugin.
     bool mLastKeyEventConsumed;
+
+    // Store the last IME state by ImmAssociateContextEx.  This will reset by
+    // WM_KILLFOCUS;
+    bool mLastEnableIMEState;
 #endif // #ifdef XP_WIN
 
     // While IME in the process has composition, this is set to true.

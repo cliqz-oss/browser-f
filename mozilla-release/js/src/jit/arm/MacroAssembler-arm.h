@@ -14,8 +14,6 @@
 #include "jit/MoveResolver.h"
 #include "vm/BytecodeUtil.h"
 
-using mozilla::DebugOnly;
-
 namespace js {
 namespace jit {
 
@@ -329,11 +327,11 @@ class MacroAssemblerARM : public Assembler
     void ma_ldrh(EDtrAddr addr, Register rt, Index mode = Offset, Condition cc = Always);
     void ma_ldrsh(EDtrAddr addr, Register rt, Index mode = Offset, Condition cc = Always);
     void ma_ldrsb(EDtrAddr addr, Register rt, Index mode = Offset, Condition cc = Always);
-    void ma_ldrd(EDtrAddr addr, Register rt, DebugOnly<Register> rt2, Index mode = Offset,
+    void ma_ldrd(EDtrAddr addr, Register rt, mozilla::DebugOnly<Register> rt2, Index mode = Offset,
                  Condition cc = Always);
     void ma_strb(Register rt, DTRAddr addr, Index mode = Offset, Condition cc = Always);
     void ma_strh(Register rt, EDtrAddr addr, Index mode = Offset, Condition cc = Always);
-    void ma_strd(Register rt, DebugOnly<Register> rt2, EDtrAddr addr, Index mode = Offset,
+    void ma_strd(Register rt, mozilla::DebugOnly<Register> rt2, EDtrAddr addr, Index mode = Offset,
                  Condition cc = Always);
 
     // Specialty for moving N bits of data, where n == 8,16,32,64.
@@ -827,28 +825,24 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     // Extended unboxing API. If the payload is already in a register, returns
     // that register. Otherwise, provides a move to the given scratch register,
     // and returns that.
-    Register extractObject(const Address& address, Register scratch);
-    Register extractObject(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractObject(const Address& address, Register scratch);
+    MOZ_MUST_USE Register extractObject(const ValueOperand& value, Register scratch) {
         unboxNonDouble(value, value.payloadReg(), JSVAL_TYPE_OBJECT);
         return value.payloadReg();
     }
-    Register extractString(const ValueOperand& value, Register scratch) {
-        unboxNonDouble(value, value.payloadReg(), JSVAL_TYPE_STRING);
-        return value.payloadReg();
-    }
-    Register extractSymbol(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractSymbol(const ValueOperand& value, Register scratch) {
         unboxNonDouble(value, value.payloadReg(), JSVAL_TYPE_SYMBOL);
         return value.payloadReg();
     }
-    Register extractInt32(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractInt32(const ValueOperand& value, Register scratch) {
         return value.payloadReg();
     }
-    Register extractBoolean(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractBoolean(const ValueOperand& value, Register scratch) {
         return value.payloadReg();
     }
-    Register extractTag(const Address& address, Register scratch);
-    Register extractTag(const BaseIndex& address, Register scratch);
-    Register extractTag(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractTag(const Address& address, Register scratch);
+    MOZ_MUST_USE Register extractTag(const BaseIndex& address, Register scratch);
+    MOZ_MUST_USE Register extractTag(const ValueOperand& value, Register scratch) {
         return value.typeReg();
     }
 
@@ -1245,6 +1239,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void ceilf(FloatRegister input, Register output, Label* handleNotAnInt);
     void round(FloatRegister input, Register output, Label* handleNotAnInt, FloatRegister tmp);
     void roundf(FloatRegister input, Register output, Label* handleNotAnInt, FloatRegister tmp);
+    void trunc(FloatRegister input, Register output, Label* handleNotAnInt);
+    void truncf(FloatRegister input, Register output, Label* handleNotAnInt);
 
     void clampCheck(Register r, Label* handleNotAnInt) {
         // Check explicitly for r == INT_MIN || r == INT_MAX

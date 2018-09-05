@@ -30,13 +30,6 @@ const MIN_PAGE_SIZE = 25;
  * destroy() - destroy the host's UI
  */
 
-exports.Hosts = {
-  "bottom": BottomHost,
-  "side": SidebarHost,
-  "window": WindowHost,
-  "custom": CustomHost
-};
-
 /**
  * Host object for the dock on the bottom of the browser
  */
@@ -57,8 +50,8 @@ BottomHost.prototype = {
   create: async function() {
     await gDevToolsBrowser.loadBrowserStyleSheet(this.hostTab.ownerGlobal);
 
-    let gBrowser = this.hostTab.ownerDocument.defaultView.gBrowser;
-    let ownerDocument = gBrowser.ownerDocument;
+    const gBrowser = this.hostTab.ownerDocument.defaultView.gBrowser;
+    const ownerDocument = gBrowser.ownerDocument;
     this._nbox = gBrowser.getNotificationBox(this.hostTab.linkedBrowser);
 
     this._splitter = ownerDocument.createElement("splitter");
@@ -82,9 +75,9 @@ BottomHost.prototype = {
     // we have to load something so we can switch documents if we have to
     this.frame.setAttribute("src", "about:blank");
 
-    let frame = await new Promise(resolve => {
-      let domHelper = new DOMHelpers(this.frame.contentWindow);
-      let frameLoad = () => {
+    const frame = await new Promise(resolve => {
+      const domHelper = new DOMHelpers(this.frame.contentWindow);
+      const frameLoad = () => {
         this.emit("ready", this.frame);
         resolve(this.frame);
       };
@@ -128,27 +121,25 @@ BottomHost.prototype = {
 };
 
 /**
- * Host object for the in-browser sidebar
+ * Base Host object for the in-browser sidebar
  */
-function SidebarHost(hostTab) {
-  this.hostTab = hostTab;
+class SidebarHost {
+  constructor(hostTab, type) {
+    this.hostTab = hostTab;
+    this.type = type;
+    this.widthPref = "devtools.toolbox.sidebar.width";
 
-  EventEmitter.decorate(this);
-}
-
-SidebarHost.prototype = {
-  type: "side",
-
-  widthPref: "devtools.toolbox.sidebar.width",
+    EventEmitter.decorate(this);
+  }
 
   /**
    * Create a box in the sidebar of the host tab.
    */
-  create: async function() {
+  async create() {
     await gDevToolsBrowser.loadBrowserStyleSheet(this.hostTab.ownerGlobal);
-
-    let gBrowser = this.hostTab.ownerDocument.defaultView.gBrowser;
-    let ownerDocument = gBrowser.ownerDocument;
+    const gBrowser = this.hostTab.ownerDocument.defaultView.gBrowser;
+    const ownerDocument = gBrowser.ownerDocument;
+    this._browser = gBrowser.getBrowserContainer(this.hostTab.linkedBrowser);
     this._sidebar = gBrowser.getSidebarContainer(this.hostTab.linkedBrowser);
 
     this._splitter = ownerDocument.createElement("splitter");
@@ -163,15 +154,26 @@ SidebarHost.prototype = {
       this._sidebar.clientWidth - MIN_PAGE_SIZE
     );
 
-    this._sidebar.appendChild(this._splitter);
-    this._sidebar.appendChild(this.frame);
+    // We should consider the direction when changing the dock position.
+    const topWindow = this.hostTab.ownerDocument.defaultView.top;
+    const topDoc = topWindow.document.documentElement;
+    const isLTR = topWindow.getComputedStyle(topDoc).direction === "ltr";
+
+    if (isLTR && this.type == "right" ||
+        !isLTR && this.type == "left") {
+      this._sidebar.appendChild(this._splitter);
+      this._sidebar.appendChild(this.frame);
+    } else {
+      this._sidebar.insertBefore(this.frame, this._browser);
+      this._sidebar.insertBefore(this._splitter, this._browser);
+    }
 
     this.frame.tooltip = "aHTMLTooltip";
     this.frame.setAttribute("src", "about:blank");
 
-    let frame = await new Promise(resolve => {
-      let domHelper = new DOMHelpers(this.frame.contentWindow);
-      let frameLoad = () => {
+    const frame = await new Promise(resolve => {
+      const domHelper = new DOMHelpers(this.frame.contentWindow);
+      const frameLoad = () => {
         this.emit("ready", this.frame);
         resolve(this.frame);
       };
@@ -180,25 +182,25 @@ SidebarHost.prototype = {
     });
 
     return frame;
-  },
+  }
 
   /**
    * Raise the host.
    */
-  raise: function() {
+  raise() {
     focusTab(this.hostTab);
-  },
+  }
 
   /**
    * Set the toolbox title.
    * Nothing to do for this host type.
    */
-  setTitle: function() {},
+  setTitle() {}
 
   /**
    * Destroy the sidebar.
    */
-  destroy: function() {
+  destroy() {
     if (!this._destroyed) {
       this._destroyed = true;
 
@@ -209,7 +211,25 @@ SidebarHost.prototype = {
 
     return promise.resolve(null);
   }
-};
+}
+
+/**
+ * Host object for the in-browser left sidebar
+ */
+class LeftHost extends SidebarHost {
+  constructor(hostTab) {
+    super(hostTab, "left");
+  }
+}
+
+/**
+ * Host object for the in-browser right sidebar
+ */
+class RightHost extends SidebarHost {
+  constructor(hostTab) {
+    super(hostTab, "right");
+  }
+}
 
 /**
  * Host object for the toolbox in a separate window
@@ -229,13 +249,13 @@ WindowHost.prototype = {
    * Create a new xul window to contain the toolbox.
    */
   create: function() {
-    let deferred = defer();
+    const deferred = defer();
 
-    let flags = "chrome,centerscreen,resizable,dialog=no";
-    let win = Services.ww.openWindow(null, this.WINDOW_URL, "_blank",
+    const flags = "chrome,centerscreen,resizable,dialog=no";
+    const win = Services.ww.openWindow(null, this.WINDOW_URL, "_blank",
                                      flags, null);
 
-    let frameLoad = () => {
+    const frameLoad = () => {
       win.removeEventListener("load", frameLoad, true);
       win.focus();
 
@@ -317,15 +337,16 @@ CustomHost.prototype = {
   _sendMessageToTopWindow: function(msg, data) {
     // It's up to the custom frame owner (parent window) to honor
     // "close" or "raise" instructions.
-    let topWindow = this.frame.ownerDocument.defaultView;
+    const topWindow = this.frame.ownerDocument.defaultView;
     if (!topWindow) {
       return;
     }
-    let json = {name: "toolbox-" + msg, uid: this.uid};
-    if (data) {
-      json.data = data;
-    }
-    topWindow.postMessage(JSON.stringify(json), "*");
+    const message = {
+      name: "toolbox-" + msg,
+      uid: this.uid,
+      data,
+    };
+    topWindow.postMessage(message, "*");
   },
 
   /**
@@ -365,7 +386,16 @@ CustomHost.prototype = {
  *  Switch to the given tab in a browser and focus the browser window
  */
 function focusTab(tab) {
-  let browserWindow = tab.ownerDocument.defaultView;
+  const browserWindow = tab.ownerDocument.defaultView;
   browserWindow.focus();
   browserWindow.gBrowser.selectedTab = tab;
 }
+
+exports.Hosts = {
+  "bottom": BottomHost,
+  "left": LeftHost,
+  "right": RightHost,
+  "window": WindowHost,
+  "custom": CustomHost
+};
+

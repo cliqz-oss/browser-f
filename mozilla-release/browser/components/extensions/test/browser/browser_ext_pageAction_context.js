@@ -199,6 +199,83 @@ add_task(async function testTabSwitchContext() {
   });
 });
 
+add_task(async function testMultipleWindows() {
+  await runTests({
+    manifest: {
+      "page_action": {
+        "default_icon": "default.png",
+        "default_popup": "default.html",
+        "default_title": "Default Title",
+      },
+    },
+
+    "files": {
+      "default.png": imageBuffer,
+      "tab.png": imageBuffer,
+    },
+
+    getTests: function(tabs, windows) {
+      let details = [
+        {"icon": browser.runtime.getURL("default.png"),
+         "popup": browser.runtime.getURL("default.html"),
+         "title": "Default Title"},
+        {"icon": browser.runtime.getURL("tab.png"),
+         "popup": browser.runtime.getURL("tab.html"),
+         "title": "tab"},
+      ];
+
+      return [
+        async expect => {
+          browser.test.log("Create a new tab, expect hidden pageAction.");
+          let tab = await browser.tabs.create({active: true});
+          tabs.push(tab.id);
+          expect(null);
+        },
+        async expect => {
+          browser.test.log("Show the pageAction, expect default values.");
+          await browser.pageAction.show(tabs[1]);
+          expect(details[0]);
+        },
+        async expect => {
+          browser.test.log("Set tab-specific values, expect them.");
+          await browser.pageAction.setIcon({tabId: tabs[1], path: "tab.png"});
+          await browser.pageAction.setPopup({tabId: tabs[1], popup: "tab.html"});
+          await browser.pageAction.setTitle({tabId: tabs[1], title: "tab"});
+          expect(details[1]);
+        },
+        async expect => {
+          browser.test.log("Open a new window, expect hidden pageAction.");
+          let {id} = await browser.windows.create();
+          windows.push(id);
+          expect(null);
+        },
+        async expect => {
+          browser.test.log("Move tab from old window to the new one, expect old values.");
+          await browser.tabs.move(tabs[1], {windowId: windows[1], index: -1});
+          await browser.tabs.update(tabs[1], {active: true});
+          expect(details[1]);
+        },
+        async expect => {
+          browser.test.log("Close the initial tab of the new window.");
+          let [{id}] = await browser.tabs.query({windowId: windows[1], index: 0});
+          await browser.tabs.remove(id);
+          expect(details[1]);
+        },
+        async expect => {
+          browser.test.log("Move the previous tab to a 3rd window, the 2nd one will close.");
+          await browser.windows.create({tabId: tabs[1]});
+          expect(details[1]);
+        },
+        async expect => {
+          browser.test.log("Close the tab, go back to the 1st window.");
+          await browser.tabs.remove(tabs[1]);
+          expect(null);
+        },
+      ];
+    },
+  });
+});
+
 add_task(async function testNavigationClearsData() {
   let url = "http://example.com/";
   let default_title = "Default title";

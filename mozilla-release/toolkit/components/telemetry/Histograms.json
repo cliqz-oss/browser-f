@@ -10,13 +10,13 @@
   },
   "A11Y_CONSUMERS": {
     "record_in_processes": ["main"],
-    "expires_in_version": "default",
+    "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 11,
     "releaseChannelCollection": "opt-out",
-    "bug_numbers": [1382820],
+    "bug_numbers": [1382820, 1462238],
     "description": "A list of known accessibility clients that inject into Firefox process space (see https://dxr.mozilla.org/mozilla-central/source/accessible/windows/msaa/Compatibility.h).",
-    "alert_emails": ["accessibility@mozilla.com"]
+    "alert_emails": ["accessibility@mozilla.com", "jteh@mozilla.com"]
   },
   "A11Y_ISIMPLEDOM_USAGE_FLAG": {
     "record_in_processes": ["main"],
@@ -52,28 +52,6 @@
     "kind" : "exponential",
     "high": 60000,
     "n_buckets": 50
-  },
-  "ADDON_CONTENT_POLICY_SHIM_BLOCKING_LOADING_MS": {
-    "record_in_processes": ["main", "content"],
-    "expires_in_version": "58",
-    "kind": "exponential",
-    "high": 60000,
-    "n_buckets": 20,
-    "keyed": true,
-    "description": "The amount of time the content process blocked processing shouldLoad shims for an add-on (keyed by add-on ID) prior to the load event, for each document load.",
-    "bug_numbers": [1331684],
-    "alert_emails": ["kmaglione@mozilla.com"]
-  },
-  "ADDON_CONTENT_POLICY_SHIM_BLOCKING_LOADED_MS": {
-    "record_in_processes": ["main", "content"],
-    "expires_in_version": "58",
-    "kind": "exponential",
-    "high": 60000,
-    "n_buckets": 20,
-    "keyed": true,
-    "description": "The amount of time the content process blocked processing shouldLoad shims for an add-on (keyed by add-on ID) after the load event, for each document load.",
-    "bug_numbers": [1331684],
-    "alert_emails": ["kmaglione@mozilla.com"]
   },
   "ADDON_MANAGER_UPGRADE_UI_SHOWN": {
     "record_in_processes": ["main", "content"],
@@ -1077,34 +1055,37 @@
     "description": "Time(ms) to purge dirty heap pages."
   },
   "LOW_MEMORY_EVENTS_VIRTUAL": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "alert_emails": ["memshrink-telemetry-alerts@mozilla.com"],
     "expires_in_version": "never",
     "kind": "exponential",
     "high": 1024,
     "n_buckets": 21,
     "description": "Number of low-virtual-memory events fired since last ping",
-    "cpp_guard": "XP_WIN"
+    "cpp_guard": "XP_WIN",
+    "bug_numbers": [711490,1451005]
   },
   "LOW_MEMORY_EVENTS_PHYSICAL": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "alert_emails": ["memshrink-telemetry-alerts@mozilla.com"],
     "expires_in_version": "never",
     "kind": "exponential",
     "high": 1024,
     "n_buckets": 21,
     "description": "Number of low-physical-memory events fired since last ping",
-    "cpp_guard": "XP_WIN"
+    "cpp_guard": "XP_WIN",
+    "bug_numbers": [711490,1451005]
   },
   "LOW_MEMORY_EVENTS_COMMIT_SPACE": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["main"],
     "alert_emails": ["memshrink-telemetry-alerts@mozilla.com"],
     "expires_in_version": "never",
     "kind": "exponential",
     "high": 1024,
     "n_buckets": 21,
     "description": "Number of low-commit-space events fired since last ping",
-    "cpp_guard": "XP_WIN"
+    "cpp_guard": "XP_WIN",
+    "bug_numbers": [1451005]
   },
   "PAGE_FAULTS_HARD": {
     "record_in_processes": ["main", "content"],
@@ -3231,6 +3212,17 @@
     "n_buckets": 50,
     "description": "DNS Cache Entry Age at Removal Time (minutes)"
   },
+  "DNS_PREMATURE_EVICTION": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1440,
+    "releaseChannelCollection": "opt-out",
+    "alert_emails": ["necko@mozilla.com", "dstenberg@mozilla.com"],
+    "bug_numbers": [1460305],
+    "n_buckets": 50,
+    "description": "DNS Cache Entry Age at Removal Time of non-expired entries (minutes)"
+  },
   "DNS_LOOKUP_TIME": {
     "record_in_processes": ["main"],
     "expires_in_version": "never",
@@ -3271,6 +3263,15 @@
     "labels": ["TRRFasterBy50", "TRRFaster", "NativeFaster", "NativeFasterBy50"],
     "bug_numbers": [1434852],
     "description": "DNS: TRR parallel resolve racing results"
+  },
+  "DNS_TRR_COMPARE": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["necko@mozilla.com", "dstenberg@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": ["BothWorked", "NativeWorked", "TRRWorked", "BothFailed"],
+    "bug_numbers": [1460589],
+    "description": "DNS: success distribution when both native and TRR were used"
   },
   "DNS_TRR_BLACKLISTED": {
     "record_in_processes": ["main"],
@@ -3967,14 +3968,6 @@
     "high": 3000,
     "n_buckets": 10,
     "description": "Time spent scanning filesystem for plugins (ms)"
-  },
-  "CHECK_JAVA_ENABLED": {
-    "record_in_processes": ["main", "content"],
-    "expires_in_version": "default",
-    "kind": "exponential",
-    "high": 3000,
-    "n_buckets": 10,
-    "description": "Time spent checking if Java is enabled (ms)"
   },
   "PLUGIN_HANG_UI_USER_RESPONSE": {
     "record_in_processes": ["main", "content"],
@@ -4794,14 +4787,6 @@
     "expires_in_version": "65",
     "kind": "count",
     "description": "Number of unique pages that contain an unsafe-eval CSP directive"
-  },
-  "CSP_REFERRER_DIRECTIVE": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["seceng-telemetry@mozilla.com"],
-    "bug_numbers": [1303685],
-    "expires_in_version": "65",
-    "kind": "boolean",
-    "description": "Whether a document with a CSP policy (report-only or enforcing) contains a referrer directive ('true') or not ('false')."
   },
   "PLACES_DATABASE_CORRUPTION_HANDLING_STAGE": {
     "record_in_processes": ["main"],
@@ -6610,7 +6595,7 @@
   "FX_URLBAR_SELECTED_RESULT_METHOD": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["dzeber@mozilla.com"],
-    "expires_in_version": "63",
+    "expires_in_version": "never",
     "releaseChannelCollection": "opt-out",
     "kind": "categorical",
     "labels": [
@@ -6627,7 +6612,7 @@
   "FX_SEARCHBAR_SELECTED_RESULT_METHOD": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["dzeber@mozilla.com"],
-    "expires_in_version": "63",
+    "expires_in_version": "never",
     "releaseChannelCollection": "opt-out",
     "kind": "categorical",
     "labels": [
@@ -7207,6 +7192,19 @@
     "kind": "count",
     "description": "Count of TelemetrySession scheduler ticks that were delayed long enough to suspect sleep."
   },
+  "TELEMETRY_EVENT_PING_SENT": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["telemetry-client-dev@mozilla.com", "chutten@mozilla.com"],
+    "bug_numbers": [1460595],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": [
+      "periodic",
+      "max",
+      "shutdown"
+    ],
+    "description": "Number of 'event' pings sent, by reason"
+  },
   "TELEMETRY_TEST_FLAG": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["telemetry-client-dev@mozilla.com"],
@@ -7434,6 +7432,18 @@
     "kind": "flag",
     "description": "a testing histogram; not meant to be touched"
   },
+  "TELEMETRY_TEST_EXPIRED_KEYED": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["telemetry-client-dev@mozilla.com"],
+    "expires_in_version": "4",
+    "kind": "linear",
+    "keyed": true,
+    "low": 1,
+    "high": 2147483646,
+    "n_buckets": 10,
+    "bug_numbers": [1468809],
+    "description": "a testing histogram; not meant to be touched"
+  },
   "TELEMETRY_TEST_CONTENT_PROCESS": {
     "record_in_processes": ["content"],
     "alert_emails": ["telemetry-client-dev@mozilla.com"],
@@ -7494,6 +7504,53 @@
     "n_buckets": 10,
     "bug_numbers": [1335343],
     "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_DEFAULT_PRODUCTS": {
+    "record_in_processes": ["all"],
+    "alert_emails": ["telemetry-client-dev@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "linear",
+    "low": 1,
+    "high": 10000,
+    "n_buckets": 10,
+    "bug_numbers": [1452552],
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_DESKTOP_ONLY": {
+    "record_in_processes": ["all"],
+    "alert_emails": ["telemetry-client-dev@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "linear",
+    "low": 1,
+    "high": 10000,
+    "n_buckets": 10,
+    "bug_numbers": [1452552],
+    "description": "a testing histogram; not meant to be touched",
+    "products": ["firefox"]
+  },
+  "TELEMETRY_TEST_MULTIPRODUCT": {
+    "record_in_processes": ["all"],
+    "alert_emails": ["telemetry-client-dev@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "linear",
+    "low": 1,
+    "high": 10000,
+    "n_buckets": 10,
+    "bug_numbers": [1452552],
+    "description": "a testing histogram; not meant to be touched",
+    "products": ["firefox", "fennec", "geckoview"]
+  },
+  "TELEMETRY_TEST_MOBILE_ONLY": {
+    "record_in_processes": ["all"],
+    "alert_emails": ["telemetry-client-dev@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "linear",
+    "low": 1,
+    "high": 10000,
+    "n_buckets": 10,
+    "bug_numbers": [1452552],
+    "description": "a testing histogram; not meant to be touched",
+    "products": ["fennec", "geckoview"]
   },
   "STARTUP_CRASH_DETECTED": {
     "record_in_processes": ["main", "content"],
@@ -7724,7 +7781,7 @@
     "kind": "count",
     "keyed": true,
     "releaseChannelCollection": "opt-out",
-    "description": "Record the search counts for search engines"
+    "description": "Records search counts for search access points and in content searches. For search access points, the format is: <engine-name>.<search-access-point> For in content searches, the format is <provider>.in-content:[sap|sap-follow-on|organic]:[code|none]"
   },
   "SEARCH_RESET_RESULT": {
     "record_in_processes": ["main", "content"],
@@ -9961,13 +10018,6 @@
     "alert_emails": ["dev-developer-tools@lists.mozilla.org", "jryans@mozilla.com"],
     "releaseChannelCollection": "opt-out",
     "description": "What runtime version did WebIDE connect to?"
-  },
-  "DEVTOOLS_SCREEN_RESOLUTION_ENUMERATED_PER_USER": {
-    "record_in_processes": ["main", "content"],
-    "expires_in_version": "never",
-    "kind": "enumerated",
-    "n_values": 13,
-    "description": "Screen resolution of DevTools user (0:lower, 1:800x600, 2:1024x768, 3:1280x800, 4:1280x1024, 5:1366x768, 6:1440x900, 7:1920x1080, 8:2560×1440, 9:2560×1600, 10:2880x1800, 11:other, 12:higher)"
   },
   "DEVTOOLS_SAVE_HEAP_SNAPSHOT_MS": {
     "record_in_processes": ["main", "content"],
@@ -12351,157 +12401,14 @@
     "labels": ["ClassicScript", "ModuleScript"],
     "description": "Record the kind of every script loaded in a document."
   },
-  "DOM_SCRIPT_SRC_ENCODING": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["dteller@mozilla.com"],
-    "expires_in_version": "61",
-    "kind": "count",
-    "keyed": true,
-    "bug_numbers": [1344152],
-    "description": "Note the encoding (e.g. 'UTF-8', 'windows-1252', 'ASCII') of each external <script> element that is successfully loaded and decoded."
-  },
   "DOM_SCRIPT_LOADING_SOURCE": {
     "record_in_processes": ["content"],
     "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
+    "expires_in_version": "never",
     "kind": "categorical",
     "bug_numbers": [1362114],
     "labels": ["Inline", "SourceFallback", "Source", "AltData"],
     "description": "Record the input from which the bytes are coming from, for each script in a document."
-  },
-  "DOM_SCRIPT_INLINE_SIZE": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "low": 64,
-    "high": 16000000,
-    "n_buckets": 50,
-    "bug_numbers": [1362114],
-    "description": "Size (in number of characters) of each script which is inlined in a document."
-  },
-  "DOM_SCRIPT_SOURCE_SIZE": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "low": 64,
-    "high": 16000000,
-    "n_buckets": 50,
-    "bug_numbers": [1362114],
-    "description": "Size (in number of characters) of each script which is streamed in plain-text in a document."
-  },
-  "DOM_SCRIPT_BYTECODE_SIZE": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "low": 64,
-    "high": 16000000,
-    "n_buckets": 50,
-    "bug_numbers": [1362114],
-    "description": "Size (in number of bytes) of each script which is streamed in encoded-format in a document."
-  },
-  "DOM_SCRIPT_FETCH_COUNT": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "linear",
-    "low": 1,
-    "high": 100,
-    "n_buckets": 99,
-    "bug_numbers": [1362114],
-    "description": "For each script in a document, record the number of times it was requested since it got saved in the cache."
-  },
-  "DOM_SCRIPT_MAIN_THREAD_PARSE_EXEC_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "high": 50000,
-    "n_buckets": 100,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to parse and execute a script (which might be encoded later) on the main thread."
-  },
-  "DOM_SCRIPT_MAIN_THREAD_PARSE_ENCODE_EXEC_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "high": 50000,
-    "n_buckets": 100,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to parse, encode and execute a script on the main thread."
-  },
-  "DOM_SCRIPT_MAIN_THREAD_DECODE_EXEC_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "high": 50000,
-    "n_buckets": 100,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to decode and execute a script on the main thread."
-  },
-  "DOM_SCRIPT_OFF_THREAD_PARSE_EXEC_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "high": 50000,
-    "n_buckets": 100,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to parse off-main-thread and execute a script (which might be encoded later) on the main thread."
-  },
-  "DOM_SCRIPT_OFF_THREAD_PARSE_ENCODE_EXEC_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "high": 50000,
-    "n_buckets": 100,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to parse off-main-thread, encode and execute a script on the main thread."
-  },
-  "DOM_SCRIPT_OFF_THREAD_DECODE_EXEC_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "exponential",
-    "high": 50000,
-    "n_buckets": 100,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to decode off-main-thread and execute a script on the main thread."
-  },
-  "DOM_SCRIPT_ENCODING_MS_PER_DOCUMENT": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "linear",
-    "high": 64,
-    "n_buckets": 32,
-    "bug_numbers": [1362114],
-    "description": "Time, in milliseconds, needed to encode all scripts in a document."
-  },
-  "DOM_SCRIPT_ENCODING_STATUS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "categorical",
-    "bug_numbers": [1362114],
-    "labels": ["EncodingFailure", "BufferTooLarge", "OpenFailure", "WriteFailure", "CloseFailure", "EncodingSuccess"],
-    "description": "Record the failure reasons of the JavaScript Start-up Bytecode Cache encoder."
-  },
-  "DOM_SCRIPT_EVAL_PER_DOCUMENT": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["nicolas.b.pierron@mozilla.com"],
-    "expires_in_version": "62",
-    "kind": "linear",
-    "low": 1,
-    "high": 200,
-    "n_buckets": 50,
-    "bug_numbers": [1362114],
-    "description": "Number of script tags evaluated per document."
   },
   "DOM_SCRIPT_PRELOAD_RESULT": {
     "record_in_processes": ["main", "content"],
@@ -12923,7 +12830,7 @@
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 50,
-    "description": "Time spent in the paint pipeline for content."
+    "description": "Time spent in the paint pipeline for content in milliseconds."
   },
   "CONTENT_LARGE_PAINT_PHASE_WEIGHT": {
     "record_in_processes": ["main", "content"],
@@ -12931,10 +12838,23 @@
     "bug_numbers": [1309442],
     "expires_in_version": "66",
     "keyed": true,
+    "keys": ["dl", "flb", "fr", "r"],
     "kind": "linear",
     "high": 100,
     "n_buckets": 10,
-    "description": "Percentage of time taken by phases in expensive content paints."
+    "description": "Percentages of times for phases in an expensive content paint relative to the time spent in the entire expensive paint. (\"dl\" = Display list, \"flb\" = Frame layer builder, \"fr\" = Flush rasterization, \"r\" = Rasterization)"
+  },
+  "CONTENT_SMALL_PAINT_PHASE_WEIGHT": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["mwoodrow@mozilla.com","gfx-telemetry-alerts@mozilla.com"],
+    "bug_numbers": [1430897],
+    "expires_in_version": "66",
+    "keyed": true,
+    "keys": ["dl", "flb", "fr", "r"],
+    "kind": "linear",
+    "high": 100,
+    "n_buckets": 10,
+    "description": "Percentages of times for phases in a normal content paint relative to the time spent in the entire normal paint. (\"dl\" = Display list, \"flb\" = Frame layer builder, \"fr\" = Flush rasterization, \"r\" = Rasterization)"
   },
   "NARRATE_CONTENT_BY_LANGUAGE_2": {
     "record_in_processes": ["main", "content"],
@@ -13030,17 +12950,6 @@
     "bug_numbers": [1314220],
     "description": "The time duration from tab's media was blocked to unblocked. Now we record from 1 to 90 seconds, but the record by milliseconds, so the bucket is like [1000ms, 2000ms], [2000ms, 3000ms], e.t.c.",
     "releaseChannelCollection": "opt-out"
-  },
-  "MAIN_THREAD_RUNNABLE_MS": {
-    "record_in_processes": ["main", "content", "gpu"],
-    "alert_emails": ["wmccloskey@mozilla.com", "farre@mozilla.com"],
-    "expires_in_version": "70",
-    "kind": "exponential",
-    "keyed": true,
-    "high": 10000,
-    "n_buckets": 10,
-    "bug_numbers": [1331804],
-    "description": "The time a given main thread runnable took to run (in milliseconds). The key comes from the runnables nsINamed::name value."
   },
   "MOZ_CHUNKED_ARRAYBUFFER_IN_XHR": {
     "record_in_processes": ["main", "content"],
@@ -13379,16 +13288,6 @@
     "bug_numbers": [1345540],
     "description": "Time (ms) for the APZ handled wheel event spent in handlers."
   },
-  "TIME_BETWEEN_UNLABELED_RUNNABLES_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["wmccloskey@mozilla.com", "farre@mozilla.com"],
-    "expires_in_version": "70",
-    "kind": "exponential",
-    "high": 30000,
-    "n_buckets": 30,
-    "bug_numbers": [1351021],
-    "description": "Every time we run an unlabeled runnable, this histogram records the time (in ms) since the last unlabeled runnable ran."
-  },
   "VFC_INVALIDATE_LOCK_WAIT_MS": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["jwwang@mozilla.com"],
@@ -13478,22 +13377,11 @@
     "keyed": true,
     "description": "Measures the number of milliseconds we spend processing sync IPC messages in the receiving process, keyed by message name. Note: only messages that take over 500 microseconds are included in this probe."
   },
-  "IDLE_RUNNABLE_BUDGET_OVERUSE_MS": {
-    "record_in_processes": ["main", "content", "gpu"],
-    "alert_emails": ["farre@mozilla.com"],
-    "expires_in_version": "70",
-    "kind": "exponential",
-    "keyed": true,
-    "high": 10000,
-    "n_buckets": 10,
-    "bug_numbers": [1292600],
-    "description": "The time a given runnable exceeds its budget as set in nsIRunnable::SetDeadline (in milliseconds). The key comes from the runnables nsINamed::name value."
-  },
   "WEBEXT_BACKGROUND_PAGE_LOAD_MS": {
     "record_in_processes": ["main"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1353172],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 60000,
@@ -13504,7 +13392,7 @@
     "record_in_processes": ["main"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1297167],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -13515,7 +13403,7 @@
     "record_in_processes": ["main"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1297167],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "categorical",
     "labels": ["popupShown", "clearAfterHover", "clearAfterMousedown"],
     "releaseChannelCollection": "opt-out",
@@ -13525,7 +13413,7 @@
     "record_in_processes": ["main", "content"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1356323],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -13536,7 +13424,7 @@
     "record_in_processes": ["main"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1353171],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -13547,7 +13435,7 @@
     "record_in_processes": ["main"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1297167],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
@@ -13558,23 +13446,65 @@
     "record_in_processes": ["main", "content"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1371398],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
     "n_buckets": 100,
-    "description": "The amount of time it takes to perform a get via storage.local."
+    "description": "The amount of time it takes to perform a get via storage.local using the JSONFile backend."
   },
   "WEBEXT_STORAGE_LOCAL_SET_MS": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["addons-dev-internal@mozilla.com"],
     "bug_numbers": [1371398],
-    "expires_in_version": "63",
+    "expires_in_version": "67",
     "kind": "exponential",
     "releaseChannelCollection": "opt-out",
     "high": 50000,
     "n_buckets": 100,
-    "description": "The amount of time it takes to perform a set via storage.local."
+    "description": "The amount of time it takes to perform a set via storage.local using the JSONFile backend."
+  },
+  "WEBEXT_STORAGE_LOCAL_IDB_GET_MS": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com"],
+    "bug_numbers": [1465120],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to perform a get via storage.local using the IndexedDB backend."
+  },
+  "WEBEXT_STORAGE_LOCAL_IDB_SET_MS": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["addons-dev-internal@mozilla.com"],
+    "bug_numbers": [1465120],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "releaseChannelCollection": "opt-out",
+    "high": 50000,
+    "n_buckets": 100,
+    "description": "The amount of time it takes to perform a set via storage.local using the IndexedDB backend."
+  },
+  "WEBEXT_STORAGE_LOCAL_IDB_MIGRATE_RESULT_COUNT": {
+    "record_in_processes": ["main"],
+    "bug_numbers": [1465129],
+    "alert_emails": ["addons-dev-internal@mozilla.com"],
+    "expires_in_version": "67",
+    "kind": "categorical",
+    "labels": ["success", "failure"],
+    "releaseChannelCollection": "opt-out",
+    "description": "The number of times a storage.local backend data migration has been completed and results in one of the categories."
+  },
+  "EXTENSION_UPDATE_TYPE": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["addons-dev-internal@mozilla.com"],
+    "bug_numbers": [1460336],
+    "expires_in_version": "66",
+    "kind": "categorical",
+    "labels": ["JSON", "RDF"],
+    "releaseChannelCollection": "opt-out",
+    "description": "The type of update manifest served for a given update request."
   },
   "NOTIFY_OBSERVERS_LATENCY_MS": {
     "record_in_processes": ["main", "content", "gpu"],
@@ -13822,25 +13752,105 @@
     "keyed": true,
     "description": "Permission requests (showing a permission prompt) by whether they were requested from code handling a user input event."
   },
-  "ACTIVE_DOCGROUPS_PER_TABGROUP": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["farre@mozilla.com"],
-    "bug_numbers": [1441972],
-    "expires_in_version": "67",
-    "kind": "exponential",
-    "high": 50,
+  "PROFILE_DIRECTORY_FILE_AGE": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["jrediger@mozilla.com", "telemetry-client-dev@mozilla.com"],
+    "bug_numbers": [1458574],
+    "expires_in_version": "65",
+    "high": 1500,
     "n_buckets": 20,
-    "description": "Number of active doc groups per tab group. Collected at the point when the top level document of the tab group is unloaded."
+    "kind": "exponential",
+    "description": "Age of files scanned in profile directory in days when determining initial profile age."
   },
-  "TOTAL_DOCGROUPS_PER_TABGROUP": {
+  "HTMLEDITORS_WITH_RESIZERS": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["mnakano@mozilla.com"],
+    "bug_numbers": [1452538,1449564],
+    "expires_in_version": "65",
+    "kind": "boolean",
+    "releaseChannelCollection": "opt-out",
+    "description": "Number of HTML editors which has shown object resizers."
+  },
+  "HTMLEDITORS_WHOSE_RESIZERS_USED_BY_USER": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["mnakano@mozilla.com"],
+    "bug_numbers": [1452538,1449564],
+    "expires_in_version": "65",
+    "kind": "linear",
+    "high": 50,
+    "n_buckets": 20,
+    "releaseChannelCollection": "opt-out",
+    "description": "Number of HTML editors whose object resizers are actually used by users."
+  },
+  "HTMLEDITORS_WITH_ABSOLUTE_POSITIONER": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["mnakano@mozilla.com"],
+    "bug_numbers": [1452538,1449564],
+    "expires_in_version": "65",
+    "kind": "boolean",
+    "releaseChannelCollection": "opt-out",
+    "description": "Number of HTML editors which has shown grabber to move absolute positioned elements."
+  },
+  "HTMLEDITORS_WHOSE_ABSOLUTE_POSITIONER_USED_BY_USER": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["mnakano@mozilla.com"],
+    "bug_numbers": [1452538,1449564],
+    "expires_in_version": "65",
+    "kind": "linear",
+    "high": 50,
+    "n_buckets": 20,
+    "releaseChannelCollection": "opt-out",
+    "description": "Number of HTML editors whose grabber to move absolute positioned elements is actually used by users."
+  },
+  "HTMLEDITORS_WITH_INLINE_TABLE_EDITOR": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["mnakano@mozilla.com"],
+    "bug_numbers": [1452538,1449564],
+    "expires_in_version": "65",
+    "kind": "boolean",
+    "releaseChannelCollection": "opt-out",
+    "description": "Number of HTML editors which has shown inline table editing UI."
+  },
+  "HTMLEDITORS_WHOSE_INLINE_TABLE_EDITOR_USED_BY_USER": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["mnakano@mozilla.com"],
+    "bug_numbers": [1452538,1449564],
+    "expires_in_version": "65",
+    "kind": "linear",
+    "high": 50,
+    "n_buckets": 20,
+    "releaseChannelCollection": "opt-out",
+    "description": "Number of HTML editors whose inline table editing UI is actually used by users."
+  },
+  "ACTIVE_HTTP_DOCGROUPS_PER_TABGROUP": {
     "record_in_processes": ["content"],
     "alert_emails": ["farre@mozilla.com"],
-    "bug_numbers": [1441972],
+    "bug_numbers": [1441972, 1468843],
     "expires_in_version": "67",
     "kind": "exponential",
     "high": 50,
     "n_buckets": 20,
-    "description": "Total number of doc groups per tab group, including docgroups fully in bfcache. Collected at the point when the top level document of the tab group is unloaded."
+    "description": "Number of active http:// and https:// doc groups per tab group. Collected at the point when the top level document of the tab group is unloaded."
+  },
+  "TOTAL_HTTP_DOCGROUPS_PER_TABGROUP": {
+    "record_in_processes": ["content"],
+    "alert_emails": ["farre@mozilla.com"],
+    "bug_numbers": [1441972, 1468843],
+    "expires_in_version": "67",
+    "kind": "exponential",
+    "high": 50,
+    "n_buckets": 20,
+    "description": "Total number of http:// and https:// doc groups per tab group, including docgroups fully in bfcache. Collected at the point when the top level document of the tab group is unloaded."
+  },
+  "HIDDEN_VIEWPORT_OVERFLOW_TYPE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["xquan@mozilla.com", "botond@mozilla.com"],
+    "bug_numbers": [1423013, 1423017],
+    "expires_in_version": "65",
+    "kind": "categorical",
+    "releaseChannelCollection": "opt-out",
+    "labels": ["NoOverflow", "Desktop", "ButNotMinScaleSize", "MinScaleSize"],
+    "description": "How common are different types of out-of-reach viewport overflow?"
   },
   "REPORT_DECEPTIVE_SITE": {
     "record_in_processes": ["main", "content"],

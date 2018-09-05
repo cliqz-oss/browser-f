@@ -75,7 +75,8 @@ NS_IMETHODIMP_(void) LocalStorageCacheBridge::Release(void)
 // LocalStorageCache
 
 LocalStorageCache::LocalStorageCache(const nsACString* aOriginNoSuffix)
-  : mOriginNoSuffix(*aOriginNoSuffix)
+  : mActor(nullptr)
+  , mOriginNoSuffix(*aOriginNoSuffix)
   , mMonitor("LocalStorageCache")
   , mLoaded(false)
   , mLoadResult(NS_OK)
@@ -89,11 +90,26 @@ LocalStorageCache::LocalStorageCache(const nsACString* aOriginNoSuffix)
 
 LocalStorageCache::~LocalStorageCache()
 {
+  if (mActor) {
+    mActor->SendDeleteMeInternal();
+    MOZ_ASSERT(!mActor, "SendDeleteMeInternal should have cleared!");
+  }
+
   if (mManager) {
     mManager->DropCache(this);
   }
 
   MOZ_COUNT_DTOR(LocalStorageCache);
+}
+
+void
+LocalStorageCache::SetActor(LocalStorageCacheChild* aActor)
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(aActor);
+  MOZ_ASSERT(!mActor);
+
+  mActor = aActor;
 }
 
 NS_IMETHODIMP_(void)
@@ -150,6 +166,28 @@ LocalStorageCache::Init(LocalStorageManager* aManager,
                                                          NS_LITERAL_CSTRING("^")));
 
   mUsage = aManager->GetOriginUsage(mQuotaOriginScope);
+}
+
+void
+LocalStorageCache::NotifyObservers(const LocalStorage* aStorage,
+                                   const nsString& aKey,
+                                   const nsString& aOldValue,
+                                   const nsString& aNewValue)
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(aStorage);
+
+  if (!mActor) {
+    return;
+  }
+
+  // We want to send a message to the parent in order to broadcast the
+  // StorageEvent correctly to any child process.
+
+  Unused << mActor->SendNotify(aStorage->DocumentURI(),
+                               aKey,
+                               aOldValue,
+                               aNewValue);
 }
 
 inline bool
@@ -401,7 +439,15 @@ LocalStorageCache::SetItem(const LocalStorage* aStorage, const nsAString& aKey,
 
   data.mKeys.Put(aKey, aValue);
 
-  if (aSource == ContentMutation && Persist(aStorage)) {
+  if (aSource != ContentMutation) {
+    return NS_OK;
+  }
+
+#if !defined(MOZ_WIDGET_ANDROID)
+  NotifyObservers(aStorage, nsString(aKey), aOld, aValue);
+#endif
+
+  if (Persist(aStorage)) {
     StorageDBChild* storageChild = StorageDBChild::Get();
     if (!storageChild) {
       NS_ERROR("Writing to localStorage after the database has been shut down"
@@ -443,7 +489,15 @@ LocalStorageCache::RemoveItem(const LocalStorage* aStorage,
   Unused << ProcessUsageDelta(aStorage, delta, aSource);
   data.mKeys.Remove(aKey);
 
-  if (aSource == ContentMutation && Persist(aStorage)) {
+  if (aSource != ContentMutation) {
+    return NS_OK;
+  }
+
+#if !defined(MOZ_WIDGET_ANDROID)
+  NotifyObservers(aStorage, nsString(aKey), aOld, VoidString());
+#endif
+
+  if (Persist(aStorage)) {
     StorageDBChild* storageChild = StorageDBChild::Get();
     if (!storageChild) {
       NS_ERROR("Writing to localStorage after the database has been shut down"
@@ -485,7 +539,17 @@ LocalStorageCache::Clear(const LocalStorage* aStorage,
     data.mKeys.Clear();
   }
 
-  if (aSource == ContentMutation && Persist(aStorage) && (refresh || hadData)) {
+  if (aSource != ContentMutation) {
+    return hadData ? NS_OK : NS_SUCCESS_DOM_NO_OPERATION;
+  }
+
+#if !defined(MOZ_WIDGET_ANDROID)
+  if (hadData) {
+    NotifyObservers(aStorage, VoidString(), VoidString(), VoidString());
+  }
+#endif
+
+  if (Persist(aStorage) && (refresh || hadData)) {
     StorageDBChild* storageChild = StorageDBChild::Get();
     if (!storageChild) {
       NS_ERROR("Writing to localStorage after the database has been shut down"

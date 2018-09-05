@@ -6,7 +6,7 @@
 "use strict";
 
 const {Toolbox} = require("devtools/client/framework/toolbox");
-const {SIDE, BOTTOM, WINDOW} = Toolbox.HostType;
+const {LEFT, RIGHT, BOTTOM, WINDOW} = Toolbox.HostType;
 
 const URL = "data:text/html;charset=utf8,browser_toolbox_hosts_telemetry.js";
 
@@ -14,9 +14,9 @@ add_task(async function() {
   startTelemetry();
 
   info("Create a test tab and open the toolbox");
-  let tab = await addTab(URL);
-  let target = TargetFactory.forTab(tab);
-  let toolbox = await gDevTools.showToolbox(target, "webconsole");
+  const tab = await addTab(URL);
+  const target = TargetFactory.forTab(tab);
+  const toolbox = await gDevTools.showToolbox(target, "webconsole");
 
   await changeToolboxHost(toolbox);
   await checkResults();
@@ -24,18 +24,22 @@ add_task(async function() {
 
 async function changeToolboxHost(toolbox) {
   info("Switch toolbox host");
-  await toolbox.switchHost(SIDE);
+  await toolbox.switchHost(RIGHT);
   await toolbox.switchHost(WINDOW);
   await toolbox.switchHost(BOTTOM);
-  await toolbox.switchHost(SIDE);
+  await toolbox.switchHost(LEFT);
+  await toolbox.switchHost(RIGHT);
   await toolbox.switchHost(WINDOW);
   await toolbox.switchHost(BOTTOM);
+  await toolbox.switchHost(LEFT);
+  await toolbox.switchHost(RIGHT);
 }
 
 function checkResults() {
   // Check for:
   //   - 3 "bottom" entries.
-  //   - 2 "side" entries.
+  //   - 2 "left" entries.
+  //   - 3 "right" entries.
   //   - 2 "window" entries.
-  checkTelemetry("DEVTOOLS_TOOLBOX_HOST", "", [3, 2, 2, 0, 0, 0, 0, 0, 0, 0], "array");
+  checkTelemetry("DEVTOOLS_TOOLBOX_HOST", "", [3, 3, 2, 0, 2, 0, 0, 0, 0, 0], "array");
 }

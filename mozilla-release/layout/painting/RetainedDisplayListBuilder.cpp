@@ -113,12 +113,13 @@ RetainedDisplayListBuilder::PreProcessDisplayList(RetainedDisplayList* aList,
       aList->mDAG.mDirectPredecessorList.Length() >
       (aList->mDAG.mNodesInfo.Length() * kMaxEdgeRatio)) {
     return false;
-
   }
+
+  MOZ_RELEASE_ASSERT(initializeDAG || aList->mDAG.Length() == aList->Count());
 
   nsDisplayList saved;
   aList->mOldItems.SetCapacity(aList->Count());
-  MOZ_ASSERT(aList->mOldItems.IsEmpty());
+  MOZ_RELEASE_ASSERT(aList->mOldItems.IsEmpty());
   while (nsDisplayItem* item = aList->RemoveBottom()) {
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
     item->mMergedItem = false;
@@ -173,7 +174,7 @@ RetainedDisplayListBuilder::PreProcessDisplayList(RetainedDisplayList* aList,
     // display items.
     item->RestoreState();
   }
-  MOZ_ASSERT(aList->mOldItems.Length() == aList->mDAG.Length());
+  MOZ_RELEASE_ASSERT(aList->mOldItems.Length() == aList->mDAG.Length());
   aList->RestoreState();
   return true;
 }
@@ -244,7 +245,7 @@ OldItemInfo::Discard(RetainedDisplayListBuilder* aBuilder,
 {
   MOZ_ASSERT(!IsUsed());
   mUsed = mDiscarded = true;
-  mDirectPredecessors = Move(aDirectPredecessors);
+  mDirectPredecessors = std::move(aDirectPredecessors);
   if (mItem) {
     mItem->Destroy(aBuilder->Builder());
   }
@@ -271,12 +272,13 @@ public:
   MergeState(RetainedDisplayListBuilder* aBuilder, RetainedDisplayList& aOldList, uint32_t aOuterKey)
     : mBuilder(aBuilder)
     , mOldList(&aOldList)
-    , mOldItems(Move(aOldList.mOldItems))
-    , mOldDAG(Move(*reinterpret_cast<DirectedAcyclicGraph<OldListUnits>*>(&aOldList.mDAG)))
+    , mOldItems(std::move(aOldList.mOldItems))
+    , mOldDAG(std::move(*reinterpret_cast<DirectedAcyclicGraph<OldListUnits>*>(&aOldList.mDAG)))
     , mOuterKey(aOuterKey)
     , mResultIsModified(false)
   {
     mMergedDAG.EnsureCapacityFor(mOldDAG);
+    MOZ_RELEASE_ASSERT(mOldItems.Length() == mOldDAG.Length());
   }
 
   MergedListIndex ProcessItemFromNewList(nsDisplayItem* aNewItem, const Maybe<MergedListIndex>& aPreviousItem) {
@@ -295,6 +297,7 @@ public:
                                           aNewItem->GetChildren(),
                                           containerASRForChildren,
                                           aNewItem->GetPerFrameKey())) {
+            aNewItem->InvalidateCachedChildInfo();
             mResultIsModified = true;
 
           }
@@ -320,12 +323,13 @@ public:
 
       AutoTArray<MergedListIndex, 2> directPredecessors =
         ResolveNodeIndexesOldToMerged(mOldDAG.GetDirectPredecessors(OldListIndex(i)));
-      ProcessOldNode(OldListIndex(i), Move(directPredecessors));
+      ProcessOldNode(OldListIndex(i), std::move(directPredecessors));
     }
 
     RetainedDisplayList result;
     result.AppendToTop(&mMergedItems);
-    result.mDAG = Move(mMergedDAG);
+    result.mDAG = std::move(mMergedDAG);
+    MOZ_RELEASE_ASSERT(result.mDAG.Length() == result.Count());
     return result;
   }
 
@@ -390,7 +394,7 @@ public:
   void ProcessOldNode(OldListIndex aNode, nsTArray<MergedListIndex>&& aDirectPredecessors) {
     nsDisplayItem* item = mOldItems[aNode.val].mItem;
     if (mOldItems[aNode.val].IsChanged() || HasModifiedFrame(item)) {
-      mOldItems[aNode.val].Discard(mBuilder, Move(aDirectPredecessors));
+      mOldItems[aNode.val].Discard(mBuilder, std::move(aDirectPredecessors));
       mResultIsModified = true;
     } else {
       if (item->GetChildren()) {
@@ -398,6 +402,7 @@ public:
         nsDisplayList empty;
         if (mBuilder->MergeDisplayLists(&empty, item->GetChildren(), item->GetChildren(),
                                         containerASRForChildren, item->GetPerFrameKey())) {
+          item->InvalidateCachedChildInfo();
           mResultIsModified = true;
         }
         UpdateASR(item, containerASRForChildren);
@@ -444,7 +449,7 @@ public:
         if (mStack.IsEmpty()) {
           return result;
         } else {
-          ProcessOldNode(item.mNode, Move(result));
+          ProcessOldNode(item.mNode, std::move(result));
         }
       } else {
         // Grab the current predecessor, push predecessors of that onto the processing
@@ -514,7 +519,7 @@ RetainedDisplayListBuilder::MergeDisplayLists(nsDisplayList* aNewList,
     previousItemIndex = Some(merge.ProcessItemFromNewList(item, previousItemIndex));
   }
 
-  *aOutList = Move(merge.Finalize());
+  *aOutList = merge.Finalize();
   aOutContainerASR = merge.mContainerASR;
   return merge.mResultIsModified;
 }
@@ -816,7 +821,7 @@ ProcessFrameInternal(nsIFrame* aFrame, nsDisplayListBuilder& aBuilder,
 
       // Grab the visible (display list building) rect for children of this wrapper
       // item and convert into into coordinate relative to the current frame.
-      nsRect previousVisible = wrapperItem->GetVisibleRectForChildren();
+      nsRect previousVisible = wrapperItem->GetBuildingRectForChildren();
       if (wrapperItem->ReferenceFrameForChildren() == wrapperItem->ReferenceFrame()) {
         previousVisible -= wrapperItem->ToReferenceFrame();
       } else {

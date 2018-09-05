@@ -12,7 +12,7 @@
         windowtype="Browser:SitePermissions"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         data-l10n-id="permissions-window"
-        data-l10n-attrs="style"
+        data-l10n-attrs="title, style"
         onload="gSitePermissionsManager.onLoad();"
         onunload="gSitePermissionsManager.uninit();"
         persist="screenX screenY width height"
@@ -22,9 +22,6 @@
   <script type="application/javascript" src="chrome://global/content/l10n.js"></script>
 
   <script src="chrome://browser/content/preferences/sitePermissions.js"/>
-
-  <stringbundle id="bundlePreferences"
-                src="chrome://browser/locale/preferences/preferences.properties"/>
 
   <keyset>
     <key data-l10n-id="permissions-close-key" modifiers="accel" oncommand="window.close();"/>

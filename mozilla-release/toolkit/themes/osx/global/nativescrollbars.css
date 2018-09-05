@@ -7,7 +7,6 @@
 
 scrollbar {
   -moz-appearance: scrollbar;
-  -moz-binding: url("chrome://global/content/bindings/general.xml#empty");
   cursor: default;
   background-color: white;
 }
@@ -72,7 +71,7 @@ scrollbar[orient="vertical"] > scrollbarbutton[type="decrement"] {
 /* ::::: square at the corner of two scrollbars ::::: */
 
 scrollcorner {
-  /* XXX -moz-appearance: scrollcorner; */
+  -moz-appearance: scrollcorner;
   width: 16px;
   cursor: default;
   background-color: white;

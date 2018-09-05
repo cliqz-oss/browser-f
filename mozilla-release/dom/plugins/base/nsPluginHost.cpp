@@ -1781,9 +1781,14 @@ class GetSitesClosure : public nsIGetSitesWithDataCallback {
 public:
   NS_DECL_ISUPPORTS
   GetSitesClosure(const nsACString& domain, nsPluginHost* host)
-  : domain(domain), host(host), keepWaiting(true)
+    : domain(domain)
+    , host(host)
+    , result{ false }
+    , keepWaiting(true)
+    , retVal(NS_ERROR_NOT_INITIALIZED)
   {
   }
+
   NS_IMETHOD SitesWithData(InfallibleTArray<nsCString>& sites) override {
     retVal = HandleGetSites(sites);
     keepWaiting = false;
@@ -2094,23 +2099,15 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
 
   bool flashOnly = Preferences::GetBool("plugin.load_flash_only", true);
 
-  nsCOMPtr<nsISimpleEnumerator> iter;
+  nsCOMPtr<nsIDirectoryEnumerator> iter;
   rv = pluginsDir->GetDirectoryEntries(getter_AddRefs(iter));
   if (NS_FAILED(rv))
     return rv;
 
   AutoTArray<nsCOMPtr<nsIFile>, 6> pluginFiles;
 
-  bool hasMore;
-  while (NS_SUCCEEDED(iter->HasMoreElements(&hasMore)) && hasMore) {
-    nsCOMPtr<nsISupports> supports;
-    rv = iter->GetNext(getter_AddRefs(supports));
-    if (NS_FAILED(rv))
-      continue;
-    nsCOMPtr<nsIFile> dirEntry(do_QueryInterface(supports, &rv));
-    if (NS_FAILED(rv))
-      continue;
-
+  nsCOMPtr<nsIFile> dirEntry;
+  while (NS_SUCCEEDED(iter->GetNextFile(getter_AddRefs(dirEntry))) && dirEntry) {
     // Sun's JRE 1.3.1 plugin must have symbolic links resolved or else it'll crash.
     // See bug 197855.
     dirEntry->Normalize();
@@ -2268,10 +2265,9 @@ nsPluginHost::UpdatePluginBlocklistState(nsPluginTag* aPluginTag, bool aShouldSo
     return;
   }
   // Asynchronously get the blocklist state.
-  nsCOMPtr<nsISupports> result;
+  RefPtr<Promise> promise;
   blocklist->GetPluginBlocklistState(aPluginTag, EmptyString(),
-                                     EmptyString(), getter_AddRefs(result));
-  RefPtr<Promise> promise = do_QueryObject(result);
+                                     EmptyString(), getter_AddRefs(promise));
   MOZ_ASSERT(promise, "Should always get a promise for plugin blocklist state.");
   if (promise) {
     promise->AppendNativeHandler(new mozilla::plugins::BlocklistPromiseHandler(aPluginTag, aShouldSoftblock));

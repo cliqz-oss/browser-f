@@ -8,12 +8,12 @@
 
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/File.h"
-#include "mozilla/dom/ChromeMessageSender.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentBridgeParent.h"
 #include "mozilla/dom/ContentProcessManager.h"
 #include "mozilla/dom/PTabContext.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
+#include "mozilla/dom/ProcessMessageManager.h"
 #include "mozilla/dom/TabParent.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamParent.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
@@ -236,7 +236,8 @@ nsIContentParent::AllocPIPCBlobInputStreamParent(const nsID& aID,
 bool
 nsIContentParent::DeallocPIPCBlobInputStreamParent(PIPCBlobInputStreamParent* aActor)
 {
-  delete aActor;
+  RefPtr<IPCBlobInputStreamParent> actor =
+    dont_AddRef(static_cast<IPCBlobInputStreamParent*>(aActor));
   return true;
 }
 
@@ -248,7 +249,7 @@ nsIContentParent::RecvSyncMessage(const nsString& aMsg,
                                   nsTArray<ipc::StructuredCloneData>* aRetvals)
 {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-    "nsIContentParent::RecvSyncMessage", EVENTS, aMsg);
+    "nsIContentParent::RecvSyncMessage", OTHER, aMsg);
 
   CrossProcessCpowHolder cpows(this, aCpows);
   RefPtr<nsFrameMessageManager> ppm = mMessageManager;
@@ -270,7 +271,7 @@ nsIContentParent::RecvRpcMessage(const nsString& aMsg,
                                  nsTArray<ipc::StructuredCloneData>* aRetvals)
 {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-    "nsIContentParent::RecvRpcMessage", EVENTS, aMsg);
+    "nsIContentParent::RecvRpcMessage", OTHER, aMsg);
 
   CrossProcessCpowHolder cpows(this, aCpows);
   RefPtr<nsFrameMessageManager> ppm = mMessageManager;
@@ -330,7 +331,7 @@ nsIContentParent::RecvAsyncMessage(const nsString& aMsg,
                                    const ClonedMessageData& aData)
 {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-    "nsIContentParent::RecvAsyncMessage", EVENTS, aMsg);
+    "nsIContentParent::RecvAsyncMessage", OTHER, aMsg);
 
   CrossProcessCpowHolder cpows(this, aCpows);
   RefPtr<nsFrameMessageManager> ppm = mMessageManager;

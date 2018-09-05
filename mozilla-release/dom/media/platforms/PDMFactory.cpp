@@ -97,7 +97,7 @@ public:
     explicit CheckResult(Reason aReason,
                          MediaResult aResult = MediaResult(NS_OK))
       : mReason(aReason),
-        mMediaResult(mozilla::Move(aResult))
+        mMediaResult(std::move(aResult))
     {
     }
     CheckResult(const CheckResult& aOther) = default;
@@ -113,7 +113,7 @@ public:
   void
   AddToCheckList(Func&& aChecker)
   {
-    mCheckerList.AppendElement(mozilla::Forward<Func>(aChecker));
+    mCheckerList.AppendElement(std::forward<Func>(aChecker));
   }
 
   void

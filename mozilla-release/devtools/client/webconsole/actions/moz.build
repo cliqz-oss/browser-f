@@ -5,7 +5,9 @@
 
 DevToolsModules(
     'filters.js',
+    'history.js',
     'index.js',
     'messages.js',
+    'notifications.js',
     'ui.js',
 )

@@ -13,12 +13,12 @@ function run_test() {
   gDebuggee = testGlobal("test-1");
   DebuggerServer.addTestGlobal(gDebuggee);
 
-  let transport = DebuggerServer.connectPipe();
+  const transport = DebuggerServer.connectPipe();
   gClient = new DebuggerClient(transport);
   gClient.addListener("connected", function(event, type, traits) {
     gClient.listTabs().then((response) => {
       Assert.ok("tabs" in response);
-      for (let tab of response.tabs) {
+      for (const tab of response.tabs) {
         if (tab.title == "test-1") {
           test_attach_tab(tab.actor);
           return false;
@@ -35,11 +35,11 @@ function run_test() {
   do_test_pending();
 }
 
-// Attach to |tabActor|, and check the response.
-function test_attach_tab(tabActor) {
-  gClient.request({ to: tabActor, type: "attach" }, function(response) {
+// Attach to |targetActor|, and check the response.
+function test_attach_tab(targetActor) {
+  gClient.request({ to: targetActor, type: "attach" }, function(response) {
     Assert.equal(false, "error" in response);
-    Assert.equal(response.from, tabActor);
+    Assert.equal(response.from, targetActor);
     Assert.equal(response.type, "tabAttached");
     Assert.ok(typeof response.threadActor === "string");
 
@@ -104,7 +104,7 @@ function cleanup() {
   });
 
   try {
-    let inspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
+    const inspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
     Assert.equal(inspector.eventLoopNestLevel, 0);
   } catch (e) {
     dump(e);

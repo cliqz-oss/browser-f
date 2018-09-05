@@ -16,6 +16,10 @@
 #include "mozilla/gfx/2D.h"
 #endif // MOZILLA_INTERNAL_API
 
+#if defined(__ANDROID__)
+#include <pthread.h>
+#endif // defined(__ANDROID__)
+
 namespace mozilla {
 #ifdef MOZILLA_INTERNAL_API
 namespace dom {
@@ -23,6 +27,8 @@ namespace dom {
 }
 #endif //  MOZILLA_INTERNAL_API
 namespace gfx {
+
+static const int32_t kVRExternalVersion = 0;
 
 // We assign VR presentations to groups with a bitmask.
 // Currently, we will only display either content or chrome.
@@ -216,6 +222,9 @@ struct VRDisplayState
     NumEyes
   };
 
+#if defined(__ANDROID__)
+  bool shutdown;
+#endif // defined(__ANDROID__)
   char mDisplayName[kVRDisplayNameMaxLen];
   VRDisplayCapabilityFlags mCapabilityFlags;
   VRFieldOfView mEyeFOV[VRDisplayState::NumEyes];
@@ -226,6 +235,9 @@ struct VRDisplayState
   FloatSize_POD mStageSize;
   // We can't use a Matrix4x4 here unless we ensure it's a POD type
   float mSittingToStandingTransform[16];
+  uint64_t mLastSubmittedFrameId;
+  bool mLastSubmittedFrameSuccessful;
+  uint32_t mPresentingGeneration;
 };
 
 struct VRControllerState
@@ -264,9 +276,8 @@ enum class VRLayerType : uint16_t {
 
 enum class VRLayerTextureType : uint16_t {
   LayerTextureType_None = 0,
-  LayerTextureType_DirectX = 1,
-  LayerTextureType_OpenGL = 2,
-  LayerTextureType_Vulkan = 3
+  LayerTextureType_D3D10SurfaceDescriptor = 1,
+  LayerTextureType_MacIOSurface = 2
 };
 
 struct VRLayer_2D_Content
@@ -281,6 +292,7 @@ struct VRLayer_Stereo_Immersive
   void* mTextureHandle;
   VRLayerTextureType mTextureType;
   uint64_t mFrameId;
+  uint64_t mInputFrameId;
   VRLayerEyeRect mLeftEyeRect;
   VRLayerEyeRect mRightEyeRect;
 };
@@ -296,11 +308,16 @@ struct VRLayerState
 
 struct VRBrowserState
 {
+#if defined(__ANDROID__)
+  bool shutdown;
+#endif // defined(__ANDROID__)
   VRLayerState layerState[kVRLayerMaxCount];
 };
 
 struct VRSystemState
 {
+  uint32_t presentingGeneration;
+  bool enumerationCompleted;
   VRDisplayState displayState;
   VRHMDSensorState sensorState;
   VRControllerState controllerState[kVRControllerMaxCount];
@@ -308,12 +325,23 @@ struct VRSystemState
 
 struct VRExternalShmem
 {
+  int32_t version;
+  int32_t size;
+#if defined(__ANDROID__)
+  pthread_mutex_t systemMutex;
+  pthread_mutex_t browserMutex;
+#else
   int64_t generationA;
+#endif // defined(__ANDROID__)
   VRSystemState state;
+#if !defined(__ANDROID__)
   int64_t generationB;
   int64_t browserGenerationA;
+#endif // !defined(__ANDROID__)
   VRBrowserState browserState;
+#if !defined(__ANDROID__)
   int64_t browserGenerationB;
+#endif // !defined(__ANDROID__)
 };
 
 // As we are memcpy'ing VRExternalShmem and its members around, it must be a POD type

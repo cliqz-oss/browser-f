@@ -7,19 +7,20 @@
 #include "jit/arm/CodeGenerator-arm.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Maybe.h"
 
 #include "jsnum.h"
 
 #include "jit/CodeGenerator.h"
-#include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
 #include "js/Conversions.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "vm/Shape.h"
 #include "vm/TraceLogging.h"
 
@@ -30,6 +31,7 @@
 using namespace js;
 using namespace js::jit;
 
+using mozilla::DebugOnly;
 using mozilla::FloorLog2;
 using mozilla::NegativeInfinity;
 using JS::GenericNaN;
@@ -1321,6 +1323,26 @@ CodeGenerator::visitRoundF(LRoundF* lir)
     // Output is either correct, or clamped. All -0 cases have been translated
     // to a clamped case.
     masm.roundf(input, output, &bail, tmp);
+    bailoutFrom(&bail, lir->snapshot());
+}
+
+void
+CodeGenerator::visitTrunc(LTrunc* lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+    Label bail;
+    masm.trunc(input, output, &bail);
+    bailoutFrom(&bail, lir->snapshot());
+}
+
+void
+CodeGenerator::visitTruncF(LTruncF* lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    Register output = ToRegister(lir->output());
+    Label bail;
+    masm.truncf(input, output, &bail);
     bailoutFrom(&bail, lir->snapshot());
 }
 

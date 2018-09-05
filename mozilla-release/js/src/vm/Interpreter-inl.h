@@ -14,7 +14,7 @@
 #include "builtin/String.h"
 #include "jit/Ion.h"
 #include "vm/ArgumentsObject.h"
-#include "vm/JSCompartment.h"
+#include "vm/Realm.h"
 
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/JSAtom-inl.h"
@@ -288,9 +288,9 @@ HasOwnProperty(JSContext* cx, HandleValue val, HandleValue idValue, bool* result
 
 
 inline bool
-GetIntrinsicOperation(JSContext* cx, jsbytecode* pc, MutableHandleValue vp)
+GetIntrinsicOperation(JSContext* cx, HandleScript script, jsbytecode* pc, MutableHandleValue vp)
 {
-    RootedPropertyName name(cx, cx->currentScript()->getName(pc));
+    RootedPropertyName name(cx, script->getName(pc));
     return GlobalObject::getIntrinsicValue(cx, cx->global(), name, vp);
 }
 
@@ -439,7 +439,7 @@ DefVarOperation(JSContext* cx, HandleObject varobj, HandlePropertyName dn, unsig
     }
 
     if (varobj->is<GlobalObject>()) {
-        if (!varobj->compartment()->addToVarNames(cx, dn))
+        if (!varobj->as<GlobalObject>().realm()->addToVarNames(cx, dn))
             return false;
     }
 

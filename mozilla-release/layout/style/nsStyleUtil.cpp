@@ -89,8 +89,9 @@ void nsStyleUtil::AppendEscapedCSSString(const nsAString& aString,
                                          nsAString& aReturn,
                                          char16_t quoteChar)
 {
-  NS_PRECONDITION(quoteChar == '\'' || quoteChar == '"',
-                  "CSS strings must be quoted with ' or \"");
+  MOZ_ASSERT(quoteChar == '\'' || quoteChar == '"',
+             "CSS strings must be quoted with ' or \"");
+
   aReturn.Append(quoteChar);
 
   const char16_t* in = aString.BeginReading();
@@ -399,8 +400,8 @@ nsStyleUtil::AppendFontFeatureSettings(const nsCSSValue& aSrc,
     return;
   }
 
-  NS_PRECONDITION(unit == eCSSUnit_PairList || unit == eCSSUnit_PairListDep,
-                  "improper value unit for font-feature-settings:");
+  MOZ_ASSERT(unit == eCSSUnit_PairList || unit == eCSSUnit_PairListDep,
+             "improper value unit for font-feature-settings:");
 
   nsTArray<gfxFontFeature> featureSettings;
   nsLayoutUtils::ComputeFontFeatures(aSrc.GetPairListValue(), featureSettings);
@@ -438,8 +439,8 @@ nsStyleUtil::AppendFontVariationSettings(const nsCSSValue& aSrc,
     return;
   }
 
-  NS_PRECONDITION(unit == eCSSUnit_PairList || unit == eCSSUnit_PairListDep,
-                  "improper value unit for font-variation-settings:");
+  MOZ_ASSERT(unit == eCSSUnit_PairList || unit == eCSSUnit_PairListDep,
+             "improper value unit for font-variation-settings:");
 
   nsTArray<gfxFontVariation> variationSettings;
   nsLayoutUtils::ComputeFontVariations(aSrc.GetPairListValue(),
@@ -571,9 +572,10 @@ AppendSerializedUnicodePoint(uint32_t aCode, nsACString& aBuf)
 /* static */ void
 nsStyleUtil::AppendUnicodeRange(const nsCSSValue& aValue, nsAString& aResult)
 {
-  NS_PRECONDITION(aValue.GetUnit() == eCSSUnit_Null ||
-                  aValue.GetUnit() == eCSSUnit_Array,
-                  "improper value unit for unicode-range:");
+  MOZ_ASSERT(aValue.GetUnit() == eCSSUnit_Null ||
+             aValue.GetUnit() == eCSSUnit_Array,
+             "improper value unit for unicode-range:");
+
   aResult.Truncate();
   if (aValue.GetUnit() != eCSSUnit_Array)
     return;
@@ -600,61 +602,6 @@ nsStyleUtil::AppendUnicodeRange(const nsCSSValue& aValue, nsAString& aResult)
   }
   buf.Truncate(buf.Length() - 2); // remove the last comma-space
   CopyASCIItoUTF16(buf, aResult);
-}
-
-/* static */ void
-nsStyleUtil::AppendSerializedFontSrc(const nsCSSValue& aValue,
-                                     nsAString& aResult)
-{
-  // A src: descriptor is represented as an array value; each entry in
-  // the array can be eCSSUnit_URL, eCSSUnit_Local_Font, or
-  // eCSSUnit_Font_Format.  Blocks of eCSSUnit_Font_Format may appear
-  // only after one of the first two.  (css3-fonts only contemplates
-  // annotating URLs with formats, but we handle the general case.)
-
-  NS_PRECONDITION(aValue.GetUnit() == eCSSUnit_Array,
-                  "improper value unit for src:");
-
-  const nsCSSValue::Array& sources = *aValue.GetArrayValue();
-  size_t i = 0;
-
-  while (i < sources.Count()) {
-    nsAutoString formats;
-
-    if (sources[i].GetUnit() == eCSSUnit_URL) {
-      aResult.AppendLiteral("url(");
-      nsDependentCSubstring url(sources[i].GetURLStructValue()->GetString());
-      nsStyleUtil::AppendEscapedCSSString(NS_ConvertUTF8toUTF16(url), aResult);
-      aResult.Append(')');
-    } else if (sources[i].GetUnit() == eCSSUnit_Local_Font) {
-      aResult.AppendLiteral("local(");
-      nsDependentString local(sources[i].GetStringBufferValue());
-      nsStyleUtil::AppendEscapedCSSString(local, aResult);
-      aResult.Append(')');
-    } else {
-      NS_NOTREACHED("entry in src: descriptor with improper unit");
-      i++;
-      continue;
-    }
-
-    i++;
-    formats.Truncate();
-    while (i < sources.Count() &&
-           sources[i].GetUnit() == eCSSUnit_Font_Format) {
-      formats.Append('"');
-      formats.Append(sources[i].GetStringBufferValue());
-      formats.AppendLiteral("\", ");
-      i++;
-    }
-    if (formats.Length() > 0) {
-      formats.Truncate(formats.Length() - 2); // remove the last comma
-      aResult.AppendLiteral(" format(");
-      aResult.Append(formats);
-      aResult.Append(')');
-    }
-    aResult.AppendLiteral(", ");
-  }
-  aResult.Truncate(aResult.Length() - 2); // remove the last comma-space
 }
 
 /* static */ void

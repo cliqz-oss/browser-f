@@ -178,13 +178,11 @@ wasm::Classify(OpBytes op)
       case Op::F64ReinterpretI64:
       case Op::F64PromoteF32:
       case Op::RefIsNull:
-#ifdef ENABLE_WASM_SIGNEXTEND_OPS
       case Op::I32Extend8S:
       case Op::I32Extend16S:
       case Op::I64Extend8S:
       case Op::I64Extend16S:
       case Op::I64Extend32S:
-#endif
         return OpKind::Conversion;
       case Op::I32Load8S:
       case Op::I32Load8U:
@@ -243,22 +241,28 @@ wasm::Classify(OpBytes op)
         return OpKind::GrowMemory;
       case Op::RefNull:
         return OpKind::RefNull;
-      case Op::NumericPrefix: {
+      case Op::MiscPrefix: {
+          switch (MiscOp(op.b1)) {
 #ifdef ENABLE_WASM_SATURATING_TRUNC_OPS
-          switch (NumericOp(op.b1)) {
-            case NumericOp::I32TruncSSatF32:
-            case NumericOp::I32TruncUSatF32:
-            case NumericOp::I32TruncSSatF64:
-            case NumericOp::I32TruncUSatF64:
-            case NumericOp::I64TruncSSatF32:
-            case NumericOp::I64TruncUSatF32:
-            case NumericOp::I64TruncSSatF64:
-            case NumericOp::I64TruncUSatF64:
+            case MiscOp::I32TruncSSatF32:
+            case MiscOp::I32TruncUSatF32:
+            case MiscOp::I32TruncSSatF64:
+            case MiscOp::I32TruncUSatF64:
+            case MiscOp::I64TruncSSatF32:
+            case MiscOp::I64TruncUSatF32:
+            case MiscOp::I64TruncSSatF64:
+            case MiscOp::I64TruncUSatF64:
               return OpKind::Conversion;
+#endif
+#ifdef ENABLE_WASM_BULKMEM_OPS
+            case MiscOp::MemCopy:
+              return OpKind::MemCopy;
+            case MiscOp::MemFill:
+              return OpKind::MemFill;
+#endif
             default:
               break;
           }
-#endif
           break;
       }
       case Op::ThreadPrefix: {

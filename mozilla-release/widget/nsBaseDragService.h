@@ -9,7 +9,6 @@
 #include "nsIDragService.h"
 #include "nsIDragSession.h"
 #include "nsITransferable.h"
-#include "nsIDOMDocument.h"
 #include "nsCOMPtr.h"
 #include "nsRect.h"
 #include "nsPoint.h"
@@ -24,7 +23,8 @@
 #define DRAG_TRANSLUCENCY 0.65
 
 class nsIContent;
-class nsIDOMNode;
+class nsIDocument;
+class nsINode;
 class nsPresContext;
 class nsIImageLoadingContent;
 
@@ -106,7 +106,7 @@ protected:
    * aPresContext will be set to the nsPresContext used determined from
    * whichever of mImage or aDOMNode is used.
    */
-  nsresult DrawDrag(nsIDOMNode* aDOMNode,
+  nsresult DrawDrag(nsINode* aDOMNode,
                     nsIScriptableRegion* aRegion,
                     mozilla::CSSIntPoint aScreenPosition,
                     mozilla::LayoutDeviceIntRect* aScreenDragRect,
@@ -163,16 +163,16 @@ protected:
   uint32_t mDragActionFromChildProcess;
 
   nsSize mTargetSize;
-  nsCOMPtr<nsIDOMNode> mSourceNode;
+  nsCOMPtr<nsINode> mSourceNode;
   nsCString mTriggeringPrincipalURISpec;
-  nsCOMPtr<nsIDOMDocument> mSourceDocument;       // the document at the drag source. will be null
+  nsCOMPtr<nsIDocument> mSourceDocument;          // the document at the drag source. will be null
                                                   //  if it came from outside the app.
   nsContentPolicyType mContentPolicyType;         // the contentpolicy type passed to the channel
                                                   // when initiating the drag session
   RefPtr<mozilla::dom::DataTransfer> mDataTransfer;
 
   // used to determine the image to appear on the cursor while dragging
-  nsCOMPtr<nsIDOMNode> mImage;
+  nsCOMPtr<nsINode> mImage;
   // offset of cursor within the image
   mozilla::CSSIntPoint mImageOffset;
 

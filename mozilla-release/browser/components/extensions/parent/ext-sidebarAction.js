@@ -42,9 +42,7 @@ this.sidebarAction = class extends ExtensionAPI {
     this.menuId = `menu_${this.id}`;
     this.buttonId = `button_${this.id}`;
 
-    // We default browser_style to true because this is a new API and
-    // we therefore don't need to worry about breaking existing add-ons.
-    this.browserStyle = options.browser_style || options.browser_style === null;
+    this.browserStyle = options.browser_style;
 
     this.defaults = {
       enabled: true,
@@ -57,10 +55,10 @@ this.sidebarAction = class extends ExtensionAPI {
     this.tabContext = new TabContext(target => {
       let window = target.ownerGlobal;
       if (target === window) {
-        return Object.create(this.globals);
+        return this.globals;
       }
-      return Object.create(this.tabContext.get(window));
-    }, extension);
+      return this.tabContext.get(window);
+    });
 
     // We need to ensure our elements are available before session restore.
     this.windowOpenListener = (window) => {
@@ -108,6 +106,10 @@ this.sidebarAction = class extends ExtensionAPI {
       if (SidebarUI.currentID === this.id) {
         SidebarUI.hide();
       }
+      if (SidebarUI.lastOpenedId === this.id &&
+          reason === "ADDON_UNINSTALL") {
+        SidebarUI.lastOpenedId = null;
+      }
       let menu = document.getElementById(this.menuId);
       if (menu) {
         menu.remove();
@@ -135,7 +137,8 @@ this.sidebarAction = class extends ExtensionAPI {
     for (let window of windowTracker.browserWindows()) {
       this.updateWindow(window);
       let {SidebarUI} = window;
-      if (install || SidebarUI.lastOpenedId == this.id) {
+      if ((install && this.extension.manifest.sidebar_action.open_at_install) ||
+          SidebarUI.lastOpenedId == this.id) {
         SidebarUI.show(this.id);
       }
     }

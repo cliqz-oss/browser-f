@@ -12,13 +12,15 @@ const TEST_MESSAGE = "testmessage";
 const { Tools } = require("devtools/client/definitions");
 
 add_task(async function() {
-  let currWindow, hud, mainWindow;
+  let currWindow, hud;
 
-  mainWindow = Services.wm.getMostRecentWindow(null);
+  const mainWindow = Services.wm.getMostRecentWindow(null);
 
   await HUDService.openBrowserConsoleOrFocus();
 
   hud = HUDService.getBrowserConsole();
+
+  ok(hud.ui.document.hasFocus(), "Focus in the document");
 
   console.log(TEST_MESSAGE);
 

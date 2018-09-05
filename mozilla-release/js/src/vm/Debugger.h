@@ -21,10 +21,11 @@
 #include "js/Debug.h"
 #include "js/GCVariant.h"
 #include "js/HashTable.h"
+#include "js/Utility.h"
 #include "js/Wrapper.h"
 #include "vm/GlobalObject.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "vm/SavedStacks.h"
 #include "vm/Stack.h"
 #include "wasm/WasmJS.h"
@@ -88,6 +89,14 @@ typedef HashSet<ReadBarrieredGlobalObject,
                 MovableCellHasher<ReadBarrieredGlobalObject>,
                 ZoneAllocPolicy> WeakGlobalObjectSet;
 
+#ifdef DEBUG
+extern void
+CheckDebuggeeThing(JSScript* script, bool invisibleOk);
+
+extern void
+CheckDebuggeeThing(JSObject* obj, bool invisibleOk);
+#endif
+
 /*
  * A weakmap from GC thing keys to JSObject values that supports the keys being
  * in different compartments to the values. All values must be in the same
@@ -126,7 +135,7 @@ class DebuggerWeakMap : private WeakMap<HeapPtr<UnbarrieredKey>, HeapPtr<JSObjec
                     ZoneAllocPolicy> CountMap;
 
     CountMap zoneCounts;
-    JSCompartment* compartment;
+    JS::Compartment* compartment;
 
   public:
     typedef WeakMap<Key, Value, MovableCellHasher<Key>> Base;
@@ -160,9 +169,9 @@ class DebuggerWeakMap : private WeakMap<HeapPtr<UnbarrieredKey>, HeapPtr<JSObjec
     template<typename KeyInput, typename ValueInput>
     bool relookupOrAdd(AddPtr& p, const KeyInput& k, const ValueInput& v) {
         MOZ_ASSERT(v->compartment() == this->compartment);
-        MOZ_ASSERT(!k->compartment()->creationOptions().mergeable());
-        MOZ_ASSERT_IF(!InvisibleKeysOk,
-                      !k->compartment()->creationOptions().invisibleToDebugger());
+#ifdef DEBUG
+        CheckDebuggeeThing(k, InvisibleKeysOk);
+#endif
         MOZ_ASSERT(!Base::has(k));
         if (!incZoneCount(k->zone()))
             return false;
@@ -255,13 +264,13 @@ class AutoSuppressDebuggeeNoExecuteChecks
 };
 
 class MOZ_RAII EvalOptions {
-    const char* filename_;
-    unsigned lineno_;
+    JS::UniqueChars filename_;
+    unsigned lineno_ = 1;
 
   public:
-    EvalOptions() : filename_(nullptr), lineno_(1) {}
-    ~EvalOptions();
-    const char* filename() const { return filename_; }
+    EvalOptions() = default;
+    ~EvalOptions() = default;
+    const char* filename() const { return filename_.get(); }
     unsigned lineno() const { return lineno_; }
     MOZ_MUST_USE bool setFilename(JSContext* cx, const char* filename);
     void setLineno(unsigned lineno) { lineno_ = lineno; }
@@ -353,9 +362,9 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
         Observing = 1
     };
 
-    // Return true if the given compartment is a debuggee of this debugger,
+    // Return true if the given realm is a debuggee of this debugger,
     // false otherwise.
-    bool isDebuggeeUnbarriered(const JSCompartment* compartment) const;
+    bool isDebuggeeUnbarriered(const Realm* realm) const;
 
     // Return true if this Debugger observed a debuggee that participated in the
     // GC identified by the given GC number. Return false otherwise.
@@ -560,10 +569,10 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
                               WeakGlobalObjectSet::Enum* debugEnum);
 
     /*
-     * Report and clear the pending exception on ac.context, if any, and return
+     * Report and clear the pending exception on ar.context, if any, and return
      * ResumeMode::Terminate.
      */
-    ResumeMode reportUncaughtException(mozilla::Maybe<AutoCompartment>& ac);
+    ResumeMode reportUncaughtException(mozilla::Maybe<AutoRealm>& ar);
 
     /*
      * Cope with an error or exception in a debugger hook.
@@ -573,19 +582,19 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
      * uncaughtExceptionHook as a resumption value.
      *
      * If there is no uncaughtExceptionHook, or if it fails, report and clear
-     * the pending exception on ac.context and return ResumeMode::Terminate.
+     * the pending exception on ar.context and return ResumeMode::Terminate.
      *
-     * This always calls ac.leave(); ac is a parameter because this method must
-     * do some things in the debugger compartment and some things in the
-     * debuggee compartment.
+     * This always calls ar.leave(); ar is a parameter because this method must
+     * do some things in the debugger realm and some things in the debuggee
+     * realm.
      */
-    ResumeMode handleUncaughtException(mozilla::Maybe<AutoCompartment>& ac);
-    ResumeMode handleUncaughtException(mozilla::Maybe<AutoCompartment>& ac,
+    ResumeMode handleUncaughtException(mozilla::Maybe<AutoRealm>& ar);
+    ResumeMode handleUncaughtException(mozilla::Maybe<AutoRealm>& ar,
                                        MutableHandleValue vp,
                                        const mozilla::Maybe<HandleValue>& thisVForCheck = mozilla::Nothing(),
                                        AbstractFramePtr frame = NullFramePtr());
 
-    ResumeMode handleUncaughtExceptionHelper(mozilla::Maybe<AutoCompartment>& ac,
+    ResumeMode handleUncaughtExceptionHelper(mozilla::Maybe<AutoRealm>& ar,
                                              MutableHandleValue* vp,
                                              const mozilla::Maybe<HandleValue>& thisVForCheck,
                                              AbstractFramePtr frame);
@@ -596,15 +605,15 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
      * called when we return from a debugging hook to debuggee code. The
      * interpreter wants a (ResumeMode, Value) pair telling it how to proceed.
      *
-     * Precondition: ac is entered. We are in the debugger compartment.
+     * Precondition: ar is entered. We are in the debugger compartment.
      *
-     * Postcondition: This called ac.leave(). See handleUncaughtException.
+     * Postcondition: This called ar.leave(). See handleUncaughtException.
      *
      * If `success` is false, the hook failed. If an exception is pending in
-     * ac.context(), return handleUncaughtException(ac, vp, callhook).
+     * ar.context(), return handleUncaughtException(ar, vp, callhook).
      * Otherwise just return ResumeMode::Terminate.
      *
-     * If `success` is true, there must be no exception pending in ac.context().
+     * If `success` is true, there must be no exception pending in ar.context().
      * `rv` may be:
      *
      *     undefined - Return `ResumeMode::Continue` to continue execution
@@ -619,23 +628,23 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
      *         an uncatchable error.
      *
      *     anything else - Make a new TypeError the pending exception and
-     *         return handleUncaughtException(ac, vp, callHook).
+     *         return handleUncaughtException(ar, vp, callHook).
      */
-    ResumeMode processHandlerResult(mozilla::Maybe<AutoCompartment>& ac, bool success, const Value& rv,
+    ResumeMode processHandlerResult(mozilla::Maybe<AutoRealm>& ar, bool success, const Value& rv,
                                     AbstractFramePtr frame, jsbytecode* pc, MutableHandleValue vp);
 
-    ResumeMode processParsedHandlerResult(mozilla::Maybe<AutoCompartment>& ac,
+    ResumeMode processParsedHandlerResult(mozilla::Maybe<AutoRealm>& ar,
                                           AbstractFramePtr frame, jsbytecode* pc,
                                           bool success, ResumeMode resumeMode,
                                           MutableHandleValue vp);
 
-    ResumeMode processParsedHandlerResultHelper(mozilla::Maybe<AutoCompartment>& ac,
+    ResumeMode processParsedHandlerResultHelper(mozilla::Maybe<AutoRealm>& ar,
                                                 AbstractFramePtr frame,
                                                 const mozilla::Maybe<HandleValue>& maybeThisv,
                                                 bool success, ResumeMode resumeMode,
                                                 MutableHandleValue vp);
 
-    bool processResumptionValue(mozilla::Maybe<AutoCompartment>& ac, AbstractFramePtr frame,
+    bool processResumptionValue(mozilla::Maybe<AutoRealm>& ar, AbstractFramePtr frame,
                                 const mozilla::Maybe<HandleValue>& maybeThis, HandleValue rval,
                                 ResumeMode& resumeMode, MutableHandleValue vp);
 
@@ -754,8 +763,8 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
   private:
     static MOZ_MUST_USE bool ensureExecutionObservabilityOfFrame(JSContext* cx,
                                                                  AbstractFramePtr frame);
-    static MOZ_MUST_USE bool ensureExecutionObservabilityOfCompartment(JSContext* cx,
-                                                                       JSCompartment* comp);
+    static MOZ_MUST_USE bool ensureExecutionObservabilityOfRealm(JSContext* cx,
+                                                                 JS::Realm* realm);
 
     static bool hookObservesAllExecution(Hook which);
 
@@ -983,13 +992,13 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
                                       MutableHandleDebuggerEnvironment result);
 
     /*
-     * Like cx->compartment()->wrap(cx, vp), but for the debugger compartment.
+     * Like cx->compartment()->wrap(cx, vp), but for the debugger realm.
      *
-     * Preconditions: *vp is a value from a debuggee compartment; cx is in the
+     * Preconditions: *vp is a value from a debuggee realm; cx is in the
      * debugger's compartment.
      *
      * If *vp is an object, this produces a (new or existing) Debugger.Object
-     * wrapper for it. Otherwise this is the same as JSCompartment::wrap.
+     * wrapper for it. Otherwise this is the same as Compartment::wrap.
      *
      * If *vp is a magic JS_OPTIMIZED_OUT value, this produces a plain object
      * of the form { optimizedOut: true }.
@@ -1024,7 +1033,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
      *
      * When passing values from the debugger to the debuggee:
      *     call unwrapDebuggeeValue;  // debugger-unwrapping
-     *     enter debuggee compartment;
+     *     enter debuggee realm;
      *     call cx->compartment()->wrap;  // compartment-rewrapping
      *
      * (Extreme nerd sidebar: Unwrapping happens in two steps because there are
@@ -1069,25 +1078,25 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
                                          MutableHandleValue result);
 
     /*
-     * Precondition: we are in the debuggee compartment (ac is entered) and ok
-     * is true if the operation in the debuggee compartment succeeded, false on
-     * error or exception.
+     * Precondition: we are in the debuggee realm (ar is entered) and ok is true
+     * if the operation in the debuggee realm succeeded, false on error or
+     * exception.
      *
-     * Postcondition: we are in the debugger compartment, having called
-     * ac.leave() even if an error occurred.
+     * Postcondition: we are in the debugger realm, having called ar.leave()
+     * even if an error occurred.
      *
-     * On success, a completion value is in vp and ac.context does not have a
+     * On success, a completion value is in vp and ar.context does not have a
      * pending exception. (This ordinarily returns true even if the ok argument
      * is false.)
      */
-    MOZ_MUST_USE bool receiveCompletionValue(mozilla::Maybe<AutoCompartment>& ac, bool ok,
+    MOZ_MUST_USE bool receiveCompletionValue(mozilla::Maybe<AutoRealm>& ar, bool ok,
                                              HandleValue val,
                                              MutableHandleValue vp);
 
     /*
      * Return the Debugger.Script object for |script|, or create a new one if
-     * needed. The context |cx| must be in the debugger compartment; |script|
-     * must be a script in a debuggee compartment.
+     * needed. The context |cx| must be in the debugger realm; |script| must be
+     * a script in a debuggee realm.
      */
     JSObject* wrapScript(JSContext* cx, HandleScript script);
 
@@ -1095,22 +1104,22 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
      * Return the Debugger.Script object for |wasmInstance| (the toplevel
      * script), synthesizing a new one if needed. The context |cx| must be in
      * the debugger compartment; |wasmInstance| must be a WasmInstanceObject in
-     * the debuggee compartment.
+     * the debuggee realm.
      */
     JSObject* wrapWasmScript(JSContext* cx, Handle<WasmInstanceObject*> wasmInstance);
 
     /*
      * Return the Debugger.Source object for |source|, or create a new one if
      * needed. The context |cx| must be in the debugger compartment; |source|
-     * must be a script source object in a debuggee compartment.
+     * must be a script source object in a debuggee realm.
      */
-    JSObject* wrapSource(JSContext* cx, js::HandleScriptSource source);
+    JSObject* wrapSource(JSContext* cx, js::HandleScriptSourceObject source);
 
     /*
      * Return the Debugger.Source object for |wasmInstance| (the entire module),
      * synthesizing a new one if needed. The context |cx| must be in the
      * debugger compartment; |wasmInstance| must be a WasmInstanceObject in the
-     * debuggee compartment.
+     * debuggee realm.
      */
     JSObject* wrapWasmSource(JSContext* cx, Handle<WasmInstanceObject*> wasmInstance);
 
@@ -1591,7 +1600,6 @@ class WasmBreakpointSite;
 
 class BreakpointSite {
     friend class Breakpoint;
-    friend struct ::JSCompartment;
     friend class ::JSScript;
     friend class Debugger;
 
@@ -1654,7 +1662,6 @@ class BreakpointSite {
  * Zone::sweepBreakpoints.
  */
 class Breakpoint {
-    friend struct ::JSCompartment;
     friend class Debugger;
     friend class BreakpointSite;
 
@@ -1798,24 +1805,24 @@ Debugger::onNewScript(JSContext* cx, HandleScript script)
 {
     // We early return in slowPathOnNewScript for self-hosted scripts, so we can
     // ignore those in our assertion here.
-    MOZ_ASSERT_IF(!script->compartment()->creationOptions().invisibleToDebugger() &&
+    MOZ_ASSERT_IF(!script->realm()->creationOptions().invisibleToDebugger() &&
                   !script->selfHosted(),
-                  script->compartment()->firedOnNewGlobalObject);
+                  script->realm()->firedOnNewGlobalObject);
 
     // The script may not be ready to be interrogated by the debugger.
     if (script->hideScriptFromDebugger())
         return;
 
-    if (script->compartment()->isDebuggee())
+    if (script->realm()->isDebuggee())
         slowPathOnNewScript(cx, script);
 }
 
 /* static */ void
 Debugger::onNewGlobalObject(JSContext* cx, Handle<GlobalObject*> global)
 {
-    MOZ_ASSERT(!global->compartment()->firedOnNewGlobalObject);
+    MOZ_ASSERT(!global->realm()->firedOnNewGlobalObject);
 #ifdef DEBUG
-    global->compartment()->firedOnNewGlobalObject = true;
+    global->realm()->firedOnNewGlobalObject = true;
 #endif
     if (!cx->runtime()->onNewGlobalObjectWatchers().isEmpty())
         Debugger::slowPathOnNewGlobalObject(cx, global);

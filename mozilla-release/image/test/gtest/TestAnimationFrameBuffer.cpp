@@ -28,7 +28,7 @@ Fill(AnimationFrameBuffer& buffer, size_t aLength)
   bool keepDecoding = false;
   for (size_t i = 0; i < aLength; ++i) {
     RawAccessFrameRef frame = CreateEmptyFrame();
-    keepDecoding = buffer.Insert(Move(frame->RawAccessRef()));
+    keepDecoding = buffer.Insert(frame->RawAccessRef());
   }
   return keepDecoding;
 }
@@ -133,7 +133,7 @@ TEST_F(ImageAnimationFrameBuffer, FinishUnderBatchAndThreshold)
   RawAccessFrameRef firstFrame;
   for (size_t i = 0; i < 5; ++i) {
     RawAccessFrameRef frame = CreateEmptyFrame();
-    bool keepDecoding = buffer.Insert(Move(frame->RawAccessRef()));
+    bool keepDecoding = buffer.Insert(frame->RawAccessRef());
     EXPECT_TRUE(keepDecoding);
     EXPECT_FALSE(buffer.SizeKnown());
 
@@ -148,13 +148,13 @@ TEST_F(ImageAnimationFrameBuffer, FinishUnderBatchAndThreshold)
 
     EXPECT_FALSE(buffer.MayDiscard());
 
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_EQ(frame.get(), gotFrame.get());
+    imgFrame* gotFrame = buffer.Get(i);
+    EXPECT_EQ(frame.get(), gotFrame);
     ASSERT_EQ(i + 1, frames.Length());
     EXPECT_EQ(frame.get(), frames[i].get());
 
     if (i == 0) {
-      firstFrame = Move(frame);
+      firstFrame = std::move(frame);
       EXPECT_EQ(size_t(0), buffer.Displayed());
     } else {
       EXPECT_EQ(i - 1, buffer.Displayed());
@@ -164,13 +164,12 @@ TEST_F(ImageAnimationFrameBuffer, FinishUnderBatchAndThreshold)
     }
 
     gotFrame = buffer.Get(0);
-    EXPECT_EQ(firstFrame.get(), gotFrame.get());
+    EXPECT_EQ(firstFrame.get(), gotFrame);
   }
 
   // Loop again over the animation and make sure it is still all there.
   for (size_t i = 0; i < frames.Length(); ++i) {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
 
     bool restartDecoder = buffer.AdvanceTo(i);
     EXPECT_FALSE(restartDecoder);
@@ -202,8 +201,7 @@ TEST_F(ImageAnimationFrameBuffer, FinishMultipleBatchesUnderThreshold)
   bool restartDecoder = false;
   size_t i = 0;
   do {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
     if (i > 0) {
       restartDecoder = buffer.AdvanceTo(i);
     }
@@ -225,24 +223,21 @@ TEST_F(ImageAnimationFrameBuffer, FinishMultipleBatchesUnderThreshold)
 
   // Finish progressing through the animation.
   for ( ; i < frames.Length(); ++i) {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
     restartDecoder = buffer.AdvanceTo(i);
     EXPECT_FALSE(restartDecoder);
   }
 
   // Loop again over the animation and make sure it is still all there.
   for (i = 0; i < frames.Length(); ++i) {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
     restartDecoder = buffer.AdvanceTo(i);
     EXPECT_FALSE(restartDecoder);
   }
 
   // Loop to the third frame and then reset the animation.
   for (i = 0; i < 3; ++i) {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
     restartDecoder = buffer.AdvanceTo(i);
     EXPECT_FALSE(restartDecoder);
   }
@@ -282,8 +277,7 @@ TEST_F(ImageAnimationFrameBuffer, MayDiscard)
   bool restartDecoder = false;
   size_t i = 0;
   do {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
     if (i > 0) {
       restartDecoder = buffer.AdvanceTo(i);
     }
@@ -312,8 +306,7 @@ TEST_F(ImageAnimationFrameBuffer, MayDiscard)
   // Progress through the animation so more. Make sure it removes frames as we
   // go along.
   do {
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    EXPECT_TRUE(gotFrame);
+    EXPECT_TRUE(buffer.Get(i) != nullptr);
     restartDecoder = buffer.AdvanceTo(i);
     EXPECT_FALSE(frames[i - 1]);
     EXPECT_TRUE(frames[i]);
@@ -349,8 +342,7 @@ TEST_F(ImageAnimationFrameBuffer, MayDiscard)
       i = 0;
     }
 
-    DrawableFrameRef gotFrame = buffer.Get(i);
-    if (!gotFrame) {
+    if (!buffer.Get(i)) {
       break;
     }
 
@@ -368,8 +360,7 @@ TEST_F(ImageAnimationFrameBuffer, MayDiscard)
   EXPECT_EQ(size_t(0), buffer.PendingDecode());
 
   // Can we retry advancing again?
-  DrawableFrameRef gotFrame = buffer.Get(i);
-  EXPECT_TRUE(gotFrame);
+  EXPECT_TRUE(buffer.Get(i) != nullptr);
   restartDecoder = buffer.AdvanceTo(i);
   EXPECT_EQ(size_t(2), buffer.Displayed());
   EXPECT_FALSE(frames[i - 1]);

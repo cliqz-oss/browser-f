@@ -35,8 +35,6 @@
 #include "nscore.h"
 #include <algorithm>
 
-class nsISelection;
-
 namespace mozilla {
 
 using namespace dom;
@@ -147,7 +145,7 @@ HTMLEditor::CreateResizer(int16_t aLocation,
   nsresult rv =
     ret->SetAttr(kNameSpaceID_None, nsGkAtoms::anonlocation, locationStr, true);
   NS_ENSURE_SUCCESS(rv, nullptr);
-  return Move(ret);
+  return ret;
 }
 
 ManualNACPtr
@@ -352,6 +350,8 @@ HTMLEditor::ShowResizersInner(Element& aResizedElement)
 
   MOZ_ASSERT(mResizedObject == &aResizedElement);
 
+  mHasShownResizers = true;
+
   return NS_OK;
 }
 
@@ -369,34 +369,34 @@ HTMLEditor::HideResizers()
   NS_NAMED_LITERAL_STRING(mousedown, "mousedown");
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mTopLeftHandle), ps);
+                             std::move(mTopLeftHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mTopHandle), ps);
+                             std::move(mTopHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mTopRightHandle), ps);
+                             std::move(mTopRightHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mLeftHandle), ps);
+                             std::move(mLeftHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mRightHandle), ps);
+                             std::move(mRightHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mBottomLeftHandle), ps);
+                             std::move(mBottomLeftHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mBottomHandle), ps);
+                             std::move(mBottomHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mBottomRightHandle), ps);
+                             std::move(mBottomRightHandle), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mResizingShadow), ps);
+                             std::move(mResizingShadow), ps);
 
   RemoveListenerAndDeleteRef(mousedown, mEventListener, true,
-                             Move(mResizingInfo), ps);
+                             std::move(mResizingInfo), ps);
 
   if (mActivatedHandle) {
     mActivatedHandle->UnsetAttr(kNameSpaceID_None, nsGkAtoms::_moz_activated,
@@ -527,7 +527,7 @@ HTMLEditor::OnMouseDown(int32_t aClientX,
     // If we have an anonymous element and that element is a resizer,
     // let's start resizing!
     aEvent->PreventDefault();
-
+    mResizerUsedCount++;
     mOriginalX = aClientX;
     mOriginalY = aClientY;
     return StartResizing(aTarget);
@@ -536,6 +536,7 @@ HTMLEditor::OnMouseDown(int32_t aClientX,
   if (anonclass.EqualsLiteral("mozGrabber")) {
     // If we have an anonymous element and that element is a grabber,
     // let's start moving the element!
+    mGrabberUsedCount++;
     mOriginalX = aClientX;
     mOriginalY = aClientY;
     return GrabberClicked();
@@ -690,19 +691,21 @@ HTMLEditor::SetShadowPosition(Element* aShadow,
 int32_t
 HTMLEditor::GetNewResizingIncrement(int32_t aX,
                                     int32_t aY,
-                                    int32_t aID)
+                                    ResizeAt aResizeAt)
 {
   int32_t result = 0;
   if (!mPreserveRatio) {
-    switch (aID) {
-      case kX:
-      case kWidth:
+    switch (aResizeAt) {
+      case ResizeAt::eX:
+      case ResizeAt::eWidth:
         result = aX - mOriginalX;
         break;
-      case kY:
-      case kHeight:
+      case ResizeAt::eY:
+      case ResizeAt::eHeight:
         result = aY - mOriginalY;
         break;
+      default:
+        MOZ_ASSERT_UNREACHABLE("Invalid resizing request");
     }
     return result;
   }
@@ -712,15 +715,15 @@ HTMLEditor::GetNewResizingIncrement(int32_t aX,
   float objectSizeRatio =
               ((float)mResizedObjectWidth) / ((float)mResizedObjectHeight);
   result = (xi > yi) ? xi : yi;
-  switch (aID) {
-    case kX:
-    case kWidth:
+  switch (aResizeAt) {
+    case ResizeAt::eX:
+    case ResizeAt::eWidth:
       if (result == yi)
         result = (int32_t) (((float) result) * objectSizeRatio);
       result = (int32_t) (((float) result) * mWidthIncrementFactor);
       break;
-    case kY:
-    case kHeight:
+    case ResizeAt::eY:
+    case ResizeAt::eHeight:
       if (result == xi)
         result =  (int32_t) (((float) result) / objectSizeRatio);
       result = (int32_t) (((float) result) * mHeightIncrementFactor);
@@ -733,9 +736,10 @@ int32_t
 HTMLEditor::GetNewResizingX(int32_t aX,
                             int32_t aY)
 {
-  int32_t resized = mResizedObjectX +
-                    GetNewResizingIncrement(aX, aY, kX) * mXIncrementFactor;
-  int32_t max =   mResizedObjectX + mResizedObjectWidth;
+  int32_t resized =
+    mResizedObjectX +
+      GetNewResizingIncrement(aX, aY, ResizeAt::eX) * mXIncrementFactor;
+  int32_t max = mResizedObjectX + mResizedObjectWidth;
   return std::min(resized, max);
 }
 
@@ -743,8 +747,9 @@ int32_t
 HTMLEditor::GetNewResizingY(int32_t aX,
                             int32_t aY)
 {
-  int32_t resized = mResizedObjectY +
-                    GetNewResizingIncrement(aX, aY, kY) * mYIncrementFactor;
+  int32_t resized =
+    mResizedObjectY +
+      GetNewResizingIncrement(aX, aY, ResizeAt::eY) * mYIncrementFactor;
   int32_t max =   mResizedObjectY + mResizedObjectHeight;
   return std::min(resized, max);
 }
@@ -753,9 +758,10 @@ int32_t
 HTMLEditor::GetNewResizingWidth(int32_t aX,
                                 int32_t aY)
 {
-  int32_t resized = mResizedObjectWidth +
-                     GetNewResizingIncrement(aX, aY, kWidth) *
-                         mWidthIncrementFactor;
+  int32_t resized =
+    mResizedObjectWidth +
+      GetNewResizingIncrement(aX, aY,
+                              ResizeAt::eWidth) * mWidthIncrementFactor;
   return std::max(resized, 1);
 }
 
@@ -763,9 +769,10 @@ int32_t
 HTMLEditor::GetNewResizingHeight(int32_t aX,
                                  int32_t aY)
 {
-  int32_t resized = mResizedObjectHeight +
-                     GetNewResizingIncrement(aX, aY, kHeight) *
-                         mHeightIncrementFactor;
+  int32_t resized =
+    mResizedObjectHeight +
+      GetNewResizingIncrement(aX, aY,
+                              ResizeAt::eHeight) * mHeightIncrementFactor;
   return std::max(resized, 1);
 }
 

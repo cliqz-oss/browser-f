@@ -15,11 +15,9 @@ JAR_MANIFESTS += ['jar.mn']
 
 interfaces = [
     'base',
-    'core',
     'html',
     'events',
     'sidebar',
-    'range',
     'xul',
     'security',
     'storage',

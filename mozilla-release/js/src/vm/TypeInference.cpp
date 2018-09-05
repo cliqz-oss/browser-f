@@ -13,6 +13,8 @@
 #include "mozilla/PodOperations.h"
 #include "mozilla/Sprintf.h"
 
+#include <new>
+
 #include "jsapi.h"
 #include "builtin/String.h"
 
@@ -21,9 +23,10 @@
 #include "jit/CompileInfo.h"
 #include "jit/Ion.h"
 #include "jit/IonAnalysis.h"
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "jit/OptimizationTracking.h"
 #include "js/MemoryMetrics.h"
+#include "js/UniquePtr.h"
 #include "vm/HelperThreads.h"
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
@@ -45,7 +48,6 @@ using namespace js::gc;
 
 using mozilla::DebugOnly;
 using mozilla::Maybe;
-using mozilla::Move;
 using mozilla::PodArrayZero;
 using mozilla::PodCopy;
 using mozilla::PodZero;
@@ -111,6 +113,10 @@ TypeSet::NonObjectTypeString(TypeSet::Type type)
             return "string";
           case JSVAL_TYPE_SYMBOL:
             return "symbol";
+#ifdef ENABLE_BIGINT
+          case JSVAL_TYPE_BIGINT:
+            return "BigInt";
+#endif
           case JSVAL_TYPE_MAGIC:
             return "lazyargs";
           default:
@@ -515,7 +521,7 @@ TypeSet::addTypesToConstraint(JSContext* cx, TypeConstraint* constraint)
 
 #ifdef DEBUG
 static inline bool
-CompartmentsMatch(JSCompartment* a, JSCompartment* b)
+CompartmentsMatch(Compartment* a, Compartment* b)
 {
     return !a || !b || a == b;
 }
@@ -555,7 +561,7 @@ TypeSet::clearObjects()
     objectSet = nullptr;
 }
 
-JSCompartment*
+Compartment*
 TypeSet::maybeCompartment()
 {
     if (unknownObject())
@@ -567,7 +573,7 @@ TypeSet::maybeCompartment()
         if (!key)
             continue;
 
-        JSCompartment* comp = key->maybeCompartment();
+        Compartment* comp = key->maybeCompartment();
         if (comp)
             return comp;
     }
@@ -783,6 +789,10 @@ TypeSet::print(FILE* fp)
         fprintf(fp, " string");
     if (flags & TYPE_FLAG_SYMBOL)
         fprintf(fp, " symbol");
+#ifdef ENABLE_BIGINT
+    if (flags & TYPE_FLAG_BIGINT)
+        fprintf(fp, " BigInt");
+#endif
     if (flags & TYPE_FLAG_LAZYARGS)
         fprintf(fp, " lazyargs");
 
@@ -872,10 +882,8 @@ TypeSet::IsTypeAboutToBeFinalized(TypeSet::Type* v)
 }
 
 bool
-TypeSet::clone(LifoAlloc* alloc, TemporaryTypeSet* result) const
+TypeSet::cloneIntoUninitialized(LifoAlloc* alloc, TemporaryTypeSet* result) const
 {
-    MOZ_ASSERT(result->empty());
-
     unsigned objectCount = baseObjectCount();
     unsigned capacity = (objectCount >= 2) ? TypeHashSet::Capacity(objectCount) : 0;
 
@@ -890,15 +898,15 @@ TypeSet::clone(LifoAlloc* alloc, TemporaryTypeSet* result) const
         PodCopy(newSet - 1, objectSet - 1, capacity + 1);
     }
 
-    new(result) TemporaryTypeSet(flags, capacity ? newSet : objectSet);
+    new (result) TemporaryTypeSet(flags, capacity ? newSet : objectSet);
     return true;
 }
 
 TemporaryTypeSet*
 TypeSet::clone(LifoAlloc* alloc) const
 {
-    TemporaryTypeSet* res = alloc->new_<TemporaryTypeSet>();
-    if (!res || !clone(alloc, res))
+    TemporaryTypeSet* res = alloc->pod_malloc<TemporaryTypeSet>();
+    if (!res || !cloneIntoUninitialized(alloc, res))
         return nullptr;
     return res;
 }
@@ -1167,10 +1175,9 @@ TypeScript::FreezeTypeSets(CompilerConstraintList* constraints, JSScript* script
     TemporaryTypeSet* types = alloc->newArrayUninitialized<TemporaryTypeSet>(count);
     if (!types)
         return false;
-    PodZero(types, count);
 
     for (size_t i = 0; i < count; i++) {
-        if (!existing[i].clone(alloc, &types[i]))
+        if (!existing[i].cloneIntoUninitialized(alloc, &types[i]))
             return false;
     }
 
@@ -1241,7 +1248,7 @@ class TypeCompilerConstraint : public TypeConstraint
         return true;
     }
 
-    JSCompartment* maybeCompartment() override {
+    Compartment* maybeCompartment() override {
         return data.maybeCompartment();
     }
 };
@@ -1448,7 +1455,7 @@ class TypeConstraintFreezeStack : public TypeConstraint
         return true;
     }
 
-    JSCompartment* maybeCompartment() override {
+    Compartment* maybeCompartment() override {
         return script_->compartment();
     }
 };
@@ -1635,7 +1642,7 @@ class ConstraintDataFreeze
 
     bool shouldSweep() { return false; }
 
-    JSCompartment* maybeCompartment() { return nullptr; }
+    Compartment* maybeCompartment() { return nullptr; }
 };
 
 } /* anonymous namespace */
@@ -1841,7 +1848,7 @@ class ConstraintDataFreezeObjectFlags
 
     bool shouldSweep() { return false; }
 
-    JSCompartment* maybeCompartment() { return nullptr; }
+    Compartment* maybeCompartment() { return nullptr; }
 };
 
 } /* anonymous namespace */
@@ -1958,7 +1965,7 @@ class ConstraintDataFreezeObjectForTypedArrayData
         return IsAboutToBeFinalizedUnbarriered(&obj);
     }
 
-    JSCompartment* maybeCompartment() {
+    Compartment* maybeCompartment() {
         return obj->compartment();
     }
 };
@@ -1987,7 +1994,7 @@ class ConstraintDataFreezeObjectForUnboxedConvertedToNative
 
     bool shouldSweep() { return false; }
 
-    JSCompartment* maybeCompartment() { return nullptr; }
+    Compartment* maybeCompartment() { return nullptr; }
 };
 
 } /* anonymous namespace */
@@ -2076,7 +2083,7 @@ class ConstraintDataFreezePropertyState
 
     bool shouldSweep() { return false; }
 
-    JSCompartment* maybeCompartment() { return nullptr; }
+    Compartment* maybeCompartment() { return nullptr; }
 };
 
 } /* anonymous namespace */
@@ -2132,7 +2139,7 @@ class ConstraintDataConstantProperty
 
     bool shouldSweep() { return false; }
 
-    JSCompartment* maybeCompartment() { return nullptr; }
+    Compartment* maybeCompartment() { return nullptr; }
 };
 
 } /* anonymous namespace */
@@ -2194,7 +2201,7 @@ class ConstraintDataInert
 
     bool shouldSweep() { return false; }
 
-    JSCompartment* maybeCompartment() { return nullptr; }
+    Compartment* maybeCompartment() { return nullptr; }
 };
 
 bool
@@ -2556,7 +2563,7 @@ TypeZone::processPendingRecompiles(FreeOp* fop, RecompileInfoVector& recompiles)
     // Steal the list of scripts to recompile, to make sure we don't try to
     // recursively recompile them. Note: the move constructor will not reset the
     // length if the Vector is using inline storage, so we also use clear().
-    RecompileInfoVector pending(Move(recompiles));
+    RecompileInfoVector pending(std::move(recompiles));
     recompiles.clear();
 
     jit::Invalidate(*this, fop, pending);
@@ -2567,7 +2574,7 @@ TypeZone::processPendingRecompiles(FreeOp* fop, RecompileInfoVector& recompiles)
 void
 TypeZone::addPendingRecompile(JSContext* cx, const RecompileInfo& info)
 {
-    InferSpew(ISpewOps, "addPendingRecompile: %p:%s:%zu",
+    InferSpew(ISpewOps, "addPendingRecompile: %p:%s:%u",
               info.script(), info.script()->filename(), info.script()->lineno());
 
     AutoEnterOOMUnsafeRegion oomUnsafe;
@@ -2616,7 +2623,7 @@ js::ReportMagicWordFailure(uintptr_t actual, uintptr_t expected, uintptr_t flags
 #endif
 
 void
-js::PrintTypes(JSContext* cx, JSCompartment* comp, bool force)
+js::PrintTypes(JSContext* cx, Compartment* comp, bool force)
 {
 #ifdef DEBUG
     gc::AutoSuppressGC suppressGC(cx);
@@ -2982,6 +2989,8 @@ ObjectGroup::markUnknown(const AutoSweepObjectGroup& sweep, JSContext* cx)
         }
     }
 
+    clearProperties(sweep);
+
     if (ObjectGroup* unboxedGroup = maybeOriginalUnboxedGroup())
         MarkObjectGroupUnknownProperties(cx, unboxedGroup);
     if (maybeUnboxedLayout(sweep) && maybeUnboxedLayout(sweep)->nativeGroup())
@@ -3012,7 +3021,7 @@ ObjectGroup::detachNewScript(bool writeBarrier, ObjectGroup* replacement)
     MOZ_ASSERT(newScript);
 
     if (newScript->analyzed()) {
-        ObjectGroupCompartment& objectGroups = newScript->function()->compartment()->objectGroups;
+        ObjectGroupRealm& objectGroups = ObjectGroupRealm::get(this);
         TaggedProto proto = this->proto();
         if (proto.isObject() && IsForwarded(proto.toObject()))
             proto = TaggedProto(Forwarded(proto.toObject()));
@@ -3202,7 +3211,7 @@ class TypeConstraintClearDefiniteGetterSetter : public TypeConstraint
         return true;
     }
 
-    JSCompartment* maybeCompartment() override {
+    Compartment* maybeCompartment() override {
         return group->compartment();
     }
 };
@@ -3262,7 +3271,7 @@ class TypeConstraintClearDefiniteSingle : public TypeConstraint
         return true;
     }
 
-    JSCompartment* maybeCompartment() override {
+    Compartment* maybeCompartment() override {
         return group->compartment();
     }
 };
@@ -3467,8 +3476,8 @@ JSFunction::setTypeForScriptedFunction(JSContext* cx, HandleFunction fun,
     } else {
         RootedObject funProto(cx, fun->staticPrototype());
         Rooted<TaggedProto> taggedProto(cx, TaggedProto(funProto));
-        ObjectGroup* group = ObjectGroupCompartment::makeGroup(cx, &JSFunction::class_,
-                                                               taggedProto);
+        ObjectGroup* group = ObjectGroupRealm::makeGroup(cx, &JSFunction::class_,
+                                                         taggedProto);
         if (!group)
             return false;
 
@@ -3546,10 +3555,10 @@ PreliminaryObjectArray::sweep()
             // Object.prototype group. This is done to ensure JSObject::finalize
             // sees a NativeObject Class even if we change the current group's
             // Class to one of the unboxed object classes in the meantime. If
-            // the compartment's global is dead, we don't do anything as the
-            // group's Class is not going to change in that case.
+            // the realm's global is dead, we don't do anything as the group's
+            // Class is not going to change in that case.
             JSObject* obj = *ptr;
-            GlobalObject* global = obj->compartment()->unsafeUnbarrieredMaybeGlobal();
+            GlobalObject* global = obj->as<NativeObject>().realm()->unsafeUnbarrieredMaybeGlobal();
             if (global && !obj->isSingleton()) {
                 JSObject* objectProto = global->maybeGetPrototype(JSProto_Object);
                 obj->setGroup(objectProto->groupRaw());
@@ -3633,7 +3642,7 @@ PreliminaryObjectArrayWithTemplate::maybeAnalyze(JSContext* cx, ObjectGroup* gro
 
     AutoEnterAnalysis enter(cx);
 
-    ScopedJSDeletePtr<PreliminaryObjectArrayWithTemplate> preliminaryObjects(this);
+    UniquePtr<PreliminaryObjectArrayWithTemplate> preliminaryObjects(this);
     group->detachPreliminaryObjects();
 
     MOZ_ASSERT(shape());
@@ -3655,7 +3664,7 @@ PreliminaryObjectArrayWithTemplate::maybeAnalyze(JSContext* cx, ObjectGroup* gro
             return;
     }
 
-    TryConvertToUnboxedLayout(cx, enter, shape(), group, preliminaryObjects);
+    TryConvertToUnboxedLayout(cx, enter, shape(), group, preliminaryObjects.get());
     AutoSweepObjectGroup sweep(group);
     if (group->maybeUnboxedLayout(sweep))
         return;
@@ -3684,7 +3693,7 @@ TypeNewScript::make(JSContext* cx, ObjectGroup* group, JSFunction* fun)
     if (group->unknownProperties(sweep))
         return true;
 
-    ScopedJSDeletePtr<TypeNewScript> newScript(cx->new_<TypeNewScript>());
+    auto newScript = cx->make_unique<TypeNewScript>();
     if (!newScript)
         return false;
 
@@ -3694,9 +3703,9 @@ TypeNewScript::make(JSContext* cx, ObjectGroup* group, JSFunction* fun)
     if (!newScript->preliminaryObjects)
         return true;
 
-    group->setNewScript(newScript.forget());
+    group->setNewScript(newScript.release());
 
-    gc::TraceTypeNewScript(group);
+    gc::gcTracer.traceTypeNewScript(group);
     return true;
 }
 
@@ -3708,7 +3717,7 @@ TypeNewScript::makeNativeVersion(JSContext* cx, TypeNewScript* newScript,
 {
     MOZ_RELEASE_ASSERT(cx->zone()->types.activeAnalysis);
 
-    ScopedJSDeletePtr<TypeNewScript> nativeNewScript(cx->new_<TypeNewScript>());
+    auto nativeNewScript = cx->make_unique<TypeNewScript>();
     if (!nativeNewScript)
         return nullptr;
 
@@ -3726,7 +3735,7 @@ TypeNewScript::makeNativeVersion(JSContext* cx, TypeNewScript* newScript,
     }
     PodCopy(nativeNewScript->initializerList, newScript->initializerList, initializerLength);
 
-    return nativeNewScript.forget();
+    return nativeNewScript.release();
 }
 
 size_t
@@ -3796,6 +3805,7 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
         return true;
 
     MOZ_ASSERT(this == group->newScript(sweep));
+    MOZ_ASSERT(cx->realm() == group->realm());
 
     if (regenerate)
         *regenerate = false;
@@ -3985,16 +3995,16 @@ TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group, bool* regenerate,
     ObjectGroupFlags initialFlags = group->flags(sweep) & OBJECT_FLAG_DYNAMIC_MASK;
 
     Rooted<TaggedProto> protoRoot(cx, group->proto());
-    ObjectGroup* initialGroup = ObjectGroupCompartment::makeGroup(cx, group->clasp(), protoRoot,
-                                                                  initialFlags);
+    ObjectGroup* initialGroup = ObjectGroupRealm::makeGroup(cx, group->clasp(), protoRoot,
+                                                            initialFlags);
     if (!initialGroup)
         return false;
 
     initialGroup->addDefiniteProperties(cx, templateObject()->lastProperty());
     group->addDefiniteProperties(cx, prefixShape);
 
-    cx->compartment()->objectGroups.replaceDefaultNewGroup(nullptr, group->proto(), function(),
-                                                           initialGroup);
+    ObjectGroupRealm& realm = ObjectGroupRealm::get(group);
+    realm.replaceDefaultNewGroup(nullptr, group->proto(), function(), initialGroup);
 
     templateObject()->setGroup(initialGroup);
 
@@ -4136,7 +4146,7 @@ TypeNewScript::trace(JSTracer* trc)
 /* static */ void
 TypeNewScript::writeBarrierPre(TypeNewScript* newScript)
 {
-    if (JS::CurrentThreadIsHeapCollecting())
+    if (JS::RuntimeHeapIsCollecting())
         return;
 
     JS::Zone* zone = newScript->function()->zoneFromAnyThread();
@@ -4176,7 +4186,7 @@ ConstraintTypeSet::trace(Zone* zone, JSTracer* trc)
     checkMagic();
 
     // ConstraintTypeSets only hold strong references during minor collections.
-    MOZ_ASSERT(JS::CurrentThreadIsHeapMinorCollecting());
+    MOZ_ASSERT(JS::RuntimeHeapIsMinorCollecting());
 
     unsigned objectCount = baseObjectCount();
     if (objectCount >= 2) {
@@ -4232,7 +4242,7 @@ ConstraintTypeSet::trace(Zone* zone, JSTracer* trc)
                 CheckGCThingAfterMovingGC(key->groupNoBarrier());
             else
                 CheckGCThingAfterMovingGC(key->singletonNoBarrier());
-            JSCompartment* compartment = key->maybeCompartment();
+            Compartment* compartment = key->maybeCompartment();
             MOZ_ASSERT_IF(compartment, compartment->zone() == zone);
         }
     } else if (objectCount == 1) {
@@ -4241,7 +4251,7 @@ ConstraintTypeSet::trace(Zone* zone, JSTracer* trc)
             CheckGCThingAfterMovingGC(key->groupNoBarrier());
         else
             CheckGCThingAfterMovingGC(key->singletonNoBarrier());
-        JSCompartment* compartment = key->maybeCompartment();
+        Compartment* compartment = key->maybeCompartment();
         MOZ_ASSERT_IF(compartment, compartment->zone() == zone);
     }
 #endif
@@ -4254,7 +4264,7 @@ AssertGCStateForSweep(Zone* zone)
 
     // IsAboutToBeFinalized doesn't work right on tenured objects when called
     // during a minor collection.
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapMinorCollecting());
+    MOZ_ASSERT(!JS::RuntimeHeapIsMinorCollecting());
 }
 
 void
@@ -4360,6 +4370,11 @@ ConstraintTypeSet::sweep(const AutoSweepBase& sweep, Zone* zone,
 inline void
 ObjectGroup::clearProperties(const AutoSweepObjectGroup& sweep)
 {
+    // We're about to remove edges from the group to property ids. Incremental
+    // GC should know about these edges.
+    if (zone()->needsIncrementalBarrier())
+        traceChildren(zone()->barrierTracer());
+
     setBasePropertyCount(sweep, 0);
     propertySet = nullptr;
 }
@@ -4402,10 +4417,10 @@ ObjectGroup::sweep(const AutoSweepObjectGroup& sweep, AutoClearTypeInferenceStat
 
     if (auto* layout = maybeUnboxedLayout(sweep)) {
         // Remove unboxed layouts that are about to be finalized from the
-        // compartment wide list while we are still on the main thread.
+        // realm wide list while we are still on the main thread.
         ObjectGroup* group = this;
         if (IsAboutToBeFinalizedUnbarriered(&group))
-            layout->detachFromCompartment();
+            layout->detachFromRealm();
 
         if (layout->newScript())
             layout->newScript()->sweep();
@@ -4547,7 +4562,7 @@ JSScript::sweepTypes(const js::AutoSweepTypeScript& sweep, AutoClearTypeInferenc
 
         // Freeze constraints on stack type sets need to be regenerated the
         // next time the script is analyzed.
-        hasFreezeConstraints_ = false;
+        bitFields_.hasFreezeConstraints_ = false;
 
         return;
     }
@@ -4562,7 +4577,7 @@ JSScript::sweepTypes(const js::AutoSweepTypeScript& sweep, AutoClearTypeInferenc
     if (oom->hadOOM()) {
         // It's possible we OOM'd while copying freeze constraints, so they
         // need to be regenerated.
-        hasFreezeConstraints_ = false;
+        bitFields_.hasFreezeConstraints_ = false;
     }
 }
 
@@ -4581,7 +4596,10 @@ Zone::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                              size_t* cachedCFG,
                              size_t* uniqueIdMap,
                              size_t* shapeTables,
-                             size_t* atomsMarkBitmaps)
+                             size_t* atomsMarkBitmaps,
+                             size_t* compartmentObjects,
+                             size_t* crossCompartmentWrappersTables,
+                             size_t* compartmentsPrivateData)
 {
     *typePool += types.typeLifoAlloc().sizeOfExcludingThis(mallocSizeOf);
     *regexpZone += regExps.sizeOfExcludingThis(mallocSizeOf);
@@ -4591,6 +4609,13 @@ Zone::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
     *shapeTables += baseShapes().sizeOfExcludingThis(mallocSizeOf)
                   + initialShapes().sizeOfExcludingThis(mallocSizeOf);
     *atomsMarkBitmaps += markedAtoms().sizeOfExcludingThis(mallocSizeOf);
+
+    for (CompartmentsInZoneIter comp(this); !comp.done(); comp.next()) {
+        comp->addSizeOfIncludingThis(mallocSizeOf,
+                                     compartmentObjects,
+                                     crossCompartmentWrappersTables,
+                                     compartmentsPrivateData);
+    }
 }
 
 TypeZone::TypeZone(Zone* zone)
@@ -4685,7 +4710,7 @@ TypeScript::printTypes(JSContext* cx, HandleScript script) const
         fprintf(stderr, "Eval");
     else
         fprintf(stderr, "Main");
-    fprintf(stderr, " %#" PRIxPTR " %s:%zu ",
+    fprintf(stderr, " %#" PRIxPTR " %s:%u ",
             uintptr_t(script.get()), script->filename(), script->lineno());
 
     if (script->functionNonDelazifying()) {

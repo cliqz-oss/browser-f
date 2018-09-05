@@ -66,7 +66,7 @@ class MOZ_STACK_CLASS WritableTargetFunction final
 
     AutoProtect(AutoProtect&& aOther)
       : mMMPolicy(aOther.mMMPolicy)
-      , mProtects(Move(aOther.mProtects))
+      , mProtects(std::move(aOther.mProtects))
     {
       aOther.mProtects.clear();
     }
@@ -140,9 +140,9 @@ public:
     , mNumBytes(aOther.mNumBytes)
     , mOffset(aOther.mOffset)
     , mStartWriteOffset(aOther.mStartWriteOffset)
-    , mLocalBytes(Move(aOther.mLocalBytes))
+    , mLocalBytes(std::move(aOther.mLocalBytes))
     , mAccumulatedStatus(aOther.mAccumulatedStatus)
-    , mProtect(Move(aOther.mProtect))
+    , mProtect(std::move(aOther.mProtect))
   {
     aOther.mAccumulatedStatus = false;
   }
@@ -177,6 +177,9 @@ public:
     }
 
     mMMPolicy.FlushInstructionCache();
+
+    mStartWriteOffset += mLocalBytes.length();
+
     mLocalBytes.clear();
     return true;
   }
@@ -227,6 +230,53 @@ public:
 
     mOffset += sizeof(uint16_t);
   }
+
+#if defined(_M_IX86)
+private:
+  template <typename T>
+  bool CommitAndWriteShortInternal(const T& aMMPolicy, void* aDest, uint16_t aValue);
+
+  template <>
+  bool CommitAndWriteShortInternal<MMPolicyInProcess>(const MMPolicyInProcess& aMMPolicy,
+                                                      void* aDest, uint16_t aValue)
+  {
+    return aMMPolicy.WriteAtomic(aDest, aValue);
+  }
+
+  template <>
+  bool CommitAndWriteShortInternal<MMPolicyOutOfProcess>(const MMPolicyOutOfProcess& aMMPolicy,
+                                                         void* aDest, uint16_t aValue)
+  {
+    return aMMPolicy.Write(aDest, &aValue, sizeof(uint16_t));
+  }
+
+public:
+  /**
+   * Commits any dirty writes, and then writes a short, atomically if possible.
+   * This call may succeed in both inproc and outproc cases, but atomicity
+   * is only guaranteed in the inproc case.
+   */
+  bool CommitAndWriteShort(const uint16_t aValue)
+  {
+    // First, commit everything that has been written until now
+    if (!Commit()) {
+      return false;
+    }
+
+    // Now immediately write the short, atomically if inproc
+    bool ok = CommitAndWriteShortInternal(mMMPolicy,
+                                          reinterpret_cast<void*>(mFunc +
+                                                                  mStartWriteOffset),
+                                          aValue);
+    if (!ok) {
+      return false;
+    }
+
+    mMMPolicy.FlushInstructionCache();
+    mStartWriteOffset += sizeof(uint16_t);
+    return true;
+  }
+#endif // defined(_M_IX86)
 
   void WriteDisp32(const uintptr_t aAbsTarget)
   {
@@ -416,7 +466,7 @@ public:
 
   ReadOnlyTargetBytes(ReadOnlyTargetBytes&& aOther)
     : mMMPolicy(aOther.mMMPolicy)
-    , mLocalBytes(Move(aOther.mLocalBytes))
+    , mLocalBytes(std::move(aOther.mLocalBytes))
     , mBase(aOther.mBase)
   {
   }
@@ -558,13 +608,13 @@ class MOZ_STACK_CLASS ReadOnlyTargetFunction final
 
     static Type Make(const MMPolicyInProcess& aMMPolicy, const void* aFunc)
     {
-      return Move(TargetBytesPtr(aMMPolicy, aFunc));
+      return std::move(TargetBytesPtr(aMMPolicy, aFunc));
     }
 
     static Type CopyFromOffset(const TargetBytesPtr& aOther,
                                const uint32_t aOffsetFromOther)
     {
-      return Move(TargetBytesPtr(aOther, aOffsetFromOther));
+      return std::move(TargetBytesPtr(aOther, aOffsetFromOther));
     }
 
     ReadOnlyTargetBytes<MMPolicyInProcess>* operator->()
@@ -573,7 +623,7 @@ class MOZ_STACK_CLASS ReadOnlyTargetFunction final
     }
 
     TargetBytesPtr(TargetBytesPtr&& aOther)
-      : mTargetBytes(Move(aOther.mTargetBytes))
+      : mTargetBytes(std::move(aOther.mTargetBytes))
     {
     }
 
@@ -608,14 +658,14 @@ class MOZ_STACK_CLASS ReadOnlyTargetFunction final
 
     static Type Make(const MMPolicyOutOfProcess& aMMPolicy, const void* aFunc)
     {
-      return Move(std::make_shared<ReadOnlyTargetBytes<MMPolicyOutOfProcess>>(
+      return std::move(std::make_shared<ReadOnlyTargetBytes<MMPolicyOutOfProcess>>(
                     aMMPolicy, aFunc));
     }
 
     static Type CopyFromOffset(const Type& aOther,
                                const uint32_t aOffsetFromOther)
     {
-      return Move(std::make_shared<ReadOnlyTargetBytes<MMPolicyOutOfProcess>>(
+      return std::move(std::make_shared<ReadOnlyTargetBytes<MMPolicyOutOfProcess>>(
                     *aOther, aOffsetFromOther));
     }
   };
@@ -635,7 +685,7 @@ public:
   }
 
   ReadOnlyTargetFunction(ReadOnlyTargetFunction&& aOther)
-    : mTargetBytes(Move(aOther.mTargetBytes))
+    : mTargetBytes(std::move(aOther.mTargetBytes))
     , mOffset(aOther.mOffset)
   {
   }
@@ -743,7 +793,7 @@ public:
       mTargetBytes->GetBase() + aOffset,
       effectiveLength);
 
-    return Move(result);
+    return std::move(result);
   }
 
 private:

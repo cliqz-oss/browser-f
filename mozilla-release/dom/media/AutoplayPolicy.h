@@ -15,6 +15,7 @@ namespace mozilla {
 namespace dom {
 
 class HTMLMediaElement;
+class AudioContext;
 
 /**
  * AutoplayPolicy is used to manage autoplay logic for all kinds of media,
@@ -25,12 +26,14 @@ class HTMLMediaElement;
  * conditions is true.
  * 1) Owner document is activated by user gestures
  *    We restrict user gestures to "mouse click", "keyboard press" and "touch".
- * 2) Muted media content or video without audio content
+ * 2) Muted media content or video without audio content.
+ * 3) Document's origin has the "autoplay-media" permission.
  */
 class AutoplayPolicy
 {
 public:
   static bool IsMediaElementAllowedToPlay(NotNull<HTMLMediaElement*> aElement);
+  static bool IsAudioContextAllowedToPlay(NotNull<AudioContext*> aContext);
 private:
   static bool IsDocumentAllowedToPlay(nsIDocument* aDoc);
 };

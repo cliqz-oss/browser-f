@@ -65,7 +65,6 @@ public:
     NS_DECL_NSISTANDARDURL
     NS_DECL_NSISERIALIZABLE
     NS_DECL_NSICLASSINFO
-    NS_DECL_NSIMUTABLE
     NS_DECL_NSIIPCSERIALIZABLEURI
     NS_DECL_NSISENSITIVEINFOHIDDENURI
 
@@ -164,6 +163,7 @@ protected:
     // returns NS_ERROR_NO_INTERFACE if the url does not map to a file
     virtual nsresult EnsureFile();
 
+    virtual nsresult Clone(nsIURI** aURI);
     virtual nsresult SetSpecInternal(const nsACString &input);
     virtual nsresult SetScheme(const nsACString &input);
     virtual nsresult SetUserPass(const nsACString &input);
@@ -300,7 +300,6 @@ private:
     };
 
     uint32_t mURLType         : 2; // nsIStandardURL::URLTYPE_xxx
-    uint32_t mMutable         : 1; // nsIStandardURL::mutable
     uint32_t mSupportsFileURL : 1; // QI to nsIFileURL?
     uint32_t mCheckedIfHostA  : 1; // If set to true, it means either that
                                    // mDisplayHost has a been initialized, or
@@ -476,7 +475,9 @@ public:
             return NS_OK;
         }
 
-        explicit TemplatedMutator() = default;
+        explicit TemplatedMutator() : mMarkedFileURL(false)
+        {
+        }
     private:
         virtual ~TemplatedMutator() = default;
 

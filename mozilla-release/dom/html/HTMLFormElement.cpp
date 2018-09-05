@@ -178,13 +178,6 @@ HTMLFormElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
 {
   if (aNamespaceID == kNameSpaceID_None) {
     if (aName == nsGkAtoms::action || aName == nsGkAtoms::target) {
-      if (mPendingSubmission) {
-        // aha, there is a pending submission that means we're in
-        // the script and we need to flush it. let's tell it
-        // that the event was ignored to force the flush.
-        // the second argument is not playing a role at all.
-        FlushPendingSubmission();
-      }
       // Don't forget we've notified the password manager already if the
       // page sets the action/target in the during submit. (bug 343182)
       bool notifiedObservers = mNotifiedObservers;
@@ -678,15 +671,8 @@ nsresult
 HTMLFormElement::SubmitSubmission(HTMLFormSubmission* aFormSubmission)
 {
   nsresult rv;
-  Element* originatingElement = aFormSubmission->GetOriginatingElement();
 
-  //
-  // Get the action and target
-  //
-  nsCOMPtr<nsIURI> actionURI;
-  rv = GetActionURL(getter_AddRefs(actionURI), originatingElement);
-  NS_ENSURE_SUBMIT_SUCCESS(rv);
-
+  nsCOMPtr<nsIURI> actionURI = aFormSubmission->GetActionURL();
   if (!actionURI) {
     mIsSubmitting = false;
     return NS_OK;
@@ -716,21 +702,6 @@ HTMLFormElement::SubmitSubmission(HTMLFormSubmission* aFormSubmission)
   if (NS_SUCCEEDED(actionURI->SchemeIs("javascript", &schemeIsJavaScript)) &&
       schemeIsJavaScript) {
     mIsSubmitting = false;
-  }
-
-  // The target is the originating element formtarget attribute if the element
-  // is a submit control and has such an attribute.
-  // Otherwise, the target is the form owner's target attribute,
-  // if it has such an attribute.
-  // Finally, if one of the child nodes of the head element is a base element
-  // with a target attribute, then the value of the target attribute of the
-  // first such base element; or, if there is no such element, the empty string.
-  nsAutoString target;
-  if (!(originatingElement && originatingElement->GetAttr(kNameSpaceID_None,
-                                                          nsGkAtoms::formtarget,
-                                                          target)) &&
-      !GetAttr(kNameSpaceID_None, nsGkAtoms::target, target)) {
-    GetBaseTarget(target);
   }
 
   //
@@ -771,17 +742,17 @@ HTMLFormElement::SubmitSubmission(HTMLFormSubmission* aFormSubmission)
                                        nullptr, doc);
 
     nsCOMPtr<nsIInputStream> postDataStream;
-    int64_t postDataStreamLength = -1;
     rv = aFormSubmission->GetEncodedSubmission(actionURI,
                                                getter_AddRefs(postDataStream),
-                                               &postDataStreamLength,
                                                actionURI);
     NS_ENSURE_SUBMIT_SUCCESS(rv);
 
+    nsAutoString target;
+    aFormSubmission->GetTarget(target);
     rv = linkHandler->OnLinkClickSync(this, actionURI,
                                       target.get(),
                                       VoidString(),
-                                      postDataStream, postDataStreamLength,
+                                      postDataStream,
                                       nullptr, false,
                                       getter_AddRefs(docShell),
                                       getter_AddRefs(mSubmittingRequest),
@@ -1572,7 +1543,7 @@ HTMLFormElement::FlushPendingSubmission()
   if (mPendingSubmission) {
     // Transfer owning reference so that the submissioin doesn't get deleted
     // if we reenter
-    nsAutoPtr<HTMLFormSubmission> submission = Move(mPendingSubmission);
+    nsAutoPtr<HTMLFormSubmission> submission = std::move(mPendingSubmission);
 
     SubmitSubmission(submission);
   }
@@ -1672,8 +1643,7 @@ HTMLFormElement::GetActionURL(nsIURI** aActionURL,
       return NS_OK;
     }
 
-    rv = docURI->Clone(getter_AddRefs(actionURL));
-    NS_ENSURE_SUCCESS(rv, rv);
+    actionURL = docURI;
   } else {
     nsCOMPtr<nsIURI> baseURL = GetBaseURI();
     NS_ASSERTION(baseURL, "No Base URL found in Form Submit!\n");
@@ -1746,7 +1716,8 @@ HTMLFormElement::GetActionURL(nsIURI** aActionURL,
                         EmptyString(), // aScriptSample
                         0, // aLineNumber
                         0, // aColumnNumber
-                        nsIScriptError::warningFlag, "CSP",
+                        nsIScriptError::warningFlag,
+                        NS_LITERAL_CSTRING("upgradeInsecureRequest"),
                         document->InnerWindowID(),
                         !!document->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId);
   }
@@ -1762,9 +1733,9 @@ HTMLFormElement::GetActionURL(nsIURI** aActionURL,
 NS_IMETHODIMP_(nsIFormControl*)
 HTMLFormElement::GetDefaultSubmitElement() const
 {
-  NS_PRECONDITION(mDefaultSubmitElement == mFirstSubmitInElements ||
-                  mDefaultSubmitElement == mFirstSubmitNotInElements,
-                  "What happened here?");
+  MOZ_ASSERT(mDefaultSubmitElement == mFirstSubmitInElements ||
+             mDefaultSubmitElement == mFirstSubmitNotInElements,
+             "What happened here?");
 
   return mDefaultSubmitElement;
 }
@@ -1772,7 +1743,7 @@ HTMLFormElement::GetDefaultSubmitElement() const
 bool
 HTMLFormElement::IsDefaultSubmitElement(const nsIFormControl* aControl) const
 {
-  NS_PRECONDITION(aControl, "Unexpected call");
+  MOZ_ASSERT(aControl, "Unexpected call");
 
   if (aControl == mDefaultSubmitElement) {
     // Yes, it is
@@ -1821,7 +1792,7 @@ HTMLFormElement::ImplicitSubmissionIsDisabled() const
 bool
 HTMLFormElement::IsLastActiveElement(const nsIFormControl* aControl) const
 {
-  NS_PRECONDITION(aControl, "Unexpected call");
+  MOZ_ASSERT(aControl, "Unexpected call");
 
   for (auto* element : Reversed(mControls->mElements)) {
     if (element->IsSingleLineTextOrNumberControl(false) &&

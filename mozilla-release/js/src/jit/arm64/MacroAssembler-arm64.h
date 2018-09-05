@@ -24,18 +24,18 @@ using vixl::MemOperand;
 
 struct ImmShiftedTag : public ImmWord
 {
-    ImmShiftedTag(JSValueShiftedTag shtag)
+    explicit ImmShiftedTag(JSValueShiftedTag shtag)
       : ImmWord((uintptr_t)shtag)
     { }
 
-    ImmShiftedTag(JSValueType type)
+    explicit ImmShiftedTag(JSValueType type)
       : ImmWord(uintptr_t(JSValueShiftedTag(JSVAL_TYPE_TO_SHIFTED_TAG(type))))
     { }
 };
 
 struct ImmTag : public Imm32
 {
-    ImmTag(JSValueTag tag)
+    explicit ImmTag(JSValueTag tag)
       : Imm32(tag)
     { }
 };
@@ -400,37 +400,33 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void splitTag(Register src, Register dest) {
         ubfx(ARMRegister(dest, 64), ARMRegister(src, 64), JSVAL_TAG_SHIFT, (64 - JSVAL_TAG_SHIFT));
     }
-    Register extractTag(const Address& address, Register scratch) {
+    MOZ_MUST_USE Register extractTag(const Address& address, Register scratch) {
         loadPtr(address, scratch);
         splitTag(scratch, scratch);
         return scratch;
     }
-    Register extractTag(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractTag(const ValueOperand& value, Register scratch) {
         splitTag(value.valueReg(), scratch);
         return scratch;
     }
-    Register extractObject(const Address& address, Register scratch) {
+    MOZ_MUST_USE Register extractObject(const Address& address, Register scratch) {
         loadPtr(address, scratch);
         unboxObject(scratch, scratch);
         return scratch;
     }
-    Register extractObject(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractObject(const ValueOperand& value, Register scratch) {
         unboxObject(value, scratch);
         return scratch;
     }
-    Register extractString(const ValueOperand& value, Register scratch) {
-        unboxString(value, scratch);
-        return scratch;
-    }
-    Register extractSymbol(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractSymbol(const ValueOperand& value, Register scratch) {
         unboxSymbol(value, scratch);
         return scratch;
     }
-    Register extractInt32(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractInt32(const ValueOperand& value, Register scratch) {
         unboxInt32(value, scratch);
         return scratch;
     }
-    Register extractBoolean(const ValueOperand& value, Register scratch) {
+    MOZ_MUST_USE Register extractBoolean(const ValueOperand& value, Register scratch) {
         unboxBoolean(value, scratch);
         return scratch;
     }

@@ -30,9 +30,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-static char *RCSSTRING __UNUSED__="$Id: addrs.c,v 1.2 2008/04/28 18:21:30 ekr Exp $";
-
 #include <csi_platform.h>
 #include <assert.h>
 #include <string.h>
@@ -327,7 +324,7 @@ stun_getifaddrs(nr_local_addr addrs[], int maxaddrs, int *count)
             addrs[*count].interface.type = NR_INTERFACE_TYPE_UNKNOWN;
             addrs[*count].interface.estimated_speed = 0;
 #endif
-            strlcpy(addrs[*count].addr.ifname, if_addr->ifa_name, sizeof(addrs[*count].addr.ifname));
+            (void)strlcpy(addrs[*count].addr.ifname, if_addr->ifa_name, sizeof(addrs[*count].addr.ifname));
             ++(*count);
           }
           break;

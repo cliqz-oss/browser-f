@@ -24,6 +24,7 @@ class nsAtom;
 class nsIWidget;
 
 namespace mozilla {
+class ComputedStyle;
 namespace layers {
 class StackingContextHelper;
 class WebRenderLayerManager;
@@ -55,6 +56,9 @@ class IpcResourceUpdateQueue;
  * the constants in nsThemeConstants.h).
  */
 class nsITheme: public nsISupports {
+protected:
+  using LayoutDeviceIntMargin = mozilla::LayoutDeviceIntMargin;
+
 public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_ITHEME_IID)
 
@@ -73,6 +77,14 @@ public:
                                   const nsRect& aDirtyRect) = 0;
 
   /**
+   * Get the used color of the given widget when it's specified as auto.
+   * It's currently only used for scrollbar-*-color properties.
+   */
+  virtual nscolor GetWidgetAutoColor(mozilla::ComputedStyle* aStyle,
+                                     uint8_t aWidgetType)
+  { return NS_RGB(0, 0, 0); }
+
+  /**
    * Create WebRender commands for the theme background.
    * @return true if the theme knows how to create WebRender commands for the
    *         given widget type, false if DrawWidgetBackground need sto be called
@@ -87,12 +99,11 @@ public:
                                                 const nsRect& aRect) { return false; }
 
   /**
-   * Get the computed CSS border for the widget, in pixels.
+   * Return the border for the widget, in device pixels.
    */
-  NS_IMETHOD GetWidgetBorder(nsDeviceContext* aContext, 
-                             nsIFrame* aFrame,
-                             uint8_t aWidgetType,
-                             nsIntMargin* aResult)=0;
+  virtual MOZ_MUST_USE LayoutDeviceIntMargin GetWidgetBorder(nsDeviceContext* aContext,
+                                                             nsIFrame* aFrame,
+                                                             uint8_t aWidgetType) = 0;
 
   /**
    * This method can return false to indicate that the CSS padding
@@ -106,7 +117,7 @@ public:
   virtual bool GetWidgetPadding(nsDeviceContext* aContext,
                                   nsIFrame* aFrame,
                                   uint8_t aWidgetType,
-                                  nsIntMargin* aResult) = 0;
+                                  LayoutDeviceIntMargin* aResult) = 0;
 
   /**
    * On entry, *aResult is positioned at 0,0 and sized to the new size
@@ -216,12 +227,6 @@ public:
     * Should we insert a dropmarker inside of combobox button?
    */
   virtual bool ThemeNeedsComboboxDropmarker()=0;
-
-  /**
-   * Should we hide scrollbars?
-   */
-  virtual bool ShouldHideScrollbars()
-  { return false; }
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsITheme, NS_ITHEME_IID)

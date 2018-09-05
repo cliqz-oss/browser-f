@@ -148,6 +148,7 @@ class Theme {
         case "icons_attention":
           this.lwtStyles.icon_attention_color = cssColor;
           break;
+        case "tab_background_separator":
         case "tab_loading":
         case "tab_text":
         case "tab_line":
@@ -266,11 +267,7 @@ class Theme {
             break;
           }
 
-          let alignment = [];
-          if (this.lwtStyles.headerURL) {
-            alignment.push("right top");
-          }
-          this.lwtStyles.backgroundsAlignment = alignment.concat(val).join(",");
+          this.lwtStyles.backgroundsAlignment = val.join(",");
           break;
         }
         case "additional_backgrounds_tiling": {
@@ -279,9 +276,6 @@ class Theme {
           }
 
           let tiling = [];
-          if (this.lwtStyles.headerURL) {
-            tiling.push("no-repeat");
-          }
           for (let i = 0, l = this.lwtStyles.additionalBackgrounds.length; i < l; ++i) {
             tiling.push(val[i] || "no-repeat");
           }

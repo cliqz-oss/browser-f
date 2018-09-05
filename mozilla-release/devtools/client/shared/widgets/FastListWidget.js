@@ -14,7 +14,7 @@ const { ViewHelpers } = require("devtools/client/shared/widgets/view-helpers");
  * Note: this widget should be used in tandem with the WidgetMethods in
  * view-helpers.js.
  *
- * @param nsIDOMNode aNode
+ * @param Node aNode
  *        The element associated with the widget.
  */
 const FastListWidget = module.exports = function FastListWidget(node) {
@@ -55,15 +55,15 @@ FastListWidget.prototype = {
    *
    * @param number aIndex
    *        The position in the container intended for this item.
-   * @param nsIDOMNode aContents
+   * @param Node aContents
    *        The node to be displayed in the container.
    * @param Object aAttachment [optional]
    *        Extra data for the user.
-   * @return nsIDOMNode
+   * @return Node
    *         The element associated with the displayed item.
    */
   insertItemAt: function(index, contents, attachment = {}) {
-    let element = this._templateElement.cloneNode();
+    const element = this._templateElement.cloneNode();
     element.appendChild(contents);
 
     if (index >= 0) {
@@ -90,7 +90,7 @@ FastListWidget.prototype = {
    * Removes all of the child nodes from this container.
    */
   removeAllItems: function() {
-    let list = this._list;
+    const list = this._list;
 
     while (list.hasChildNodes()) {
       list.firstChild.remove();
@@ -111,7 +111,7 @@ FastListWidget.prototype = {
 
   /**
    * Gets the currently selected child node in this container.
-   * @return nsIDOMNode
+   * @return Node
    */
   get selectedItem() {
     return this._selectedItem;
@@ -119,15 +119,15 @@ FastListWidget.prototype = {
 
   /**
    * Sets the currently selected child node in this container.
-   * @param nsIDOMNode child
+   * @param Node child
    */
   set selectedItem(child) {
-    let menuArray = this._orderedMenuElementsArray;
+    const menuArray = this._orderedMenuElementsArray;
 
     if (!child) {
       this._selectedItem = null;
     }
-    for (let node of menuArray) {
+    for (const node of menuArray) {
       if (node == child) {
         node.classList.add("selected");
         this._selectedItem = node;
@@ -144,7 +144,7 @@ FastListWidget.prototype = {
    *
    * @param number index
    *        The position in the container intended for this item.
-   * @return nsIDOMNode
+   * @return Node
    *         The element associated with the displayed item.
    */
   getItemAtIndex: function(index) {
@@ -184,7 +184,7 @@ FastListWidget.prototype = {
   /**
    * Ensures the specified element is visible.
    *
-   * @param nsIDOMNode element
+   * @param Node element
    *        The element to make visible.
    */
   ensureElementIsVisible: function(element) {
@@ -193,7 +193,7 @@ FastListWidget.prototype = {
     }
 
     // Ensure the element is visible but not scrolled horizontally.
-    let boxObject = this._list.boxObject;
+    const boxObject = this._list.boxObject;
     boxObject.ensureElementIsVisible(element);
     boxObject.scrollBy(-this._list.clientWidth, 0);
   },
@@ -217,7 +217,7 @@ FastListWidget.prototype = {
     if (this._emptyTextNode || !this._emptyTextValue) {
       return;
     }
-    let label = this.document.createElement("label");
+    const label = this.document.createElement("label");
     label.className = "plain fast-list-widget-empty-text";
     label.setAttribute("value", this._emptyTextValue);
 

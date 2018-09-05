@@ -98,14 +98,14 @@ class PropertiesView extends Component {
   }
 
   onFilter(object, whiteList) {
-    let { name, value } = object;
-    let filterText = this.state.filterText;
+    const { name, value } = object;
+    const filterText = this.state.filterText;
 
     if (!filterText || whiteList.includes(name)) {
       return true;
     }
 
-    let jsonString = JSON.stringify({ [name]: value }).toLowerCase();
+    const jsonString = JSON.stringify({ [name]: value }).toLowerCase();
     return jsonString.includes(filterText.toLowerCase());
   }
 
@@ -162,6 +162,7 @@ class PropertiesView extends Component {
       member: Object.assign({}, member, { open: false }),
       mode: MODE.TINY,
       cropLimit: this.props.cropLimit,
+      noGrip: true,
     }));
   }
 

@@ -120,7 +120,7 @@ function makeFullRuntimeMemoryActorTest(testGeneratorFunction) {
         type: { global: true }
       });
 
-      getChromeActors(client).then(function(form) {
+      getParentProcessActors(client).then(function(form) {
         if (!form) {
           ok(false, "Could not attach to chrome actors");
           return;
@@ -146,7 +146,7 @@ function makeFullRuntimeMemoryActorTest(testGeneratorFunction) {
 }
 
 function createTestGlobal(name) {
-  let sandbox = Cu.Sandbox(Cc["@mozilla.org/systemprincipal;1"]
+  const sandbox = Cu.Sandbox(Cc["@mozilla.org/systemprincipal;1"]
                            .createInstance(Ci.nsIPrincipal));
   sandbox.__name = name;
   return sandbox;
@@ -169,7 +169,7 @@ function listTabs(client) {
 
 function findTab(tabs, title) {
   dump("Finding tab with title '" + title + "'.\n");
-  for (let tab of tabs) {
+  for (const tab of tabs) {
     if (tab.title === title) {
       return tab;
     }
@@ -206,7 +206,7 @@ function getSources(threadClient) {
 
 function findSource(sources, url) {
   dump("Finding source with url '" + url + "'.\n");
-  for (let source of sources) {
+  for (const source of sources) {
     if (source.url === url) {
       return source;
     }
@@ -217,6 +217,16 @@ function findSource(sources, url) {
 function waitForPause(threadClient) {
   dump("Waiting for pause.\n");
   return waitForEvent(threadClient, "paused");
+}
+
+function waitForProperty(dbg, property) {
+  return new Promise(resolve => {
+    Object.defineProperty(dbg, property, {
+      set(newValue) {
+        resolve(newValue);
+      }
+    });
+  });
 }
 
 function setBreakpoint(sourceClient, location) {
@@ -317,14 +327,14 @@ var listener = {
 Services.console.registerListener(listener);
 
 function testGlobal(name) {
-  let sandbox = Cu.Sandbox(Cc["@mozilla.org/systemprincipal;1"]
+  const sandbox = Cu.Sandbox(Cc["@mozilla.org/systemprincipal;1"]
                            .createInstance(Ci.nsIPrincipal));
   sandbox.__name = name;
   return sandbox;
 }
 
 function addTestGlobal(name, server = DebuggerServer) {
-  let global = testGlobal(name);
+  const global = testGlobal(name);
   server.addTestGlobal(global);
   return global;
 }
@@ -333,7 +343,7 @@ function addTestGlobal(name, server = DebuggerServer) {
 // |title|, and apply |callback| to the packet's entry for that tab.
 function getTestTab(client, title, callback) {
   client.listTabs().then(function(response) {
-    for (let tab of response.tabs) {
+    for (const tab of response.tabs) {
       if (tab.title === title) {
         callback(tab, response);
         return;
@@ -347,7 +357,9 @@ function getTestTab(client, title, callback) {
 // response packet and a TabClient instance referring to that tab.
 function attachTestTab(client, title, callback) {
   getTestTab(client, title, function(tab) {
-    client.attachTab(tab.actor, callback);
+    client.attachTab(tab.actor).then(([response, tabClient]) => {
+      callback(response, tabClient);
+    });
   });
 }
 
@@ -357,13 +369,13 @@ function attachTestTab(client, title, callback) {
 // thread.
 function attachTestThread(client, title, callback) {
   attachTestTab(client, title, function(tabResponse, tabClient) {
-    function onAttach(response, threadClient) {
+    function onAttach([response, threadClient]) {
       callback(response, tabClient, threadClient, tabResponse);
     }
     tabClient.attachThread({
       useSourceMaps: true,
       autoBlackBox: true
-    }, onAttach);
+    }).then(onAttach);
   });
 }
 
@@ -401,8 +413,8 @@ function startTestDebuggerServer(title, server = DebuggerServer) {
   addTestGlobal(title);
   DebuggerServer.registerActors({ tab: true });
 
-  let transport = DebuggerServer.connectPipe();
-  let client = new DebuggerClient(transport);
+  const transport = DebuggerServer.connectPipe();
+  const client = new DebuggerClient(transport);
 
   return connect(client).then(() => client);
 }
@@ -414,14 +426,14 @@ function finishClient(client) {
   });
 }
 
-// Create a server, connect to it and fetch tab actors for the parent process;
-// pass |callback| the debugger client and tab actor form with all actor IDs.
-function get_chrome_actors(callback) {
+// Create a server, connect to it and fetch actors targeting the parent process;
+// pass |callback| the debugger client and target actor form with all actor IDs.
+function get_parent_process_actors(callback) {
   DebuggerServer.init();
   DebuggerServer.registerAllActors();
   DebuggerServer.allowChromeProcess = true;
 
-  let client = new DebuggerClient(DebuggerServer.connectPipe());
+  const client = new DebuggerClient(DebuggerServer.connectPipe());
   client.connect()
     .then(() => client.getProcess())
     .then(response => {
@@ -429,7 +441,7 @@ function get_chrome_actors(callback) {
     });
 }
 
-function getChromeActors(client, server = DebuggerServer) {
+function getParentProcessActors(client, server = DebuggerServer) {
   server.allowChromeProcess = true;
   return client.getProcess().then(response => response.form);
 }
@@ -438,7 +450,7 @@ function getChromeActors(client, server = DebuggerServer) {
  * Takes a relative file path and returns the absolute file url for it.
  */
 function getFileUrl(name, allowMissing = false) {
-  let file = do_get_file(name, allowMissing);
+  const file = do_get_file(name, allowMissing);
   return Services.io.newFileURI(file).spec;
 }
 
@@ -447,7 +459,7 @@ function getFileUrl(name, allowMissing = false) {
  * platform-independent and URL-like form.
  */
 function getFilePath(name, allowMissing = false, usePlatformPathSeparator = false) {
-  let file = do_get_file(name, allowMissing);
+  const file = do_get_file(name, allowMissing);
   let path = Services.io.newFileURI(file).spec;
   let filePrePath = "file://";
   if ("nsILocalFileWin" in Ci &&
@@ -468,8 +480,8 @@ function getFilePath(name, allowMissing = false, usePlatformPathSeparator = fals
  * Returns the full text contents of the given file.
  */
 function readFile(fileName) {
-  let f = do_get_file(fileName);
-  let s = Cc["@mozilla.org/network/file-input-stream;1"]
+  const f = do_get_file(fileName);
+  const s = Cc["@mozilla.org/network/file-input-stream;1"]
     .createInstance(Ci.nsIFileInputStream);
   s.init(f, -1, -1, false);
   try {
@@ -480,13 +492,13 @@ function readFile(fileName) {
 }
 
 function writeFile(fileName, content) {
-  let file = do_get_file(fileName, true);
-  let stream = Cc["@mozilla.org/network/file-output-stream;1"]
+  const file = do_get_file(fileName, true);
+  const stream = Cc["@mozilla.org/network/file-output-stream;1"]
     .createInstance(Ci.nsIFileOutputStream);
   stream.init(file, -1, -1, 0);
   try {
     do {
-      let numWritten = stream.write(content, content.length);
+      const numWritten = stream.write(content, content.length);
       content = content.slice(numWritten);
     } while (content.length > 0);
   } finally {
@@ -543,13 +555,13 @@ TracingTransport.prototype = {
   },
 
   expectSend: function(expected) {
-    let packet = this.packets[this.checkIndex++];
+    const packet = this.packets[this.checkIndex++];
     Assert.equal(packet.type, "sent");
     deepEqual(packet.packet, this.normalize(expected));
   },
 
   expectReceive: function(expected) {
-    let packet = this.packets[this.checkIndex++];
+    const packet = this.packets[this.checkIndex++];
     Assert.equal(packet.type, "received");
     deepEqual(packet.packet, this.normalize(expected));
   },
@@ -557,7 +569,7 @@ TracingTransport.prototype = {
   // Write your tests, call dumpLog at the end, inspect the output,
   // then sprinkle the calls through the right places in your test.
   dumpLog: function() {
-    for (let entry of this.packets) {
+    for (const entry of this.packets) {
       if (entry.type === "sent") {
         dumpn("trace.expectSend(" + entry.packet + ");");
       } else {
@@ -772,9 +784,9 @@ function getSourceContent(sourceClient) {
  * @returns Promise<SourceClient>
  */
 function getSource(threadClient, url) {
-  let deferred = defer();
+  const deferred = defer();
   threadClient.getSources((res) => {
-    let source = res.sources.filter(function(s) {
+    const source = res.sources.filter(function(s) {
       return s.url === url;
     });
     if (source.length) {
@@ -793,7 +805,7 @@ function getSource(threadClient, url) {
  * @returns Promise<response>
  */
 function reload(tabClient) {
-  let deferred = defer();
+  const deferred = defer();
   tabClient._reload({}, deferred.resolve);
   return deferred.promise;
 }
@@ -806,21 +818,21 @@ function reload(tabClient) {
  * @returns object
  */
 function getInflatedStackLocations(thread, sample) {
-  let stackTable = thread.stackTable;
-  let frameTable = thread.frameTable;
-  let stringTable = thread.stringTable;
-  let SAMPLE_STACK_SLOT = thread.samples.schema.stack;
-  let STACK_PREFIX_SLOT = stackTable.schema.prefix;
-  let STACK_FRAME_SLOT = stackTable.schema.frame;
-  let FRAME_LOCATION_SLOT = frameTable.schema.location;
+  const stackTable = thread.stackTable;
+  const frameTable = thread.frameTable;
+  const stringTable = thread.stringTable;
+  const SAMPLE_STACK_SLOT = thread.samples.schema.stack;
+  const STACK_PREFIX_SLOT = stackTable.schema.prefix;
+  const STACK_FRAME_SLOT = stackTable.schema.frame;
+  const FRAME_LOCATION_SLOT = frameTable.schema.location;
 
   // Build the stack from the raw data and accumulate the locations in
   // an array.
   let stackIndex = sample[SAMPLE_STACK_SLOT];
-  let locations = [];
+  const locations = [];
   while (stackIndex !== null) {
-    let stackEntry = stackTable.data[stackIndex];
-    let frame = frameTable.data[stackEntry[STACK_FRAME_SLOT]];
+    const stackEntry = stackTable.data[stackIndex];
+    const frame = frameTable.data[stackEntry[STACK_FRAME_SLOT]];
     locations.push(stringTable[frame[FRAME_LOCATION_SLOT]]);
     stackIndex = stackEntry[STACK_PREFIX_SLOT];
   }

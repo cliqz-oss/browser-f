@@ -99,12 +99,14 @@ class MachFormatter(base.BaseFormatter):
         name = data.get("subtest", test)
         rv = "%s %s" % (self._format_expected(
             data["status"], data.get("expected", data["status"])), name)
-        if 'message' in data:
-            rv += " - %s" % data['message']
-
-        if 'stack' in data:
-            rv += "\n%s\n" % self.term.dim(data['stack'].strip('\n'))
+        if "message" in data:
+            rv += " - %s" % data["message"]
+        if "stack" in data:
+            rv += self._format_stack(data["stack"])
         return rv
+
+    def _format_stack(self, stack):
+        return "\n%s\n" % self.term.dim(stack.strip("\n"))
 
     def _format_suite_summary(self, suite, summary):
         count = summary['counts']
@@ -198,6 +200,8 @@ class MachFormatter(base.BaseFormatter):
                 message = unexpected[0].get("message", "")
                 if message:
                     rv += " - %s" % message
+                if "stack" in data:
+                    rv += self._format_stack(data["stack"])
             elif not self.verbose:
                 rv += "\n"
                 for d in unexpected:
@@ -243,7 +247,7 @@ class MachFormatter(base.BaseFormatter):
             expected = "%i" % data["min_expected"]
 
         action = self.term.red("ASSERT")
-        return "%s: Assertion count %i, expected %i assertions\n" % (
+        return "%s: Assertion count %i, expected %s assertions\n" % (
                 action, data["count"], expected)
 
     def process_output(self, data):

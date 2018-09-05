@@ -73,7 +73,6 @@
 #include "nsIStyleSheetLinkingElement.h"
 #include "nsIObserverService.h"
 #include "nsNodeUtils.h"
-#include "nsIDocShellTreeOwner.h"
 #include "nsIXULWindow.h"
 #include "nsXULPopupManager.h"
 #include "nsCCUncollectableMarker.h"
@@ -219,7 +218,7 @@ XULDocument::~XULDocument()
 nsresult
 NS_NewXULDocument(nsIDocument** result)
 {
-    NS_PRECONDITION(result != nullptr, "null ptr");
+    MOZ_ASSERT(result != nullptr, "null ptr");
     if (! result)
         return NS_ERROR_NULL_POINTER;
 
@@ -473,42 +472,12 @@ XULDocument::EndLoad()
         nsXULPrototypeCache::GetInstance()->WritePrototype(mCurrentPrototype);
     }
 
-    if (IsOverlayAllowed(uri)) {
-        nsCOMPtr<nsIXULOverlayProvider> reg =
-            mozilla::services::GetXULOverlayProviderService();
-
-        if (reg) {
-            nsCOMPtr<nsISimpleEnumerator> overlays;
-            rv = reg->GetStyleOverlays(uri, getter_AddRefs(overlays));
-            if (NS_FAILED(rv)) return;
-
-            bool moreSheets;
-            nsCOMPtr<nsISupports> next;
-            nsCOMPtr<nsIURI> sheetURI;
-
-            while (NS_SUCCEEDED(rv = overlays->HasMoreElements(&moreSheets)) &&
-                   moreSheets) {
-                overlays->GetNext(getter_AddRefs(next));
-
-                sheetURI = do_QueryInterface(next);
-                if (!sheetURI) {
-                    NS_ERROR("Chrome registry handed me a non-nsIURI object!");
-                    continue;
-                }
-
-                if (IsChromeURI(sheetURI)) {
-                    mCurrentPrototype->AddStyleSheetReference(sheetURI);
-                }
-            }
-        }
-
-        if (isChrome && useXULCache) {
-            // If it's a chrome prototype document, then notify any
-            // documents that raced to load the prototype, and awaited
-            // its load completion via proto->AwaitLoadDone().
-            rv = mCurrentPrototype->NotifyLoadDone();
-            if (NS_FAILED(rv)) return;
-        }
+    if (IsOverlayAllowed(uri) && isChrome && useXULCache) {
+        // If it's a chrome prototype document, then notify any
+        // documents that raced to load the prototype, and awaited
+        // its load completion via proto->AwaitLoadDone().
+        rv = mCurrentPrototype->NotifyLoadDone();
+        if (NS_FAILED(rv)) return;
     }
 
     OnPrototypeLoadDone(true);
@@ -526,10 +495,6 @@ nsresult
 XULDocument::OnPrototypeLoadDone(bool aResumeWalk)
 {
     nsresult rv;
-
-    // Add the style overlays from chrome registry, if any.
-    rv = AddPrototypeSheets();
-    if (NS_FAILED(rv)) return rv;
 
     rv = PrepareToWalk();
     NS_ASSERTION(NS_SUCCEEDED(rv), "unable to prepare for walk");
@@ -1057,7 +1022,7 @@ XULDocument::ResolveForwardReferences()
 
 //----------------------------------------------------------------------
 //
-// nsIDOMDocument interface
+// nsIDocument interface
 //
 
 already_AddRefed<nsINodeList>
@@ -1161,41 +1126,6 @@ XULDocument::Persist(const nsAString& aID,
     aRv = Persist(element, nameSpaceID, tag);
 }
 
-enum class ConversionDirection {
-    InnerToOuter,
-    OuterToInner,
-};
-
-static void
-ConvertWindowSize(nsIXULWindow* aWin,
-                  nsAtom* aAttr,
-                  ConversionDirection aDirection,
-                  nsAString& aInOutString)
-{
-    MOZ_ASSERT(aWin);
-    MOZ_ASSERT(aAttr == nsGkAtoms::width || aAttr == nsGkAtoms::height);
-
-    nsresult rv;
-    int32_t size = aInOutString.ToInteger(&rv);
-    if (NS_FAILED(rv)) {
-        return;
-    }
-
-    int32_t sizeDiff = aAttr == nsGkAtoms::width
-        ? aWin->GetOuterToInnerWidthDifferenceInCSSPixels()
-        : aWin->GetOuterToInnerHeightDifferenceInCSSPixels();
-
-    if (!sizeDiff) {
-        return;
-    }
-
-    int32_t multiplier =
-        aDirection == ConversionDirection::InnerToOuter ? 1 : - 1;
-
-    CopyASCIItoUTF16(nsPrintfCString("%d", size + multiplier * sizeDiff),
-                     aInOutString);
-}
-
 nsresult
 XULDocument::Persist(Element* aElement, int32_t aNameSpaceID,
                      nsAtom* aAttribute)
@@ -1236,15 +1166,10 @@ XULDocument::Persist(Element* aElement, int32_t aNameSpaceID,
         return mLocalStore->RemoveValue(uri, id, attrstr);
     }
 
-    // Make sure we store the <window> attributes as outer window size, see
-    // bug 1444525 & co.
-    if (aElement->IsXULElement(nsGkAtoms::window) &&
-        (aAttribute == nsGkAtoms::width || aAttribute == nsGkAtoms::height)) {
+    // Persisting attributes to top level windows is handled by nsXULWindow.
+    if (aElement->IsXULElement(nsGkAtoms::window)) {
         if (nsCOMPtr<nsIXULWindow> win = GetXULWindowIfToplevelChrome()) {
-            ConvertWindowSize(win,
-                              aAttribute,
-                              ConversionDirection::InnerToOuter,
-                              valuestr);
+           return NS_OK;
         }
     }
 
@@ -1462,11 +1387,10 @@ XULDocument::AddSubtreeToDocument(nsIContent* aContent)
 {
     NS_ASSERTION(aContent->GetUncomposedDoc() == this, "Element not in doc!");
     // From here on we only care about elements.
-    if (!aContent->IsElement()) {
+    Element* aElement = Element::FromNode(aContent);
+    if (!aElement) {
         return NS_OK;
     }
-
-    Element* aElement = aContent->AsElement();
 
     // Do pre-order addition magic
     nsresult rv = AddElementToDocumentPre(aElement);
@@ -1490,11 +1414,10 @@ nsresult
 XULDocument::RemoveSubtreeFromDocument(nsIContent* aContent)
 {
     // From here on we only care about elements.
-    if (!aContent->IsElement()) {
+    Element* aElement = Element::FromNode(aContent);
+    if (!aElement) {
         return NS_OK;
     }
-
-    Element* aElement = aContent->AsElement();
 
     // Do a bunch of cleanup to remove an element from the XUL
     // document.
@@ -1546,7 +1469,7 @@ XULDocument::RemoveSubtreeFromDocument(nsIContent* aContent)
 
 //----------------------------------------------------------------------
 //
-// nsIDOMNode interface
+// nsINode interface
 //
 
 nsresult
@@ -1622,7 +1545,7 @@ XULDocument::MatchAttribute(Element* aElement,
                             nsAtom* aAttrName,
                             void* aData)
 {
-    NS_PRECONDITION(aElement, "Must have content node to work with!");
+    MOZ_ASSERT(aElement, "Must have content node to work with!");
     nsString* attrValue = static_cast<nsString*>(aData);
     if (aNamespaceID != kNameSpaceID_Unknown &&
         aNamespaceID != kNameSpaceID_Wildcard) {
@@ -1837,19 +1760,10 @@ XULDocument::ApplyPersistentAttributesToElements(const nsAString &aID,
                  continue;
             }
 
-            // Convert attributes from outer size to inner size for top-level
-            // windows, see bug 1444525 & co.
-            if (element->IsXULElement(nsGkAtoms::window) &&
-                (attr == nsGkAtoms::width || attr == nsGkAtoms::height)) {
+            // Applying persistent attributes to top level windows is handled
+            // by nsXULWindow.
+            if (element->IsXULElement(nsGkAtoms::window)) {
                 if (nsCOMPtr<nsIXULWindow> win = GetXULWindowIfToplevelChrome()) {
-                    nsAutoString maybeConvertedValue = value;
-                    ConvertWindowSize(win,
-                                      attr,
-                                      ConversionDirection::OuterToInner,
-                                      maybeConvertedValue);
-                    Unused <<
-                        element->SetAttr(kNameSpaceID_None, attr, maybeConvertedValue, true);
-
                     continue;
                 }
             }
@@ -2048,8 +1962,8 @@ nsresult
 XULDocument::CreateAndInsertPI(const nsXULPrototypePI* aProtoPI,
                                nsINode* aParent, nsINode* aBeforeThis)
 {
-    NS_PRECONDITION(aProtoPI, "null ptr");
-    NS_PRECONDITION(aParent, "null ptr");
+    MOZ_ASSERT(aProtoPI, "null ptr");
+    MOZ_ASSERT(aParent, "null ptr");
 
     RefPtr<ProcessingInstruction> node =
         NS_NewXMLProcessingInstruction(mNodeInfoManager, aProtoPI->mTarget,
@@ -2715,45 +2629,14 @@ XULDocument::ResumeWalk()
     return rv;
 }
 
-already_AddRefed<nsIXULWindow>
-XULDocument::GetXULWindowIfToplevelChrome() const
-{
-    nsCOMPtr<nsIDocShellTreeItem> item = GetDocShell();
-    if (!item) {
-        return nullptr;
-    }
-    nsCOMPtr<nsIDocShellTreeOwner> owner;
-    item->GetTreeOwner(getter_AddRefs(owner));
-    nsCOMPtr<nsIXULWindow> xulWin = do_GetInterface(owner);
-    if (!xulWin) {
-        return nullptr;
-    }
-    nsCOMPtr<nsIDocShell> xulWinShell;
-    xulWin->GetDocShell(getter_AddRefs(xulWinShell));
-    if (!SameCOMIdentity(xulWinShell, item)) {
-        return nullptr;
-    }
-    return xulWin.forget();
-}
-
 nsresult
 XULDocument::DoneWalking()
 {
-    NS_PRECONDITION(mPendingSheets == 0, "there are sheets to be loaded");
-    NS_PRECONDITION(!mStillWalking, "walk not done");
+    MOZ_ASSERT(mPendingSheets == 0, "there are sheets to be loaded");
+    MOZ_ASSERT(!mStillWalking, "walk not done");
 
     // XXXldb This is where we should really be setting the chromehidden
     // attribute.
-
-    {
-        mozAutoDocUpdate updateBatch(this, UPDATE_STYLE, true);
-        uint32_t count = mOverlaySheets.Length();
-        for (uint32_t i = 0; i < count; ++i) {
-            AddStyleSheet(mOverlaySheets[i]);
-        }
-    }
-
-    mOverlaySheets.Clear();
 
     if (!mDocumentLoaded) {
         // Make sure we don't reenter here from StartLayout().  Note that
@@ -2949,17 +2832,16 @@ XULDocument::MaybeBroadcast()
 }
 
 void
-XULDocument::EndUpdate(nsUpdateType aUpdateType)
+XULDocument::EndUpdate()
 {
-    XMLDocument::EndUpdate(aUpdateType);
-
+    XMLDocument::EndUpdate();
     MaybeBroadcast();
 }
 
 void
 XULDocument::ReportMissingOverlay(nsIURI* aURI)
 {
-    NS_PRECONDITION(aURI, "Must have a URI");
+    MOZ_ASSERT(aURI, "Must have a URI");
 
     NS_ConvertUTF8toUTF16 utfSpec(aURI->GetSpecOrDefault());
     const char16_t* params[] = { utfSpec.get() };
@@ -3265,7 +3147,7 @@ XULDocument::OnScriptCompileComplete(JSScript* aScript, nsresult aStatus)
 nsresult
 XULDocument::ExecuteScript(nsXULPrototypeScript *aScript)
 {
-    NS_PRECONDITION(aScript != nullptr, "null ptr");
+    MOZ_ASSERT(aScript != nullptr, "null ptr");
     NS_ENSURE_TRUE(aScript, NS_ERROR_NULL_POINTER);
     NS_ENSURE_TRUE(mScriptGlobalObject, NS_ERROR_NOT_INITIALIZED);
 
@@ -3288,7 +3170,7 @@ XULDocument::ExecuteScript(nsXULPrototypeScript *aScript)
     NS_ENSURE_TRUE(xpc::Scriptability::Get(global).Allowed(), NS_OK);
 
     JS::ExposeObjectToActiveJS(global);
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
 
     // The script is in the compilation scope. Clone it into the target scope
     // and execute it. On failure, ~AutoScriptEntry will handle exceptions, so
@@ -3306,7 +3188,7 @@ XULDocument::CreateElementFromPrototype(nsXULPrototypeElement* aPrototype,
                                         bool aIsRoot)
 {
     // Create a content model element from a prototype element.
-    NS_PRECONDITION(aPrototype != nullptr, "null ptr");
+    MOZ_ASSERT(aPrototype != nullptr, "null ptr");
     if (! aPrototype)
         return NS_ERROR_NULL_POINTER;
 
@@ -3391,35 +3273,6 @@ XULDocument::AddAttributes(nsXULPrototypeElement* aPrototype,
                                valueStr,
                                false);
         if (NS_FAILED(rv)) return rv;
-    }
-
-    return NS_OK;
-}
-
-
-nsresult
-XULDocument::AddPrototypeSheets()
-{
-    nsresult rv;
-
-    const nsCOMArray<nsIURI>& sheets = mCurrentPrototype->GetStyleSheetReferences();
-
-    for (int32_t i = 0; i < sheets.Count(); i++) {
-        nsCOMPtr<nsIURI> uri = sheets[i];
-
-        RefPtr<StyleSheet> incompleteSheet;
-        rv = CSSLoader()->LoadSheet(
-          uri, mCurrentPrototype->DocumentPrincipal(), this, &incompleteSheet);
-
-        // XXXldb We need to prevent bogus sheets from being held in the
-        // prototype's list, but until then, don't propagate the failure
-        // from LoadSheet (and thus exit the loop).
-        if (NS_SUCCEEDED(rv)) {
-            ++mPendingSheets;
-            if (!mOverlaySheets.AppendElement(incompleteSheet)) {
-                return NS_ERROR_OUT_OF_MEMORY;
-            }
-        }
     }
 
     return NS_OK;
@@ -3787,7 +3640,7 @@ XULDocument::FindBroadcaster(Element* aElement,
             return NS_FINDBROADCASTER_AWAIT_OVERLAYS;
         }
 
-        *aListener = parent->IsElement() ? parent->AsElement() : nullptr;
+        *aListener = Element::FromNode(parent);
         NS_IF_ADDREF(*aListener);
 
         aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::element, aBroadcasterID);
@@ -3919,14 +3772,14 @@ XULDocument::InsertElement(nsINode* aParent, nsIContent* aChild, bool aNotify)
     bool wasInserted = false;
 
     // insert after an element of a given id
-    if (aChild->IsElement()) {
-        aChild->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::insertafter, posStr);
+    if (Element* element = Element::FromNode(aChild)) {
+        element->GetAttr(kNameSpaceID_None, nsGkAtoms::insertafter, posStr);
     }
 
     bool isInsertAfter = true;
     if (posStr.IsEmpty()) {
-        if (aChild->IsElement()) {
-            aChild->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::insertbefore, posStr);
+        if (Element* element = Element::FromNode(aChild)) {
+            element->GetAttr(kNameSpaceID_None, nsGkAtoms::insertbefore, posStr);
         }
         isInsertAfter = false;
     }

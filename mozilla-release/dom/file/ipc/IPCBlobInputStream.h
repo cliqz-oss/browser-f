@@ -12,6 +12,7 @@
 #include "nsICloneableInputStream.h"
 #include "nsIFileStreams.h"
 #include "nsIIPCSerializableInputStream.h"
+#include "nsIInputStreamLength.h"
 #include "nsCOMPtr.h"
 
 namespace mozilla {
@@ -19,11 +20,30 @@ namespace dom {
 
 class IPCBlobInputStreamChild;
 
+#define IPCBLOBINPUTSTREAM_IID \
+  { 0xbcfa38fc, 0x8b7f, 0x4d79, \
+    { 0xbe, 0x3a, 0x1e, 0x7b, 0xbe, 0x52, 0x38, 0xcd } }
+
+class nsIIPCBlobInputStream : public nsISupports
+{
+public:
+  NS_DECLARE_STATIC_IID_ACCESSOR(IPCBLOBINPUTSTREAM_IID)
+
+  virtual nsIInputStream*
+  GetInternalStream() const = 0;
+};
+
+NS_DEFINE_STATIC_IID_ACCESSOR(nsIIPCBlobInputStream,
+                              IPCBLOBINPUTSTREAM_IID)
+
 class IPCBlobInputStream final : public nsIAsyncInputStream
                                , public nsIInputStreamCallback
                                , public nsICloneableInputStreamWithRange
                                , public nsIIPCSerializableInputStream
                                , public nsIAsyncFileMetadata
+                               , public nsIInputStreamLength
+                               , public nsIAsyncInputStreamLength
+                               , public nsIIPCBlobInputStream
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -35,11 +55,31 @@ public:
   NS_DECL_NSIIPCSERIALIZABLEINPUTSTREAM
   NS_DECL_NSIFILEMETADATA
   NS_DECL_NSIASYNCFILEMETADATA
+  NS_DECL_NSIINPUTSTREAMLENGTH
+  NS_DECL_NSIASYNCINPUTSTREAMLENGTH
 
   explicit IPCBlobInputStream(IPCBlobInputStreamChild* aActor);
 
   void
   StreamReady(already_AddRefed<nsIInputStream> aInputStream);
+
+  void
+  LengthReady(int64_t aLength);
+
+  // nsIIPCBlobInputStream
+  nsIInputStream*
+  GetInternalStream() const override
+  {
+    if (mRemoteStream) {
+     return mRemoteStream;
+    }
+
+    if (mAsyncRemoteStream) {
+      return mAsyncRemoteStream;
+    }
+
+    return nullptr;
+  }
 
 private:
   ~IPCBlobInputStream();
@@ -77,6 +117,9 @@ private:
   uint64_t mStart;
   uint64_t mLength;
 
+  // Set to true if the stream is used via Read/ReadSegments or Close.
+  bool mConsumed;
+
   nsCOMPtr<nsIInputStream> mRemoteStream;
   nsCOMPtr<nsIAsyncInputStream> mAsyncRemoteStream;
 
@@ -87,6 +130,11 @@ private:
   // These 2 values are set only if mState is ePending.
   nsCOMPtr<nsIFileMetadataCallback> mFileMetadataCallback;
   nsCOMPtr<nsIEventTarget> mFileMetadataCallbackEventTarget;
+
+  // These 2 values are set only when nsIAsyncInputStreamLength::asyncWait() is
+  // called.
+  nsCOMPtr<nsIInputStreamLengthCallback> mLengthCallback;
+  nsCOMPtr<nsIEventTarget> mLengthCallbackEventTarget;
 
   // Any member of this class is protected by mutex because touched on
   // multiple threads.

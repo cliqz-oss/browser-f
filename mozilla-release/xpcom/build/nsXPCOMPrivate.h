@@ -9,7 +9,6 @@
 
 #include "nscore.h"
 #include "nsXPCOM.h"
-#include "xptcall.h"
 
 /**
  * During this shutdown notification all threads which run XPCOM code must
@@ -41,6 +40,10 @@ nsresult
 ShutdownXPCOM(nsIServiceManager* aServMgr);
 
 void SetICUMemoryFunctions();
+
+#ifdef ENABLE_BIGINT
+void SetGMPMemoryFunctions();
+#endif
 
 /**
  * C++ namespaced version of NS_LogTerm.
@@ -115,9 +118,6 @@ void LogTerm();
 #define MAXPATHLEN 1024
 #endif
 #endif
-
-extern bool gXPCOMShuttingDown;
-extern bool gXPCOMThreadsShutDown;
 
 // Needed by the IPC layer from off the main thread
 extern char16_t* gGREBinPath;

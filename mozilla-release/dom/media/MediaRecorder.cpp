@@ -288,7 +288,7 @@ class MediaRecorder::Session: public PrincipalChangeObserver<MediaStreamTrack>,
                                nsTArray<nsTArray<uint8_t>>&& aBuffer)
       : Runnable("StoreEncodedBufferRunnable")
       , mSession(aSession)
-      , mBuffer(Move(aBuffer))
+      , mBuffer(std::move(aBuffer))
     {}
 
     NS_IMETHOD
@@ -719,7 +719,7 @@ private:
 
     // Append pulled data into cache buffer.
     NS_DispatchToMainThread(new StoreEncodedBufferRunnable(this,
-                                                           Move(encodedBuf)));
+                                                           std::move(encodedBuf)));
 
     // Whether push encoded data back to onDataAvailable automatically or we
     // need a flush.
@@ -1059,7 +1059,7 @@ private:
 
     // Append pulled data into cache buffer.
     NS_DispatchToMainThread(new StoreEncodedBufferRunnable(this,
-                                                           Move(encodedBuf)));
+                                                           std::move(encodedBuf)));
 
     RefPtr<Session> self = this;
     NS_DispatchToMainThread(NewRunnableFrom([self, mime]() {
@@ -1159,7 +1159,7 @@ private:
     }
 
     {
-      auto tracks(Move(mMediaStreamTracks));
+      auto tracks(std::move(mMediaStreamTracks));
       for (RefPtr<MediaStreamTrack>& track : tracks) {
         track->RemovePrincipalChangeObserver(this);
       }
@@ -1256,6 +1256,9 @@ MediaRecorder::MediaRecorder(DOMMediaStream& aSourceMediaStream,
   : DOMEventTargetHelper(aOwnerWindow)
   , mAudioNodeOutput(0)
   , mState(RecordingState::Inactive)
+  , mAudioBitsPerSecond(0)
+  , mVideoBitsPerSecond(0)
+  , mBitsPerSecond(0)
 {
   MOZ_ASSERT(aOwnerWindow);
   mDOMStream = &aSourceMediaStream;
@@ -1269,6 +1272,9 @@ MediaRecorder::MediaRecorder(AudioNode& aSrcAudioNode,
   : DOMEventTargetHelper(aOwnerWindow)
   , mAudioNodeOutput(aSrcOutput)
   , mState(RecordingState::Inactive)
+  , mAudioBitsPerSecond(0)
+  , mVideoBitsPerSecond(0)
+  , mBitsPerSecond(0)
 {
   MOZ_ASSERT(aOwnerWindow);
 

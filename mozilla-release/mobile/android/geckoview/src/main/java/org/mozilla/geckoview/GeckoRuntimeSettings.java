@@ -6,11 +6,17 @@
 
 package org.mozilla.geckoview;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
 import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+
+import org.mozilla.geckoview.GeckoSession.TrackingProtectionDelegate;
 
 public final class GeckoRuntimeSettings implements Parcelable {
     /**
@@ -40,7 +46,9 @@ public final class GeckoRuntimeSettings implements Parcelable {
          * Set the content process hint flag.
          *
          * @param use If true, this will reload the content process for future use.
+         *            Default is false.
          * @return This Builder instance.
+
          */
         public @NonNull Builder useContentProcessHint(final boolean use) {
             mSettings.mUseContentProcess = use;
@@ -79,6 +87,7 @@ public final class GeckoRuntimeSettings implements Parcelable {
          * Set whether JavaScript support should be enabled.
          *
          * @param flag A flag determining whether JavaScript should be enabled.
+         *             Default is true.
          * @return This Builder instance.
          */
         public @NonNull Builder javaScriptEnabled(final boolean flag) {
@@ -101,10 +110,108 @@ public final class GeckoRuntimeSettings implements Parcelable {
          * Set whether support for web fonts should be enabled.
          *
          * @param flag A flag determining whether web fonts should be enabled.
+         *             Default is true.
          * @return This Builder instance.
          */
         public @NonNull Builder webFontsEnabled(final boolean flag) {
             mSettings.mWebFonts.set(flag);
+            return this;
+        }
+
+        /**
+         * Set whether crash reporting for native code should be enabled. This will cause
+         * a SIGSEGV handler to be installed, and any crash encountered there will be
+         * reported to Mozilla.
+         *
+         * @param enabled A flag determining whether native crash reporting should be enabled.
+         *                Defaults to false.
+         * @return This Builder.
+         */
+        public @NonNull Builder nativeCrashReportingEnabled(final boolean enabled) {
+            mSettings.mNativeCrashReporting = enabled;
+            return this;
+        }
+
+        /**
+         * Set whether crash reporting for Java code should be enabled. This will cause
+         * a default unhandled exception handler to be installed, and any exceptions encountered
+         * will automatically reported to Mozilla.
+         *
+         * @param enabled A flag determining whether Java crash reporting should be enabled.
+         *                Defaults to false.
+         * @return This Builder.
+         */
+        public @NonNull Builder javaCrashReportingEnabled(final boolean enabled) {
+            mSettings.mJavaCrashReporting = enabled;
+            return this;
+        }
+
+        /**
+         * Set whether there should be a pause during startup. This is useful if you need to
+         * wait for a debugger to attach.
+         *
+         * @param enabled A flag determining whether there will be a pause early in startup.
+         *                Defaults to false.
+         * @return This Builder.
+         */
+        public @NonNull Builder pauseForDebugger(boolean enabled) {
+            mSettings.mDebugPause = enabled;
+            return this;
+        }
+
+        /**
+         * Set cookie storage behavior.
+         *
+         * @param behavior The storage behavior that should be applied.
+         *                 Use one of the {@link #COOKIE_ACCEPT_ALL COOKIE_ACCEPT_*} flags.
+         * @return The Builder instance.
+         */
+        public @NonNull Builder cookieBehavior(@CookieBehavior int behavior) {
+            mSettings.mCookieBehavior.set(behavior);
+            return this;
+        }
+
+        /**
+         * Set the cookie lifetime.
+         *
+         * @param lifetime The enforced cookie lifetime.
+         *                 Use one of the {@link #COOKIE_LIFETIME_NORMAL COOKIE_LIFETIME_*} flags.
+         *                 Use {@link #cookieLifetimeDays} to set expiration
+         *                 days for {@link #COOKIE_LIFETIME_DAYS}.
+         * @return The Builder instance.
+         */
+        public @NonNull Builder cookieLifetime(@CookieLifetime int lifetime) {
+            mSettings.mCookieLifetime.set(lifetime);
+            return this;
+        }
+
+        /**
+         * Set the expiration days for {@link #COOKIE_LIFETIME_DAYS}.
+         *
+         * @param days Limit lifetime to N days. Only enforced for {@link #COOKIE_LIFETIME_DAYS}.
+         * @return The Builder instance.
+         */
+        public @NonNull Builder cookieLifetimeDays(int days) {
+            if (mSettings.mCookieLifetime.get() != COOKIE_LIFETIME_DAYS) {
+                throw new IllegalStateException(
+                    "Setting expiration days for incompatible cookie lifetime");
+            }
+            mSettings.mCookieLifetimeDays.set(days);
+            return this;
+        }
+
+        /**
+         * Set tracking protection blocking categories.
+         *
+         * @param categories The categories of trackers that should be blocked.
+         *                   Use one or more of the
+         *                   {@link TrackingProtectionDelegate#CATEGORY_AD TrackingProtectionDelegate.CATEGORY_*} flags.
+         * @return This Builder instance.
+         **/
+        public @NonNull Builder trackingProtectionCategories(
+                @TrackingProtectionDelegate.Category int categories) {
+            mSettings.mTrackingProtection
+                     .set(TrackingProtection.buildPrefValue(categories));
             return this;
         }
     }
@@ -118,28 +225,30 @@ public final class GeckoRuntimeSettings implements Parcelable {
     private class Pref<T> {
         public final String name;
         public final T defaultValue;
-        private T value;
+        private T mValue;
+        private boolean mIsSet;
 
         public Pref(final String name, final T defaultValue) {
             GeckoRuntimeSettings.this.prefCount++;
 
             this.name = name;
             this.defaultValue = defaultValue;
-            value = defaultValue;
+            mValue = defaultValue;
         }
 
         public void set(T newValue) {
-            value = newValue;
+            mValue = newValue;
+            mIsSet = true;
             flush();
         }
 
         public T get() {
-            return value;
+            return mValue;
         }
 
         public void flush() {
             if (GeckoRuntimeSettings.this.runtime != null) {
-                GeckoRuntimeSettings.this.runtime.setPref(name, value);
+                GeckoRuntimeSettings.this.runtime.setPref(name, mValue, mIsSet);
             }
         }
     }
@@ -150,9 +259,27 @@ public final class GeckoRuntimeSettings implements Parcelable {
         "devtools.debugger.remote-enabled", false);
     /* package */ Pref<Boolean> mWebFonts = new Pref<Boolean>(
         "browser.display.use_document_fonts", true);
+    /* package */ Pref<Integer> mCookieBehavior = new Pref<Integer>(
+        "network.cookie.cookieBehavior", COOKIE_ACCEPT_ALL);
+    /* package */ Pref<Integer> mCookieLifetime = new Pref<Integer>(
+        "network.cookie.lifetimePolicy", COOKIE_LIFETIME_NORMAL);
+    /* package */ Pref<Integer> mCookieLifetimeDays = new Pref<Integer>(
+        "network.cookie.lifetime.days", 90);
+    /* package */ Pref<String> mTrackingProtection = new Pref<String>(
+        "urlclassifier.trackingTable",
+        TrackingProtection.buildPrefValue(
+            TrackingProtectionDelegate.CATEGORY_TEST |
+            TrackingProtectionDelegate.CATEGORY_ANALYTIC |
+            TrackingProtectionDelegate.CATEGORY_SOCIAL |
+            TrackingProtectionDelegate.CATEGORY_AD));
+
+    /* package */ boolean mNativeCrashReporting;
+    /* package */ boolean mJavaCrashReporting;
+    /* package */ boolean mDebugPause;
 
     private final Pref<?>[] mPrefs = new Pref<?>[] {
-        mJavaScript, mRemoteDebugging, mWebFonts
+        mCookieBehavior, mCookieLifetime, mCookieLifetimeDays, mJavaScript,
+        mRemoteDebugging, mTrackingProtection, mWebFonts
     };
 
     /* package */ GeckoRuntimeSettings() {
@@ -175,11 +302,18 @@ public final class GeckoRuntimeSettings implements Parcelable {
         mExtras = new Bundle(settings.getExtras());
 
         for (int i = 0; i < mPrefs.length; i++) {
+            if (!settings.mPrefs[i].mIsSet) {
+                continue;
+            }
             // We know this is safe.
             @SuppressWarnings("unchecked")
             final Pref<Object> uncheckedPref = (Pref<Object>) mPrefs[i];
             uncheckedPref.set(settings.mPrefs[i].get());
         }
+
+        mNativeCrashReporting = settings.mNativeCrashReporting;
+        mJavaCrashReporting = settings.mJavaCrashReporting;
+        mDebugPause = settings.mDebugPause;
     }
 
     /* package */ void flush() {
@@ -275,6 +409,173 @@ public final class GeckoRuntimeSettings implements Parcelable {
         return this;
     }
 
+    /**
+     * Get whether native crash reporting is enabled or not.
+     *
+     * @return True if native crash reporting is enabled.
+     */
+    public boolean getNativeCrashReportingEnabled() {
+        return mNativeCrashReporting;
+    }
+
+    /**
+     * Get whether Java crash reporting is enabled or not.
+     *
+     * @return True if Java crash reporting is enabled.
+     */
+    public boolean getJavaCrashReportingEnabled() {
+        return mJavaCrashReporting;
+    }
+
+    /**
+     * Gets whether the pause-for-debugger is enabled or not.
+     *
+     * @return True if the pause is enabled.
+     */
+    public boolean getPauseForDebuggerEnabled() { return mDebugPause; }
+
+    // Sync values with nsICookieService.idl.
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({ COOKIE_ACCEPT_ALL, COOKIE_ACCEPT_FIRST_PARTY,
+              COOKIE_ACCEPT_NONE, COOKIE_ACCEPT_VISITED })
+    /* package */ @interface CookieBehavior {}
+
+    /**
+     * Accept first-party and third-party cookies and site data.
+     */
+    public static final int COOKIE_ACCEPT_ALL = 0;
+    /**
+     * Accept only first-party cookies and site data to block cookies which are
+     * not associated with the domain of the visited site.
+     */
+    public static final int COOKIE_ACCEPT_FIRST_PARTY = 1;
+    /**
+     * Do not store any cookies and site data.
+     */
+    public static final int COOKIE_ACCEPT_NONE = 2;
+    /**
+     * Accept first-party and third-party cookies and site data only from
+     * sites previously visited in a first-party context.
+     */
+    public static final int COOKIE_ACCEPT_VISITED = 3;
+
+    /**
+     * Get the assigned cookie storage behavior.
+     *
+     * @return The assigned behavior, as one of {@link #COOKIE_ACCEPT_ALL COOKIE_ACCEPT_*} flags.
+     */
+    public @CookieBehavior int getCookieBehavior() {
+        return mCookieBehavior.get();
+    }
+
+    /**
+     * Set cookie storage behavior.
+     *
+     * @param behavior The storage behavior that should be applied.
+     *                 Use one of the {@link #COOKIE_ACCEPT_ALL COOKIE_ACCEPT_*} flags.
+     * @return This GeckoRuntimeSettings instance.
+     */
+    public @NonNull GeckoRuntimeSettings setCookieBehavior(
+            @CookieBehavior int behavior) {
+        mCookieBehavior.set(behavior);
+        return this;
+    }
+
+    // Sync values with nsICookieService.idl.
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({ COOKIE_LIFETIME_NORMAL, COOKIE_LIFETIME_RUNTIME,
+              COOKIE_LIFETIME_DAYS })
+    /* package */ @interface CookieLifetime {}
+
+    /**
+     * Accept default cookie lifetime.
+     */
+    public static final int COOKIE_LIFETIME_NORMAL = 0;
+    /**
+     * Downgrade cookie lifetime to this runtime's lifetime.
+     */
+    public static final int COOKIE_LIFETIME_RUNTIME = 2;
+    /**
+     * Limit cookie lifetime to N days.
+     * Defaults to 90 days.
+     */
+    public static final int COOKIE_LIFETIME_DAYS = 3;
+
+    /**
+     * Get the assigned cookie lifetime.
+     *
+     * @return The assigned lifetime, as one of {@link #COOKIE_LIFETIME_NORMAL COOKIE_LIFETIME_*} flags.
+     */
+    public @CookieBehavior int getCookieLifetime() {
+        return mCookieLifetime.get();
+    }
+
+    /**
+     * Get the enforced lifetime expiration days.
+     *
+     * Note: This is only enforced for {@link #COOKIE_LIFETIME_DAYS}.
+     *
+     * @return The enforced expiration days.
+     */
+    public int getCookieLifetimeDays() {
+        return mCookieLifetimeDays.get();
+    }
+
+    /**
+     * Set the cookie lifetime.
+     *
+     * @param lifetime The enforced cookie lifetime.
+     *                 Use one of the {@link #COOKIE_LIFETIME_NORMAL COOKIE_LIFETIME_*} flags.
+     *                 Use {@link #setCookieLifetimeDays} to set expiration
+     *                 days for {@link #COOKIE_LIFETIME_DAYS}.
+     * @return This GeckoRuntimeSettings instance.
+     */
+    public @NonNull GeckoRuntimeSettings setCookieLifetime(
+            @CookieLifetime int lifetime) {
+        mCookieLifetime.set(lifetime);
+        return this;
+    }
+
+    /**
+     * Set the expiration days for {@link #COOKIE_LIFETIME_DAYS}.
+     *
+     * @param days Limit lifetime to N days. Only enforced for {@link #COOKIE_LIFETIME_DAYS}.
+     * @return This GeckoRuntimeSettings instance.
+     */
+    public @NonNull GeckoRuntimeSettings setCookieLifetimeDays(int days) {
+        if (mCookieLifetime.get() != COOKIE_LIFETIME_DAYS) {
+            throw new IllegalStateException(
+                "Setting expiration days for incompatible cookie lifetime");
+        }
+        mCookieLifetimeDays.set(days);
+        return this;
+    }
+
+    /**
+     * Get the set tracking protection blocking categories.
+     *
+     * @return categories The categories of trackers that are set to be blocked.
+     *                    Use one or more of the
+     *                    {@link TrackingProtectionDelegate#CATEGORY_AD TrackingProtectionDelegate.CATEGORY_*} flags.
+     **/
+    public @TrackingProtectionDelegate.Category int getTrackingProtectionCategories() {
+        return TrackingProtection.listToCategory(mTrackingProtection.get());
+    }
+
+    /**
+     * Set tracking protection blocking categories.
+     *
+     * @param categories The categories of trackers that should be blocked.
+     *                   Use one or more of the
+     *                   {@link TrackingProtectionDelegate#CATEGORY_AD TrackingProtectionDelegate.CATEGORY_*} flags.
+     * @return This GeckoRuntimeSettings instance.
+     **/
+    public @NonNull GeckoRuntimeSettings setTrackingProtectionCategories(
+            @TrackingProtectionDelegate.Category int categories) {
+        mTrackingProtection.set(TrackingProtection.buildPrefValue(categories));
+        return this;
+    }
+
     @Override // Parcelable
     public int describeContents() {
         return 0;
@@ -282,18 +583,22 @@ public final class GeckoRuntimeSettings implements Parcelable {
 
     @Override // Parcelable
     public void writeToParcel(Parcel out, int flags) {
-        out.writeByte((byte) (mUseContentProcess ? 1 : 0));
+        ParcelableUtils.writeBoolean(out, mUseContentProcess);
         out.writeStringArray(mArgs);
         mExtras.writeToParcel(out, flags);
 
         for (final Pref<?> pref : mPrefs) {
             out.writeValue(pref.get());
         }
+
+        ParcelableUtils.writeBoolean(out, mNativeCrashReporting);
+        ParcelableUtils.writeBoolean(out, mJavaCrashReporting);
+        ParcelableUtils.writeBoolean(out, mDebugPause);
     }
 
     // AIDL code may call readFromParcel even though it's not part of Parcelable.
     public void readFromParcel(final Parcel source) {
-        mUseContentProcess = source.readByte() == 1;
+        mUseContentProcess = ParcelableUtils.readBoolean(source);
         mArgs = source.createStringArray();
         mExtras.readFromParcel(source);
 
@@ -303,6 +608,10 @@ public final class GeckoRuntimeSettings implements Parcelable {
             final Pref<Object> uncheckedPref = (Pref<Object>) pref;
             uncheckedPref.set(source.readValue(getClass().getClassLoader()));
         }
+
+        mNativeCrashReporting = ParcelableUtils.readBoolean(source);
+        mJavaCrashReporting = ParcelableUtils.readBoolean(source);
+        mDebugPause = ParcelableUtils.readBoolean(source);
     }
 
     public static final Parcelable.Creator<GeckoRuntimeSettings> CREATOR

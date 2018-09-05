@@ -73,6 +73,10 @@ fn build_jsapi_bindings() {
             .clang_arg("-DJS_DEBUG");
     }
 
+    if cfg!(feature = "bigint") {
+        builder = builder.clang_arg("-DENABLE_BIGINT");
+    }
+
     let include_dir = get_mozjs_include_dir();
     let include_dir = include_dir.to_str()
         .expect("Path to mozjs include dir should be utf-8");
@@ -97,6 +101,10 @@ fn build_jsapi_bindings() {
 
     for func in WHITELIST_FUNCTIONS {
         builder = builder.whitelist_function(func);
+    }
+
+    if cfg!(feature = "bigint") {
+        builder = builder.whitelist_type("JS::BigInt");
     }
 
     for ty in OPAQUE_TYPES {
@@ -148,7 +156,7 @@ const WHITELIST_TYPES: &'static [&'static str] = &[
     "JS::AutoObjectVector",
     "JS::CallArgs",
     "js::Class",
-    "JS::CompartmentOptions",
+    "JS::RealmOptions",
     "JS::ContextOptions",
     "js::DOMCallbacks",
     "js::DOMProxyShadowsResult",
@@ -162,7 +170,7 @@ const WHITELIST_TYPES: &'static [&'static str] = &[
     "JS::HandleValue",
     "JS::HandleValueArray",
     "JS::IsAcceptableThis",
-    "JSAutoCompartment",
+    "JSAutoRealm",
     "JSAutoStructuredCloneBuffer",
     "JSClass",
     "JSClassOps",
@@ -200,6 +208,7 @@ const WHITELIST_TYPES: &'static [&'static str] = &[
     "JSVersion",
     "JSWrapObjectCallbacks",
     "jsid",
+    "JS::Compartment",
     "JS::Latin1Char",
     "JS::detail::MaybeWrapped",
     "JS::MutableHandle",
@@ -227,6 +236,7 @@ const WHITELIST_TYPES: &'static [&'static str] = &[
     "JS::TransferableOwnership",
     "JS::Value",
     "JS::WarningReporter",
+    "JS::shadow::Realm",
     "JS::shadow::Zone",
     "JS::Zone",
 ];
@@ -276,13 +286,9 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS::GCTraceKindToAscii",
     "js::GetArrayBufferLengthAndData",
     "js::GetArrayBufferViewLengthAndData",
-    "JS_GetErrorPrototype",
     "js::GetFunctionNativeReserved",
-    "JS_GetFunctionPrototype",
     "js::GetGlobalForObjectCrossCompartment",
-    "JS_GetIteratorPrototype",
     "js::GetObjectProto",
-    "JS_GetObjectPrototype",
     "JS_GetObjectRuntime",
     "JS_GetOwnPropertyDescriptorById",
     "JS::GetPromiseResult",
@@ -316,7 +322,7 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "js::Dump.*",
     "JS_EncodeStringToUTF8",
     "JS_EndRequest",
-    "JS_EnterCompartment",
+    "JS::EnterRealm",
     "JS_EnumerateStandardClasses",
     "JS_ErrorFromException",
     "JS_FireOnNewGlobalObject",
@@ -339,6 +345,10 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "js::GetPropertyKeys",
     "JS_GetPrototype",
     "JS_GetReservedSlot",
+    "JS::GetRealmErrorPrototype",
+    "JS::GetRealmFunctionPrototype",
+    "JS::GetRealmIteratorPrototype",
+    "JS::GetRealmObjectPrototype",
     "JS::GetScriptedCallerGlobal",
     "JS_GetTwoByteStringCharsAndLength",
     "JS_GetUint16ArrayData",
@@ -348,12 +358,12 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
     "JS::GetWellKnownSymbol",
     "JS_GlobalObjectTraceHook",
     "JS::HideScriptedCaller",
-    "JS_InitStandardClasses",
+    "JS::InitRealmStandardClasses",
     "JS_IsArrayObject",
     "JS_IsExceptionPending",
     "JS_IsGlobalObject",
     "JS::IsCallable",
-    "JS_LeaveCompartment",
+    "JS::LeaveRealm",
     "JS_LinkConstructorAndPrototype",
     "JS_MayResolveStandardClass",
     "JS_NewArrayBuffer",

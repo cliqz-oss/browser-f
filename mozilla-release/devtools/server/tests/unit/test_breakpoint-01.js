@@ -35,12 +35,12 @@ function run_test_with_server(server, callback) {
 
 function test_simple_breakpoint() {
   gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    let source = gThreadClient.source(packet.frame.where.source);
-    let location = {
+    const source = gThreadClient.source(packet.frame.where.source);
+    const location = {
       line: gDebuggee.line0 + 3
     };
 
-    source.setBreakpoint(location, function(response, bpClient) {
+    source.setBreakpoint(location).then(function([response, bpClient]) {
       gThreadClient.addOneTimeListener("paused", function(event, packet) {
         // Check the return value.
         Assert.equal(packet.type, "paused");

@@ -54,7 +54,10 @@ use capabilities::{FirefoxCapabilities, FirefoxOptions};
 use logging;
 use prefs;
 
-const DEFAULT_HOST: &'static str = "localhost";
+// localhost may be routed to the IPv6 stack on certain systems,
+// and nsIServerSocket in Marionette only supports IPv4
+const DEFAULT_HOST: &'static str = "127.0.0.1";
+
 const CHROME_ELEMENT_KEY: &'static str = "chromeelement-9fc5-4b51-a3c8-01716eedeb04";
 const LEGACY_ELEMENT_KEY: &'static str = "ELEMENT";
 
@@ -421,7 +424,7 @@ impl MarionetteHandler {
             logging::set_max_level(l);
         }
 
-        let port = self.settings.port.unwrap_or(try!(get_free_port()));
+        let port = self.settings.port.unwrap_or(get_free_port()?);
         if !self.settings.connect_existing {
             try!(self.start_browser(port, options));
         }
@@ -1100,7 +1103,7 @@ impl MarionetteCommand {
             GetWindowHandles => (Some("WebDriver:GetWindowHandles"), None),
             GetWindowRect => (Some("WebDriver:GetWindowRect"), None),
             GoBack => (Some("WebDriver:Back"), None),
-            GoForward => (Some("WebDriver::Forward"), None),
+            GoForward => (Some("WebDriver:Forward"), None),
             IsDisplayed(ref x) => (
                 Some("WebDriver:IsElementDisplayed"),
                 Some(x.to_marionette()),
@@ -1317,7 +1320,7 @@ impl Into<WebDriverError> for MarionetteError {
 }
 
 fn get_free_port() -> IoResult<u16> {
-    TcpListener::bind(&("localhost", 0))
+    TcpListener::bind((DEFAULT_HOST, 0))
         .and_then(|stream| stream.local_addr())
         .map(|x| x.port())
 }
@@ -1342,7 +1345,12 @@ impl MarionetteConnection {
         let poll_interval = time::Duration::from_millis(100);
         let now = time::Instant::now();
 
-        debug!("Waiting {}s to connect to browser", timeout.as_secs());
+        debug!(
+            "Waiting {}s to connect to browser on {}:{}",
+            timeout.as_secs(),
+            DEFAULT_HOST,
+            self.port
+        );
         loop {
             // immediately abort connection attempts if process disappears
             if let &mut Some(ref mut runner) = browser {
@@ -1435,7 +1443,6 @@ impl MarionetteConnection {
 
     fn send(&mut self, msg: Json) -> WebDriverResult<String> {
         let data = self.encode_msg(msg);
-        trace!("-> {}", data);
 
         match self.stream {
             Some(ref mut stream) => {
@@ -1508,10 +1515,7 @@ impl MarionetteConnection {
         }
 
         // TODO(jgraham): Need to handle the error here
-        let data = String::from_utf8(payload).unwrap();
-        trace!("<- {}", data);
-
-        Ok(data)
+        Ok(String::from_utf8(payload).unwrap())
     }
 }
 

@@ -275,6 +275,17 @@ function fakeCachedClientId(uuid) {
   module.Policy.getCachedClientID = () => uuid;
 }
 
+// Fake the gzip compression for the next ping to be sent out
+// and immediately reset to the original function.
+function fakeGzipCompressStringForNextPing(length) {
+  let send = ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", {});
+  let largePayload = generateString(length);
+  send.Policy.gzipCompressString = (data) => {
+    send.Policy.gzipCompressString = send.gzipCompressString;
+    return largePayload;
+  };
+}
+
 // Return a date that is |offset| ms in the future from |date|.
 function futureDate(date, offset) {
   return new Date(date.getTime() + offset);
@@ -299,6 +310,10 @@ function generateRandomString(length) {
   }
 
   return string.substring(0, length);
+}
+
+function generateString(length) {
+  return new Array(length + 1).join("a");
 }
 
 // Short-hand for retrieving the histogram with that id.
@@ -343,6 +358,9 @@ if (runningInParent) {
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FirstShutdownPingEnabled, false);
   // Turn off Health Ping submission.
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.HealthPingEnabled, false);
+
+  // Ensure we're not in a GeckoView-like environment by default
+  Services.prefs.setBoolPref("toolkit.telemetry.isGeckoViewMode", false);
 
   // Non-unified Telemetry (e.g. Fennec on Android) needs the preference to be set
   // in order to enable Telemetry.

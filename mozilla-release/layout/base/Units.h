@@ -139,6 +139,7 @@ typedef gfx::IntSizeTyped<DesktopPixel> DesktopIntSize;
 typedef gfx::RectTyped<DesktopPixel> DesktopRect;
 typedef gfx::IntRectTyped<DesktopPixel> DesktopIntRect;
 
+typedef gfx::ScaleFactor<CSSPixel, CSSPixel> CSSToCSSScale;
 typedef gfx::ScaleFactor<CSSPixel, LayoutDevicePixel> CSSToLayoutDeviceScale;
 typedef gfx::ScaleFactor<CSSPixel, LayerPixel> CSSToLayerScale;
 typedef gfx::ScaleFactor<CSSPixel, ScreenPixel> CSSToScreenScale;
@@ -379,6 +380,13 @@ struct LayoutDevicePixel {
                   NSFloatPixelsToAppUnits(aRect.y, aAppUnitsPerDevPixel),
                   NSFloatPixelsToAppUnits(aRect.Width(), aAppUnitsPerDevPixel),
                   NSFloatPixelsToAppUnits(aRect.Height(), aAppUnitsPerDevPixel));
+  }
+
+  static nsMargin ToAppUnits(const LayoutDeviceIntMargin& aMargin, nscoord aAppUnitsPerDevPixel) {
+    return nsMargin(aMargin.top * aAppUnitsPerDevPixel,
+                    aMargin.right * aAppUnitsPerDevPixel,
+                    aMargin.bottom * aAppUnitsPerDevPixel,
+                    aMargin.left * aAppUnitsPerDevPixel);
   }
 };
 

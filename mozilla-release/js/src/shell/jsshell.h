@@ -172,7 +172,7 @@ struct ShellContext
     js::shell::RCFile** errFilePtr;
     js::shell::RCFile** outFilePtr;
 
-    UniquePtr<PseudoStack> geckoProfilingStack;
+    UniquePtr<ProfilingStack> geckoProfilingStack;
 
     JS::UniqueChars moduleLoadPath;
     UniquePtr<MarkBitObservers> markObservers;
@@ -180,7 +180,6 @@ struct ShellContext
     // Off-thread parse state.
     js::Monitor offThreadMonitor;
     Vector<OffThreadJob*, 0, SystemAllocPolicy> offThreadJobs;
-
 };
 
 extern ShellContext*

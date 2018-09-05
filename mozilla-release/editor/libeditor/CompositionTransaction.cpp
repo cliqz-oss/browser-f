@@ -82,9 +82,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(CompositionTransaction, EditTransactionBase,
 // mRangeList can't lead to cycles
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CompositionTransaction)
-  if (aIID.Equals(NS_GET_IID(CompositionTransaction))) {
-    foundInterface = static_cast<nsITransaction*>(this);
-  } else
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(CompositionTransaction)
 NS_INTERFACE_MAP_END_INHERITING(EditTransactionBase)
 
 NS_IMPL_ADDREF_INHERITED(CompositionTransaction, EditTransactionBase)
@@ -244,7 +242,7 @@ CompositionTransaction::SetIMESelection(EditorBase& aEditorBase,
 
   nsresult rv = NS_OK;
   for (uint32_t i = 0; i < ArrayLength(kIMESelections); ++i) {
-    RefPtr<Selection> selectionOfIME = selCon->GetDOMSelection(kIMESelections[i]);
+    RefPtr<Selection> selectionOfIME = selCon->GetSelection(kIMESelections[i]);
     if (!selectionOfIME) {
       continue;
     }
@@ -315,7 +313,7 @@ CompositionTransaction::SetIMESelection(EditorBase& aEditorBase,
 
     // Set the range of the clause to selection.
     RefPtr<Selection> selectionOfIME =
-      selCon->GetDOMSelection(ToRawSelectionType(textRange.mRangeType));
+      selCon->GetSelection(ToRawSelectionType(textRange.mRangeType));
     if (!selectionOfIME) {
       NS_WARNING("Failed to get IME selection");
       break;

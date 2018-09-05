@@ -365,8 +365,7 @@ NS_NewChannelInternal(nsIChannel           **outChannel,
   nsCOMPtr<nsIChannel> channel;
   rv = aIoService->NewChannelFromURIWithClientAndController(
          aUri,
-         aLoadingNode ?
-           aLoadingNode->AsDOMNode() : nullptr,
+         aLoadingNode,
          aLoadingPrincipal,
          aTriggeringPrincipal,
          aLoadingClientInfo,
@@ -726,7 +725,7 @@ NS_NewInputStreamChannelInternal(nsIChannel** outChannel,
   rv = isc->SetURI(aUri);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIInputStream> stream = Move(aStream);
+  nsCOMPtr<nsIInputStream> stream = std::move(aStream);
   rv = isc->SetContentStream(stream);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -768,16 +767,16 @@ NS_NewInputStreamChannelInternal(nsIChannel** outChannel,
                                  nsContentPolicyType aContentPolicyType)
 {
   nsCOMPtr<nsILoadInfo> loadInfo =
-    new mozilla::LoadInfo(aLoadingPrincipal,
-                          aTriggeringPrincipal,
-                          aLoadingNode,
-                          aSecurityFlags,
-                          aContentPolicyType);
+    new mozilla::net::LoadInfo(aLoadingPrincipal,
+                               aTriggeringPrincipal,
+                               aLoadingNode,
+                               aSecurityFlags,
+                               aContentPolicyType);
   if (!loadInfo) {
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsCOMPtr<nsIInputStream> stream = Move(aStream);
+  nsCOMPtr<nsIInputStream> stream = std::move(aStream);
 
   return NS_NewInputStreamChannelInternal(outChannel,
                                           aUri,
@@ -859,8 +858,9 @@ NS_NewInputStreamChannelInternal(nsIChannel        **outChannel,
                                  bool                aIsSrcdocChannel /* = false */)
 {
   nsCOMPtr<nsILoadInfo> loadInfo =
-      new mozilla::LoadInfo(aLoadingPrincipal, aTriggeringPrincipal,
-                            aLoadingNode, aSecurityFlags, aContentPolicyType);
+      new mozilla::net::LoadInfo(aLoadingPrincipal, aTriggeringPrincipal,
+                                 aLoadingNode, aSecurityFlags,
+                                 aContentPolicyType);
   return NS_NewInputStreamChannelInternal(outChannel, aUri, aData, aContentType,
                                           loadInfo, aIsSrcdocChannel);
 }
@@ -895,7 +895,7 @@ NS_NewInputStreamPump(nsIInputStreamPump** aResult,
                       bool aCloseWhenDone /* = false */,
                       nsIEventTarget* aMainThreadTarget /* = nullptr */)
 {
-    nsCOMPtr<nsIInputStream> stream = Move(aStream);
+    nsCOMPtr<nsIInputStream> stream = std::move(aStream);
 
     nsresult rv;
     nsCOMPtr<nsIInputStreamPump> pump =
@@ -1485,7 +1485,7 @@ NS_NewBufferedOutputStream(nsIOutputStream** aResult,
                            already_AddRefed<nsIOutputStream> aOutputStream,
                            uint32_t aBufferSize)
 {
-    nsCOMPtr<nsIOutputStream> outputStream = Move(aOutputStream);
+    nsCOMPtr<nsIOutputStream> outputStream = std::move(aOutputStream);
 
     nsresult rv;
     nsCOMPtr<nsIBufferedOutputStream> out =
@@ -1504,7 +1504,7 @@ NS_NewBufferedInputStream(nsIInputStream** aResult,
                           already_AddRefed<nsIInputStream> aInputStream,
                           uint32_t aBufferSize)
 {
-    nsCOMPtr<nsIInputStream> inputStream = Move(aInputStream);
+    nsCOMPtr<nsIInputStream> inputStream = std::move(aInputStream);
 
     nsresult rv;
     nsCOMPtr<nsIBufferedInputStream> in =
@@ -1520,26 +1520,22 @@ NS_NewBufferedInputStream(nsIInputStream** aResult,
 
 namespace {
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 8192
 
-class BufferWriter final : public Runnable
-                         , public nsIInputStreamCallback
+class BufferWriter final : public nsIInputStreamCallback
 {
 public:
-    NS_DECL_ISUPPORTS_INHERITED
+    NS_DECL_THREADSAFE_ISUPPORTS
 
     BufferWriter(nsIInputStream* aInputStream,
                  void* aBuffer, int64_t aCount)
-        : Runnable("BufferWriterRunnable")
-        , mMonitor("BufferWriter.mMonitor")
+        : mMonitor("BufferWriter.mMonitor")
         , mInputStream(aInputStream)
         , mBuffer(aBuffer)
         , mCount(aCount)
         , mWrittenData(0)
         , mBufferType(aBuffer ? eExternal : eInternal)
-        , mAsyncResult(NS_OK)
         , mBufferSize(0)
-        , mCompleted(false)
     {
         MOZ_ASSERT(aInputStream);
         MOZ_ASSERT(aCount == -1 || aCount > 0);
@@ -1549,6 +1545,8 @@ public:
     nsresult
     Write()
     {
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
+
         // Let's make the inputStream buffered if it's not.
         if (!NS_InputStreamIsBuffered(mInputStream)) {
             nsCOMPtr<nsIInputStream> bufferedStream;
@@ -1575,15 +1573,15 @@ public:
     uint64_t
     WrittenData() const
     {
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
         return mWrittenData;
     }
 
     void*
     StealBuffer()
     {
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
         MOZ_ASSERT(mBufferType == eInternal);
-
-        MonitorAutoLock lock(mMonitor);
 
         void* buffer = mBuffer;
 
@@ -1608,6 +1606,8 @@ private:
     nsresult
     WriteSync()
     {
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
+
         uint64_t length = (uint64_t)mCount;
 
         if (mCount == -1) {
@@ -1640,6 +1640,8 @@ private:
     nsresult
     WriteAsync()
     {
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
+
         if (mCount > 0 && mBufferType == eInternal) {
             mBuffer = malloc(mCount);
             if (NS_WARN_IF(!mBuffer)) {
@@ -1647,119 +1649,101 @@ private:
             }
         }
 
-        nsCOMPtr<nsIEventTarget> target =
-            do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID);
-        if (!target) {
-            return NS_ERROR_FAILURE;
+        while (true) {
+            if (mCount == -1 && !MaybeExpandBufferSize()) {
+                return NS_ERROR_OUT_OF_MEMORY;
+            }
+
+            uint64_t offset = mWrittenData;
+            uint64_t length = mCount == -1 ? BUFFER_SIZE : mCount;
+
+            // Let's try to read data directly.
+            uint32_t writtenData;
+            nsresult rv = mAsyncInputStream->ReadSegments(NS_CopySegmentToBuffer,
+                                                         static_cast<char*>(mBuffer) + offset,
+                                                         length, &writtenData);
+
+            // Operation completed. Nothing more to read.
+            if (NS_SUCCEEDED(rv) && writtenData == 0) {
+                return NS_OK;
+            }
+
+            // If we succeeded, let's try to read again.
+            if (NS_SUCCEEDED(rv)) {
+                mWrittenData += writtenData;
+                if (mCount != -1) {
+                    MOZ_ASSERT(mCount >= writtenData);
+                    mCount -= writtenData;
+
+                    // Is this the end of the reading?
+                    if (mCount == 0) {
+                        return NS_OK;
+                    }
+                }
+
+                continue;
+            }
+
+            // Async wait...
+            if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
+                rv = MaybeCreateTaskQueue();
+                if (NS_WARN_IF(NS_FAILED(rv))) {
+                    return rv;
+                }
+
+                MonitorAutoLock lock(mMonitor);
+
+                rv = mAsyncInputStream->AsyncWait(this, 0, length, mTaskQueue);
+                if (NS_WARN_IF(NS_FAILED(rv))) {
+                    return rv;
+                }
+
+                lock.Wait();
+                continue;
+            }
+
+            // Otherwise, let's propagate the error.
+            return rv;
         }
 
-        mTaskQueue = new TaskQueue(target.forget());
-
-        MonitorAutoLock lock(mMonitor);
-
-        nsCOMPtr<nsIRunnable> runnable = this;
-        nsresult rv = mTaskQueue->Dispatch(runnable.forget());
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        lock.Wait();
-
-        mCompleted = true;
-        return mAsyncResult;
+        MOZ_ASSERT_UNREACHABLE("We should not be here");
+        return NS_ERROR_FAILURE;
     }
 
-    // This method runs on the I/O Thread when the owning thread is blocked by
-    // the mMonitor. It is called multiple times until mCount is greater than 0
-    // or until there is something to read in the stream.
-    NS_IMETHOD
-    Run() override
+    nsresult
+    MaybeCreateTaskQueue()
     {
-        MOZ_ASSERT(mAsyncInputStream);
-        MOZ_ASSERT(!mInputStream);
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
 
-        MonitorAutoLock lock(mMonitor);
-
-        if (mCompleted) {
-            return NS_OK;
-        }
-
-        if (mCount == 0) {
-            OperationCompleted(lock, NS_OK);
-            return NS_OK;
-        }
-
-        if (mCount == -1 && !MaybeExpandBufferSize()) {
-            OperationCompleted(lock, NS_ERROR_OUT_OF_MEMORY);
-            return NS_OK;
-        }
-
-        uint64_t offset = mWrittenData;
-        uint64_t length = mCount == -1 ? BUFFER_SIZE : mCount;
-
-        // Let's try to read it directly.
-        uint32_t writtenData;
-        nsresult rv = mAsyncInputStream->ReadSegments(NS_CopySegmentToBuffer,
-                                                     static_cast<char*>(mBuffer) + offset,
-                                                     length, &writtenData);
-
-        // Operation completed.
-        if (NS_SUCCEEDED(rv) && writtenData == 0) {
-            OperationCompleted(lock, NS_OK);
-            return NS_OK;
-        }
-
-        // If we succeeded, let's try to read again.
-        if (NS_SUCCEEDED(rv)) {
-            mWrittenData += writtenData;
-            if (mCount != -1) {
-                MOZ_ASSERT(mCount >= writtenData);
-                mCount -= writtenData;
+        if (!mTaskQueue) {
+            nsCOMPtr<nsIEventTarget> target =
+                do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID);
+            if (!target) {
+                return NS_ERROR_FAILURE;
             }
 
-            nsCOMPtr<nsIRunnable> runnable = this;
-            rv = mTaskQueue->Dispatch(runnable.forget());
-            if (NS_WARN_IF(NS_FAILED(rv))) {
-                OperationCompleted(lock, rv);
-            }
-
-            return NS_OK;
+            mTaskQueue = new TaskQueue(target.forget());
         }
 
-        // Async wait...
-        if (rv == NS_BASE_STREAM_WOULD_BLOCK) {
-            rv = mAsyncInputStream->AsyncWait(this, 0, length, mTaskQueue);
-            if (NS_WARN_IF(NS_FAILED(rv))) {
-                OperationCompleted(lock, rv);
-            }
-            return NS_OK;
-        }
-
-        // Error.
-        OperationCompleted(lock, rv);
         return NS_OK;
     }
 
     NS_IMETHOD
     OnInputStreamReady(nsIAsyncInputStream* aStream) override
     {
-        MOZ_ASSERT(aStream == mAsyncInputStream);
-        // The stream is ready, let's read it again.
-        return Run();
-    }
+        MOZ_ASSERT(!NS_IsMainThread());
 
-    // This function is called from the I/O thread and it will unblock the
-    // owning thread.
-    void
-    OperationCompleted(MonitorAutoLock& aLock, nsresult aRv)
-    {
-        mAsyncResult = aRv;
-
-        // This will unlock the owning thread.
-        aLock.Notify();
+        // We have something to read. Let's unlock the main-thread.
+        MonitorAutoLock lock(mMonitor);
+        lock.Notify();
+        return NS_OK;
     }
 
     bool
     MaybeExpandBufferSize()
     {
+        NS_ASSERT_OWNINGTHREAD(BufferWriter);
+
         MOZ_ASSERT(mCount == -1);
 
         if (mBufferSize >= mWrittenData + BUFFER_SIZE) {
@@ -1789,6 +1773,8 @@ private:
         return true;
     }
 
+    // All the members of this class are touched on the owning thread only. The
+    // monitor is only used to communicate when there is more data to read.
     Monitor mMonitor;
 
     nsCOMPtr<nsIInputStream> mInputStream;
@@ -1810,12 +1796,10 @@ private:
     } mBufferType;
 
     // The following set if needed for the async read.
-    nsresult mAsyncResult;
     uint64_t mBufferSize;
-    Atomic<bool> mCompleted;
 };
 
-NS_IMPL_ISUPPORTS_INHERITED(BufferWriter, Runnable, nsIInputStreamCallback)
+NS_IMPL_ISUPPORTS(BufferWriter, nsIInputStreamCallback)
 
 } // anonymous namespace
 
@@ -2312,8 +2296,8 @@ NS_NewNotificationCallbacksAggregation(nsIInterfaceRequestor  *callbacks,
 nsresult
 NS_DoImplGetInnermostURI(nsINestedURI *nestedURI, nsIURI **result)
 {
-    NS_PRECONDITION(nestedURI, "Must have a nested URI!");
-    NS_PRECONDITION(!*result, "Must have null *result");
+    MOZ_ASSERT(nestedURI, "Must have a nested URI!");
+    MOZ_ASSERT(!*result, "Must have null *result");
 
     nsCOMPtr<nsIURI> inner;
     nsresult rv = nestedURI->GetInnerURI(getter_AddRefs(inner));
@@ -2343,70 +2327,10 @@ NS_ImplGetInnermostURI(nsINestedURI *nestedURI, nsIURI **result)
     return NS_DoImplGetInnermostURI(nestedURI, result);
 }
 
-nsresult
-NS_EnsureSafeToReturn(nsIURI *uri, nsIURI **result)
-{
-    NS_PRECONDITION(uri, "Must have a URI");
-
-    // Assume mutable until told otherwise
-    bool isMutable = true;
-    nsCOMPtr<nsIMutable> mutableObj(do_QueryInterface(uri));
-    if (mutableObj) {
-        nsresult rv = mutableObj->GetMutable(&isMutable);
-        isMutable = NS_FAILED(rv) || isMutable;
-    }
-
-    if (!isMutable) {
-        NS_ADDREF(*result = uri);
-        return NS_OK;
-    }
-
-    nsresult rv = uri->Clone(result);
-    if (NS_SUCCEEDED(rv) && !*result) {
-        NS_ERROR("nsIURI.clone contract was violated");
-        return NS_ERROR_UNEXPECTED;
-    }
-
-    return rv;
-}
-
-void
-NS_TryToSetImmutable(nsIURI *uri)
-{
-    nsCOMPtr<nsIMutable> mutableObj(do_QueryInterface(uri));
-    if (mutableObj) {
-        mutableObj->SetMutable(false);
-    }
-}
-
-already_AddRefed<nsIURI>
-NS_TryToMakeImmutable(nsIURI *uri,
-                      nsresult *outRv /* = nullptr */)
-{
-    nsresult rv;
-    nsCOMPtr<nsINetUtil> util = do_GetNetUtil(&rv);
-
-    nsCOMPtr<nsIURI> result;
-    if (NS_SUCCEEDED(rv)) {
-        NS_ASSERTION(util, "do_GetNetUtil lied");
-        rv = util->ToImmutableURI(uri, getter_AddRefs(result));
-    }
-
-    if (NS_FAILED(rv)) {
-        result = uri;
-    }
-
-    if (outRv) {
-        *outRv = rv;
-    }
-
-    return result.forget();
-}
-
 already_AddRefed<nsIURI>
 NS_GetInnermostURI(nsIURI *aURI)
 {
-    NS_PRECONDITION(aURI, "Must have URI");
+    MOZ_ASSERT(aURI, "Must have URI");
 
     nsCOMPtr<nsIURI> uri = aURI;
 
@@ -2766,32 +2690,6 @@ NS_LinkRedirectChannels(uint32_t channelId,
                                  _result);
 }
 
-#define NS_FAKE_SCHEME "http://"
-#define NS_FAKE_TLD ".invalid"
-nsresult NS_MakeRandomInvalidURLString(nsCString &result)
-{
-  nsresult rv;
-  nsCOMPtr<nsIUUIDGenerator> uuidgen =
-    do_GetService("@mozilla.org/uuid-generator;1", &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsID idee;
-  rv = uuidgen->GenerateUUIDInPlace(&idee);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  char chars[NSID_LENGTH];
-  idee.ToProvidedString(chars);
-
-  result.AssignLiteral(NS_FAKE_SCHEME);
-  // Strip off the '{' and '}' at the beginning and end of the UUID
-  result.Append(chars + 1, NSID_LENGTH - 3);
-  result.AppendLiteral(NS_FAKE_TLD);
-
-  return NS_OK;
-}
-#undef NS_FAKE_SCHEME
-#undef NS_FAKE_TLD
-
 nsresult NS_MaybeOpenChannelUsingOpen2(nsIChannel* aChannel,
                                        nsIInputStream **aStream)
 {
@@ -2810,64 +2708,6 @@ nsresult NS_MaybeOpenChannelUsingAsyncOpen2(nsIChannel* aChannel,
     return aChannel->AsyncOpen2(aListener);
   }
   return aChannel->AsyncOpen(aListener, nullptr);
-}
-
-nsresult
-NS_CheckIsJavaCompatibleURLString(nsCString &urlString, bool *result)
-{
-  *result = false; // Default to "no"
-
-  nsresult rv = NS_OK;
-  nsCOMPtr<nsIURLParser> urlParser =
-    do_GetService(NS_STDURLPARSER_CONTRACTID, &rv);
-  if (NS_FAILED(rv) || !urlParser)
-    return NS_ERROR_FAILURE;
-
-  bool compatible = true;
-  uint32_t schemePos = 0;
-  int32_t schemeLen = 0;
-  urlParser->ParseURL(urlString.get(), -1, &schemePos, &schemeLen,
-                      nullptr, nullptr, nullptr, nullptr);
-  if (schemeLen != -1) {
-    nsCString scheme;
-    scheme.Assign(urlString.get() + schemePos, schemeLen);
-    // By default Java only understands a small number of URL schemes, and of
-    // these only some can legitimately represent a browser page's "origin"
-    // (and be something we can legitimately expect Java to handle ... or not
-    // to mishandle).
-    //
-    // Besides those listed below, the OJI plugin understands the "jar",
-    // "mailto", "netdoc", "javascript" and "rmi" schemes, and Java Plugin2
-    // also understands the "about" scheme.  We actually pass "about" URLs
-    // to Java ("about:blank" when processing a javascript: URL (one that
-    // calls Java) from the location bar of a blank page, and (in FF4 and up)
-    // "about:home" when processing a javascript: URL from the home page).
-    // And Java doesn't appear to mishandle them (for example it doesn't allow
-    // connections to "about" URLs).  But it doesn't make any sense to do
-    // same-origin checks on "about" URLs, so we don't include them in our
-    // scheme whitelist.
-    //
-    // The OJI plugin doesn't understand "chrome" URLs (only Java Plugin2
-    // does) -- so we mustn't pass them to the OJI plugin.  But we do need to
-    // pass "chrome" URLs to Java Plugin2:  Java Plugin2 grants additional
-    // privileges to chrome "origins", and some extensions take advantage of
-    // this.  For more information see bug 620773.
-    //
-    // As of FF4, we no longer support the OJI plugin.
-    if (PL_strcasecmp(scheme.get(), "http") &&
-        PL_strcasecmp(scheme.get(), "https") &&
-        PL_strcasecmp(scheme.get(), "file") &&
-        PL_strcasecmp(scheme.get(), "ftp") &&
-        PL_strcasecmp(scheme.get(), "gopher") &&
-        PL_strcasecmp(scheme.get(), "chrome"))
-      compatible = false;
-  } else {
-    compatible = false;
-  }
-
-  *result = compatible;
-
-  return NS_OK;
 }
 
 /** Given the first (disposition) token from a Content-Disposition header,
@@ -3090,7 +2930,8 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
                               EmptyString(), // aScriptSample
                               0, // aLineNumber
                               0, // aColumnNumber
-                              nsIScriptError::warningFlag, "CSP",
+                              nsIScriptError::warningFlag,
+                              NS_LITERAL_CSTRING("upgradeInsecureRequest"),
                               innerWindowId,
                               !!aLoadInfo->GetOriginAttributes().mPrivateBrowsingId);
           Telemetry::AccumulateCategorical(Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::CSP);

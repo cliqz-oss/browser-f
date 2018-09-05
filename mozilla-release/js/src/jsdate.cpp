@@ -1312,7 +1312,7 @@ static ClippedTime
 NowAsMillis(JSContext* cx)
 {
     double now = PRMJ_Now();
-    bool clampAndJitter = JS::CompartmentCreationOptionsRef(js::GetContextCompartment(cx)).clampAndJitterTime();
+    bool clampAndJitter = cx->realm()->creationOptions().clampAndJitterTime();
     if (clampAndJitter && sReduceMicrosecondTimePrecisionCallback)
         now = sReduceMicrosecondTimePrecisionCallback(now);
     else if (clampAndJitter && sResolutionUsec) {
@@ -2654,8 +2654,7 @@ date_toJSON(JSContext* cx, unsigned argc, Value* vp)
 
     /* Step 5. */
     if (!IsCallable(toISO)) {
-        JS_ReportErrorFlagsAndNumberASCII(cx, JSREPORT_ERROR, js::GetErrorMessage, nullptr,
-                                          JSMSG_BAD_TOISOSTRING_PROP);
+        JS_ReportErrorNumberASCII(cx, js::GetErrorMessage, nullptr, JSMSG_BAD_TOISOSTRING_PROP);
         return false;
     }
 
@@ -2688,12 +2687,16 @@ static size_t
 FormatTime(char* buf, int buflen, const char* fmt, double utcTime, double localTime)
 {
     PRMJTime prtm = ToPRMJTime(localTime, utcTime);
-    int eqivalentYear = IsRepresentableAsTime32(utcTime)
-                        ? prtm.tm_year
-                        : EquivalentYearForDST(prtm.tm_year);
+
+    // If an equivalent year was used to compute the date/time components, use
+    // the same equivalent year to determine the time zone name and offset in
+    // PRMJ_FormatTime(...).
+    int timeZoneYear = IsRepresentableAsTime32(utcTime)
+                       ? prtm.tm_year
+                       : EquivalentYearForDST(prtm.tm_year);
     int offsetInSeconds = (int) floor((localTime - utcTime) / msPerSecond);
 
-    return PRMJ_FormatTime(buf, buflen, fmt, &prtm, eqivalentYear, offsetInSeconds);
+    return PRMJ_FormatTime(buf, buflen, fmt, &prtm, timeZoneYear, offsetInSeconds);
 }
 
 enum class FormatSpec {

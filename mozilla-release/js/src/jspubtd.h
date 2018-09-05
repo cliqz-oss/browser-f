@@ -35,7 +35,7 @@ class JS_FRIEND_API(CompileOptions);
 class JS_FRIEND_API(ReadOnlyCompileOptions);
 class JS_FRIEND_API(OwningCompileOptions);
 class JS_FRIEND_API(TransitiveCompileOptions);
-class JS_PUBLIC_API(CompartmentOptions);
+class JS_PUBLIC_API(RealmOptions);
 
 } // namespace JS
 
@@ -49,6 +49,9 @@ enum JSType {
     JSTYPE_BOOLEAN,             /* boolean */
     JSTYPE_NULL,                /* null */
     JSTYPE_SYMBOL,              /* symbol */
+#ifdef ENABLE_BIGINT
+    JSTYPE_BIGINT,              /* BigInt */
+#endif
     JSTYPE_LIMIT
 };
 
@@ -82,7 +85,8 @@ typedef JSConstScalarSpec<int32_t> JSConstIntegerSpec;
 
 namespace js {
 
-inline JSCompartment* GetContextCompartment(const JSContext* cx);
+inline JS::Realm* GetContextRealm(const JSContext* cx);
+inline JS::Compartment* GetContextCompartment(const JSContext* cx);
 inline JS::Zone* GetContextZone(const JSContext* cx);
 
 // Whether the current thread is permitted access to any part of the specified
@@ -101,7 +105,9 @@ namespace JS {
 
 struct JS_PUBLIC_API(PropertyDescriptor);
 
-typedef void (*OffThreadCompileCallback)(void* token, void* callbackData);
+class OffThreadToken;
+
+typedef void (*OffThreadCompileCallback)(OffThreadToken* token, void* callbackData);
 
 enum class HeapState {
     Idle,             // doing nothing with the GC heap
@@ -112,43 +118,43 @@ enum class HeapState {
 };
 
 JS_PUBLIC_API(HeapState)
-CurrentThreadHeapState();
+RuntimeHeapState();
 
 static inline bool
-CurrentThreadIsHeapBusy()
+RuntimeHeapIsBusy()
 {
-    return CurrentThreadHeapState() != HeapState::Idle;
+    return RuntimeHeapState() != HeapState::Idle;
 }
 
 static inline bool
-CurrentThreadIsHeapTracing()
+RuntimeHeapIsTracing()
 {
-    return CurrentThreadHeapState() == HeapState::Tracing;
+    return RuntimeHeapState() == HeapState::Tracing;
 }
 
 static inline bool
-CurrentThreadIsHeapMajorCollecting()
+RuntimeHeapIsMajorCollecting()
 {
-    return CurrentThreadHeapState() == HeapState::MajorCollecting;
+    return RuntimeHeapState() == HeapState::MajorCollecting;
 }
 
 static inline bool
-CurrentThreadIsHeapMinorCollecting()
+RuntimeHeapIsMinorCollecting()
 {
-    return CurrentThreadHeapState() == HeapState::MinorCollecting;
+    return RuntimeHeapState() == HeapState::MinorCollecting;
 }
 
 static inline bool
-CurrentThreadIsHeapCollecting()
+RuntimeHeapIsCollecting()
 {
-    HeapState state = CurrentThreadHeapState();
+    HeapState state = RuntimeHeapState();
     return state == HeapState::MajorCollecting || state == HeapState::MinorCollecting;
 }
 
 static inline bool
-CurrentThreadIsHeapCycleCollecting()
+RuntimeHeapIsCycleCollecting()
 {
-    return CurrentThreadHeapState() == HeapState::CycleCollecting;
+    return RuntimeHeapState() == HeapState::CycleCollecting;
 }
 
 // Decorates the Unlinking phase of CycleCollection so that accidental use
@@ -156,6 +162,8 @@ CurrentThreadIsHeapCycleCollecting()
 class MOZ_STACK_CLASS JS_PUBLIC_API(AutoEnterCycleCollection)
 {
 #ifdef DEBUG
+    JSRuntime* runtime_;
+
   public:
     explicit AutoEnterCycleCollection(JSRuntime* rt);
     ~AutoEnterCycleCollection();

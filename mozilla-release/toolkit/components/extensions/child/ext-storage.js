@@ -2,66 +2,136 @@
 
 ChromeUtils.defineModuleGetter(this, "ExtensionStorage",
                                "resource://gre/modules/ExtensionStorage.jsm");
+ChromeUtils.defineModuleGetter(this, "ExtensionStorageIDB",
+                               "resource://gre/modules/ExtensionStorageIDB.jsm");
 ChromeUtils.defineModuleGetter(this, "TelemetryStopwatch",
                                "resource://gre/modules/TelemetryStopwatch.jsm");
 
-var {
-  ExtensionError,
-} = ExtensionUtils;
-
+// Telemetry histogram keys for the JSONFile backend.
 const storageGetHistogram = "WEBEXT_STORAGE_LOCAL_GET_MS";
 const storageSetHistogram = "WEBEXT_STORAGE_LOCAL_SET_MS";
+// Telemetry  histogram keys for the IndexedDB backend.
+const storageGetIDBHistogram = "WEBEXT_STORAGE_LOCAL_IDB_GET_MS";
+const storageSetIDBHistogram = "WEBEXT_STORAGE_LOCAL_IDB_SET_MS";
+
+// Wrap a storage operation in a TelemetryStopWatch.
+async function measureOp(histogram, fn) {
+  const stopwatchKey = {};
+  TelemetryStopwatch.start(histogram, stopwatchKey);
+  try {
+    let result = await fn();
+    TelemetryStopwatch.finish(histogram, stopwatchKey);
+    return result;
+  } catch (err) {
+    TelemetryStopwatch.cancel(histogram, stopwatchKey);
+    throw err;
+  }
+}
 
 this.storage = class extends ExtensionAPI {
-  getAPI(context) {
-    /**
-     * Serializes the given storage items for transporting to the parent
-     * process.
-     *
-     * @param {Array<string>|object} items
-     *        The items to serialize. If an object is provided, its
-     *        values are serialized to StructuredCloneHolder objects.
-     *        Otherwise, it is returned as-is.
-     * @returns {Array<string>|object}
-     */
-    function serialize(items) {
-      if (items && typeof items === "object" && !Array.isArray(items)) {
-        let result = {};
-        for (let [key, value] of Object.entries(items)) {
-          try {
-            result[key] = new StructuredCloneHolder(value, context.cloneScope);
-          } catch (e) {
-            throw new ExtensionError(String(e));
-          }
-        }
-        return result;
+  getLocalFileBackend(context, {deserialize, serialize}) {
+    return {
+      get(keys) {
+        return measureOp(storageGetHistogram, () => {
+          return context.childManager.callParentAsyncFunction(
+            "storage.local.JSONFileBackend.get",
+            [serialize(keys)]).then(deserialize);
+        });
+      },
+      set(items) {
+        return measureOp(storageSetHistogram, () => {
+          return context.childManager.callParentAsyncFunction(
+            "storage.local.JSONFileBackend.set", [serialize(items)]);
+        });
+      },
+      remove(keys) {
+        return context.childManager.callParentAsyncFunction(
+          "storage.local.JSONFileBackend.remove", [serialize(keys)]);
+      },
+      clear() {
+        return context.childManager.callParentAsyncFunction(
+          "storage.local.JSONFileBackend.clear", []);
+      },
+    };
+  }
+
+  getLocalIDBBackend(context, {hasParentListeners, serialize, storagePrincipal}) {
+    let dbPromise;
+    async function getDB() {
+      if (dbPromise) {
+        return dbPromise;
       }
-      return items;
+
+      dbPromise = ExtensionStorageIDB.open(storagePrincipal).catch(err => {
+        // Reset the cached promise if it has been rejected, so that the next
+        // API call is going to retry to open the DB.
+        dbPromise = null;
+        throw err;
+      });
+
+      return dbPromise;
     }
 
-    /**
-     * Deserializes the given storage items from the parent process into
-     * the extension context.
-     *
-     * @param {object} items
-     *        The items to deserialize. Any property of the object which
-     *        is a StructuredCloneHolder instance is deserialized into
-     *        the extension scope. Any other object is cloned into the
-     *        extension scope directly.
-     * @returns {object}
-     */
-    function deserialize(items) {
-      let result = new context.cloneScope.Object();
-      for (let [key, value] of Object.entries(items)) {
-        if (value && typeof value === "object" && Cu.getClassName(value, true) === "StructuredCloneHolder") {
-          value = value.deserialize(context.cloneScope);
-        } else {
-          value = Cu.cloneInto(value, context.cloneScope);
+    return {
+      get(keys) {
+        return measureOp(storageGetIDBHistogram, async () => {
+          const db = await getDB();
+          return db.get(keys);
+        });
+      },
+      set(items) {
+        return measureOp(storageSetIDBHistogram, async () => {
+          const db = await getDB();
+          const changes = await db.set(items, {
+            serialize: ExtensionStorage.serialize,
+          });
+
+          if (!changes) {
+            return;
+          }
+
+          const hasListeners = await hasParentListeners();
+          if (hasListeners) {
+            await context.childManager.callParentAsyncFunction(
+              "storage.local.IDBBackend.fireOnChanged", [changes]);
+          }
+        });
+      },
+      async remove(keys) {
+        const db = await getDB();
+        const changes = await db.remove(keys);
+
+        if (!changes) {
+          return;
         }
-        result[key] = value;
-      }
-      return result;
-    }
+
+        const hasListeners = await hasParentListeners();
+        if (hasListeners) {
+          await context.childManager.callParentAsyncFunction(
+            "storage.local.IDBBackend.fireOnChanged", [changes]);
+        }
+      },
+      async clear() {
+        const db = await getDB();
+        const changes = await db.clear(context.extension);
+
+        if (!changes) {
+          return;
+        }
+
+        const hasListeners = await hasParentListeners();
+        if (hasListeners) {
+          await context.childManager.callParentAsyncFunction(
+            "storage.local.IDBBackend.fireOnChanged", [changes]);
+        }
+      },
+    };
+  }
+
+  getAPI(context) {
+    const {extension} = context;
+    const serialize = ExtensionStorage.serializeForContext.bind(null, context);
+    const deserialize = ExtensionStorage.deserializeForContext.bind(null, context);
 
     function sanitize(items) {
       // The schema validator already takes care of arrays (which are only allowed
@@ -83,47 +153,72 @@ this.storage = class extends ExtensionAPI {
       return sanitized;
     }
 
+    // Detect the actual storage.local enabled backend for the extension (as soon as the
+    // storage.local API has been accessed for the first time).
+    let promiseStorageLocalBackend;
+    const getStorageLocalBackend = async () => {
+      const {
+        backendEnabled,
+        storagePrincipal,
+      } = await ExtensionStorageIDB.selectBackend(context);
+
+      if (!backendEnabled) {
+        return this.getLocalFileBackend(context, {deserialize, serialize});
+      }
+
+      return this.getLocalIDBBackend(context, {
+        storagePrincipal,
+        hasParentListeners() {
+          // We spare a good amount of memory if there are no listeners around
+          // (e.g. because they have never been subscribed or they have been removed
+          // in the meantime).
+          return context.childManager.callParentAsyncFunction(
+            "storage.local.IDBBackend.hasListeners", []);
+        },
+        serialize,
+      });
+    };
+
+    // Synchronously select the backend if the IndexedDB backend is not enabled.
+    let selectedBackend;
+    if (extension.storageIDBBackend === false) {
+      selectedBackend = this.getLocalFileBackend(context, {deserialize, serialize});
+    }
+
+    // Generate the backend-agnostic local API wrapped methods.
+    const local = {};
+    for (let method of ["get", "set", "remove", "clear"]) {
+      local[method] = async function(...args) {
+        // Discover the selected backend if it is not known yet.
+        if (!selectedBackend) {
+          if (!promiseStorageLocalBackend) {
+            promiseStorageLocalBackend = getStorageLocalBackend().catch(err => {
+              // Clear the cached promise if it has been rejected.
+              promiseStorageLocalBackend = null;
+              throw err;
+            });
+          }
+
+          // Get the selected backend and cache it for the next API calls from this context.
+          selectedBackend = await promiseStorageLocalBackend;
+        }
+
+        return selectedBackend[method](...args);
+      };
+    }
+
     return {
       storage: {
-        local: {
-          get: async function(keys) {
-            const stopwatchKey = {};
-            TelemetryStopwatch.start(storageGetHistogram, stopwatchKey);
-            try {
-              let result = await context.childManager.callParentAsyncFunction("storage.local.get", [
-                serialize(keys),
-              ]).then(deserialize);
-              TelemetryStopwatch.finish(storageGetHistogram, stopwatchKey);
-              return result;
-            } catch (e) {
-              TelemetryStopwatch.cancel(storageGetHistogram, stopwatchKey);
-              throw e;
-            }
-          },
-          set: async function(items) {
-            const stopwatchKey = {};
-            TelemetryStopwatch.start(storageSetHistogram, stopwatchKey);
-            try {
-              let result = await context.childManager.callParentAsyncFunction("storage.local.set", [
-                serialize(items),
-              ]);
-              TelemetryStopwatch.finish(storageSetHistogram, stopwatchKey);
-              return result;
-            } catch (e) {
-              TelemetryStopwatch.cancel(storageSetHistogram, stopwatchKey);
-              throw e;
-            }
-          },
-        },
+        local,
 
         sync: {
-          get: function(keys) {
+          get(keys) {
             keys = sanitize(keys);
             return context.childManager.callParentAsyncFunction("storage.sync.get", [
               keys,
             ]);
           },
-          set: function(items) {
+          set(items) {
             items = sanitize(items);
             return context.childManager.callParentAsyncFunction("storage.sync.set", [
               items,

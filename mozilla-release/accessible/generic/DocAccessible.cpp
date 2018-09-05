@@ -23,7 +23,6 @@
 #include "nsICommandManager.h"
 #include "nsIDocShell.h"
 #include "nsIDocument.h"
-#include "nsIDOMDocument.h"
 #include "nsPIDOMWindow.h"
 #include "nsIEditingSession.h"
 #include "nsIFrame.h"
@@ -171,7 +170,7 @@ NS_IMPL_RELEASE_INHERITED(DocAccessible, HyperTextAccessible)
 // nsIAccessible
 
 ENameValueFlag
-DocAccessible::Name(nsString& aName)
+DocAccessible::Name(nsString& aName) const
 {
   aName.Truncate();
 
@@ -194,7 +193,7 @@ DocAccessible::Name(nsString& aName)
 
 // Accessible public method
 role
-DocAccessible::NativeRole()
+DocAccessible::NativeRole() const
 {
   nsCOMPtr<nsIDocShell> docShell = nsCoreUtils::GetDocShellFor(mDocumentNode);
   if (docShell) {
@@ -237,7 +236,7 @@ DocAccessible::Description(nsString& aDescription)
 
 // Accessible public method
 uint64_t
-DocAccessible::NativeState()
+DocAccessible::NativeState() const
 {
   // Document is always focusable.
   uint64_t state = states::FOCUSABLE; // keep in sync with NativeInteractiveState() impl
@@ -321,7 +320,7 @@ DocAccessible::FocusedChild()
 }
 
 void
-DocAccessible::TakeFocus()
+DocAccessible::TakeFocus() const
 {
   // Focus the document.
   nsFocusManager* fm = nsFocusManager::GetFocusManager();
@@ -681,14 +680,18 @@ NS_IMETHODIMP
 DocAccessible::OnPivotChanged(nsIAccessiblePivot* aPivot,
                               nsIAccessible* aOldAccessible,
                               int32_t aOldStart, int32_t aOldEnd,
+                              nsIAccessible* aNewAccessible,
+                              int32_t aNewStart, int32_t aNewEnd,
                               PivotMoveReason aReason,
                               bool aIsFromUserInput)
 {
   RefPtr<AccEvent> event =
     new AccVCChangeEvent(
       this, (aOldAccessible ? aOldAccessible->ToInternalAccessible() : nullptr),
-      aOldStart, aOldEnd, aReason,
-      aIsFromUserInput ? eFromUserInput : eNoUserInput);
+      aOldStart, aOldEnd,
+      (aNewAccessible ? aNewAccessible->ToInternalAccessible() : nullptr),
+      aNewStart, aNewEnd,
+      aReason, aIsFromUserInput ? eFromUserInput : eNoUserInput);
   nsEventShell::FireEvent(event);
 
   return NS_OK;
@@ -699,7 +702,6 @@ DocAccessible::OnPivotChanged(nsIAccessiblePivot* aPivot,
 
 NS_IMPL_NSIDOCUMENTOBSERVER_CORE_STUB(DocAccessible)
 NS_IMPL_NSIDOCUMENTOBSERVER_LOAD_STUB(DocAccessible)
-NS_IMPL_NSIDOCUMENTOBSERVER_STYLE_STUB(DocAccessible)
 
 void
 DocAccessible::AttributeWillChange(dom::Element* aElement,
@@ -961,11 +963,13 @@ DocAccessible::ARIAAttributeChanged(Accessible* aAccessible, nsAtom* aAttribute)
 
   // The activedescendant universal property redirects accessible focus events
   // to the element with the id that activedescendant points to. Make sure
-  // the tree up to date before processing.
+  // the tree up to date before processing. In other words, when a node has just
+  // been inserted, the tree won't be up to date yet, so we must always schedule
+  // an async notification so that a newly inserted node will be present in
+  // the tree.
   if (aAttribute == nsGkAtoms::aria_activedescendant) {
-    mNotificationController->HandleNotification<DocAccessible, Accessible>
+    mNotificationController->ScheduleNotification<DocAccessible, Accessible>
       (this, &DocAccessible::ARIAActiveDescendantChanged, aAccessible);
-
     return;
   }
 

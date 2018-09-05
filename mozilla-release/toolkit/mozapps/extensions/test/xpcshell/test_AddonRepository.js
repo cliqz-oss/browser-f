@@ -83,7 +83,7 @@ var ADDON_PROPERTIES = ["id", "type", "version", "creator", "developers",
                         "supportURL", "contributionURL",
                         "averageRating", "reviewCount", "reviewURL",
                         "weeklyDownloads", "dailyUsers",
-                        "sourceURI", "size", "updateDate"];
+                        "sourceURI", "updateDate"];
 
 // Results of getAddonsByIDs
 var GET_RESULTS = [{
@@ -122,8 +122,13 @@ var GET_RESULTS = [{
   reviewURL:              BASE_URL + "/review1.html",
   weeklyDownloads:        3333,
   sourceURI:              BASE_URL + INSTALL_URL2,
-  size:                   5555,
   updateDate:             new Date(1265033045000),
+}, {
+  id:                     "test2@tests.mozilla.org",
+  type:                   "extension",
+  version:                "2.0",
+  icons:                  {},
+  sourceURI:              "http://example.com/addons/bleah.xpi",
 }, {
   id:                     "test_AddonRepository_1@tests.mozilla.org",
   type:                   "theme",
@@ -138,9 +143,11 @@ var GET_TEST = {
   failedIDs:      ["test1@tests.mozilla.org"],
   failedURL:        "/XPCShell/1/test1%40tests.mozilla.org",
   successfulIDs:  ["test1@tests.mozilla.org",
-                     "{00000000-1111-2222-3333-444444444444}",
-                     "test_AddonRepository_1@tests.mozilla.org"],
+                   "test2@tests.mozilla.org",
+                   "{00000000-1111-2222-3333-444444444444}",
+                   "test_AddonRepository_1@tests.mozilla.org"],
   successfulURL:    "/XPCShell/1/test1%40tests.mozilla.org%2C" +
+                    "test2%40tests.mozilla.org%2C" +
                     "%7B00000000-1111-2222-3333-444444444444%7D%2C" +
                     "test_AddonRepository_1%40tests.mozilla.org"
 };
@@ -259,7 +266,8 @@ add_task(async function test_getAddonsByID_fails() {
   Services.prefs.setCharPref(GET_TEST.preference, GET_TEST.preferenceValue);
 
   await Assert.rejects(
-    AddonRepository.getAddonsByIDs(GET_TEST.failedIDs));
+    AddonRepository.getAddonsByIDs(GET_TEST.failedIDs),
+    /Error: GET.*?failed/);
 });
 
 // Tests success of AddonRepository.getAddonsByIDs()

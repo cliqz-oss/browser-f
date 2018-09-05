@@ -422,41 +422,6 @@ struct BaselineStackBuilder
     }
 };
 
-// Ensure that all value locations are readable from the SnapshotIterator.
-// Remove RInstructionResults from the JitActivation if the frame got recovered
-// ahead of the bailout.
-class SnapshotIteratorForBailout : public SnapshotIterator
-{
-    JitActivation* activation_;
-    const JSJitFrameIter& iter_;
-
-  public:
-    SnapshotIteratorForBailout(JitActivation* activation, const JSJitFrameIter& iter)
-      : SnapshotIterator(iter, activation->bailoutData()->machineState()),
-        activation_(activation),
-        iter_(iter)
-    {
-        MOZ_ASSERT(iter.isBailoutJS());
-    }
-
-    ~SnapshotIteratorForBailout() {
-        // The bailout is complete, we no longer need the recover instruction
-        // results.
-        activation_->removeIonFrameRecovery(fp_);
-    }
-
-    // Take previously computed result out of the activation, or compute the
-    // results of all recover instructions contained in the snapshot.
-    MOZ_MUST_USE bool init(JSContext* cx) {
-
-        // Under a bailout, there is no need to invalidate the frame after
-        // evaluating the recover instruction, as the invalidation is only
-        // needed to cause of the frame which has been introspected.
-        MaybeReadFallback recoverBailout(cx, activation_, &iter_, MaybeReadFallback::Fallback_DoNothing);
-        return initInstructionResults(recoverBailout);
-    }
-};
-
 #ifdef DEBUG
 static inline bool
 IsInlinableFallback(ICFallbackStub* icEntry)
@@ -469,18 +434,18 @@ IsInlinableFallback(ICFallbackStub* icEntry)
 static inline void*
 GetStubReturnAddress(JSContext* cx, jsbytecode* pc)
 {
-    JitCompartment* jitComp = cx->compartment()->jitCompartment();
+    JitRealm* jitRealm = cx->realm()->jitRealm();
 
     if (IsGetPropPC(pc))
-        return jitComp->bailoutReturnAddr(BailoutReturnStub::GetProp);
+        return jitRealm->bailoutReturnAddr(BailoutReturnStub::GetProp);
     if (IsSetPropPC(pc))
-        return jitComp->bailoutReturnAddr(BailoutReturnStub::SetProp);
+        return jitRealm->bailoutReturnAddr(BailoutReturnStub::SetProp);
 
     // This should be a call op of some kind, now.
     MOZ_ASSERT(IsCallPC(pc) && !IsSpreadCallPC(pc));
     if (IsConstructorCallPC(pc))
-        return jitComp->bailoutReturnAddr(BailoutReturnStub::New);
-    return jitComp->bailoutReturnAddr(BailoutReturnStub::Call);
+        return jitRealm->bailoutReturnAddr(BailoutReturnStub::New);
+    return jitRealm->bailoutReturnAddr(BailoutReturnStub::Call);
 }
 
 static inline jsbytecode*
@@ -678,7 +643,7 @@ InitFromBailout(JSContext* cx, size_t frameNo,
     // |  ReturnAddr   | <-- return into main jitcode after IC
     // +===============+
 
-    JitSpew(JitSpew_BaselineBailouts, "      Unpacking %s:%zu", script->filename(), script->lineno());
+    JitSpew(JitSpew_BaselineBailouts, "      Unpacking %s:%u", script->filename(), script->lineno());
     JitSpew(JitSpew_BaselineBailouts, "      [BASELINE-JS FRAME]");
 
     // Calculate and write the previous frame pointer value.
@@ -986,7 +951,7 @@ InitFromBailout(JSContext* cx, size_t frameNo,
             // possible nothing was pushed before we threw. We can't drop
             // iterators, however, so read them out. They will be closed by
             // HandleExceptionBaseline.
-            MOZ_ASSERT(cx->compartment()->isDebuggee());
+            MOZ_ASSERT(cx->realm()->isDebuggee());
             if (iter.moreFrames() || HasLiveStackValueAtDepth(script, pc, i + 1)) {
                 v = iter.read();
             } else {
@@ -1065,7 +1030,7 @@ InitFromBailout(JSContext* cx, size_t frameNo,
 #endif
 
 #ifdef JS_JITSPEW
-    JitSpew(JitSpew_BaselineBailouts, "      Resuming %s pc offset %d (op %s) (line %d) of %s:%zu",
+    JitSpew(JitSpew_BaselineBailouts, "      Resuming %s pc offset %d (op %s) (line %d) of %s:%u",
                 resumeAfter ? "after" : "at", (int) pcOff, CodeName[op],
                 PCToLineNumber(script, pc), script->filename(), script->lineno());
     JitSpew(JitSpew_BaselineBailouts, "      Bailout kind: %s",
@@ -1241,7 +1206,7 @@ InitFromBailout(JSContext* cx, size_t frameNo,
                 ReportOutOfMemory(cx);
                 return false;
             }
-            snprintf(buf, len, "%s %s %s on line %u of %s:%zu",
+            snprintf(buf, len, "%s %s %s on line %u of %s:%u",
                      BailoutKindString(bailoutKind),
                      resumeAfter ? "after" : "at",
                      CodeName[op],
@@ -1515,6 +1480,7 @@ jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
 {
     MOZ_ASSERT(bailoutInfo != nullptr);
     MOZ_ASSERT(*bailoutInfo == nullptr);
+    MOZ_ASSERT(iter.isBailoutJS());
 
     TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
     TraceLogStopEvent(logger, TraceLogger_IonMonkey);
@@ -1525,6 +1491,12 @@ jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
     // ensure that its Debugger.Frame entry is cleaned up.
     auto guardRemoveRematerializedFramesFromDebugger = mozilla::MakeScopeExit([&] {
         activation->removeRematerializedFramesFromDebugger(cx, iter.fp());
+    });
+
+    // Always remove the RInstructionResults from the JitActivation, even in
+    // case of failures as the stack frame is going away after the bailout.
+    auto removeIonFrameRecovery = mozilla::MakeScopeExit([&] {
+        activation->removeIonFrameRecovery(iter.jsFrame());
     });
 
     // The caller of the top frame must be one of the following:
@@ -1565,7 +1537,7 @@ jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
     //      |    |||||      |
     //      +---------------+
 
-    JitSpew(JitSpew_BaselineBailouts, "Bailing to baseline %s:%zu (IonScript=%p) (FrameType=%d)",
+    JitSpew(JitSpew_BaselineBailouts, "Bailing to baseline %s:%u (IonScript=%p) (FrameType=%d)",
             iter.script()->filename(), iter.script()->lineno(), (void*) iter.ionScript(),
             (int) prevFrameType);
 
@@ -1600,8 +1572,16 @@ jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
     }
     JitSpew(JitSpew_BaselineBailouts, "  Incoming frame ptr = %p", builder.startFrame());
 
-    SnapshotIteratorForBailout snapIter(activation, iter);
-    if (!snapIter.init(cx)) {
+    // Under a bailout, there is no need to invalidate the frame after
+    // evaluating the recover instruction, as the invalidation is only needed in
+    // cases where the frame is introspected ahead of the bailout.
+    MaybeReadFallback recoverBailout(cx, activation, &iter, MaybeReadFallback::Fallback_DoNothing);
+
+    // Ensure that all value locations are readable from the SnapshotIterator.
+    // Get the RInstructionResults from the JitActivation if the frame got
+    // recovered ahead of the bailout.
+    SnapshotIterator snapIter(iter, activation->bailoutData()->machineState());
+    if (!snapIter.initInstructionResults(recoverBailout)) {
         ReportOutOfMemory(cx);
         return BAILOUT_RETURN_FATAL_ERROR;
     }
@@ -1613,7 +1593,7 @@ jit::BailoutIonToBaseline(JSContext* cx, JitActivation* activation,
     RootedFunction callee(cx, iter.maybeCallee());
     RootedScript scr(cx, iter.script());
     if (callee) {
-        JitSpew(JitSpew_BaselineBailouts, "  Callee function (%s:%zu)",
+        JitSpew(JitSpew_BaselineBailouts, "  Callee function (%s:%u)",
                 scr->filename(), scr->lineno());
     } else {
         JitSpew(JitSpew_BaselineBailouts, "  No callee!");
@@ -1739,7 +1719,7 @@ InvalidateAfterBailout(JSContext* cx, HandleScript outerScript, const char* reas
 static void
 HandleBoundsCheckFailure(JSContext* cx, HandleScript outerScript, HandleScript innerScript)
 {
-    JitSpew(JitSpew_IonBailouts, "Bounds check failure %s:%zu, inlined into %s:%zu",
+    JitSpew(JitSpew_IonBailouts, "Bounds check failure %s:%u, inlined into %s:%u",
             innerScript->filename(), innerScript->lineno(),
             outerScript->filename(), outerScript->lineno());
 
@@ -1754,7 +1734,7 @@ HandleBoundsCheckFailure(JSContext* cx, HandleScript outerScript, HandleScript i
 static void
 HandleShapeGuardFailure(JSContext* cx, HandleScript outerScript, HandleScript innerScript)
 {
-    JitSpew(JitSpew_IonBailouts, "Shape guard failure %s:%zu, inlined into %s:%zu",
+    JitSpew(JitSpew_IonBailouts, "Shape guard failure %s:%u, inlined into %s:%u",
             innerScript->filename(), innerScript->lineno(),
             outerScript->filename(), outerScript->lineno());
 
@@ -1769,7 +1749,7 @@ HandleShapeGuardFailure(JSContext* cx, HandleScript outerScript, HandleScript in
 static void
 HandleBaselineInfoBailout(JSContext* cx, HandleScript outerScript, HandleScript innerScript)
 {
-    JitSpew(JitSpew_IonBailouts, "Baseline info failure %s:%zu, inlined into %s:%zu",
+    JitSpew(JitSpew_IonBailouts, "Baseline info failure %s:%u, inlined into %s:%u",
             innerScript->filename(), innerScript->lineno(),
             outerScript->filename(), outerScript->lineno());
 
@@ -1779,7 +1759,7 @@ HandleBaselineInfoBailout(JSContext* cx, HandleScript outerScript, HandleScript 
 static void
 HandleLexicalCheckFailure(JSContext* cx, HandleScript outerScript, HandleScript innerScript)
 {
-    JitSpew(JitSpew_IonBailouts, "Lexical check failure %s:%zu, inlined into %s:%zu",
+    JitSpew(JitSpew_IonBailouts, "Lexical check failure %s:%u, inlined into %s:%u",
             innerScript->filename(), innerScript->lineno(),
             outerScript->filename(), outerScript->lineno());
 
@@ -1861,6 +1841,14 @@ jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfo)
     MOZ_ASSERT(numFrames > 0);
     BailoutKind bailoutKind = bailoutInfo->bailoutKind;
     bool checkGlobalDeclarationConflicts = bailoutInfo->checkGlobalDeclarationConflicts;
+    uint8_t* incomingStack = bailoutInfo->incomingStack;
+
+    // We have to get rid of the rematerialized frame, whether it is
+    // restored or unwound.
+    auto guardRemoveRematerializedFramesFromDebugger = mozilla::MakeScopeExit([&] {
+        JitActivation* act = cx->activation()->asJit();
+        act->removeRematerializedFramesFromDebugger(cx, incomingStack);
+    });
 
     // Free the bailout buffer.
     js_free(bailoutInfo);
@@ -1934,6 +1922,7 @@ jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfo)
             if (frameno == numFrames - 1) {
                 outerScript = frame->script();
                 outerFp = iter.fp();
+                MOZ_ASSERT(outerFp == incomingStack);
             }
 
             frameno++;
@@ -1952,7 +1941,7 @@ jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfo)
     // on.
     JitActivation* act = cx->activation()->asJit();
     if (act->hasRematerializedFrame(outerFp)) {
-        JSJitFrameIter iter(cx->activation()->asJit());
+        JSJitFrameIter iter(act);
         size_t inlineDepth = numFrames;
         bool ok = true;
         while (inlineDepth > 0) {
@@ -1960,18 +1949,22 @@ jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfo)
                 // We must attempt to copy all rematerialized frames over,
                 // even if earlier ones failed, to invoke the proper frame
                 // cleanup in the Debugger.
-                ok = CopyFromRematerializedFrame(cx, act, outerFp, --inlineDepth,
-                                                 iter.baselineFrame());
+                if (!CopyFromRematerializedFrame(cx, act, outerFp, --inlineDepth,
+                                                 iter.baselineFrame()))
+                {
+                    ok = false;
+                }
             }
             ++iter;
         }
 
-        // After copying from all the rematerialized frames, remove them from
-        // the table to keep the table up to date.
-        act->removeRematerializedFrame(outerFp);
-
         if (!ok)
             return false;
+
+        // After copying from all the rematerialized frames, remove them from
+        // the table to keep the table up to date.
+        guardRemoveRematerializedFramesFromDebugger.release();
+        act->removeRematerializedFrame(outerFp);
     }
 
     // If we are catching an exception, we need to unwind scopes.
@@ -1982,7 +1975,7 @@ jit::FinishBailoutToBaseline(BaselineBailoutInfo* bailoutInfo)
     }
 
     JitSpew(JitSpew_BaselineBailouts,
-            "  Restored outerScript=(%s:%zu,%u) innerScript=(%s:%zu,%u) (bailoutKind=%u)",
+            "  Restored outerScript=(%s:%u,%u) innerScript=(%s:%u,%u) (bailoutKind=%u)",
             outerScript->filename(), outerScript->lineno(), outerScript->getWarmUpCount(),
             innerScript->filename(), innerScript->lineno(), innerScript->getWarmUpCount(),
             (unsigned) bailoutKind);

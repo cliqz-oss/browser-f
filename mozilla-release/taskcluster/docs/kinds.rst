@@ -90,6 +90,12 @@ the source code while building.  The useful output from these tasks are their
 build logs, and while they produce a binary, they do not upload it as an
 artifact.
 
+static-analysis-autotest
+---------------
+
+Static analysis autotest utility in order to be sure that there is no regression
+when upgrading utilities that impact static-analysis.
+
 toolchain
 ---------
 
@@ -189,10 +195,12 @@ Beetmover-repackage is beetmover but for tasks that need an intermediate step
 between signing and packaging, such as OSX. For more details see the definitions
 of the Beetmover kind above and the repackage kind below.
 
-beetmover-cdns
--------------------
+release-beetmover-push-to-release
+---------------------------------
 
-Beetmover-cdns publishes promoted releases to CDNs. This is part of release promotion.
+release-beetmover-push-to-release publishes promoted releases from the
+candidates directory to the release directory. This is part of release
+promotion.
 
 beetmover-source
 -------------------
@@ -330,6 +338,10 @@ release-beetmover-signed-langpacks
 ----------------------------------
 Publishes signed langpacks to archive.mozilla.org
 
+release-beetmover-signed-langpacks-checksums
+--------------------------------------------
+Publishes signed langpacks to archive.mozilla.org
+
 release-update-verify
 ---------------------
 Verifies the contents and package of release update MARs.
@@ -385,6 +397,10 @@ External signing of partner repacks.
 release-partner-repack-beetmover
 ------------------------------
 Moves the partner repacks to S3 buckets.
+
+release-early-tagging
+---------------------
+Utilises treescript to perform tagging that should happen near the start of a release.
 
 release-eme-free-repack
 ----------------------
@@ -456,6 +472,13 @@ Dummy tasks to consolidate beetmover-checksums dependencies to avoid taskcluster
 post-langpack-dummy
 ------------------------------
 Dummy tasks to consolidate language pack beetmover dependencies to avoid taskcluster limits on number of dependencies per task.
+
+fetch
+-----
+
+Tasks that obtain something from a remote service and re-expose it as a
+task artifact. These tasks are used to effectively cache and re-host
+remote content so it is reliably and deterministically available.
 
 packages
 --------

@@ -2,11 +2,25 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
-const HISTOGRAM_IDS = [
+ChromeUtils.import("resource://gre/modules/ExtensionStorageIDB.jsm");
+
+const HISTOGRAM_JSON_IDS = [
   "WEBEXT_STORAGE_LOCAL_SET_MS", "WEBEXT_STORAGE_LOCAL_GET_MS",
 ];
 
-add_task(async function test_telemetry_background() {
+const HISTOGRAM_IDB_IDS = [
+  "WEBEXT_STORAGE_LOCAL_IDB_SET_MS", "WEBEXT_STORAGE_LOCAL_IDB_GET_MS",
+];
+
+const HISTOGRAM_IDS = [].concat(HISTOGRAM_JSON_IDS, HISTOGRAM_IDB_IDS);
+
+async function test_telemetry_background() {
+  const expectedEmptyHistograms = ExtensionStorageIDB.isBackendEnabled ?
+          HISTOGRAM_JSON_IDS : HISTOGRAM_IDB_IDS;
+
+  const expectedNonEmptyHistograms = ExtensionStorageIDB.isBackendEnabled ?
+          HISTOGRAM_IDB_IDS : HISTOGRAM_JSON_IDS;
+
   const server = createHttpServer();
   server.registerDirectory("/data/", do_get_file("data"));
 
@@ -49,32 +63,33 @@ add_task(async function test_telemetry_background() {
 
   let process = IS_OOP ? "extension" : "parent";
   let snapshots = getSnapshots(process);
+
   for (let id of HISTOGRAM_IDS) {
     ok(!(id in snapshots), `No data recorded for histogram: ${id}.`);
   }
 
   await extension1.startup();
   await extension1.awaitMessage("backgroundDone");
-  for (let id of HISTOGRAM_IDS) {
+  for (let id of expectedNonEmptyHistograms) {
     await promiseTelemetryRecorded(id, process, 1);
   }
 
   // Telemetry from extension1's background page should be recorded.
   snapshots = getSnapshots(process);
-  for (let id of HISTOGRAM_IDS) {
+  for (let id of expectedNonEmptyHistograms) {
     equal(arraySum(snapshots[id].counts), 1,
           `Data recorded for histogram: ${id}.`);
   }
 
   await extension2.startup();
   await extension2.awaitMessage("backgroundDone");
-  for (let id of HISTOGRAM_IDS) {
+  for (let id of expectedNonEmptyHistograms) {
     await promiseTelemetryRecorded(id, process, 2);
   }
 
   // Telemetry from extension2's background page should be recorded.
   snapshots = getSnapshots(process);
-  for (let id of HISTOGRAM_IDS) {
+  for (let id of expectedNonEmptyHistograms) {
     equal(arraySum(snapshots[id].counts), 2,
           `Additional data recorded for histogram: ${id}.`);
   }
@@ -89,16 +104,31 @@ add_task(async function test_telemetry_background() {
   await contentScriptPromise;
   await contentPage.close();
 
-  for (let id of HISTOGRAM_IDS) {
+  for (let id of expectedNonEmptyHistograms) {
     await promiseTelemetryRecorded(id, process, expectedCount);
   }
 
   // Telemetry from extension1's content script should be recorded.
   snapshots = getSnapshots(process);
-  for (let id of HISTOGRAM_IDS) {
+  for (let id of expectedNonEmptyHistograms) {
     equal(arraySum(snapshots[id].counts), expectedCount,
           `Data recorded in content script for histogram: ${id}.`);
   }
 
   await extension1.unload();
+
+  // Telemetry for histograms that we expect to be empty.
+  for (let id of expectedEmptyHistograms) {
+    ok(!(id in snapshots), `No data recorded for histogram: ${id}.`);
+  }
+}
+
+add_task(function test_telemetry_background_file_backend() {
+  return runWithPrefs([[ExtensionStorageIDB.BACKEND_ENABLED_PREF, false]],
+                      test_telemetry_background);
+});
+
+add_task(function test_telemetry_background_idb_backend() {
+  return runWithPrefs([[ExtensionStorageIDB.BACKEND_ENABLED_PREF, true]],
+                      test_telemetry_background);
 });

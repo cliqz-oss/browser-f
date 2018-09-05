@@ -9,6 +9,7 @@ import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -37,6 +38,7 @@ import org.mozilla.gecko.Clipboard;
 import org.mozilla.gecko.DoorHangerPopup;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.FormAssistPopup;
+import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.GeckoSharedPrefs;
 import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.R;
@@ -58,6 +60,7 @@ import org.mozilla.gecko.webapps.WebApps;
 import org.mozilla.gecko.widget.ActionModePresenter;
 import org.mozilla.gecko.widget.GeckoPopupMenu;
 import org.mozilla.geckoview.GeckoResponse;
+import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
@@ -111,7 +114,6 @@ public class CustomTabsActivity extends AppCompatActivity
         doorhangerOverlay = findViewById(R.id.custom_tabs_doorhanger_overlay);
 
         mProgressView = (ProgressBar) findViewById(R.id.page_progress);
-        updateProgress(10);
         final Toolbar toolbar = (Toolbar) findViewById(R.id.actionbar);
         setSupportActionBar(toolbar);
         final ActionBar actionBar = getSupportActionBar();
@@ -131,7 +133,7 @@ public class CustomTabsActivity extends AppCompatActivity
         mGeckoSession.setProgressDelegate(this);
         mGeckoSession.setContentDelegate(this);
 
-        mGeckoView.setSession(mGeckoSession, GeckoRuntime.getDefault(this));
+        mGeckoView.setSession(mGeckoSession, GeckoApplication.ensureRuntime(this));
 
         mPromptService = new PromptService(this, mGeckoView.getEventDispatcher());
         mDoorHangerPopup = new DoorHangerPopup(this, mGeckoView.getEventDispatcher());
@@ -187,6 +189,15 @@ public class CustomTabsActivity extends AppCompatActivity
     public void onRequestPermissionsResult(final int requestCode, final String[] permissions,
                                            final int[] grantResults) {
         Permissions.onRequestPermissionsResult(this, permissions, grantResults);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        if (mPromptService != null) {
+            mPromptService.changePromptOrientation(newConfig.orientation);
+        }
     }
 
     private void sendTelemetry() {
@@ -584,7 +595,6 @@ public class CustomTabsActivity extends AppCompatActivity
     public void onLocationChange(GeckoSession session, String url) {
         mCurrentUrl = url;
         updateActionBar();
-        updateProgress(60);
     }
 
     @Override
@@ -599,21 +609,18 @@ public class CustomTabsActivity extends AppCompatActivity
     }
 
     @Override
-    public void onLoadRequest(final GeckoSession session, final String urlStr,
-                              final int target,
-                              final int flags,
-                              final GeckoResponse<Boolean> response) {
+    public GeckoResult<Boolean> onLoadRequest(final GeckoSession session, final String urlStr,
+                                              final int target,
+                                              final int flags) {
         if (target != GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW) {
-            response.respond(false);
-            return;
+            return GeckoResult.fromValue(false);
         }
 
         final Uri uri = Uri.parse(urlStr);
         if (uri == null) {
             // We can't handle this, so deny it.
             Log.w(LOGTAG, "Failed to parse URL for navigation: " + urlStr);
-            response.respond(true);
-            return;
+            return GeckoResult.fromValue(true);
         }
 
         // Always use Fennec for these schemes.
@@ -638,12 +645,11 @@ public class CustomTabsActivity extends AppCompatActivity
             }
         }
 
-        response.respond(true);
+        return GeckoResult.fromValue(true);
     }
 
     @Override
-    public void onNewSession(final GeckoSession session, final String uri,
-                             final GeckoResponse<GeckoSession> response) {
+    public GeckoResult<GeckoSession> onNewSession(final GeckoSession session, final String uri) {
         // We should never get here because we abort loads that need a new session in onLoadRequest()
         throw new IllegalStateException("Unexpected new session");
     }
@@ -655,14 +661,21 @@ public class CustomTabsActivity extends AppCompatActivity
         mCanStop = true;
         updateActionBar();
         updateCanStop();
-        updateProgress(20);
     }
 
     @Override
     public void onPageStop(GeckoSession session, boolean success) {
         mCanStop = false;
         updateCanStop();
-        updateProgress(100);
+    }
+
+    @Override
+    public void onProgressChange(GeckoSession session, int progress) {
+        if (progress == 100) {
+            mCanStop = false;
+            updateCanStop();
+        }
+        updateProgress(progress);
     }
 
     @Override
@@ -721,6 +734,12 @@ public class CustomTabsActivity extends AppCompatActivity
 
     @Override
     public void onExternalResponse(final GeckoSession session, final GeckoSession.WebResponseInfo request) {
+        // Won't happen, as we don't use the GeckoView download support in Fennec
+    }
+
+    @Override
+    public void onCrash(final GeckoSession session) {
+        // Won't happen, as we don't use e10s in Fennec
     }
 
     @Override // ActionModePresenter

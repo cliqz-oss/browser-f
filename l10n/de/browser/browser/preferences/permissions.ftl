@@ -83,6 +83,13 @@ permissions-exceptions-addons-window =
     .style = { permissions-window.style }
 permissions-exceptions-addons-desc = Sie können festlegen, welchen Websites Sie erlauben möchten, Add-ons zu installieren. Geben Sie bitte die exakte Adresse der Website ein, der Sie das erlauben möchten, und klicken Sie dann auf Erlauben.
 
+## Exceptions - Autoplay Media
+
+permissions-exceptions-autoplay-media-window =
+    .title = Berechtigte Websites - Automatische Wiedergabe
+    .style = { permissions-window.style }
+permissions-exceptions-autoplay-media-desc = Hier können die Websites festgelegt werden, welche automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die exakte Adresse der zu erlaubenden Website ein und klicken Sie dann auf &quot;Erlauben&quot;.
+
 ## Site Permissions - Notifications
 
 permissions-site-notification-window =

@@ -59,29 +59,28 @@ add_task(async function() {
   await updatedPromise;
   let cacheSize = await SiteDataManager.getCacheSize();
 
-  let actual = null;
-  let expected = null;
   let doc = gBrowser.selectedBrowser.contentDocument;
   let clearBtn = doc.getElementById("clearSiteDataButton");
   let settingsButton = doc.getElementById("siteDataSettings");
-  let prefStrBundle = doc.getElementById("bundlePreferences");
   let totalSiteDataSizeLabel = doc.getElementById("totalSiteDataSize");
   is(clearBtn.disabled, false, "Should enable clear button after sites updated");
   is(settingsButton.disabled, false, "Should enable settings button after sites updated");
   await SiteDataManager.getTotalUsage()
                        .then(usage => {
-                         actual = totalSiteDataSizeLabel.textContent;
-                         expected = prefStrBundle.getFormattedString(
-                           "totalSiteDataSize2", DownloadUtils.convertByteUnits(usage + cacheSize));
-                          is(actual, expected, "Should show the right total site data size");
+                         let [value, unit] = DownloadUtils.convertByteUnits(usage + cacheSize);
+                         Assert.deepEqual(doc.l10n.getAttributes(totalSiteDataSizeLabel), {
+                           id: "sitedata-total-size",
+                           args: {value, unit}
+                         }, "Should show the right total site data size");
                        });
 
   Services.obs.notifyObservers(null, "sitedatamanager:updating-sites");
   is(clearBtn.disabled, true, "Should disable clear button while updating sites");
   is(settingsButton.disabled, true, "Should disable settings button while updating sites");
-  actual = totalSiteDataSizeLabel.textContent;
-  expected = prefStrBundle.getString("loadingSiteDataSize1");
-  is(actual, expected, "Should show the loading message while updating");
+  Assert.deepEqual(doc.l10n.getAttributes(totalSiteDataSizeLabel), {
+    id: "sitedata-total-size-calculating",
+    args: null
+  }, "Should show the loading message while updating");
 
   Services.obs.notifyObservers(null, "sitedatamanager:sites-updated");
   is(clearBtn.disabled, false, "Should enable clear button after sites updated");
@@ -89,10 +88,11 @@ add_task(async function() {
   cacheSize = await SiteDataManager.getCacheSize();
   await SiteDataManager.getTotalUsage()
                        .then(usage => {
-                         actual = totalSiteDataSizeLabel.textContent;
-                         expected = prefStrBundle.getFormattedString(
-                           "totalSiteDataSize2", DownloadUtils.convertByteUnits(usage + cacheSize));
-                          is(actual, expected, "Should show the right total site data size");
+                         let [value, unit] = DownloadUtils.convertByteUnits(usage + cacheSize);
+                         Assert.deepEqual(doc.l10n.getAttributes(totalSiteDataSizeLabel), {
+                           id: "sitedata-total-size",
+                           args: {value, unit}
+                         }, "Should show the right total site data size");
                        });
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
@@ -156,19 +156,23 @@ add_task(async function() {
   let cookie1 = cookiesEnum1.getNext().QueryInterface(Ci.nsICookie2);
   let cookie2 = cookiesEnum2.getNext().QueryInterface(Ci.nsICookie2);
 
-  let formatter = new Services.intl.DateTimeFormat(undefined, {
+  let fullFormatter = new Services.intl.DateTimeFormat(undefined, {
     dateStyle: "short", timeStyle: "short",
   });
-
-  let creationDate1 = formatter.format(new Date(cookie1.lastAccessed / 1000));
-  let creationDate2 = formatter.format(new Date(cookie2.lastAccessed / 1000));
 
   await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
 
   // Open the site data manager and remove one site.
   await openSiteDataSettingsDialog();
+  let creationDate1 = new Date(cookie1.lastAccessed / 1000);
+  let creationDate1Formatted = fullFormatter.format(creationDate1);
+  let creationDate2 = new Date(cookie2.lastAccessed / 1000);
+  let creationDate2Formatted = fullFormatter.format(creationDate2);
   let removeDialogOpenPromise = BrowserTestUtils.promiseAlertDialogOpen("accept", REMOVE_DIALOG_URL);
-  await ContentTask.spawn(gBrowser.selectedBrowser, {creationDate1, creationDate2}, function(args) {
+  await ContentTask.spawn(gBrowser.selectedBrowser, {
+    creationDate1Formatted,
+    creationDate2Formatted,
+  }, function(args) {
     let frameDoc = content.gSubDialog._topDialog._frame.contentDocument;
 
     let siteItems = frameDoc.getElementsByTagName("richlistitem");
@@ -178,16 +182,20 @@ add_task(async function() {
     let site2 = sitesList.querySelector(`richlistitem[host="example.org"]`);
 
     let columns = site1.querySelectorAll(".item-box > label");
+    let boxes = site1.querySelectorAll(".item-box");
     is(columns[0].value, "example.com", "Should show the correct host.");
     is(columns[1].value, "2", "Should show the correct number of cookies.");
-    todo(columns[2].value == "", "Should show no site data.");
-    is(columns[3].value, args.creationDate1, "Should show the correct date.");
+    is(columns[2].value, "", "Should show no site data.");
+    is(/(now|second)/.test(columns[3].value), true, "Should show the relative date.");
+    is(boxes[3].getAttribute("tooltiptext"), args.creationDate1Formatted, "Should show the correct date.");
 
     columns = site2.querySelectorAll(".item-box > label");
+    boxes = site2.querySelectorAll(".item-box");
     is(columns[0].value, "example.org", "Should show the correct host.");
     is(columns[1].value, "1", "Should show the correct number of cookies.");
-    todo(columns[2].value == "", "Should show no site data.");
-    is(columns[3].value, args.creationDate2, "Should show the correct date.");
+    is(columns[2].value, "", "Should show no site data.");
+    is(/(now|second)/.test(columns[3].value), true, "Should show the relative date.");
+    is(boxes[3].getAttribute("tooltiptext"), args.creationDate2Formatted, "Should show the correct date.");
 
     let removeBtn = frameDoc.getElementById("removeSelected");
     let saveBtn = frameDoc.getElementById("save");
@@ -203,7 +211,7 @@ add_task(async function() {
   // Open the site data manager and remove another site.
   await openSiteDataSettingsDialog();
   let acceptRemovePromise = BrowserTestUtils.promiseAlertDialogOpen("accept");
-  await ContentTask.spawn(gBrowser.selectedBrowser, {creationDate1}, function(args) {
+  await ContentTask.spawn(gBrowser.selectedBrowser, {creationDate1Formatted}, function(args) {
     let frameDoc = content.gSubDialog._topDialog._frame.contentDocument;
 
     let siteItems = frameDoc.getElementsByTagName("richlistitem");
@@ -212,10 +220,12 @@ add_task(async function() {
     let site1 = sitesList.querySelector(`richlistitem[host="example.com"]`);
 
     let columns = site1.querySelectorAll(".item-box > label");
+    let boxes = site1.querySelectorAll(".item-box");
     is(columns[0].value, "example.com", "Should show the correct host.");
     is(columns[1].value, "2", "Should show the correct number of cookies.");
-    todo(columns[2].value == "", "Should show no site data.");
-    is(columns[3].value, args.creationDate1, "Should show the correct date.");
+    is(columns[2].value, "", "Should show no site data.");
+    is(/(now|second)/.test(columns[3].value), true, "Should show the relative date.");
+    is(boxes[3].getAttribute("tooltiptext"), args.creationDate1Formatted, "Should show the correct date.");
 
     let removeBtn = frameDoc.getElementById("removeSelected");
     let saveBtn = frameDoc.getElementById("save");

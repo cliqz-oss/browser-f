@@ -8,7 +8,7 @@
 
 #include "nsDOMCSSDeclaration.h"
 
-#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/DeclarationBlock.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/css/Rule.h"
 #include "mozilla/dom/CSS2PropertiesBinding.h"
@@ -38,8 +38,8 @@ nsresult
 nsDOMCSSDeclaration::GetPropertyValue(const nsCSSPropertyID aPropID,
                                       nsAString& aValue)
 {
-  NS_PRECONDITION(aPropID != eCSSProperty_UNKNOWN,
-                  "Should never pass eCSSProperty_UNKNOWN around");
+  MOZ_ASSERT(aPropID != eCSSProperty_UNKNOWN,
+             "Should never pass eCSSProperty_UNKNOWN around");
 
   aValue.Truncate();
   if (DeclarationBlock* decl = GetCSSDeclaration(eOperation_Read)) {
@@ -116,18 +116,18 @@ nsDOMCSSDeclaration::SetCssText(const nsAString& aCssText,
   // need to start the update now so that the old rule doesn't get used
   // between when we mutate the declaration and when we set the new
   // rule (see stack in bug 209575).
-  mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
+  mozAutoDocUpdate autoUpdate(DocToUpdate(), true);
 
-  ServoCSSParsingEnvironment servoEnv =
-    GetServoCSSParsingEnvironment(aSubjectPrincipal);
+  ParsingEnvironment servoEnv =
+    GetParsingEnvironment(aSubjectPrincipal);
   if (!servoEnv.mUrlExtraData) {
     aRv.Throw(NS_ERROR_NOT_AVAILABLE);
     return;
   }
 
   RefPtr<DeclarationBlock> newdecl =
-    ServoDeclarationBlock::FromCssText(aCssText, servoEnv.mUrlExtraData,
-                                       servoEnv.mCompatMode, servoEnv.mLoader);
+    DeclarationBlock::FromCssText(aCssText, servoEnv.mUrlExtraData,
+                                  servoEnv.mCompatMode, servoEnv.mLoader);
 
   aRv = SetCSSDeclaration(newdecl);
 }
@@ -142,14 +142,6 @@ nsDOMCSSDeclaration::Length()
   }
 
   return 0;
-}
-
-already_AddRefed<dom::CSSValue>
-nsDOMCSSDeclaration::GetPropertyCSSValue(const nsAString& aPropertyName, ErrorResult& aRv)
-{
-  // We don't support CSSValue yet so we'll just return null...
-
-  return nullptr;
 }
 
 void
@@ -228,15 +220,15 @@ nsDOMCSSDeclaration::RemoveProperty(const nsAString& aPropertyName,
   return RemovePropertyInternal(aPropertyName);
 }
 
-/* static */ nsDOMCSSDeclaration::ServoCSSParsingEnvironment
-nsDOMCSSDeclaration::GetServoCSSParsingEnvironmentForRule(const css::Rule* aRule)
+/* static */ nsDOMCSSDeclaration::ParsingEnvironment
+nsDOMCSSDeclaration::GetParsingEnvironmentForRule(const css::Rule* aRule)
 {
   StyleSheet* sheet = aRule ? aRule->GetStyleSheet() : nullptr;
   if (!sheet) {
     return { nullptr, eCompatibility_FullStandards, nullptr };
   }
 
-  if (nsIDocument* document = aRule->GetDocument()) {
+  if (nsIDocument* document = sheet->GetAssociatedDocument()) {
     return {
       sheet->URLData(),
       document->GetCompatibilityMode(),
@@ -266,17 +258,17 @@ nsDOMCSSDeclaration::ModifyDeclaration(nsIPrincipal* aSubjectPrincipal,
   // need to start the update now so that the old rule doesn't get used
   // between when we mutate the declaration and when we set the new
   // rule (see stack in bug 209575).
-  mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
+  mozAutoDocUpdate autoUpdate(DocToUpdate(), true);
   RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
 
   bool changed;
-  ServoCSSParsingEnvironment servoEnv =
-    GetServoCSSParsingEnvironment(aSubjectPrincipal);
+  ParsingEnvironment servoEnv =
+    GetParsingEnvironment(aSubjectPrincipal);
   if (!servoEnv.mUrlExtraData) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  changed = aFunc(decl->AsServo(), servoEnv);
+  changed = aFunc(decl, servoEnv);
 
   if (!changed) {
     // Parsing failed -- but we don't throw an exception for that.
@@ -294,11 +286,11 @@ nsDOMCSSDeclaration::ParsePropertyValue(const nsCSSPropertyID aPropID,
 {
   return ModifyDeclaration(
     aSubjectPrincipal,
-    [&](ServoDeclarationBlock* decl, ServoCSSParsingEnvironment& env) {
+    [&](DeclarationBlock* decl, ParsingEnvironment& env) {
       NS_ConvertUTF16toUTF8 value(aPropValue);
       return Servo_DeclarationBlock_SetPropertyById(
         decl->Raw(), aPropID, &value, aIsImportant, env.mUrlExtraData,
-        ParsingMode::Default, env.mCompatMode, env.mLoader);
+        ParsingMode::Default, env.mCompatMode, env.mLoader, /* aClosure = */ { });
     });
 }
 
@@ -311,12 +303,12 @@ nsDOMCSSDeclaration::ParseCustomPropertyValue(const nsAString& aPropertyName,
   MOZ_ASSERT(nsCSSProps::IsCustomPropertyName(aPropertyName));
   return ModifyDeclaration(
     aSubjectPrincipal,
-    [&](ServoDeclarationBlock* decl, ServoCSSParsingEnvironment& env) {
+    [&](DeclarationBlock* decl, ParsingEnvironment& env) {
       NS_ConvertUTF16toUTF8 property(aPropertyName);
       NS_ConvertUTF16toUTF8 value(aPropValue);
       return Servo_DeclarationBlock_SetProperty(
         decl->Raw(), &property, &value, aIsImportant, env.mUrlExtraData,
-        ParsingMode::Default, env.mCompatMode, env.mLoader);
+        ParsingMode::Default, env.mCompatMode, env.mLoader, /* aClosure = */ { });
     });
 }
 
@@ -333,7 +325,7 @@ nsDOMCSSDeclaration::RemovePropertyInternal(nsCSSPropertyID aPropID)
   // need to start the update now so that the old rule doesn't get used
   // between when we mutate the declaration and when we set the new
   // rule (see stack in bug 209575).
-  mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
+  mozAutoDocUpdate autoUpdate(DocToUpdate(), true);
 
   RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
   if (!decl->RemovePropertyByID(aPropID)) {
@@ -355,7 +347,7 @@ nsDOMCSSDeclaration::RemovePropertyInternal(const nsAString& aPropertyName)
   // need to start the update now so that the old rule doesn't get used
   // between when we mutate the declaration and when we set the new
   // rule (see stack in bug 209575).
-  mozAutoDocConditionalContentUpdateBatch autoUpdate(DocToUpdate(), true);
+  mozAutoDocUpdate autoUpdate(DocToUpdate(), true);
 
   RefPtr<DeclarationBlock> decl = olddecl->EnsureMutable();
   if (!decl->RemoveProperty(aPropertyName)) {

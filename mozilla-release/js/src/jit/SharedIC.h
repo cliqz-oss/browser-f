@@ -14,8 +14,8 @@
 #include "jit/MacroAssembler.h"
 #include "jit/SharedICList.h"
 #include "jit/SharedICRegisters.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 #include "vm/ReceiverGuard.h"
 #include "vm/TypedArrayObject.h"
 
@@ -536,7 +536,7 @@ class ICStub
     static T* New(JSContext* cx, ICStubSpace* space, JitCode* code, Args&&... args) {
         if (!code)
             return nullptr;
-        T* result = space->allocate<T>(code, mozilla::Forward<Args>(args)...);
+        T* result = space->allocate<T>(code, std::forward<Args>(args)...);
         if (!result)
             ReportOutOfMemory(cx);
         return result;
@@ -1130,7 +1130,7 @@ class ICStubCompiler
   protected:
     template <typename T, typename... Args>
     T* newStub(Args&&... args) {
-        return ICStub::New<T>(cx, mozilla::Forward<Args>(args)...);
+        return ICStub::New<T>(cx, std::forward<Args>(args)...);
     }
 
   public:
@@ -2308,11 +2308,11 @@ ScalarTypeFromSimpleTypeDescrKey(uint32_t key)
     return ScalarTypeDescr::Type(key >> 1);
 }
 
-inline ReferenceTypeDescr::Type
+inline ReferenceType
 ReferenceTypeFromSimpleTypeDescrKey(uint32_t key)
 {
     MOZ_ASSERT(!SimpleTypeDescrKeyIsScalar(key));
-    return ReferenceTypeDescr::Type(key >> 1);
+    return ReferenceType(key >> 1);
 }
 
 // JSOP_NEWARRAY

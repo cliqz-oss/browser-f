@@ -234,6 +234,8 @@ GetPropIRGenerator::tryAttachStub()
                 return true;
             if (tryAttachDenseElementHole(obj, objId, index, indexId))
                 return true;
+            if (tryAttachUnboxedElementHole(obj, objId, index, indexId))
+                return true;
             if (tryAttachArgumentsObjectArg(obj, objId, indexId))
                 return true;
 
@@ -476,7 +478,7 @@ IsCacheableNoProperty(JSContext* cx, JSObject* obj, JSObject* holder, Shape* sha
     // If we're doing a name lookup, we have to throw a ReferenceError. If
     // extra warnings are enabled, we may have to report a warning.
     // Note that Ion does not generate idempotent caches for JSOP_GETBOUNDNAME.
-    if ((pc && *pc == JSOP_GETBOUNDNAME) || cx->compartment()->behaviors().extraWarnings(cx))
+    if ((pc && *pc == JSOP_GETBOUNDNAME) || cx->realm()->behaviors().extraWarnings(cx))
         return false;
 
     return CheckHasNoSuchProperty(cx, obj, id);
@@ -770,12 +772,17 @@ ShapeGuardProtoChain(CacheIRWriter& writer, JSObject* obj, ObjOperandId objId)
         bool guardProto = obj->hasUncacheableProto();
 
         obj = obj->staticPrototype();
-        if (!obj)
+        if (!obj && !guardProto)
             return;
 
         objId = writer.loadProto(objId);
+
         if (guardProto)
             writer.guardSpecificObject(objId, obj);
+
+        if (!obj)
+            return;
+
         writer.guardShape(objId, obj->as<NativeObject>().shape());
     }
 }
@@ -1104,7 +1111,7 @@ GetPropIRGenerator::tryAttachCrossCompartmentWrapper(HandleObject obj, ObjOperan
     // Take the unwrapped object's global, and wrap in a
     // this-compartment wrapper. This is what will be stored in the IC
     // keep the compartment alive.
-    RootedObject wrappedTargetGlobal(cx_, &unwrapped->global());
+    RootedObject wrappedTargetGlobal(cx_, &unwrapped->deprecatedGlobal());
     if (!cx_->compartment()->wrap(cx_, &wrappedTargetGlobal))
         return false;
 
@@ -1112,16 +1119,16 @@ GetPropIRGenerator::tryAttachCrossCompartmentWrapper(HandleObject obj, ObjOperan
     RootedShape shape(cx_);
     RootedNativeObject holder(cx_);
 
-    // Enter compartment of target since some checks have side-effects
+    // Enter realm of target since some checks have side-effects
     // such as de-lazifying type info.
     {
-        AutoCompartment ac(cx_, unwrapped);
+        AutoRealm ar(cx_, unwrapped);
 
         // The first CCW for iframes is almost always wrapping another WindowProxy
         // so we optimize for that case as well.
         isWindowProxy = IsWindowProxy(unwrapped);
         if (isWindowProxy) {
-            MOZ_ASSERT(ToWindowIfWindowProxy(unwrapped) == unwrapped->compartment()->maybeGlobal());
+            MOZ_ASSERT(ToWindowIfWindowProxy(unwrapped) == &unwrapped->nonCCWGlobal());
             unwrapped = cx_->global();
             MOZ_ASSERT(unwrapped);
         }
@@ -1602,7 +1609,7 @@ GetPropIRGenerator::tryAttachTypedObject(HandleObject obj, ObjOperandId objId, H
     if (!obj->is<TypedObject>())
         return false;
 
-    if (!cx_->runtime()->jitSupportsFloatingPoint || cx_->compartment()->detachedTypedObjects)
+    if (!cx_->runtime()->jitSupportsFloatingPoint || cx_->zone()->detachedTypedObjects)
         return false;
 
     TypedObject* typedObj = &obj->as<TypedObject>();
@@ -1634,8 +1641,8 @@ GetPropIRGenerator::tryAttachTypedObject(HandleObject obj, ObjOperandId objId, H
         Scalar::Type type = ScalarTypeFromSimpleTypeDescrKey(typeDescr);
         monitorLoad = type == Scalar::Uint32;
     } else {
-        ReferenceTypeDescr::Type type = ReferenceTypeFromSimpleTypeDescrKey(typeDescr);
-        monitorLoad = type != ReferenceTypeDescr::TYPE_STRING;
+        ReferenceType type = ReferenceTypeFromSimpleTypeDescrKey(typeDescr);
+        monitorLoad = type != ReferenceType::TYPE_STRING;
     }
 
     if (monitorLoad)
@@ -2068,7 +2075,7 @@ GetPropIRGenerator::tryAttachTypedElement(HandleObject obj, ObjOperandId objId,
 
     // Don't attach typed object stubs if the underlying storage could be
     // detached, as the stub will always bail out.
-    if (IsPrimitiveArrayTypedObject(obj) && cx_->compartment()->detachedTypedObjects)
+    if (IsPrimitiveArrayTypedObject(obj) && cx_->zone()->detachedTypedObjects)
         return false;
 
     TypedThingLayout layout = GetTypedThingLayout(obj->getClass());
@@ -2090,6 +2097,46 @@ GetPropIRGenerator::tryAttachTypedElement(HandleObject obj, ObjOperandId objId,
         writer.returnFromIC();
 
     trackAttached("TypedElement");
+    return true;
+}
+
+bool
+GetPropIRGenerator::tryAttachUnboxedElementHole(HandleObject obj, ObjOperandId objId,
+                                                uint32_t index, Int32OperandId indexId)
+{
+    if (!obj->is<UnboxedPlainObject>())
+        return false;
+
+    // Only support unboxed objects with no elements (i.e. no expando)
+    UnboxedExpandoObject* expando = obj->as<UnboxedPlainObject>().maybeExpando();
+    if (expando)
+        return false;
+
+    if (JSObject* proto = obj->staticPrototype()) {
+        // Start the check at the first object on the [[Prototype]],
+        // which must be native now.
+        if (!proto->isNative())
+            return false;
+
+        if (proto->as<NativeObject>().getDenseInitializedLength() != 0)
+            return false;
+
+        if (!CanAttachDenseElementHole(&proto->as<NativeObject>(), false))
+            return false;
+    }
+
+    // Guard on the group and prevent expandos from appearing.
+    Maybe<ObjOperandId> tempId;
+    TestMatchingReceiver(writer, obj, objId, &tempId);
+
+    // Guard that the prototype chain has no elements.
+    GeneratePrototypeHoleGuards(writer, obj, objId);
+
+    writer.loadUndefinedResult();
+    // No monitor: We know undefined must be in the typeset already.
+    writer.returnFromIC();
+
+    trackAttached("UnboxedElementHole");
     return true;
 }
 
@@ -3254,7 +3301,7 @@ SetPropIRGenerator::tryAttachTypedObjectProperty(HandleObject obj, ObjOperandId 
     if (!obj->is<TypedObject>())
         return false;
 
-    if (!cx_->runtime()->jitSupportsFloatingPoint || cx_->compartment()->detachedTypedObjects)
+    if (!cx_->runtime()->jitSupportsFloatingPoint || cx_->zone()->detachedTypedObjects)
         return false;
 
     if (!obj->as<TypedObject>().typeDescr().is<StructTypeDescr>())
@@ -3290,14 +3337,14 @@ SetPropIRGenerator::tryAttachTypedObjectProperty(HandleObject obj, ObjOperandId 
 
     // For reference types, guard on the RHS type first, so that
     // StoreTypedObjectReferenceProperty is infallible.
-    ReferenceTypeDescr::Type type = fieldDescr->as<ReferenceTypeDescr>().type();
+    ReferenceType type = fieldDescr->as<ReferenceTypeDescr>().type();
     switch (type) {
-      case ReferenceTypeDescr::TYPE_ANY:
+      case ReferenceType::TYPE_ANY:
         break;
-      case ReferenceTypeDescr::TYPE_OBJECT:
+      case ReferenceType::TYPE_OBJECT:
         writer.guardIsObjectOrNull(rhsId);
         break;
-      case ReferenceTypeDescr::TYPE_STRING:
+      case ReferenceType::TYPE_STRING:
         writer.guardType(rhsId, JSVAL_TYPE_STRING);
         break;
     }
@@ -3496,6 +3543,13 @@ SetPropIRGenerator::tryAttachSetDenseElement(HandleObject obj, ObjOperandId objI
     if (!nobj->containsDenseElement(index) || nobj->getElementsHeader()->isFrozen())
         return false;
 
+    // Don't optimize INITELEM (DefineProperty) on non-extensible objects: when
+    // the elements are sealed, we have to throw an exception. Note that we have
+    // to check !isExtensible instead of denseElementsAreSealed because sealing
+    // a (non-extensible) object does not necessarily trigger a Shape change.
+    if (IsPropertyInitOp(JSOp(*pc_)) && !nobj->isExtensible())
+        return false;
+
     if (typeCheckInfo_.needsTypeBarrier())
         writer.guardGroupForTypeBarrier(objId, nobj->group());
     TestMatchingNativeReceiver(writer, nobj, objId);
@@ -3511,13 +3565,13 @@ SetPropIRGenerator::tryAttachSetDenseElement(HandleObject obj, ObjOperandId objI
 }
 
 static bool
-CanAttachAddElement(JSObject* obj, bool isInit)
+CanAttachAddElement(NativeObject* obj, bool isInit)
 {
     // Make sure the objects on the prototype don't have any indexed properties
     // or that such properties can't appear without a shape change.
     do {
         // The first two checks are also relevant to the receiver object.
-        if (obj->isNative() && obj->as<NativeObject>().isIndexed())
+        if (obj->isIndexed())
             return false;
 
         const Class* clasp = obj->getClass();
@@ -3542,10 +3596,21 @@ CanAttachAddElement(JSObject* obj, bool isInit)
         if (!proto->isNative())
             return false;
 
-        if (proto->as<NativeObject>().denseElementsAreFrozen())
+        // We have to make sure the proto has no non-writable (frozen) elements
+        // because we're not allowed to shadow them. There are a few cases to
+        // consider:
+        //
+        // * If the proto is extensible, its Shape will change when it's made
+        //   non-extensible.
+        //
+        // * If the proto is already non-extensible, no new elements will be
+        //   added, so if there are no elements now it doesn't matter if the
+        //   object is frozen later on.
+        NativeObject* nproto = &proto->as<NativeObject>();
+        if (!nproto->isExtensible() && nproto->getDenseInitializedLength() > 0)
             return false;
 
-        obj = proto;
+        obj = nproto;
     } while (true);
 
     return true;
@@ -3566,7 +3631,7 @@ SetPropIRGenerator::tryAttachSetDenseElementHole(HandleObject obj, ObjOperandId 
         return false;
 
     NativeObject* nobj = &obj->as<NativeObject>();
-    if (!nobj->nonProxyIsExtensible())
+    if (!nobj->isExtensible())
         return false;
 
     MOZ_ASSERT(!nobj->getElementsHeader()->isFrozen(),
@@ -3637,9 +3702,8 @@ SetPropIRGenerator::tryAttachSetTypedElement(HandleObject obj, ObjOperandId objI
             return false;
 
         // Don't attach stubs if the underlying storage for typed objects
-        // in the compartment could be detached, as the stub will always
-        // bail out.
-        if (cx_->compartment()->detachedTypedObjects)
+        // in the zone could be detached, as the stub will always bail out.
+        if (cx_->zone()->detachedTypedObjects)
             return false;
     }
 
@@ -4320,7 +4384,7 @@ GetIteratorIRGenerator::tryAttachNativeIterator(ObjOperandId objId, HandleObject
     GeneratePrototypeHoleGuards(writer, obj, objId);
 
     ObjOperandId iterId =
-        writer.guardAndGetIterator(objId, iterobj, &cx_->compartment()->enumerators);
+        writer.guardAndGetIterator(objId, iterobj, &ObjectRealm::get(obj).enumerators);
     writer.loadObjectResult(iterId);
     writer.returnFromIC();
 
@@ -4354,7 +4418,7 @@ CallIRGenerator::tryAttachStringSplit()
         return false;
 
     // Get the object group to use for this location.
-    RootedObjectGroup group(cx_, ObjectGroupCompartment::getStringSplitStringGroup(cx_));
+    RootedObjectGroup group(cx_, ObjectGroupRealm::getStringSplitStringGroup(cx_));
     if (!group)
         return false;
 
@@ -4416,7 +4480,7 @@ CallIRGenerator::tryAttachArrayPush()
         return false;
 
     // Check for other indexed properties or class hooks.
-    if (!CanAttachAddElement(thisobj, /* isInit = */ false))
+    if (!CanAttachAddElement(thisarray, /* isInit = */ false))
         return false;
 
     // Can't add new elements to arrays with non-writable length.
@@ -4424,7 +4488,7 @@ CallIRGenerator::tryAttachArrayPush()
         return false;
 
     // Check that array is extensible.
-    if (!thisarray->nonProxyIsExtensible())
+    if (!thisarray->isExtensible())
         return false;
 
     MOZ_ASSERT(!thisarray->getElementsHeader()->isFrozen(),
@@ -4624,7 +4688,7 @@ jit::NewWrapperWithObjectShape(JSContext* cx, HandleNativeObject obj)
 
     RootedObject wrapper(cx);
     {
-        AutoCompartment ac(cx, obj);
+        AutoRealm ar(cx, obj);
         wrapper = NewObjectWithClassProto(cx, &shapeContainerClass, nullptr);
         if (!obj)
             return nullptr;

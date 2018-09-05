@@ -142,9 +142,9 @@ AccessibilityPanel.prototype = {
 
   updateA11YServiceDurationTimer() {
     if (this.front.enabled) {
-      this._telemetry.startTimer(A11Y_SERVICE_DURATION);
+      this._telemetry.start(A11Y_SERVICE_DURATION, this, true);
     } else {
-      this._telemetry.stopTimer(A11Y_SERVICE_DURATION);
+      this._telemetry.finish(A11Y_SERVICE_DURATION, this, true);
     }
   },
 
@@ -154,7 +154,7 @@ AccessibilityPanel.prototype = {
 
   selectAccessibleForNode(nodeFront, reason) {
     if (reason) {
-      this._telemetry.logKeyedScalar(
+      this._telemetry.keyedScalarAdd(
         "devtools.accessibility.select_accessible_for_node", reason, 1);
     }
 
@@ -224,8 +224,6 @@ AccessibilityPanel.prototype = {
     this._destroying = new Promise(resolve => {
       resolver = resolve;
     });
-
-    this._telemetry.destroy();
 
     this.target.off("navigate", this.onTabNavigated);
     this._toolbox.off("select", this.onPanelVisibilityChange);

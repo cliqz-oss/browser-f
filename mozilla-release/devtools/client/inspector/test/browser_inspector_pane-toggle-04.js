@@ -8,13 +8,14 @@
 // bottom-right panels of equal sizes in the SIDE host.
 
 add_task(async function() {
-  await pushPref("devtools.inspector.three-pane-toggle", true);
+  info("Switch to 2 pane inspector to test the 3 pane toggle button behavior");
+  await pushPref("devtools.inspector.three-pane-enabled", false);
 
   const { inspector, toolbox } = await openInspectorForURL("about:blank");
   const { panelDoc: doc } = inspector;
 
-  info("Switch the host to side type");
-  await toolbox.switchHost("side");
+  info("Switch the host to the right");
+  await toolbox.switchHost("right");
 
   const button = doc.querySelector(".sidebar-toggle");
   const toolboxWidth = doc.getElementById("inspector-splitter-box").clientWidth;
@@ -25,7 +26,7 @@ add_task(async function() {
   await onRuleViewAdded;
 
   info("Checking the sizes of the 3 pane inspector");
-  let sidebarSplitBoxWidth = inspector.sidebarSplitBox.state.width;
+  const sidebarSplitBoxWidth = inspector.sidebarSplitBox.state.width;
   is(sidebarSplitBoxWidth, toolboxWidth / 2, "Got correct sidebar split box width");
 
   info("Click on the toggle button to toggle OFF the 3 pane inspector");
@@ -34,6 +35,6 @@ add_task(async function() {
   await onRuleViewAdded;
 
   info("Checking the sidebar size of the 2 pane inspector");
-  let sidebarWidth = inspector.splitBox.state.width;
+  const sidebarWidth = inspector.splitBox.state.width;
   is(sidebarWidth, toolboxWidth, "Got correct sidebar width");
 });

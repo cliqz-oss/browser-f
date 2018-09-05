@@ -14,16 +14,14 @@
 
 "use strict";
 
-const Services = require("Services");
-const { gDevTools } = require("devtools/client/framework/devtools");
+loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
 
 /**
  * Opens given request in a new tab.
  */
 function openRequestInTab(url, requestPostData) {
-  let win = Services.wm.getMostRecentWindow(gDevTools.chromeWindowType);
   if (!requestPostData) {
-    win.openWebLinkIn(url, "tab", {relatedToCurrent: true});
+    openContentLink(url, {relatedToCurrent: true});
   } else {
     openPostRequestInTabHelper({
       url,
@@ -33,14 +31,14 @@ function openRequestInTab(url, requestPostData) {
 }
 
 function openPostRequestInTabHelper({url, data}) {
-  let form = document.createElement("form");
+  const form = document.createElement("form");
   form.target = "_blank";
   form.action = url;
   form.method = "post";
 
   if (data) {
-    for (let key in data) {
-      let input = document.createElement("input");
+    for (const key in data) {
+      const input = document.createElement("input");
       input.name = key;
       input.value = data[key];
       form.appendChild(input);

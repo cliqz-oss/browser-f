@@ -12,6 +12,10 @@ import urlparse
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.util.schema import resolve_keyed_by
 from taskgraph.util.scriptworker import get_release_config
+from taskgraph.transforms.task import (
+    get_branch_repo,
+    get_branch_rev,
+)
 
 transforms = TransformSequence()
 
@@ -51,8 +55,9 @@ def add_command(config, tasks):
         "updater-platform",
     ]
 
+    release_config = get_release_config(config)
+
     for task in tasks:
-        release_config = get_release_config(config)
         task["description"] = "generate update verify config for {}".format(
             task["attributes"]["build_platform"]
         )
@@ -64,16 +69,17 @@ def add_command(config, tasks):
             "--product", task["extra"]["product"],
             "--stage-product", task["shipping-product"],
             "--app-name", task["extra"]["app-name"],
+            "--branch-prefix", task["extra"]["branch-prefix"],
             "--platform", task["extra"]["platform"],
             "--to-version", release_config["version"],
             "--to-app-version", release_config["appVersion"],
             "--to-build-number", str(release_config["build_number"]),
             "--to-buildid", config.params["moz_build_date"],
-            "--to-revision", config.params["head_rev"],
+            "--to-revision", get_branch_rev(config),
             "--output-file", "update-verify.cfg",
         ]
 
-        repo_path = urlparse.urlsplit(config.params["head_repository"]).path.lstrip("/")
+        repo_path = urlparse.urlsplit(get_branch_repo(config)).path.lstrip("/")
         command.extend(["--repo-path", repo_path])
 
         if release_config.get("partial_versions"):
@@ -87,9 +93,12 @@ def add_command(config, tasks):
 
         for arg in keyed_by_args:
             thing = "extra.{}".format(arg)
-            extra = config.params.copy()
-            extra["build-platform"] = task["attributes"]["build_platform"]
-            resolve_keyed_by(task, thing, thing, **extra)
+            resolve_keyed_by(
+                task, thing,
+                item_name=task['name'],
+                project=config.params['project'],
+                platform=task['attributes']['build_platform'],
+            )
             # ignore things that resolved to null
             if not task["extra"].get(arg):
                 continue

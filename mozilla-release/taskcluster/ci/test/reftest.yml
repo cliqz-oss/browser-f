@@ -1,13 +1,19 @@
 job-defaults:
+    target:
+        by-test-platform:
+            android-em-7.0-x86/opt: geckoview-androidTest.apk
+            default: null
     mozharness:
-        no-read-buildbot-config: true
         script:
             by-test-platform:
-                android.*: android_emulator_unittest.py
+                android-em.*: android_emulator_unittest.py
                 default: desktop_unittest.py
         config:
             by-test-platform:
-                android.*:
+                android-em-7.0-x86/opt:
+                    - android/android_common.py
+                    - android/androidx86_7_0.py
+                android-em.*:
                     - android/android_common.py
                     - android/androidarm_4_3.py
                 linux.*:
@@ -22,13 +28,10 @@ crashtest:
     description: "Crashtest run"
     suite: reftest/crashtest
     treeherder-symbol: R(C)
-    run-on-projects:
-        by-test-platform:
-            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
-            default: built-projects
+    run-on-projects: built-projects
     instance-size:
         by-test-platform:
-            android.*: xlarge
+            android-em.*: xlarge
             default: default
     virtualization:
         by-test-platform:
@@ -36,8 +39,9 @@ crashtest:
             default: virtual
     chunks:
         by-test-platform:
-            android-4.3-arm7-api-16/debug: 10
-            android.*: 4
+            android-em-4.3-arm7-api-16/debug: 10
+            android-em-7.0-x86/opt: 1
+            android-em.*: 4
             default: 1
     e10s:
         by-test-platform:
@@ -45,8 +49,7 @@ crashtest:
             default: true
     tier:
         by-test-platform:
-            linux64-qr/.*: 1
-            windows10-64-asan.*: 3
+            .*-qr/.*: 1
             default: default
 
 jsreftest:
@@ -54,18 +57,16 @@ jsreftest:
     suite: reftest/jsreftest
     schedules-component: jsreftest  # scheduling for this reftest is different from the others..
     treeherder-symbol: R(J)
-    run-on-projects:
-        by-test-platform:
-            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
-            default: built-projects
+    run-on-projects: built-projects
     instance-size:
         by-test-platform:
-            android.*: xlarge
+            android-em.*: xlarge
             default: default
     chunks:
         by-test-platform:
-            android-4.3-arm7-api-16/debug: 100
-            android.*: 40
+            android-em-4.3-arm7-api-16/debug: 100
+            android-em-7.0-x86/opt: 3
+            android-em.*: 40
             windows.*: 2
             windows10-64-ccov/debug: 5
             linux64-ccov/.*: 5
@@ -75,26 +76,22 @@ jsreftest:
             default: 3
     max-run-time:
         by-test-platform:
-            android.*: 7200
+            android-em.*: 7200
             windows10-64-ccov/debug: 7200
             default: 3600
     tier:
         by-test-platform:
             linux64-qr/.*: 1
-            windows10-64-asan.*: 3
             default: default
 
 reftest:
     description: "Reftest run"
     suite: reftest/reftest
     treeherder-symbol: R(R)
-    run-on-projects:
-        by-test-platform:
-            .*-qr/.*: ['trunk', 'try']  # exclude beta and project branches
-            default: built-projects
+    run-on-projects: built-projects
     instance-size:
         by-test-platform:
-            android.*: xlarge
+            android-em.*: xlarge
             default: default
     virtualization:
         by-test-platform:
@@ -102,9 +99,10 @@ reftest:
             default: virtual-with-gpu
     chunks:
         by-test-platform:
-            android-4.3-arm7-api-16/debug: 56
-            android.*: 28
-            macosx64.*/opt: 1
+            android-em-4.3-arm7-api-16/debug: 56
+            android-em-7.0-x86/opt: 5
+            android-em.*: 28
+            macosx64.*/opt: 2
             macosx64.*/debug: 3
             windows.*/opt: 2
             windows.*/debug: 4
@@ -116,20 +114,19 @@ reftest:
             default: true
     max-run-time:
         by-test-platform:
-            android.*: 7200
+            android-em.*: 7200
             windows10-64-ccov/debug: 5400
             default: 3600
     mozharness:
         chunked:
             by-test-platform:
-                android.*: false
+                android-em.*: false
                 macosx64/opt: false
                 windows10-64.*/opt: false
                 default: true
     tier:
         by-test-platform:
             linux64-qr/.*: 1
-            windows10-64-asan.*: 3
             default: default
 
 reftest-gpu:
@@ -171,7 +168,3 @@ reftest-no-accel:
                 windows10-64.*/opt: false
                 macosx.*: false
                 default: true
-    tier:
-        by-test-platform:
-            windows10-64-asan.*: 3
-            default: default

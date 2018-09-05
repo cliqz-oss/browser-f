@@ -315,7 +315,7 @@ CutOrDeleteCommand::DoCommand(const char* aCommandName,
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
   dom::Selection* selection = textEditor->GetSelection();
-  if (selection && selection->Collapsed()) {
+  if (selection && selection->IsCollapsed()) {
     nsresult rv =
       textEditor->DeleteSelectionAsAction(nsIEditor::eNext,
                                           nsIEditor::eStrip);
@@ -433,7 +433,7 @@ CopyOrDeleteCommand::DoCommand(const char* aCommandName,
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
   dom::Selection* selection = textEditor->GetSelection();
-  if (selection && selection->Collapsed()) {
+  if (selection && selection->IsCollapsed()) {
     nsresult rv =
       textEditor->DeleteSelectionAsAction(nsIEditor::eNextWord,
                                           nsIEditor::eStrip);
@@ -501,7 +501,7 @@ CopyAndCollapseToEndCommand::DoCommand(const char* aCommandName,
   }
   RefPtr<dom::Selection> selection = textEditor->GetSelection();
   if (selection) {
-    selection->CollapseToEnd();
+    selection->CollapseToEnd(IgnoreErrors());
   }
   return NS_OK;
 }
@@ -606,7 +606,8 @@ PasteTransferableCommand::IsCommandEnabled(const char* aCommandName,
   if (!textEditor->IsSelectionEditable()) {
     return NS_OK;
   }
-  return textEditor->CanPasteTransferable(nullptr, aIsEnabled);
+  *aIsEnabled = textEditor->CanPasteTransferable(nullptr);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -667,13 +668,8 @@ PasteTransferableCommand::GetCommandStateParams(const char* aCommandName,
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
 
-  bool canPaste;
-  nsresult rv = textEditor->CanPasteTransferable(trans, &canPaste);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  return aParams->SetBooleanValue(STATE_ENABLED, canPaste);
+  return aParams->SetBooleanValue(STATE_ENABLED,
+                                  textEditor->CanPasteTransferable(trans));
 }
 
 /******************************************************************************
@@ -709,7 +705,7 @@ SwitchTextDirectionCommand::DoCommand(const char* aCommandName,
   }
   TextEditor* textEditor = editor->AsTextEditor();
   MOZ_ASSERT(textEditor);
-  return textEditor->SwitchTextDirection();
+  return textEditor->ToggleTextDirection();
 }
 
 NS_IMETHODIMP

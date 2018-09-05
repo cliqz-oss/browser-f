@@ -279,7 +279,7 @@ private:
 class ItemIterator : public AccIterable
 {
 public:
-  explicit ItemIterator(Accessible* aItemContainer) :
+  explicit ItemIterator(const Accessible* aItemContainer) :
     mContainer(aItemContainer), mAnchor(nullptr) { }
   virtual ~ItemIterator() { }
 
@@ -290,7 +290,7 @@ private:
   ItemIterator(const ItemIterator&) = delete;
   ItemIterator& operator = (const ItemIterator&) = delete;
 
-  Accessible* mContainer;
+  const Accessible* mContainer;
   Accessible* mAnchor;
 };
 
@@ -301,7 +301,7 @@ private:
 class XULTreeItemIterator : public AccIterable
 {
 public:
-  XULTreeItemIterator(XULTreeAccessible* aXULTree, nsITreeView* aTreeView,
+  XULTreeItemIterator(const XULTreeAccessible* aXULTree, nsITreeView* aTreeView,
                       int32_t aRowIdx);
   virtual ~XULTreeItemIterator() { }
 
@@ -312,7 +312,7 @@ private:
   XULTreeItemIterator(const XULTreeItemIterator&) = delete;
   XULTreeItemIterator& operator = (const XULTreeItemIterator&) = delete;
 
-  XULTreeAccessible* mXULTree;
+  const XULTreeAccessible* mXULTree;
   nsITreeView* mTreeView;
   int32_t mRowCount;
   int32_t mContainerLevel;

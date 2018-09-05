@@ -18,7 +18,6 @@
 #include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "nsUnicharUtils.h"
-#include "mozilla/net/ReferrerPolicy.h"
 
 using namespace mozilla;
 
@@ -61,69 +60,11 @@ static const uint32_t kHashSourceValidFnsLen = 3;
 static const char* const kStyle    = "style";
 static const char* const kScript   = "script";
 
-/* ===== nsCSPTokenizer ==================== */
-
-nsCSPTokenizer::nsCSPTokenizer(const char16_t* aStart,
-                               const char16_t* aEnd)
-  : mCurChar(aStart)
-  , mEndChar(aEnd)
-{
-  CSPPARSERLOG(("nsCSPTokenizer::nsCSPTokenizer"));
-}
-
-nsCSPTokenizer::~nsCSPTokenizer()
-{
-  CSPPARSERLOG(("nsCSPTokenizer::~nsCSPTokenizer"));
-}
-
-void
-nsCSPTokenizer::generateNextToken()
-{
-  skipWhiteSpaceAndSemicolon();
-  while (!atEnd() &&
-         !nsContentUtils::IsHTMLWhitespace(*mCurChar) &&
-         *mCurChar != SEMICOLON) {
-    mCurToken.Append(*mCurChar++);
-  }
-  CSPPARSERLOG(("nsCSPTokenizer::generateNextToken: %s", NS_ConvertUTF16toUTF8(mCurToken).get()));
-}
-
-void
-nsCSPTokenizer::generateTokens(cspTokens& outTokens)
-{
-  CSPPARSERLOG(("nsCSPTokenizer::generateTokens"));
-
-  // dirAndSrcs holds one set of [ name, src, src, src, ... ]
-  nsTArray <nsString> dirAndSrcs;
-
-  while (!atEnd()) {
-    generateNextToken();
-    dirAndSrcs.AppendElement(mCurToken);
-    skipWhiteSpace();
-    if (atEnd() || accept(SEMICOLON)) {
-      outTokens.AppendElement(dirAndSrcs);
-      dirAndSrcs.Clear();
-    }
-  }
-}
-
-void
-nsCSPTokenizer::tokenizeCSPPolicy(const nsAString &aPolicyString,
-                                  cspTokens& outTokens)
-{
-  CSPPARSERLOG(("nsCSPTokenizer::tokenizeCSPPolicy"));
-
-  nsCSPTokenizer tokenizer(aPolicyString.BeginReading(),
-                           aPolicyString.EndReading());
-
-  tokenizer.generateTokens(outTokens);
-}
-
 /* ===== nsCSPParser ==================== */
 bool nsCSPParser::sCSPExperimentalEnabled = false;
 bool nsCSPParser::sStrictDynamicEnabled = false;
 
-nsCSPParser::nsCSPParser(cspTokens& aTokens,
+nsCSPParser::nsCSPParser(policyTokens& aTokens,
                          nsIURI* aSelfURI,
                          nsCSPContext* aCSPContext,
                          bool aDeliveredViaMetaTag)
@@ -873,43 +814,6 @@ nsCSPParser::sourceList(nsTArray<nsCSPBaseSrc*>& outSrcs)
 }
 
 void
-nsCSPParser::referrerDirectiveValue(nsCSPDirective* aDir)
-{
-  // directive-value   = "none" / "none-when-downgrade" / "origin" / "origin-when-cross-origin" / "unsafe-url"
-  // directive name is token 0, we need to examine the remaining tokens (and
-  // there should only be one token in the value).
-  CSPPARSERLOG(("nsCSPParser::referrerDirectiveValue"));
-
-  if (mCurDir.Length() != 2) {
-    CSPPARSERLOG(("Incorrect number of tokens in referrer directive, got %zu expected 1",
-                 mCurDir.Length() - 1));
-    delete aDir;
-    return;
-  }
-
-  if (!mozilla::net::IsValidReferrerPolicy(mCurDir[1])) {
-    CSPPARSERLOG(("invalid value for referrer directive: %s",
-                  NS_ConvertUTF16toUTF8(mCurDir[1]).get()));
-    delete aDir;
-    return;
-  }
-
-  //referrer-directive deprecation warning
-  const char16_t* params[] = { mCurDir[1].get() };
-  logWarningErrorToConsole(nsIScriptError::warningFlag, "deprecatedReferrerDirective",
-                             params, ArrayLength(params));
-
-  // the referrer policy is valid, so go ahead and use it.
-  nsWeakPtr ctx = mCSPContext->GetLoadingContext();
-  nsCOMPtr<nsIDocument> doc = do_QueryReferent(ctx);
-  if (doc) {
-    doc->SetHasReferrerPolicyCSP(true);
-  }
-  mPolicy->setReferrerPolicy(&mCurDir[1]);
-  mPolicy->addDirective(aDir);
-}
-
-void
 nsCSPParser::requireSRIForDirectiveValue(nsRequireSRIForDirective* aDir)
 {
   CSPPARSERLOG(("nsCSPParser::requireSRIForDirectiveValue"));
@@ -1217,13 +1121,6 @@ nsCSPParser::directive()
     return;
   }
 
-  // special case handling of the referrer directive (since it doesn't contain
-  // source lists)
-  if (cspDir->equals(nsIContentSecurityPolicy::REFERRER_DIRECTIVE)) {
-    referrerDirectiveValue(cspDir);
-    return;
-  }
-
   // special case handling for report-uri directive (since it doesn't contain
   // a valid source list but rather actual URIs)
   if (CSP_IsDirective(mCurDir[0], nsIContentSecurityPolicy::REPORT_URI_DIRECTIVE)) {
@@ -1370,7 +1267,7 @@ nsCSPParser::parseContentSecurityPolicy(const nsAString& aPolicyString,
   // are detected in the parser itself.
 
   nsTArray< nsTArray<nsString> > tokens;
-  nsCSPTokenizer::tokenizeCSPPolicy(aPolicyString, tokens);
+  PolicyTokenizer::tokenizePolicy(aPolicyString, tokens);
 
   nsCSPParser parser(tokens, aSelfURI, aCSPContext, aDeliveredViaMetaTag);
 

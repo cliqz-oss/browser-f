@@ -50,13 +50,13 @@ static const uint32_t kNumOpenVRHaptcs = 1;
 VRDisplayOpenVR::VRDisplayOpenVR(::vr::IVRSystem *aVRSystem,
                                  ::vr::IVRChaperone *aVRChaperone,
                                  ::vr::IVRCompositor *aVRCompositor)
-  : VRDisplayHost(VRDeviceType::OpenVR)
+  : VRDisplayLocal(VRDeviceType::OpenVR)
   , mVRSystem(aVRSystem)
   , mVRChaperone(aVRChaperone)
   , mVRCompositor(aVRCompositor)
   , mIsPresenting(false)
 {
-  MOZ_COUNT_CTOR_INHERITED(VRDisplayOpenVR, VRDisplayHost);
+  MOZ_COUNT_CTOR_INHERITED(VRDisplayOpenVR, VRDisplayLocal);
 
   VRDisplayState& state = mDisplayInfo.mDisplayState;
 
@@ -98,7 +98,7 @@ VRDisplayOpenVR::VRDisplayOpenVR(::vr::IVRSystem *aVRSystem,
 VRDisplayOpenVR::~VRDisplayOpenVR()
 {
   Destroy();
-  MOZ_COUNT_DTOR_INHERITED(VRDisplayOpenVR, VRDisplayHost);
+  MOZ_COUNT_DTOR_INHERITED(VRDisplayOpenVR, VRDisplayLocal);
 }
 
 void
@@ -253,7 +253,7 @@ VRDisplayOpenVR::GetSensorState()
   const uint32_t posesSize = ::vr::k_unTrackedDeviceIndex_Hmd + 1;
   ::vr::TrackedDevicePose_t poses[posesSize];
   // Note: We *must* call WaitGetPoses in order for any rendering to happen at all.
-  mVRCompositor->WaitGetPoses(nullptr, 0, poses, posesSize);
+  mVRCompositor->WaitGetPoses(poses, posesSize, nullptr, 0);
   gfx::Matrix4x4 headToEyeTransforms[2];
   UpdateEyeParameters(headToEyeTransforms);
 
@@ -350,11 +350,11 @@ VRDisplayOpenVR::StopPresentation()
 }
 
 bool
-VRDisplayOpenVR::SubmitFrame(void* aTextureHandle,
-                             ::vr::ETextureType aTextureType,
-                             const IntSize& aSize,
-                             const gfx::Rect& aLeftEyeRect,
-                             const gfx::Rect& aRightEyeRect)
+VRDisplayOpenVR::SubmitFrameOpenVRHandle(void* aTextureHandle,
+                                         ::vr::ETextureType aTextureType,
+                                         const IntSize& aSize,
+                                         const gfx::Rect& aLeftEyeRect,
+                                         const gfx::Rect& aRightEyeRect)
 {
   MOZ_ASSERT(mSubmitThread->GetThread() == NS_GetCurrentThread());
   if (!mIsPresenting) {
@@ -400,9 +400,9 @@ VRDisplayOpenVR::SubmitFrame(ID3D11Texture2D* aSource,
                              const gfx::Rect& aLeftEyeRect,
                              const gfx::Rect& aRightEyeRect)
 {
-  return SubmitFrame((void *)aSource,
-                     ::vr::ETextureType::TextureType_DirectX,
-                     aSize, aLeftEyeRect, aRightEyeRect);
+  return SubmitFrameOpenVRHandle((void *)aSource,
+                                 ::vr::ETextureType::TextureType_DirectX,
+                                 aSize, aLeftEyeRect, aRightEyeRect);
 }
 
 #elif defined(XP_MACOSX)
@@ -418,9 +418,9 @@ VRDisplayOpenVR::SubmitFrame(MacIOSurface* aMacIOSurface,
   if (ioSurface == nullptr) {
     NS_WARNING("VRDisplayOpenVR::SubmitFrame() could not get an IOSurface");
   } else {
-    result = SubmitFrame((void *)ioSurface,
-                         ::vr::ETextureType::TextureType_IOSurface,
-                         aSize, aLeftEyeRect, aRightEyeRect);
+    result = SubmitFrameOpenVRHandle((void *)ioSurface,
+                                     ::vr::ETextureType::TextureType_IOSurface,
+                                     aSize, aLeftEyeRect, aRightEyeRect);
   }
   return result;
 }
@@ -431,6 +431,7 @@ VRControllerOpenVR::VRControllerOpenVR(dom::GamepadHand aHand, uint32_t aDisplay
                                        uint32_t aNumButtons, uint32_t aNumTriggers,
                                        uint32_t aNumAxes, const nsCString& aId)
   : VRControllerHost(VRDeviceType::OpenVR, aHand, aDisplayID)
+  , mTrackedIndex(0)
   , mVibrateThread(nullptr)
   , mIsVibrateStopped(false)
 {
@@ -594,6 +595,7 @@ VRControllerOpenVR::ShutdownVibrateHapticThread()
 
 VRSystemManagerOpenVR::VRSystemManagerOpenVR()
   : mVRSystem(nullptr)
+  , mRuntimeCheckFailed(false)
   , mIsWindowsMR(false)
 {
 }
@@ -604,10 +606,6 @@ VRSystemManagerOpenVR::Create()
   MOZ_ASSERT(NS_IsMainThread());
 
   if (!gfxPrefs::VREnabled() || !gfxPrefs::VROpenVREnabled()) {
-    return nullptr;
-  }
-
-  if (!::vr::VR_IsRuntimeInstalled()) {
     return nullptr;
   }
 
@@ -659,33 +657,51 @@ VRSystemManagerOpenVR::NotifyVSync()
 void
 VRSystemManagerOpenVR::Enumerate()
 {
-  if (mOpenVRHMD == nullptr && ::vr::VR_IsHmdPresent()) {
-    ::vr::HmdError err;
-
-    ::vr::VR_Init(&err, ::vr::EVRApplicationType::VRApplication_Scene);
-    if (err) {
-      return;
-    }
-
-    ::vr::IVRSystem *system = (::vr::IVRSystem *)::vr::VR_GetGenericInterface(::vr::IVRSystem_Version, &err);
-    if (err || !system) {
-      ::vr::VR_Shutdown();
-      return;
-    }
-    ::vr::IVRChaperone *chaperone = (::vr::IVRChaperone *)::vr::VR_GetGenericInterface(::vr::IVRChaperone_Version, &err);
-    if (err || !chaperone) {
-      ::vr::VR_Shutdown();
-      return;
-    }
-    ::vr::IVRCompositor *compositor = (::vr::IVRCompositor*)::vr::VR_GetGenericInterface(::vr::IVRCompositor_Version, &err);
-    if (err || !compositor) {
-      ::vr::VR_Shutdown();
-      return;
-    }
-
-    mVRSystem = system;
-    mOpenVRHMD = new VRDisplayOpenVR(system, chaperone, compositor);
+  if (mOpenVRHMD) {
+    // Already enumerated, nothing more to do
+    return;
   }
+  if (mRuntimeCheckFailed) {
+    // We have already checked for a runtime and
+    // know that its not installed.
+    return;
+  }
+  if (!::vr::VR_IsRuntimeInstalled()) {
+    // Runtime is not installed, remember so we don't
+    // continue to scan for the files
+    mRuntimeCheckFailed = true;
+    return;
+  }
+  if (!::vr::VR_IsHmdPresent()) {
+    // Avoid initializing if no headset is connected
+    return;
+  }
+
+  ::vr::HmdError err;
+
+  ::vr::VR_Init(&err, ::vr::EVRApplicationType::VRApplication_Scene);
+  if (err) {
+    return;
+  }
+
+  ::vr::IVRSystem *system = (::vr::IVRSystem *)::vr::VR_GetGenericInterface(::vr::IVRSystem_Version, &err);
+  if (err || !system) {
+    ::vr::VR_Shutdown();
+    return;
+  }
+  ::vr::IVRChaperone *chaperone = (::vr::IVRChaperone *)::vr::VR_GetGenericInterface(::vr::IVRChaperone_Version, &err);
+  if (err || !chaperone) {
+    ::vr::VR_Shutdown();
+    return;
+  }
+  ::vr::IVRCompositor *compositor = (::vr::IVRCompositor*)::vr::VR_GetGenericInterface(::vr::IVRCompositor_Version, &err);
+  if (err || !compositor) {
+    ::vr::VR_Shutdown();
+    return;
+  }
+
+  mVRSystem = system;
+  mOpenVRHMD = new VRDisplayOpenVR(system, chaperone, compositor);
 }
 
 bool
@@ -1009,6 +1025,7 @@ VRSystemManagerOpenVR::GetGamepadHandFromControllerRole(
 
   switch(aRole) {
     case ::vr::ETrackedControllerRole::TrackedControllerRole_Invalid:
+    case ::vr::ETrackedControllerRole::TrackedControllerRole_OptOut:
       hand = dom::GamepadHand::_empty;
       break;
     case ::vr::ETrackedControllerRole::TrackedControllerRole_LeftHand:
@@ -1018,6 +1035,7 @@ VRSystemManagerOpenVR::GetGamepadHandFromControllerRole(
       hand = dom::GamepadHand::Right;
       break;
     default:
+      hand = dom::GamepadHand::_empty;
       MOZ_ASSERT(false);
       break;
   }

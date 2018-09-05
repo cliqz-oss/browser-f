@@ -15,14 +15,14 @@
 #include "vm/HelperThreads.h"
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
-#include "vm/JSCompartment.h"
+#include "vm/Realm.h"
 #include "vm/SymbolType.h"
 
 namespace js {
 
 class CompartmentChecker
 {
-    JSCompartment* compartment;
+    JS::Compartment* compartment;
 
   public:
     explicit CompartmentChecker(JSContext* cx)
@@ -34,7 +34,7 @@ class CompartmentChecker
      * Set a breakpoint here (break js::CompartmentChecker::fail) to debug
      * compartment mismatches.
      */
-    static void fail(JSCompartment* c1, JSCompartment* c2) {
+    static void fail(JS::Compartment* c1, JS::Compartment* c2) {
         printf("*** Compartment mismatch %p vs. %p\n", (void*) c1, (void*) c2);
         MOZ_CRASH();
     }
@@ -44,19 +44,14 @@ class CompartmentChecker
         MOZ_CRASH();
     }
 
-    /* Note: should only be used when neither c1 nor c2 may be the atoms compartment. */
-    static void check(JSCompartment* c1, JSCompartment* c2) {
-        MOZ_ASSERT(!c1->runtimeFromAnyThread()->isAtomsCompartment(c1));
-        MOZ_ASSERT(!c2->runtimeFromAnyThread()->isAtomsCompartment(c2));
+    static void check(JS::Compartment* c1, JS::Compartment* c2) {
         if (c1 != c2)
             fail(c1, c2);
     }
 
-    void check(JSCompartment* c) {
-        if (c && !compartment->runtimeFromAnyThread()->isAtomsCompartment(c)) {
-            if (c != compartment)
-                fail(compartment, c);
-        }
+    void check(JS::Compartment* c) {
+        if (c && c != compartment)
+            fail(compartment, c);
     }
 
     void checkZone(JS::Zone* z) {
@@ -166,7 +161,6 @@ class CompartmentChecker
 
     void check(InterpreterFrame* fp);
     void check(AbstractFramePtr frame);
-    void check(SavedStacks* stacks);
 
     void check(Handle<PropertyDescriptor> desc) {
         check(desc.object());
@@ -187,7 +181,7 @@ class CompartmentChecker
  * depends on other objects not having been swept yet.
  */
 #define START_ASSERT_SAME_COMPARTMENT()                                 \
-    if (cx->heapState != JS::HeapState::Idle)                           \
+    if (JS::RuntimeHeapIsCollecting())                            \
         return;                                                         \
     CompartmentChecker c(cx)
 
@@ -460,93 +454,95 @@ JSContext::setPendingException(const js::Value& v)
 inline bool
 JSContext::runningWithTrustedPrincipals()
 {
-    return !compartment() || compartment()->principals() == runtime()->trustedPrincipals();
+    return !realm() || realm()->principals() == runtime()->trustedPrincipals();
 }
 
 inline void
-JSContext::enterNonAtomsCompartment(JSCompartment* c)
+JSContext::enterRealm(JS::Realm* realm)
 {
-    enterCompartmentDepth_++;
+    // We should never enter a realm while in the atoms zone.
+    MOZ_ASSERT_IF(zone(), !zone()->isAtomsZone());
 
-    MOZ_ASSERT(!c->zone()->isAtomsZone());
-
-    c->enter();
-    setCompartment(c, nullptr);
+    realm->enter();
+    setRealm(realm);
 }
 
 inline void
-JSContext::enterAtomsCompartment(JSCompartment* c,
-                                 const js::AutoLockForExclusiveAccess& lock)
+JSContext::enterAtomsZone(const js::AutoLockForExclusiveAccess& lock)
 {
-    enterCompartmentDepth_++;
+    // Only one thread can be in the atoms zone at a time.
+    MOZ_ASSERT(runtime_->currentThreadHasExclusiveAccess());
 
-    MOZ_ASSERT(c->zone()->isAtomsZone());
-
-    c->enter();
-    setCompartment(c, &lock);
+    realm_ = nullptr;
+    zone_ = runtime_->atomsZone(lock);
+    arenas_ = &zone_->arenas;
 }
 
-template <typename T>
 inline void
-JSContext::enterCompartmentOf(const T& target)
+JSContext::enterRealmOf(JSObject* target)
 {
     MOZ_ASSERT(JS::CellIsNotGray(target));
-    enterNonAtomsCompartment(target->compartment());
+    enterRealm(target->deprecatedRealm());
 }
 
 inline void
-JSContext::enterNullCompartment()
+JSContext::enterRealmOf(JSScript* target)
 {
-    enterCompartmentDepth_++;
-    setCompartment(nullptr);
+    MOZ_ASSERT(JS::CellIsNotGray(target));
+    enterRealm(target->realm());
 }
 
 inline void
-JSContext::leaveCompartment(
-    JSCompartment* oldCompartment,
-    const js::AutoLockForExclusiveAccess* maybeLock /* = nullptr */)
+JSContext::enterRealmOf(js::ObjectGroup* target)
 {
-    MOZ_ASSERT(hasEnteredCompartment());
-    enterCompartmentDepth_--;
-
-    // Only call leave() after we've setCompartment()-ed away from the current
-    // compartment.
-    JSCompartment* startingCompartment = compartment_;
-    setCompartment(oldCompartment, maybeLock);
-    if (startingCompartment)
-        startingCompartment->leave();
+    MOZ_ASSERT(JS::CellIsNotGray(target));
+    enterRealm(target->realm());
 }
 
 inline void
-JSContext::setCompartment(JSCompartment* comp,
-                          const js::AutoLockForExclusiveAccess* maybeLock /* = nullptr */)
+JSContext::enterNullRealm()
 {
-    // Only one thread can be in the atoms compartment at a time.
-    MOZ_ASSERT_IF(runtime_->isAtomsCompartment(comp), maybeLock != nullptr);
-    MOZ_ASSERT_IF(runtime_->isAtomsCompartment(comp) || runtime_->isAtomsCompartment(compartment_),
-                  runtime_->currentThreadHasExclusiveAccess());
+    // We should never enter a realm while in the atoms zone.
+    MOZ_ASSERT_IF(zone(), !zone()->isAtomsZone());
 
-    // Make sure that the atoms compartment has its own zone.
-    MOZ_ASSERT_IF(comp && !runtime_->isAtomsCompartment(comp),
-                  !comp->zone()->isAtomsZone());
+    setRealm(nullptr);
+}
 
-    // Both the current and the new compartment should be properly marked as
+inline void
+JSContext::leaveRealm(JS::Realm* oldRealm)
+{
+    // Only call leave() after we've setRealm()-ed away from the current realm.
+    JS::Realm* startingRealm = realm_;
+    setRealm(oldRealm);
+    if (startingRealm)
+        startingRealm->leave();
+}
+
+inline void
+JSContext::leaveAtomsZone(JS::Realm* oldRealm,
+                          const js::AutoLockForExclusiveAccess& lock)
+{
+    setRealm(oldRealm);
+}
+
+inline void
+JSContext::setRealm(JS::Realm* realm)
+{
+    // Both the current and the new realm should be properly marked as
     // entered at this point.
-    MOZ_ASSERT_IF(compartment_, compartment_->hasBeenEntered());
-    MOZ_ASSERT_IF(comp, comp->hasBeenEntered());
+    MOZ_ASSERT_IF(realm_, realm_->hasBeenEnteredIgnoringJit());
+    MOZ_ASSERT_IF(realm, realm->hasBeenEnteredIgnoringJit());
 
     // This thread must have exclusive access to the zone.
-    MOZ_ASSERT_IF(comp && !comp->zone()->isAtomsZone(),
-                  CurrentThreadCanAccessZone(comp->zone()));
+    MOZ_ASSERT_IF(realm, CurrentThreadCanAccessZone(realm->zone()));
 
-    compartment_ = comp;
-    zone_ = comp ? comp->zone() : nullptr;
+    realm_ = realm;
+    zone_ = realm ? realm->zone() : nullptr;
     arenas_ = zone_ ? &zone_->arenas : nullptr;
 }
 
 inline JSScript*
-JSContext::currentScript(jsbytecode** ppc,
-                         MaybeAllowCrossCompartment allowCrossCompartment) const
+JSContext::currentScript(jsbytecode** ppc, AllowCrossRealm allowCrossRealm) const
 {
     if (ppc)
         *ppc = nullptr;
@@ -557,31 +553,30 @@ JSContext::currentScript(jsbytecode** ppc,
 
     MOZ_ASSERT(act->cx() == this);
 
-    if (!allowCrossCompartment && act->compartment() != compartment())
+    // Cross-compartment implies cross-realm.
+    if (allowCrossRealm == AllowCrossRealm::DontAllow && act->compartment() != compartment())
         return nullptr;
 
+    JSScript* script = nullptr;
+    jsbytecode* pc = nullptr;
     if (act->isJit()) {
         if (act->hasWasmExitFP())
             return nullptr;
-        JSScript* script = nullptr;
-        js::jit::GetPcScript(const_cast<JSContext*>(this), &script, ppc);
-        MOZ_ASSERT(allowCrossCompartment || script->compartment() == compartment());
-        return script;
+        js::jit::GetPcScript(const_cast<JSContext*>(this), &script, &pc);
+    } else {
+        js::InterpreterFrame* fp = act->asInterpreter()->current();
+        MOZ_ASSERT(!fp->runningInJit());
+        script = fp->script();
+        pc = act->asInterpreter()->regs().pc;
     }
 
-    MOZ_ASSERT(act->isInterpreter());
+    MOZ_ASSERT(script->containsPC(pc));
 
-    js::InterpreterFrame* fp = act->asInterpreter()->current();
-    MOZ_ASSERT(!fp->runningInJit());
+    if (allowCrossRealm == AllowCrossRealm::DontAllow && script->realm() != realm())
+        return nullptr;
 
-    JSScript* script = fp->script();
-    MOZ_ASSERT(allowCrossCompartment || script->compartment() == compartment());
-
-    if (ppc) {
-        *ppc = act->asInterpreter()->regs().pc;
-        MOZ_ASSERT(script->containsPC(*ppc));
-    }
-
+    if (ppc)
+        *ppc = pc;
     return script;
 }
 
@@ -590,5 +585,20 @@ JSContext::caches()
 {
     return runtime()->caches();
 }
+
+inline
+js::AutoKeepAtoms::AutoKeepAtoms(JSContext* cx
+                                 MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
+  : cx(cx)
+{
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+    cx->zone()->keepAtoms();
+}
+
+inline
+js::AutoKeepAtoms::~AutoKeepAtoms()
+{
+    cx->zone()->releaseAtoms();
+};
 
 #endif /* vm_JSContext_inl_h */

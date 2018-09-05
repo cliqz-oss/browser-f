@@ -79,6 +79,24 @@ ChannelWrapper::Get(const GlobalObject& global, nsIChannel* channel)
   return wrapper.forget();
 }
 
+already_AddRefed<ChannelWrapper>
+ChannelWrapper::GetRegisteredChannel(const GlobalObject& global, uint64_t aChannelId, const WebExtensionPolicy& aAddon, nsITabParent* aTabParent)
+{
+  nsIContentParent* contentParent = nullptr;
+  if (TabParent* parent = static_cast<TabParent*>(aTabParent)) {
+    contentParent = static_cast<nsIContentParent*>(parent->Manager());
+  }
+
+  auto& webreq = WebRequestService::GetSingleton();
+
+  nsCOMPtr<nsITraceableChannel> channel = webreq.GetTraceableChannel(aChannelId, aAddon.Id(), contentParent);
+  if (!channel) {
+    return nullptr;
+  }
+  nsCOMPtr<nsIChannel> chan(do_QueryInterface(channel));
+  return ChannelWrapper::Get(global, chan);
+}
+
 void
 ChannelWrapper::SetChannel(nsIChannel* aChannel)
 {
@@ -503,13 +521,14 @@ ChannelWrapper::Matches(const dom::MozRequestFilter& aFilter,
   }
 
   if (aExtension) {
-    if (!aExtension->CanAccessURI(urlInfo)) {
+    bool isProxy = aOptions.mIsProxy && aExtension->HasPermission(nsGkAtoms::proxy);
+    // Proxies are allowed access to all urls, including restricted urls.
+    if (!aExtension->CanAccessURI(urlInfo, false, !isProxy)) {
       return false;
     }
 
     // If this isn't the proxy phase of the request, check that the extension
     // has origin permissions for origin that originated the request.
-    bool isProxy = aOptions.mIsProxy && aExtension->HasPermission(nsGkAtoms::proxy);
     if (!isProxy) {
       if (IsSystemLoad()) {
         return false;
@@ -838,7 +857,7 @@ ChannelWrapper::GetProxyInfo(dom::Nullable<MozProxyInfo>& aRetVal, ErrorResult& 
     if (NS_FAILED(rv)) {
       aRv.Throw(rv);
     } else {
-      aRetVal.SetValue(Move(result));
+      aRetVal.SetValue(std::move(result));
     }
   }
 }

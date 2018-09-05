@@ -11,6 +11,10 @@
 
 #include "gc/RelocationOverlay.h"
 
+#ifdef ENABLE_BIGINT
+#include "vm/BigIntType.h"
+#endif
+
 namespace js {
 namespace gc {
 
@@ -82,7 +86,6 @@ MaybeForwarded(T t)
 {
     if (IsForwarded(t))
         t = Forwarded(t);
-    MakeAccessibleAfterMovingGC(t);
     return t;
 }
 

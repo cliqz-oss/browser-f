@@ -13,10 +13,19 @@ profileDir.append("extensions");
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
 
-add_task(async function() {
-  startupManager();
+const ADDONS = {
+  test_bootstrap1_1: {
+    "install.rdf": {
+      "id": "bootstrap1@tests.mozilla.org",
+    },
+    "bootstrap.js": BOOTSTRAP_MONITOR_BOOTSTRAP_JS
+  },
+};
 
-  await promiseInstallFile(do_get_addon("test_bootstrap1_1"));
+add_task(async function() {
+  await promiseStartupManager();
+
+  await AddonTestUtils.promiseInstallXPI(ADDONS.test_bootstrap1_1);
 
   let addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);
@@ -40,7 +49,7 @@ add_task(async function() {
 
   await saveJSON(jData, gExtensionsJSON.path);
 
-  startupManager();
+  await promiseStartupManager();
 
   addon = await promiseAddonByID(ID);
   Assert.notEqual(addon, null);

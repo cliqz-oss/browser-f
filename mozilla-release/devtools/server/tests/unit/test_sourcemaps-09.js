@@ -41,15 +41,12 @@ function test_minified() {
     Assert.equal(event, "paused");
     Assert.equal(packet.why.type, "debuggerStatement");
 
-    let location = {
+    const location = {
       line: 5
     };
 
     getSource(gThreadClient, "http://example.com/foo.js").then(source => {
-      source.setBreakpoint(location, function(response, bpClient) {
-        Assert.ok(!response.error);
-        testHitBreakpoint();
-      });
+      source.setBreakpoint(location).then(() => testHitBreakpoint());
     });
   });
 
@@ -69,7 +66,7 @@ function test_minified() {
   // }());
 
   // eslint-disable-next-line max-len
-  let code = '(function(){debugger;function r(r){var n=r+r;var u=null;return n}for(var n=0;n<10;n++){r(n)}})();\n//# sourceMappingURL=data:text/json,{"file":"foo.min.js","version":3,"sources":["foo.js"],"names":["foo","n","bar","unused","i"],"mappings":"CAAC,WACC,QACA,SAASA,GAAIC,GACX,GAAIC,GAAMD,EAAIA,CACd,IAAIE,GAAS,IACb,OAAOD,GAET,IAAK,GAAIE,GAAI,EAAGA,EAAI,GAAIA,IAAK,CAC3BJ,EAAII"}';
+  const code = '(function(){debugger;function r(r){var n=r+r;var u=null;return n}for(var n=0;n<10;n++){r(n)}})();\n//# sourceMappingURL=data:text/json,{"file":"foo.min.js","version":3,"sources":["foo.js"],"names":["foo","n","bar","unused","i"],"mappings":"CAAC,WACC,QACA,SAASA,GAAIC,GACX,GAAIC,GAAMD,EAAIA,CACd,IAAIE,GAAS,IACb,OAAOD,GAET,IAAK,GAAIE,GAAI,EAAGA,EAAI,GAAIA,IAAK,CAC3BJ,EAAII"}';
 
   Cu.evalInSandbox(code, gDebuggee, "1.8",
                    "http://example.com/foo.min.js", 1);

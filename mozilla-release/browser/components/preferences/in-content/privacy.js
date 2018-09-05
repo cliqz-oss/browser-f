@@ -32,6 +32,9 @@ const TRACKING_PROTECTION_PREFS = ["privacy.trackingprotection.enabled",
 
 var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
+const PREF_OPT_OUT_STUDIES_ENABLED = "app.shield.optoutstudies.enabled";
+const PREF_NORMANDY_ENABLED = "app.normandy.enabled";
+
 XPCOMUtils.defineLazyGetter(this, "AlertsServiceDND", function() {
   try {
     let alertsService = Cc["@mozilla.org/alerts-service;1"]
@@ -76,6 +79,10 @@ Preferences.addAll([
   // Do not track
   { id: "privacy.donottrackheader.enabled", type: "bool" },
 
+  // Media
+  { id: "media.autoplay.enabled", type: "bool" },
+  { id: "media.autoplay.enabled.user-gestures-needed", type: "bool" },
+
   // Popups
   { id: "dom.disable_open_during_load", type: "bool" },
   // Passwords
@@ -114,7 +121,17 @@ Preferences.addAll([
 
   { id: "browser.safebrowsing.downloads.remote.block_potentially_unwanted", type: "bool" },
   { id: "browser.safebrowsing.downloads.remote.block_uncommon", type: "bool" },
+
 ]);
+
+// Study opt out
+if (AppConstants.MOZ_DATA_REPORTING) {
+  Preferences.addAll([
+    // Preference instances for prefs that we need to monitor while the page is open.
+    { id: PREF_OPT_OUT_STUDIES_ENABLED, type: "bool" },
+    { id: PREF_UPLOAD_ENABLED, type: "bool" },
+  ]);
+}
 
 // Data Choices tab
 if (AppConstants.NIGHTLY_BUILD) {
@@ -317,6 +334,8 @@ var gPrivacyPane = {
 
     this._updateSanitizeSettingsButton();
     this.initializeHistoryMode();
+    this.updateAutoplayMediaControls();
+    this.updateAutoplayMediaControlsVisibility();
     this.updateHistoryModePane();
     this.updatePrivacyMicroControls();
     this.initAutoStartPrivateBrowsingReverter();
@@ -343,6 +362,10 @@ var gPrivacyPane = {
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
     Preferences.get("privacy.trackingprotection.pbmode.enabled").on("change",
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
+    Preferences.get("media.autoplay.enabled").on("change",
+     gPrivacyPane.updateAutoplayMediaControls.bind(gPrivacyPane));
+    Preferences.get("media.autoplay.enabled.user-gestures-needed").on("change",
+     gPrivacyPane.updateAutoplayMediaControlsVisibility.bind(gPrivacyPane));
     setEventListener("historyMode", "command", function() {
       gPrivacyPane.updateHistoryModePane();
       gPrivacyPane.updateHistoryModePrefs();
@@ -416,10 +439,12 @@ var gPrivacyPane = {
       gPrivacyPane.showMicrophoneExceptions);
     setEventListener("popupPolicyButton", "command",
       gPrivacyPane.showPopupExceptions);
+    setEventListener("autoplayMediaPolicy", "command",
+      gPrivacyPane.toggleAutoplayMedia);
+    setEventListener("autoplayMediaPolicyButton", "command",
+      gPrivacyPane.showAutoplayMediaExceptions);
     setEventListener("notificationsDoNotDisturb", "command",
       gPrivacyPane.toggleDoNotDisturbNotifications);
-
-    let bundlePrefs = document.getElementById("bundlePreferences");
 
     if (AlertsServiceDND) {
       let notificationsDoNotDisturbBox =
@@ -479,66 +504,18 @@ var gPrivacyPane = {
       this.initSubmitHealthReport();
       setEventListener("submitHealthReportBox", "command",
         gPrivacyPane.updateSubmitHealthReport);
+#if 0
+      this.initOptOutStudyCheckbox();
+#endif
     }
     this._initA11yState();
     let signonBundle = document.getElementById("signonBundle");
     let pkiBundle = document.getElementById("pkiBundle");
-    appendSearchKeywords("passwordExceptions", [
-      bundlePrefs.getString("savedLoginsExceptions_title"),
-      bundlePrefs.getString("savedLoginsExceptions_desc3"),
-    ]);
     appendSearchKeywords("showPasswords", [
       signonBundle.getString("loginsDescriptionAll2"),
     ]);
-    appendSearchKeywords("cookieExceptions", [
-      bundlePrefs.getString("cookiepermissionstext1"),
-    ]);
-#if 0
-    appendSearchKeywords("trackingProtectionExceptions", [
-      bundlePrefs.getString("trackingprotectionpermissionstitle"),
-      bundlePrefs.getString("trackingprotectionpermissionstext2"),
-    ]);
-#endif
-    appendSearchKeywords("popupPolicyButton", [
-      bundlePrefs.getString("popuppermissionstitle2"),
-      bundlePrefs.getString("popuppermissionstext"),
-    ]);
-    appendSearchKeywords("notificationSettingsButton", [
-      bundlePrefs.getString("notificationspermissionstitle2"),
-      bundlePrefs.getString("notificationspermissionstext6"),
-      bundlePrefs.getString("notificationspermissionsdisablelabel"),
-      bundlePrefs.getString("notificationspermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("locationSettingsButton", [
-      bundlePrefs.getString("locationpermissionstitle"),
-      bundlePrefs.getString("locationpermissionstext2"),
-      bundlePrefs.getString("locationpermissionsdisablelabel"),
-      bundlePrefs.getString("locationpermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("cameraSettingsButton", [
-      bundlePrefs.getString("camerapermissionstitle"),
-      bundlePrefs.getString("camerapermissionstext2"),
-      bundlePrefs.getString("camerapermissionsdisablelabel"),
-      bundlePrefs.getString("camerapermissionsdisabledescription"),
-    ]);
-    appendSearchKeywords("microphoneSettingsButton", [
-      bundlePrefs.getString("microphonepermissionstitle"),
-      bundlePrefs.getString("microphonepermissionstext2"),
-      bundlePrefs.getString("microphonepermissionsdisablelabel"),
-      bundlePrefs.getString("microphonepermissionsdisabledescription"),
-    ]);
-#if 0
-    appendSearchKeywords("addonExceptions", [
-      bundlePrefs.getString("addons_permissions_title2"),
-      bundlePrefs.getString("addonspermissionstext"),
-    ]);
-#endif
     appendSearchKeywords("viewSecurityDevicesButton", [
       pkiBundle.getString("enable_fips"),
-    ]);
-    appendSearchKeywords("siteDataSettings", [
-      bundlePrefs.getString("siteDataSettings3.description"),
-      bundlePrefs.getString("removeAllSiteData.label"),
     ]);
 
     if (!PrivateBrowsingUtils.enabled) {
@@ -876,12 +853,9 @@ var gPrivacyPane = {
    * Displays fine-grained, per-site preferences for tracking protection.
    */
   showTrackingProtectionExceptions() {
-    let bundlePreferences = document.getElementById("bundlePreferences");
     let params = {
       permissionType: "trackingprotection",
       hideStatusColumn: true,
-      windowTitle: bundlePreferences.getString("trackingprotectionpermissionstitle"),
-      introText: bundlePreferences.getString("trackingprotectionpermissionstext2"),
     };
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
       null, params);
@@ -1018,15 +992,12 @@ var gPrivacyPane = {
    * Displays fine-grained, per-site preferences for cookies.
    */
   showCookieExceptions() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
     var params = {
       blockVisible: true,
       sessionVisible: true,
       allowVisible: true,
       prefilledHost: "",
       permissionType: "cookie",
-      windowTitle: bundlePreferences.getString("cookiepermissionstitle1"),
-      introText: bundlePreferences.getString("cookiepermissionstext1")
     };
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
       null, params);
@@ -1045,17 +1016,18 @@ var gPrivacyPane = {
 
   showSiteDataLoading() {
     let totalSiteDataSizeLabel = document.getElementById("totalSiteDataSize");
-    let prefStrBundle = document.getElementById("bundlePreferences");
-    totalSiteDataSizeLabel.textContent = prefStrBundle.getString("loadingSiteDataSize1");
+    document.l10n.setAttributes(totalSiteDataSizeLabel, "sitedata-total-size-calculating");
   },
 
   updateTotalDataSizeLabel(siteDataUsage) {
     SiteDataManager.getCacheSize().then(function(cacheUsage) {
-      let prefStrBundle = document.getElementById("bundlePreferences");
       let totalSiteDataSizeLabel = document.getElementById("totalSiteDataSize");
       let totalUsage = siteDataUsage + cacheUsage;
-      let size = DownloadUtils.convertByteUnits(totalUsage);
-      totalSiteDataSizeLabel.textContent = prefStrBundle.getFormattedString("totalSiteDataSize2", size);
+      let [value, unit] = DownloadUtils.convertByteUnits(totalUsage);
+      document.l10n.setAttributes(totalSiteDataSizeLabel, "sitedata-total-size", {
+        value,
+        unit
+      });
     });
   },
 
@@ -1070,12 +1042,7 @@ var gPrivacyPane = {
    * preferences can be set.
    */
   showLocationExceptions() {
-    let bundlePreferences = document.getElementById("bundlePreferences");
     let params = { permissionType: "geo" };
-    params.windowTitle = bundlePreferences.getString("locationpermissionstitle");
-    params.introText = bundlePreferences.getString("locationpermissionstext2");
-    params.disablePermissionsLabel = bundlePreferences.getString("locationpermissionsdisablelabel");
-    params.disablePermissionsDescription = bundlePreferences.getString("locationpermissionsdisabledescription");
 
     gSubDialog.open("chrome://browser/content/preferences/sitePermissions.xul",
       "resizable=yes", params);
@@ -1088,12 +1055,7 @@ var gPrivacyPane = {
    * preferences can be set.
    */
   showCameraExceptions() {
-    let bundlePreferences = document.getElementById("bundlePreferences");
     let params = { permissionType: "camera" };
-    params.windowTitle = bundlePreferences.getString("camerapermissionstitle");
-    params.introText = bundlePreferences.getString("camerapermissionstext2");
-    params.disablePermissionsLabel = bundlePreferences.getString("camerapermissionsdisablelabel");
-    params.disablePermissionsDescription = bundlePreferences.getString("camerapermissionsdisabledescription");
 
     gSubDialog.open("chrome://browser/content/preferences/sitePermissions.xul",
       "resizable=yes", params);
@@ -1106,12 +1068,7 @@ var gPrivacyPane = {
    * preferences can be set.
    */
   showMicrophoneExceptions() {
-    let bundlePreferences = document.getElementById("bundlePreferences");
     let params = { permissionType: "microphone" };
-    params.windowTitle = bundlePreferences.getString("microphonepermissionstitle");
-    params.introText = bundlePreferences.getString("microphonepermissionstext2");
-    params.disablePermissionsLabel = bundlePreferences.getString("microphonepermissionsdisablelabel");
-    params.disablePermissionsDescription = bundlePreferences.getString("microphonepermissionsdisabledescription");
 
     gSubDialog.open("chrome://browser/content/preferences/sitePermissions.xul",
       "resizable=yes", params);
@@ -1124,12 +1081,7 @@ var gPrivacyPane = {
    * preferences can be set.
    */
   showNotificationExceptions() {
-    let bundlePreferences = document.getElementById("bundlePreferences");
     let params = { permissionType: "desktop-notification" };
-    params.windowTitle = bundlePreferences.getString("notificationspermissionstitle2");
-    params.introText = bundlePreferences.getString("notificationspermissionstext6");
-    params.disablePermissionsLabel = bundlePreferences.getString("notificationspermissionsdisablelabel");
-    params.disablePermissionsDescription = bundlePreferences.getString("notificationspermissionsdisabledescription");
 
     gSubDialog.open("chrome://browser/content/preferences/sitePermissions.xul",
       "resizable=yes", params);
@@ -1141,6 +1093,44 @@ var gPrivacyPane = {
   },
 
 
+  // MEDIA
+
+  /**
+   * media.autoplay.enabled works the opposite to most of the other preferences.
+   * The checkbox enabled sets the pref to false
+   */
+  toggleAutoplayMedia(event) {
+    Services.prefs.setBoolPref("media.autoplay.enabled", !event.target.checked);
+  },
+
+  updateAutoplayMediaControls() {
+    let autoPlayEnabled = Preferences.get("media.autoplay.enabled").value;
+    document.getElementById("autoplayMediaPolicy").checked = !autoPlayEnabled;
+    document.getElementById("autoplayMediaPolicyButton").disabled = autoPlayEnabled;
+  },
+
+  /**
+   * Show the controls for the new media autoplay behaviour behind a pref for now
+   */
+  updateAutoplayMediaControlsVisibility() {
+    document.getElementById("autoplayMediaBox").hidden =
+      !Services.prefs.getBoolPref("media.autoplay.enabled.user-gestures-needed", false);
+  },
+
+  /**
+   * Displays the autoplay exceptions dialog where specific site autoplay preferences
+   * can be set.
+   */
+  showAutoplayMediaExceptions() {
+    var params = {
+      blockVisible: false, sessionVisible: false, allowVisible: true,
+      prefilledHost: "", permissionType: "autoplay-media"
+    };
+
+    gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
+      "resizable=yes", params);
+  },
+
   // POP-UPS
 
   /**
@@ -1148,13 +1138,10 @@ var gPrivacyPane = {
    * can be set.
    */
   showPopupExceptions() {
-    var bundlePreferences = document.getElementById("bundlePreferences");
     var params = {
       blockVisible: false, sessionVisible: false, allowVisible: true,
       prefilledHost: "", permissionType: "popup"
     };
-    params.windowTitle = bundlePreferences.getString("popuppermissionstitle2");
-    params.introText = bundlePreferences.getString("popuppermissionstext");
 
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
       "resizable=yes", params);
@@ -1189,7 +1176,6 @@ var gPrivacyPane = {
    * where passwords are never saved.
    */
   showPasswordExceptions() {
-    var bundlePrefs = document.getElementById("bundlePreferences");
     var params = {
       blockVisible: true,
       sessionVisible: false,
@@ -1197,8 +1183,6 @@ var gPrivacyPane = {
       hideStatusColumn: true,
       prefilledHost: "",
       permissionType: "login-saving",
-      windowTitle: bundlePrefs.getString("savedLoginsExceptions_title"),
-      introText: bundlePrefs.getString("savedLoginsExceptions_desc3")
     };
 
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
@@ -1433,13 +1417,7 @@ var gPrivacyPane = {
    * Displays the exceptions lists for add-on installation warnings.
    */
   showAddonExceptions() {
-    var bundlePrefs = document.getElementById("bundlePreferences");
-
     var params = this._addonParams;
-    if (!params.windowTitle || !params.introText) {
-      params.windowTitle = bundlePrefs.getString("addons_permissions_title2");
-      params.introText = bundlePrefs.getString("addonspermissionstext");
-    }
 
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
       null, params);
@@ -1577,6 +1555,69 @@ var gPrivacyPane = {
     let checkbox = document.getElementById("submitHealthReportBox");
     Services.prefs.setBoolPref(PREF_UPLOAD_ENABLED, checkbox.checked);
   },
+
+#if 0
+  /**
+   * Initialize the opt-out-study preference checkbox into about:preferences and
+   * handles events coming from the UI for it.
+   */
+  initOptOutStudyCheckbox(doc) {
+    const allowedByPolicy = Services.policies.isAllowed("Shield");
+    const checkbox = document.getElementById("optOutStudiesEnabled");
+
+    function updateStudyCheckboxState() {
+      // The checkbox should be disabled if any of the below are true. This
+      // prevents the user from changing the value in the box.
+      //
+      // * the policy forbids shield
+      // * the Shield Study preference is locked
+      // * the FHR pref is false
+      //
+      // The checkbox should match the value of the preference only if all of
+      // these are true. Otherwise, the checkbox should remain unchecked. This
+      // is because in these situations, Shield studies are always disabled, and
+      // so showing a checkbox would be confusing.
+      //
+      // * the policy allows Shield
+      // * the FHR pref is true
+      // * Normandy is enabled
+
+      const checkboxMatchesPref = (
+        allowedByPolicy &&
+        Services.prefs.getBoolPref(PREF_UPLOAD_ENABLED, false) &&
+        Services.prefs.getBoolPref(PREF_NORMANDY_ENABLED, false)
+      );
+
+      if (checkboxMatchesPref) {
+        if (Services.prefs.getBoolPref(PREF_OPT_OUT_STUDIES_ENABLED, false)) {
+          checkbox.setAttribute("checked", "checked");
+        } else {
+          checkbox.removeAttribute("checked");
+        }
+        checkbox.setAttribute("preference", PREF_OPT_OUT_STUDIES_ENABLED);
+      } else {
+        checkbox.removeAttribute("preference");
+        checkbox.removeAttribute("checked");
+      }
+
+      const isDisabled = (
+        !allowedByPolicy ||
+        Services.prefs.prefIsLocked(PREF_OPT_OUT_STUDIES_ENABLED) ||
+        !Services.prefs.getBoolPref(PREF_UPLOAD_ENABLED, false)
+      );
+
+      // We can't use checkbox.disabled here because the XBL binding may not be present,
+      // in which case setting the property won't work properly.
+      if (isDisabled) {
+        checkbox.setAttribute("disabled", "true");
+      } else {
+        checkbox.removeAttribute("disabled");
+      }
+    }
+    Preferences.get(PREF_UPLOAD_ENABLED).on("change", updateStudyCheckboxState);
+    updateStudyCheckboxState();
+  },
+#endif
 
   observe(aSubject, aTopic, aData) {
     switch (aTopic) {

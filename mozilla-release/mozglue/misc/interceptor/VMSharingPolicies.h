@@ -9,7 +9,6 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/Types.h"
-#include "mozilla/StaticPtr.h"
 
 namespace mozilla {
 namespace interceptor {
@@ -20,7 +19,7 @@ class VMSharingPolicyUnique : public MMPolicy
 public:
   template <typename... Args>
   explicit VMSharingPolicyUnique(Args... aArgs)
-    : MMPolicy(mozilla::Forward<Args>(aArgs)...)
+    : MMPolicy(std::forward<Args>(aArgs)...)
     , mNextChunkIndex(0)
   {
   }
@@ -46,7 +45,7 @@ public:
       ++mNextChunkIndex;
     }
 
-    return Move(result);
+    return std::move(result);
   }
 
   TrampolineCollection<MMPolicy> Items() const
@@ -66,7 +65,7 @@ public:
   VMSharingPolicyUnique& operator=(const VMSharingPolicyUnique&) = delete;
 
   VMSharingPolicyUnique(VMSharingPolicyUnique&& aOther)
-    : MMPolicy(Move(aOther))
+    : MMPolicy(std::move(aOther))
     , mNextChunkIndex(aOther.mNextChunkIndex)
   {
     aOther.mNextChunkIndex = 0;
@@ -74,7 +73,7 @@ public:
 
   VMSharingPolicyUnique& operator=(VMSharingPolicyUnique&& aOther)
   {
-    static_cast<MMPolicy&>(*this) = Move(aOther);
+    static_cast<MMPolicy&>(*this) = std::move(aOther);
     mNextChunkIndex = aOther.mNextChunkIndex;
     aOther.mNextChunkIndex = 0;
     return *this;
@@ -85,67 +84,20 @@ private:
 };
 
 template <typename MMPolicy, uint32_t kChunkSize>
-class VMSharingPolicyShared : public MMPolicyBase
+class VMSharingPolicyShared;
+
+// We only support this policy for in-proc MMPolicy
+template <uint32_t kChunkSize>
+class VMSharingPolicyShared<MMPolicyInProcess, kChunkSize> : public MMPolicyBase
 {
-  typedef VMSharingPolicyUnique<MMPolicy, kChunkSize> ValueT;
-
-  // We use pid instead of HANDLE for mapping, since more than one handle may
-  // map to the same pid. We don't worry about pid reuse becuase each mVMPolicy
-  // holds an open handle to pid, thus keeping the pid reserved at least for the
-  // lifetime of mVMPolicy.
-  struct ProcMapEntry
-  {
-    ProcMapEntry()
-      : mPid(::GetCurrentProcessId())
-    {
-    }
-
-    explicit ProcMapEntry(HANDLE aProc)
-      : mPid(::GetProcessId(aProc))
-      , mVMPolicy(aProc)
-    {
-    }
-
-    ProcMapEntry(ProcMapEntry&& aOther)
-      : mPid(aOther.mPid)
-      , mVMPolicy(Move(aOther.mVMPolicy))
-    {
-      aOther.mPid = 0;
-    }
-
-    ProcMapEntry(const ProcMapEntry&) = delete;
-    ProcMapEntry& operator=(const ProcMapEntry&) = delete;
-
-    ProcMapEntry& operator=(ProcMapEntry&& aOther)
-    {
-      mPid = aOther.mPid;
-      mVMPolicy = Move(aOther.mVMPolicy);
-      aOther.mPid = 0;
-      return *this;
-    }
-
-    bool operator==(DWORD aPid) const
-    {
-      return mPid == aPid;
-    }
-
-    DWORD   mPid;
-    ValueT  mVMPolicy;
-  };
-
-  // We normally expect to reference only one other process at a time, but this
-  // is not a requirement.
-  typedef Vector<ProcMapEntry, 1> MapT;
+  typedef VMSharingPolicyUnique<MMPolicyInProcess, kChunkSize> UniquePolicyT;
 
 public:
-  typedef MMPolicy MMPolicyT;
+  typedef MMPolicyInProcess MMPolicyT;
 
-  template <typename... Args>
-  explicit VMSharingPolicyShared(Args... aArgs)
-    : mPid(GetPid(aArgs...))
+  VMSharingPolicyShared()
   {
     static const bool isAlloc = []() -> bool {
-      sPerProcVM = new MapT();
       DWORD flags = 0;
 #if defined(RELEASE_OR_BETA)
       flags |= CRITICAL_SECTION_NO_DEBUG_INFO;
@@ -153,102 +105,53 @@ public:
       ::InitializeCriticalSectionEx(&sCS, 4000, flags);
       return true;
     }();
-
-    MOZ_ASSERT(mPid);
-    if (!mPid) {
-      return;
-    }
-
-    AutoCriticalSection lock(&sCS);
-
-    if (find(mPid)) {
-      return;
-    }
-
-    MOZ_RELEASE_ASSERT(sPerProcVM->append(ProcMapEntry(aArgs...)));
   }
 
   explicit operator bool() const
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    MOZ_RELEASE_ASSERT(find(mPid, &entry));
-
-    return !!entry->mVMPolicy;
+    return !!sUniqueVM;
   }
 
-  operator const MMPolicy&() const
+  operator const MMPolicyInProcess&() const
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    MOZ_RELEASE_ASSERT(find(mPid, &entry));
-
-    return entry->mVMPolicy;
+    return sUniqueVM;
   }
 
   bool ShouldUnhookUponDestruction() const
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    if (!find(mPid, &entry)) {
-      return 0;
-    }
-
-    return entry->mVMPolicy.ShouldUnhookUponDestruction();
+    return sUniqueVM.ShouldUnhookUponDestruction();
   }
 
   bool Reserve(uint32_t aCount)
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    if (!find(mPid, &entry)) {
-      return false;
-    }
-
-    return entry->mVMPolicy.Reserve(aCount);
+    return sUniqueVM.Reserve(aCount);
   }
 
   bool IsPageAccessible(void* aVAddress) const
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    if (!find(mPid, &entry)) {
-      return false;
-    }
-
-    return entry->mVMPolicy.IsPageAccessible(aVAddress);
+    return sUniqueVM.IsPageAccessible(aVAddress);
   }
 
-  Trampoline<MMPolicy> GetNextTrampoline()
+  Trampoline<MMPolicyInProcess> GetNextTrampoline()
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    if (!find(mPid, &entry)) {
-      return nullptr;
-    }
-
-    return entry->mVMPolicy.GetNextTrampoline();
+    return sUniqueVM.GetNextTrampoline();
   }
 
-  TrampolineCollection<MMPolicy> Items() const
+  TrampolineCollection<MMPolicyInProcess> Items() const
   {
     AutoCriticalSection lock(&sCS);
-
-    ProcMapEntry* entry;
-    MOZ_RELEASE_ASSERT(find(mPid, &entry));
-
-    TrampolineCollection<MMPolicy> items(Move(entry->mVMPolicy.Items()));
+    TrampolineCollection<MMPolicyInProcess> items(std::move(sUniqueVM.Items()));
 
     // We need to continue holding the lock until items is destroyed.
     items.Lock(sCS);
 
-    return Move(items);
+    return std::move(items);
   }
 
   void Clear()
@@ -265,43 +168,16 @@ public:
   VMSharingPolicyShared& operator=(VMSharingPolicyShared&&) = delete;
 
 private:
-  static bool find(DWORD aPid, ProcMapEntry** aOutEntry = nullptr)
-  {
-    MOZ_ASSERT(sPerProcVM);
-    if (!sPerProcVM) {
-      return false;
-    }
-
-    if (aOutEntry) {
-      *aOutEntry = nullptr;
-    }
-
-    for (auto&& mapping : *sPerProcVM) {
-      if (mapping == aPid) {
-        if (aOutEntry) {
-          *aOutEntry = &mapping;
-        }
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  static DWORD GetPid() { return ::GetCurrentProcessId(); }
-  static DWORD GetPid(HANDLE aHandle) { return ::GetProcessId(aHandle); }
-
-  DWORD mPid;
-  static StaticAutoPtr<MapT> sPerProcVM;
+  static UniquePolicyT sUniqueVM;
   static CRITICAL_SECTION sCS;
 };
 
-template <typename MMPolicy, uint32_t kChunkSize>
-StaticAutoPtr<typename VMSharingPolicyShared<MMPolicy, kChunkSize>::MapT>
-  VMSharingPolicyShared<MMPolicy, kChunkSize>::sPerProcVM;
+template <uint32_t kChunkSize>
+typename VMSharingPolicyShared<MMPolicyInProcess, kChunkSize>::UniquePolicyT
+  VMSharingPolicyShared<MMPolicyInProcess, kChunkSize>::sUniqueVM;
 
-template <typename MMPolicy, uint32_t kChunkSize>
-CRITICAL_SECTION VMSharingPolicyShared<MMPolicy, kChunkSize>::sCS;
+template <uint32_t kChunkSize>
+CRITICAL_SECTION VMSharingPolicyShared<MMPolicyInProcess, kChunkSize>::sCS;
 
 } // namespace interceptor
 } // namespace mozilla

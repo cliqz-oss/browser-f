@@ -9,7 +9,7 @@
 #include "mozilla/ChangeStyleTransaction.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/DeclarationBlockInlines.h"
+#include "mozilla/DeclarationBlock.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/mozalloc.h"
 #include "nsAString.h"
@@ -556,11 +556,8 @@ CSSEditUtils::GetComputedStyle(Element* aElement)
   nsIDocument* doc = aElement->GetComposedDoc();
   NS_ENSURE_TRUE(doc, nullptr);
 
-  nsIPresShell* presShell = doc->GetShell();
-  NS_ENSURE_TRUE(presShell, nullptr);
-
   RefPtr<nsComputedDOMStyle> style =
-    NS_NewComputedDOMStyle(aElement, EmptyString(), presShell);
+    NS_NewComputedDOMStyle(aElement, EmptyString(), doc);
 
   return style.forget();
 }
@@ -640,10 +637,6 @@ CSSEditUtils::GetDefaultLengthUnit(nsAString& aLengthUnit)
     aLengthUnit.AssignLiteral("px");
   }
 }
-
-// Unfortunately, CSSStyleDeclaration::GetPropertyCSSValue is not yet
-// implemented... We need then a way to determine the number part and the unit
-// from aString, aString being the result of a GetPropertyValue query...
 
 // static
 void

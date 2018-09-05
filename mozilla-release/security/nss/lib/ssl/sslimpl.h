@@ -121,6 +121,10 @@ typedef enum { SSLAppOpRead = 0,
 /* default number of entries in namedGroupPreferences */
 #define SSL_NAMED_GROUP_COUNT 31
 
+/* The maximum DH and RSA bit-length supported. */
+#define SSL_MAX_DH_KEY_BITS 8192
+#define SSL_MAX_RSA_KEY_BITS 8192
+
 /* Types and names of elliptic curves used in TLS */
 typedef enum {
     ec_type_explicitPrime = 1,      /* not supported */
@@ -232,6 +236,7 @@ typedef struct sslOptionsStr {
     /* If SSL_SetNextProtoNego has been called, then this contains the
      * list of supported protocols. */
     SECItem nextProtoNego;
+    PRUint16 recordSizeLimit;
 
     PRUint32 maxEarlyDataSize;
     unsigned int useSecurity : 1;
@@ -811,7 +816,7 @@ struct ssl3DHParamsStr {
 };
 
 typedef struct SSLWrappedSymWrappingKeyStr {
-    PRUint8 wrappedSymmetricWrappingkey[512];
+    PRUint8 wrappedSymmetricWrappingkey[SSL_MAX_RSA_KEY_BITS / 8];
     CK_MECHANISM_TYPE symWrapMechanism;
     /* unwrapped symmetric wrapping key uses this mechanism */
     CK_MECHANISM_TYPE asymWrapMechanism;

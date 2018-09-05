@@ -31,8 +31,15 @@ GPUProcessImpl::Init(int aArgc, char* aArgv[])
 #if defined(MOZ_SANDBOX) && defined(OS_WIN)
   mozilla::SandboxTarget::Instance()->StartSandbox();
 #endif
+  char* parentBuildID = nullptr;
+  for (int i = 1; i < aArgc; i++) {
+    if (strcmp(aArgv[i], "-parentBuildID") == 0) {
+      parentBuildID = aArgv[i + 1];
+    }
+  }
 
   return mGPU.Init(ParentPid(),
+                   parentBuildID,
                    IOThreadChild::message_loop(),
                    IOThreadChild::channel());
 }

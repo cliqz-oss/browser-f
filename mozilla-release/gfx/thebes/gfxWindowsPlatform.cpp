@@ -41,6 +41,7 @@
 #include "gfxGDIFont.h"
 
 #include "mozilla/layers/CompositorThread.h"
+#include "mozilla/layers/PaintThread.h"
 #include "mozilla/layers/ReadbackManagerD3D11.h"
 
 #include "gfxDWriteFontList.h"
@@ -344,15 +345,6 @@ gfxWindowsPlatform::InitAcceleration()
 {
   gfxPlatform::InitAcceleration();
 
-  // Set up the D3D11 feature levels we can ask for.
-  if (IsWin8OrLater()) {
-    mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_11_1);
-  }
-  mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_11_0);
-  mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_10_1);
-  mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_10_0);
-  mFeatureLevels.AppendElement(D3D_FEATURE_LEVEL_9_3);
-
   DeviceManagerDx::Init();
 
   InitializeConfig();
@@ -459,7 +451,7 @@ gfxWindowsPlatform::GetBackendPrefs() const
       data.mContentDefault = BackendType::DIRECT2D1_1;
     }
   }
-  return mozilla::Move(data);
+  return std::move(data);
 }
 
 void
@@ -477,7 +469,7 @@ gfxWindowsPlatform::UpdateBackendPrefs()
       data.mContentDefault = BackendType::SKIA;
     }
   }
-  InitBackendPrefs(mozilla::Move(data));
+  InitBackendPrefs(std::move(data));
 }
 
 bool
@@ -492,6 +484,10 @@ gfxWindowsPlatform::UpdateRenderMode()
   bool didReset = HandleDeviceReset();
 
   UpdateBackendPrefs();
+
+  if (PaintThread::Get()) {
+    PaintThread::Get()->UpdateRenderMode();
+  }
 
   if (didReset) {
     mScreenReferenceDrawTarget =
@@ -903,7 +899,7 @@ void
 gfxWindowsPlatform::SchedulePaintIfDeviceReset()
 {
   AUTO_PROFILER_LABEL("gfxWindowsPlatform::SchedulePaintIfDeviceReset",
-                      GRAPHICS);
+                      OTHER);
 
   DeviceResetReason resetReason = DeviceResetReason::OK;
   if (!DidRenderingDeviceReset(&resetReason)) {

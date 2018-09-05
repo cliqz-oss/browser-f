@@ -44,8 +44,6 @@ class nsChromeRegistryChrome : public nsChromeRegistry
 #ifdef MOZ_XUL
   NS_IMETHOD GetXULOverlays(nsIURI *aURI,
                             nsISimpleEnumerator **_retval) override;
-  NS_IMETHOD GetStyleOverlays(nsIURI *aURI,
-                              nsISimpleEnumerator **_retval) override;
 #endif
 
   // If aChild is non-null then it is a new child to notify. If aChild is
@@ -123,8 +121,8 @@ class nsChromeRegistryChrome : public nsChromeRegistry
     typedef nsURIHashKey::KeyTypePointer KeyTypePointer;
 
     explicit OverlayListEntry(KeyTypePointer aKey) : nsURIHashKey(aKey) { }
-    OverlayListEntry(OverlayListEntry&& toMove) : nsURIHashKey(mozilla::Move(toMove)),
-                                                  mArray(mozilla::Move(toMove.mArray)) { }
+    OverlayListEntry(OverlayListEntry&& toMove) : nsURIHashKey(std::move(toMove)),
+                                                  mArray(std::move(toMove.mArray)) { }
     ~OverlayListEntry() { }
 
     void AddURI(nsIURI* aURI);
@@ -147,9 +145,8 @@ class nsChromeRegistryChrome : public nsChromeRegistry
   };
 
   // Hashes on the file to be overlaid (chrome://browser/content/browser.xul)
-  // to a list of overlays/stylesheets
+  // to a list of overlays
   OverlayListHash mOverlayHash;
-  OverlayListHash mStyleHash;
 
   bool mProfileLoaded;
   bool mDynamicRegistration;
@@ -167,8 +164,6 @@ class nsChromeRegistryChrome : public nsChromeRegistry
                             char *const * argv, int flags) override;
   virtual void ManifestOverlay(ManifestProcessingContext& cx, int lineno,
                                char *const * argv, int flags) override;
-  virtual void ManifestStyle(ManifestProcessingContext& cx, int lineno,
-                             char *const * argv, int flags) override;
   virtual void ManifestOverride(ManifestProcessingContext& cx, int lineno,
                                 char *const * argv, int flags) override;
   virtual void ManifestResource(ManifestProcessingContext& cx, int lineno,

@@ -50,6 +50,7 @@ public:
   NS_DECL_NSICLONEABLEINPUTSTREAM
 
   nsStringInputStream()
+    : mOffset(0)
   {
     Clear();
   }
@@ -88,7 +89,7 @@ private:
 nsresult
 nsStringInputStream::Init(nsCString&& aString)
 {
-  if (!mData.Assign(Move(aString), fallible)) {
+  if (!mData.Assign(std::move(aString), fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -414,7 +415,7 @@ NS_NewByteInputStream(nsIInputStream** aStreamResult,
                       const char* aStringToRead, int32_t aLength,
                       nsAssignmentType aAssignment)
 {
-  NS_PRECONDITION(aStreamResult, "null out ptr");
+  MOZ_ASSERT(aStreamResult, "null out ptr");
 
   RefPtr<nsStringInputStream> stream = new nsStringInputStream();
 
@@ -446,7 +447,7 @@ nsresult
 NS_NewCStringInputStream(nsIInputStream** aStreamResult,
                          const nsACString& aStringToRead)
 {
-  NS_PRECONDITION(aStreamResult, "null out ptr");
+  MOZ_ASSERT(aStreamResult, "null out ptr");
 
   RefPtr<nsStringInputStream> stream = new nsStringInputStream();
 
@@ -463,11 +464,11 @@ nsresult
 NS_NewCStringInputStream(nsIInputStream** aStreamResult,
                          nsCString&& aStringToRead)
 {
-  NS_PRECONDITION(aStreamResult, "null out ptr");
+  MOZ_ASSERT(aStreamResult, "null out ptr");
 
   RefPtr<nsStringInputStream> stream = new nsStringInputStream();
 
-  nsresult rv = stream->Init(Move(aStringToRead));
+  nsresult rv = stream->Init(std::move(aStringToRead));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }

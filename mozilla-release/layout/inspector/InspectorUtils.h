@@ -8,7 +8,7 @@
 #ifndef mozilla_dom_InspectorUtils_h
 #define mozilla_dom_InspectorUtils_h
 
-#include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/InspectorUtilsBinding.h"
 
 class nsAtom;
 class nsIDocument;
@@ -72,8 +72,6 @@ public:
 
   static bool HasRulesModifiedByCSSOM(GlobalObject& aGlobal, StyleSheet& aSheet);
 
-  static CSSLexer* GetCSSLexer(GlobalObject& aGlobal, const nsAString& aText);
-
   // Utilities for working with selectors.  We don't have a JS OM representation
   // of a single selector or a selector list yet, but given a rule we can index
   // into the selector list.
@@ -113,6 +111,11 @@ public:
   static void GetCSSPropertyNames(GlobalObject& aGlobal,
                                   const PropertyNamesOptions& aOptions,
                                   nsTArray<nsString>& aResult);
+
+  // Get a list of all properties controlled by preference, as well as
+  // their corresponding preference names.
+  static void GetCSSPropertyPrefs(GlobalObject& aGlobal,
+                                  nsTArray<PropertyPref>& aResult);
 
   // Get a list of all valid keywords and colors for aProperty.
   static void GetCSSValuesForProperty(GlobalObject& aGlobal,
@@ -225,6 +228,7 @@ public:
                                nsRange& aRange,
                                uint32_t aMaxRanges, // max number of ranges to
                                                     // record for each face
+                               bool aSkipCollapsedWhitespace,
                                nsTArray<nsAutoPtr<InspectorFontFace>>& aResult,
                                ErrorResult& aRv);
 

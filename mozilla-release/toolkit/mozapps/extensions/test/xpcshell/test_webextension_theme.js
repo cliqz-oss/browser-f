@@ -39,7 +39,7 @@ add_task(async function setup_to_default_browserish_state() {
     }
   }, profileDir);
 
-  startupManager();
+  await promiseStartupManager();
 
   // We can add an LWT only after the Addon Manager was started.
   LightweightThemeManager.currentTheme = {
@@ -61,7 +61,9 @@ add_task(async function setup_to_default_browserish_state() {
   Assert.ok(t2, "Theme addon should exist");
   Assert.ok(d, "Theme addon should exist");
 
-  t1.userDisabled = t2.userDisabled = true;
+  await t1.disable();
+  await t2.disable();
+  await new Promise(executeSoon);
   Assert.ok(!t1.isActive, "Theme should be disabled");
   Assert.ok(!t2.isActive, "Theme should be disabled");
   Assert.ok(d.isActive, "Default theme should be active");
@@ -108,7 +110,11 @@ async function setDisabledStateAndCheck(which, disabled = false) {
   // Set the state of the theme to change.
   let theme = await promiseAddonByID(which);
   prepare_test(expectedEvents);
-  theme.userDisabled = disabled;
+  if (disabled) {
+    await theme.disable();
+  } else {
+    await theme.enable();
+  }
 
   let isDisabled;
   for (theme of await promiseAddonsByIDs(THEME_IDS)) {
@@ -208,7 +214,7 @@ add_task(async function uninstall_offers_undo() {
   }
 
   let uninstallingPromise = promiseAddonEvent("onUninstalling", ID);
-  theme.uninstall(true);
+  await theme.uninstall(true);
   await uninstallingPromise;
 
   Assert.ok(hasFlag(theme.pendingOperations, AddonManager.PENDING_UNINSTALL),
@@ -221,7 +227,7 @@ add_task(async function uninstall_offers_undo() {
   Assert.equal(theme.pendingOperations, AddonManager.PENDING_NONE,
                "PENDING_UNINSTALL flag is cleared when uninstall is canceled");
 
-  theme.uninstall();
+  await theme.uninstall();
   await promiseRestartManager();
 });
 
@@ -229,11 +235,6 @@ add_task(async function uninstall_offers_undo() {
 add_task(async function default_locale_themes() {
   let addon = await promiseInstallWebExtension({
     manifest: {
-      applications: {
-        gecko: {
-          id: "locale-theme@tests.mozilla.org",
-        }
-      },
       default_locale: "en",
       name: "__MSG_name__",
       description: "__MSG_description__",
@@ -260,5 +261,5 @@ add_task(async function default_locale_themes() {
   equal(addon.name, "the name");
   equal(addon.description, "the description");
   equal(addon.type, "theme");
-  addon.uninstall();
+  await addon.uninstall();
 });

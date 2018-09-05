@@ -18,8 +18,6 @@
 #include "TreeWalker.h"
 
 #include "mozilla/dom/HTMLTableElement.h"
-#include "nsIDOMRange.h"
-#include "nsISelectionPrivate.h"
 #include "nsIHTMLCollection.h"
 #include "nsIDocument.h"
 #include "nsIMutableArray.h"
@@ -54,7 +52,7 @@ HTMLTableCellAccessible::
 // HTMLTableCellAccessible: Accessible implementation
 
 role
-HTMLTableCellAccessible::NativeRole()
+HTMLTableCellAccessible::NativeRole() const
 {
   if (mContent->IsMathMLElement(nsGkAtoms::mtd_)) {
     return roles::MATHML_CELL;
@@ -63,7 +61,7 @@ HTMLTableCellAccessible::NativeRole()
 }
 
 uint64_t
-HTMLTableCellAccessible::NativeState()
+HTMLTableCellAccessible::NativeState() const
 {
   uint64_t state = HyperTextAccessibleWrap::NativeState();
 
@@ -305,7 +303,7 @@ HTMLTableHeaderCellAccessible::
 // HTMLTableHeaderCellAccessible: Accessible implementation
 
 role
-HTMLTableHeaderCellAccessible::NativeRole()
+HTMLTableHeaderCellAccessible::NativeRole() const
 {
   // Check value of @scope attribute.
   static Element::AttrValuesArray scopeValues[] =
@@ -354,7 +352,7 @@ HTMLTableHeaderCellAccessible::NativeRole()
 ////////////////////////////////////////////////////////////////////////////////
 
 role
-HTMLTableRowAccessible::NativeRole()
+HTMLTableRowAccessible::NativeRole() const
 {
   if (mContent->IsMathMLElement(nsGkAtoms::mtr_)) {
     return roles::MATHML_TABLE_ROW;
@@ -396,7 +394,7 @@ HTMLTableAccessible::InsertChildAt(uint32_t aIndex, Accessible* aChild)
 }
 
 role
-HTMLTableAccessible::NativeRole()
+HTMLTableAccessible::NativeRole() const
 {
   if (mContent->IsMathMLElement(nsGkAtoms::mtable_)) {
     return roles::MATHML_TABLE;
@@ -405,13 +403,13 @@ HTMLTableAccessible::NativeRole()
 }
 
 uint64_t
-HTMLTableAccessible::NativeState()
+HTMLTableAccessible::NativeState() const
 {
   return Accessible::NativeState() | states::READONLY;
 }
 
 ENameValueFlag
-HTMLTableAccessible::NativeName(nsString& aName)
+HTMLTableAccessible::NativeName(nsString& aName) const
 {
   ENameValueFlag nameFlag = Accessible::NativeName(aName);
   if (!aName.IsEmpty())
@@ -456,7 +454,7 @@ HTMLTableAccessible::NativeAttributes()
 // HTMLTableAccessible: Accessible
 
 Relation
-HTMLTableAccessible::RelationByType(RelationType aType)
+HTMLTableAccessible::RelationByType(RelationType aType) const
 {
   Relation rel = AccessibleWrap::RelationByType(aType);
   if (aType == RelationType::LABELLED_BY)
@@ -485,7 +483,7 @@ HTMLTableAccessible::Summary(nsString& aSummary)
 }
 
 uint32_t
-HTMLTableAccessible::ColCount()
+HTMLTableAccessible::ColCount() const
 {
   nsTableWrapperFrame* tableFrame = do_QueryFrame(mContent->GetPrimaryFrame());
   return tableFrame ? tableFrame->GetColCount() : 0;
@@ -734,48 +732,40 @@ void
 HTMLTableAccessible::SelectRow(uint32_t aRowIdx)
 {
   DebugOnly<nsresult> rv =
-    RemoveRowsOrColumnsFromSelection(aRowIdx,
-                                     nsISelectionPrivate::TABLESELECTION_ROW,
-                                     true);
+    RemoveRowsOrColumnsFromSelection(aRowIdx, TableSelection::Row, true);
   NS_ASSERTION(NS_SUCCEEDED(rv),
                "RemoveRowsOrColumnsFromSelection() Shouldn't fail!");
 
-  AddRowOrColumnToSelection(aRowIdx, nsISelectionPrivate::TABLESELECTION_ROW);
+  AddRowOrColumnToSelection(aRowIdx, TableSelection::Row);
 }
 
 void
 HTMLTableAccessible::SelectCol(uint32_t aColIdx)
 {
   DebugOnly<nsresult> rv =
-    RemoveRowsOrColumnsFromSelection(aColIdx,
-                                     nsISelectionPrivate::TABLESELECTION_COLUMN,
-                                     true);
+    RemoveRowsOrColumnsFromSelection(aColIdx, TableSelection::Column, true);
   NS_ASSERTION(NS_SUCCEEDED(rv),
                "RemoveRowsOrColumnsFromSelection() Shouldn't fail!");
 
-  AddRowOrColumnToSelection(aColIdx, nsISelectionPrivate::TABLESELECTION_COLUMN);
+  AddRowOrColumnToSelection(aColIdx, TableSelection::Column);
 }
 
 void
 HTMLTableAccessible::UnselectRow(uint32_t aRowIdx)
 {
-  RemoveRowsOrColumnsFromSelection(aRowIdx,
-                                   nsISelectionPrivate::TABLESELECTION_ROW,
-                                   false);
+  RemoveRowsOrColumnsFromSelection(aRowIdx, TableSelection::Row, false);
 }
 
 void
 HTMLTableAccessible::UnselectCol(uint32_t aColIdx)
 {
-  RemoveRowsOrColumnsFromSelection(aColIdx,
-                                   nsISelectionPrivate::TABLESELECTION_COLUMN,
-                                   false);
+  RemoveRowsOrColumnsFromSelection(aColIdx, TableSelection::Column, false);
 }
 
 nsresult
-HTMLTableAccessible::AddRowOrColumnToSelection(int32_t aIndex, uint32_t aTarget)
+HTMLTableAccessible::AddRowOrColumnToSelection(int32_t aIndex, TableSelection aTarget)
 {
-  bool doSelectRow = (aTarget == nsISelectionPrivate::TABLESELECTION_ROW);
+  bool doSelectRow = (aTarget == TableSelection::Row);
 
   nsTableWrapperFrame* tableFrame = do_QueryFrame(mContent->GetPrimaryFrame());
   if (!tableFrame)
@@ -806,7 +796,7 @@ HTMLTableAccessible::AddRowOrColumnToSelection(int32_t aIndex, uint32_t aTarget)
 
 nsresult
 HTMLTableAccessible::RemoveRowsOrColumnsFromSelection(int32_t aIndex,
-                                                      uint32_t aTarget,
+                                                      TableSelection aTarget,
                                                       bool aIsOuter)
 {
   nsTableWrapperFrame* tableFrame = do_QueryFrame(mContent->GetPrimaryFrame());
@@ -817,7 +807,7 @@ HTMLTableAccessible::RemoveRowsOrColumnsFromSelection(int32_t aIndex,
   RefPtr<nsFrameSelection> tableSelection =
     const_cast<nsFrameSelection*>(presShell->ConstFrameSelection());
 
-  bool doUnselectRow = (aTarget == nsISelectionPrivate::TABLESELECTION_ROW);
+  bool doUnselectRow = (aTarget == TableSelection::Row);
   uint32_t count = doUnselectRow ? ColCount() : RowCount();
 
   int32_t startRowIdx = doUnselectRow ? aIndex : 0;
@@ -870,250 +860,12 @@ HTMLTableAccessible::Description(nsString& aDescription)
 #endif
 }
 
-bool
-HTMLTableAccessible::HasDescendant(const nsAString& aTagName, bool aAllowEmpty)
-{
-  nsCOMPtr<nsIHTMLCollection> elements =
-    mContent->AsElement()->GetElementsByTagName(aTagName);
-
-  Element* foundItem = elements->Item(0);
-  if (!foundItem)
-    return false;
-
-  if (aAllowEmpty)
-    return true;
-
-  // Make sure that the item we found has contents and either has multiple
-  // children or the found item is not a whitespace-only text node.
-  if (foundItem->GetChildCount() > 1)
-    return true; // Treat multiple child nodes as non-empty
-
-  nsIContent *innerItemContent = foundItem->GetFirstChild();
-  if (innerItemContent && !innerItemContent->TextIsOnlyWhitespace())
-    return true;
-
-  // If we found more than one node then return true not depending on
-  // aAllowEmpty flag.
-  // XXX it might be dummy but bug 501375 where we changed this addresses
-  // performance problems only. Note, currently 'aAllowEmpty' flag is used for
-  // caption element only. On another hand we create accessible object for
-  // the first entry of caption element (see
-  // HTMLTableAccessible::InsertChildAt).
-  return !!elements->Item(1);
-}
-
-bool
-HTMLTableAccessible::IsProbablyLayoutTable()
-{
-  // Implement a heuristic to determine if table is most likely used for layout
-  // XXX do we want to look for rowspan or colspan, especialy that span all but a couple cells
-  // at the beginning or end of a row/col, and especially when they occur at the edge of a table?
-  // XXX expose this info via object attributes to AT-SPI
-
-  // XXX For now debugging descriptions are always on via SHOW_LAYOUT_HEURISTIC
-  // This will allow release trunk builds to be used by testers to refine the algorithm
-  // Change to |#define SHOW_LAYOUT_HEURISTIC DEBUG| before final release
-#ifdef SHOW_LAYOUT_HEURISTIC
-#define RETURN_LAYOUT_ANSWER(isLayout, heuristic) \
-  { \
-    mLayoutHeuristic = isLayout ? \
-      NS_LITERAL_STRING("layout table: " heuristic) : \
-      NS_LITERAL_STRING("data table: " heuristic); \
-    return isLayout; \
-  }
-#else
-#define RETURN_LAYOUT_ANSWER(isLayout, heuristic) { return isLayout; }
-#endif
-
-  DocAccessible* docAccessible = Document();
-  if (docAccessible) {
-    uint64_t docState = docAccessible->State();
-    if (docState & states::EDITABLE) {  // Need to see all elements while document is being edited
-      RETURN_LAYOUT_ANSWER(false, "In editable document");
-    }
-  }
-
-  // Check to see if an ARIA role overrides the role from native markup,
-  // but for which we still expose table semantics (treegrid, for example).
-  if (Role() != roles::TABLE)
-    RETURN_LAYOUT_ANSWER(false, "Has role attribute");
-
-  if (mContent->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::role)) {
-    // Role attribute is present, but overridden roles have already been dealt with.
-    // Only landmarks and other roles that don't override the role from native
-    // markup are left to deal with here.
-    RETURN_LAYOUT_ANSWER(false, "Has role attribute, weak role, and role is table");
-  }
-
-  NS_ASSERTION(mContent->IsHTMLElement(nsGkAtoms::table),
-    "table should not be built by CSS display:table style");
-
-  // Check if datatable attribute has "0" value.
-  if (mContent->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::datatable,
-                            NS_LITERAL_STRING("0"), eCaseMatters)) {
-    RETURN_LAYOUT_ANSWER(true, "Has datatable = 0 attribute, it's for layout");
-  }
-
-  // Check for legitimate data table attributes.
-  nsAutoString summary;
-  if (mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::summary, summary) &&
-      !summary.IsEmpty())
-    RETURN_LAYOUT_ANSWER(false, "Has summary -- legitimate table structures");
-
-  // Check for legitimate data table elements.
-  Accessible* caption = FirstChild();
-  if (caption && caption->Role() == roles::CAPTION && caption->HasChildren())
-    RETURN_LAYOUT_ANSWER(false, "Not empty caption -- legitimate table structures");
-
-  for (nsIContent* childElm = mContent->GetFirstChild(); childElm;
-       childElm = childElm->GetNextSibling()) {
-    if (!childElm->IsHTMLElement())
-      continue;
-
-    if (childElm->IsAnyOfHTMLElements(nsGkAtoms::col,
-                                      nsGkAtoms::colgroup,
-                                      nsGkAtoms::tfoot,
-                                      nsGkAtoms::thead)) {
-      RETURN_LAYOUT_ANSWER(false,
-                           "Has col, colgroup, tfoot or thead -- legitimate table structures");
-    }
-
-    if (childElm->IsHTMLElement(nsGkAtoms::tbody)) {
-      for (nsIContent* rowElm = childElm->GetFirstChild(); rowElm;
-           rowElm = rowElm->GetNextSibling()) {
-        if (rowElm->IsHTMLElement(nsGkAtoms::tr)) {
-          for (nsIContent* cellElm = rowElm->GetFirstChild(); cellElm;
-               cellElm = cellElm->GetNextSibling()) {
-            if (cellElm->IsHTMLElement()) {
-
-              if (cellElm->NodeInfo()->Equals(nsGkAtoms::th)) {
-                RETURN_LAYOUT_ANSWER(false,
-                                     "Has th -- legitimate table structures");
-              }
-
-              if (cellElm->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::headers) ||
-                  cellElm->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::scope) ||
-                  cellElm->AsElement()->HasAttr(kNameSpaceID_None, nsGkAtoms::abbr)) {
-                RETURN_LAYOUT_ANSWER(false,
-                                     "Has headers, scope, or abbr attribute -- legitimate table structures");
-              }
-
-              Accessible* cell = mDoc->GetAccessible(cellElm);
-              if (cell && cell->ChildCount() == 1 &&
-                  cell->FirstChild()->IsAbbreviation()) {
-                RETURN_LAYOUT_ANSWER(false,
-                                     "has abbr -- legitimate table structures");
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (HasDescendant(NS_LITERAL_STRING("table"))) {
-    RETURN_LAYOUT_ANSWER(true, "Has a nested table within it");
-  }
-
-  // If only 1 column or only 1 row, it's for layout
-  uint32_t colCount = ColCount();
-  if (colCount <=1) {
-    RETURN_LAYOUT_ANSWER(true, "Has only 1 column");
-  }
-  uint32_t rowCount = RowCount();
-  if (rowCount <=1) {
-    RETURN_LAYOUT_ANSWER(true, "Has only 1 row");
-  }
-
-  // Check for many columns
-  if (colCount >= 5) {
-    RETURN_LAYOUT_ANSWER(false, ">=5 columns");
-  }
-
-  // Now we know there are 2-4 columns and 2 or more rows
-  // Check to see if there are visible borders on the cells
-  // XXX currently, we just check the first cell -- do we really need to do more?
-  nsTableWrapperFrame* tableFrame = do_QueryFrame(mContent->GetPrimaryFrame());
-  if (!tableFrame)
-    RETURN_LAYOUT_ANSWER(false, "table with no frame!");
-
-  nsIFrame* cellFrame = tableFrame->GetCellFrameAt(0, 0);
-  if (!cellFrame)
-    RETURN_LAYOUT_ANSWER(false, "table's first cell has no frame!");
-
-  nsMargin border;
-  cellFrame->GetXULBorder(border);
-  if (border.top && border.bottom && border.left && border.right) {
-    RETURN_LAYOUT_ANSWER(false, "Has nonzero border-width on table cell");
-  }
-
-  /**
-   * Rules for non-bordered tables with 2-4 columns and 2+ rows from here on forward
-   */
-
-  // Check for styled background color across rows (alternating background
-  // color is a common feature for data tables).
-  uint32_t childCount = ChildCount();
-  nscolor rowColor = 0;
-  nscolor prevRowColor;
-  for (uint32_t childIdx = 0; childIdx < childCount; childIdx++) {
-    Accessible* child = GetChildAt(childIdx);
-    if (child->Role() == roles::ROW) {
-      prevRowColor = rowColor;
-      nsIFrame* rowFrame = child->GetFrame();
-      MOZ_ASSERT(rowFrame, "Table hierarchy got screwed up");
-      if (!rowFrame) {
-        RETURN_LAYOUT_ANSWER(false, "Unexpected table hierarchy");
-      }
-
-      rowColor = rowFrame->StyleBackground()->BackgroundColor(rowFrame);
-
-      if (childIdx > 0 && prevRowColor != rowColor)
-        RETURN_LAYOUT_ANSWER(false, "2 styles of row background color, non-bordered");
-    }
-  }
-
-  // Check for many rows
-  const uint32_t kMaxLayoutRows = 20;
-  if (rowCount > kMaxLayoutRows) { // A ton of rows, this is probably for data
-    RETURN_LAYOUT_ANSWER(false, ">= kMaxLayoutRows (20) and non-bordered");
-  }
-
-  // Check for very wide table.
-  nsIFrame* documentFrame = Document()->GetFrame();
-  nsSize documentSize = documentFrame->GetSize();
-  if (documentSize.width > 0) {
-    nsSize tableSize = GetFrame()->GetSize();
-    int32_t percentageOfDocWidth = (100 * tableSize.width) / documentSize.width;
-    if (percentageOfDocWidth > 95) {
-      // 3-4 columns, no borders, not a lot of rows, and 95% of the doc's width
-      // Probably for layout
-      RETURN_LAYOUT_ANSWER(true,
-                           "<= 4 columns, table width is 95% of document width");
-    }
-  }
-
-  // Two column rules
-  if (rowCount * colCount <= 10) {
-    RETURN_LAYOUT_ANSWER(true, "2-4 columns, 10 cells or less, non-bordered");
-  }
-
-  if (HasDescendant(NS_LITERAL_STRING("embed")) ||
-      HasDescendant(NS_LITERAL_STRING("object")) ||
-      HasDescendant(NS_LITERAL_STRING("iframe"))) {
-    RETURN_LAYOUT_ANSWER(true, "Has no borders, and has iframe, object, or iframe, typical of advertisements");
-  }
-
-  RETURN_LAYOUT_ANSWER(false, "no layout factor strong enough, so will guess data");
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // HTMLCaptionAccessible
 ////////////////////////////////////////////////////////////////////////////////
 
 Relation
-HTMLCaptionAccessible::RelationByType(RelationType aType)
+HTMLCaptionAccessible::RelationByType(RelationType aType) const
 {
   Relation rel = HyperTextAccessible::RelationByType(aType);
   if (aType == RelationType::LABEL_FOR)
@@ -1123,7 +875,7 @@ HTMLCaptionAccessible::RelationByType(RelationType aType)
 }
 
 role
-HTMLCaptionAccessible::NativeRole()
+HTMLCaptionAccessible::NativeRole() const
 {
   return roles::CAPTION;
 }

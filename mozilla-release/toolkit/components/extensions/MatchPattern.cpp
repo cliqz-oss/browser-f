@@ -547,12 +547,12 @@ MatchPatternSet::Constructor(dom::GlobalObject& aGlobal,
       if (!pattern) {
         return nullptr;
       }
-      patterns.AppendElement(Move(pattern));
+      patterns.AppendElement(std::move(pattern));
     }
   }
 
   RefPtr<MatchPatternSet> patternSet = new MatchPatternSet(aGlobal.GetAsSupports(),
-                                                           Move(patterns));
+                                                           std::move(patterns));
   return patternSet.forget();
 }
 
@@ -740,7 +740,7 @@ MatchGlob::Matches(const nsAString& aString) const
     jsapi.Init();
     JSContext* cx = jsapi.cx();
 
-    JSAutoCompartment ac(cx, mRegExp);
+    JSAutoRealm ar(cx, mRegExp);
 
     JS::RootedObject regexp(cx, mRegExp);
     JS::RootedValue result(cx);

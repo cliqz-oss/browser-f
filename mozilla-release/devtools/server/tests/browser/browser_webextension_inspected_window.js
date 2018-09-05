@@ -6,7 +6,7 @@
 
 const {
   WebExtensionInspectedWindowFront
-} = require("devtools/shared/fronts/webextension-inspected-window");
+} = require("devtools/shared/fronts/addon/webextension-inspected-window");
 
 const TEST_RELOAD_URL = `${MAIN_DOMAIN}/inspectedwindow-reload-target.sjs`;
 
@@ -84,7 +84,7 @@ function injectedScript() {
 // Script evaluated in the target tab, to collect the results of injectedScript
 // evaluation in the inspectedWindow.reload tests.
 function collectEvalResults() {
-  let results = [];
+  const results = [];
   let iframeDoc = document;
 
   while (iframeDoc) {

@@ -25,16 +25,19 @@ const INITIAL_VIEWPORT = {
   pixelRatio: {
     value: 0,
   },
+  userContextId: 0,
 };
 
-let reducers = {
+const reducers = {
 
-  [ADD_VIEWPORT](viewports) {
+  [ADD_VIEWPORT](viewports, { userContextId }) {
     // For the moment, there can be at most one viewport.
     if (viewports.length === 1) {
       return viewports;
     }
-    return [...viewports, Object.assign({}, INITIAL_VIEWPORT)];
+    return [...viewports, Object.assign({}, INITIAL_VIEWPORT, {
+      userContextId,
+    })];
   },
 
   [CHANGE_DEVICE](viewports, { id, device, deviceType }) {
@@ -113,7 +116,7 @@ let reducers = {
 };
 
 module.exports = function(viewports = INITIAL_VIEWPORTS, action) {
-  let reducer = reducers[action.type];
+  const reducer = reducers[action.type];
   if (!reducer) {
     return viewports;
   }

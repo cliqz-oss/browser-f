@@ -8,6 +8,7 @@
 #define mozilla_ServoBindingTypes_h
 
 #include "mozilla/RefPtr.h"
+#include "mozilla/ServoComputedData.h"
 #include "mozilla/ServoTypes.h"
 #include "mozilla/SheetType.h"
 #include "mozilla/UniquePtr.h"
@@ -82,6 +83,15 @@ typedef nsTArray<nsCSSPropertyID> RawGeckoCSSPropertyIDList;
 typedef mozilla::gfx::Float RawGeckoGfxMatrix4x4[16];
 typedef mozilla::dom::StyleChildrenIterator RawGeckoStyleChildrenIterator;
 
+// A callback that can be sent via FFI which will be invoked _right before_
+// being mutated, and at most once.
+struct DeclarationBlockMutationClosure
+{
+  // The callback function. The argument is `data`.
+  void (*function)(void*) = nullptr;
+  void* data = nullptr;
+};
+
 // We have these helper types so that we can directly generate
 // things like &T or Borrowed<T> on the Rust side in the function, providing
 // additional safety benefits.
@@ -135,7 +145,7 @@ struct MOZ_MUST_USE_TYPE ComputedStyleStrong
   DECL_NULLABLE_BORROWED_MUT_REF_TYPE_FOR(type_)
 
 // This is a reference to a reference of RawServoDeclarationBlock, which
-// corresponds to Option<&Arc<RawServoDeclarationBlock>> in Servo side.
+// corresponds to Option<&Arc<Locked<RawServoDeclarationBlock>>> in Servo side.
 DECL_NULLABLE_BORROWED_REF_TYPE_FOR(RawServoDeclarationBlockStrong)
 DECL_OWNED_REF_TYPE_FOR(RawServoAuthorStyles)
 DECL_NULLABLE_BORROWED_REF_TYPE_FOR(RawServoAuthorStyles)

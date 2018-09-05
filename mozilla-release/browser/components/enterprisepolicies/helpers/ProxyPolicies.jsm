@@ -6,7 +6,7 @@
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.importGlobalProperties(["URL"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
 const PREF_LOGLEVEL = "browser.policies.loglevel";
 
@@ -40,7 +40,7 @@ var ProxyPolicies = {
     }
 
     if (param.AutoConfigURL) {
-      setPref("network.proxy.autoconfig_url", param.AutoConfigURL.spec);
+      setPref("network.proxy.autoconfig_url", param.AutoConfigURL.href);
     }
 
     if (param.UseProxyForDNS !== undefined) {

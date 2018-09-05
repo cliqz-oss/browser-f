@@ -6,19 +6,20 @@
 "use strict";
 
 var {Toolbox} = require("devtools/client/framework/toolbox");
-var {SIDE, BOTTOM, WINDOW} = Toolbox.HostType;
+var {LEFT, RIGHT, BOTTOM, WINDOW} = Toolbox.HostType;
 var toolbox, target;
 
 const URL = "data:text/html;charset=utf8,test for opening toolbox in different hosts";
 
 add_task(async function runTest() {
   info("Create a test tab and open the toolbox");
-  let tab = await addTab(URL);
+  const tab = await addTab(URL);
   target = TargetFactory.forTab(tab);
   toolbox = await gDevTools.showToolbox(target, "webconsole");
 
   await testBottomHost();
-  await testSidebarHost();
+  await testLeftHost();
+  await testRightHost();
   await testWindowHost();
   await testToolSelect();
   await testDestroy();
@@ -35,23 +36,38 @@ function testBottomHost() {
   checkHostType(toolbox, BOTTOM);
 
   // test UI presence
-  let nbox = gBrowser.getNotificationBox();
-  let iframe = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-bottom-iframe");
+  const nbox = gBrowser.getNotificationBox();
+  const iframe = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-bottom-iframe");
   ok(iframe, "toolbox bottom iframe exists");
 
   checkToolboxLoaded(iframe);
 }
 
-async function testSidebarHost() {
-  await toolbox.switchHost(SIDE);
-  checkHostType(toolbox, SIDE);
+async function testLeftHost() {
+  await toolbox.switchHost(LEFT);
+  checkHostType(toolbox, LEFT);
 
   // test UI presence
-  let nbox = gBrowser.getNotificationBox();
-  let bottom = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-bottom-iframe");
+  const nbox = gBrowser.getNotificationBox();
+  const bottom = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-bottom-iframe");
   ok(!bottom, "toolbox bottom iframe doesn't exist");
 
-  let iframe = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-side-iframe");
+  const iframe = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-side-iframe");
+  ok(iframe, "toolbox side iframe exists");
+
+  checkToolboxLoaded(iframe);
+}
+
+async function testRightHost() {
+  await toolbox.switchHost(RIGHT);
+  checkHostType(toolbox, RIGHT);
+
+  // test UI presence
+  const nbox = gBrowser.getNotificationBox();
+  const bottom = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-bottom-iframe");
+  ok(!bottom, "toolbox bottom iframe doesn't exist");
+
+  const iframe = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-side-iframe");
   ok(iframe, "toolbox side iframe exists");
 
   checkToolboxLoaded(iframe);
@@ -61,14 +77,14 @@ async function testWindowHost() {
   await toolbox.switchHost(WINDOW);
   checkHostType(toolbox, WINDOW);
 
-  let nbox = gBrowser.getNotificationBox();
-  let sidebar = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-side-iframe");
+  const nbox = gBrowser.getNotificationBox();
+  const sidebar = document.getAnonymousElementByAttribute(nbox, "class", "devtools-toolbox-side-iframe");
   ok(!sidebar, "toolbox sidebar iframe doesn't exist");
 
-  let win = Services.wm.getMostRecentWindow("devtools:toolbox");
+  const win = Services.wm.getMostRecentWindow("devtools:toolbox");
   ok(win, "toolbox separate window exists");
 
-  let iframe = win.document.getElementById("toolbox-iframe");
+  const iframe = win.document.getElementById("toolbox-iframe");
   checkToolboxLoaded(iframe);
 }
 
@@ -87,7 +103,7 @@ function testRememberHost() {
   // last host was the window - make sure it's the same when re-opening
   is(toolbox.hostType, WINDOW, "host remembered");
 
-  let win = Services.wm.getMostRecentWindow("devtools:toolbox");
+  const win = Services.wm.getMostRecentWindow("devtools:toolbox");
   ok(win, "toolbox separate window exists");
 }
 
@@ -95,21 +111,25 @@ async function testPreviousHost() {
   // last host was the window - make sure it's the same when re-opening
   is(toolbox.hostType, WINDOW, "host remembered");
 
-  info("Switching to side");
-  await toolbox.switchHost(SIDE);
-  checkHostType(toolbox, SIDE, WINDOW);
+  info("Switching to left");
+  await toolbox.switchHost(LEFT);
+  checkHostType(toolbox, LEFT, WINDOW);
+
+  info("Switching to right");
+  await toolbox.switchHost(RIGHT);
+  checkHostType(toolbox, RIGHT, LEFT);
 
   info("Switching to bottom");
   await toolbox.switchHost(BOTTOM);
-  checkHostType(toolbox, BOTTOM, SIDE);
+  checkHostType(toolbox, BOTTOM, RIGHT);
 
-  info("Switching from bottom to side");
+  info("Switching from bottom to right");
   await toolbox.switchToPreviousHost();
-  checkHostType(toolbox, SIDE, BOTTOM);
+  checkHostType(toolbox, RIGHT, BOTTOM);
 
-  info("Switching from side to bottom");
+  info("Switching from right to bottom");
   await toolbox.switchToPreviousHost();
-  checkHostType(toolbox, BOTTOM, SIDE);
+  checkHostType(toolbox, BOTTOM, RIGHT);
 
   info("Switching to window");
   await toolbox.switchHost(WINDOW);
@@ -122,18 +142,18 @@ async function testPreviousHost() {
   info("Forcing the previous host to match the current (bottom)");
   Services.prefs.setCharPref("devtools.toolbox.previousHost", BOTTOM);
 
-  info("Switching from bottom to side (since previous=current=bottom");
+  info("Switching from bottom to right (since previous=current=bottom");
   await toolbox.switchToPreviousHost();
-  checkHostType(toolbox, SIDE, BOTTOM);
+  checkHostType(toolbox, RIGHT, BOTTOM);
 
-  info("Forcing the previous host to match the current (side)");
-  Services.prefs.setCharPref("devtools.toolbox.previousHost", SIDE);
-  info("Switching from side to bottom (since previous=current=side");
+  info("Forcing the previous host to match the current (right)");
+  Services.prefs.setCharPref("devtools.toolbox.previousHost", RIGHT);
+  info("Switching from right to bottom (since previous=current=side");
   await toolbox.switchToPreviousHost();
-  checkHostType(toolbox, BOTTOM, SIDE);
+  checkHostType(toolbox, BOTTOM, RIGHT);
 }
 
 function checkToolboxLoaded(iframe) {
-  let tabs = iframe.contentDocument.querySelector(".toolbox-tabs");
+  const tabs = iframe.contentDocument.querySelector(".toolbox-tabs");
   ok(tabs, "toolbox UI has been loaded into iframe");
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from collections import OrderedDict
 
+
 class Mod:
     """
     A nserror module. When used with a `with` statement, binds the itself to
@@ -17,6 +18,7 @@ class Mod:
     def __exit__(self, _type, _value, _traceback):
         Mod.active = None
 
+
 modules = OrderedDict()
 
 # To add error code to your module, you need to do the following:
@@ -27,7 +29,8 @@ modules = OrderedDict()
 # 2) In your module, define a header file which uses one of the
 # NE_ERROR_GENERATExxxxxx macros.  Some examples below:
 #
-#    #define NS_ERROR_MYMODULE_MYERROR1 NS_ERROR_GENERATE(NS_ERROR_SEVERITY_ERROR,NS_ERROR_MODULE_MYMODULE,1)
+#    #define NS_ERROR_MYMODULE_MYERROR1 \
+#        NS_ERROR_GENERATE(NS_ERROR_SEVERITY_ERROR,NS_ERROR_MODULE_MYMODULE,1)
 #    #define NS_ERROR_MYMODULE_MYERROR2 NS_ERROR_GENERATE_SUCCESS(NS_ERROR_MODULE_MYMODULE,2)
 #    #define NS_ERROR_MYMODULE_MYERROR3 NS_ERROR_GENERATE_FAILURE(NS_ERROR_MODULE_MYMODULE,3)
 
@@ -95,14 +98,18 @@ MODULE_BASE_OFFSET = 0x45
 NS_ERROR_SEVERITY_SUCCESS = 0
 NS_ERROR_SEVERITY_ERROR = 1
 
+
 def SUCCESS_OR_FAILURE(sev, module, code):
     return (sev << 31) | ((module + MODULE_BASE_OFFSET) << 16) | code
+
 
 def FAILURE(code):
     return SUCCESS_OR_FAILURE(NS_ERROR_SEVERITY_ERROR, Mod.active.num, code)
 
+
 def SUCCESS(code):
     return SUCCESS_OR_FAILURE(NS_ERROR_SEVERITY_SUCCESS, Mod.active.num, code)
+
 
 # Errors is an ordered dictionary, so that we can recover the order in which
 # they were defined. This is important for determining which name is the
@@ -196,7 +203,6 @@ with modules["BASE"]:
     errors["NS_BASE_STREAM_WOULD_BLOCK"] = FAILURE(7)
 
 
-
 # =======================================================================
 # 3: NS_ERROR_MODULE_GFX
 # =======================================================================
@@ -220,7 +226,6 @@ with modules["GFX"]:
     errors["NS_ERROR_GFX_CMAP_MALFORMED"] = FAILURE(51)
 
 
-
 # =======================================================================
 # 4:  NS_ERROR_MODULE_WIDGET
 # =======================================================================
@@ -236,7 +241,6 @@ with modules["WIDGET"]:
     # Returned when the event is handled correctly but the result will be
     # notified asynchronously.
     errors["NS_SUCCESS_EVENT_HANDLED_ASYNCHRONOUSLY"] = SUCCESS(2)
-
 
 
 # =======================================================================
@@ -357,7 +361,6 @@ with modules["NETWORK"]:
     # probably in the process of being torn down.
     errors["NS_ERROR_DOCSHELL_DYING"] = FAILURE(78)
 
-
     # FTP specific error codes:
 
     errors["NS_ERROR_FTP_LOGIN"] = FAILURE(21)
@@ -378,7 +381,6 @@ with modules["NETWORK"]:
     # speak to a proxy server, then it will generate this error if the proxy
     # hostname cannot be resolved.
     errors["NS_ERROR_UNKNOWN_PROXY_HOST"] = FAILURE(42)
-
 
     # Socket specific error codes:
 
@@ -411,7 +413,6 @@ with modules["NETWORK"]:
     errors["NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS"] = FAILURE(80)
     # The host string is an IP address.
     errors["NS_ERROR_HOST_IS_IP_ADDRESS"] = FAILURE(81)
-
 
     # StreamLoader specific result codes:
 
@@ -451,7 +452,6 @@ with modules["NETWORK"]:
     errors["NS_ERROR_INTERCEPTION_FAILED"] = FAILURE(100)
 
 
-
 # =======================================================================
 # 7: NS_ERROR_MODULE_PLUGINS
 # =======================================================================
@@ -461,7 +461,6 @@ with modules["PLUGINS"]:
     errors["NS_ERROR_PLUGIN_BLOCKLISTED"] = FAILURE(1002)
     errors["NS_ERROR_PLUGIN_TIME_RANGE_NOT_SUPPORTED"] = FAILURE(1003)
     errors["NS_ERROR_PLUGIN_CLICKTOPLAY"] = FAILURE(1004)
-
 
 
 # =======================================================================
@@ -474,7 +473,6 @@ with modules["LAYOUT"]:
     errors["NS_OK_PARSE_SHEET"] = SUCCESS(1)
     # Return code for nsFrame::GetNextPrevLineFromeBlockFrame
     errors["NS_POSITION_BEFORE_TABLE"] = SUCCESS(3)
-
 
 
 # =======================================================================
@@ -508,7 +506,6 @@ with modules["HTMLPARSER"]:
     errors["NS_HTMLPARSER_VALID_META_CHARSET"] = SUCCESS(3000)
 
 
-
 # =======================================================================
 # 10: NS_ERROR_MODULE_RDF
 # =======================================================================
@@ -528,7 +525,6 @@ with modules["RDF"]:
     errors["NS_RDF_ASSERTION_REJECTED"] = SUCCESS(3)
     # Return this from rdfITripleVisitor to stop cycling
     errors["NS_RDF_STOP_VISIT"] = SUCCESS(4)
-
 
 
 # =======================================================================
@@ -555,7 +551,6 @@ with modules["UCONV"]:
     errors["NS_PARTIAL_MORE_OUTPUT"] = errors["NS_OK_UDEC_MOREOUTPUT"]
     errors["NS_ERROR_ILLEGAL_INPUT"] = errors["NS_ERROR_UDEC_ILLEGALINPUT"]
     # END DEPRECATED
-
 
 
 # =======================================================================
@@ -587,7 +582,6 @@ with modules["FILES"]:
     errors["NS_SUCCESS_FILE_DIRECTORY_EMPTY"] = SUCCESS(1)
     # Result codes used by nsIDirectoryServiceProvider2
     errors["NS_SUCCESS_AGGREGATE_RESULT"] = SUCCESS(2)
-
 
 
 # =======================================================================
@@ -641,7 +635,6 @@ with modules["DOM"]:
     errors["NS_ERROR_DOM_NOT_BOOLEAN_ERR"] = FAILURE(1006)
     errors["NS_ERROR_DOM_NOT_FUNCTION_ERR"] = FAILURE(1007)
     errors["NS_ERROR_DOM_TOO_FEW_PARAMETERS_ERR"] = FAILURE(1008)
-    errors["NS_ERROR_DOM_BAD_DOCUMENT_DOMAIN"] = FAILURE(1009)
     errors["NS_ERROR_DOM_PROP_ACCESS_DENIED"] = FAILURE(1010)
     errors["NS_ERROR_DOM_XPCONNECT_ACCESS_DENIED"] = FAILURE(1011)
     errors["NS_ERROR_DOM_BAD_URI"] = FAILURE(1012)
@@ -659,9 +652,9 @@ with modules["DOM"]:
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_NOT_BE_SENDING"] = FAILURE(1020)
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_MUST_NOT_BE_LOADING_OR_DONE"] = FAILURE(1021)
     errors["NS_ERROR_DOM_INVALID_STATE_XHR_HAS_WRONG_RESPONSETYPE_FOR_RESPONSEXML"] = FAILURE(1022)
-    errors["NS_ERROR_DOM_INVALID_STATE_XHR_HAS_WRONG_RESPONSETYPE_FOR_RESPONSETEXT"] = FAILURE(1023)
-    errors["NS_ERROR_DOM_INVALID_STATE_XHR_CHUNKED_RESPONSETYPES_UNSUPPORTED_FOR_SYNC"] = FAILURE(1024)
-    errors["NS_ERROR_DOM_INVALID_ACCESS_XHR_TIMEOUT_AND_RESPONSETYPE_UNSUPPORTED_FOR_SYNC"] = FAILURE(1025)
+    errors["NS_ERROR_DOM_INVALID_STATE_XHR_HAS_WRONG_RESPONSETYPE_FOR_RESPONSETEXT"] = FAILURE(1023)  # NOQA: E501
+    errors["NS_ERROR_DOM_INVALID_STATE_XHR_CHUNKED_RESPONSETYPES_UNSUPPORTED_FOR_SYNC"] = FAILURE(1024)  # NOQA: E501
+    errors["NS_ERROR_DOM_INVALID_ACCESS_XHR_TIMEOUT_AND_RESPONSETYPE_UNSUPPORTED_FOR_SYNC"] = FAILURE(1025)  # NOQA: E501
 
     # When manipulating the bytecode cache with the JS API, some transcoding
     # errors, such as a different bytecode format can cause failures of the
@@ -684,7 +677,6 @@ with modules["DOM"]:
     errors["NS_SUCCESS_DOM_SCRIPT_EVALUATION_THREW_UNCATCHABLE"] = SUCCESS(3)
 
 
-
 # =======================================================================
 # 15: NS_ERROR_MODULE_IMGLIB
 # =======================================================================
@@ -697,14 +689,14 @@ with modules["IMGLIB"]:
     errors["NS_IMAGELIB_ERROR_NO_ENCODER"] = FAILURE(9)
 
 
-
 # =======================================================================
 # 17: NS_ERROR_MODULE_EDITOR
 # =======================================================================
 with modules["EDITOR"]:
+    errors["NS_ERROR_EDITOR_DESTROYED"] = FAILURE(1)
+
     errors["NS_SUCCESS_EDITOR_ELEMENT_NOT_FOUND"] = SUCCESS(1)
     errors["NS_SUCCESS_EDITOR_FOUND_TARGET"] = SUCCESS(2)
-
 
 
 # =======================================================================
@@ -768,13 +760,11 @@ with modules["XPCONNECT"]:
     # any new errors here should have an associated entry added in xpc.msg
 
 
-
 # =======================================================================
 # 19: NS_ERROR_MODULE_PROFILE
 # =======================================================================
 with modules["PROFILE"]:
     errors["NS_ERROR_LAUNCHED_CHILD_PROCESS"] = FAILURE(200)
-
 
 
 # =======================================================================
@@ -813,7 +803,6 @@ with modules["SECURITY"]:
     errors["NS_ERROR_CMS_ENCRYPT_INCOMPLETE"] = FAILURE(1057)
 
 
-
 # =======================================================================
 # 22: NS_ERROR_MODULE_DOM_XPATH
 # =======================================================================
@@ -821,7 +810,6 @@ with modules["DOM_XPATH"]:
     # DOM error codes from http://www.w3.org/TR/DOM-Level-3-XPath/
     errors["NS_ERROR_DOM_INVALID_EXPRESSION_ERR"] = FAILURE(51)
     errors["NS_ERROR_DOM_TYPE_ERR"] = FAILURE(52)
-
 
 
 # =======================================================================
@@ -849,7 +837,6 @@ with modules["URILOADER"]:
     errors["NS_REFRESHURI_HEADER_FOUND"] = SUCCESS(2)
 
 
-
 # =======================================================================
 # 25: NS_ERROR_MODULE_CONTENT
 # =======================================================================
@@ -863,6 +850,9 @@ with modules["CONTENT"]:
     errors["NS_ERROR_XBL_BLOCKED"] = FAILURE(15)
     # Error code for when the content process crashed
     errors["NS_ERROR_CONTENT_CRASHED"] = FAILURE(16)
+    # Error code for when the content process had a different buildID than the
+    # parent
+    errors["NS_ERROR_BUILDID_MISMATCH"] = FAILURE(17)
 
     # XXX this is not really used
     errors["NS_HTML_STYLE_PROPERTY_NOT_THERE"] = SUCCESS(2)
@@ -873,7 +863,6 @@ with modules["CONTENT"]:
     errors["NS_FINDBROADCASTER_NOT_FOUND"] = SUCCESS(12)
     errors["NS_FINDBROADCASTER_FOUND"] = SUCCESS(13)
     errors["NS_FINDBROADCASTER_AWAIT_OVERLAYS"] = SUCCESS(14)
-
 
 
 # =======================================================================
@@ -918,7 +907,6 @@ with modules["XSLT"]:
     errors["NS_XSLT_GET_NEW_HANDLER"] = SUCCESS(1)
 
 
-
 # =======================================================================
 # 28: NS_ERROR_MODULE_IPC
 # =======================================================================
@@ -943,7 +931,6 @@ with modules["SVG"]:
     errors["NS_ERROR_DOM_SVG_MATRIX_NOT_INVERTABLE"] = FAILURE(2)
 
 
-
 # =======================================================================
 # 30: NS_ERROR_MODULE_STORAGE
 # =======================================================================
@@ -961,7 +948,6 @@ with modules["STORAGE"]:
     errors["NS_ERROR_STORAGE_CONSTRAINT"] = FAILURE(3)
 
 
-
 # =======================================================================
 # 32: NS_ERROR_MODULE_DOM_FILE
 # =======================================================================
@@ -969,7 +955,6 @@ with modules["DOM_FILE"]:
     errors["NS_ERROR_DOM_FILE_NOT_FOUND_ERR"] = FAILURE(0)
     errors["NS_ERROR_DOM_FILE_NOT_READABLE_ERR"] = FAILURE(1)
     errors["NS_ERROR_DOM_FILE_ABORT_ERR"] = FAILURE(2)
-
 
 
 # =======================================================================
@@ -989,7 +974,6 @@ with modules["DOM_INDEXEDDB"]:
     errors["NS_ERROR_DOM_INDEXEDDB_QUOTA_ERR"] = FAILURE(11)
     errors["NS_ERROR_DOM_INDEXEDDB_VERSION_ERR"] = FAILURE(12)
     errors["NS_ERROR_DOM_INDEXEDDB_RECOVERABLE_ERR"] = FAILURE(1001)
-
 
 
 # =======================================================================
@@ -1061,7 +1045,8 @@ with modules["DOM_PUSH"]:
 # 41: NS_ERROR_MODULE_DOM_MEDIA
 # =======================================================================
 with modules["DOM_MEDIA"]:
-    # HTMLMediaElement API errors from https://html.spec.whatwg.org/multipage/embedded-content.html#media-elements
+    # HTMLMediaElement API errors from
+    # https://html.spec.whatwg.org/multipage/embedded-content.html#media-elements
     errors["NS_ERROR_DOM_MEDIA_ABORT_ERR"] = FAILURE(1)
     errors["NS_ERROR_DOM_MEDIA_NOT_ALLOWED_ERR"] = FAILURE(2)
     errors["NS_ERROR_DOM_MEDIA_NOT_SUPPORTED_ERR"] = FAILURE(3)
@@ -1099,6 +1084,7 @@ with modules["URL_CLASSIFIER"]:
     errors["NS_ERROR_UC_UPDATE_TABLE_NOT_FOUND"] = FAILURE(8)
     errors["NS_ERROR_UC_UPDATE_BUILD_PREFIX_FAILURE"] = FAILURE(9)
     errors["NS_ERROR_UC_UPDATE_FAIL_TO_WRITE_DISK"] = FAILURE(10)
+    errors["NS_ERROR_UC_UPDATE_UNEXPECTED_VERSION"] = FAILURE(11)
 
     # Specific errors while parsing pver2/pver4 responses
     errors["NS_ERROR_UC_PARSER_MISSING_PARAM"] = FAILURE(12)
@@ -1149,7 +1135,6 @@ with modules["GENERAL"]:
     errors["NS_SUCCESS_RESTART_APP"] = SUCCESS(1)
     errors["NS_SUCCESS_RESTART_APP_NOT_SAME_PROFILE"] = SUCCESS(3)
     errors["NS_SUCCESS_UNORM_NOTFOUND"] = SUCCESS(17)
-
 
     # a11y
     # raised when current pivot's position is needed but it's not in the tree
@@ -1203,6 +1188,7 @@ const nsresult
 
 #endif // ErrorList_h__
 """.format(",\n".join(items)))
+
 
 def error_names_internal_h(output):
     """Generate ErrorNamesInternal.h, which is a header file declaring one

@@ -13,12 +13,14 @@ use webrender::{ExternalImage, ExternalImageHandler, ExternalImageSource};
 use webrender::DebugFlags;
 use webrender::{ApiRecordingReceiver, BinaryRecorder};
 use webrender::{AsyncPropertySampler, PipelineInfo, SceneBuilderHooks};
-use webrender::{ProgramCache, UploadMethod, VertexUsageHint};
+use webrender::{UploadMethod, VertexUsageHint};
 use thread_profiler::register_thread_with_profiler;
 use moz2d_renderer::Moz2dImageRenderer;
+use program_cache::{WrProgramCache, remove_disk_cache};
 use app_units::Au;
 use rayon;
 use euclid::SideOffsets2D;
+use nsstring::nsAString;
 
 #[cfg(target_os = "windows")]
 use dwrote::{FontDescriptor, FontWeight, FontStretch, FontStyle};
@@ -288,8 +290,7 @@ pub struct WrImageDescriptor {
 impl<'a> Into<ImageDescriptor> for &'a WrImageDescriptor {
     fn into(self) -> ImageDescriptor {
         ImageDescriptor {
-            width: self.width,
-            height: self.height,
+            size: DeviceUintSize::new(self.width, self.height),
             stride: if self.stride != 0 {
                 Some(self.stride)
             } else {
@@ -494,6 +495,7 @@ extern "C" {
     fn wr_notifier_nop_frame_done(window_id: WrWindowId);
     fn wr_notifier_external_event(window_id: WrWindowId,
                                   raw_event: usize);
+    fn wr_schedule_render(window_id: WrWindowId);
 }
 
 impl RenderNotifier for CppNotifier {
@@ -722,6 +724,15 @@ impl SceneBuilderHooks for APZCallbacks {
     fn post_scene_swap(&self, info: PipelineInfo) {
         let info = WrPipelineInfo::new(info);
         unsafe { apz_post_scene_swap(self.window_id, info) }
+
+        // After a scene swap we should schedule a render for the next vsync,
+        // otherwise there's no guarantee that the new scene will get rendered
+        // anytime soon
+        unsafe { wr_schedule_render(self.window_id) }
+    }
+
+    fn post_resource_update(&self) {
+        unsafe { wr_schedule_render(self.window_id) }
     }
 
     fn poke(&self) {
@@ -818,23 +829,40 @@ pub unsafe extern "C" fn wr_thread_pool_delete(thread_pool: *mut WrThreadPool) {
     Box::from_raw(thread_pool);
 }
 
-pub struct WrProgramCache(Rc<ProgramCache>);
-
 #[no_mangle]
-pub unsafe extern "C" fn wr_program_cache_new() -> *mut WrProgramCache {
-    let program_cache = ProgramCache::new();
-    Box::into_raw(Box::new(WrProgramCache(program_cache)))
+pub unsafe extern "C" fn wr_program_cache_new(prof_path: &nsAString, thread_pool: *mut WrThreadPool) -> *mut WrProgramCache {
+    let workers = &(*thread_pool).0;
+    let program_cache = WrProgramCache::new(prof_path, workers);
+    Box::into_raw(Box::new(program_cache))
 }
 
 /// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
 #[no_mangle]
 pub unsafe extern "C" fn wr_program_cache_delete(program_cache: *mut WrProgramCache) {
-    Rc::from_raw(program_cache);
+    Box::from_raw(program_cache);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wr_try_load_shader_from_disk(program_cache: *mut WrProgramCache) {
+    if !program_cache.is_null() {
+        (*program_cache).try_load_from_disk();
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn remove_program_binary_disk_cache(prof_path: &nsAString) -> bool {
+    match remove_disk_cache(prof_path) {
+        Ok(_) => true,
+        Err(_) => {
+            error!("Failed to remove program binary disk cache");
+            false
+        }
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn wr_renderer_update_program_cache(renderer: &mut Renderer, program_cache: &mut WrProgramCache) {
-    let program_cache = Rc::clone(&program_cache.0);
+    let program_cache = Rc::clone(&program_cache.rc_get());
     renderer.update_program_cache(program_cache);
 }
 
@@ -903,6 +931,7 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
         upload_method,
         scene_builder_hooks: Some(Box::new(APZCallbacks::new(window_id))),
         sampler: Some(Box::new(SamplerCallback::new(window_id))),
+        max_texture_size: Some(8192), // Moz2D doesn't like textures bigger than this
         ..Default::default()
     };
 
@@ -981,8 +1010,7 @@ pub unsafe extern "C" fn wr_api_shut_down(dh: &mut DocumentHandle) {
     dh.api.shut_down();
 }
 
-#[no_mangle]
-pub extern "C" fn wr_transaction_new(do_async: bool) -> *mut Transaction {
+fn make_transaction(do_async: bool) -> Transaction {
     let mut transaction = Transaction::new();
     // Ensure that we either use async scene building or not based on the
     // gecko pref, regardless of what the default is. We can remove this once
@@ -992,7 +1020,12 @@ pub extern "C" fn wr_transaction_new(do_async: bool) -> *mut Transaction {
     } else {
         transaction.skip_scene_builder();
     }
-    Box::into_raw(Box::new(transaction))
+    transaction
+}
+
+#[no_mangle]
+pub extern "C" fn wr_transaction_new(do_async: bool) -> *mut Transaction {
+    Box::into_raw(Box::new(make_transaction(do_async)))
 }
 
 /// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
@@ -1060,17 +1093,6 @@ pub extern "C" fn wr_transaction_set_display_list(
         (pipeline_id, content_size, dl),
         preserve_frame_state,
     );
-}
-
-#[no_mangle]
-pub extern "C" fn wr_transaction_update_resources(
-    txn: &mut Transaction,
-    resource_updates: &mut ResourceUpdates
-) {
-    if resource_updates.updates.is_empty() {
-        return;
-    }
-    txn.update_resources(mem::replace(resource_updates, ResourceUpdates::new()));
 }
 
 #[no_mangle]
@@ -1174,12 +1196,12 @@ pub extern "C" fn wr_transaction_scroll_layer(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_add_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     image_key: WrImageKey,
     descriptor: &WrImageDescriptor,
     bytes: &mut WrVecU8,
 ) {
-    resources.add_image(
+    txn.add_image(
         image_key,
         descriptor.into(),
         ImageData::new(bytes.flush_into_vec()),
@@ -1189,12 +1211,12 @@ pub extern "C" fn wr_resource_updates_add_image(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_add_blob_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     image_key: WrImageKey,
     descriptor: &WrImageDescriptor,
     bytes: &mut WrVecU8,
 ) {
-    resources.add_image(
+    txn.add_image(
         image_key,
         descriptor.into(),
         ImageData::new_blob_image(bytes.flush_into_vec()),
@@ -1204,14 +1226,14 @@ pub extern "C" fn wr_resource_updates_add_blob_image(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_add_external_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     image_key: WrImageKey,
     descriptor: &WrImageDescriptor,
     external_image_id: WrExternalImageId,
     buffer_type: WrExternalImageBufferType,
     channel_index: u8
 ) {
-    resources.add_image(
+    txn.add_image(
         image_key,
         descriptor.into(),
         ImageData::External(
@@ -1227,12 +1249,12 @@ pub extern "C" fn wr_resource_updates_add_external_image(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_update_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrImageKey,
     descriptor: &WrImageDescriptor,
     bytes: &mut WrVecU8,
 ) {
-    resources.update_image(
+    txn.update_image(
         key,
         descriptor.into(),
         ImageData::new(bytes.flush_into_vec()),
@@ -1242,14 +1264,14 @@ pub extern "C" fn wr_resource_updates_update_image(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_update_external_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrImageKey,
     descriptor: &WrImageDescriptor,
     external_image_id: WrExternalImageId,
     image_type: WrExternalImageBufferType,
     channel_index: u8
 ) {
-    resources.update_image(
+    txn.update_image(
         key,
         descriptor.into(),
         ImageData::External(
@@ -1265,13 +1287,13 @@ pub extern "C" fn wr_resource_updates_update_external_image(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_update_blob_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     image_key: WrImageKey,
     descriptor: &WrImageDescriptor,
     bytes: &mut WrVecU8,
     dirty_rect: DeviceUintRect,
 ) {
-    resources.update_image(
+    txn.update_image(
         image_key,
         descriptor.into(),
         ImageData::new_blob_image(bytes.flush_into_vec()),
@@ -1281,21 +1303,23 @@ pub extern "C" fn wr_resource_updates_update_blob_image(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_delete_image(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrImageKey
 ) {
-    resources.delete_image(key);
+    txn.delete_image(key);
 }
 
 #[no_mangle]
 pub extern "C" fn wr_api_send_transaction(
     dh: &mut DocumentHandle,
-    transaction: &mut Transaction
+    transaction: &mut Transaction,
+    is_async: bool
 ) {
     if transaction.is_empty() {
         return;
     }
-    let txn = mem::replace(transaction, Transaction::new());
+    let new_txn = make_transaction(is_async);
+    let txn = mem::replace(transaction, new_txn);
     dh.api.send_transaction(dh.document_id, txn);
 }
 
@@ -1328,12 +1352,12 @@ pub extern "C" fn wr_api_send_external_event(dh: &mut DocumentHandle,
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_add_raw_font(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrFontKey,
     bytes: &mut WrVecU8,
     index: u32
 ) {
-    resources.add_raw_font(key, bytes.flush_into_vec(), index);
+    txn.add_raw_font(key, bytes.flush_into_vec(), index);
 }
 
 #[no_mangle]
@@ -1403,26 +1427,26 @@ fn read_font_descriptor(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_add_font_descriptor(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrFontKey,
     bytes: &mut WrVecU8,
     index: u32
 ) {
     let native_font_handle = read_font_descriptor(bytes, index);
-    resources.add_native_font(key, native_font_handle);
+    txn.add_native_font(key, native_font_handle);
 }
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_delete_font(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrFontKey
 ) {
-    resources.delete_font(key);
+    txn.delete_font(key);
 }
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_add_font_instance(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrFontInstanceKey,
     font_key: WrFontKey,
     glyph_size: f32,
@@ -1430,7 +1454,7 @@ pub extern "C" fn wr_resource_updates_add_font_instance(
     platform_options: *const FontInstancePlatformOptions,
     variations: &mut WrVecU8,
 ) {
-    resources.add_font_instance(
+    txn.add_font_instance(
         key,
         font_key,
         Au::from_f32_px(glyph_size),
@@ -1442,29 +1466,15 @@ pub extern "C" fn wr_resource_updates_add_font_instance(
 
 #[no_mangle]
 pub extern "C" fn wr_resource_updates_delete_font_instance(
-    resources: &mut ResourceUpdates,
+    txn: &mut Transaction,
     key: WrFontInstanceKey
 ) {
-    resources.delete_font_instance(key);
+    txn.delete_font_instance(key);
 }
 
 #[no_mangle]
-pub extern "C" fn wr_resource_updates_new() -> *mut ResourceUpdates {
-    let updates = Box::new(ResourceUpdates::new());
-    Box::into_raw(updates)
-}
-
-#[no_mangle]
-pub extern "C" fn wr_resource_updates_clear(resources: &mut ResourceUpdates) {
-    resources.updates.clear();
-}
-
-/// cbindgen:postfix=WR_DESTRUCTOR_SAFE_FUNC
-#[no_mangle]
-pub extern "C" fn wr_resource_updates_delete(updates: *mut ResourceUpdates) {
-    unsafe {
-        Box::from_raw(updates);
-    }
+pub extern "C" fn wr_resource_updates_clear(txn: &mut Transaction) {
+    txn.resource_updates.clear();
 }
 
 #[no_mangle]
@@ -1578,7 +1588,9 @@ pub extern "C" fn wr_dp_push_stacking_context(state: &mut WrState,
                                               filters: *const WrFilterOp,
                                               filter_count: usize,
                                               is_backface_visible: bool,
-                                              glyph_raster_space: GlyphRasterSpace) {
+                                              glyph_raster_space: GlyphRasterSpace,
+                                              out_is_reference_frame: &mut bool,
+                                              out_reference_frame_id: &mut usize) {
     debug_assert!(unsafe { !is_in_render_thread() });
 
     let c_filters = make_slice(filters, filter_count);
@@ -1606,25 +1618,40 @@ pub extern "C" fn wr_dp_push_stacking_context(state: &mut WrState,
         None => None,
     };
 
-    let opacity_ref = unsafe { opacity.as_ref() };
-    if let Some(opacity) = opacity_ref {
-        if *opacity < 1.0 {
-            filters.push(FilterOp::Opacity(PropertyBinding::Value(*opacity), *opacity));
-        }
-    }
-
     let transform_ref = unsafe { transform.as_ref() };
     let mut transform_binding = match transform_ref {
         Some(transform) => Some(PropertyBinding::Value(transform.clone())),
         None => None,
     };
 
+    let opacity_ref = unsafe { opacity.as_ref() };
+    let mut has_opacity_animation = false;
     let anim = unsafe { animation.as_ref() };
     if let Some(anim) = anim {
         debug_assert!(anim.id > 0);
         match anim.effect_type {
-            WrAnimationType::Opacity => filters.push(FilterOp::Opacity(PropertyBinding::Binding(PropertyBindingKey::new(anim.id)), 1.0)),
-            WrAnimationType::Transform => transform_binding = Some(PropertyBinding::Binding(PropertyBindingKey::new(anim.id))),
+            WrAnimationType::Opacity => {
+                filters.push(FilterOp::Opacity(PropertyBinding::Binding(PropertyBindingKey::new(anim.id),
+                                                                        // We have to set the static opacity value as
+                                                                        // the value for the case where the animation is
+                                                                        // in not in-effect (e.g. in the delay phase
+                                                                        // with no corresponding fill mode).
+                                                                        opacity_ref.cloned().unwrap_or(1.0)),
+                                                                        1.0));
+                has_opacity_animation = true;
+            },
+            WrAnimationType::Transform => {
+                transform_binding =
+                    Some(PropertyBinding::Binding(PropertyBindingKey::new(anim.id),
+                                                  // Same as above opacity case.
+                                                  transform_ref.cloned().unwrap_or(LayoutTransform::identity())));
+            },
+        }
+    }
+
+    if let Some(opacity) = opacity_ref {
+        if !has_opacity_animation && *opacity < 1.0 {
+            filters.push(FilterOp::Opacity(PropertyBinding::Value(*opacity), *opacity));
         }
     }
 
@@ -1635,6 +1662,25 @@ pub extern "C" fn wr_dp_push_stacking_context(state: &mut WrState,
     };
 
     let mut prim_info = LayoutPrimitiveInfo::new(bounds);
+
+    *out_is_reference_frame = transform_binding.is_some() || perspective.is_some();
+    if *out_is_reference_frame {
+        let ref_frame_id = state.frame_builder
+            .dl_builder
+            .push_reference_frame(&prim_info, transform_binding, perspective);
+        match ref_frame_id {
+            ClipId::Clip(id, pipeline_id) => {
+                assert!(pipeline_id == state.pipeline_id);
+                *out_reference_frame_id = id;
+            },
+            _ => panic!("Pushing a reference frame must produce a ClipId::Clip"),
+        }
+
+        prim_info.rect.origin = LayoutPoint::zero();
+        prim_info.clip_rect.origin = LayoutPoint::zero();
+        state.frame_builder.dl_builder.push_clip_id(ref_frame_id);
+    }
+
     prim_info.is_backface_visible = is_backface_visible;
     prim_info.tag = state.current_tag;
 
@@ -1642,46 +1688,40 @@ pub extern "C" fn wr_dp_push_stacking_context(state: &mut WrState,
          .dl_builder
          .push_stacking_context(&prim_info,
                                 clip_node_id,
-                                ScrollPolicy::Scrollable,
-                                transform_binding,
                                 transform_style,
-                                perspective,
                                 mix_blend_mode,
                                 filters,
                                 glyph_raster_space);
 }
 
 #[no_mangle]
-pub extern "C" fn wr_dp_pop_stacking_context(state: &mut WrState) {
+pub extern "C" fn wr_dp_pop_stacking_context(state: &mut WrState,
+                                             is_reference_frame: bool) {
     debug_assert!(unsafe { !is_in_render_thread() });
     state.frame_builder.dl_builder.pop_stacking_context();
-}
-
-fn make_scroll_info(state: &mut WrState,
-                    scroll_id: Option<&usize>,
-                    clip_id: Option<&usize>)
-                    -> Option<ClipAndScrollInfo> {
-    if let Some(&sid) = scroll_id {
-        if let Some(&cid) = clip_id {
-            Some(ClipAndScrollInfo::new(
-                ClipId::Clip(sid , state.pipeline_id),
-                ClipId::Clip(cid, state.pipeline_id)))
-        } else {
-            Some(ClipAndScrollInfo::simple(
-                ClipId::Clip(sid, state.pipeline_id)))
-        }
-    } else if let Some(&cid) = clip_id {
-        Some(ClipAndScrollInfo::simple(
-            ClipId::Clip(cid, state.pipeline_id)))
-    } else {
-        None
+    if is_reference_frame {
+        state.frame_builder.dl_builder.pop_clip_id();
+        state.frame_builder.dl_builder.pop_reference_frame();
     }
 }
 
 #[no_mangle]
+pub extern "C" fn wr_dp_define_clipchain(state: &mut WrState,
+                                         parent_clipchain_id: *const u64,
+                                         clips: *const usize,
+                                         clips_count: usize)
+                                         -> u64 {
+    debug_assert!(unsafe { is_in_main_thread() });
+    let parent = unsafe { parent_clipchain_id.as_ref() }.map(|id| ClipChainId(*id, state.pipeline_id));
+    let clips_slice : Vec<ClipId> = make_slice(clips, clips_count).iter().map(|id| ClipId::Clip(*id, state.pipeline_id)).collect();
+    let clipchain_id = state.frame_builder.dl_builder.define_clip_chain(parent, clips_slice);
+    assert!(clipchain_id.1 == state.pipeline_id);
+    clipchain_id.0
+}
+
+#[no_mangle]
 pub extern "C" fn wr_dp_define_clip(state: &mut WrState,
-                                    ancestor_scroll_id: *const usize,
-                                    ancestor_clip_id: *const usize,
+                                    parent_id: *const usize,
                                     clip_rect: LayoutRect,
                                     complex: *const ComplexClipRegion,
                                     complex_count: usize,
@@ -1689,17 +1729,15 @@ pub extern "C" fn wr_dp_define_clip(state: &mut WrState,
                                     -> usize {
     debug_assert!(unsafe { is_in_main_thread() });
 
-    let info = make_scroll_info(state,
-                                unsafe { ancestor_scroll_id.as_ref() },
-                                unsafe { ancestor_clip_id.as_ref() });
-
+    let parent_id = unsafe { parent_id.as_ref() };
     let complex_slice = make_slice(complex, complex_count);
     let complex_iter = complex_slice.iter().cloned();
     let mask : Option<ImageMask> = unsafe { mask.as_ref() }.map(|x| x.into());
 
-    let clip_id = if info.is_some() {
+    let clip_id = if let Some(&pid) = parent_id {
         state.frame_builder.dl_builder.define_clip_with_parent(
-            info.unwrap().scroll_node_id, clip_rect, complex_iter, mask)
+            ClipId::Clip(pid, state.pipeline_id),
+            clip_rect, complex_iter, mask)
     } else {
         state.frame_builder.dl_builder.define_clip(clip_rect, complex_iter, mask)
     };
@@ -1758,20 +1796,17 @@ pub extern "C" fn wr_dp_define_sticky_frame(state: &mut WrState,
 #[no_mangle]
 pub extern "C" fn wr_dp_define_scroll_layer(state: &mut WrState,
                                             scroll_id: u64,
-                                            ancestor_scroll_id: *const usize,
-                                            ancestor_clip_id: *const usize,
+                                            parent_id: *const usize,
                                             content_rect: LayoutRect,
                                             clip_rect: LayoutRect)
                                             -> usize {
     assert!(unsafe { is_in_main_thread() });
 
-    let info = make_scroll_info(state,
-                                unsafe { ancestor_scroll_id.as_ref() },
-                                unsafe { ancestor_clip_id.as_ref() });
+    let parent_id = unsafe { parent_id.as_ref() };
 
-    let new_id = if info.is_some() {
+    let new_id = if let Some(&pid) = parent_id {
         state.frame_builder.dl_builder.define_scroll_frame_with_parent(
-            info.unwrap().scroll_node_id,
+            ClipId::Clip(pid, state.pipeline_id),
             Some(ExternalScrollId(scroll_id, state.pipeline_id)),
             content_rect,
             clip_rect,
@@ -1816,11 +1851,19 @@ pub extern "C" fn wr_dp_pop_scroll_layer(state: &mut WrState) {
 #[no_mangle]
 pub extern "C" fn wr_dp_push_clip_and_scroll_info(state: &mut WrState,
                                                   scroll_id: usize,
-                                                  clip_id: *const usize) {
+                                                  clip_chain_id: *const u64) {
     debug_assert!(unsafe { is_in_main_thread() });
-    let info = make_scroll_info(state, Some(&scroll_id), unsafe { clip_id.as_ref() });
-    debug_assert!(info.is_some());
-    state.frame_builder.dl_builder.push_clip_and_scroll_info(info.unwrap());
+
+    let clip_chain_id = unsafe { clip_chain_id.as_ref() };
+    let info = if let Some(&ccid) = clip_chain_id {
+        ClipAndScrollInfo::new(
+            ClipId::Clip(scroll_id, state.pipeline_id),
+            ClipId::ClipChain(ClipChainId(ccid, state.pipeline_id)))
+    } else {
+        ClipAndScrollInfo::simple(
+            ClipId::Clip(scroll_id, state.pipeline_id))
+    };
+    state.frame_builder.dl_builder.push_clip_and_scroll_info(info);
 }
 
 #[no_mangle]
@@ -1833,13 +1876,14 @@ pub extern "C" fn wr_dp_pop_clip_and_scroll_info(state: &mut WrState) {
 pub extern "C" fn wr_dp_push_iframe(state: &mut WrState,
                                     rect: LayoutRect,
                                     is_backface_visible: bool,
-                                    pipeline_id: WrPipelineId) {
+                                    pipeline_id: WrPipelineId,
+                                    ignore_missing_pipeline: bool) {
     debug_assert!(unsafe { is_in_main_thread() });
 
     let mut prim_info = LayoutPrimitiveInfo::new(rect);
     prim_info.is_backface_visible = is_backface_visible;
     prim_info.tag = state.current_tag;
-    state.frame_builder.dl_builder.push_iframe(&prim_info, pipeline_id);
+    state.frame_builder.dl_builder.push_iframe(&prim_info, pipeline_id, ignore_missing_pipeline);
 }
 
 #[no_mangle]
@@ -2073,20 +2117,23 @@ pub extern "C" fn wr_dp_push_border_image(state: &mut WrState,
                                           is_backface_visible: bool,
                                           widths: BorderWidths,
                                           image: WrImageKey,
-                                          patch: NinePatchDescriptor,
+                                          width: u32,
+                                          height: u32,
+                                          slice: SideOffsets2D<u32>,
                                           outset: SideOffsets2D<f32>,
                                           repeat_horizontal: RepeatMode,
                                           repeat_vertical: RepeatMode) {
     debug_assert!(unsafe { is_in_main_thread() });
-    let border_details =
-        BorderDetails::Image(ImageBorder {
-                                 image_key: image,
-                                 patch: patch.into(),
-                                 fill: false,
-                                 outset: outset.into(),
-                                 repeat_horizontal: repeat_horizontal.into(),
-                                 repeat_vertical: repeat_vertical.into(),
-                             });
+    let border_details = BorderDetails::NinePatch(NinePatchBorder {
+        source: NinePatchBorderSource::Image(image),
+        width,
+        height,
+        slice,
+        fill: false,
+        outset: outset.into(),
+        repeat_horizontal: repeat_horizontal.into(),
+        repeat_vertical: repeat_vertical.into(),
+    });
     let mut prim_info = LayoutPrimitiveInfo::with_clip_rect(rect, clip.into());
     prim_info.is_backface_visible = is_backface_visible;
     prim_info.tag = state.current_tag;
@@ -2351,11 +2398,6 @@ extern "C" {
                                dirty_rect: *const DeviceUintRect,
                                output: MutByteSlice)
                                -> bool;
-}
-
-#[no_mangle]
-pub extern "C" fn wr_shutdown_log_for_gpu_process() {
-    // log does not support shutdown
 }
 
 #[no_mangle]

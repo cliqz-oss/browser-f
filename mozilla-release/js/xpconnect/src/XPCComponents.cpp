@@ -2282,7 +2282,7 @@ nsXPCComponents_Utils::ForceGC()
 {
     JSContext* cx = XPCJSContext::Get()->Context();
     PrepareForFullGC(cx);
-    GCForReason(cx, GC_NORMAL, gcreason::COMPONENT_UTILS);
+    NonIncrementalGC(cx, GC_NORMAL, gcreason::COMPONENT_UTILS);
     return NS_OK;
 }
 
@@ -2326,7 +2326,7 @@ nsXPCComponents_Utils::ForceShrinkingGC()
 {
     JSContext* cx = dom::danger::GetJSContext();
     PrepareForFullGC(cx);
-    GCForReason(cx, GC_SHRINK, gcreason::COMPONENT_UTILS);
+    NonIncrementalGC(cx, GC_SHRINK, gcreason::COMPONENT_UTILS);
     return NS_OK;
 }
 
@@ -2455,7 +2455,7 @@ nsXPCComponents_Utils::GetGlobalForObject(HandleValue object,
     Rooted<JSObject*> obj(cx, &object.toObject());
     obj = js::UncheckedUnwrap(obj);
     {
-        JSAutoCompartment ac(cx, obj);
+        JSAutoRealm ar(cx, obj);
         obj = JS_GetGlobalForObject(cx, obj);
     }
 
@@ -2524,7 +2524,7 @@ nsXPCComponents_Utils::MakeObjectPropsNormal(HandleValue vobj, JSContext* cx)
         return NS_ERROR_XPC_BAD_CONVERT_JS;
 
     RootedObject obj(cx, js::UncheckedUnwrap(&vobj.toObject()));
-    JSAutoCompartment ac(cx, obj);
+    JSAutoRealm ar(cx, obj);
     Rooted<IdVector> ida(cx, IdVector(cx));
     if (!JS_Enumerate(cx, obj, &ida))
         return NS_ERROR_FAILURE;
@@ -2607,9 +2607,9 @@ NS_IMETHODIMP
 nsXPCComponents_Utils::RecomputeWrappers(HandleValue vobj, JSContext* cx)
 {
     // Determine the compartment of the given object, if any.
-    JSCompartment* c = vobj.isObject()
-                       ? js::GetObjectCompartment(js::UncheckedUnwrap(&vobj.toObject()))
-                       : nullptr;
+    JS::Compartment* c = vobj.isObject()
+                         ? js::GetObjectCompartment(js::UncheckedUnwrap(&vobj.toObject()))
+                         : nullptr;
 
     // If no compartment was given, recompute all.
     if (!c)
@@ -2630,7 +2630,7 @@ nsXPCComponents_Utils::SetWantXrays(HandleValue vscope, JSContext* cx)
     JSObject* scopeObj = js::UncheckedUnwrap(&vscope.toObject());
     MOZ_DIAGNOSTIC_ASSERT(!mozJSComponentLoader::Get()->IsLoaderGlobal(scopeObj),
                           "Don't call Cu.setWantXrays() in a JSM that shares its global");
-    JSCompartment* compartment = js::GetObjectCompartment(scopeObj);
+    JS::Compartment* compartment = js::GetObjectCompartment(scopeObj);
     CompartmentPrivate::Get(scopeObj)->wantXrays = true;
     bool ok = js::RecomputeWrappers(cx, js::SingleCompartment(compartment),
                                     js::AllCompartments());
@@ -2654,13 +2654,13 @@ nsXPCComponents_Utils::Dispatch(HandleValue runnableArg, HandleValue scope,
                                 JSContext* cx)
 {
     RootedValue runnable(cx, runnableArg);
-    // Enter the given compartment, if any, and rewrap runnable.
-    Maybe<JSAutoCompartment> ac;
+    // Enter the given realm, if any, and rewrap runnable.
+    Maybe<JSAutoRealm> ar;
     if (scope.isObject()) {
         JSObject* scopeObj = js::UncheckedUnwrap(&scope.toObject());
         if (!scopeObj)
             return NS_ERROR_FAILURE;
-        ac.emplace(cx, scopeObj);
+        ar.emplace(cx, scopeObj);
         if (!JS_WrapValue(cx, &runnable))
             return NS_ERROR_FAILURE;
     }
@@ -2729,7 +2729,7 @@ nsXPCComponents_Utils::CrashIfNotInAutomation()
 NS_IMETHODIMP
 nsXPCComponents_Utils::NukeSandbox(HandleValue obj, JSContext* cx)
 {
-    AUTO_PROFILER_LABEL("nsXPCComponents_Utils::NukeSandbox", JS);
+    AUTO_PROFILER_LABEL("nsXPCComponents_Utils::NukeSandbox", OTHER);
     NS_ENSURE_TRUE(obj.isObject(), NS_ERROR_INVALID_ARG);
     JSObject* wrapper = &obj.toObject();
     NS_ENSURE_TRUE(IsWrapper(wrapper), NS_ERROR_INVALID_ARG);
@@ -2896,7 +2896,7 @@ nsXPCComponents_Utils::GenerateXPCWrappedJS(HandleValue aObj, HandleValue aScope
     RootedObject obj(aCx, &aObj.toObject());
     RootedObject scope(aCx, aScope.isObject() ? js::UncheckedUnwrap(&aScope.toObject())
                                               : CurrentGlobalOrNull(aCx));
-    JSAutoCompartment ac(aCx, scope);
+    JSAutoRealm ar(aCx, scope);
     if (!JS_WrapObject(aCx, &obj))
         return NS_ERROR_FAILURE;
 
@@ -2964,7 +2964,7 @@ xpc::CloneInto(JSContext* aCx, HandleValue aValue, HandleValue aScope,
         return false;
 
     {
-        JSAutoCompartment ac(aCx, scope);
+        JSAutoRealm ar(aCx, scope);
         aCloned.set(aValue);
         if (!StackScopedClone(aCx, options, aCloned))
             return false;
@@ -3011,9 +3011,9 @@ nsXPCComponents_Utils::GetObjectPrincipal(HandleValue val, JSContext* cx,
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Utils::GetCompartmentLocation(HandleValue val,
-                                              JSContext* cx,
-                                              nsACString& result)
+nsXPCComponents_Utils::GetRealmLocation(HandleValue val,
+                                        JSContext* cx,
+                                        nsACString& result)
 {
     if (!val.isObject())
         return NS_ERROR_INVALID_ARG;
@@ -3021,7 +3021,7 @@ nsXPCComponents_Utils::GetCompartmentLocation(HandleValue val,
     obj = js::CheckedUnwrap(obj);
     MOZ_ASSERT(obj);
 
-    result = xpc::CompartmentPrivate::Get(obj)->GetLocation();
+    result = xpc::RealmPrivate::Get(obj)->GetLocation();
     return NS_OK;
 }
 

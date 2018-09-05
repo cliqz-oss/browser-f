@@ -48,6 +48,7 @@
 #include "mozilla/dom/HTMLElementBinding.h"
 #include "mozilla/dom/HTMLEmbedElementBinding.h"
 #include "mozilla/dom/XULElementBinding.h"
+#include "mozilla/dom/XULPopupElementBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ResolveSystemBinding.h"
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
@@ -882,6 +883,7 @@ CreateInterfacePrototypeObject(JSContext* cx, JS::Handle<JSObject*> global,
                                const NativeProperties* properties,
                                const NativeProperties* chromeOnlyProperties,
                                const char* const* unscopableNames,
+                               const char* toStringTag,
                                bool isGlobal)
 {
   JS::Rooted<JSObject*> ourProto(cx,
@@ -912,6 +914,21 @@ CreateInterfacePrototypeObject(JSContext* cx, JS::Handle<JSObject*> global,
       SYMBOL_TO_JSID(JS::GetWellKnownSymbol(cx, JS::SymbolCode::unscopables)));
     // Readonly and non-enumerable to match Array.prototype.
     if (!JS_DefinePropertyById(cx, ourProto, unscopableId, unscopableObj,
+                               JSPROP_READONLY)) {
+      return nullptr;
+    }
+  }
+
+  if (toStringTag) {
+    JS::Rooted<JSString*> toStringTagStr(cx,
+                                         JS_NewStringCopyZ(cx, toStringTag));
+    if (!toStringTagStr) {
+      return nullptr;
+    }
+
+    JS::Rooted<jsid> toStringTagId(cx,
+      SYMBOL_TO_JSID(JS::GetWellKnownSymbol(cx, JS::SymbolCode::toStringTag)));
+    if (!JS_DefinePropertyById(cx, ourProto, toStringTagId, toStringTagStr,
                                JSPROP_READONLY)) {
       return nullptr;
     }
@@ -966,6 +983,7 @@ void
 CreateInterfaceObjects(JSContext* cx, JS::Handle<JSObject*> global,
                        JS::Handle<JSObject*> protoProto,
                        const js::Class* protoClass, JS::Heap<JSObject*>* protoCache,
+                       const char* toStringTag,
                        JS::Handle<JSObject*> constructorProto,
                        const js::Class* constructorClass,
                        unsigned ctorNargs, const NamedConstructor* namedConstructors,
@@ -1003,6 +1021,8 @@ CreateInterfaceObjects(JSContext* cx, JS::Handle<JSObject*> global,
   MOZ_ASSERT(constructorProto || !constructorClass,
              "Must have a constructor proto if we plan to create a constructor "
              "object");
+  MOZ_ASSERT(protoClass || !toStringTag,
+             "Must have a prototype object if we have a @@toStringTag");
 
   bool isChrome = nsContentUtils::ThreadsafeIsSystemCaller(cx);
 
@@ -1012,7 +1032,7 @@ CreateInterfaceObjects(JSContext* cx, JS::Handle<JSObject*> global,
       CreateInterfacePrototypeObject(cx, global, protoProto, protoClass,
                                      properties,
                                      isChrome ? chromeOnlyProperties : nullptr,
-                                     unscopableNames, isGlobal);
+                                     unscopableNames, toStringTag, isGlobal);
     if (!proto) {
       return;
     }
@@ -1043,7 +1063,9 @@ CreateInterfaceObjects(JSContext* cx, JS::Handle<JSObject*> global,
   }
 }
 
-bool
+// Only set aAllowNativeWrapper to false if you really know you need it; if in
+// doubt use true. Setting it to false disables security wrappers.
+static bool
 NativeInterface2JSObjectAndThrowIfFailed(JSContext* aCx,
                                          JS::Handle<JSObject*> aScope,
                                          JS::MutableHandle<JS::Value> aRetval,
@@ -1057,20 +1079,21 @@ NativeInterface2JSObjectAndThrowIfFailed(JSContext* aCx,
   // on all threads.
   nsWrapperCache *cache = aHelper.GetWrapperCache();
 
-  if (cache && cache->IsDOMBinding()) {
+  if (cache) {
       JS::Rooted<JSObject*> obj(aCx, cache->GetWrapper());
       if (!obj) {
         obj = cache->WrapObject(aCx, nullptr);
+        if (!obj) {
+          return Throw(aCx, NS_ERROR_UNEXPECTED);
+        }
       }
 
-      if (obj && aAllowNativeWrapper && !JS_WrapObject(aCx, &obj)) {
+      if (aAllowNativeWrapper && !JS_WrapObject(aCx, &obj)) {
         return false;
       }
 
-      if (obj) {
-        aRetval.setObject(*obj);
-        return true;
-      }
+      aRetval.setObject(*obj);
+      return true;
   }
 
   MOZ_ASSERT(NS_IsMainThread());
@@ -1118,7 +1141,7 @@ InstanceClassHasProtoAtDepth(const js::Class* clasp,
   return static_cast<uint32_t>(domClass->mInterfaceChain[depth]) == protoID;
 }
 
-// Only set allowNativeWrapper to false if you really know you need it, if in
+// Only set allowNativeWrapper to false if you really know you need it; if in
 // doubt use true. Setting it to false disables security wrappers.
 bool
 XPCOMObjectToJsval(JSContext* cx, JS::Handle<JSObject*> scope,
@@ -1165,9 +1188,9 @@ CompareIdsAtIndices(const void* aElement1, const void* aElement2, void* aClosure
   const uint16_t index2 = *static_cast<const uint16_t*>(aElement2);
   const PropertyInfo* infos = static_cast<PropertyInfo*>(aClosure);
 
-  MOZ_ASSERT(JSID_BITS(infos[index1].id) != JSID_BITS(infos[index2].id));
+  MOZ_ASSERT(JSID_BITS(infos[index1].Id()) != JSID_BITS(infos[index2].Id()));
 
-  return JSID_BITS(infos[index1].id) < JSID_BITS(infos[index2].id) ? -1 : 1;
+  return JSID_BITS(infos[index1].Id()) < JSID_BITS(infos[index2].Id()) ? -1 : 1;
 }
 
 template <typename SpecT>
@@ -1189,9 +1212,11 @@ InitIdsInternal(JSContext* cx, const Prefable<SpecT>* pref, PropertyInfo* infos,
     // in the "specs" array of the relevant Prefable.
     uint32_t specIndex = 0;
     do {
-      if (!JS::PropertySpecNameToPermanentId(cx, spec->name, &infos->id)) {
+      jsid id;
+      if (!JS::PropertySpecNameToPermanentId(cx, spec->name, &id)) {
         return false;
       }
+      infos->SetId(id);
       infos->type = type;
       infos->prefIndex = prefIndex;
       infos->specIndex = specIndex++;
@@ -1404,10 +1429,10 @@ struct IdToIndexComparator
   explicit IdToIndexComparator(const jsid& aId, const PropertyInfo* aInfos) :
     mId(aId), mInfos(aInfos) {}
   int operator()(const uint16_t aIndex) const {
-    if (JSID_BITS(mId) == JSID_BITS(mInfos[aIndex].id)) {
+    if (JSID_BITS(mId) == JSID_BITS(mInfos[aIndex].Id())) {
       return 0;
     }
-    return JSID_BITS(mId) < JSID_BITS(mInfos[aIndex].id) ? -1 : 1;
+    return JSID_BITS(mId) < JSID_BITS(mInfos[aIndex].Id()) ? -1 : 1;
   }
 };
 
@@ -1608,7 +1633,7 @@ ResolvePrototypeOrConstructor(JSContext* cx, JS::Handle<JSObject*> wrapper,
 {
   JS::Rooted<JSObject*> global(cx, js::GetGlobalForObjectCrossCompartment(obj));
   {
-    JSAutoCompartment ac(cx, global);
+    JSAutoRealm ar(cx, global);
     ProtoAndIfaceCache& protoAndIfaceCache = *GetProtoAndIfaceCache(global);
     // This function is called when resolving the "constructor" and "prototype"
     // properties of Xrays for DOM prototypes and constructors respectively.
@@ -1863,7 +1888,7 @@ XrayAppendPropertyKeys(JSContext* cx, JS::Handle<JSObject*> obj,
     if (prefIsEnabled) {
       const SpecType* spec = pref->specs;
       do {
-        const jsid& id = infos++->id;
+        const jsid id = infos++->Id();
         if (((flags & JSITER_HIDDEN) ||
              (spec->flags & JSPROP_ENUMERATE)) &&
             ((flags & JSITER_SYMBOLS) || !JSID_IS_SYMBOL(id)) &&
@@ -1899,7 +1924,7 @@ XrayAppendPropertyKeys<ConstantSpec>(JSContext* cx, JS::Handle<JSObject*> obj,
     if (prefIsEnabled) {
       const ConstantSpec* spec = pref->specs;
       do {
-        if (!props.append(infos++->id)) {
+        if (!props.append(infos++->Id())) {
           return false;
         }
       } while ((++spec)->name);
@@ -2254,10 +2279,10 @@ ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObjArg, ErrorResult& aErr
                                   domClass->mGetAssociatedGlobal(aCx, aObj));
   MOZ_ASSERT(JS_IsGlobalObject(newParent));
 
-  JSAutoCompartment oldAc(aCx, oldParent);
+  JSAutoRealm oldAr(aCx, oldParent);
 
-  JSCompartment* oldCompartment = js::GetObjectCompartment(oldParent);
-  JSCompartment* newCompartment = js::GetObjectCompartment(newParent);
+  JS::Compartment* oldCompartment = js::GetObjectCompartment(oldParent);
+  JS::Compartment* newCompartment = js::GetObjectCompartment(newParent);
   if (oldCompartment == newCompartment) {
     MOZ_ASSERT(oldParent == newParent);
     return;
@@ -2274,7 +2299,7 @@ ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObjArg, ErrorResult& aErr
     expandoObject = DOMProxyHandler::GetAndClearExpandoObject(aObj);
   }
 
-  JSAutoCompartment newAc(aCx, newParent);
+  JSAutoRealm newAr(aCx, newParent);
 
   // First we clone the reflector. We get a copy of its properties and clone its
   // expando chain.
@@ -2437,9 +2462,9 @@ GlobalObject::GetSubjectPrincipal() const
     return nullptr;
   }
 
-  JSCompartment* compartment = js::GetContextCompartment(mCx);
-  MOZ_ASSERT(compartment);
-  JSPrincipals* principals = JS_GetCompartmentPrincipals(compartment);
+  JS::Realm* realm = js::GetContextRealm(mCx);
+  MOZ_ASSERT(realm);
+  JSPrincipals* principals = JS::GetRealmPrincipals(realm);
   return nsJSPrincipals::get(principals);
 }
 
@@ -3510,10 +3535,10 @@ GetMaplikeSetlikeBackingObject(JSContext* aCx, JS::Handle<JSObject*> aObj,
   JS::Rooted<JS::Value> slotValue(aCx);
   slotValue = js::GetReservedSlot(reflector, aSlotIndex);
   if (slotValue.isUndefined()) {
-    // Since backing object access can happen in non-originating compartments,
-    // make sure to create the backing object in reflector compartment.
+    // Since backing object access can happen in non-originating realms,
+    // make sure to create the backing object in reflector realm.
     {
-      JSAutoCompartment ac(aCx, reflector);
+      JSAutoRealm ar(aCx, reflector);
       JS::Rooted<JSObject*> newBackingObj(aCx);
       newBackingObj.set(Method(aCx));
       if (NS_WARN_IF(!newBackingObj)) {
@@ -3736,7 +3761,7 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
   // objects as constructors?  Of course it's not clear that the spec check
   // makes sense to start with: https://github.com/whatwg/html/issues/3575
   {
-    JSAutoCompartment ac(aCx, newTarget);
+    JSAutoRealm ar(aCx, newTarget);
     JS::Handle<JSObject*> constructor =
       GetPerInterfaceObjectHandle(aCx, aConstructorId, aCreator,
                                   true);
@@ -3769,9 +3794,9 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
     // Step 4.
     // If the definition is for an autonomous custom element, the active
     // function should be HTMLElement or XULElement.  We want to get the actual
-    // functions to compare to from our global's compartment, not the caller
-    // compartment.
-    JSAutoCompartment ac(aCx, global.Get());
+    // functions to compare to from our global's realm, not the caller
+    // realm.
+    JSAutoRealm ar(aCx, global.Get());
 
     JS::Rooted<JSObject*> constructor(aCx);
     if (ns == kNameSpaceID_XUL) {
@@ -3788,32 +3813,39 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
       return ThrowErrorMessage(aCx, MSG_ILLEGAL_CONSTRUCTOR);
     }
   } else {
-    // Step 5.
-    // If the definition is for a customized built-in element, the localName
-    // should be one of the ones defined in the specification for this interface.
+    constructorGetterCallback cb;
+    if (ns == kNameSpaceID_XHTML) {
+      // Step 5.
+      // If the definition is for a customized built-in element, the localName
+      // should be one of the ones defined in the specification for this interface.
+      tag = nsHTMLTags::CaseSensitiveAtomTagToId(definition->mLocalName);
+      if (tag == eHTMLTag_userdefined) {
+        return ThrowErrorMessage(aCx, MSG_ILLEGAL_CONSTRUCTOR);
+      }
 
-    // Customized built-in elements are not supported for XUL yet.
-    if (ns == kNameSpaceID_XUL) {
-      return Throw(aCx, NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+      MOZ_ASSERT(tag <= NS_HTML_TAG_MAX, "tag is out of bounds");
+
+      // If the definition is for a customized built-in element, the active
+      // function should be the localname's element interface.
+      cb = sConstructorGetterCallback[tag];
+    } else { // kNameSpaceID_XUL
+      if (definition->mLocalName == nsGkAtoms::menupopup ||
+          definition->mLocalName == nsGkAtoms::popup ||
+          definition->mLocalName == nsGkAtoms::panel ||
+          definition->mLocalName == nsGkAtoms::tooltip) {
+        cb = XULPopupElementBinding::GetConstructorObject;
+      } else {
+        cb = XULElementBinding::GetConstructorObject;
+      }
     }
 
-    tag = nsHTMLTags::CaseSensitiveAtomTagToId(definition->mLocalName);
-    if (tag == eHTMLTag_userdefined) {
-      return ThrowErrorMessage(aCx, MSG_ILLEGAL_CONSTRUCTOR);
-    }
-
-    MOZ_ASSERT(tag <= NS_HTML_TAG_MAX, "tag is out of bounds");
-
-    // If the definition is for a customized built-in element, the active
-    // function should be the localname's element interface.
-    constructorGetterCallback cb = sConstructorGetterCallback[tag];
     if (!cb) {
       return ThrowErrorMessage(aCx, MSG_ILLEGAL_CONSTRUCTOR);
     }
 
-    // We want to get the constructor from our global's compartment, not the
-    // caller compartment.
-    JSAutoCompartment ac(aCx, global.Get());
+    // We want to get the constructor from our global's realm, not the
+    // caller realm.
+    JSAutoRealm ar(aCx, global.Get());
     JS::Rooted<JSObject*> constructor(aCx, cb(aCx));
     if (!constructor) {
       return false;
@@ -3833,22 +3865,22 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
   // Step 7.
   if (!desiredProto) {
     // This fallback behavior is designed to match analogous behavior for the
-    // JavaScript built-ins. So we enter the compartment of our underlying
-    // newTarget object and fall back to the prototype object from that global.
+    // JavaScript built-ins. So we enter the realm of our underlying newTarget
+    // object and fall back to the prototype object from that global.
     // XXX The spec says to use GetFunctionRealm(), which is not actually
     // the same thing as what we have here (e.g. in the case of scripted callable proxies
-    // whose target is not same-compartment with the proxy, or bound functions, etc).
+    // whose target is not same-realm with the proxy, or bound functions, etc).
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1317658
     {
-      JSAutoCompartment ac(aCx, newTarget);
+      JSAutoRealm ar(aCx, newTarget);
       desiredProto = GetPerInterfaceObjectHandle(aCx, aProtoId, aCreator, true);
       if (!desiredProto) {
           return false;
       }
     }
 
-    // desiredProto is in the compartment of the underlying newTarget object.
-    // Wrap it into the context compartment.
+    // desiredProto is in the realm of the underlying newTarget object.
+    // Wrap it into the context realm.
     if (!JS_WrapObject(aCx, &desiredProto)) {
       return false;
     }
@@ -3863,9 +3895,9 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
   if (constructionStack.IsEmpty()) {
     // Step 8.
     // Now we go to construct an element.  We want to do this in global's
-    // compartment, not caller compartment (the normal constructor behavior),
+    // realm, not caller realm (the normal constructor behavior),
     // just in case those elements create JS things.
-    JSAutoCompartment ac(aCx, global.Get());
+    JSAutoRealm ar(aCx, global.Get());
 
     RefPtr<NodeInfo> nodeInfo =
       doc->NodeInfoManager()->GetNodeInfo(definition->mLocalName,
@@ -3907,8 +3939,8 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
     // that proto).
     JS::Rooted<JSObject*> reflector(aCx, element->GetWrapper());
     if (reflector) {
-      // reflector might be in different compartment.
-      JSAutoCompartment ac(aCx, reflector);
+      // reflector might be in different realm.
+      JSAutoRealm ar(aCx, reflector);
       JS::Rooted<JSObject*> givenProto(aCx, desiredProto);
       if (!JS_WrapObject(aCx, &givenProto) ||
           !JS_SetPrototype(aCx, reflector, givenProto)) {
@@ -3921,9 +3953,9 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
   }
 
   // Tail end of step 8 and step 13: returning the element.  We want to do this
-  // part in the global's compartment, though in practice it won't matter much
-  // because Element always knows which compartment it should be created in.
-  JSAutoCompartment ac(aCx, global.Get());
+  // part in the global's realm, though in practice it won't matter much
+  // because Element always knows which realm it should be created in.
+  JSAutoRealm ar(aCx, global.Get());
   if (!js::IsObjectInContextCompartment(desiredProto, aCx) &&
       !JS_WrapObject(aCx, &desiredProto)) {
     return false;
@@ -3945,11 +3977,11 @@ AssertReflectorHasGivenProto(JSContext* aCx, JSObject* aReflector,
   }
 
   JS::Rooted<JSObject*> reflector(aCx, aReflector);
-  JSAutoCompartment ac(aCx, reflector);
+  JSAutoRealm ar(aCx, reflector);
   JS::Rooted<JSObject*> reflectorProto(aCx);
   bool ok = JS_GetPrototype(aCx, reflector, &reflectorProto);
   MOZ_ASSERT(ok);
-  // aGivenProto may not be in the right compartment here, so we
+  // aGivenProto may not be in the right realm here, so we
   // have to wrap it to compare.
   JS::Rooted<JSObject*> givenProto(aCx, aGivenProto);
   ok = JS_WrapObject(aCx, &givenProto);
@@ -3978,23 +4010,19 @@ class DeprecationWarningRunnable final : public WorkerProxyToMainThreadRunnable
   nsIDocument::DeprecatedOperations mOperation;
 
 public:
-  DeprecationWarningRunnable(WorkerPrivate* aWorkerPrivate,
-                             nsIDocument::DeprecatedOperations aOperation)
-    : WorkerProxyToMainThreadRunnable(aWorkerPrivate)
-    , mOperation(aOperation)
-  {
-    MOZ_ASSERT(aWorkerPrivate);
-    aWorkerPrivate->AssertIsOnWorkerThread();
-  }
+  explicit DeprecationWarningRunnable(nsIDocument::DeprecatedOperations aOperation)
+    : mOperation(aOperation)
+  {}
 
 private:
   void
-  RunOnMainThread() override
+  RunOnMainThread(WorkerPrivate* aWorkerPrivate) override
   {
     MOZ_ASSERT(NS_IsMainThread());
+    MOZ_ASSERT(aWorkerPrivate);
 
     // Walk up to our containing page
-    WorkerPrivate* wp = mWorkerPrivate;
+    WorkerPrivate* wp = aWorkerPrivate;
     while (wp->GetParent()) {
       wp = wp->GetParent();
     }
@@ -4006,7 +4034,7 @@ private:
   }
 
   void
-  RunBackOnWorkerThreadForCleanup() override
+  RunBackOnWorkerThreadForCleanup(WorkerPrivate* aWorkerPrivate) override
   {}
 };
 
@@ -4044,8 +4072,8 @@ DeprecationWarning(const GlobalObject& aGlobal,
   }
 
   RefPtr<DeprecationWarningRunnable> runnable =
-    new DeprecationWarningRunnable(workerPrivate, aOperation);
-  runnable->Dispatch();
+    new DeprecationWarningRunnable(aOperation);
+  runnable->Dispatch(workerPrivate);
 }
 
 namespace binding_detail {
@@ -4095,6 +4123,41 @@ GetPerInterfaceObjectHandle(JSContext* aCx,
   MOZ_ASSERT(JS::ObjectIsNotGray(entrySlot));
   return JS::Handle<JSObject*>::fromMarkedLocation(entrySlot.address());
 }
+
+namespace binding_detail {
+bool
+IsGetterEnabled(JSContext* aCx, JS::Handle<JSObject*> aObj,
+                JSJitGetterOp aGetter,
+                const Prefable<const JSPropertySpec>* aAttributes)
+{
+  MOZ_ASSERT(aAttributes);
+  MOZ_ASSERT(aAttributes->specs);
+  do {
+    if (aAttributes->isEnabled(aCx, aObj)) {
+      const JSPropertySpec* specs = aAttributes->specs;
+      do {
+        MOZ_ASSERT(specs->isAccessor());
+        if (specs->isSelfHosted()) {
+          // It won't have a JSJitGetterOp.
+          continue;
+        }
+        const JSJitInfo* info = specs->accessors.getter.native.info;
+        if (!info) {
+          continue;
+        }
+        MOZ_ASSERT(info->type() == JSJitInfo::OpType::Getter);
+        if (info->getter == aGetter) {
+          return true;
+        }
+      } while ((++specs)->name);
+    }
+  } while ((++aAttributes)->specs);
+
+  // Didn't find it.
+  return false;
+}
+
+} // namespace binding_detail
 
 } // namespace dom
 } // namespace mozilla

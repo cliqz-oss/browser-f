@@ -119,6 +119,7 @@ public:
                               EndTransactionFlags aFlags = END_DEFAULT) = 0;
   virtual void UpdateRenderBounds(const gfx::IntRect& aRect) {}
   virtual void SetDiagnosticTypes(DiagnosticTypes aDiagnostics) {}
+  virtual void InvalidateAll() = 0;
 
   virtual HostLayerManager* AsHostLayerManager() override {
     return this;
@@ -129,7 +130,7 @@ public:
 
   void ExtractImageCompositeNotifications(nsTArray<ImageCompositeNotificationInfo>* aNotifications)
   {
-    aNotifications->AppendElements(Move(mImageCompositeNotifications));
+    aNotifications->AppendElements(std::move(mImageCompositeNotifications));
   }
 
   void AppendImageCompositeNotification(const ImageCompositeNotificationInfo& aNotification)
@@ -406,6 +407,10 @@ public:
     mCompositor->SetDiagnosticTypes(aDiagnostics);
   }
 
+  virtual void InvalidateAll() override {
+    AddInvalidRegion(nsIntRegion(mRenderBounds));
+  }
+
   void ForcePresent() override { mCompositor->ForcePresent(); }
 
 private:
@@ -546,7 +551,7 @@ public:
   }
   void SetShadowVisibleRegion(LayerIntRegion&& aRegion)
   {
-    mShadowVisibleRegion = Move(aRegion);
+    mShadowVisibleRegion = std::move(aRegion);
   }
 
   void SetShadowOpacity(float aOpacity)

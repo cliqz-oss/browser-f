@@ -85,12 +85,12 @@ AnimationFrameBuffer::Insert(RawAccessFrameRef&& aFrame)
 
     if (mInsertIndex > 0) {
       MOZ_ASSERT(!mFrames[mInsertIndex]);
-      mFrames[mInsertIndex] = Move(aFrame);
+      mFrames[mInsertIndex] = std::move(aFrame);
     }
   } else if (mInsertIndex == mFrames.Length()) {
     // We are still on the first pass of the animation decoding, so this is
     // the first time we have seen this frame.
-    mFrames.AppendElement(Move(aFrame));
+    mFrames.AppendElement(std::move(aFrame));
 
     if (mInsertIndex == mThreshold) {
       // We just tripped over the threshold for the first time. This is our
@@ -99,7 +99,7 @@ AnimationFrameBuffer::Insert(RawAccessFrameRef&& aFrame)
       MOZ_ASSERT(MayDiscard());
       MOZ_ASSERT(mGetIndex < mInsertIndex);
       for (size_t i = 1; i < mGetIndex; ++i) {
-        RawAccessFrameRef discard = Move(mFrames[i]);
+        RawAccessFrameRef discard = std::move(mFrames[i]);
       }
     }
   } else if (mInsertIndex > 0) {
@@ -109,7 +109,7 @@ AnimationFrameBuffer::Insert(RawAccessFrameRef&& aFrame)
     MOZ_ASSERT(mInsertIndex < mFrames.Length());
     MOZ_ASSERT(!mFrames[mInsertIndex]);
     MOZ_ASSERT(MayDiscard());
-    mFrames[mInsertIndex] = Move(aFrame);
+    mFrames[mInsertIndex] = std::move(aFrame);
   } else { // mInsertIndex == 0
     // We were forced to restart an animation before we decoded the last
     // frame. We don't need the redecoded first frame because we always keep
@@ -176,18 +176,18 @@ AnimationFrameBuffer::MarkComplete()
   return mPending > 0;
 }
 
-DrawableFrameRef
+imgFrame*
 AnimationFrameBuffer::Get(size_t aFrame)
 {
   // We should not have asked for a frame if we never inserted.
   if (mFrames.IsEmpty()) {
     MOZ_ASSERT_UNREACHABLE("Calling Get() when we have no frames");
-    return DrawableFrameRef();
+    return nullptr;
   }
 
   // If we don't have that frame, return an empty frame ref.
   if (aFrame >= mFrames.Length()) {
-    return DrawableFrameRef();
+    return nullptr;
   }
 
   // We've got the requested frame because we are not discarding frames. While
@@ -195,13 +195,13 @@ AnimationFrameBuffer::Get(size_t aFrame)
   // we want them, it is possible the decoder is behind.
   if (!mFrames[aFrame]) {
     MOZ_ASSERT(MayDiscard());
-    return DrawableFrameRef();
+    return nullptr;
   }
 
   // If we are advancing on behalf of the animation, we don't expect it to be
   // getting any frames (besides the first) until we get the desired frame.
   MOZ_ASSERT(aFrame == 0 || mAdvance == 0);
-  return mFrames[aFrame]->DrawableRef();
+  return mFrames[aFrame].get();
 }
 
 bool
@@ -248,10 +248,10 @@ AnimationFrameBuffer::AdvanceInternal()
   if (MayDiscard()) {
     RawAccessFrameRef discard;
     if (mGetIndex > 1) {
-      discard = Move(mFrames[mGetIndex - 1]);
+      discard = std::move(mFrames[mGetIndex - 1]);
     } else if (mGetIndex == 0) {
       MOZ_ASSERT(mSizeKnown && framesLength > 1);
-      discard = Move(mFrames[framesLength - 1]);
+      discard = std::move(mFrames[framesLength - 1]);
     }
   }
 
@@ -304,7 +304,7 @@ AnimationFrameBuffer::Reset()
   // that when it re-inserts a frame, it is not present. (It doesn't re-insert
   // the first frame.)
   for (size_t i = 1; i < mFrames.Length(); ++i) {
-    RawAccessFrameRef discard = Move(mFrames[i]);
+    RawAccessFrameRef discard = std::move(mFrames[i]);
   }
 
   mInsertIndex = 0;

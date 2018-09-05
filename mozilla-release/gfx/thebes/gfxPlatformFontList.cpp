@@ -682,7 +682,7 @@ gfxPlatformFontList::CommonFontFallback(uint32_t aCh, uint32_t aNextCh,
                 // If style/weight/stretch was not Normal, see if we can
                 // fall back to a next-best face (e.g. Arial Black -> Bold,
                 // or Arial Narrow -> Regular).
-                GlobalFontMatch data(aCh, aMatchStyle);
+                GlobalFontMatch data(aCh, *aMatchStyle);
                 fallback->SearchAllFontsForChar(&data);
                 if (data.mBestMatch) {
                     *aMatchedFamily = fallback;
@@ -715,7 +715,7 @@ gfxPlatformFontList::GlobalFontFallback(const uint32_t aCh,
     }
 
     // otherwise, try to find it among local fonts
-    GlobalFontMatch data(aCh, aMatchStyle);
+    GlobalFontMatch data(aCh, *aMatchStyle);
 
     // iterate over all font families to find a font that support the character
     for (auto iter = mFontFamilies.Iter(); !iter.Done(); iter.Next()) {
@@ -751,7 +751,7 @@ gfxPlatformFontList::CheckFamily(gfxFontFamily *aFamily)
 
 bool
 gfxPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
-                                        nsTArray<gfxFontFamily*>* aOutput,
+                                        nsTArray<FamilyAndGeneric>* aOutput,
                                         FindFamiliesFlags aFlags,
                                         gfxFontStyle* aStyle,
                                         gfxFloat aDevToCssSize)
@@ -818,7 +818,7 @@ gfxPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
     }
 
     if (familyEntry) {
-        aOutput->AppendElement(familyEntry);
+        aOutput->AppendElement(FamilyAndGeneric(familyEntry));
         return true;
     }
 
@@ -1011,12 +1011,12 @@ gfxPlatformFontList::GetFontFamiliesFromGenericFamilies(
         gfxFontStyle style;
         style.language = aLangGroup;
         style.systemFont = false;
-        AutoTArray<gfxFontFamily*,10> families;
+        AutoTArray<FamilyAndGeneric,10> families;
         FindAndAddFamilies(genericFamily, &families, FindFamiliesFlags(0),
                            &style);
-        for (gfxFontFamily* f : families) {
-            if (!aGenericFamilies->Contains(f)) {
-                aGenericFamilies->AppendElement(f);
+        for (const FamilyAndGeneric& f : families) {
+            if (!aGenericFamilies->Contains(f.mFamily)) {
+                aGenericFamilies->AppendElement(f.mFamily);
             }
         }
     }
@@ -1055,7 +1055,7 @@ gfxPlatformFontList::GetPrefFontsLangGroup(mozilla::FontFamilyType aGenericType,
 void
 gfxPlatformFontList::AddGenericFonts(mozilla::FontFamilyType aGenericType,
                                      nsAtom* aLanguage,
-                                     nsTArray<gfxFontFamily*>& aFamilyList)
+                                     nsTArray<FamilyAndGeneric>& aFamilyList)
 {
     // map lang ==> langGroup
     nsAtom* langGroup = GetLangGroup(aLanguage);
@@ -1068,7 +1068,10 @@ gfxPlatformFontList::AddGenericFonts(mozilla::FontFamilyType aGenericType,
         GetPrefFontsLangGroup(aGenericType, prefLang);
 
     if (!prefFonts->IsEmpty()) {
-        aFamilyList.AppendElements(*prefFonts);
+        aFamilyList.SetCapacity(aFamilyList.Length() + prefFonts->Length());
+        for (auto& f : *prefFonts) {
+            aFamilyList.AppendElement(FamilyAndGeneric(f.get(), aGenericType));
+        }
     }
 }
 
@@ -1593,6 +1596,7 @@ gfxPlatformFontList::ClearLangGroupPrefFonts()
         }
     }
     mCJKPrefLangs.Clear();
+    mEmojiPrefFont = nullptr;
 }
 
 // Support for memory reporting

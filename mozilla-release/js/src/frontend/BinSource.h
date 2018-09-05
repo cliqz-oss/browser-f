@@ -35,33 +35,9 @@ namespace frontend {
 class BinASTParserBase: private JS::AutoGCRooter
 {
   public:
-    BinASTParserBase(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames)
-        : AutoGCRooter(cx, BINPARSER)
-        , cx_(cx)
-        , alloc_(alloc)
-        , traceListHead_(nullptr)
-        , usedNames_(usedNames)
-        , nodeAlloc_(cx, alloc)
-        , keepAtoms_(cx)
-        , parseContext_(nullptr)
-        , factory_(cx, alloc, nullptr, SourceKind::Binary)
-    {
-         cx->frontendCollectionPool().addActiveCompilation();
-         tempPoolMark_ = alloc.mark();
-    }
-    ~BinASTParserBase()
-    {
-        alloc_.release(tempPoolMark_);
+    BinASTParserBase(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames);
+    ~BinASTParserBase();
 
-        /*
-         * The parser can allocate enormous amounts of memory for large functions.
-         * Eagerly free the memory now (which otherwise won't be freed until the
-         * next GC) to avoid unnecessary OOMs.
-         */
-        alloc_.freeAllIfHugeAndUnused();
-
-        cx_->frontendCollectionPool().removeActiveCompilation();
-    }
   public:
     // Names
 
@@ -84,7 +60,7 @@ class BinASTParserBase: private JS::AutoGCRooter
     JS_DECLARE_NEW_METHODS(new_, allocParseNode, inline)
 
     // Needs access to AutoGCRooter.
-    friend void TraceBinParser(JSTracer* trc, AutoGCRooter* parser);
+    friend void TraceBinParser(JSTracer* trc, JS::AutoGCRooter* parser);
 
   protected:
     JSContext* cx_;
@@ -132,6 +108,7 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
     BinASTParser(JSContext* cx, LifoAlloc& alloc, UsedNameTracker& usedNames, const JS::ReadOnlyCompileOptions& options)
         : BinASTParserBase(cx, alloc, usedNames)
         , options_(options)
+        , variableDeclarationKind_(VariableDeclarationKind::Var)
     {
     }
     ~BinASTParser()
@@ -290,7 +267,7 @@ class BinASTParser : public BinASTParserBase, public ErrorReporter, public BCEPa
     }
 
   private: // Implement ErrorReporter
-    Maybe<Tokenizer> tokenizer_;
+    mozilla::Maybe<Tokenizer> tokenizer_;
     VariableDeclarationKind variableDeclarationKind_;
 
     friend class BinParseContext;

@@ -77,9 +77,75 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIIOService    *nsScriptSecurityManager::sIOService = nullptr;
-nsIStringBundle *nsScriptSecurityManager::sStrBundle = nullptr;
 JSContext       *nsScriptSecurityManager::sContext   = nullptr;
 bool nsScriptSecurityManager::sStrictFileOriginPolicy = true;
+
+namespace {
+
+class BundleHelper
+{
+public:
+  NS_INLINE_DECL_REFCOUNTING(BundleHelper)
+
+  static nsIStringBundle*
+  GetOrCreate()
+  {
+    MOZ_ASSERT(!sShutdown);
+
+    // Already shutting down. Nothing should require the use of the string
+    // bundle when shutting down.
+    if (sShutdown) {
+      return nullptr;
+    }
+
+    if (!sSelf) {
+      sSelf = new BundleHelper();
+    }
+
+    return sSelf->GetOrCreateInternal();
+  }
+
+  static void
+  Shutdown()
+  {
+    sSelf = nullptr;
+    sShutdown = true;
+  }
+
+private:
+  ~BundleHelper() = default;
+
+  nsIStringBundle*
+  GetOrCreateInternal()
+  {
+    if (!mBundle) {
+      nsCOMPtr<nsIStringBundleService> bundleService =
+          mozilla::services::GetStringBundleService();
+      if (NS_WARN_IF(!bundleService)) {
+        return nullptr;
+      }
+
+      nsresult rv =
+        bundleService->CreateBundle("chrome://global/locale/security/caps.properties",
+                                    getter_AddRefs(mBundle));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return nullptr;
+      }
+    }
+
+    return mBundle;
+  }
+
+  nsCOMPtr<nsIStringBundle> mBundle;
+
+  static StaticRefPtr<BundleHelper> sSelf;
+  static bool sShutdown;
+};
+
+StaticRefPtr<BundleHelper> BundleHelper::sSelf;
+bool BundleHelper::sShutdown = false;
+
+} // anonymous
 
 ///////////////////////////
 // Convenience Functions //
@@ -260,7 +326,8 @@ nsScriptSecurityManager::GetChannelResultPrincipal(nsIChannel* aChannel,
                                                    nsIPrincipal** aPrincipal,
                                                    bool aIgnoreSandboxing)
 {
-  NS_PRECONDITION(aChannel, "Must have channel!");
+  MOZ_ASSERT(aChannel, "Must have channel!");
+
   // Check whether we have an nsILoadInfo that says what we should do.
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->GetLoadInfo();
   if (loadInfo && loadInfo->GetForceInheritPrincipalOverruleOwner()) {
@@ -349,7 +416,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::GetChannelURIPrincipal(nsIChannel* aChannel,
                                                 nsIPrincipal** aPrincipal)
 {
-    NS_PRECONDITION(aChannel, "Must have channel!");
+    MOZ_ASSERT(aChannel, "Must have channel!");
 
     // Get the principal from the URI.  Make sure this does the same thing
     // as nsDocument::Reset and XULDocument::StartDocumentLoad.
@@ -517,7 +584,7 @@ nsScriptSecurityManager::CheckLoadURIFromScript(JSContext *cx, nsIURI *aURI)
 static nsresult
 DenyAccessIfURIHasFlags(nsIURI* aURI, uint32_t aURIFlags)
 {
-    NS_PRECONDITION(aURI, "Must have URI!");
+    MOZ_ASSERT(aURI, "Must have URI!");
 
     bool uriHasFlags;
     nsresult rv =
@@ -565,7 +632,8 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
                                                    nsIURI *aTargetURI,
                                                    uint32_t aFlags)
 {
-    NS_PRECONDITION(aPrincipal, "CheckLoadURIWithPrincipal must have a principal");
+    MOZ_ASSERT(aPrincipal, "CheckLoadURIWithPrincipal must have a principal");
+
     // If someone passes a flag that we don't understand, we should
     // fail, because they may need a security check that we don't
     // provide.
@@ -912,23 +980,6 @@ nsScriptSecurityManager::CheckLoadURIFlags(nsIURI *aSourceURI,
             }
         }
 
-        static bool sCanLoadChromeInContent = false;
-        static bool sCachedCanLoadChromeInContentPref = false;
-        if (!sCachedCanLoadChromeInContentPref) {
-            sCachedCanLoadChromeInContentPref = true;
-            mozilla::Preferences::AddBoolVarCache(&sCanLoadChromeInContent,
-                "security.allow_chrome_frames_inside_content");
-        }
-        if (sCanLoadChromeInContent) {
-            // Special-case the hidden window: it's allowed to load
-            // URI_IS_UI_RESOURCE no matter what.  Bug 1145470 tracks removing this.
-            nsAutoCString sourceSpec;
-            if (NS_SUCCEEDED(aSourceBaseURI->GetSpec(sourceSpec)) &&
-                sourceSpec.EqualsLiteral("resource://gre-resources/hiddenWindow.html")) {
-                return NS_OK;
-            }
-        }
-
         if (reportErrors) {
             ReportError(nullptr, errorTag, aSourceURI, aTargetURI);
         }
@@ -979,20 +1030,22 @@ nsScriptSecurityManager::CheckLoadURIFlags(nsIURI *aSourceURI,
                              &hasSubsumersFlag);
     NS_ENSURE_SUCCESS(rv, rv);
     if (!hasFlags && !hasSubsumersFlag) {
-        nsAutoString message;
-        NS_ConvertASCIItoUTF16 ucsTargetScheme(targetScheme);
-        const char16_t* formatStrings[] = { ucsTargetScheme.get() };
-        rv = sStrBundle->
-            FormatStringFromName("ProtocolFlagError",
-                                 formatStrings,
-                                 ArrayLength(formatStrings),
-                                 message);
-        if (NS_SUCCEEDED(rv)) {
-            nsCOMPtr<nsIConsoleService> console(
-              do_GetService("@mozilla.org/consoleservice;1"));
-            NS_ENSURE_TRUE(console, NS_ERROR_FAILURE);
+        nsCOMPtr<nsIStringBundle> bundle = BundleHelper::GetOrCreate();
+        if (bundle) {
+            nsAutoString message;
+            NS_ConvertASCIItoUTF16 ucsTargetScheme(targetScheme);
+            const char16_t* formatStrings[] = { ucsTargetScheme.get() };
+            rv = bundle->FormatStringFromName("ProtocolFlagError",
+                                              formatStrings,
+                                              ArrayLength(formatStrings),
+                                              message);
+            if (NS_SUCCEEDED(rv)) {
+                nsCOMPtr<nsIConsoleService> console(
+                  do_GetService("@mozilla.org/consoleservice;1"));
+                NS_ENSURE_TRUE(console, NS_ERROR_FAILURE);
 
-            console->LogStringMessage(message.get());
+                console->LogStringMessage(message.get());
+            }
         }
     }
 
@@ -1016,15 +1069,20 @@ nsScriptSecurityManager::ReportError(JSContext* cx, const char* aMessageTag,
     rv = aTarget->GetAsciiSpec(targetSpec);
     NS_ENSURE_SUCCESS(rv, rv);
 
+    nsCOMPtr<nsIStringBundle> bundle = BundleHelper::GetOrCreate();
+    if (NS_WARN_IF(!bundle)) {
+      return NS_OK;
+    }
+
     // Localize the error message
     nsAutoString message;
     NS_ConvertASCIItoUTF16 ucsSourceSpec(sourceSpec);
     NS_ConvertASCIItoUTF16 ucsTargetSpec(targetSpec);
     const char16_t *formatStrings[] = { ucsSourceSpec.get(), ucsTargetSpec.get() };
-    rv = sStrBundle->FormatStringFromName(aMessageTag,
-                                          formatStrings,
-                                          ArrayLength(formatStrings),
-                                          message);
+    rv = bundle->FormatStringFromName(aMessageTag,
+                                      formatStrings,
+                                      ArrayLength(formatStrings),
+                                      message);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // If a JS context was passed in, set a JS exception.
@@ -1195,15 +1253,6 @@ nsScriptSecurityManager::GetDocShellCodebasePrincipal(nsIURI* aURI,
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
 }
 
-// static
-nsIPrincipal*
-nsScriptSecurityManager::doGetObjectPrincipal(JSObject *aObj)
-{
-    JSCompartment *compartment = js::GetObjectCompartment(aObj);
-    JSPrincipals *principals = JS_GetCompartmentPrincipals(compartment);
-    return nsJSPrincipals::get(principals);
-}
-
 NS_IMETHODIMP
 nsScriptSecurityManager::CanCreateWrapper(JSContext *cx,
                                           const nsIID &aIID,
@@ -1235,22 +1284,28 @@ nsScriptSecurityManager::CanCreateWrapper(JSContext *cx,
     if (classInfoNameUTF8.IsEmpty()) {
       classInfoNameUTF8.AssignLiteral("UnnamedClass");
     }
+
+    nsCOMPtr<nsIStringBundle> bundle = BundleHelper::GetOrCreate();
+    if (NS_WARN_IF(!bundle)) {
+      return NS_OK;
+    }
+
     NS_ConvertUTF8toUTF16 classInfoUTF16(classInfoNameUTF8);
     nsresult rv;
     nsAutoString errorMsg;
     if (originUTF16.IsEmpty()) {
         const char16_t* formatStrings[] = { classInfoUTF16.get() };
-        rv = sStrBundle->FormatStringFromName("CreateWrapperDenied",
-                                              formatStrings,
-                                              1,
-                                              errorMsg);
+        rv = bundle->FormatStringFromName("CreateWrapperDenied",
+                                          formatStrings,
+                                          1,
+                                          errorMsg);
     } else {
         const char16_t* formatStrings[] = { classInfoUTF16.get(),
                                             originUTF16.get() };
-        rv = sStrBundle->FormatStringFromName("CreateWrapperDeniedForOrigin",
-                                              formatStrings,
-                                              2,
-                                              errorMsg);
+        rv = bundle->FormatStringFromName("CreateWrapperDeniedForOrigin",
+                                          formatStrings,
+                                          2,
+                                          errorMsg);
     }
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1334,14 +1389,6 @@ nsresult nsScriptSecurityManager::Init()
 
     InitPrefs();
 
-    nsCOMPtr<nsIStringBundleService> bundleService =
-        mozilla::services::GetStringBundleService();
-    if (!bundleService)
-        return NS_ERROR_FAILURE;
-
-    rv = bundleService->CreateBundle("chrome://global/locale/security/caps.properties", &sStrBundle);
-    NS_ENSURE_SUCCESS(rv, rv);
-
     // Create our system principal singleton
     RefPtr<SystemPrincipal> system = SystemPrincipal::Create();
 
@@ -1390,7 +1437,7 @@ nsScriptSecurityManager::Shutdown()
     }
 
     NS_IF_RELEASE(sIOService);
-    NS_IF_RELEASE(sStrBundle);
+    BundleHelper::Shutdown();
 }
 
 nsScriptSecurityManager *

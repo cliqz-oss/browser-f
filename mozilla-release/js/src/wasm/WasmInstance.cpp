@@ -33,13 +33,13 @@ using namespace js::jit;
 using namespace js::wasm;
 using mozilla::BitwiseCast;
 
-class SigIdSet
+class FuncTypeIdSet
 {
-    typedef HashMap<const Sig*, uint32_t, SigHashPolicy, SystemAllocPolicy> Map;
+    typedef HashMap<const FuncType*, uint32_t, FuncTypeHashPolicy, SystemAllocPolicy> Map;
     Map map_;
 
   public:
-    ~SigIdSet() {
+    ~FuncTypeIdSet() {
         MOZ_ASSERT_IF(!JSRuntime::hasLiveRuntimes(), !map_.initialized() || map_.empty());
     }
 
@@ -52,29 +52,29 @@ class SigIdSet
         return true;
     }
 
-    bool allocateSigId(JSContext* cx, const Sig& sig, const void** sigId) {
-        Map::AddPtr p = map_.lookupForAdd(sig);
+    bool allocateFuncTypeId(JSContext* cx, const FuncType& funcType, const void** funcTypeId) {
+        Map::AddPtr p = map_.lookupForAdd(funcType);
         if (p) {
             MOZ_ASSERT(p->value() > 0);
             p->value()++;
-            *sigId = p->key();
+            *funcTypeId = p->key();
             return true;
         }
 
-        UniquePtr<Sig> clone = MakeUnique<Sig>();
-        if (!clone || !clone->clone(sig) || !map_.add(p, clone.get(), 1)) {
+        UniquePtr<FuncType> clone = MakeUnique<FuncType>();
+        if (!clone || !clone->clone(funcType) || !map_.add(p, clone.get(), 1)) {
             ReportOutOfMemory(cx);
             return false;
         }
 
-        *sigId = clone.release();
-        MOZ_ASSERT(!(uintptr_t(*sigId) & SigIdDesc::ImmediateBit));
+        *funcTypeId = clone.release();
+        MOZ_ASSERT(!(uintptr_t(*funcTypeId) & FuncTypeIdDesc::ImmediateBit));
         return true;
     }
 
-    void deallocateSigId(const Sig& sig, const void* sigId) {
-        Map::Ptr p = map_.lookup(sig);
-        MOZ_RELEASE_ASSERT(p && p->key() == sigId && p->value() > 0);
+    void deallocateFuncTypeId(const FuncType& funcType, const void* funcTypeId) {
+        Map::Ptr p = map_.lookup(funcType);
+        MOZ_RELEASE_ASSERT(p && p->key() == funcTypeId && p->value() > 0);
 
         p->value()--;
         if (!p->value()) {
@@ -84,12 +84,12 @@ class SigIdSet
     }
 };
 
-ExclusiveData<SigIdSet> sigIdSet(mutexid::WasmSigIdSet);
+ExclusiveData<FuncTypeIdSet> funcTypeIdSet(mutexid::WasmFuncTypeIdSet);
 
 const void**
-Instance::addressOfSigId(const SigIdDesc& sigId) const
+Instance::addressOfFuncTypeId(const FuncTypeIdDesc& funcTypeId) const
 {
-    return (const void**)(globalData() + sigId.globalDataOffset());
+    return (const void**)(globalData() + funcTypeId.globalDataOffset());
 }
 
 FuncImportTls&
@@ -116,14 +116,14 @@ Instance::callImport(JSContext* cx, uint32_t funcImportIndex, unsigned argc, con
     if (!args.init(cx, argc))
         return false;
 
-    if (fi.sig().hasI64ArgOrRet()) {
+    if (fi.funcType().hasI64ArgOrRet()) {
         JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_I64_TYPE);
         return false;
     }
 
-    MOZ_ASSERT(fi.sig().args().length() == argc);
+    MOZ_ASSERT(fi.funcType().args().length() == argc);
     for (size_t i = 0; i < argc; i++) {
-        switch (fi.sig().args()[i]) {
+        switch (fi.funcType().args()[i].code()) {
           case ValType::I32:
             args[i].set(Int32Value(*(int32_t*)&argv[i]));
             break;
@@ -193,15 +193,15 @@ Instance::callImport(JSContext* cx, uint32_t funcImportIndex, unsigned argc, con
         return true;
 
     // Functions with anyref in signature don't have a jit exit at the moment.
-    if (fi.sig().temporarilyUnsupportedAnyRef())
+    if (fi.funcType().temporarilyUnsupportedAnyRef())
         return true;
 
-    const ValTypeVector& importArgs = fi.sig().args();
+    const ValTypeVector& importArgs = fi.funcType().args();
 
     size_t numKnownArgs = Min(importArgs.length(), importFun->nargs());
     for (uint32_t i = 0; i < numKnownArgs; i++) {
         TypeSet::Type type = TypeSet::UnknownType();
-        switch (importArgs[i]) {
+        switch (importArgs[i].code()) {
           case ValType::I32:    type = TypeSet::Int32Type(); break;
           case ValType::F32:    type = TypeSet::DoubleType(); break;
           case ValType::F64:    type = TypeSet::DoubleType(); break;
@@ -394,6 +394,86 @@ Instance::wake(Instance* instance, uint32_t byteOffset, int32_t count)
     return int32_t(woken);
 }
 
+/* static */ int32_t
+Instance::memCopy(Instance* instance, uint32_t destByteOffset, uint32_t srcByteOffset, uint32_t len)
+{
+    WasmMemoryObject* mem = instance->memory();
+    uint32_t memLen = mem->volatileMemoryLength();
+
+    // Knowing that len > 0 below simplifies the wraparound checks.
+    if (len == 0) {
+
+        // Even though the length is zero, we must check for a valid offset.
+        if (destByteOffset < memLen && srcByteOffset < memLen)
+            return 0;
+
+        // else fall through to failure case
+
+    } else {
+
+        ArrayBufferObjectMaybeShared& arrBuf = mem->buffer();
+        uint8_t* rawBuf = arrBuf.dataPointerEither().unwrap();
+
+        // Here, we know that |len - 1| cannot underflow.
+        typedef CheckedInt<uint32_t> CheckedU32;
+        CheckedU32 highest_destOffset = CheckedU32(destByteOffset) + CheckedU32(len - 1);
+        CheckedU32 highest_srcOffset = CheckedU32(srcByteOffset) + CheckedU32(len - 1);
+
+        if (highest_destOffset.isValid()   &&   // wraparound check
+            highest_srcOffset.isValid()    &&   // wraparound check
+            highest_destOffset.value() < memLen &&   // range check
+            highest_srcOffset.value() < memLen)      // range check
+        {
+            memmove(rawBuf + destByteOffset, rawBuf + srcByteOffset, size_t(len));
+            return 0;
+        }
+        // else fall through to failure case
+    }
+
+    JSContext* cx = TlsContext.get();
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
+}
+
+/* static */ int32_t
+Instance::memFill(Instance* instance, uint32_t byteOffset, uint32_t value, uint32_t len)
+{
+    WasmMemoryObject* mem = instance->memory();
+    uint32_t memLen = mem->volatileMemoryLength();
+
+    // Knowing that len > 0 below simplifies the wraparound check.
+    if (len == 0) {
+
+        // Even though the length is zero, we must check for a valid offset.
+        if (byteOffset < memLen)
+            return 0;
+
+        // else fall through to failure case
+
+    } else {
+
+        ArrayBufferObjectMaybeShared& arrBuf = mem->buffer();
+        uint8_t* rawBuf = arrBuf.dataPointerEither().unwrap();
+
+        // Here, we know that |len - 1| cannot underflow.
+        typedef CheckedInt<uint32_t> CheckedU32;
+        CheckedU32 highest_offset = CheckedU32(byteOffset) + CheckedU32(len - 1);
+
+        if (highest_offset.isValid() &&     // wraparound check
+            highest_offset.value() < memLen)     // range check
+        {
+            memset(rawBuf + byteOffset, int(value), size_t(len));
+            return 0;
+        }
+        // else fall through to failure case
+
+    }
+
+    JSContext* cx = TlsContext.get();
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
+}
+
 Instance::Instance(JSContext* cx,
                    Handle<WasmInstanceObject*> object,
                    SharedCode code,
@@ -404,13 +484,13 @@ Instance::Instance(JSContext* cx,
                    Handle<FunctionVector> funcImports,
                    const ValVector& globalImportValues,
                    const WasmGlobalObjectVector& globalObjs)
-  : compartment_(cx->compartment()),
+  : realm_(cx->realm()),
     object_(object),
     code_(code),
-    debug_(Move(debug)),
-    tlsData_(Move(tlsDataIn)),
+    debug_(std::move(debug)),
+    tlsData_(std::move(tlsDataIn)),
     memory_(memory),
-    tables_(Move(tables)),
+    tables_(std::move(tables)),
     enterFrameTrapsEnabled_(false)
 {
 #ifdef DEBUG
@@ -443,7 +523,7 @@ Instance::Instance(JSContext* cx,
             import.code = calleeInstance.codeBase(calleeTier) + codeRange.funcNormalEntry();
             import.baselineScript = nullptr;
             import.obj = calleeInstanceObj;
-        } else if (void* thunk = MaybeGetBuiltinThunk(f, fi.sig())) {
+        } else if (void* thunk = MaybeGetBuiltinThunk(f, fi.funcType())) {
             import.tls = tlsData();
             import.code = thunk;
             import.baselineScript = nullptr;
@@ -527,18 +607,18 @@ Instance::init(JSContext* cx)
             return false;
     }
 
-    if (!metadata().sigIds.empty()) {
-        ExclusiveData<SigIdSet>::Guard lockedSigIdSet = sigIdSet.lock();
+    if (!metadata().funcTypeIds.empty()) {
+        ExclusiveData<FuncTypeIdSet>::Guard lockedFuncTypeIdSet = funcTypeIdSet.lock();
 
-        if (!lockedSigIdSet->ensureInitialized(cx))
+        if (!lockedFuncTypeIdSet->ensureInitialized(cx))
             return false;
 
-        for (const SigWithId& sig : metadata().sigIds) {
-            const void* sigId;
-            if (!lockedSigIdSet->allocateSigId(cx, sig, &sigId))
+        for (const FuncTypeWithId& funcType : metadata().funcTypeIds) {
+            const void* funcTypeId;
+            if (!lockedFuncTypeIdSet->allocateFuncTypeId(cx, funcType, &funcTypeId))
                 return false;
 
-            *addressOfSigId(sig.id) = sigId;
+            *addressOfFuncTypeId(funcType.id) = funcTypeId;
         }
     }
 
@@ -552,7 +632,7 @@ Instance::init(JSContext* cx)
 
 Instance::~Instance()
 {
-    compartment_->wasm.unregisterInstance(*this);
+    realm_->wasm.unregisterInstance(*this);
 
     const FuncImportVector& funcImports = metadata(code().stableTier()).funcImports;
 
@@ -562,12 +642,12 @@ Instance::~Instance()
             import.baselineScript->removeDependentWasmImport(*this, i);
     }
 
-    if (!metadata().sigIds.empty()) {
-        ExclusiveData<SigIdSet>::Guard lockedSigIdSet = sigIdSet.lock();
+    if (!metadata().funcTypeIds.empty()) {
+        ExclusiveData<FuncTypeIdSet>::Guard lockedFuncTypeIdSet = funcTypeIdSet.lock();
 
-        for (const SigWithId& sig : metadata().sigIds) {
-            if (const void* sigId = *addressOfSigId(sig.id))
-                lockedSigIdSet->deallocateSigId(sig, sigId);
+        for (const FuncTypeWithId& funcType : metadata().funcTypeIds) {
+            if (const void* funcTypeId = *addressOfFuncTypeId(funcType.id))
+                lockedFuncTypeIdSet->deallocateFuncTypeId(funcType, funcTypeId);
         }
     }
 }
@@ -671,7 +751,7 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
 
     const FuncExport& func = metadata(tier).lookupFuncExport(funcIndex);
 
-    if (func.sig().hasI64ArgOrRet()) {
+    if (func.funcType().hasI64ArgOrRet()) {
         JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_I64_TYPE);
         return false;
     }
@@ -685,13 +765,13 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
     // value is stored in the first element of the array (which, therefore, must
     // have length >= 1).
     Vector<ExportArg, 8> exportArgs(cx);
-    if (!exportArgs.resize(Max<size_t>(1, func.sig().args().length())))
+    if (!exportArgs.resize(Max<size_t>(1, func.funcType().args().length())))
         return false;
 
     RootedValue v(cx);
-    for (unsigned i = 0; i < func.sig().args().length(); ++i) {
+    for (unsigned i = 0; i < func.funcType().args().length(); ++i) {
         v = i < args.length() ? args[i] : UndefinedValue();
-        switch (func.sig().arg(i)) {
+        switch (func.funcType().arg(i).code()) {
           case ValType::I32:
             if (!ToInt32(cx, v, (int32_t*)&exportArgs[i]))
                 return false;
@@ -797,7 +877,7 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
 
     bool expectsObject = false;
     JSObject* retObj = nullptr;
-    switch (func.sig().ret()) {
+    switch (func.funcType().ret()) {
       case ExprType::Void:
         args.rval().set(UndefinedValue());
         break;
@@ -863,17 +943,13 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
     return true;
 }
 
-bool
-Instance::getFuncName(uint32_t funcIndex, UTF8Bytes* name) const
-{
-    return metadata().getFuncName(debug_->maybeBytecode(), funcIndex, name);
-}
-
 JSAtom*
-Instance::getFuncAtom(JSContext* cx, uint32_t funcIndex) const
+Instance::getFuncDisplayAtom(JSContext* cx, uint32_t funcIndex) const
 {
+    // The "display name" of a function is primarily shown in Error.stack which
+    // also includes location, so use getFuncNameBeforeLocation.
     UTF8Bytes name;
-    if (!getFuncName(funcIndex, &name))
+    if (!metadata().getFuncNameBeforeLocation(debug_->maybeBytecode(), funcIndex, &name))
         return nullptr;
 
     return AtomizeUTF8Chars(cx, name.begin(), name.length());

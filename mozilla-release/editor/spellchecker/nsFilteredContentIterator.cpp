@@ -6,6 +6,7 @@
 #include "mozilla/mozalloc.h"
 #include "mozilla/Move.h"
 #include "nsComponentManagerUtils.h"
+#include "nsComposeTxtSrvFilter.h"
 #include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsError.h"
@@ -13,17 +14,15 @@
 #include "nsAtom.h"
 #include "nsIContent.h"
 #include "nsIContentIterator.h"
-#include "nsIDOMNode.h"
 #include "nsINode.h"
 #include "nsISupportsBase.h"
 #include "nsISupportsUtils.h"
-#include "nsITextServicesFilter.h"
 #include "nsRange.h"
 
 using namespace mozilla;
 
 //------------------------------------------------------------
-nsFilteredContentIterator::nsFilteredContentIterator(nsITextServicesFilter* aFilter) :
+nsFilteredContentIterator::nsFilteredContentIterator(nsComposeTxtSrvFilter* aFilter) :
   mFilter(aFilter),
   mDidSkip(false),
   mIsOutOfRange(false),
@@ -76,18 +75,17 @@ nsFilteredContentIterator::Init(nsINode* aRoot)
 
 //------------------------------------------------------------
 nsresult
-nsFilteredContentIterator::Init(nsIDOMRange* aRange)
+nsFilteredContentIterator::Init(nsRange* aRange)
 {
   if (NS_WARN_IF(!aRange)) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  nsRange* range = static_cast<nsRange*>(aRange);
-  if (NS_WARN_IF(!range->IsPositioned())) {
+  if (NS_WARN_IF(!aRange->IsPositioned())) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  mRange = range->CloneRange();
+  mRange = aRange->CloneRange();
 
   return InitWithRange();
 }
@@ -115,7 +113,7 @@ nsFilteredContentIterator::Init(const RawRangeBoundary& aStart,
   MOZ_ASSERT(range->StartRef() == aStart);
   MOZ_ASSERT(range->EndRef() == aEnd);
 
-  mRange = Move(range);
+  mRange = std::move(range);
 
   return InitWithRange();
 }
@@ -349,15 +347,13 @@ nsFilteredContentIterator::CheckAdvNode(nsINode* aNode, bool& aDidSkip, eDirecti
 
   if (aNode && mFilter) {
     nsCOMPtr<nsINode> currentNode = aNode;
-    bool skipIt;
     while (1) {
-      nsresult rv = mFilter->Skip(aNode->AsDOMNode(), &skipIt);
-      if (NS_SUCCEEDED(rv) && skipIt) {
+      if (mFilter->Skip(aNode)) {
         aDidSkip = true;
         // Get the next/prev node and then
         // see if we should skip that
         nsCOMPtr<nsINode> advNode;
-        rv = AdvanceNode(aNode, *getter_AddRefs(advNode), aDir);
+        nsresult rv = AdvanceNode(aNode, *getter_AddRefs(advNode), aDir);
         if (NS_SUCCEEDED(rv) && advNode) {
           aNode = advNode;
         } else {

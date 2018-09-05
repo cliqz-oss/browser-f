@@ -6,13 +6,18 @@
 
 #include "frontend/BinTokenReaderMultipart.h"
 
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/Casting.h"
 #include "mozilla/EndianUtils.h"
 #include "mozilla/Maybe.h"
+
+#include <utility>
 
 #include "frontend/BinSource-macros.h"
 #include "frontend/BinSourceRuntimeSupport.h"
 
 #include "gc/Zone.h"
+#include "js/Result.h"
 
 namespace js {
 namespace frontend {
@@ -141,7 +146,7 @@ BinTokenReaderMultipart::readHeader()
 
         // Populate `slicesTable_`: i => slice
         Chars slice((const char*)current_, byteLen);
-        slicesTable_.infallibleAppend(Move(slice)); // We have reserved before entering the loop.
+        slicesTable_.infallibleAppend(std::move(slice)); // We have reserved before entering the loop.
 
         current_ += byteLen;
     }
@@ -192,18 +197,17 @@ BinTokenReaderMultipart::readDouble()
 
     uint8_t bytes[8];
     MOZ_ASSERT(sizeof(bytes) == sizeof(double));
-    MOZ_TRY(readBuf(reinterpret_cast<uint8_t*>(bytes), ArrayLength(bytes)));
+    MOZ_TRY(readBuf(reinterpret_cast<uint8_t*>(bytes), mozilla::ArrayLength(bytes)));
 
     // Decode little-endian.
-    const uint64_t asInt = LittleEndian::readUint64(bytes);
+    const uint64_t asInt = mozilla::LittleEndian::readUint64(bytes);
 
     if (asInt == NULL_FLOAT_REPRESENTATION)
         return raiseError("Not implemented: null double value");
 
     // Canonicalize NaN, just to make sure another form of signalling NaN
     // doesn't slip past us.
-    const double asDouble = CanonicalizeNaN(BitwiseCast<double>(asInt));
-    return asDouble;
+    return JS::CanonicalizeNaN(mozilla::BitwiseCast<double>(asInt));
 }
 
 
@@ -340,7 +344,8 @@ BinTokenReaderMultipart::AutoBase::init()
 }
 
 BinTokenReaderMultipart::AutoBase::AutoBase(BinTokenReaderMultipart& reader)
-    : reader_(reader)
+    : initialized_(false)
+    , reader_(reader)
 { }
 
 BinTokenReaderMultipart::AutoBase::~AutoBase()

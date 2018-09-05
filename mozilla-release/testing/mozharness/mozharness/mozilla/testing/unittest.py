@@ -5,13 +5,12 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 # ***** END LICENSE BLOCK *****
 
-import os
 import re
 
 from mozharness.mozilla.testing.errors import TinderBoxPrintRe
 from mozharness.base.log import OutputParser, WARNING, INFO, CRITICAL, ERROR
-from mozharness.mozilla.buildbot import TBPL_WARNING, TBPL_FAILURE, TBPL_RETRY
-from mozharness.mozilla.buildbot import TBPL_SUCCESS, TBPL_WORST_LEVEL_TUPLE
+from mozharness.mozilla.automation import TBPL_WARNING, TBPL_FAILURE, TBPL_RETRY
+from mozharness.mozilla.automation import TBPL_SUCCESS, TBPL_WORST_LEVEL_TUPLE
 
 SUITE_CATEGORIES = ['mochitest', 'reftest', 'xpcshell']
 
@@ -66,31 +65,9 @@ class TestSummaryOutputParserHelper(OutputParser):
                 pass
 
     def evaluate_parser(self, return_code, success_codes=None, previous_summary=None):
-        """
-          We can run evaluate_parser multiple times, it will duplicate failures
-          and status which can mean that future tests will fail if a previous test fails.
-          When we have a previous summary, we want to do 2 things:
-            1) Remove previous data from the new summary to only look at new data
-            2) Build a joined summary to include the previous + new data
-        """
-        keys = ['passed', 'failed']
-        joined_summary = {}
-        for key in keys:
-            joined_summary[key] = getattr(self, key)
-
-        if previous_summary:
-            for key in keys:
-                joined_summary[key] += previous_summary[key]
-                value = getattr(self, key) - previous_summary[key]
-                if value < 0:
-                    value = 0
-                setattr(self, key, value)
-            self.tbpl_status = TBPL_SUCCESS
-            self.worst_log_level = INFO
-
-        joined_summary = {}
-        if previous_summary:
-            joined_summary = previous_summary
+        # TestSummaryOutputParserHelper is for Marionette, which doesn't support test-verify
+        # When it does we can reset the internal state variables as needed
+        joined_summary = previous_summary
 
         if return_code == 0 and self.passed > 0 and self.failed == 0:
             self.tbpl_status = TBPL_SUCCESS
@@ -206,24 +183,15 @@ class DesktopUnittestOutputParser(OutputParser):
         """
           We can run evaluate_parser multiple times, it will duplicate failures
           and status which can mean that future tests will fail if a previous test fails.
-          When we have a previous summary, we want to do 2 things:
-            1) Remove previous data from the new summary to only look at new data
-            2) Build a joined summary to include the previous + new data
+          When we have a previous summary, we want to do:
+            1) reset state so we only evaluate the current results
         """
-        keys = ['pass_count', 'fail_count', 'known_fail_count', 'crashed', 'leaked']
-        joined_summary = {}
-        for key in keys:
-            joined_summary[key] = getattr(self, key)
-
+        joined_summary = {'pass_count': self.pass_count}
         if previous_summary:
-            for key in keys:
-                joined_summary[key] += previous_summary[key]
-                value = getattr(self, key) - previous_summary[key]
-                if value < 0:
-                    value = 0
-                setattr(self, key, value)
             self.tbpl_status = TBPL_SUCCESS
             self.worst_log_level = INFO
+            self.crashed = False
+            self.leaked = False
 
         # I have to put this outside of parse_single_line because this checks not
         # only if fail_count was more then 0 but also if fail_count is still -1
@@ -235,7 +203,7 @@ class DesktopUnittestOutputParser(OutputParser):
 
         # Account for the possibility that no test summary was output.
         if self.pass_count <= 0 and self.fail_count <= 0 and \
-            (self.known_fail_count is None or self.known_fail_count <= 0):
+                (self.known_fail_count is None or self.known_fail_count <= 0):
             self.error('No tests run or test summary not found')
             self.worst_log_level = self.worst_level(WARNING,
                                                     self.worst_log_level)
@@ -255,56 +223,10 @@ class DesktopUnittestOutputParser(OutputParser):
         # parse parse_single_line but at little cost since we are not parsing
         # the log more then once.  I figured this method should stay isolated as
         # it is only here for tbpl highlighted summaries and is not part of
-        # buildbot evaluation or result status IIUC.
+        # result status IIUC.
         summary = tbox_print_summary(self.pass_count,
                                      self.fail_count,
                                      self.known_fail_count,
                                      self.crashed,
                                      self.leaked)
         self.info("TinderboxPrint: %s<br/>%s\n" % (suite_name, summary))
-
-
-class EmulatorMixin(object):
-    """ Currently dependent on both TooltoolMixin and TestingMixin)"""
-
-    def install_emulator_from_tooltool(self, manifest_path, do_unzip=True):
-        dirs = self.query_abs_dirs()
-        if self.tooltool_fetch(manifest_path, output_dir=dirs['abs_work_dir'],
-                               cache=self.config.get("tooltool_cache", None)
-                               ):
-            self.fatal("Unable to download emulator via tooltool!")
-        if do_unzip:
-            unzip = self.query_exe("unzip")
-            unzip_cmd = [unzip, '-q', os.path.join(dirs['abs_work_dir'], "emulator.zip")]
-            self.run_command(unzip_cmd, cwd=dirs['abs_emulator_dir'], halt_on_failure=True,
-                             fatal_exit_code=3)
-
-    def install_emulator(self):
-        dirs = self.query_abs_dirs()
-        self.mkdir_p(dirs['abs_emulator_dir'])
-        if self.config.get('emulator_url'):
-            self.download_unpack(self.config['emulator_url'], dirs['abs_emulator_dir'])
-        elif self.config.get('emulator_manifest'):
-            manifest_path = self.create_tooltool_manifest(self.config['emulator_manifest'])
-            do_unzip = True
-            if 'unpack' in self.config['emulator_manifest']:
-                do_unzip = False
-            self.install_emulator_from_tooltool(manifest_path, do_unzip)
-        elif self.buildbot_config:
-            props = self.buildbot_config.get('properties')
-            url = 'https://hg.mozilla.org/%s/raw-file/%s/b2g/test/emulator.manifest' % (
-                props['repo_path'], props['revision'])
-            manifest_path = self.download_file(url,
-                                               file_name='tooltool.tt',
-                                               parent_dir=dirs['abs_work_dir'])
-            if not manifest_path:
-                self.fatal("Can't download emulator manifest from %s" % url)
-            self.install_emulator_from_tooltool(manifest_path)
-        else:
-            self.fatal("Can't get emulator; set emulator_url or emulator_manifest in the config!")
-        if self.config.get('tools_manifest'):
-            manifest_path = self.create_tooltool_manifest(self.config['tools_manifest'])
-            do_unzip = True
-            if 'unpack' in self.config['tools_manifest']:
-                do_unzip = False
-            self.install_emulator_from_tooltool(manifest_path, do_unzip)

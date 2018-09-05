@@ -9,6 +9,7 @@
 #include "mozilla/Move.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Vector.h"
 
 #include <stddef.h>
@@ -18,6 +19,7 @@ using mozilla::IsSame;
 using mozilla::MakeUnique;
 using mozilla::Swap;
 using mozilla::UniquePtr;
+using mozilla::UniqueFreePtr;
 using mozilla::Vector;
 
 #define CHECK(c) \
@@ -75,7 +77,7 @@ static UniqueA
 ReturnLocalA()
 {
   UniqueA a(new A);
-  return Move(a);
+  return a;
 }
 
 static void
@@ -110,7 +112,7 @@ TestDefaultFreeGuts()
   int* p1 = new int;
   n1.reset(p1);
   CHECK(n1);
-  NewInt n2(Move(n1));
+  NewInt n2(std::move(n1));
   CHECK(!n1);
   CHECK(n1.get() == nullptr);
   CHECK(n2.get() == p1);
@@ -160,11 +162,11 @@ TestDefaultFreeGuts()
   B* bp2 = new B;
   UniqueB b1(bp2);
   UniqueA a2(nullptr);
-  a2 = Move(b1);
+  a2 = std::move(b1);
   CHECK(gADestructorCalls == 2);
   CHECK(gBDestructorCalls == 1);
 
-  UniqueA a3(Move(a2));
+  UniqueA a3(std::move(a2));
   a3 = nullptr;
   CHECK(gADestructorCalls == 3);
   CHECK(gBDestructorCalls == 2);
@@ -172,7 +174,7 @@ TestDefaultFreeGuts()
   B* bp3 = new B;
   bp3->mX = 42;
   UniqueB b2(bp3);
-  UniqueA a4(Move(b2));
+  UniqueA a4(std::move(b2));
   CHECK(b2.get() == nullptr);
   CHECK((*a4).mX == 42);
   CHECK(gADestructorCalls == 3);
@@ -180,7 +182,7 @@ TestDefaultFreeGuts()
 
   UniqueA a5(new A);
   UniqueB b3(new B);
-  a5 = Move(b3);
+  a5 = std::move(b3);
   CHECK(gADestructorCalls == 4);
   CHECK(gBDestructorCalls == 2);
 
@@ -199,13 +201,13 @@ TestDefaultFreeGuts()
 
   UniqueC c1(new B);
   UniqueA a7(new B);
-  a7 = Move(c1);
+  a7 = std::move(c1);
   CHECK(gADestructorCalls == 8);
   CHECK(gBDestructorCalls == 4);
 
   c1.reset(new B);
 
-  UniqueA a8(Move(c1));
+  UniqueA a8(std::move(c1));
   CHECK(gADestructorCalls == 8);
   CHECK(gBDestructorCalls == 4);
 
@@ -258,7 +260,7 @@ TestFreeClass()
   {
     NewIntCustom n3(new int);
     CHECK(FreeClassCounter == 1);
-    n2 = Move(n3);
+    n2 = std::move(n3);
   }
   CHECK(FreeClassCounter == 1);
   n2 = nullptr;
@@ -304,12 +306,12 @@ TestReferenceDeleterGuts()
   DefaultDelete<int> delInt;
   IntDeleterRef id1(new int, delInt);
 
-  IntDeleterRef id2(Move(id1));
+  IntDeleterRef id2(std::move(id1));
   CHECK(id1 == nullptr);
   CHECK(nullptr != id2);
   CHECK(&id1.get_deleter() == &id2.get_deleter());
 
-  IntDeleterRef id3(Move(id2));
+  IntDeleterRef id3(std::move(id2));
 
   DefaultDelete<A> delA;
   ADeleterRef a1(new A, delA);
@@ -318,11 +320,11 @@ TestReferenceDeleterGuts()
   a1 = nullptr;
 
   BDeleterRef b1(new B, delA);
-  a1 = Move(b1);
+  a1 = std::move(b1);
 
   BDeleterRef b2(new B, delA);
 
-  ADeleterRef a2(Move(b2));
+  ADeleterRef a2(std::move(b2));
 
   return true;
 }
@@ -368,7 +370,7 @@ MallocedInt(int aI)
   UniquePtr<int, FreeSignature>
     ptr(static_cast<int*>(malloc(sizeof(int))), free);
   *ptr = aI;
-  return Move(ptr);
+  return ptr;
 }
 static bool
 TestFunctionReferenceDeleter()
@@ -473,7 +475,7 @@ TestArray()
   int* p1 = new int[42];
   n1.reset(p1);
   CHECK(n1);
-  IntArray n2(Move(n1));
+  IntArray n2(std::move(n1));
   CHECK(!n1);
   CHECK(n1.get() == nullptr);
   CHECK(n2.get() == p1);
@@ -501,9 +503,9 @@ TestArray()
   CHECK(n2.get() == p2);
   CHECK(n1.get() == p3);
 
-  n1 = Move(n2);
+  n1 = std::move(n2);
   CHECK(n1.get() == p2);
-  n1 = Move(n2);
+  n1 = std::move(n2);
   CHECK(n1.get() == nullptr);
 
   UniquePtr<A[]> a1(new A[17]);
@@ -562,6 +564,36 @@ TestMakeUnique()
   return true;
 }
 
+static bool
+TestVoid()
+{
+  // UniquePtr<void> supports all operations except operator*() and
+  // operator->().
+  UniqueFreePtr<void> p1(malloc(1));
+  UniqueFreePtr<void> p2;
+
+  auto x = p1.get();
+  CHECK(x != nullptr);
+  CHECK((IsSame<decltype(x), void*>::value));
+
+  p2.reset(p1.release());
+  CHECK(p1.get() == nullptr);
+  CHECK(p2.get() != nullptr);
+
+  p1 = std::move(p2);
+  CHECK(p1);
+  CHECK(!p2);
+
+  p1.swap(p2);
+  CHECK(!p1);
+  CHECK(p2);
+
+  p2 = nullptr;
+  CHECK(!p2);
+
+  return true;
+}
+
 int
 main()
 {
@@ -586,6 +618,9 @@ main()
     return 1;
   }
   if (!TestMakeUnique()) {
+    return 1;
+  }
+  if (!TestVoid()) {
     return 1;
   }
   return 0;

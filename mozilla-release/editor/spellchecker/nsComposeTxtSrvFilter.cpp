@@ -6,7 +6,6 @@
 #include "nsComposeTxtSrvFilter.h"
 #include "nsError.h"                    // for NS_OK
 #include "nsIContent.h"                 // for nsIContent
-#include "nsIDOMNode.h"                 // for nsIDOMNode
 #include "nsNameSpaceManager.h"        // for kNameSpaceID_None
 #include "nsLiteralString.h"            // for NS_LITERAL_STRING
 #include "nscore.h"                     // for NS_IMETHODIMP
@@ -19,52 +18,57 @@ nsComposeTxtSrvFilter::nsComposeTxtSrvFilter() :
 
 NS_IMPL_ISUPPORTS(nsComposeTxtSrvFilter, nsITextServicesFilter)
 
-NS_IMETHODIMP
-nsComposeTxtSrvFilter::Skip(nsIDOMNode* aNode, bool *_retval)
+bool
+nsComposeTxtSrvFilter::Skip(nsINode* aNode) const
 {
-  *_retval = false;
-
-  // Check to see if we can skip this node
-  // For nodes that are blockquotes, we must make sure
-  // their type is "cite"
-  nsCOMPtr<nsIContent> content(do_QueryInterface(aNode));
-  if (content) {
-    if (content->IsHTMLElement(nsGkAtoms::blockquote)) {
-      if (mIsForMail) {
-        *_retval = content->AsElement()->AttrValueIs(kNameSpaceID_None,
-                                                     nsGkAtoms::type,
-                                                     nsGkAtoms::cite,
-                                                     eIgnoreCase);
-      }
-    } else if (content->IsHTMLElement(nsGkAtoms::span)) {
-      if (mIsForMail) {
-        *_retval = content->AsElement()->AttrValueIs(kNameSpaceID_None,
-                                                     nsGkAtoms::mozquote,
-                                                     nsGkAtoms::_true,
-                                                     eIgnoreCase);
-        if (!*_retval) {
-          *_retval = content->AsElement()->AttrValueIs(kNameSpaceID_None,
-                                                       nsGkAtoms::_class,
-                                                       nsGkAtoms::mozsignature,
-                                                       eCaseMatters);
-        }
-      }
-    } else if (content->IsAnyOfHTMLElements(nsGkAtoms::script,
-                                            nsGkAtoms::textarea,
-                                            nsGkAtoms::select,
-                                            nsGkAtoms::style,
-                                            nsGkAtoms::map)) {
-      *_retval = true;
-    } else if (content->IsHTMLElement(nsGkAtoms::table)) {
-      if (mIsForMail) {
-        *_retval =
-          content->AsElement()->AttrValueIs(kNameSpaceID_None,
-                                            nsGkAtoms::_class,
-                                            NS_LITERAL_STRING("moz-email-headers-table"),
-                                            eCaseMatters);
-      }
-    }
+  if (NS_WARN_IF(!aNode)) {
+    return false;
   }
 
-  return NS_OK;
+  // Check to see if we can skip this node
+
+  if (aNode->IsAnyOfHTMLElements(nsGkAtoms::script,
+                                 nsGkAtoms::textarea,
+                                 nsGkAtoms::select,
+                                 nsGkAtoms::style,
+                                 nsGkAtoms::map)) {
+    return true;
+  }
+
+  if (!mIsForMail) {
+    return false;
+  }
+
+  // For nodes that are blockquotes, we must make sure
+  // their type is "cite"
+  if (aNode->IsHTMLElement(nsGkAtoms::blockquote)) {
+    return aNode->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                           nsGkAtoms::type,
+                                           nsGkAtoms::cite,
+                                           eIgnoreCase);
+  }
+
+  if (aNode->IsHTMLElement(nsGkAtoms::span)) {
+    if (aNode->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                        nsGkAtoms::mozquote,
+                                        nsGkAtoms::_true,
+                                        eIgnoreCase)) {
+      return true;
+    }
+
+    return aNode->AsElement()->AttrValueIs(kNameSpaceID_None,
+                                           nsGkAtoms::_class,
+                                           nsGkAtoms::mozsignature,
+                                           eCaseMatters);
+  }
+
+  if (aNode->IsHTMLElement(nsGkAtoms::table)) {
+    return aNode->AsElement()->AttrValueIs(
+                                 kNameSpaceID_None,
+                                 nsGkAtoms::_class,
+                                 NS_LITERAL_STRING("moz-email-headers-table"),
+                                 eCaseMatters);
+  }
+
+  return false;
 }

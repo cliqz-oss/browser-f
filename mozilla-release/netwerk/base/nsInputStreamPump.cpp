@@ -38,9 +38,13 @@ static mozilla::LazyLogModule gStreamPumpLog("nsStreamPump");
 nsInputStreamPump::nsInputStreamPump()
     : mState(STATE_IDLE)
     , mStreamOffset(0)
+    , mStreamLength(0)
+    , mSegSize(0)
+    , mSegCount(0)
     , mStatus(NS_OK)
     , mSuspendCount(0)
     , mLoadFlags(LOAD_NORMAL)
+    , mIsPending(false)
     , mProcessingCallbacks(false)
     , mWaitingForInputStreamReady(false)
     , mCloseWhenDone(false)
@@ -112,7 +116,7 @@ nsInputStreamPump::PeekStream(PeekSegmentFun callback, void* closure)
   PeekData data(callback, closure);
   return mAsyncStream->ReadSegments(CallPeekFunc,
                                     &data,
-                                    nsIOService::gDefaultSegmentSize,
+                                    net::nsIOService::gDefaultSegmentSize,
                                     &dummy);
 }
 

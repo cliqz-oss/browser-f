@@ -11,7 +11,8 @@
 const SIDEBAR_WIDTH = 200;
 
 add_task(async function() {
-  await pushPref("devtools.inspector.three-pane-toggle", true);
+  info("Switch to 2 pane inspector to test the 3 pane toggle button behavior");
+  await pushPref("devtools.inspector.three-pane-enabled", false);
 
   const { inspector } = await openInspectorForURL("about:blank");
   const { panelDoc: doc } = inspector;
@@ -31,7 +32,7 @@ add_task(async function() {
 
     info("Checking the sizes of the 3 pane inspector");
     let sidebarWidth = inspector.splitBox.state.width;
-    let sidebarSplitBoxWidth = inspector.sidebarSplitBox.state.width;
+    const sidebarSplitBoxWidth = inspector.sidebarSplitBox.state.width;
     is(sidebarWidth, SIDEBAR_WIDTH * 2, "Got correct main split box width");
     is(sidebarSplitBoxWidth, SIDEBAR_WIDTH, "Got correct sidebar split box width");
 

@@ -30,10 +30,6 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-
-static char *RCSSTRING __UNUSED__="$Id: ice_candidate.c,v 1.2 2008/04/28 17:59:01 ekr Exp $";
-
 #include <csi_platform.h>
 #include <assert.h>
 #include <stdio.h>
@@ -323,14 +319,14 @@ int nr_ice_candidate_destroy(nr_ice_candidate **candp)
       case RELAYED:
         // record stats back to the ice ctx on destruction
         if (cand->u.relayed.turn) {
-          nr_ice_accumulate_count(&(cand->ctx->stats.turn_401s), cand->u.relayed.turn->cnt_401s);
-          nr_ice_accumulate_count(&(cand->ctx->stats.turn_403s), cand->u.relayed.turn->cnt_403s);
-          nr_ice_accumulate_count(&(cand->ctx->stats.turn_438s), cand->u.relayed.turn->cnt_438s);
+          nr_accumulate_count(&(cand->ctx->stats.turn_401s), cand->u.relayed.turn->cnt_401s);
+          nr_accumulate_count(&(cand->ctx->stats.turn_403s), cand->u.relayed.turn->cnt_403s);
+          nr_accumulate_count(&(cand->ctx->stats.turn_438s), cand->u.relayed.turn->cnt_438s);
 
           nr_turn_stun_ctx* stun_ctx;
           stun_ctx = STAILQ_FIRST(&cand->u.relayed.turn->stun_ctxs);
           while (stun_ctx) {
-            nr_ice_accumulate_count(&(cand->ctx->stats.stun_retransmits), stun_ctx->stun->retransmit_ct);
+            nr_accumulate_count(&(cand->ctx->stats.stun_retransmits), stun_ctx->stun->retransmit_ct);
 
             stun_ctx = STAILQ_NEXT(stun_ctx, entry);
           }
@@ -380,7 +376,9 @@ static int nr_ice_get_foundation(nr_ice_ctx *ctx,nr_ice_candidate *cand)
     while(foundation){
       if(nr_transport_addr_cmp(&cand->base,&foundation->addr,NR_TRANSPORT_ADDR_CMP_MODE_ADDR))
         goto next;
-      if(cand->type != foundation->type)
+      // cast necessary because there is no guarantee that enum is signed.
+      // foundation->type should probably match nr_ice_candidate_type
+      if((int)cand->type != foundation->type)
         goto next;
       if(cand->stun_server != foundation->stun_server)
         goto next;

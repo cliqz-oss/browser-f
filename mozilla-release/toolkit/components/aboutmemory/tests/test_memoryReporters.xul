@@ -93,16 +93,16 @@
       storageSqliteAmounts.push(aAmount);
 
     // Check the presence of some other notable reporters.
-    } else if (aPath.search(/^explicit\/js-non-window\/.*compartment\(/) >= 0) {
-      present.jsNonWindowCompartments = true;
-    } else if (aPath.search(/^explicit\/window-objects\/top\(.*\/js-compartment\(/) >= 0) {
-      present.windowObjectsJsCompartments = true;
+    } else if (aPath.search(/^explicit\/js-non-window\/.*realm\(/) >= 0) {
+      present.jsNonWindowRealms = true;
+    } else if (aPath.search(/^explicit\/window-objects\/top\(.*\/js-realm\(/) >= 0) {
+      present.windowObjectsJsRealms = true;
     } else if (aPath.search(/^explicit\/storage\/sqlite\/places.sqlite/) >= 0) {
       present.places = true;
     } else if (aPath.search(/^explicit\/images/) >= 0) {
       present.images = true;
-    } else if (aPath.search(/^explicit\/atoms\/dynamic\/atom-objects$/) >= 0) {
-      present.dynamicAtomObjects = true;
+    } else if (aPath.search(/^explicit\/atoms\/dynamic-objects-and-chars$/) >= 0) {
+      present.dynamicObjectsAndChars = true;
     } else if (/\[System Principal\].*this-is-a-sandbox-name/.test(aPath)) {
       // A system compartment with a location (such as a sandbox) should
       // show that location.
@@ -152,11 +152,12 @@
     "heapOverheadFraction",
     "JSMainRuntimeGCHeap",
     "JSMainRuntimeTemporaryPeak",
-    "JSMainRuntimeCompartmentsSystem",
-    "JSMainRuntimeCompartmentsUser",
+    "JSMainRuntimeRealmsSystem",
+    "JSMainRuntimeRealmsUser",
     "imagesContentUsedUncompressed",
     "storageSQLite",
     "lowMemoryEventsVirtual",
+    "lowMemoryEventsCommitSpace",
     "lowMemoryEventsPhysical",
     "ghostWindows",
     "pageFaultsHard",
@@ -254,11 +255,11 @@
     checkSizeReasonable("js-main-runtime-gc-heap-committed/used/gc-things",
                         jsGcHeapUsedGcThingsTotal);
 
-    ok(present.jsNonWindowCompartments,     "js-non-window compartments are present");
-    ok(present.windowObjectsJsCompartments, "window-objects/.../js compartments are present");
+    ok(present.jsNonWindowRealms,           "js-non-window realms are present");
+    ok(present.windowObjectsJsRealms,       "window-objects/.../js realms are present");
     ok(present.places,                      "places is present");
     ok(present.images,                      "images is present");
-    ok(present.dynamicAtomObjects,          "dynamic/atom-objects is present");
+    ok(present.dynamicObjectsAndChars,      "dynamic-objects-and-chars is present");
     ok(present.sandboxLocation,             "sandbox locations are present");
     ok(present.bigString,                   "large string is present");
     ok(present.smallString1,                "small string 1 is present");

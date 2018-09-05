@@ -9,7 +9,6 @@
 
 interface nsIURI;
 interface nsIContent;
-interface nsISelection;
 interface nsISelectionController;
 interface nsIDocumentStateListener;
 interface nsIOutputStream;
@@ -20,7 +19,10 @@ interface nsIEditActionListener;
 interface nsIInlineSpellChecker;
 interface nsITransferable;
 
+webidl Document;
 webidl Element;
+webidl Node;
+webidl Selection;
 
 %{C++
 namespace mozilla {
@@ -48,7 +50,7 @@ interface nsIEditor  : nsISupports
   const short eStrip = 0;
   const short eNoStrip = 1;
 
-  readonly attribute nsISelection selection;
+  readonly attribute Selection selection;
 
   void setAttributeOrEquivalent(in Element element,
                                 in AString sourceAttrName,
@@ -57,15 +59,6 @@ interface nsIEditor  : nsISupports
   void removeAttributeOrEquivalent(in Element element,
                                    in DOMString sourceAttrName,
                                    in boolean aSuppressTransaction);
-
-  /**
-   * preDestroy is called before the editor goes away, and gives the editor a
-   * chance to tell its documentStateObservers that the document is going away.
-   * @param aDestroyingFrames set to true when the frames being edited
-   * are being destroyed (so there is no need to modify any nsISelections,
-   * nor is it safe to do so)
-   */
-  void preDestroy(in boolean aDestroyingFrames);
 
   /** edit flags for this editor.  May be set at any time. */
   attribute unsigned long flags;
@@ -84,7 +77,7 @@ interface nsIEditor  : nsISupports
   /**
    * the DOM Document this editor is associated with, refcounted.
    */
-  readonly attribute nsIDOMDocument document;
+  readonly attribute Document document;
 
   /** the body element, i.e. the root of the editable document.
    */
@@ -298,13 +291,6 @@ interface nsIEditor  : nsISupports
     */
   boolean canPaste(in long aSelectionType);
 
-  /** Can we paste |aTransferable| or, if |aTransferable| is null, will a call
-    * to pasteTransferable later possibly succeed if given an instance of
-    * nsITransferable then? True if the doc is modifiable, and, if
-    * |aTransfeable| is non-null, we have pasteable data in |aTransfeable|.
-    */
-  boolean canPasteTransferable([optional] in nsITransferable aTransferable);
-
   /* ------------ Selection methods -------------- */
 
   /** sets the document selection to the entire contents of the document */
@@ -370,28 +356,25 @@ interface nsIEditor  : nsISupports
    * the destination node and delete those not in the source.
    *
    * The supplied nodes MUST BE ELEMENTS (most callers are working with nodes)
-   * @param aAttribute    the name of the attribute to copy
-   * @param aDestNode     the destination element to operate on
-   * @param aSourceNode   the source element to copy attributes from
-   * @exception NS_ERROR_NULL_POINTER at least one of the nodes is null
-   * @exception NS_ERROR_NO_INTERFACE at least one of the nodes is not an
-   *                                  element
+   * @param aAttribute     the name of the attribute to copy
+   * @param aDestElement   the destination element to operate on
+   * @param aSourceElement the source element to copy attributes from
+   * @exception NS_ERROR_NULL_POINTER at least one of the elements is null
    */
   void cloneAttribute(in AString aAttribute,
-                      in nsIDOMNode aDestNode, in nsIDOMNode aSourceNode);
+                      in Element aDestElement, in Element aSourceElement);
 
   /**
-   * cloneAttributes() is similar to nsIDOMNode::cloneNode(),
+   * cloneAttributes() is similar to Node::cloneNode(),
    *   it assures the attribute nodes of the destination are identical
    *   with the source node by copying all existing attributes from the
    *   source and deleting those not in the source.
-   *   This is used when the destination node (element) already exists
+   *   This is used when the destination element already exists
    *
-   * The supplied nodes MUST BE ELEMENTS (most callers are working with nodes)
    * @param aDestNode     the destination element to operate on
    * @param aSourceNode   the source element to copy attributes from
    */
-  void cloneAttributes(in nsIDOMNode destNode, in nsIDOMNode sourceNode);
+  void cloneAttributes(in Element aDestElement, in Element aSourceElement);
 
   /**
    * insertNode inserts aNode into aParent at aPosition.
@@ -403,9 +386,9 @@ interface nsIEditor  : nsISupports
    *                  0=first child, 1=second child, etc.
    *                  any number > number of current children = last child
    */
-  void insertNode(in nsIDOMNode node,
-                  in nsIDOMNode parent,
-                  in long       aPosition);
+  void insertNode(in Node node,
+                  in Node parent,
+                  in long aPosition);
 
 
   /**
@@ -418,9 +401,9 @@ interface nsIEditor  : nsISupports
    * @param aNewLeftNode         [OUT] the new node resulting from the split,
    *                             becomes aExistingRightNode's previous sibling.
    */
-  void splitNode(in nsIDOMNode existingRightNode,
-                 in long      offset,
-                 out nsIDOMNode newLeftNode);
+  void splitNode(in Node existingRightNode,
+                 in long offset,
+                 out Node newLeftNode);
 
   /**
    * joinNodes() takes 2 nodes and merge their content|children.
@@ -432,30 +415,22 @@ interface nsIEditor  : nsISupports
    *                      of the same type.  However, a text node can be
    *                      merged only with another text node.
    */
-  void joinNodes(in nsIDOMNode leftNode,
-                 in nsIDOMNode rightNode,
-                 in nsIDOMNode parent);
+  void joinNodes(in Node leftNode,
+                 in Node rightNode,
+                 in Node parent);
 
   /**
    * deleteNode removes aChild from aParent.
    * @param aChild    The node to delete
    */
-  void deleteNode(in nsIDOMNode child);
+  void deleteNode(in Node child);
 
   /**
    * markNodeDirty() sets a special dirty attribute on the node.
    * Usually this will be called immediately after creating a new node.
    * @param aNode      The node for which to insert formatting.
    */
-  void markNodeDirty(in nsIDOMNode node);
-
-/* ---------- direction controller ---------- */
-
-  /**
-   * Switches the editor element direction; from "Left-to-Right" to
-   * "Right-to-Left", and vice versa.
-   */
-  void switchTextDirection();
+  void markNodeDirty(in Node node);
 
 /* ------------ Output methods -------------- */
 

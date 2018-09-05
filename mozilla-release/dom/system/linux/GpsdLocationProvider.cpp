@@ -11,8 +11,8 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/LazyIdleThread.h"
+#include "mozilla/dom/PositionErrorBinding.h"
 #include "nsGeoPosition.h"
-#include "nsIDOMGeoPositionError.h"
 #include "nsProxyRelease.h"
 #include "nsThreadUtils.h"
 
@@ -185,7 +185,7 @@ public:
         err = PollLoop5();
         break;
       default:
-        err = nsIDOMGeoPositionError::POSITION_UNAVAILABLE;
+        err = PositionErrorBinding::POSITION_UNAVAILABLE;
         break;
     }
 
@@ -217,13 +217,15 @@ protected:
 
     int err = 0;
 
-    double lat = -1;
-    double lon = -1;
-    double alt = -1;
-    double hError = -1;
-    double vError = -1;
-    double heading = -1;
-    double speed = -1;
+    // nsGeoPositionCoords will convert NaNs to null for optional properties of
+    // the JavaScript Coordinates object.
+    double lat = 0;
+    double lon = 0;
+    double alt = UnspecifiedNaN<double>();
+    double hError = 0;
+    double vError = UnspecifiedNaN<double>();
+    double heading = UnspecifiedNaN<double>();
+    double speed = UnspecifiedNaN<double>();
 
     while (IsRunning()) {
 
@@ -301,7 +303,7 @@ protected:
 
     return err;
 #else
-    return nsIDOMGeoPositionError::POSITION_UNAVAILABLE;
+    return PositionErrorBinding::POSITION_UNAVAILABLE;
 #endif // GPSD_MAJOR_API_VERSION
   }
 
@@ -313,13 +315,13 @@ protected:
       case EPERM:
           MOZ_FALLTHROUGH;
       case EROFS:
-        return nsIDOMGeoPositionError::PERMISSION_DENIED;
+        return PositionErrorBinding::PERMISSION_DENIED;
       case ETIME:
           MOZ_FALLTHROUGH;
       case ETIMEDOUT:
-        return nsIDOMGeoPositionError::TIMEOUT;
+        return PositionErrorBinding::TIMEOUT;
       default:
-        return nsIDOMGeoPositionError::POSITION_UNAVAILABLE;
+        return PositionErrorBinding::POSITION_UNAVAILABLE;
     }
   }
 

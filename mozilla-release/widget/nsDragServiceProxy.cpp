@@ -28,15 +28,14 @@ nsDragServiceProxy::~nsDragServiceProxy()
 }
 
 static void
-GetPrincipalURIFromNode(nsCOMPtr<nsIDOMNode>& sourceNode,
+GetPrincipalURIFromNode(nsCOMPtr<nsINode>& sourceNode,
                         nsCString& aPrincipalURISpec)
 {
-  nsCOMPtr<nsINode> node = do_QueryInterface(sourceNode);
-  if (!node) {
+  if (!sourceNode) {
     return;
   }
 
-  nsCOMPtr<nsIPrincipal> principal = node->NodePrincipal();
+  nsCOMPtr<nsIPrincipal> principal = sourceNode->NodePrincipal();
   nsCOMPtr<nsIURI> principalURI;
   nsresult rv = principal->GetURI(getter_AddRefs(principalURI));
   if (NS_FAILED(rv) || !principalURI) {
@@ -51,9 +50,8 @@ nsDragServiceProxy::InvokeDragSessionImpl(nsIArray* aArrayTransferables,
                                           nsIScriptableRegion* aRegion,
                                           uint32_t aActionType)
 {
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(mSourceDocument);
-  NS_ENSURE_STATE(doc->GetDocShell());
-  TabChild* child = TabChild::GetFrom(doc->GetDocShell());
+  NS_ENSURE_STATE(mSourceDocument->GetDocShell());
+  TabChild* child = TabChild::GetFrom(mSourceDocument->GetDocShell());
   NS_ENSURE_STATE(child);
   nsTArray<mozilla::dom::IPCDataTransfer> dataTransfers;
   nsContentUtils::TransferablesToIPCTransferables(aArrayTransferables,

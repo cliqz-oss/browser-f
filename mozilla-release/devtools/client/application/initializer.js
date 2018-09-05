@@ -14,6 +14,8 @@ const { createFactory } = require("devtools/client/shared/vendor/react");
 const { render, unmountComponentAtNode } = require("devtools/client/shared/vendor/react-dom");
 const Provider = createFactory(require("devtools/client/shared/vendor/react-redux").Provider);
 const { bindActionCreators } = require("devtools/client/shared/vendor/redux");
+const { L10nRegistry } = require("resource://gre/modules/L10nRegistry.jsm");
+const Services = require("Services");
 
 const { configureStore } = require("./src/create-store");
 const actions = require("./src/actions/index");
@@ -37,24 +39,10 @@ window.Application = {
     this.actions = bindActionCreators(actions, this.store.dispatch);
 
     const serviceContainer = {
-      openWebLink(url) {
-        let win = toolbox.doc.defaultView.top;
-        win.openWebLinkIn(url, "tab", { relatedToCurrent: true });
-      },
-
-      openTrustedLink(url) {
-        let win = toolbox.doc.defaultView.top;
-        win.openTrustedLinkIn(url, "tab", { relatedToCurrent: true });
-      },
-
       selectTool(toolId) {
         return toolbox.selectTool(toolId);
       }
     };
-
-    // Render the root Application component.
-    const app = App({ client: this.client, serviceContainer });
-    render(Provider({ store: this.store }, app), this.mount);
 
     this.client.addListener("workerListChanged", this.updateWorkers);
     this.client.addListener("serviceWorkerRegistrationListChanged", this.updateWorkers);
@@ -64,10 +52,35 @@ window.Application = {
 
     this.updateDomain();
     await this.updateWorkers();
+
+    const messageContexts = await this.createMessageContexts();
+
+    // Render the root Application component.
+    const app = App({ client: this.client, messageContexts, serviceContainer });
+    render(Provider({ store: this.store }, app), this.mount);
+  },
+
+  /**
+   * Retrieve message contexts for the current locales, and return them as an array of
+   * MessageContext elements.
+   */
+  async createMessageContexts() {
+    const locales = Services.locale.getAppLocalesAsBCP47();
+    const generator =
+      L10nRegistry.generateContexts(locales, ["devtools/application.ftl"]);
+
+    // Return value of generateContexts is a generator and should be converted to
+    // a sync iterable before using it with React.
+    const contexts = [];
+    for await (const message of generator) {
+      contexts.push(message);
+    }
+
+    return contexts;
   },
 
   async updateWorkers() {
-    let { service } = await this.client.mainRoot.listAllWorkers();
+    const { service } = await this.client.mainRoot.listAllWorkers();
     this.actions.updateWorkers(service);
   },
 

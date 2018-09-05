@@ -6,9 +6,6 @@
 
 "use strict";
 
-const Services = require("Services");
-const {gDevTools} = require("devtools/client/framework/devtools");
-
 const Menu = require("devtools/client/framework/menu");
 const MenuItem = require("devtools/client/framework/menu-item");
 
@@ -16,6 +13,8 @@ const { MESSAGE_SOURCE } = require("devtools/client/webconsole/constants");
 
 const clipboardHelper = require("devtools/shared/platform/clipboard");
 const { l10n } = require("devtools/client/webconsole/utils/messages");
+
+loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
 
 /**
  * Create a Menu instance for the webconsole.
@@ -45,12 +44,12 @@ function createContextMenu(hud, parentNode, {
   openSidebar,
   rootActorId,
 }) {
-  let win = parentNode.ownerDocument.defaultView;
-  let selection = win.getSelection();
+  const win = parentNode.ownerDocument.defaultView;
+  const selection = win.getSelection();
 
-  let { source, request } = message || {};
+  const { source, request } = message || {};
 
-  let menu = new Menu({
+  const menu = new Menu({
     id: "webconsole-menu"
   });
 
@@ -89,10 +88,7 @@ function createContextMenu(hud, parentNode, {
       if (!request) {
         return;
       }
-      let mainWindow = Services.wm.getMostRecentWindow(gDevTools.chromeWindowType);
-      mainWindow.openWebLinkIn(request.url, "tab", {
-        triggeringPrincipal: mainWindow.document.nodePrincipal,
-      });
+      openContentLink(request.url);
     },
   }));
 
@@ -103,14 +99,14 @@ function createContextMenu(hud, parentNode, {
     accesskey: l10n.getStr("webconsole.menu.storeAsGlobalVar.accesskey"),
     disabled: !actor,
     click: () => {
-      let evalString = `{ let i = 0;
+      const evalString = `{ let i = 0;
         while (this.hasOwnProperty("temp" + i) && i < 1000) {
           i++;
         }
         this["temp" + i] = _self;
         "temp" + i;
       }`;
-      let options = {
+      const options = {
         selectedObjectActor: actor,
       };
 
@@ -165,7 +161,7 @@ function createContextMenu(hud, parentNode, {
     accesskey: l10n.getStr("webconsole.menu.selectAll.accesskey"),
     disabled: false,
     click: () => {
-      let webconsoleOutput = parentNode.querySelector(".webconsole-output");
+      const webconsoleOutput = parentNode.querySelector(".webconsole-output");
       selection.selectAllChildren(webconsoleOutput);
     },
   }));

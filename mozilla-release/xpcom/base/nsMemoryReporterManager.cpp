@@ -1421,15 +1421,10 @@ public:
       "Memory used by the atom table.");
 
     MOZ_COLLECT_REPORT(
-      "explicit/atoms/dynamic/atom-objects", KIND_HEAP, UNITS_BYTES,
-      sizes.mDynamicAtomObjects,
-      "Memory used by dynamic atom objects.");
-
-    MOZ_COLLECT_REPORT(
-      "explicit/atoms/dynamic/unshared-buffers", KIND_HEAP, UNITS_BYTES,
-      sizes.mDynamicUnsharedBuffers,
-      "Memory used by unshared string buffers pointed to by dynamic atom "
-      "objects.");
+      "explicit/atoms/dynamic-objects-and-chars", KIND_HEAP, UNITS_BYTES,
+      sizes.mDynamicAtoms,
+      "Memory used by dynamic atom objects and chars (which are stored "
+      "at the end of each atom object).");
 
     return NS_OK;
   }
@@ -2487,16 +2482,16 @@ nsMemoryReporterManager::GetJSMainRuntimeTemporaryPeak(int64_t* aAmount)
 }
 
 NS_IMETHODIMP
-nsMemoryReporterManager::GetJSMainRuntimeCompartmentsSystem(int64_t* aAmount)
+nsMemoryReporterManager::GetJSMainRuntimeRealmsSystem(int64_t* aAmount)
 {
-  return GetInfallibleAmount(mAmountFns.mJSMainRuntimeCompartmentsSystem,
+  return GetInfallibleAmount(mAmountFns.mJSMainRuntimeRealmsSystem,
                              aAmount);
 }
 
 NS_IMETHODIMP
-nsMemoryReporterManager::GetJSMainRuntimeCompartmentsUser(int64_t* aAmount)
+nsMemoryReporterManager::GetJSMainRuntimeRealmsUser(int64_t* aAmount)
 {
-  return GetInfallibleAmount(mAmountFns.mJSMainRuntimeCompartmentsUser,
+  return GetInfallibleAmount(mAmountFns.mJSMainRuntimeRealmsUser,
                              aAmount);
 }
 
@@ -2517,6 +2512,12 @@ NS_IMETHODIMP
 nsMemoryReporterManager::GetLowMemoryEventsVirtual(int64_t* aAmount)
 {
   return GetInfallibleAmount(mAmountFns.mLowMemoryEventsVirtual, aAmount);
+}
+
+NS_IMETHODIMP
+nsMemoryReporterManager::GetLowMemoryEventsCommitSpace(int64_t* aAmount)
+{
+  return GetInfallibleAmount(mAmountFns.mLowMemoryEventsCommitSpace, aAmount);
 }
 
 NS_IMETHODIMP
@@ -2779,8 +2780,8 @@ UnregisterWeakMemoryReporter(nsIMemoryReporter* aReporter)
 
 DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, JSMainRuntimeGCHeap)
 DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, JSMainRuntimeTemporaryPeak)
-DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, JSMainRuntimeCompartmentsSystem)
-DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, JSMainRuntimeCompartmentsUser)
+DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, JSMainRuntimeRealmsSystem)
+DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, JSMainRuntimeRealmsUser)
 
 DEFINE_REGISTER_DISTINGUISHED_AMOUNT(Infallible, ImagesContentUsedUncompressed)
 DEFINE_UNREGISTER_DISTINGUISHED_AMOUNT(ImagesContentUsedUncompressed)

@@ -1718,7 +1718,8 @@ WebSocketImpl::Init(JSContext* aCx,
                         EmptyString(), // aScriptSample
                         0, // aLineNumber
                         0, // aColumnNumber
-                        nsIScriptError::warningFlag, "CSP",
+                        nsIScriptError::warningFlag,
+                        NS_LITERAL_CSTRING("upgradeInsecureRequest"),
                         mInnerWindowID,
                         mPrivateBrowsing);
   }
@@ -1865,7 +1866,7 @@ WebSocketImpl::InitializeConnection(nsIPrincipal* aPrincipal)
   // and aPrincipal are same origin.
   MOZ_ASSERT(!doc || doc->NodePrincipal()->Equals(aPrincipal));
 
-  rv = wsChannel->InitLoadInfo(doc ? doc->AsDOMNode() : nullptr,
+  rv = wsChannel->InitLoadInfo(doc,
                                doc ? doc->NodePrincipal() : aPrincipal,
                                aPrincipal,
                                nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
@@ -2783,7 +2784,7 @@ public:
                            already_AddRefed<nsIRunnable> aEvent)
     : WorkerRunnable(aWorkerRef->Private(), WorkerThreadUnchangedBusyCount)
     , mWebSocketImpl(aImpl)
-    , mEvent(Move(aEvent))
+    , mEvent(std::move(aEvent))
   {
   }
 

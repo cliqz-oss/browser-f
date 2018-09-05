@@ -17,7 +17,6 @@
 
 <script src="head.js"></script>
 <script class="testbody" type="text/javascript">
-/* import-globals-from classifierHelper.js */
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://testing-common/BrowserTestUtils.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -201,13 +200,7 @@ function testOnWindow(aTestData) {
       let wp = win.gBrowser.contentDocument.docShell.QueryInterface(Ci.nsIWebProgress);
       let progressListener = {
         onSecurityChange(aWebProgress, aRequest, aState) {
-          let utils = Cc["@mozilla.org/url-classifier/utils;1"].
-            getService(Ci.nsIUrlClassifierUtils);
-          expected = aTestData.reportUrl + "&$req=" +
-            utils.makeThreatHitReport(aRequest,
-                                      aTestData.list,
-                                      btoa(hash(aTestData.url)));
-
+          expected = aTestData.reportUrl;
         },
         QueryInterface: ChromeUtils.generateQI(["nsISupportsWeakReference"])
       };

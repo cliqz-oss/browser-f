@@ -129,9 +129,6 @@ public:
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                 const nsDisplayListSet& aLists) override;
 
-  virtual mozilla::dom::Element*
-  GetPseudoElement(mozilla::CSSPseudoElementType aType) override;
-
 //==== BEGIN NSIFORMCONTROLFRAME
   virtual void SetFocus(bool aOn , bool aRepaint) override;
   virtual nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
@@ -158,8 +155,8 @@ public:
 
 //==== NSISTATEFULFRAME
 
-  UniquePtr<PresState> SaveState() override;
-  NS_IMETHOD RestoreState(PresState* aState) override;
+  mozilla::UniquePtr<mozilla::PresState> SaveState() override;
+  NS_IMETHOD RestoreState(mozilla::PresState* aState) override;
 
 //=== END NSISTATEFULFRAME
 
@@ -212,7 +209,6 @@ public: //for methods who access nsTextControlFrame directly
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsTextArea)
   DEFINE_TEXTCTRL_CONST_FORWARDER(bool, IsPasswordTextControl)
   DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetCols)
-  DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetWrapCols)
   DEFINE_TEXTCTRL_CONST_FORWARDER(int32_t, GetRows)
 
 #undef DEFINE_TEXTCTRL_CONST_FORWARDER

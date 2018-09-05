@@ -17,10 +17,6 @@
           xmlns:xbl="http://www.mozilla.org/xbl">
 
   <binding id="searchbar">
-    <resources>
-      <stylesheet src="chrome://browser/content/search/searchbarBindings.css"/>
-      <stylesheet src="chrome://browser/skin/searchbar.css"/>
-    </resources>
     <content>
       <xul:stringbundle src="chrome://browser/locale/search.properties"
                         anonid="searchbar-stringbundle"/>
@@ -71,6 +67,7 @@
           return;
 
         Services.obs.addObserver(this, "browser-search-engine-modified");
+        Services.obs.addObserver(this, "browser-search-service");
 
         this._initialized = true;
 
@@ -118,6 +115,7 @@
           this._initialized = false;
 
           Services.obs.removeObserver(this, "browser-search-engine-modified");
+          Services.obs.removeObserver(this, "browser-search-service");
         }
 
         // Make sure to break the cycle from _textbox to us. Otherwise we leak
@@ -187,7 +185,8 @@
         <parameter name="aTopic"/>
         <parameter name="aVerb"/>
         <body><![CDATA[
-          if (aTopic == "browser-search-engine-modified") {
+          if (aTopic == "browser-search-engine-modified" ||
+              (aTopic == "browser-search-service" && aVerb == "init-complete")) {
             // Make sure the engine list is refetched next time it's needed
             this._engines = null;
 
@@ -843,10 +842,6 @@
   </binding>
 
   <binding id="browser-search-autocomplete-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
-    <resources>
-      <stylesheet src="chrome://browser/content/search/searchbarBindings.css"/>
-      <stylesheet src="chrome://browser/skin/searchbar.css"/>
-    </resources>
     <content ignorekeys="true" level="top" consumeoutsideclicks="never">
       <xul:hbox anonid="searchbar-engine" xbl:inherits="showonlysettings"
                 class="search-panel-header search-panel-current-engine">
@@ -1296,6 +1291,10 @@
       <field name="_contextEngine">null</field>
 
       <constructor><![CDATA[
+        // Force the <deck> Custom Element to be constructed. This can be removed
+        // once Bug 1470242 makes this happen behind the scenes.
+        customElements.upgrade(this.header);
+
         // Prevent popup events from the context menu from reaching the autocomplete
         // binding (or other listeners).
         let menu = document.getAnonymousElementByAttribute(this, "anonid", "search-one-offs-context-menu");
@@ -1314,6 +1313,7 @@
         // Add weak referenced observers to invalidate our cached list of engines.
         Services.prefs.addObserver("browser.search.hiddenOneOffs", this, true);
         Services.obs.addObserver(this, "browser-search-engine-modified", true);
+        Services.obs.addObserver(this, "browser-search-service", true);
 
         // Rebuild the buttons when the theme changes.  See bug 1357800 for
         // details.  Summary: On Linux, switching between themes can cause a row
@@ -1359,8 +1359,6 @@
 
       <method name="showSettings">
         <body><![CDATA[
-          BrowserUITelemetry.countSearchSettingsEvent(this.telemetryOrigin);
-
           openPreferences("paneSearch", {origin: "contentSearch"});
 
           // If the preference tab was already selected, the panel doesn't

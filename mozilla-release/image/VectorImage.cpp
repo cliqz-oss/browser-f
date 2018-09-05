@@ -371,10 +371,11 @@ NS_IMPL_ISUPPORTS(VectorImage,
 //------------------------------------------------------------------------------
 // Constructor / Destructor
 
-VectorImage::VectorImage(ImageURL* aURI /* = nullptr */) :
+VectorImage::VectorImage(nsIURI* aURI /* = nullptr */) :
   ImageResource(aURI), // invoke superclass's constructor
   mLockCount(0),
   mIsInitialized(false),
+  mDiscardable(false),
   mIsFullyLoaded(false),
   mIsDrawing(false),
   mHaveAnimations(false),
@@ -809,7 +810,7 @@ VectorImage::GetFrameInternal(const IntSize& aSize,
   RefPtr<SourceSurface> sourceSurface =
     LookupCachedSurface(aSize, aSVGContext, aFlags);
   if (sourceSurface) {
-    return MakeTuple(ImgDrawResult::SUCCESS, aSize, Move(sourceSurface));
+    return MakeTuple(ImgDrawResult::SUCCESS, aSize, std::move(sourceSurface));
   }
 
   if (mIsDrawing) {
@@ -844,7 +845,7 @@ VectorImage::GetFrameInternal(const IntSize& aSize,
   }
 
   SendFrameComplete(didCache, params.flags);
-  return MakeTuple(ImgDrawResult::SUCCESS, aSize, Move(surface));
+  return MakeTuple(ImgDrawResult::SUCCESS, aSize, std::move(surface));
 }
 
 //******************************************************************************
@@ -922,8 +923,7 @@ VectorImage::MaybeRestrictSVGContext(Maybe<SVGImageContext>& aNewSVGContext,
   bool haveContextPaint = aSVGContext && aSVGContext->GetContextPaint();
   bool blockContextPaint = false;
   if (haveContextPaint) {
-    nsCOMPtr<nsIURI> imageURI = mURI->ToIURI();
-    blockContextPaint = !SVGContextPaint::IsAllowedForImageFromURI(imageURI);
+    blockContextPaint = !SVGContextPaint::IsAllowedForImageFromURI(mURI);
   }
 
   if (overridePAR || blockContextPaint) {
@@ -1214,7 +1214,7 @@ VectorImage::Show(gfxDrawable* aDrawable, const SVGDrawingParameters& aParams)
                              aParams.region,
                              SurfaceFormat::B8G8R8A8,
                              aParams.samplingFilter,
-                             aParams.flags, aParams.opacity);
+                             aParams.flags, aParams.opacity, false);
 
 #ifdef DEBUG
   NotifyDrawingObservers();

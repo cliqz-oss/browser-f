@@ -184,7 +184,6 @@ gc::GCRuntime::startVerifyPreBarriers()
         return;
 
     if (IsIncrementalGCUnsafe(rt) != AbortReason::None ||
-        cx->keepAtoms ||
         rt->hasHelperThreadZones())
     {
         return;
@@ -222,7 +221,7 @@ gc::GCRuntime::startVerifyPreBarriers()
     incrementalState = State::MarkRoots;
 
     /* Make all the roots be edges emanating from the root node. */
-    traceRuntime(trc, prep.session());
+    traceRuntime(trc, prep);
 
     VerifyNode* node;
     node = trc->curnode;
@@ -360,7 +359,6 @@ gc::GCRuntime::endVerifyPreBarriers()
 
     if (!compartmentCreated &&
         IsIncrementalGCUnsafe(rt) == AbortReason::None &&
-        !rt->mainContextFromOwnThread()->keepAtoms &&
         !rt->hasHelperThreadZones())
     {
         CheckEdgeTracer cetrc(rt);
@@ -411,6 +409,8 @@ gc::GCRuntime::verifyPreBarriers()
 void
 gc::VerifyBarriers(JSRuntime* rt, VerifierType type)
 {
+    if (GCRuntime::temporaryAbortIfWasmGc(rt->mainContextFromOwnThread()))
+        return;
     if (type == PreBarrierVerifier)
         rt->gc.verifyPreBarriers();
 }
@@ -655,7 +655,7 @@ CheckHeapTracer::check(AutoTraceSession& session)
 void
 js::gc::CheckHeapAfterGC(JSRuntime* rt)
 {
-    AutoTraceSession session(rt, JS::HeapState::Tracing);
+    AutoTraceSession session(rt);
     CheckHeapTracer tracer(rt);
     if (tracer.init())
         tracer.check(session);
@@ -718,13 +718,13 @@ CheckGrayMarkingTracer::check(AutoTraceSession& session)
 JS_FRIEND_API(bool)
 js::CheckGrayMarkingState(JSRuntime* rt)
 {
-    MOZ_ASSERT(!JS::CurrentThreadIsHeapCollecting());
+    MOZ_ASSERT(!JS::RuntimeHeapIsCollecting());
     MOZ_ASSERT(!rt->gc.isIncrementalGCInProgress());
     if (!rt->gc.areGrayBitsValid())
         return true;
 
     gcstats::AutoPhase ap(rt->gc.stats(), gcstats::PhaseKind::TRACE_HEAP);
-    AutoTraceSession session(rt, JS::HeapState::Tracing);
+    AutoTraceSession session(rt);
     CheckGrayMarkingTracer tracer(rt);
     if (!tracer.init())
         return true; // Ignore failure

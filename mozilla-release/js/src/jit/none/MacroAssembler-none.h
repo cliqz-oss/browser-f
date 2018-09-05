@@ -7,7 +7,7 @@
 #ifndef jit_none_MacroAssembler_none_h
 #define jit_none_MacroAssembler_none_h
 
-#include "jit/JitCompartment.h"
+#include "jit/JitRealm.h"
 #include "jit/MoveResolver.h"
 #include "jit/shared/Assembler-shared.h"
 
@@ -159,11 +159,11 @@ class Assembler : public AssemblerShared
 class Operand
 {
   public:
-    Operand (const Address&) { MOZ_CRASH();}
-    Operand (const Register) { MOZ_CRASH();}
-    Operand (const FloatRegister) { MOZ_CRASH();}
-    Operand (Register, Imm32 ) { MOZ_CRASH(); }
-    Operand (Register, int32_t ) { MOZ_CRASH(); }
+    explicit Operand(const Address&) { MOZ_CRASH();}
+    explicit Operand(const Register) { MOZ_CRASH();}
+    explicit Operand(const FloatRegister) { MOZ_CRASH();}
+    explicit Operand(Register, Imm32) { MOZ_CRASH(); }
+    explicit Operand(Register, int32_t) { MOZ_CRASH(); }
 };
 
 class ScratchTagScope
@@ -241,10 +241,10 @@ class MacroAssemblerNone : public Assembler
 
     template <typename T, typename S> void moveValue(T, S) { MOZ_CRASH(); }
     template <typename T, typename S, typename U> void moveValue(T, S, U) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeValue(T, S) { MOZ_CRASH(); }
+    template <typename T, typename S> void storeValue(const T&, const S&) { MOZ_CRASH(); }
     template <typename T, typename S, typename U> void storeValue(T, S, U) { MOZ_CRASH(); }
     template <typename T, typename S> void loadValue(T, S) { MOZ_CRASH(); }
-    template <typename T> void pushValue(T) { MOZ_CRASH(); }
+    template <typename T> void pushValue(const T&) { MOZ_CRASH(); }
     template <typename T, typename S> void pushValue(T, S) { MOZ_CRASH(); }
     void popValue(ValueOperand) { MOZ_CRASH(); }
     void tagValue(JSValueType, Register, ValueOperand) { MOZ_CRASH(); }
@@ -332,13 +332,12 @@ class MacroAssemblerNone : public Assembler
     void unboxNonDouble(const Address&, Register, JSValueType) { MOZ_CRASH();}
     void unboxGCThingForPreBarrierTrampoline(const Address&, Register) { MOZ_CRASH(); }
     void notBoolean(ValueOperand) { MOZ_CRASH(); }
-    Register extractObject(Address, Register) { MOZ_CRASH(); }
-    Register extractObject(ValueOperand, Register) { MOZ_CRASH(); }
-    Register extractString(ValueOperand, Register) { MOZ_CRASH(); }
-    Register extractSymbol(ValueOperand, Register) { MOZ_CRASH(); }
-    Register extractInt32(ValueOperand, Register) { MOZ_CRASH(); }
-    Register extractBoolean(ValueOperand, Register) { MOZ_CRASH(); }
-    template <typename T> Register extractTag(T, Register) { MOZ_CRASH(); }
+    MOZ_MUST_USE Register extractObject(Address, Register) { MOZ_CRASH(); }
+    MOZ_MUST_USE Register extractObject(ValueOperand, Register) { MOZ_CRASH(); }
+    MOZ_MUST_USE Register extractSymbol(ValueOperand, Register) { MOZ_CRASH(); }
+    MOZ_MUST_USE Register extractInt32(ValueOperand, Register) { MOZ_CRASH(); }
+    MOZ_MUST_USE Register extractBoolean(ValueOperand, Register) { MOZ_CRASH(); }
+    template <typename T> MOZ_MUST_USE Register extractTag(T, Register) { MOZ_CRASH(); }
 
     void convertFloat32ToInt32(FloatRegister, Register, Label*, bool v = true) { MOZ_CRASH(); }
     void convertDoubleToInt32(FloatRegister, Register, Label*, bool v = true) { MOZ_CRASH(); }
@@ -377,6 +376,7 @@ class MacroAssemblerNone : public Assembler
 
     void setPrinter(Sprinter*) { MOZ_CRASH(); }
     Operand ToPayload(Operand base) { MOZ_CRASH(); }
+    Address ToPayload(Address) { MOZ_CRASH(); }
 
     static const Register getStackPointer() { MOZ_CRASH(); }
 
@@ -385,7 +385,6 @@ class MacroAssemblerNone : public Assembler
     void profilerExitFrame() { MOZ_CRASH(); }
 
 #ifdef JS_NUNBOX32
-    Address ToPayload(Address) { MOZ_CRASH(); }
     Address ToType(Address) { MOZ_CRASH(); }
 #endif
 };

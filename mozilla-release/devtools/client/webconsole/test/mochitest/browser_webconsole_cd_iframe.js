@@ -48,7 +48,7 @@ add_task(async function() {
 
 async function executeWindowTest(hud, iframeRole) {
   const BASE_TEXT = "Test for the cd() command (bug 609872) - iframe";
-  let onMessages = waitForMessages({
+  const onMessages = waitForMessages({
     hud,
     messages: [{
       text: `${BASE_TEXT} ${iframeRole}`
@@ -67,5 +67,5 @@ async function executeWindowTest(hud, iframeRole) {
   ok(messages, `Expected evaluation result messages are shown in ${iframeRole} iframe`);
 
   // Clear the output so we don't pollute the next assertions.
-  hud.jsterm.clearOutput();
+  hud.ui.clearOutput();
 }

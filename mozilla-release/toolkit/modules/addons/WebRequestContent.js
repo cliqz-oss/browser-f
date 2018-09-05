@@ -78,7 +78,6 @@ var ContentPolicy = {
 
   shouldLoad(contentLocation, loadInfo, mimeTypeGuess) {
     let policyType = loadInfo.externalContentPolicyType;
-    let node = loadInfo.loadingContext;
     let loadingPrincipal = loadInfo.loadingPrincipal;
     let requestPrincipal = loadInfo.triggeringPrincipal;
     let requestOrigin = null;
@@ -126,9 +125,11 @@ var ContentPolicy = {
         .outerWindowID;
     }
 
-    if (policyType == Ci.nsIContentPolicy.TYPE_SUBDOCUMENT ||
-        (node && ChromeUtils.getClassName(node) == "XULElement" &&
-         node.localName == "browser")) {
+    let node = loadInfo.loadingContext;
+    if (node &&
+        (policyType == Ci.nsIContentPolicy.TYPE_SUBDOCUMENT ||
+         (ChromeUtils.getClassName(node) == "XULElement" &&
+          node.localName == "browser"))) {
       // Chrome sets frameId to the ID of the sub-window. But when
       // Firefox loads an iframe, it sets |node| to the <iframe>
       // element, whose window is the parent window. We adopt the
@@ -148,6 +149,17 @@ var ContentPolicy = {
           doc = node;
         }
         window = doc.defaultView;
+      }
+
+      // loadInfo.loadingContext could be an empty object.
+      // Then else clause above is executed and node is equal
+      // to empty object as well.
+      // This leads to node.ownerDocument === undefined,
+      // what in case assigns {} to doc as well.
+      // window object becomes undefined eventually.
+      // We need to return windowId = 0 in that case.
+      if (!window) {
+        return windowId;
       }
 
       windowId = getWindowId(window);

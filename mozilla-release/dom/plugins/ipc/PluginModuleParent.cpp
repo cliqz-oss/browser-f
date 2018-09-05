@@ -9,6 +9,7 @@
 #include "base/process_util.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/ipc/CrashReporterClient.h"
@@ -118,9 +119,9 @@ mozilla::plugins::SetupBridge(uint32_t aPluginId,
         return true;
     }
 
-    *aEndpoint = Move(parent);
+    *aEndpoint = std::move(parent);
 
-    if (!chromeParent->SendInitPluginModuleChild(Move(child))) {
+    if (!chromeParent->SendInitPluginModuleChild(std::move(child))) {
         *rv = NS_ERROR_BRIDGE_OPEN_CHILD;
         return true;
     }
@@ -198,16 +199,17 @@ namespace {
 class PluginModuleMapping : public PRCList
 {
 public:
-    explicit PluginModuleMapping(uint32_t aPluginId)
-        : mPluginId(aPluginId)
-        , mProcessIdValid(false)
-        , mModule(nullptr)
-        , mChannelOpened(false)
-    {
-        MOZ_COUNT_CTOR(PluginModuleMapping);
-        PR_INIT_CLIST(this);
-        PR_APPEND_LINK(this, &sModuleListHead);
-    }
+  explicit PluginModuleMapping(uint32_t aPluginId)
+    : mPluginId(aPluginId)
+    , mProcessIdValid(false)
+    , mProcessId(0)
+    , mModule(nullptr)
+    , mChannelOpened(false)
+  {
+    MOZ_COUNT_CTOR(PluginModuleMapping);
+    PR_INIT_CLIST(this);
+    PR_APPEND_LINK(this, &sModuleListHead);
+  }
 
     ~PluginModuleMapping()
     {
@@ -364,7 +366,7 @@ mozilla::plugins::TakeFullMinidump(uint32_t aPluginId,
   if (chromeParent) {
     chromeParent->TakeFullMinidump(aContentProcessId,
                                    aBrowserDumpId,
-                                   Move(aCallback),
+                                   std::move(aCallback),
                                    aAsync);
   } else {
     aCallback(EmptyString());
@@ -386,7 +388,7 @@ mozilla::plugins::TerminatePlugin(uint32_t aPluginId,
                                         aContentProcessId,
                                         aMonitorDescription,
                                         aDumpId,
-                                        Move(aCallback),
+                                        std::move(aCallback),
                                         true); // Always runs asynchronously.
   } else {
     aCallback(true);
@@ -417,7 +419,7 @@ PluginModuleContentParent::LoadModule(uint32_t aPluginId,
         NS_FAILED(rv)) {
         return nullptr;
     }
-    Initialize(Move(endpoint));
+    Initialize(std::move(endpoint));
 
     PluginModuleContentParent* parent = mapping->GetModule();
     MOZ_ASSERT(parent);
@@ -473,7 +475,7 @@ PluginModuleChromeParent::LoadModule(const char* aFilePath, uint32_t aPluginId,
             new PluginModuleChromeParent(aFilePath, aPluginId,
                                          aPluginTag->mSandboxLevel));
     UniquePtr<LaunchCompleteTask> onLaunchedRunnable(new LaunchedTask(parent));
-    bool launched = parent->mSubprocess->Launch(Move(onLaunchedRunnable),
+    bool launched = parent->mSubprocess->Launch(std::move(onLaunchedRunnable),
                                                 aPluginTag->mSandboxLevel,
                                                 aPluginTag->mIsSandboxLoggingEnabled);
     if (!launched) {
@@ -502,9 +504,9 @@ PluginModuleChromeParent::LoadModule(const char* aFilePath, uint32_t aPluginId,
     }
 
     parent->mBrokerParent =
-      FunctionBrokerParent::Create(Move(brokerParentEnd));
+      FunctionBrokerParent::Create(std::move(brokerParentEnd));
     if (parent->mBrokerParent) {
-      parent->SendInitPluginFunctionBroker(Move(brokerChildEnd));
+      parent->SendInitPluginFunctionBroker(std::move(brokerChildEnd));
     }
 #endif
     return parent.forget();
@@ -590,19 +592,20 @@ PluginModuleChromeParent::InitCrashReporter()
 }
 
 PluginModuleParent::PluginModuleParent(bool aIsChrome)
-    : mQuirks(QUIRKS_NOT_INITIALIZED)
-    , mIsChrome(aIsChrome)
-    , mShutdown(false)
-    , mHadLocalInstance(false)
-    , mClearSiteDataSupported(false)
-    , mGetSitesWithDataSupported(false)
-    , mNPNIface(nullptr)
-    , mNPPIface(nullptr)
-    , mPlugin(nullptr)
-    , mTaskFactory(this)
-    , mSandboxLevel(0)
-    , mIsFlashPlugin(false)
-    , mCrashReporterMutex("PluginModuleChromeParent::mCrashReporterMutex")
+  : mQuirks(QUIRKS_NOT_INITIALIZED)
+  , mIsChrome(aIsChrome)
+  , mShutdown(false)
+  , mHadLocalInstance(false)
+  , mClearSiteDataSupported(false)
+  , mGetSitesWithDataSupported(false)
+  , mNPNIface(nullptr)
+  , mNPPIface(nullptr)
+  , mPlugin(nullptr)
+  , mTaskFactory(this)
+  , mSandboxLevel(0)
+  , mIsFlashPlugin(false)
+  , mRunID(0)
+  , mCrashReporterMutex("PluginModuleChromeParent::mCrashReporterMutex")
 {
 }
 
@@ -620,9 +623,10 @@ PluginModuleParent::~PluginModuleParent()
 }
 
 PluginModuleContentParent::PluginModuleContentParent()
-    : PluginModuleParent(false)
+  : PluginModuleParent(false)
+  , mPluginId(0)
 {
-    Preferences::RegisterCallback(TimeoutChanged, kContentTimeoutPref, this);
+  Preferences::RegisterCallback(TimeoutChanged, kContentTimeoutPref, this);
 }
 
 PluginModuleContentParent::~PluginModuleContentParent()
@@ -633,30 +637,31 @@ PluginModuleContentParent::~PluginModuleContentParent()
 PluginModuleChromeParent::PluginModuleChromeParent(const char* aFilePath,
                                                    uint32_t aPluginId,
                                                    int32_t aSandboxLevel)
-    : PluginModuleParent(true)
-    , mSubprocess(new PluginProcessParent(aFilePath))
-    , mPluginId(aPluginId)
-    , mChromeTaskFactory(this)
-    , mHangAnnotationFlags(0)
+  : PluginModuleParent(true)
+  , mSubprocess(new PluginProcessParent(aFilePath))
+  , mPluginId(aPluginId)
+  , mChromeTaskFactory(this)
+  , mHangAnnotationFlags(0)
 #ifdef XP_WIN
-    , mPluginCpuUsageOnHang()
-    , mHangUIParent(nullptr)
-    , mHangUIEnabled(true)
-    , mIsTimerReset(true)
-    , mBrokerParent(nullptr)
+  , mPluginCpuUsageOnHang()
+  , mHangUIParent(nullptr)
+  , mHangUIEnabled(true)
+  , mIsTimerReset(true)
+  , mBrokerParent(nullptr)
 #endif
 #ifdef MOZ_CRASHREPORTER_INJECTOR
-    , mFlashProcess1(0)
-    , mFlashProcess2(0)
-    , mFinishInitTask(nullptr)
+  , mFlashProcess1(0)
+  , mFlashProcess2(0)
+  , mFinishInitTask(nullptr)
 #endif
-    , mIsCleaningFromTimeout(false)
+  , mIsBlocklisted(false)
+  , mIsCleaningFromTimeout(false)
 {
     NS_ASSERTION(mSubprocess, "Out of memory!");
     mSandboxLevel = aSandboxLevel;
     mRunID = GeckoChildProcessHost::GetUniqueID();
 
-    mozilla::HangMonitor::RegisterAnnotator(*this);
+    mozilla::BackgroundHangMonitor::RegisterAnnotator(*this);
 }
 
 PluginModuleChromeParent::~PluginModuleChromeParent()
@@ -709,7 +714,7 @@ PluginModuleChromeParent::~PluginModuleChromeParent()
     }
 #endif
 
-    mozilla::HangMonitor::UnregisterAnnotator(*this);
+    mozilla::BackgroundHangMonitor::UnregisterAnnotator(*this);
 }
 
 void
@@ -988,16 +993,16 @@ PluginModuleChromeParent::ExitedCxxStack()
 }
 
 /**
- * This function is always called by the HangMonitor thread.
+ * This function is always called by the BackgroundHangMonitor thread.
  */
 void
-PluginModuleChromeParent::AnnotateHang(mozilla::HangMonitor::HangAnnotations& aAnnotations)
+PluginModuleChromeParent::AnnotateHang(mozilla::BackgroundHangAnnotations& aAnnotations)
 {
     uint32_t flags = mHangAnnotationFlags;
     if (flags) {
         /* We don't actually annotate anything specifically for kInPluginCall;
            we use it to determine whether to annotate other things. It will
-           be pretty obvious from the ChromeHang stack that we're in a plugin
+           be pretty obvious from the hang stack that we're in a plugin
            call when the hang occurred. */
         if (flags & kHangUIShown) {
             aAnnotations.AddAnnotation(NS_LITERAL_STRING("HangUIShown"),
@@ -1088,7 +1093,7 @@ PluginModuleChromeParent::TakeFullMinidump(base::ProcessId aContentPid,
         aCallback(EmptyString());
         return;
     }
-    mTakeFullMinidumpCallback.Init(Move(aCallback), aAsync);
+    mTakeFullMinidumpCallback.Init(std::move(aCallback), aAsync);
 
     nsString browserDumpId{aBrowserDumpId};
 
@@ -1121,7 +1126,7 @@ PluginModuleChromeParent::TakeFullMinidump(base::ProcessId aContentPid,
         // report and pair it up with the browser report handed in.
         mCrashReporter->GenerateMinidumpAndPair(Process(), mBrowserDumpFile,
                                                 NS_LITERAL_CSTRING("browser"),
-                                                Move(callback), aAsync);
+                                                std::move(callback), aAsync);
     } else {
         TakeBrowserAndPluginMinidumps(false, aContentPid, browserDumpId, aAsync);
     }
@@ -1192,7 +1197,7 @@ PluginModuleChromeParent::TakeBrowserAndPluginMinidumps(bool aReportsReady,
         mCrashReporter->GenerateMinidumpAndPair(Process(),
                                                 nullptr, // Pair with a dump of this process and thread.
                                                 NS_LITERAL_CSTRING("browser"),
-                                                Move(callback),
+                                                std::move(callback),
                                                 aAsync);
     } else {
         OnTakeFullMinidumpComplete(aReportsReady, aContentPid, aBrowserDumpId);
@@ -1257,7 +1262,7 @@ PluginModuleChromeParent::TerminateChildProcess(MessageLoop* aMsgLoop,
         aCallback(false);
         return;
     }
-    mTerminateChildProcessCallback.Init(Move(aCallback), aAsync);
+    mTerminateChildProcessCallback.Init(std::move(aCallback), aAsync);
 
     // Start by taking a full minidump if necessary, this is done early
     // because it also needs to lock the mCrashReporterMutex and Mutex doesn't
@@ -1279,7 +1284,7 @@ PluginModuleChromeParent::TerminateChildProcess(MessageLoop* aMsgLoop,
                 this->ReleasePluginRef();
             };
 
-        TakeFullMinidump(aContentPid, EmptyString(), Move(callback), aAsync);
+        TakeFullMinidump(aContentPid, EmptyString(), std::move(callback), aAsync);
     } else {
         TerminateChildProcessOnDumpComplete(aMsgLoop, aMonitorDescription);
     }

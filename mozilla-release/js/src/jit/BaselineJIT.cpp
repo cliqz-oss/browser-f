@@ -79,6 +79,16 @@ BaselineScript::BaselineScript(uint32_t prologueOffset, uint32_t epilogueOffset,
 #endif
     postDebugPrologueOffset_(postDebugPrologueOffset),
     flags_(0),
+    icEntriesOffset_(0),
+    icEntries_(0),
+    pcMappingIndexOffset_(0),
+    pcMappingIndexEntries_(0),
+    pcMappingOffset_(0),
+    pcMappingSize_(0),
+    bytecodeTypeMapOffset_(0),
+    yieldEntriesOffset_(0),
+    traceLoggerToggleOffsetsOffset_(0),
+    numTraceLoggerToggleOffsets_(0),
     inlinedBytecodeLength_(0),
     maxInliningDepth_(UINT8_MAX),
     pendingBuilder_(nullptr),
@@ -136,7 +146,7 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
 
     data.result.setInt32(data.numActualArgs);
     {
-        AssertCompartmentUnchanged pcc(cx);
+        AssertRealmUnchanged aru(cx);
         ActivationEntryMonitor entryMonitor(cx, data.calleeToken);
         JitActivation activation(cx);
 
@@ -282,12 +292,12 @@ CanEnterBaselineJIT(JSContext* cx, HandleScript script, InterpreterFrame* osrFra
     if (script->hasBaselineScript())
         return Method_Compiled;
 
-    // Check this before calling ensureJitCompartmentExists, so we're less
+    // Check this before calling ensureJitRealmExists, so we're less
     // likely to report OOM in JSRuntime::createJitRuntime.
     if (!CanLikelyAllocateMoreExecutableMemory())
         return Method_Skipped;
 
-    if (!cx->compartment()->ensureJitCompartmentExists(cx))
+    if (!cx->realm()->ensureJitRealmExists(cx))
         return Method_Error;
 
     // Check script warm-up counter.

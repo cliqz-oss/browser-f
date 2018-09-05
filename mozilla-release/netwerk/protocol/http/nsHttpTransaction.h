@@ -313,7 +313,7 @@ private:
     uint16_t                        mRestartCount;        // the number of times this transaction has been restarted
     uint32_t                        mCaps;
 
-    nsHttpVersion                   mHttpVersion;
+    HttpVersion                     mHttpVersion;
     uint16_t                        mHttpResponseCode;
 
     uint32_t                        mCurrentHttpResponseHeaderSize;
@@ -381,7 +381,6 @@ private:
     bool                            mReportedResponseHeader;
 
     // protected by nsHttp::GetLock()
-    nsHttpResponseHead             *mForTakeResponseHead;
     bool                            mResponseHeadTaken;
     nsAutoPtr<nsHttpHeaderArray>    mForTakeResponseTrailers;
     bool                            mResponseTrailersTaken;

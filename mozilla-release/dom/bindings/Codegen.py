@@ -517,7 +517,7 @@ class CGDOMJSClass(CGThing):
             static_assert(${reservedSlots} >= ${slotCount},
                           "Must have enough reserved slots.");
             """,
-            name=self.descriptor.interface.identifier.name,
+            name=self.descriptor.interface.getClassName(),
             flags=classFlags,
             addProperty=ADDPROPERTY_HOOK_NAME if wantsAddProperty(self.descriptor) else 'nullptr',
             newEnumerate=newEnumerateHook,
@@ -678,7 +678,7 @@ class CGPrototypeJSClass(CGThing):
               ${protoGetter}
             };
             """,
-            name=self.descriptor.interface.identifier.name,
+            name=self.descriptor.interface.getClassName(),
             slotCount=slotCount,
             type=type,
             hooks=NativePropertyHooks(self.descriptor),
@@ -1075,15 +1075,15 @@ class CGHeaders(CGWrapper):
                         ancestors.append(parent)
         interfaceDeps.extend(ancestors)
 
-        # Include parent interface headers needed for jsonifier code.
+        # Include parent interface headers needed for default toJSON code.
         jsonInterfaceParents = []
         for desc in descriptors:
-            if not desc.operations['Jsonifier']:
+            if not desc.hasDefaultToJSON:
                 continue
             parent = desc.interface.parent
             while parent:
                 parentDesc = desc.getDescriptor(parent.identifier.name)
-                if parentDesc.operations['Jsonifier']:
+                if parentDesc.hasDefaultToJSON:
                     jsonInterfaceParents.append(parentDesc.interface)
                 parent = parent.parent
         interfaceDeps.extend(jsonInterfaceParents)
@@ -1576,6 +1576,12 @@ class CGAbstractMethod(CGThing):
         maybeNewline = " " if self.inline else "\n"
         return ' '.join(decorators) + maybeNewline
 
+    def _auto_profiler_label(self):
+        profiler_label_and_jscontext = self.profiler_label_and_jscontext()
+        if profiler_label_and_jscontext:
+            return 'AUTO_PROFILER_LABEL_FAST("%s", DOM, %s);' % profiler_label_and_jscontext
+        return None
+
     def declare(self):
         if self.inline:
             return self._define(True)
@@ -1844,6 +1850,13 @@ class CGClassConstructor(CGAbstractStaticMethod):
                                      constructorName=ctorName)
         return preamble + "\n" + callGenerator.define()
 
+    def profiler_label_and_jscontext(self):
+        name = self._ctor.identifier.name
+        if name != "constructor":
+            ctorName = name
+        else:
+            ctorName = self.descriptor.interface.identifier.name
+        return ("%s constructor" % ctorName, "cx")
 
 # Encapsulate the constructor in a helper method to share genConstructorBody with CGJSImplMethod.
 class CGConstructNavigatorObject(CGAbstractMethod):
@@ -2387,20 +2400,6 @@ class MethodDefiner(PropertyDefiner):
                     self.chrome.append(toStringDesc)
                 else:
                     self.regular.append(toStringDesc)
-            jsonifier = descriptor.operations['Jsonifier']
-            if (jsonifier and
-                unforgeable == MemberIsUnforgeable(jsonifier, descriptor)):
-                toJSONDesc = {
-                    "name": "toJSON",
-                    "nativeName": jsonifier.identifier.name,
-                    "length": 0,
-                    "flags": "JSPROP_ENUMERATE",
-                    "condition": PropertyDefiner.getControllingCondition(jsonifier, descriptor)
-                }
-                if isChromeOnly(jsonifier):
-                    self.chrome.append(toJSONDesc)
-                else:
-                    self.regular.append(toJSONDesc)
             if (unforgeable and
                 descriptor.interface.getExtendedAttribute("Unforgeable")):
                 # Synthesize our valueOf method
@@ -2854,37 +2853,80 @@ class CGNativeProperties(CGList):
         return CGList.define(self)
 
 
-class CGJsonifyAttributesMethod(CGAbstractMethod):
+class CGCollectJSONAttributesMethod(CGAbstractMethod):
     """
-    Generate the JsonifyAttributes method for an interface descriptor
+    Generate the CollectJSONAttributes method for an interface descriptor
     """
-    def __init__(self, descriptor):
-        args = [Argument('JSContext*', 'aCx'),
+    def __init__(self, descriptor, toJSONMethod):
+        args = [Argument('JSContext*', 'cx'),
                 Argument('JS::Handle<JSObject*>', 'obj'),
                 Argument('%s*' % descriptor.nativeType, 'self'),
-                Argument('JS::Rooted<JSObject*>&', 'aResult')]
-        CGAbstractMethod.__init__(self, descriptor, 'JsonifyAttributes',
+                Argument('JS::Rooted<JSObject*>&', 'result')]
+        CGAbstractMethod.__init__(self, descriptor, 'CollectJSONAttributes',
                                   'bool', args, canRunScript=True)
+        self.toJSONMethod = toJSONMethod
 
     def definition_body(self):
         ret = ''
         interface = self.descriptor.interface
+        toJSONCondition = PropertyDefiner.getControllingCondition(self.toJSONMethod,
+                                                                  self.descriptor)
+        needUnwrappedObj = False
         for m in interface.members:
-            if m.isAttr() and not m.isStatic() and m.type.isSerializable():
-                ret += fill(
+            if m.isAttr() and not m.isStatic() and m.type.isJSONType():
+                getAndDefine = fill(
                     """
-                    { // scope for "temp"
-                      JS::Rooted<JS::Value> temp(aCx);
-                      if (!get_${name}(aCx, obj, self, JSJitGetterCallArgs(&temp))) {
-                        return false;
-                      }
-                      if (!JS_DefineProperty(aCx, aResult, "${name}", temp, JSPROP_ENUMERATE)) {
-                        return false;
-                      }
+                    JS::Rooted<JS::Value> temp(cx);
+                    if (!get_${name}(cx, obj, self, JSJitGetterCallArgs(&temp))) {
+                      return false;
+                    }
+                    if (!JS_DefineProperty(cx, result, "${name}", temp, JSPROP_ENUMERATE)) {
+                      return false;
                     }
                     """,
                     name=IDLToCIdentifier(m.identifier.name))
+                # Make sure we don't include things which are supposed to be
+                # disabled.  Things that either don't have disablers or whose
+                # disablers match the disablers for our toJSON method can't
+                # possibly be disabled, but other things might be.
+                condition = PropertyDefiner.getControllingCondition(m, self.descriptor)
+                if condition.hasDisablers() and condition != toJSONCondition:
+                    needUnwrappedObj = True;
+                    ret += fill(
+                        """
+                        // This is unfortunately a linear scan through sAttributes, but we
+                        // only do it for things which _might_ be disabled, which should
+                        // help keep the performance problems down.
+                        if (IsGetterEnabled(cx, unwrappedObj, (JSJitGetterOp)get_${name}, sAttributes)) {
+                          $*{getAndDefine}
+                        }
+                        """,
+                        name=IDLToCIdentifier(m.identifier.name),
+                        getAndDefine=getAndDefine)
+                else:
+                    ret += fill(
+                        """
+                        { // scope for "temp"
+                          $*{getAndDefine}
+                        }
+                        """,
+                        getAndDefine=getAndDefine)
         ret += 'return true;\n'
+
+        if needUnwrappedObj:
+            ret= fill(
+                """
+                JS::Rooted<JSObject*> unwrappedObj(cx, js::CheckedUnwrap(obj));
+                if (!unwrappedObj) {
+                  // How did that happen?  We managed to get called with that
+                  // object as "this"!  Just give up on sanity.
+                  return false;
+                }
+
+                $*{ret}
+                """,
+                ret=ret);
+
         return ret
 
 
@@ -3027,12 +3069,19 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
         else:
             chromeProperties = "nullptr"
 
+        toStringTag = self.descriptor.interface.toStringTag
+        if toStringTag:
+            toStringTag = '"%s"' % toStringTag
+        else:
+            toStringTag = "nullptr"
+
         call = fill(
             """
             JS::Heap<JSObject*>* protoCache = ${protoCache};
             JS::Heap<JSObject*>* interfaceCache = ${interfaceCache};
             dom::CreateInterfaceObjects(aCx, aGlobal, ${parentProto},
                                         ${protoClass}, protoCache,
+                                        ${toStringTag},
                                         ${constructorProto}, ${interfaceClass}, ${constructArgs}, ${namedConstructors},
                                         interfaceCache,
                                         ${properties},
@@ -3044,6 +3093,7 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
             protoClass=protoClass,
             parentProto=parentProto,
             protoCache=protoCache,
+            toStringTag=toStringTag,
             constructorProto=constructorProto,
             interfaceClass=interfaceClass,
             constructArgs=constructArgs,
@@ -3695,6 +3745,8 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
 
         return fill(
             """
+            static_assert(!IsBaseOf<NonRefcountedDOMObject, ${nativeType}>::value,
+                          "Shouldn't have wrappercached things that are not refcounted.");
             $*{assertInheritance}
             MOZ_ASSERT_IF(aGivenProto, js::IsObjectInContextCompartment(aGivenProto, aCx));
             MOZ_ASSERT(!aCache->GetWrapper(),
@@ -3721,7 +3773,7 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
               return true;
             }
 
-            JSAutoCompartment ac(aCx, global);
+            JSAutoRealm ar(aCx, global);
             $*{declareProto}
 
             $*{createObject}
@@ -3746,6 +3798,7 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
 
             return true;
             """,
+            nativeType=self.descriptor.nativeType,
             assertInheritance=AssertInheritanceChain(self.descriptor),
             declareProto=DeclareProto(),
             createObject=CreateBindingJSObject(self.descriptor, self.properties),
@@ -3833,7 +3886,7 @@ class CGWrapGlobalMethod(CGAbstractMethod):
         args = [Argument('JSContext*', 'aCx'),
                 Argument(descriptor.nativeType + '*', 'aObject'),
                 Argument('nsWrapperCache*', 'aCache'),
-                Argument('JS::CompartmentOptions&', 'aOptions'),
+                Argument('JS::RealmOptions&', 'aOptions'),
                 Argument('JSPrincipals*', 'aPrincipal'),
                 Argument('bool', 'aInitStandardClasses'),
                 Argument('JS::MutableHandle<JSObject*>', 'aReflector')]
@@ -3882,9 +3935,9 @@ class CGWrapGlobalMethod(CGAbstractMethod):
               $*{failureCode}
             }
 
-            // aReflector is a new global, so has a new compartment.  Enter it
+            // aReflector is a new global, so has a new realm.  Enter it
             // before doing anything with it.
-            JSAutoCompartment ac(aCx, aReflector);
+            JSAutoRealm ar(aCx, aReflector);
 
             if (!DefineProperties(aCx, aReflector, ${properties}, ${chromeProperties})) {
               $*{failureCode}
@@ -3969,7 +4022,7 @@ class CGClearCachedValueMethod(CGAbstractMethod):
                 """
                 JS::Rooted<JS::Value> temp(aCx);
                 JSJitGetterCallArgs args(&temp);
-                JSAutoCompartment ac(aCx, obj);
+                JSAutoRealm ar(aCx, obj);
                 if (!get_${name}(aCx, obj, aObject, args)) {
                   js::SetReservedSlot(obj, ${slotIndex}, oldValue);
                   return false;
@@ -5364,12 +5417,12 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
 
         templateBody = fill(
             """
-            { // Scope for our GlobalObject, FastErrorResult, JSAutoCompartment,
+            { // Scope for our GlobalObject, FastErrorResult, JSAutoRealm,
               // etc.
 
               JS::Rooted<JSObject*> globalObj(cx);
               $*{getPromiseGlobal}
-              JSAutoCompartment ac(cx, globalObj);
+              JSAutoRealm ar(cx, globalObj);
               GlobalObject promiseGlobal(cx, globalObj);
               if (promiseGlobal.Failed()) {
                 $*{exceptionCode}
@@ -7192,9 +7245,9 @@ class CGCallGenerator(CGThing):
 
             getPrincipal = fill(
                 """
-                JSCompartment* compartment = js::GetContextCompartment(cx);
-                MOZ_ASSERT(compartment);
-                JSPrincipals* principals = JS_GetCompartmentPrincipals(compartment);
+                JS::Realm* realm = js::GetContextRealm(cx);
+                MOZ_ASSERT(realm);
+                JSPrincipals* principals = JS::GetRealmPrincipals(realm);
                 nsIPrincipal* principal = nsJSPrincipals::get(principals);
                 ${checkPrincipal}
                 """,
@@ -7519,7 +7572,7 @@ class CGPerSignatureCall(CGThing):
             if not idlNode.isStatic():
                 needsUnwrap = True
                 needsUnwrappedVar = True
-                argsPost.append("js::GetObjectCompartment(unwrappedObj ? *unwrappedObj : obj)")
+                argsPost.append("(unwrappedObj ? js::GetNonCCWObjectRealm(*unwrappedObj) : js::GetContextRealm(cx))")
         elif needScopeObject(returnType, arguments, self.extendedAttributes,
                              descriptor.wrapperCache, True,
                              idlNode.getExtendedAttribute("StoreInSlot")):
@@ -7612,8 +7665,8 @@ class CGPerSignatureCall(CGThing):
                 # JSAPI types, present.  Effectively, we're emulating a
                 # CrossCompartmentWrapper, but working with the C++ types, not the
                 # original list of JS::Values.
-                cgThings.append(CGGeneric("Maybe<JSAutoCompartment> ac;\n"))
-                xraySteps.append(CGGeneric("ac.emplace(cx, obj);\n"))
+                cgThings.append(CGGeneric("Maybe<JSAutoRealm> ar;\n"))
+                xraySteps.append(CGGeneric("ar.emplace(cx, obj);\n"))
                 xraySteps.append(CGGeneric(dedent(
                     """
                     if (!JS_WrapObject(cx, &desiredProto)) {
@@ -7823,17 +7876,17 @@ class CGPerSignatureCall(CGThing):
                 """
                 {
                   JS::Rooted<JSObject*> conversionScope(cx, ${conversionScope});
-                  JSAutoCompartment ac(cx, conversionScope);
+                  JSAutoRealm ar(cx, conversionScope);
                   do { // block we break out of when done wrapping
                     $*{wrapCode}
                   } while (false);
                   $*{postConversionSteps}
                 }
-                { // And now store things in the compartment of our slotStorage.
-                  JSAutoCompartment ac(cx, slotStorage);
+                { // And now store things in the realm of our slotStorage.
+                  JSAutoRealm ar(cx, slotStorage);
                   $*{slotStorageSteps}
                 }
-                // And now make sure args.rval() is in the caller compartment
+                // And now make sure args.rval() is in the caller realm.
                 return ${maybeWrap}(cx, args.rval());
                 """,
                 conversionScope=conversionScope,
@@ -8514,8 +8567,16 @@ class CGAbstractStaticBindingMethod(CGAbstractStaticMethod):
             """)
         return unwrap + self.generate_code().define()
 
+    def profiler_label_and_jscontext(self):
+        # Our args are JSNativeArguments() which contain a "JSContext* cx"
+        # argument. We let our subclasses choose the label.
+        return (self.profiler_label(), "cx")
+
     def generate_code(self):
         assert False  # Override me
+
+    def profiler_label(self):
+        assert False # Override me
 
 
 def MakeNativeName(name):
@@ -8578,9 +8639,9 @@ class CGMethodPromiseWrapper(CGAbstractStaticMethod):
         return methodName + "_promiseWrapper"
 
 
-class CGJsonifierMethod(CGSpecializedMethod):
+class CGDefaultToJSONMethod(CGSpecializedMethod):
     def __init__(self, descriptor, method):
-        assert method.isJsonifier()
+        assert method.isDefaultToJSON()
         CGSpecializedMethod.__init__(self, descriptor, method)
 
     def definition_body(self):
@@ -8595,7 +8656,7 @@ class CGJsonifierMethod(CGSpecializedMethod):
         interface = self.descriptor.interface.parent
         while interface:
             descriptor = self.descriptor.getDescriptor(interface.identifier.name)
-            if descriptor.operations['Jsonifier']:
+            if descriptor.hasDefaultToJSON:
                 jsonDescriptors.append(descriptor)
             interface = interface.parent
 
@@ -8603,7 +8664,7 @@ class CGJsonifierMethod(CGSpecializedMethod):
         for descriptor in jsonDescriptors[::-1]:
             ret += fill(
                 """
-                if (!${parentclass}::JsonifyAttributes(cx, obj, self, result)) {
+                if (!${parentclass}::CollectJSONAttributes(cx, obj, self, result)) {
                   return false;
                 }
                 """,
@@ -8798,6 +8859,11 @@ class CGStaticMethod(CGAbstractStaticBindingMethod):
                                                         self.method)
         return CGMethodCall(nativeName, True, self.descriptor, self.method)
 
+    def profiler_label(self):
+        interface_name = self.descriptor.interface.identifier.name
+        method_name = self.method.identifier.name
+        return "%s.%s" % (interface_name, method_name)
+
 
 class CGSpecializedGetter(CGAbstractStaticMethod):
     """
@@ -8957,6 +9023,11 @@ class CGStaticGetter(CGAbstractStaticBindingMethod):
                                                         self.attr)
         return CGGetterCall(self.attr.type, nativeName, self.descriptor,
                             self.attr)
+
+    def profiler_label(self):
+        interface_name = self.descriptor.interface.identifier.name
+        attr_name = self.attr.identifier.name
+        return "get %s.%s" % (interface_name, attr_name)
 
 
 class CGSpecializedSetter(CGAbstractStaticMethod):
@@ -10798,7 +10869,7 @@ class CGResolveOwnPropertyViaResolve(CGAbstractBindingMethod):
               // then use the fact that it created the objects as a flag
               // to avoid re-resolving the properties if someone deletes
               // them.
-              JSAutoCompartment ac(cx, obj);
+              JSAutoRealm ar(cx, obj);
               JS_MarkCrossZoneId(cx, id);
               JS::Rooted<JS::PropertyDescriptor> objDesc(cx);
               if (!self->DoResolve(cx, obj, id, &objDesc)) {
@@ -11493,7 +11564,7 @@ class CGDeleteNamedProperty(CGAbstractStaticMethod):
             MOZ_ASSERT(xpc::WrapperFactory::IsXrayWrapper(xray));
             MOZ_ASSERT(js::IsProxy(proxy));
             MOZ_ASSERT(!xpc::WrapperFactory::IsXrayWrapper(proxy));
-            JSAutoCompartment ac(cx, proxy);
+            JSAutoRealm ar(cx, proxy);
             bool deleteSucceeded = false;
             bool found = false;
             $*{namedBody}
@@ -12176,15 +12247,12 @@ class MemberProperties:
         self.isCrossOriginMethod = False
         self.isCrossOriginGetter = False
         self.isCrossOriginSetter = False
-        self.isJsonifier = False
 
 
 def memberProperties(m, descriptor):
     props = MemberProperties()
     if m.isMethod():
-        if m == descriptor.operations['Jsonifier']:
-            props.isJsonifier = True
-        elif (not m.isIdentifierLess() or m == descriptor.operations['Stringifier']):
+        if (not m.isIdentifierLess() or m == descriptor.operations['Stringifier']):
             if not m.isStatic() and descriptor.interface.hasInterfacePrototypeObject():
                 if m.getExtendedAttribute("CrossOriginCallable"):
                     props.isCrossOriginMethod = True
@@ -12224,7 +12292,7 @@ class CGDescriptor(CGThing):
                                       "              \"Can't inherit from an interface with a different ownership model.\");\n" %
                                       toBindingNamespace(descriptor.parentPrototypeName)))
 
-        jsonifierMethod = None
+        defaultToJSONMethod = None
         crossOriginMethods, crossOriginGetters, crossOriginSetters = set(), set(), set()
         unscopableNames = list()
         for n in descriptor.interface.namedConstructors:
@@ -12240,8 +12308,8 @@ class CGDescriptor(CGThing):
                 if m.getExtendedAttribute("Unscopable"):
                     assert not m.isStatic()
                     unscopableNames.append(m.identifier.name)
-                if props.isJsonifier:
-                    jsonifierMethod = m
+                if m.isDefaultToJSON():
+                    defaultToJSONMethod = m
                 elif not m.isIdentifierLess() or m == descriptor.operations['Stringifier']:
                     if m.isStatic():
                         assert descriptor.interface.hasInterfaceObject()
@@ -12302,10 +12370,9 @@ class CGDescriptor(CGThing):
             if m.isConst() and m.type.isPrimitive():
                 cgThings.append(CGConstDefinition(m))
 
-        if jsonifierMethod:
-            cgThings.append(CGJsonifyAttributesMethod(descriptor))
-            cgThings.append(CGJsonifierMethod(descriptor, jsonifierMethod))
-            cgThings.append(CGMemberJITInfo(descriptor, jsonifierMethod))
+        if defaultToJSONMethod:
+            cgThings.append(CGDefaultToJSONMethod(descriptor, defaultToJSONMethod))
+            cgThings.append(CGMemberJITInfo(descriptor, defaultToJSONMethod))
         if descriptor.interface.isNavigatorProperty():
             cgThings.append(CGConstructNavigatorObject(descriptor))
 
@@ -12328,6 +12395,11 @@ class CGDescriptor(CGThing):
         properties = PropertyArrays(descriptor)
         cgThings.append(CGGeneric(define=str(properties)))
         cgThings.append(CGNativeProperties(descriptor, properties))
+
+        if defaultToJSONMethod:
+            # Now that we know about our property arrays, we can
+            # output our "collect attribute values" method, which uses those.
+            cgThings.append(CGCollectJSONAttributesMethod(descriptor, defaultToJSONMethod))
 
         if descriptor.interface.hasInterfaceObject():
             cgThings.append(CGClassConstructor(descriptor,
@@ -12692,7 +12764,7 @@ class CGDictionary(CGThing):
                 // side-effects, followed by a call to JS::ToJSONMaybeSafely,
                 // which likewise guarantees no side-effects for the sorts of
                 // things we will pass it.
-                JSAutoCompartment ac(cx, UnprivilegedJunkScopeOrWorkerGlobal());
+                JSAutoRealm ar(cx, UnprivilegedJunkScopeOrWorkerGlobal());
                 JS::Rooted<JS::Value> val(cx);
                 if (!ToObjectInternal(cx, &val)) {
                   return false;
@@ -14629,9 +14701,6 @@ class CGBindingImplClass(CGClass):
                 else:
                     # We already added this method
                     return
-            if name == "Jsonifier":
-                # We already added this method
-                return
             self.methodDecls.append(
                 CGNativeMember(descriptor, op,
                                name,
@@ -14928,7 +14997,7 @@ class CGJSImplMember(CGNativeMember):
 
     def getArgs(self, returnType, argList):
         args = CGNativeMember.getArgs(self, returnType, argList)
-        args.append(Argument("JSCompartment*", "aCompartment", "nullptr"))
+        args.append(Argument("JS::Realm*", "aRealm", "nullptr"))
         return args
 
 
@@ -14952,7 +15021,7 @@ class CGJSImplMethod(CGJSImplMember):
 
     def getArgs(self, returnType, argList):
         if self.isConstructor:
-            # Skip the JSCompartment bits for constructors; it's handled
+            # Skip the JS::Compartment bits for constructors; it's handled
             # manually in getImpl.  But we do need our aGivenProto argument.  We
             # allow it to be omitted if the default proto is desired.
             return (CGNativeMember.getArgs(self, returnType, argList) +
@@ -14977,7 +15046,7 @@ class CGJSImplMethod(CGJSImplMember):
             assert args[-1].argType == 'JS::Handle<JSObject*>'
             assert args[-1].name == 'aGivenProto'
             constructorArgs = [arg.name for arg in args[2:-1]]
-            constructorArgs.append("js::GetObjectCompartment(scopeObj)")
+            constructorArgs.append("js::GetNonCCWObjectRealm(scopeObj)")
             initCall = fill(
                 """
                 // Wrap the object before calling __Init so that __DOM_IMPL__ is available.
@@ -15110,8 +15179,6 @@ class CGJSImplClass(CGBindingImplClass):
             constructorBody = dedent("""
                 // Make sure we're an nsWrapperCache already
                 MOZ_ASSERT(static_cast<nsWrapperCache*>(this));
-                // And that our ancestor has not called SetIsNotDOMBinding()
-                MOZ_ASSERT(IsDOMBinding());
                 """)
             extradefinitions = fill(
                 """
@@ -15243,7 +15310,7 @@ class CGJSImplClass(CGBindingImplClass):
             }
 
             // Now define it on our chrome object
-            JSAutoCompartment ac(aCx, mImpl->CallbackOrNull());
+            JSAutoRealm ar(aCx, mImpl->CallbackOrNull());
             if (!JS_WrapObject(aCx, &obj)) {
               return nullptr;
             }
@@ -15427,9 +15494,9 @@ class CGCallback(CGClass):
                              "nullptr"))
 
         # Make copies of the arg list for the two "without rv" overloads.  Note
-        # that those don't need aExceptionHandling or aCompartment arguments
-        # because those would make not sense anyway: the only sane thing to do
-        # with exceptions in the "without rv" cases is to report them.
+        # that those don't need aExceptionHandling or aRealm arguments because
+        # those would make not sense anyway: the only sane thing to do with
+        # exceptions in the "without rv" cases is to report them.
         argsWithoutRv = list(args)
         argsWithoutRv.pop(rvIndex)
         argsWithoutThisAndRv = list(argsWithoutRv)
@@ -15440,10 +15507,10 @@ class CGCallback(CGClass):
                              "eReportExceptions"))
         # And the argument for communicating when exceptions should really be
         # rethrown.  In particular, even when aExceptionHandling is
-        # eRethrowExceptions they won't get rethrown if aCompartment is provided
+        # eRethrowExceptions they won't get rethrown if aRealm is provided
         # and its principal doesn't subsume either the callback or the
         # exception.
-        args.append(Argument("JSCompartment*", "aCompartment", "nullptr"))
+        args.append(Argument("JS::Realm*", "aRealm", "nullptr"))
         # And now insert our template argument.
         argsWithoutThis = list(args)
         args.insert(0, Argument("const T&",  "thisVal"))
@@ -15454,8 +15521,8 @@ class CGCallback(CGClass):
         # If we just leave things like that, and have no actual arguments in the
         # IDL, we will end up trying to call the templated "without rv" overload
         # with "rv" as the thisVal.  That's no good.  So explicitly append the
-        # aExceptionHandling and aCompartment values we need to end up matching
-        # the signature of our non-templated "with rv" overload.
+        # aExceptionHandling and aRealm values we need to end up matching the
+        # signature of our non-templated "with rv" overload.
         argnamesWithoutThisAndRv.extend(["eReportExceptions", "nullptr"])
 
         argnamesWithoutRv = [arg.name for arg in argsWithoutRv]
@@ -15471,7 +15538,7 @@ class CGCallback(CGClass):
             if (!aExecutionReason) {
               aExecutionReason = "${executionReason}";
             }
-            CallSetup s(this, aRv, aExecutionReason, aExceptionHandling, aCompartment);
+            CallSetup s(this, aRv, aExecutionReason, aExceptionHandling, aRealm);
             if (!s.GetContext()) {
               MOZ_ASSERT(aRv.Failed());
               return${errorReturn};
@@ -15882,7 +15949,7 @@ class CallbackMember(CGNativeMember):
                                      "nullptr"))
                 args.append(Argument("ExceptionHandling", "aExceptionHandling",
                                      "eReportExceptions"))
-            args.append(Argument("JSCompartment*", "aCompartment", "nullptr"))
+            args.append(Argument("JS::Realm*", "aRealm", "nullptr"))
             return args
         # We want to allow the caller to pass in a "this" value, as
         # well as a JSContext.
@@ -15896,11 +15963,11 @@ class CallbackMember(CGNativeMember):
         callSetup = "CallSetup s(this, aRv"
         if self.rethrowContentException:
             # getArgs doesn't add the aExceptionHandling argument but does add
-            # aCompartment for us.
-            callSetup += ', "%s", eRethrowContentExceptions, aCompartment, /* aIsJSImplementedWebIDL = */ ' % self.getPrettyName()
+            # aRealm for us.
+            callSetup += ', "%s", eRethrowContentExceptions, aRealm, /* aIsJSImplementedWebIDL = */ ' % self.getPrettyName()
             callSetup += toStringBool(isJSImplementedDescriptor(self.descriptorProvider))
         else:
-            callSetup += ', "%s", aExceptionHandling, aCompartment' % self.getPrettyName()
+            callSetup += ', "%s", aExceptionHandling, aRealm' % self.getPrettyName()
         callSetup += ");\n"
         return fill(
             """
@@ -16621,7 +16688,7 @@ class CGMaplikeOrSetlikeHelperFunctionGenerator(CallbackMember):
             // It's safe to use UnprivilegedJunkScopeOrWorkerGlobal here because
             // all we want is to wrap into _some_ scope and then unwrap to find
             // the reflector, and wrapping has no side-effects.
-            JSAutoCompartment tempCompartment(cx, UnprivilegedJunkScopeOrWorkerGlobal());
+            JSAutoRealm tempRealm(cx, UnprivilegedJunkScopeOrWorkerGlobal());
             JS::Rooted<JS::Value> v(cx);
             if(!ToJSValue(cx, self, &v)) {
               aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -16631,7 +16698,7 @@ class CGMaplikeOrSetlikeHelperFunctionGenerator(CallbackMember):
             // similarly across method generators, it's called obj here.
             JS::Rooted<JSObject*> obj(cx);
             obj = js::UncheckedUnwrap(&v.toObject(), /* stopAtWindowProxy = */ false);
-            JSAutoCompartment reflectorCompartment(cx, obj);
+            JSAutoRealm reflectorRealm(cx, obj);
             """ % self.getDefaultRetval())
 
     def getArgs(self, returnType, argList):

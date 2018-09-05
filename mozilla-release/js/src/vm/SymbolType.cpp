@@ -10,19 +10,19 @@
 #include "gc/Allocator.h"
 #include "gc/Rooting.h"
 #include "util/StringBuffer.h"
-#include "vm/JSCompartment.h"
 #include "vm/JSContext.h"
+#include "vm/Realm.h"
 
-#include "vm/JSCompartment-inl.h"
+#include "vm/Realm-inl.h"
 
 using JS::Symbol;
 using namespace js;
 
 Symbol*
 Symbol::newInternal(JSContext* cx, JS::SymbolCode code, uint32_t hash, JSAtom* description,
-                    AutoLockForExclusiveAccess& lock)
+                    const AutoAccessAtomsZone& access)
 {
-    MOZ_ASSERT(cx->compartment() == cx->atomsCompartment(lock));
+    MOZ_ASSERT(cx->zone() == cx->atomsZone(access));
 
     // Following js::AtomizeString, we grudgingly forgo last-ditch GC here.
     Symbol* p = Allocate<JS::Symbol, NoGC>(cx);
@@ -48,8 +48,8 @@ Symbol::new_(JSContext* cx, JS::SymbolCode code, JSString* description)
     AutoLockForExclusiveAccess lock(cx);
     Symbol* sym;
     {
-        AutoAtomsCompartment ac(cx, lock);
-        sym = newInternal(cx, code, cx->compartment()->randomHashCode(), atom, lock);
+        AutoAtomsZone az(cx, lock);
+        sym = newInternal(cx, code, cx->runtime()->randomHashCode(), atom, lock);
     }
     if (sym)
         cx->markAtom(sym);
@@ -74,7 +74,7 @@ Symbol::for_(JSContext* cx, HandleString description)
 
     Symbol* sym;
     {
-        AutoAtomsCompartment ac(cx, lock);
+        AutoAtomsZone az(cx, lock);
         // Rehash the hash of the atom to give the corresponding symbol a hash
         // that is different than the hash of the corresponding atom.
         HashNumber hash = mozilla::HashGeneric(atom->hash());

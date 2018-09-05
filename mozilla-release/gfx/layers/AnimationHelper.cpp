@@ -6,9 +6,9 @@
 
 #include "AnimationHelper.h"
 #include "mozilla/ComputedTimingFunction.h" // for ComputedTimingFunction
-#include "mozilla/dom/AnimationEffectReadOnlyBinding.h" // for dom::FillMode
+#include "mozilla/dom/AnimationEffectBinding.h" // for dom::FillMode
 #include "mozilla/dom/KeyframeEffectBinding.h" // for dom::IterationComposite
-#include "mozilla/dom/KeyframeEffectReadOnly.h" // for dom::KeyFrameEffectReadOnly
+#include "mozilla/dom/KeyframeEffect.h" // for dom::KeyFrameEffectReadOnly
 #include "mozilla/dom/Nullable.h" // for dom::Nullable
 #include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
 #include "mozilla/layers/LayerAnimationUtils.h" // for TimingFunctionToComputedTimingFunction
@@ -94,13 +94,13 @@ CompositorAnimationStorage::SetAnimatedValue(uint64_t aId,
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   auto count = mAnimatedValues.Count();
   AnimatedValue* value = mAnimatedValues.LookupOrAdd(aId,
-                                                     Move(aTransformInDevSpace),
-                                                     Move(aFrameTransform),
+                                                     std::move(aTransformInDevSpace),
+                                                     std::move(aFrameTransform),
                                                      aData);
   if (count == mAnimatedValues.Count()) {
     MOZ_ASSERT(value->mType == AnimatedValue::TRANSFORM);
-    value->mTransform.mTransformInDevSpace = Move(aTransformInDevSpace);
-    value->mTransform.mFrameTransform = Move(aFrameTransform);
+    value->mTransform.mTransformInDevSpace = std::move(aTransformInDevSpace);
+    value->mTransform.mFrameTransform = std::move(aFrameTransform);
     value->mTransform.mData = aData;
   }
 }
@@ -112,8 +112,8 @@ CompositorAnimationStorage::SetAnimatedValue(uint64_t aId,
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   const TransformData dontCare = {};
   SetAnimatedValue(aId,
-                   Move(aTransformInDevSpace),
-                   Move(gfx::Matrix4x4()),
+                   std::move(aTransformInDevSpace),
+                   gfx::Matrix4x4(),
                    dontCare);
 }
 
@@ -148,10 +148,12 @@ CompositorAnimationStorage::SetAnimations(uint64_t aId, const AnimationArray& aV
 
 AnimationHelper::SampleResult
 AnimationHelper::SampleAnimationForEachNode(
-  TimeStamp aTime,
+  TimeStamp aPreviousFrameTime,
+  TimeStamp aCurrentFrameTime,
   AnimationArray& aAnimations,
   InfallibleTArray<AnimData>& aAnimationData,
-  RefPtr<RawServoAnimationValue>& aAnimationValue)
+  RefPtr<RawServoAnimationValue>& aAnimationValue,
+  const AnimatedValue* aPreviousValue)
 {
   MOZ_ASSERT(!aAnimations.IsEmpty(), "Should be called with animations");
 
@@ -175,18 +177,63 @@ AnimationHelper::SampleAnimationForEachNode(
                animation.isNotPlaying(),
                "If we are playing, we should have an origin time and a start"
                " time");
+
+    // Determine if the animation was play-pending and used a ready time later
+    // than the previous frame time.
+    //
+    // To determine this, _all_ of the following consitions need to hold:
+    //
+    // * There was no previous animation value (i.e. this is the first frame for
+    //   the animation since it was sent to the compositor), and
+    // * The animation is playing, and
+    // * There is a previous frame time, and
+    // * The ready time of the animation is ahead of the previous frame time.
+    //
+    bool hasFutureReadyTime = false;
+    if (!aPreviousValue &&
+        !animation.isNotPlaying() &&
+        !aPreviousFrameTime.IsNull()) {
+      // This is the inverse of the calculation performed in
+      // AnimationInfo::StartPendingAnimations to calculate the start time of
+      // play-pending animations.
+      // Note that we have to calculate (TimeStamp + TimeDuration) last to avoid
+      // underflow in the middle of the calulation.
+      const TimeStamp readyTime =
+        animation.originTime() +
+        (animation.startTime().get_TimeDuration() +
+         animation.holdTime().MultDouble(1.0 / animation.playbackRate()));
+      hasFutureReadyTime =
+        !readyTime.IsNull() && readyTime > aPreviousFrameTime;
+    }
+    // Use the previous vsync time to make main thread animations and compositor
+    // more closely aligned.
+    //
+    // On the first frame where we have animations the previous timestamp will
+    // not be set so we simply use the current timestamp.  As a result we will
+    // end up painting the first frame twice.  That doesn't appear to be
+    // noticeable, however.
+    //
+    // Likewise, if the animation is play-pending, it may have a ready time that
+    // is *after* |aPreviousFrameTime| (but *before* |aCurrentFrameTime|).
+    // To avoid flicker we need to use |aCurrentFrameTime| to avoid temporarily
+    // jumping backwards into the range prior to when the animation starts.
+    const TimeStamp& timeStamp =
+      aPreviousFrameTime.IsNull() || hasFutureReadyTime
+      ? aCurrentFrameTime
+      : aPreviousFrameTime;
+
     // If the animation is not currently playing, e.g. paused or
     // finished, then use the hold time to stay at the same position.
     TimeDuration elapsedDuration =
       animation.isNotPlaying() ||
       animation.startTime().type() != MaybeTimeDuration::TTimeDuration
       ? animation.holdTime()
-      : (aTime - animation.originTime() -
+      : (timeStamp - animation.originTime() -
          animation.startTime().get_TimeDuration())
         .MultDouble(animation.playbackRate());
 
     ComputedTiming computedTiming =
-      dom::AnimationEffectReadOnly::GetComputedTimingAt(
+      dom::AnimationEffect::GetComputedTimingAt(
         dom::Nullable<TimeDuration>(elapsedDuration), animData.mTiming,
         animation.playbackRate());
 
@@ -207,7 +254,7 @@ AnimationHelper::SampleAnimationForEachNode(
     // FIXME Bug 1455476: We should do this optimizations for the case where
     // the layer has multiple animations.
     if (iEnd == 1 &&
-        !dom::KeyframeEffectReadOnly::HasComputedTimingChanged(
+        !dom::KeyframeEffect::HasComputedTimingChanged(
           computedTiming,
           iterCompositeOperation,
           animData.mProgressOnLastCompose,
@@ -534,8 +581,8 @@ AnimationHelper::SetAnimations(
       animation.iterationStart(),
       static_cast<dom::PlaybackDirection>(animation.direction()),
       static_cast<dom::FillMode>(animation.fillMode()),
-      Move(AnimationUtils::TimingFunctionToComputedTimingFunction(
-           animation.easingFunction()))
+      AnimationUtils::TimingFunctionToComputedTimingFunction(
+           animation.easingFunction())
     };
     InfallibleTArray<Maybe<ComputedTimingFunction>>& functions =
       data->mFunctions;
@@ -569,15 +616,17 @@ AnimationHelper::GetNextCompositorAnimationsId()
   return nextId;
 }
 
-void
+bool
 AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
-                                  TimeStamp aTime)
+                                  TimeStamp aPreviousFrameTime,
+                                  TimeStamp aCurrentFrameTime)
 {
   MOZ_ASSERT(aStorage);
+  bool isAnimating = false;
 
   // Do nothing if there are no compositor animations
   if (!aStorage->AnimationsCount()) {
-    return;
+    return isAnimating;
   }
 
   //Sample the animations in CompositorAnimationStorage
@@ -588,16 +637,20 @@ AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
       continue;
     }
 
+    isAnimating = true;
     RefPtr<RawServoAnimationValue> animationValue;
     InfallibleTArray<AnimData> animationData;
     AnimationHelper::SetAnimations(*animations,
                                    animationData,
                                    animationValue);
+    AnimatedValue* previousValue = aStorage->GetAnimatedValue(iter.Key());
     AnimationHelper::SampleResult sampleResult =
-      AnimationHelper::SampleAnimationForEachNode(aTime,
+      AnimationHelper::SampleAnimationForEachNode(aPreviousFrameTime,
+                                                  aCurrentFrameTime,
                                                   *animations,
                                                   animationData,
-                                                  animationValue);
+                                                  animationValue,
+                                                  previousValue);
 
     if (sampleResult != AnimationHelper::SampleResult::Sampled) {
       continue;
@@ -619,7 +672,7 @@ AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
         nsPoint origin = transformData.origin();
         // we expect all our transform data to arrive in device pixels
         gfx::Point3D transformOrigin = transformData.transformOrigin();
-        nsDisplayTransform::FrameTransformProperties props(Move(list),
+        nsDisplayTransform::FrameTransformProperties props(std::move(list),
                                                            transformOrigin);
 
         gfx::Matrix4x4 transform =
@@ -641,7 +694,7 @@ AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
                             1);
 
         aStorage->SetAnimatedValue(iter.Key(),
-                                   Move(transform), Move(frameTransform),
+                                   std::move(transform), std::move(frameTransform),
                                    transformData);
         break;
       }
@@ -649,6 +702,8 @@ AnimationHelper::SampleAnimations(CompositorAnimationStorage* aStorage,
         MOZ_ASSERT_UNREACHABLE("Unhandled animated property");
     }
   }
+
+  return isAnimating;
 }
 
 } // namespace layers

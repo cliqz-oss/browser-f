@@ -99,7 +99,7 @@ class ExclusiveData
     template <typename U>
     explicit ExclusiveData(const MutexId& id, U&& u)
       : lock_(id),
-        value_(mozilla::Forward<U>(u))
+        value_(std::forward<U>(u))
     {}
 
     /**
@@ -108,19 +108,19 @@ class ExclusiveData
     template <typename... Args>
     explicit ExclusiveData(const MutexId& id, Args&&... args)
       : lock_(id),
-        value_(mozilla::Forward<Args>(args)...)
+        value_(std::forward<Args>(args)...)
     {}
 
     ExclusiveData(ExclusiveData&& rhs)
-      : lock_(mozilla::Move(rhs.lock)),
-        value_(Move(rhs.value_))
+      : lock_(std::move(rhs.lock)),
+        value_(std::move(rhs.value_))
     {
         MOZ_ASSERT(&rhs != this, "self-move disallowed!");
     }
 
     ExclusiveData& operator=(ExclusiveData&& rhs) {
         this->~ExclusiveData();
-        new (mozilla::KnownNotNull, this) ExclusiveData(mozilla::Move(rhs));
+        new (mozilla::KnownNotNull, this) ExclusiveData(std::move(rhs));
         return *this;
     }
 
@@ -155,7 +155,7 @@ class ExclusiveData
 
         Guard& operator=(Guard&& rhs) {
             this->~Guard();
-            new (this) Guard(mozilla::Move(rhs));
+            new (this) Guard(std::move(rhs));
             return *this;
         }
 
@@ -196,12 +196,12 @@ class ExclusiveWaitableData : public ExclusiveData<T>
   public:
     template <typename U>
     explicit ExclusiveWaitableData(const MutexId& id, U&& u)
-      : Base(id, mozilla::Forward<U>(u))
+      : Base(id, std::forward<U>(u))
     {}
 
     template <typename... Args>
     explicit ExclusiveWaitableData(const MutexId& id, Args&&... args)
-      : Base(id, mozilla::Forward<Args>(args)...)
+      : Base(id, std::forward<Args>(args)...)
     {}
 
     class MOZ_STACK_CLASS Guard : public ExclusiveData<T>::Guard
@@ -214,11 +214,11 @@ class ExclusiveWaitableData : public ExclusiveData<T>
         {}
 
         Guard(Guard&& guard)
-          : Base(mozilla::Move(guard))
+          : Base(std::move(guard))
         {}
 
         Guard& operator=(Guard&& rhs) {
-            return Base::operator=(mozilla::Move(rhs));
+            return Base::operator=(std::move(rhs));
         }
 
         void wait() {

@@ -9,22 +9,25 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
-import org.mozilla.gecko.AppConstants.Versions;
+import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.widget.AllCapsTextView;
+import org.mozilla.gecko.widget.FocusableDatePicker;
 import org.mozilla.gecko.widget.DateTimePicker;
+import org.mozilla.gecko.widget.FocusableTimePicker;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.support.annotation.NonNull;
 import android.support.design.widget.TextInputLayout;
-import android.support.v7.widget.AppCompatCheckBox;
-import android.widget.CheckBox;
 import android.text.Html;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewGroup.LayoutParams;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.ArrayAdapter;
@@ -40,7 +43,7 @@ public abstract class PromptInput {
     protected final String mLabel;
     protected final String mType;
     protected final String mId;
-    protected final String mValue;
+    protected String mValue;
     protected final String mMinValue;
     protected final String mMaxValue;
     protected OnChangeListener mListener;
@@ -115,7 +118,7 @@ public abstract class PromptInput {
             input.setRawInputType(Configuration.KEYBOARD_12KEY);
             input.setInputType(InputType.TYPE_CLASS_NUMBER |
                                InputType.TYPE_NUMBER_FLAG_SIGNED);
-            return input;
+            return inputLayout;
         }
     }
 
@@ -137,7 +140,7 @@ public abstract class PromptInput {
 
     public static class CheckboxInput extends PromptInput {
         public static final String INPUT_TYPE = "checkbox";
-        private final boolean mChecked;
+        private boolean mChecked;
 
         public CheckboxInput(GeckoBundle obj) {
             super(obj);
@@ -159,6 +162,13 @@ public abstract class PromptInput {
             CheckBox checkbox = (CheckBox)mView;
             return checkbox.isChecked() ? Boolean.TRUE : Boolean.FALSE;
         }
+
+        @Override
+        public void saveCurrentInput(@NonNull final GeckoBundle userInput) {
+            if (userInput.containsKey(mId)) {
+                mChecked = (Boolean) userInput.get(mId);
+            }
+        }
     }
 
     public static class DateTimeInput extends PromptInput {
@@ -175,37 +185,42 @@ public abstract class PromptInput {
             super(obj);
         }
 
+        // Will use platform's DatePicker and TimePicker to let users input date and time using the fancy widgets.
+        // For the other input types our custom DateTimePicker will offer spinners.
         @Override
         public View getView(Context context) throws UnsupportedOperationException {
             if (mType.equals("date")) {
+                // FocusableDatePicker allow us to have priority in responding to scroll events.
+                DatePicker input = new FocusableDatePicker(context);
                 try {
-                    DateTimePicker input = new DateTimePicker(context, "yyyy-MM-dd", mValue,
-                                                              DateTimePicker.PickersState.DATE, mMinValue, mMaxValue);
-                    input.toggleCalendar(true);
-                    mView = (View)input;
-                } catch (UnsupportedOperationException ex) {
-                    // We can't use our custom version of the DatePicker widget because the sdk is too old.
-                    // But we can fallback on the native one.
-                    DatePicker input = new DatePicker(context);
-                    try {
-                        if (!TextUtils.isEmpty(mValue)) {
-                            GregorianCalendar calendar = new GregorianCalendar();
-                            calendar.setTime(new SimpleDateFormat("yyyy-MM-dd").parse(mValue));
-                            input.updateDate(calendar.get(Calendar.YEAR),
-                                             calendar.get(Calendar.MONTH),
-                                             calendar.get(Calendar.DAY_OF_MONTH));
-                        }
-                    } catch (Exception e) {
-                        Log.e(LOGTAG, "error parsing format string: " + e);
+                    if (!TextUtils.isEmpty(mValue)) {
+                        GregorianCalendar calendar = new GregorianCalendar();
+                        calendar.setTime(new SimpleDateFormat("yyyy-MM-dd").parse(mValue));
+                        input.updateDate(calendar.get(Calendar.YEAR),
+                                         calendar.get(Calendar.MONTH),
+                                         calendar.get(Calendar.DAY_OF_MONTH));
                     }
-                    mView = (View)input;
+                } catch (Exception e) {
+                    Log.e(LOGTAG, "error parsing format string: " + e);
                 }
+
+                // The Material CalendarView is only available on Android >= API 21
+                // Prior to this, using DatePicker with CalendarUI would cause issues
+                // such as in Bug 1460585 and Bug 1462299
+                // Because of this, on Android versions earlier than API 21 we'll force use the SpinnerUI
+                if (AppConstants.Versions.preLollipop) {
+                    input.setSpinnersShown(true);
+                    input.setCalendarViewShown(false);
+                }
+
+                mView = (View)input;
             } else if (mType.equals("week")) {
                 DateTimePicker input = new DateTimePicker(context, "yyyy-'W'ww", mValue,
                                                           DateTimePicker.PickersState.WEEK, mMinValue, mMaxValue);
                 mView = (View)input;
             } else if (mType.equals("time")) {
-                TimePicker input = new TimePicker(context);
+                // FocusableDatePicker allow us to have priority in responding to scroll events.
+                TimePicker input = new FocusableTimePicker(context);
                 input.setIs24HourView(DateFormat.is24HourFormat(context));
 
                 GregorianCalendar calendar = new GregorianCalendar();
@@ -221,13 +236,19 @@ public abstract class PromptInput {
                 DateTimePicker input = new DateTimePicker(context, "yyyy-MM-dd HH:mm", mValue.replace("T", " ").replace("Z", ""),
                                                           DateTimePicker.PickersState.DATETIME,
                                                           mMinValue.replace("T", " ").replace("Z", ""), mMaxValue.replace("T", " ").replace("Z", ""));
-                input.toggleCalendar(true);
                 mView = (View)input;
             } else if (mType.equals("month")) {
                 DateTimePicker input = new DateTimePicker(context, "yyyy-MM", mValue,
                                                           DateTimePicker.PickersState.MONTH, mMinValue, mMaxValue);
                 mView = (View)input;
             }
+
+            // Make sure the widgets will not be chopped on smaller screens (Bug 1412517)
+            LinearLayout.LayoutParams parentParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            parentParams.gravity = Gravity.CENTER;
+            mView.setLayoutParams(parentParams);
+
             return mView;
         }
 
@@ -242,13 +263,17 @@ public abstract class PromptInput {
                 GregorianCalendar calendar =
                     new GregorianCalendar(0, 0, 0, tp.getCurrentHour(), tp.getCurrentMinute());
                 return formatDateString("HH:mm", calendar);
-            } else {
-                DateTimePicker dp = (DateTimePicker)mView;
+            } else if (mType.equals("date")) {
+                DatePicker dp = (DatePicker) mView;
+                GregorianCalendar calendar =
+                        new GregorianCalendar(dp.getYear(), dp.getMonth(), dp.getDayOfMonth());
+                return formatDateString("yyyy-MM-dd", calendar);
+            }
+            else {
+                DateTimePicker dp = (DateTimePicker) mView;
                 GregorianCalendar calendar = new GregorianCalendar();
                 calendar.setTimeInMillis(dp.getTimeInMillis());
-                if (mType.equals("date")) {
-                    return formatDateString("yyyy-MM-dd", calendar);
-                } else if (mType.equals("week")) {
+                if (mType.equals("week")) {
                     return formatDateString("yyyy-'W'ww", calendar);
                 } else if (mType.equals("datetime-local")) {
                     return formatDateString("yyyy-MM-dd'T'HH:mm", calendar);
@@ -267,7 +292,7 @@ public abstract class PromptInput {
     public static class MenulistInput extends PromptInput {
         public static final String INPUT_TYPE = "menulist";
         private final String[] mListitems;
-        private final int mSelected;
+        private int mSelected;
 
         public Spinner spinner;
         public AllCapsTextView textView;
@@ -312,6 +337,13 @@ public abstract class PromptInput {
         public Object getValue() {
             return spinner.getSelectedItemPosition();
         }
+
+        @Override
+        public void saveCurrentInput(@NonNull final GeckoBundle userInput) {
+            if (userInput.containsKey(mId)) {
+                mSelected = (Integer) userInput.get(mId);
+            }
+        }
     }
 
     public static class LabelInput extends PromptInput {
@@ -328,6 +360,11 @@ public abstract class PromptInput {
             mView = view;
             return mView;
         }
+
+        @Override
+        public void saveCurrentInput(@NonNull final GeckoBundle userInput) {
+            // No user input to save
+        }
     }
 
     public PromptInput(GeckoBundle obj) {
@@ -338,6 +375,12 @@ public abstract class PromptInput {
         mValue = obj.getString("value", "");
         mMaxValue = obj.getString("max", "");
         mMinValue = obj.getString("min", "");
+    }
+
+    public void saveCurrentInput(@NonNull final GeckoBundle userInput) {
+        if (userInput.containsKey(mId)) {
+            mValue = (String) userInput.get(mId);
+        }
     }
 
     public void putInBundle(final GeckoBundle bundle) {

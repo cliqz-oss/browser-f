@@ -34,7 +34,6 @@
 #include "archivereader.h"
 #include "readstrings.h"
 #include "errors.h"
-#include "bzlib.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -56,6 +55,9 @@
 #include "mozilla/Compiler.h"
 #include "mozilla/Types.h"
 #include "mozilla/UniquePtr.h"
+#ifdef XP_WIN
+#include "mozilla/WinHeaderOnlyUtils.h"
+#endif // XP_WIN
 
 // Amount of the progress bar to use in each of the 3 update stages,
 // should total 100.0.
@@ -109,6 +111,8 @@ struct UpdateServerThreadArgs
 #include "prerror.h"
 #endif
 
+#include "crctable.h"
+
 #ifdef XP_WIN
 #ifdef MOZ_MAINTENANCE_SERVICE
 #include "registrycertificates.h"
@@ -136,21 +140,8 @@ BOOL PathGetSiblingFilePath(LPWSTR destinationBuffer,
 
 //-----------------------------------------------------------------------------
 
-// This variable lives in libbz2.  It's declared in bzlib_private.h, so we just
-// declare it here to avoid including that entire header file.
-#define BZ2_CRC32TABLE_UNDECLARED
-
-#if MOZ_IS_GCC || defined(__clang__)
-extern "C"  __attribute__((visibility("default"))) unsigned int BZ2_crc32Table[256];
-#undef BZ2_CRC32TABLE_UNDECLARED
-#elif defined(__SUNPRO_C) || defined(__SUNPRO_CC)
-extern "C" __global unsigned int BZ2_crc32Table[256];
-#undef BZ2_CRC32TABLE_UNDECLARED
-#endif
-#if defined(BZ2_CRC32TABLE_UNDECLARED)
-extern "C" unsigned int BZ2_crc32Table[256];
-#undef BZ2_CRC32TABLE_UNDECLARED
-#endif
+// This BZ2_crc32Table variable lives in libbz2. We just took the
+// data structure from bz2 and created crctables.h
 
 static unsigned int
 crc32(const unsigned char *buf, unsigned int len)
@@ -909,7 +900,7 @@ static int remove_recursive_on_reboot(const NS_tchar *path, const NS_tchar *dele
 
   if (!S_ISDIR(sInfo.st_mode)) {
     NS_tchar tmpDeleteFile[MAXPATHLEN];
-    GetTempFileNameW(deleteDir, L"rep", 0, tmpDeleteFile);
+    GetUUIDTempFilePath(deleteDir, L"rep", tmpDeleteFile);
     NS_tremove(tmpDeleteFile);
     rv = rename_file(path, tmpDeleteFile, false);
     if (MoveFileEx(rv ? path : tmpDeleteFile, nullptr, MOVEFILE_DELAY_UNTIL_REBOOT)) {
@@ -1014,7 +1005,7 @@ static int backup_discard(const NS_tchar *path, const NS_tchar *relPath)
   if (rv && !sStagedUpdate && !sReplaceRequest) {
     LOG(("backup_discard: unable to remove: " LOG_S, relBackup));
     NS_tchar path[MAXPATHLEN];
-    GetTempFileNameW(gDeleteDirPath, L"moz", 0, path);
+    GetUUIDTempFilePath(gDeleteDirPath, L"moz", path);
     if (rename_file(backup, path)) {
       LOG(("backup_discard: failed to rename file:" LOG_S ", dst:" LOG_S,
            relBackup, relPath));
@@ -2110,7 +2101,14 @@ LaunchCallbackApp(const NS_tchar *workingDir,
   // Do not allow the callback to run when running an update through the
   // service as session 0.  The unelevated updater.exe will do the launching.
   if (!usingService) {
-    WinLaunchChild(argv[0], argc, argv, nullptr);
+    HANDLE hProcess;
+    if (WinLaunchChild(argv[0], argc, argv, nullptr, &hProcess)) {
+      // Keep the current process around until the callback process has created
+      // its message queue, to avoid the launched process's windows being forced
+      // into the background.
+      mozilla::WaitForInputIdle(hProcess);
+      CloseHandle(hProcess);
+    }
   }
 #else
 # warning "Need implementaton of LaunchCallbackApp"
@@ -2124,7 +2122,7 @@ WriteStatusFile(const char* aStatus)
 #if defined(XP_WIN)
   // The temp file is not removed on failure since there is client code that
   // will remove it.
-  if (GetTempFileNameW(gPatchDirPath, L"sta", 0, filename) == 0) {
+  if (!GetUUIDTempFilePath(gPatchDirPath, L"sta", filename)) {
     return false;
   }
 #else
@@ -3104,7 +3102,7 @@ int NS_main(int argc, NS_tchar **argv)
         return 1;
       }
 
-      wchar_t *cmdLine = MakeCommandLine(argc - 1, argv + 1);
+      auto cmdLine = mozilla::MakeCommandLine(argc - 1, argv + 1);
       if (!cmdLine) {
         CloseHandle(elevatedFileHandle);
         return 1;
@@ -3250,12 +3248,11 @@ int NS_main(int argc, NS_tchar **argv)
                              SEE_MASK_NOCLOSEPROCESS;
         sinfo.hwnd         = nullptr;
         sinfo.lpFile       = argv[0];
-        sinfo.lpParameters = cmdLine;
+        sinfo.lpParameters = cmdLine.get();
         sinfo.lpVerb       = L"runas";
         sinfo.nShow        = SW_SHOWNORMAL;
 
         bool result = ShellExecuteEx(&sinfo);
-        free(cmdLine);
 
         if (result) {
           WaitForSingleObject(sinfo.hProcess, INFINITE);

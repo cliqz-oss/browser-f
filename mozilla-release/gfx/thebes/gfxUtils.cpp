@@ -22,11 +22,14 @@
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/gfx/Swizzle.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Unused.h"
 #include "mozilla/Vector.h"
+#include "mozilla/webrender/webrender_ffi.h"
+#include "nsAppRunner.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIClipboardHelper.h"
 #include "nsIFile.h"
@@ -299,7 +302,8 @@ static already_AddRefed<gfxDrawable>
 CreateSamplingRestrictedDrawable(gfxDrawable* aDrawable,
                                  gfxContext* aContext,
                                  const ImageRegion& aRegion,
-                                 const SurfaceFormat aFormat)
+                                 const SurfaceFormat aFormat,
+                                 bool aUseOptimalFillOp)
 {
     AUTO_PROFILER_LABEL("CreateSamplingRestrictedDrawable", GRAPHICS);
 
@@ -335,7 +339,9 @@ CreateSamplingRestrictedDrawable(gfxDrawable* aDrawable,
     RefPtr<gfxContext> tmpCtx = gfxContext::CreateOrNull(target);
     MOZ_ASSERT(tmpCtx); // already checked the target above
 
-    tmpCtx->SetOp(OptimalFillOp());
+    if (aUseOptimalFillOp) {
+        tmpCtx->SetOp(OptimalFillOp());
+    }
     aDrawable->Draw(tmpCtx, needed - needed.TopLeft(), ExtendMode::REPEAT,
                     SamplingFilter::LINEAR,
                     1.0, gfxMatrix::Translation(needed.TopLeft()));
@@ -521,7 +527,8 @@ gfxUtils::DrawPixelSnapped(gfxContext*         aContext,
                            const SurfaceFormat aFormat,
                            SamplingFilter      aSamplingFilter,
                            uint32_t            aImageFlags,
-                           gfxFloat            aOpacity)
+                           gfxFloat            aOpacity,
+                           bool                aUseOptimalFillOp)
 {
     AUTO_PROFILER_LABEL("gfxUtils::DrawPixelSnapped", GRAPHICS);
 
@@ -568,7 +575,8 @@ gfxUtils::DrawPixelSnapped(gfxContext*         aContext,
 #if !defined(MOZ_GFX_OPTIMIZE_MOBILE)
             RefPtr<gfxDrawable> restrictedDrawable =
               CreateSamplingRestrictedDrawable(aDrawable, aContext,
-                                               aRegion, aFormat);
+                                               aRegion, aFormat,
+                                               aUseOptimalFillOp);
             if (restrictedDrawable) {
               drawable.swap(restrictedDrawable);
 
@@ -1467,6 +1475,54 @@ gfxUtils::ThreadSafeGetFeatureStatus(const nsCOMPtr<nsIGfxInfo>& gfxInfo,
 
   return gfxInfo->GetFeatureStatus(feature, failureId, status);
 }
+
+#define GFX_SHADER_CHECK_BUILD_VERSION_PREF "gfx-shader-check.build-version"
+#define GFX_SHADER_CHECK_DEVICE_ID_PREF "gfx-shader-check.device-id"
+#define GFX_SHADER_CHECK_DRIVER_VERSION_PREF "gfx-shader-check.driver-version"
+
+/* static */ void
+gfxUtils::RemoveShaderCacheFromDiskIfNecessary()
+{
+  if (!gfxVars::UseWebRenderProgramBinaryDisk()) {
+    return;
+  }
+
+  nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
+
+  // Get current values
+  nsCString buildID(mozilla::PlatformBuildID());
+  nsString deviceID, driverVersion;
+  gfxInfo->GetAdapterDeviceID(deviceID);
+  gfxInfo->GetAdapterDriverVersion(driverVersion);
+
+  // Get pref stored values
+  nsAutoCString buildIDChecked;
+  Preferences::GetCString(GFX_SHADER_CHECK_BUILD_VERSION_PREF, buildIDChecked);
+  nsAutoString deviceIDChecked, driverVersionChecked;
+  Preferences::GetString(GFX_SHADER_CHECK_DEVICE_ID_PREF, deviceIDChecked);
+  Preferences::GetString(GFX_SHADER_CHECK_DRIVER_VERSION_PREF, driverVersionChecked);
+
+  if (buildID == buildIDChecked &&
+      deviceID == deviceIDChecked &&
+      driverVersion == driverVersionChecked) {
+      return;
+  }
+
+  nsAutoString path(gfx::gfxVars::ProfDirectory());
+
+  if (!wr::remove_program_binary_disk_cache(&path)) {
+    // Failed to remove program binary disk cache. The disk cache might have
+    // invalid data. Disable program binary disk cache usage.
+    gfxVars::SetUseWebRenderProgramBinaryDisk(false);
+    return;
+  }
+
+  Preferences::SetCString(GFX_SHADER_CHECK_BUILD_VERSION_PREF, buildID);
+  Preferences::SetString(GFX_SHADER_CHECK_DEVICE_ID_PREF, deviceID);
+  Preferences::SetString(GFX_SHADER_CHECK_DRIVER_VERSION_PREF, driverVersion);
+  return;
+}
+
 
 /* static */ bool
 gfxUtils::DumpDisplayList() {

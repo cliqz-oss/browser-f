@@ -25,6 +25,8 @@
 
 <!ENTITY clearDataSettings3.label     "Wenn &brandShortName; beendet wird, folgende Daten automatisch löschen:">
 
+<!ENTITY clearDataSettings4.label     "Wenn &brandShortName; beendet wird, folgende Daten automatisch löschen:">
+
 <!-- XXX rearrange entities to match physical layout when l10n isn't an issue -->
 <!-- LOCALIZATION NOTE (clearTimeDuration.*): "Time range to clear" dropdown.
      See UI mockup at bug 480169 -->

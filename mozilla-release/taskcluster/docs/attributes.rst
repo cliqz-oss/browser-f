@@ -101,6 +101,11 @@ talos_try_name
 
 This is the name used to refer to a talos job via try syntax.
 
+raptor_try_name
+===============
+
+This is the name used to refer to a raptor job via try syntax.
+
 job_try_name
 ============
 
@@ -161,10 +166,20 @@ signed
 ======
 Signals that the output of this task contains signed artifacts.
 
+stub-installer
+==============
+Signals to the build system that this build is expected to have a stub installer
+present, and informs followon tasks to expect it.
+
 repackage_type
 ==============
 This is the type of repackage. Can be ``repackage`` or
 ``repackage_signing``.
+
+fetch-artifact
+==============
+
+For fetch jobs, this is the path to the artifact for that fetch operation.
 
 toolchain-artifact
 ==================

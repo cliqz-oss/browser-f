@@ -38,6 +38,10 @@ def to_rust_ident(name):
     return name
 
 
+def to_snake_case(ident):
+    return re.sub("([A-Z]+)", lambda m: "_" + m.group(1).lower(), ident).strip("_")
+
+
 def to_camel_case(ident):
     return re.sub("(^|_|-)([a-z0-9])", lambda m: m.group(2).upper(), ident.strip("_").strip("-"))
 
@@ -164,7 +168,7 @@ class Longhand(object):
                  allowed_in_keyframe_block=True, cast_type='u8',
                  logical=False, alias=None, extra_prefixes=None, boxed=False,
                  flags=None, allowed_in_page_rule=False, allow_quirks=False, ignored_when_colors_disabled=False,
-                 vector=False, need_animatable=False, servo_restyle_damage="repaint"):
+                 vector=False, servo_restyle_damage="repaint"):
         self.name = name
         if not spec:
             raise TypeError("Spec should be specified for %s" % name)
@@ -225,6 +229,10 @@ class Longhand(object):
 
         # See compute_damage for the various values this can take
         self.servo_restyle_damage = servo_restyle_damage
+
+    @staticmethod
+    def type():
+        return "longhand"
 
     def experimental(self, product):
         if product == "gecko":
@@ -361,6 +369,10 @@ class Shorthand(object):
     animatable = property(get_animatable)
     transitionable = property(get_transitionable)
 
+    @staticmethod
+    def type():
+        return "shorthand"
+
     def experimental(self, product):
         if product == "gecko":
             return bool(self.gecko_pref)
@@ -391,6 +403,10 @@ class Alias(object):
         self.gecko_pref = gecko_pref
         self.allowed_in_page_rule = original.allowed_in_page_rule
         self.allowed_in_keyframe_block = original.allowed_in_keyframe_block
+
+    @staticmethod
+    def type():
+        return "alias"
 
     def experimental(self, product):
         if product == "gecko":
@@ -439,7 +455,7 @@ class StyleStruct(object):
     def __init__(self, name, inherited, gecko_name=None, additional_methods=None):
         self.gecko_struct_name = "Gecko" + name
         self.name = name
-        self.name_lower = name.lower()
+        self.name_lower = to_snake_case(name)
         self.ident = to_rust_ident(self.name_lower)
         self.longhands = []
         self.inherited = inherited

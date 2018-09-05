@@ -39,7 +39,7 @@ class Timeouts(object):
 
     def _set(self, key, secs):
         body = {key: secs * 1000}
-        timeouts = self.session.send_session_command("POST", "timeouts", body)
+        self.session.send_session_command("POST", "timeouts", body)
         return None
 
     @property
@@ -684,7 +684,7 @@ class Element(object):
 
     @command
     def clear(self):
-        self.send_element_command("POST", self.url("clear"), {})
+        self.send_element_command("POST", "clear", {})
 
     @command
     def send_keys(self, text):

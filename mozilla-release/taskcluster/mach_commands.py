@@ -103,6 +103,20 @@ class MachCommands(MachCommandBase):
     def taskgraph_morphed(self, **options):
         return self.show_taskgraph('morphed_task_graph', options)
 
+    @SubCommand('taskgraph', 'actions',
+                description="Write actions.json to stdout")
+    @CommandArgument('--root', '-r',
+                     help="root of the taskgraph definition relative to topsrcdir")
+    @CommandArgument('--quiet', '-q', action="store_true",
+                     help="suppress all logging output")
+    @CommandArgument('--verbose', '-v', action="store_true",
+                     help="include debug-level logging output")
+    @CommandArgument('--parameters', '-p', default="project=mozilla-central",
+                     help="parameters file (.yml or .json; see "
+                          "`taskcluster/docs/parameters.rst`)`")
+    def taskgraph_actions(self, **options):
+        return self.show_actions(options)
+
     @SubCommand('taskgraph', 'decision',
                 description="Run the decision task")
     @CommandArgument('--root', '-r',
@@ -221,7 +235,6 @@ class MachCommands(MachCommandBase):
 
             task_group_id = os.environ.get('ACTION_TASK_GROUP_ID', None)
             task_id = json.loads(os.environ.get('ACTION_TASK_ID', 'null'))
-            task = json.loads(os.environ.get('ACTION_TASK', 'null'))
             input = json.loads(os.environ.get('ACTION_INPUT', 'null'))
             callback = os.environ.get('ACTION_CALLBACK', None)
             parameters = json.loads(os.environ.get('ACTION_PARAMETERS', '{}'))
@@ -230,7 +243,6 @@ class MachCommands(MachCommandBase):
             return taskgraph.actions.trigger_action_callback(
                     task_group_id=task_group_id,
                     task_id=task_id,
-                    task=task,
                     input=input,
                     callback=callback,
                     parameters=parameters,
@@ -253,14 +265,10 @@ class MachCommands(MachCommandBase):
                      help='TaskGroupId to which the action applies')
     @CommandArgument('--input', default=None,
                      help='Action input (.yml or .json)')
-    @CommandArgument('--task', default=None,
-                     help='Task definition (.yml or .json; if omitted, the task will be'
-                          'fetched from the queue)')
     @CommandArgument('callback', default=None,
                      help='Action callback name (Python function name)')
     def test_action_callback(self, **options):
         import taskgraph.parameters
-        from taskgraph.util.taskcluster import get_task_definition
         import taskgraph.actions
         import yaml
 
@@ -276,12 +284,6 @@ class MachCommands(MachCommandBase):
         try:
             self.setup_logging()
             task_id = options['task_id']
-            if options['task']:
-                task = load_data(options['task'])
-            elif task_id:
-                task = get_task_definition(task_id)
-            else:
-                task = None
 
             if options['input']:
                 input = load_data(options['input'])
@@ -296,7 +298,6 @@ class MachCommands(MachCommandBase):
             return taskgraph.actions.trigger_action_callback(
                     task_group_id=options['task_group_id'],
                     task_id=task_id,
-                    task=task,
                     input=input,
                     callback=options['callback'],
                     parameters=parameters,
@@ -385,19 +386,37 @@ class MachCommands(MachCommandBase):
         filtered_taskgraph = TaskGraph(filteredtasks, Graph(set(filteredtasks), filterededges))
         return filtered_taskgraph
 
+    def show_actions(self, options):
+        import taskgraph.parameters
+        import taskgraph.target_tasks
+        import taskgraph.generator
+        import taskgraph
+        import taskgraph.actions
+
+        try:
+            self.setup_logging(quiet=options['quiet'], verbose=options['verbose'])
+            parameters = taskgraph.parameters.load_parameters_file(options['parameters'])
+            parameters.check()
+
+            tgg = taskgraph.generator.TaskGraphGenerator(
+                root_dir=options.get('root'),
+                parameters=parameters)
+
+            actions = taskgraph.actions.render_actions_json(parameters, tgg.graph_config)
+            print(json.dumps(actions, sort_keys=True, indent=2, separators=(',', ': ')))
+        except Exception:
+            traceback.print_exc()
+            sys.exit(1)
+
 
 @CommandProvider
 class TaskClusterImagesProvider(MachCommandBase):
     def _ensure_zstd(self):
         try:
-            import zstd
-            # There are two zstd libraries that exist in the wild, ensure we
-            # have the right one.
-            zstd.ZstdCompressor
-            zstd.ZstdDecompressor
+            import zstandard  # noqa: F401
         except (ImportError, AttributeError):
             self._activate_virtualenv()
-            self.virtualenv_manager.install_pip_package('zstandard==0.8.1')
+            self.virtualenv_manager.install_pip_package('zstandard==0.9.0')
 
     @Command('taskcluster-load-image', category="ci",
              description="Load a pre-built Docker image")

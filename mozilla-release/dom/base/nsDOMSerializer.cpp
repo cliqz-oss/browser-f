@@ -9,7 +9,6 @@
 #include "mozilla/Encoding.h"
 #include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
-#include "nsIDOMDocument.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentCID.h"
 #include "nsContentUtils.h"
@@ -60,7 +59,7 @@ SetUpEncoder(nsINode& aRoot, const nsAString& aCharset, ErrorResult& aRv)
   // If we are working on the entire document we do not need to
   // specify which part to serialize
   if (!entireDocument) {
-    rv = encoder->SetNativeNode(&aRoot);
+    rv = encoder->SetNode(&aRoot);
   }
 
   if (NS_FAILED(rv)) {
