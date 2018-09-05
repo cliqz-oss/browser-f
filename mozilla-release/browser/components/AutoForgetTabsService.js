@@ -182,7 +182,7 @@ AutoForgetTabsService.prototype = {
             "apt.notification.setupButton.AK"),
         popup: null,
         callback: (notification, descr) => {
-          browser.ownerGlobal.openPreferences("panePrivacy");
+          browser.ownerGlobal.openPreferences("privacy-afm");
           telemetry.updateHistogram(telemetry.states.USER_PICKED_CHANGE_SETTINGS);
           return false;
         }
