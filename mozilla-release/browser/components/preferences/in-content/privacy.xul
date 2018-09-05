@@ -306,7 +306,7 @@
 <!-- Forget mode tabs -->
 <vbox data-category="panePrivacy" hidden="true">
   <groupbox id="forgetMode" hidden="true">
-    <caption>
+    <caption data-subcategory="afm">
       <label>&forgetMode.caption;</label>
     </caption>
     <checkbox
