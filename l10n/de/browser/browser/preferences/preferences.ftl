@@ -39,8 +39,8 @@ search-input-box =
         }
 policies-notice =
     { PLATFORM() ->
-        [windows] Ihre Organisation hat das Ändern einiger Einstellungen deaktiviert.
-       *[other] Ihre Organisation hat das Ändern einiger Einstellungen deaktiviert.
+        [windows] Deine Organisation hat das Ändern einiger Einstellungen deaktiviert.
+       *[other] Deine Organisation hat das Ändern einiger Einstellungen deaktiviert.
     }
 pane-general-title = Allgemein
 category-general =
@@ -111,7 +111,7 @@ extension-controlled-proxy-config = Die Erweiterung "<img data-l10n-name="icon"/
 #
 # <img data-l10n-name="addons-icon"/> will be replaced with Add-ons icon
 # <img data-l10n-name="menu-icon"/> will be replaced with Menu icon
-extension-controlled-enable = Um die Erweiterung zu aktivieren, öffnen Sie das <img data-l10n-name="menu-icon"/> Menü und dann <img data-l10n-name="addons-icon"/> Add-ons.
+extension-controlled-enable = Um die Erweiterung zu aktivieren, öffne das <img data-l10n-name="menu-icon"/> Menü und dann <img data-l10n-name="addons-icon"/> Add-ons.
 
 ## Preferences UI Search Results
 
@@ -122,7 +122,7 @@ search-results-empty-message =
         [windows] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
        *[other] Keine Treffer in den Einstellungen für "<span data-l10n-name="query"></span>".
     }
-search-results-help-link = Benötigen Sie Hilfe? Dann besuchen Sie die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
+search-results-help-link = Benötigst du Hilfe? Dann besuche die <a data-l10n-name="url">Hilfeseite für { -brand-short-name }</a>.
 
 ## General Section
 
@@ -352,7 +352,7 @@ network-proxy-connection-settings =
 
 home-new-windows-tabs-header = Neue Fenster und Tabs
 
-home-new-windows-tabs-description2 = Legen Sie fest, was als Startseite sowie in neuen Fenstern und Tabs geöffnet wird.
+home-new-windows-tabs-description2 = Lege fest, was als Startseite sowie in neuen Fenstern und Tabs geöffnet wird.
 
 ## Home Section - Home Page Customization
 
@@ -590,7 +590,7 @@ history-remember-option-never =
     .label = niemals anlegen
 history-remember-option-custom =
     .label = nach benutzerdefinierten Einstellungen anlegen
-history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.
+history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseits, Downloads sowie eingebene Formular- und Suchdaten speichern.
 history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzen.
 history-private-browsing-permanent =
     .label = Immer den Vergessen Modus verwenden
