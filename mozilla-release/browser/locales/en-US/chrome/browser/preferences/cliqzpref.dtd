@@ -55,8 +55,6 @@
 <!ENTITY  ghostery.desc1                 "Ghostery detects hidden services that collect personal data and lets you decide which">
 <!ENTITY  ghostery.desc2                 "ones to block.">
 
-<!ENTITY startupUserHomePage.label "Show start page">
-
 <!-- LOCALIZATION NOTE (abouthome.defaultSnippet1.v1):
      text in <a/> will be linked to the Cliqz features page on cliqz.com
 -->
@@ -74,7 +72,7 @@
 <!ENTITY startupPage2.label        "When &brandShortName; starts">
 <!ENTITY startupPage2.accesskey    "s">
 <!ENTITY startupPrevSession.label  "Show your windows and tabs from last time">
-<!ENTITY startupUserHomePage.label "Show start page">
+<!ENTITY startupUserHomePage.label "Show home page">
 
 <!ENTITY abouthome.pageTitle "&brandFullName; Start Page">
 <!ENTITY selectBookmark.title "Set Home Page">
