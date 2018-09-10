@@ -51,7 +51,7 @@
                 when-connection="not-secure secure secure-ev secure-cert-user-overridden"
                 oncommand="gIdentityHandler.showSecuritySubView();"/>
       </hbox>
-
+#if 0
       <!-- Tracking Protection Section -->
       <hbox id="tracking-protection-container"
             class="identity-popup-section"
@@ -105,7 +105,7 @@
                   oncommand="TrackingProtection.enableForCurrentPage();" />
         </vbox>
       </hbox>
-
+#endif
       <!-- Permissions Section -->
       <hbox class="identity-popup-section"
             when-connection="not-secure secure secure-ev secure-cert-user-overridden file extension">
