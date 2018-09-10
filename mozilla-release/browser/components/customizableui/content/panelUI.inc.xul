@@ -213,7 +213,6 @@
             <observes element="sync-status" attribute="onmouseover"/>
           </toolbarbutton>
         </toolbaritem>
-#endif
         <toolbarseparator class="sync-ui-item"/>
         <toolbaritem closemenu="none">
           <toolbarbutton id="appMenu-tp-label"
@@ -227,6 +226,7 @@
                          observes="trackingProtectionBroadcaster"
                          oncommand="TrackingProtection.onGlobalToggleCommand();" />
         </toolbaritem>
+#endif
         <toolbarseparator />
         <toolbarbutton id="appMenu-new-window-button"
                        class="subviewbutton subviewbutton-iconic"
