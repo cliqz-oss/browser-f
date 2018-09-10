@@ -1,11 +1,6 @@
 <script type="application/javascript"
         src="chrome://browser/content/preferences/in-content/cliqz.home.js"/>
 
-<hbox id="homeCategory"
-      class="subcategory"
-      data-category="paneGeneral">
-      <label class="header-name" flex="1" data-l10n-id="home-page-header"/>
-</hbox>
 <!--
   We need to add this element
   otherwise this call throws an Exception
@@ -17,17 +12,19 @@
 -->
 <div id="version"></div>
 <groupbox id="homepageGroup"
-  data-category="paneGeneral">
+          data-category="paneGeneral"
+          hidden="true">
+  <caption><label data-l10n-id="home-page-header"/></caption>
 
-  <hbox>
-    <spacer flex="1" />
+  <hbox align="center">
+    <label flex="2"
+           control="restoreDefaultHomePage"
+           data-l10n-id="home-page-choose-what-you-see" />
     <button id="restoreDefaultHomePage"
             flex="1"
             class="homepage-button"
             data-l10n-id="home-page-restore-to-default" />
   </hbox>
-
-  <description data-l10n-id="home-page-choose-what-you-see" />
 
   <hbox id="browserHomePageExtensionContent" align="center" hidden="true">
     <description control="disableHomePageExtension" flex="1" />
@@ -36,12 +33,12 @@
             data-l10n-id="disable-extension" />
   </hbox>
 
-  <hbox>
-    <label control="browserHomePage" flex="1" data-l10n-id="home-page-and-new-windows" />
-    <vbox flex="1">
+  <hbox align="start">
+    <label control="homeMode" flex="1" data-l10n-id="home-page-and-new-windows" />
+    <vbox pack="start" flex="1">
       <menulist flex="1" id="homeMode" class="home-mode-ctrl">
         <menupopup>
-          <menuitem value="0" label="resource://cliqz/freshtab/home.html (Default)"></menuitem>
+          <menuitem value="0" label="Cliqz Tab (Default)"></menuitem>
           <menuitem value="1" label="Custom URLs..."></menuitem>
           <menuitem value="2" label="Blank page"></menuitem>
         </menupopup>

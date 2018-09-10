@@ -6,7 +6,7 @@
 
 <!ENTITY startupPage2.label        "When &brandShortName; starts">
 <!ENTITY startupPage2.accesskey    "s">
-<!ENTITY startupUserHomePage.label "Show start page">
+<!ENTITY startupUserHomePage.label "Show home page">
 <!ENTITY startupBlankPage.label    "Show a blank page">
 <!ENTITY startupPrevSession.label  "Show your windows and tabs from last time">
 
