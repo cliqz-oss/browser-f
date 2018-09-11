@@ -29,6 +29,7 @@ pref("devtools.selfxss.count", 0);
 
 pref("general.config.filename", "cliqz.cfg");
 pref("general.config.obscure_value", 0);
+pref("general.config.sandbox_enabled", false);
 
 // turn off special startpage on windows 10
 pref("browser.usedOnWindows10", true);
