@@ -15,4 +15,6 @@
 /webrtc-gtest
 /xpcshell
 /XUL
+#if defined(CQZ_TOR_MODE)
 /tor/***
+#endif

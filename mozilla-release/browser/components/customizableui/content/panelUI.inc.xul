@@ -238,10 +238,12 @@
                        label="&newPrivateWindow.label;"
                        key="key_privatebrowsing"
                        command="Tools:PrivateBrowsing"/>
+#if CQZ_TOR_MODE
         <toolbarbutton id="appMenu-cliqz-torbrowsing-button"
                        label="&torbrowsing.panelUI.label;"
                        class="subviewbutton subviewbutton-iconic"
                        command="cmd_newTorWindow"/>
+#endif
         <toolbarbutton id="appMenuRestoreLastSession"
                        label="&appMenuHistory.restoreSession.label;"
                        class="subviewbutton subviewbutton-iconic"
