@@ -1233,8 +1233,10 @@ endif
 
 CLIQZ_ONIONMODE_XPI_PATH = $(EXTENSIONS_PATH)/onionmode@cliqz.com.xpi
 $(CLIQZ_ONIONMODE_XPI_PATH): $(EXTENSIONS_PATH)
+ifeq ($(CQZ_TOR_MODE),1)
 	echo CLIQZ_ONIONMODE_XPI_PATH in `pwd`
 	wget --output-document $(CLIQZ_ONIONMODE_XPI_PATH) $(CLIQZ_ONIONMODE_EXT_URL)
+endif
 
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
@@ -1243,6 +1245,7 @@ $(CLIQZ_CFG):
 	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
 
 tor:
+ifeq ($(CQZ_TOR_MODE),1)
 ifeq ($(OS_TARGET),WINNT)
 	wget --output-document $(DIST_RESPATH)/tor.tar.xz $(TOR_WIN_URL)
 else
@@ -1260,6 +1263,7 @@ endif
 endif
 endif
 	tar -xf $(DIST_RESPATH)/tor.tar.xz --directory $(DIST_RESPATH)
+endif
 
 # Package Cliqz stuff
 cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_ONIONMODE_XPI_PATH) tor $(CLIQZ_CFG)
