@@ -1208,6 +1208,7 @@ endif
 # Cliqz additional distribution files
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
+CONSENTRICK_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/gdprtool@cliqz.com.xpi"
 TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_7.5.6.tar.xz"
 TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_7.5.6.tar.xz"
 TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_7.5.6.tar.xz"
@@ -1229,6 +1230,13 @@ $(HTTPSE_XPI_PATH): $(EXTENSIONS_PATH)
 ifdef HTTPSE_EXT_URL
 	echo HTTPSE_XPI_PATH in `pwd`
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
+endif
+
+CONSENTRICK_XPI_PATH = $(EXTENSIONS_PATH)/gdprtool@cliqz.com.xpi
+$(CONSENTRICK_XPI_PATH): $(EXTENSIONS_PATH)
+ifdef CONSENTRICK_EXT_URL
+	echo CONSENTRICK_XPI_PATH in `pwd`
+	wget --output-document $(CONSENTRICK_XPI_PATH) $(CONSENTRICK_EXT_URL)
 endif
 
 CLIQZ_ONIONMODE_XPI_PATH = $(EXTENSIONS_PATH)/onionmode@cliqz.com.xpi
@@ -1266,7 +1274,7 @@ endif
 endif
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_ONIONMODE_XPI_PATH) tor $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CONSENTRICK_XPI_PATH) $(CLIQZ_ONIONMODE_XPI_PATH) tor $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
