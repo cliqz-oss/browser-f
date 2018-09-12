@@ -1366,22 +1366,22 @@ pref("geo.provider.use_gpsd", false);
 #endif
 
 #else
-
+// Cliqz. We must use mostly same settings in our Beta also
 // Geolocation preferences for Nightly/Aurora/Beta.
 pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
 
 #ifdef XP_MACOSX
-pref("geo.provider.use_corelocation", true);
+pref("geo.provider.use_corelocation", false);
 #endif
 
 // The native Windows location provider is only enabled in Nightly and likely to
 // be unstable. Set to false if things are really broken.
 #if defined(XP_WIN) && defined(NIGHTLY_BUILD)
-pref("geo.provider.ms-windows-location", true);
+pref("geo.provider.ms-windows-location", false);
 #endif
 
 #if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
-pref("geo.provider.use_gpsd", true);
+pref("geo.provider.use_gpsd", false);
 #endif
 
 #endif
