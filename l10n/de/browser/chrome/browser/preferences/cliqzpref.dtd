@@ -41,10 +41,10 @@
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. ">
 <!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">
 
-<!ENTITY  consentric.label          "Consentrick">
-<!ENTITY  consentric.enable         "Consentrick aktivieren">
+<!ENTITY  consentric.label          "re:consent">
+<!ENTITY  consentric.enable         "re:consent aktivieren">
 <!ENTITY  consentric.accesskey      "C">
-<!ENTITY  consentric.desc1          "Consentrick zeigt auf übersichtliche Weise welche personenbezogenen Daten von Websites">
+<!ENTITY  consentric.desc1          "re:consent zeigt auf übersichtliche Weise welche personenbezogenen Daten von Websites">
 <!ENTITY  consentric.desc2          "verarbeitet werden und macht es dem Nutzer leicht zuzustimmen oder abzulehnen.">
 <!ENTITY  consentric.more           "Erfahre mehr">
 

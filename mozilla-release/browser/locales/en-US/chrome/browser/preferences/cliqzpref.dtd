@@ -40,10 +40,10 @@
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
 <!ENTITY  httpsEverywhereMore.label      "Learn more">
 
-<!ENTITY  consentric.label          "Consentrick">
-<!ENTITY  consentric.enable         "Enable Consentrick">
+<!ENTITY  consentric.label          "re:consent">
+<!ENTITY  consentric.enable         "Enable re:consent">
 <!ENTITY  consentric.accesskey      "C">
-<!ENTITY  consentric.desc1          "Consentrick displays the types of personal data that are collected by websites.">
+<!ENTITY  consentric.desc1          "re:consent displays the types of personal data that are collected by websites.">
 <!ENTITY  consentric.desc2          "It offers an easy way to give or withdraw consent to this data collection.">
 <!ENTITY  consentric.more           "Learn more">
 
