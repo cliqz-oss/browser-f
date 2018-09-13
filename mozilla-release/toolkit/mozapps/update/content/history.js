@@ -27,7 +27,7 @@ var gUpdateHistory = {
       for (var i = 0; i < uc; ++i) {
         var update = um.getUpdateAt(i);
 
-        if (!update || !update.name)
+        if (!update || !update.name || !update.displayVersion)
           continue;
 
         // Don't display updates that are downloading since they don't have
@@ -39,7 +39,7 @@ var gUpdateHistory = {
         element.className = "update";
         this._view.appendChild(element);
         element.name = bundle.getFormattedString("updateFullName",
-          [update.name, update.buildID]);
+          [update.name + " " + update.displayVersion, update.buildID]);
         element.installDate = this._formatDate(update.installDate);
         if (update.detailsURL)
           element.detailsURL = update.detailsURL;
