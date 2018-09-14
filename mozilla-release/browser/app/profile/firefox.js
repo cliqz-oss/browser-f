@@ -72,7 +72,7 @@ pref("extensions.webextensions.base-content-security-policy", "script-src 'self'
 pref("extensions.webextensions.default-content-security-policy", "script-src 'self'; object-src 'self';");
 
 #if defined(XP_WIN) || defined(XP_MACOSX)
-pref("extensions.webextensions.remote", false);
+pref("extensions.webextensions.remote", true);
 #endif
 
 #ifdef NIGHTLY_BUILD
