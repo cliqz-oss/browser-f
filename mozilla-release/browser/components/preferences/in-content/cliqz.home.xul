@@ -38,9 +38,9 @@
     <vbox pack="start" flex="1">
       <menulist flex="1" id="homeMode" class="home-mode-ctrl">
         <menupopup>
-          <menuitem value="0" label="Cliqz Tab (Default)"></menuitem>
-          <menuitem value="1" label="Custom URLs..."></menuitem>
-          <menuitem value="2" label="Blank page"></menuitem>
+          <menuitem value="0" data-l10n-id="home-page-menuitem-default"></menuitem>
+          <menuitem value="1" data-l10n-id="home-page-menuitem-custom"></menuitem>
+          <menuitem value="2" data-l10n-id="home-page-menuitem-blank"></menuitem>
         </menupopup>
       </menulist>
       <vbox id="customSettings" hidden="true">
