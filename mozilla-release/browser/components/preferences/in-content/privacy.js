@@ -289,7 +289,7 @@ var gPrivacyPane = {
         if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
           // HTTPS_Everywhere version 2017.10.30 and above is an WebExtension
           // and we control it by its userDisabled state
-          addon.userDisabled = !addon.userDisabled;
+          (!addon.userDisabled) ? addon.disable() : addon.enable();
         } else {
           // HTTPS_Everywhere version below 2017.10.30 is using bootstrap technology
           // and we control it by the globalEnabled pref
@@ -317,7 +317,7 @@ var gPrivacyPane = {
 
     this.toggleConsentric = function() {
       AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
-        addon.userDisabled = !addon.userDisabled;
+        (!addon.userDisabled) ? addon.disable() : addon.enable();
       })
     };
   },
