@@ -552,10 +552,14 @@ nsBrowserContentHandler.prototype = {
 
     var startPage = "";
     try {
-      var addFreshTab = prefb.getBoolPref("browser.startup.addFreshTab");
-      if (addFreshTab)
-        // TEMP: AboutRedirector.cpp seems to have issues on this one
-        startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
+      // We do not need to get a 'Show home page' option checked
+      // to show a page a user whats to be displayed as a default
+      // when she/he opens a new window / homepage.
+      // That is why we do not test against browser.startup.addFreshTab prop here.
+      // Calling this.startPage will trigger startPage getter defined below.
+      // Services.prefs.getComplexValue will return an object
+      // which contains a user predefined homepage url.
+      startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
     } catch (e) {
       Cu.reportError(e);
     }
