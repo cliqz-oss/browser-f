@@ -13,14 +13,14 @@ const USR_WHITELIST_FILE_NAME = "apt-white-domains.json";
 const NOTIFICATION_TIMEOUT_MS = 60000;  // 1 minute.
 const PREF_NAME_ENABLED = "browser.privatebrowsing.apt";
 
-Cu.import("resource://gre/modules/BloomFilterUtils.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
-Cu.import("resource://gre/modules/Preferences.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/NetUtil.jsm");
+ChromeUtils.import("resource://gre/modules/BloomFilterUtils.jsm");
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
-Cu.import("resource:///modules/AutoForgetTabs-utils.jsm");
+ChromeUtils.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
     "resource://gre/modules/ForgetAboutSite.jsm");
@@ -199,7 +199,7 @@ AutoForgetTabsService.prototype = {
   },
 
   // nsISupports:
-  QueryInterface: XPCOMUtils.generateQI([
+  QueryInterface: ChromeUtils.generateQI([
       Ci.nsISupports,
       Ci.nsIObserver,
       Ci.nsIMessageListener
