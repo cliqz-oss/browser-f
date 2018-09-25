@@ -1103,8 +1103,9 @@ var gBuiltInActions = [
   {
     id: "copyURL",
     title: "copyURL-title",
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).copyURL.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).copyURL
+        .onBeforePlacedInWindow(browserWindow);
     },
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).copyURL.onCommand(event, buttonNode);
@@ -1115,8 +1116,9 @@ var gBuiltInActions = [
   {
     id: "emailLink",
     title: "emailLink-title",
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).emailLink.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).emailLink
+        .onBeforePlacedInWindow(browserWindow);
     },
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).emailLink.onCommand(event, buttonNode);
@@ -1151,8 +1153,9 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   {
     id: "sendToDevice",
     title: "sendToDevice-title",
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).sendToDevice.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).sendToDevice
+        .onBeforePlacedInWindow(browserWindow);
     },
     onLocationChange(browserWindow) {
       browserPageActions(browserWindow).sendToDevice.onLocationChange();
@@ -1179,8 +1182,9 @@ if (AppConstants.platform == "macosx") {
     onShowingInPanel(buttonNode) {
       browserPageActions(buttonNode).shareURL.onShowingInPanel(buttonNode);
     },
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).shareURL.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).shareURL
+        .onBeforePlacedInWindow(browserWindow);
     },
     wantsSubview: true,
     onSubviewShowing(panelViewNode) {
