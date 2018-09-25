@@ -408,6 +408,9 @@ class XPIState {
     if (saved.currentModifiedTime && saved.currentModifiedTime != this.lastModifiedTime) {
       this.lastModifiedTime = saved.currentModifiedTime;
       this.changed = true;
+    } else if (saved.currentModifiedTime === null) {
+      this.missing = true;
+      this.changed = true;
     }
   }
 
@@ -541,6 +544,7 @@ class XPIState {
     this.dependencies = aDBAddon.dependencies;
     this.runInSafeMode = canRunInSafeMode(aDBAddon);
     this.signedState = aDBAddon.signedState;
+    this.file = aDBAddon._sourceBundle;
 
     if (aUpdated || mustGetMod) {
       this.getModTime(this.file);
