@@ -1304,11 +1304,11 @@ endif
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
 CONSENTRICK_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/gdprtool@cliqz.com.xpi"
-TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_7.5.6.tar.xz"
-TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_7.5.6.tar.xz"
-TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_7.5.6.tar.xz"
-TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_7.5.6.tar.xz"
-CLIQZ_ONIONMODE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/onionmode%40cliqz.com/onionmode%40cliqz.com-0.0.1-browser-signed.xpi"
+TOR_WIN_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_windows32_8.0.1.tar.xz"
+TOR_LINUX64_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux64_8.0.1.tar.xz"
+TOR_LINUX32_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_linux32_8.0.1.tar.xz"
+TOR_MAC_URL = "https://cdn.cliqz.com/browser-f/fun-demo/tor_mac64_8.0.1.tar.xz"
+CLIQZ_ONIONMODE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/onionmode%40cliqz.com/onionmode%40cliqz.com-0.0.3-browser-signed.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
