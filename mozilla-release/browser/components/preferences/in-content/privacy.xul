@@ -887,11 +887,9 @@
             label="&httpsEverywhereEnable.label;"
             accesskey="&httpsEverywhere.accesskey;"
             oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
-  <hbox>
-    <label class="tail-with-learn-more">&httpsEverywhereDesc.label;</label>
-    <label class="learnMore text-link"
-           href="https://www.eff.org/https-everywhere">&httpsEverywhereMore.label;</label>
-  </hbox>
+  <label class="tail-with-learn-more">&httpsEverywhereDesc.label;</label>
+  <label class="learnMore text-link"
+         href="https://www.eff.org/https-everywhere">&httpsEverywhereMore.label;</label>
 </groupbox>
 
 <!-- Certificates -->
