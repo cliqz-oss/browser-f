@@ -1,31 +1,5 @@
 #!/usr/bin/env groovy
 
-/*
-Jenkins pipeline script to build Cliqz browser for linux
-It does the following:
-    1. Checks out 'cliqz-oss/browser-f'
-    2. Builds a docker image with dependencies installed
-Checkout code in respective Jenkinsfile
-
-node("master") {
-    stage("Checkout") {
-        checkout([
-            $class: 'GitSCM',
-            branches: [[name: COMMIT_ID]],
-            doGenerateSubmoduleConfigurations: false,
-            extensions: [],
-            submoduleCfg: [],
-            userRemoteConfigs: [[url: REPO_URL]]
-        ])
-    }
-
-    stage("Start build") {
-        load ENTRY_POINT
-    }
-}
-*/
-
-
 import org.codehaus.groovy.runtime.*;
 
 helpers = load 'build-helpers.groovy'
@@ -95,7 +69,9 @@ def getBaseBuildParams(jobName, entryPoint) {
       string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
       string(name: 'TRIGGERING_BUILD_NUMBER', value: env.BUILD_NUMBER),
       string(name: 'TRIGGERING_JOB_NAME', value: env.JOB_NAME),
-      string(name: 'BALROG_CREDENTIAL_ID', value: BALROG_CREDENTIAL_ID)
+      string(name: 'BALROG_CREDENTIAL_ID', value: BALROG_CREDENTIAL_ID),
+      string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
+      string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID)
     ]
   ]
 }
@@ -108,7 +84,7 @@ def getBaseWinBuildParams(build_64bit, slave_name) {
     string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
     string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
     string(name: 'WIN_BUILD_NODE', value: 'master'),
-    string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
+    string(name: 'WIN_CERT_CREDENTIAL_ID', value: WIN_CERT_CREDENTIAL_ID),
     string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
     string(name: 'NODE_CPU_COUNT', value: '8'),
     booleanParam(name: 'CQZ_BUILD_64BIT_WINDOWS', value: build_64bit.toBoolean()),
@@ -141,8 +117,6 @@ def prepareBuildConfig() {
           string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
           string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
           string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
-          string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
-          string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
           string(name: 'VAGRANTFILE', value: 'mac.Vagrantfile'),
           string(name: 'NODE_MEMORY', value: '8000'),
           string(name: 'NODE_CPU_COUNT', value: '4'),

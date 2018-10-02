@@ -47,27 +47,25 @@ properties([
                 name: 'CQZ_AWS_CREDENTIAL_ID'),
         string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi',
                 name: 'CQZ_EXTENSION_URL'),
-        string(defaultValue: "5B0571C810B2BC947DE61ADCE8512CEA605A5625",
-                name: "CQZ_CERT_NAME"),
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.17-browser-signed.xpi',
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
         string(defaultValue: 's3://cdncliqz/update/browser/gdprtool@cliqz.com/gdprtool@cliqz.com-1.0.0-browser-signed.xpi',
                 name: 'CQZ_CONSENTRICK_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
+        string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
+                name: "WIN_CERT_CREDENTIAL_ID"),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
-                name: "WIN_CERT_PATH_CREDENTIAL_ID"),
         string(defaultValue: "6712f640-9e25-4ec8-b7af-2456ca41b4b3",
                 name: "MAC_CERT_CREDENTIAL_ID"),
+        string(defaultValue: "5B0571C810B2BC947DE61ADCE8512CEA605A5625",
+                name: "MAC_CERT_NAME"),
         string(defaultValue: "fe75da3d-cb92-4d23-aeab-9e72ca044099",
                 name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
                 name: "MAR_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "0ece63d0-527d-4468-9b1d-032235589419",
-                name: "MAR_CERT_NICKNAME"),
         string(defaultValue: "debian-gpg-key",
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"),
         string(defaultValue: "debian-gpg-pass",
@@ -165,11 +163,17 @@ jobs["windows"] = {
 
             withCredentials([
                 [$class: 'FileBinding',
-                    credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID,
-                    variable: 'CLZ_CERTIFICATE_PATH'],
+                    credentialsId: params.WIN_CERT_CREDENTIAL_ID,
+                    variable: 'WIN_CERT'],
                 [$class: 'StringBinding',
                     credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID,
-                    variable: 'CLZ_CERTIFICATE_PWD'],
+                    variable: 'WIN_CERT_PASS'],
+                [$class: 'FileBinding',
+                    credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+                    variable: 'MAR_CERT'],
+                [$class: 'StringBinding',
+                    credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+                    variable: 'MAR_CERT_PASS'],
                 [$class: 'AmazonWebServicesCredentialsBinding',
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
@@ -252,10 +256,10 @@ jobs["mac"] = {
                     withCredentials([
                         [$class: 'FileBinding',
                             credentialsId: params.MAC_CERT_CREDENTIAL_ID,
-                            variable: 'CERT_FILE'],
+                            variable: 'MAC_CERT'],
                         [$class: 'StringBinding',
                             credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
-                            variable: 'CERT_PASS']
+                            variable: 'MAC_CERT_PASS']
                     ]) {
                         // create temporary keychain and make it a default one
                         sh '''#!/bin/bash -l -x
@@ -267,11 +271,11 @@ jobs["mac"] = {
                         '''
 
                         sh '''#!/bin/bash -l -x
-                            security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+                            security import $MAC_CERT -P $MAC_CERT_PASS -k cliqz -A
                             security set-key-partition-list -S apple-tool:,apple: -s -k cliqz cliqz
                         '''
 
-                        withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
+                        withEnv(["MAC_CERT_NAME=$params.MAC_CERT_NAME"]) {
                             sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
 
                         }
@@ -285,11 +289,11 @@ jobs["mac"] = {
                             //expose certs
                             withCredentials([
                                 [$class: 'FileBinding',
-                                    credentialsId: params.MAC_CERT_CREDENTIAL_ID,
-                                    variable: 'CLZ_CERTIFICATE_PATH'],
+                                    credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+                                    variable: 'MAR_CERT'],
                                 [$class: 'StringBinding',
-                                    credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
-                                    variable: 'CLZ_CERTIFICATE_PWD']]) {
+                                    credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+                                    variable: 'MAR_CERT_PASS']]) {
 
                                 sh '''#!/bin/bash -l -x
                                     if [ -d $CQZ_CERT_DB_PATH ]; then
@@ -299,7 +303,7 @@ jobs["mac"] = {
                                     cd `brew --prefix nss`/bin
                                     ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
 
-                                    ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                                    ./pk12util -i $MAR_CERT -W $MAR_CERT_PASS -d $CQZ_CERT_DB_PATH
                                 '''
                             }
 
@@ -309,9 +313,7 @@ jobs["mac"] = {
                                 [$class: 'AmazonWebServicesCredentialsBinding',
                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
-                                string(credentialsId: params.MAR_CERT_NICKNAME,
-                                variable: 'MAR_CERT_NAME')
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                             ]) {
                                 // sh '/bin/bash -lc "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"'
                                 sh '/bin/bash -lc "./magic_upload_files.sh ${LANG_PARAM}"'

@@ -34,14 +34,15 @@ node(MAC_BUILD_NODE) {
   ```
 */
 
-/* Turn off bootstrap step for now, because it's add a mess now on build server.
- * Better to create a separate job with bootstrap steps to apply on fresh image.
-stage('bootstrap') {
-    sh 'pip install compare-locales'
-    sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
-    sh 'brew uninstall terminal-notifier'
-    sh '/bin/bash -lc "rustup install 1.21.0 && rustup default 1.21.0-x86_64-apple-darwin"'
-}
+/*
+Firefox 62 bootstrap steps, do it manually once on fresh build image:
+  brew update
+  brew install python
+  brew link --overwrite autoconf@2.13
+  brew install mercurial
+  python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive (use python 2.7), may be need to restart console to complete this step
+  brew install xz
+  brew uninstall terminal-notifier (in other case build will hang up, because there are no console)
 */
 
 withEnv([
@@ -51,8 +52,8 @@ withEnv([
 
 
     withCredentials([
-        [$class: 'StringBinding', credentialsId: 'e2c7ea0a-285e-4199-9667-af2223d3b14a', variable: 'CQZ_GOOGLE_API_KEY'],
-        [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
+        [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+        [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY']]) {
 
         stage('fix keys') {
             writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
@@ -69,8 +70,8 @@ withEnv([
         sh 'rm -rf obj/pkg || true'
 
         withCredentials([
-            [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
-            [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
+            [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'MAC_CERT'],
+            [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'MAC_CERT_PASS']
         ]) {
             try {
                 // create temporary keychain and make it a default one
@@ -82,10 +83,10 @@ withEnv([
                 '''
 
                 sh '''#!/bin/bash -l +x
-                    security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+                    security import $MAC_CERT -P $MAC_CERT_PASS -k cliqz -A
                 '''
 
-                withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
+                withEnv(["MAC_CERT_NAME=$MAC_CERT_NAME"]) {
                     sh "./sign_mac.sh"
                 }
             } finally {
@@ -104,15 +105,15 @@ withEnv([
             try {
                 //expose certs
                 withCredentials([
-                    [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                    [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
+                    [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'MAR_CERT'],
+                    [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'MAR_CERT_PASS']]) {
 
                     sh '''#!/bin/bash -x
                         mkdir $CQZ_CERT_DB_PATH
                         cd `brew --prefix nss`/bin
                         ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
                         set +x
-                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                        ./pk12util -i $MAR_CERT -W $MAR_CERT_PASS -d $CQZ_CERT_DB_PATH
                     '''
                 }
 
