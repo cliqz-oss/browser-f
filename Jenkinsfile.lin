@@ -70,7 +70,7 @@ docker.image(imageName).inside() {
         stage('Build Browser') {
 
           try {
-            sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
+            sh '/bin/bash -lc "./magic_build_and_package.sh --clobber"'
           } catch (e) {
             archive 'obj/config.log'
             throw e

@@ -20,10 +20,15 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::  CQZ_BUILD_64BIT_WINDOWS - flag to build 64-bit browser.
 ::                            Default: not specified.
 ::
-::  CLZ_CERTIFICATE_PATH - path to certificate for digital signing
-::                         Default: not specified, signing and futher steps will not procceed
-::  CLZ_CERTIFICATE_PWD  - password for certificate
-::                         Default: not specified, signing and futher steps will not procceed
+::  WIN_CERT - path to certificate for digital signing (path to cert)
+::             Default: not specified, signing and futher steps will not procceed
+::  WIN_CERT_PASS  - password for udpate certificate
+::                   Default: not specified, signing and futher steps will not procceed
+::
+::  MAR_CERT - path to certificate for signing the update package (path to cert)
+::             Default: not specified, signing and futher steps will not procceed
+::  MAR_CERT_PASS  - password for udpate certificate
+::                   Default: not specified, signing and futher steps will not procceed
 ::
 ::  CQZ_RELEASE_CHANNEL - which version to build
 ::                        Default: beta
@@ -33,7 +38,7 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 IF "%CQZ_WORKSPACE%"=="" SET CQZ_WORKSPACE=%cd%
 SET LANG=en-US
-SET CQZ_CERT_DB_PATH=C:\certdb
+SET CQZ_CERT_DB_PATH=c:\certdb
 SET BUILD_SHELL=c:\mozilla-build\start-shell.bat
 SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe
 
@@ -65,7 +70,7 @@ MD %CQZ_CERT_DB_PATH%
 C:
 CD C:\nss
 certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
-@pk12util -i %CLZ_CERTIFICATE_PATH% -W %CLZ_CERTIFICATE_PWD% -d %CQZ_CERT_DB_PATH%
+@pk12util -i %MAR_CERT% -W %MAR_CERT_PASS% -d %CQZ_CERT_DB_PATH%
 
 :::::::::::::::::::::::::::::::::::
 :: BOOTSTRAP

@@ -18,7 +18,7 @@ do
   hdiutil detach /Volumes/cliqz
   for app in $PKG_DIR/*.app
   do
-    codesign -s $CQZ_CERT_NAME --force --deep $app
+    codesign -s $MAC_CERT_NAME --force --deep $app
 
     # copy back to dist folder a signed app (for generating an update package(s) later)
     if [[ $DMG == *"de.mac.dmg"* ]]; then
