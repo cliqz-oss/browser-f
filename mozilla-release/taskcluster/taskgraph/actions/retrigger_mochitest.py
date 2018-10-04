@@ -10,24 +10,26 @@ import json
 import logging
 
 from slugid import nice as slugid
-
-from .util import (create_task_from_def, fetch_graph_and_labels)
+from .util import (
+    fetch_graph_and_labels,
+    create_task_from_def,
+)
+from ..util.parameterization import resolve_task_references
 from .registry import register_callback_action
-from taskgraph.util.parameterization import resolve_task_references
-
-TASKCLUSTER_QUEUE_URL = "https://queue.taskcluster.net/v1/task"
 
 logger = logging.getLogger(__name__)
 
 
 @register_callback_action(
-    name='retrigger-mochitest-reftest-with-options',
-    title='Mochitest/Reftest Retrigger',
-    symbol='tr',
+    name='retrigger-mochitest',
+    title='Retrigger Mochitest/Reftest with Debugging',
+    symbol='rt',
+    kind='hook',
+    generic=True,
     description="Retriggers the specified mochitest/reftest job with additional options",
     context=[{'test-type': 'mochitest'},
              {'test-type': 'reftest'}],
-    order=0,
+    order=10,
     schema={
         'type': 'object',
         'properties': {
