@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 @register_callback_action(
     name='run-all-talos',
     title='Run All Talos Tests',
+    kind='hook',
+    generic=True,
     symbol='raT',
     description="Add all Talos tasks to a push.",
-    order=100,  # Useful for sheriffs, but not top of the list
+    order=150,
     context=[],
     schema={
         'type': 'object',
