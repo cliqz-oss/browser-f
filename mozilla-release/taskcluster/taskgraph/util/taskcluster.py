@@ -17,10 +17,10 @@ from requests.adapters import HTTPAdapter
 from taskgraph.task import Task
 
 _PUBLIC_TC_ARTIFACT_LOCATION = \
-        'https://queue.taskcluster.net/v1/task/{task_id}/artifacts/{artifact_prefix}/{postfix}'
+    'https://queue.taskcluster.net/v1/task/{task_id}/artifacts/{artifact_prefix}/{postfix}'
 
 _PRIVATE_TC_ARTIFACT_LOCATION = \
-        'http://taskcluster/queue/v1/task/{task_id}/artifacts/{artifact_prefix}/{postfix}'
+    'http://taskcluster/queue/v1/task/{task_id}/artifacts/{artifact_prefix}/{postfix}'
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +151,13 @@ def list_tasks(index_path, use_proxy=False):
     # all of these tasks should be created with the same expires time so they end up in
     # order from earliest to latest action. If more correctness is needed, consider
     # fetching each task and sorting on the created date.
-    results.sort(key=lambda t: datetime.datetime.strptime(t['expires'], '%Y-%m-%dT%H:%M:%S.%fZ'))
+    results.sort(key=lambda t: parse_time(t['expires']))
     return [t['taskId'] for t in results]
+
+
+def parse_time(timestamp):
+    """Turn a "JSON timestamp" as used in TC APIs into a datetime"""
+    return datetime.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S.%fZ')
 
 
 def get_task_url(task_id, use_proxy=False):
@@ -197,6 +202,13 @@ def rerun_task(task_id):
         _do_request(get_task_url(task_id, use_proxy=True) + '/rerun', json={})
 
 
+def get_current_scopes():
+    """Get the current scopes.  This only makes sense in a task with the Taskcluster
+    proxy enabled, where it returns the actual scopes accorded to the task."""
+    resp = _do_request('http://taskcluster/auth/v1/scopes/current')
+    return resp.json().get("scopes", [])
+
+
 def get_purge_cache_url(provisioner_id, worker_type, use_proxy=False):
     if use_proxy:
         TASK_URL = 'http://taskcluster/purge-cache/v1/purge-cache/{}/{}'
@@ -228,3 +240,18 @@ def get_taskcluster_artifact_prefix(task, task_id, postfix='', locale=None, forc
     return tmpl.format(
         task_id=task_id, postfix=postfix, artifact_prefix=artifact_prefix
     )
+
+
+def send_email(address, subject, content, link, use_proxy=False):
+    """Sends an email using the notify service"""
+    logger.info('Sending email to {}.'.format(address))
+    if use_proxy:
+        url = 'http://taskcluster/notify/v1/email'
+    else:
+        url = 'https://notify.taskcluster.net/v1/email'
+    _do_request(url, json={
+        'address': address,
+        'subject': subject,
+        'content': content,
+        'link': link,
+    })

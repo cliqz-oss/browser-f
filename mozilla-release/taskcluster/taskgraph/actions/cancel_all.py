@@ -26,6 +26,7 @@ def list_group(task_group_id, session):
     while True:
         url = base_url.format('task-group/{}/list'.format(task_group_id))
         response = session.get(url, stream=True, params=params)
+        response.raise_for_status()
         response = response.json()
         for task in [t['status'] for t in response['tasks']]:
             if task['state'] in ['running', 'pending', 'unscheduled']:
@@ -39,12 +40,14 @@ def list_group(task_group_id, session):
 @register_callback_action(
     title='Cancel All',
     name='cancel-all',
+    kind='hook',
+    generic=True,
     symbol='cAll',
     description=(
         'Cancel all running and pending tasks created by the decision task '
         'this action task is associated with.'
     ),
-    order=100,
+    order=400,
     context=[]
 )
 def cancel_all_action(parameters, graph_config, input, task_group_id, task_id, task):

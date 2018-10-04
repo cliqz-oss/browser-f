@@ -24,13 +24,15 @@ RERUN_STATES = ('exception', 'failed')
 @register_callback_action(
     title='Rerun',
     name='rerun',
+    kind='hook',
+    generic=True,
     symbol='rr',
     description=(
         'Rerun a task.\n\n'
         'This only works on failed or exception tasks in the original taskgraph,'
         ' and is CoT friendly.'
     ),
-    order=1,
+    order=300,
     context=[{}],
     schema={
         'type': 'object',
