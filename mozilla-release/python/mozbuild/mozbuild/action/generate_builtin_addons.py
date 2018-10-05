@@ -35,8 +35,8 @@ def main(argv):
         "dictionaries": find_dictionaries("dictionaries"),
     }
     if args.featuresdir:
-        listing["system"] = sorted(os.listdir(os.path.join(bindir,
-                                                           args.featuresdir)))
+        listing["system"] = [os.path.splitext(it)[0] for it in sorted(os.listdir(os.path.join(bindir,
+                                                                      args.featuresdir)))]
 
     with open(os.path.join(bindir, args.outputfile), 'w') as fh:
         json.dump(listing, fh, sort_keys=True)
