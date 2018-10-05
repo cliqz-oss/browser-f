@@ -231,6 +231,7 @@ def _repack(app_finder, l10n_finder, copier, formatter, non_chrome=set()):
     # from the langpack.
     if built_in_addons:
         data = json.load(built_in_addons[1].open())
+        dictionaries['en-US'] = 'dictionaries/en-US.dic'
         data['dictionaries'] = dictionaries
         formatter.add(built_in_addons[0], GeneratedFile(json.dumps(data)))
 
