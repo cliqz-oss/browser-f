@@ -252,7 +252,7 @@
                        label="&newPrivateWindow.label;"
                        key="key_privatebrowsing"
                        command="Tools:PrivateBrowsing"/>
-#if CQZ_TOR_MODE
+#ifdef CQZ_TOR_MODE
         <toolbarbutton id="appMenu-cliqz-torbrowsing-button"
                        label="&torbrowsing.panelUI.label;"
                        class="subviewbutton subviewbutton-iconic"

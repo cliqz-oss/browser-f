@@ -1907,6 +1907,12 @@ if test "$CQZ_ADULT_DOMAINS_BF"; then
   AC_DEFINE(CQZ_ADULT_DOMAINS_BF)
 fi
 
+AC_SUBST(CQZ_TOR_MODE)
+if test "$CQZ_TOR_MODE"; then
+  CQZ_TOR_MODE=1
+  AC_DEFINE(CQZ_TOR_MODE)
+fi
+
 case "$target_os" in
     mingw*)
         NS_ENABLE_TSF=1
