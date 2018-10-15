@@ -41,7 +41,8 @@ class ShieldChildListener {
 
 // Only register in content processes; the parent process handles registration
 // separately.
-if (Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_CONTENT) {
+// DB-1872
+if (false && Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_CONTENT) {
   const listener = new ShieldChildListener();
   listener.onStartup();
 }
