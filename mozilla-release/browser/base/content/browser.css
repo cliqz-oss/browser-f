@@ -1473,4 +1473,12 @@ toolbarpaletteitem:not([place="palette"]) > .toolbarpaletteitem-box {
   }
 }
 
+/* Cliqz - Hide https everywhere toolbar button */
+#https-everywhere_cliqz_com-browser-action, #https-everywhere_cliqz_com-browser-action * {
+  visibility: hidden;
+  height: 0px !important;
+  width: 0px !important;
+  padding: 0px !important;
+}
+
 %include theme-vars.inc.css
