@@ -551,17 +551,27 @@ nsBrowserContentHandler.prototype = {
     }
 
     var startPage = "";
-    try {
-      // We do not need to get a 'Show home page' option checked
-      // to show a page a user whats to be displayed as a default
-      // when she/he opens a new window / homepage.
-      // That is why we do not test against browser.startup.addFreshTab prop here.
-      // Calling this.startPage will trigger startPage getter defined below.
-      // Services.prefs.getComplexValue will return an object
-      // which contains a user predefined homepage url.
-      startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
-    } catch (e) {
-      Cu.reportError(e);
+
+    // DB-1878
+    // If 'Show home page' is selected then we need to take into account which option is chosen
+    // to be a home page, meaning that we need to check a value of 'browser.startup.homepage'.
+    // If a user does not check 'Show home page' option then when a browser starts one needs to show
+    // a blank page (testing whether a profile is overridden comes further in code).
+    if (prefb.getBoolPref('browser.startup.addFreshTab')) {
+      try {
+        // We do not need to get a 'Show home page' option checked
+        // to show a page a user whats to be displayed as a default
+        // when she/he opens a new window / homepage.
+        // That is why we do not test against browser.startup.addFreshTab prop here.
+        // Calling this.startPage will trigger startPage getter defined below.
+        // Services.prefs.getComplexValue will return an object
+        // which contains a user predefined homepage url.
+        startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
+      } catch (e) {
+        Cu.reportError(e);
+      }
+    } else {
+      startPage = "about:blank";
     }
 
     if (startPage == "about:blank")
