@@ -179,7 +179,7 @@ function test_open_from_chrome() {
       title: "test_open_from_chrome",
       param: "",
     },
-    finalizeFn() {}
+    finalizeFn() {},
   });
 }
 
@@ -251,7 +251,7 @@ function waitForWindowOpen(aOptions) {
     runNextTest();
   };
 
-  let listener = new WindowListener(message.title, getBrowserURL(), {
+  let listener = new WindowListener(message.title, AppConstants.BROWSER_CHROME_URL, {
     onSuccess: aOptions.successFn,
     onFinalize,
   });
@@ -292,7 +292,7 @@ function waitForWindowOpenFromChrome(aOptions) {
     runNextTest();
   };
 
-  let listener = new WindowListener(message.title, getBrowserURL(), {
+  let listener = new WindowListener(message.title, AppConstants.BROWSER_CHROME_URL, {
     onSuccess: aOptions.successFn,
     onFinalize,
   });
@@ -317,8 +317,7 @@ WindowListener.prototype = {
   onOpenWindow(aXULWindow) {
     Services.wm.removeListener(this);
 
-    let domwindow = aXULWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindow);
+    let domwindow = aXULWindow.docShell.domWindow;
     let onLoad = aEvent => {
       is(domwindow.document.location.href, this.test_url,
         "Opened Window is expected: " + this.test_title);

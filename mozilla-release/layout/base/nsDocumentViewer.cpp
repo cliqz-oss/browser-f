@@ -110,7 +110,6 @@
 #include "mozilla/EventDispatcher.h"
 #include "nsISHEntry.h"
 #include "nsISHistory.h"
-#include "nsISHistoryInternal.h"
 #include "nsIWebNavigation.h"
 #include "mozilla/dom/XMLHttpRequestMainThread.h"
 
@@ -531,7 +530,10 @@ private:
     for (int32_t i = 0; i < targets.Count(); ++i) {
       nsIDocument* d = targets[i];
       nsContentUtils::DispatchTrustedEvent(d, d->GetWindow(),
-                                           aEvent, false, false, nullptr);
+                                           aEvent,
+                                           CanBubble::eNo,
+                                           Cancelable::eNo,
+                                           nullptr);
     }
   }
 
@@ -1166,6 +1168,11 @@ nsDocumentViewer::LoadComplete(nsresult aStatus)
       EventDispatcher::Dispatch(window, mPresContext, &event, nullptr, &status);
       if (timing) {
         timing->NotifyLoadEventEnd();
+      }
+
+      nsPIDOMWindowInner* innerWindow = window->GetCurrentInnerWindow();
+      if (innerWindow) {
+        innerWindow->QueuePerformanceNavigationTiming();
       }
     }
   } else {
@@ -2246,8 +2253,7 @@ nsDocumentViewer::Show(void)
         printf("About to evict content viewers: prev=%d, loaded=%d\n",
                prevIndex, loadedIndex);
 #endif
-        history->LegacySHistoryInternal()->
-          EvictOutOfRangeContentViewers(loadedIndex);
+        history->LegacySHistory()->EvictOutOfRangeContentViewers(loadedIndex);
       }
     }
   }
@@ -2512,9 +2518,12 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
     styleSet->PrependStyleSheet(SheetType::Agent, sheet);
   }
 
-  sheet = cache->SVGSheet();
-  if (sheet) {
-    styleSet->PrependStyleSheet(SheetType::Agent, sheet);
+  if (MOZ_LIKELY(mDocument->NodeInfoManager()->SVGEnabled())) {
+    styleSet->PrependStyleSheet(SheetType::Agent, cache->SVGSheet());
+  }
+
+  if (MOZ_LIKELY(mDocument->NodeInfoManager()->MathMLEnabled())) {
+    styleSet->PrependStyleSheet(SheetType::Agent, cache->MathMLSheet());
   }
 
   styleSet->PrependStyleSheet(SheetType::Agent, cache->UASheet());
@@ -3052,7 +3061,7 @@ nsDocumentViewer::SetTextZoom(float aTextZoom)
   if (textZoomChange) {
     nsContentUtils::DispatchChromeEvent(mDocument, static_cast<nsIDocument*>(mDocument),
                                         NS_LITERAL_STRING("TextZoomChange"),
-                                        true, true);
+                                        CanBubble::eYes, Cancelable::eYes);
   }
 
   return NS_OK;
@@ -3172,7 +3181,7 @@ nsDocumentViewer::SetFullZoom(float aFullZoom)
   if (fullZoomChange) {
     nsContentUtils::DispatchChromeEvent(mDocument, static_cast<nsIDocument*>(mDocument),
                                         NS_LITERAL_STRING("FullZoomChange"),
-                                        true, true);
+                                        CanBubble::eYes, Cancelable::eYes);
   }
 
   return NS_OK;
@@ -3917,7 +3926,7 @@ nsDocumentViewer::Print(nsIPrintSettings*       aPrintSettings,
     printJob = new nsPrintJob();
 
     rv = printJob->Initialize(this, mContainer, mDocument,
-                              float(mDeviceContext->AppUnitsPerCSSInch()) /
+                              float(AppUnitsPerCSSInch()) /
                               float(mDeviceContext->AppUnitsPerDevPixel()) /
                               mPageZoom);
     if (NS_FAILED(rv)) {
@@ -4001,7 +4010,7 @@ nsDocumentViewer::PrintPreview(nsIPrintSettings* aPrintSettings,
     printJob = new nsPrintJob();
 
     rv = printJob->Initialize(this, mContainer, doc,
-                              float(mDeviceContext->AppUnitsPerCSSInch()) /
+                              float(AppUnitsPerCSSInch()) /
                               float(mDeviceContext->AppUnitsPerDevPixel()) /
                               mPageZoom);
     if (NS_FAILED(rv)) {

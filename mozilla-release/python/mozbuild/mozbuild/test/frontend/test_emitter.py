@@ -242,7 +242,6 @@ class TestEmitterBasic(unittest.TestCase):
     def test_link_flags(self):
         reader = self.reader('link-flags', extra_substs={
             'OS_LDFLAGS': ['-Wl,rpath-link=/usr/lib'],
-            'LINKER_LDFLAGS': ['-fuse-ld=gold'],
             'MOZ_OPTIMIZE': '',
             'MOZ_OPTIMIZE_LDFLAGS': ['-Wl,-dead_strip'],
             'MOZ_DEBUG_LDFLAGS': ['-framework ExceptionHandling'],
@@ -250,7 +249,6 @@ class TestEmitterBasic(unittest.TestCase):
         sources, ldflags, lib, compile_flags = self.read_topsrcdir(reader)
         self.assertIsInstance(ldflags, ComputedFlags)
         self.assertEqual(ldflags.flags['OS'], reader.config.substs['OS_LDFLAGS'])
-        self.assertEqual(ldflags.flags['LINKER'], reader.config.substs['LINKER_LDFLAGS'])
         self.assertEqual(ldflags.flags['MOZBUILD'], ['-Wl,-U_foo', '-framework Foo', '-x'])
         self.assertEqual(ldflags.flags['OPTIMIZE'], [])
 
@@ -269,6 +267,7 @@ class TestEmitterBasic(unittest.TestCase):
             'OS_ARCH': 'WINNT',
             'GNU_CC': '',
             'MOZ_OPTIMIZE': '1',
+            'MOZ_DEBUG_LDFLAGS': ['-DEBUG'],
             'MOZ_DEBUG_SYMBOLS': '1',
             'MOZ_OPTIMIZE_FLAGS': [],
             'MOZ_OPTIMIZE_LDFLAGS': [],
@@ -283,10 +282,10 @@ class TestEmitterBasic(unittest.TestCase):
             'OS_ARCH': 'WINNT',
             'GNU_CC': '',
             'MOZ_DMD': '1',
+            'MOZ_DEBUG_LDFLAGS': ['-DEBUG'],
             'MOZ_DEBUG_SYMBOLS': '1',
             'MOZ_OPTIMIZE': '1',
             'MOZ_OPTIMIZE_FLAGS': [],
-            'OS_LDFLAGS': ['-Wl,-U_foo'],
         })
         sources, ldflags, lib, compile_flags = self.read_topsrcdir(reader)
         self.assertIsInstance(ldflags, ComputedFlags)
@@ -423,6 +422,13 @@ class TestEmitterBasic(unittest.TestCase):
         })
         sources, ldflags, lib, flags = self.read_topsrcdir(reader)
         self.assertEqual(flags.flags['WARNINGS_AS_ERRORS'], [])
+
+    def test_disable_compiler_warnings(self):
+        reader = self.reader('disable-compiler-warnings', extra_substs={
+            'WARNINGS_CFLAGS': '-Wall',
+        })
+        sources, ldflags, lib, flags = self.read_topsrcdir(reader)
+        self.assertEqual(flags.flags['WARNINGS_CFLAGS'], [])
 
     def test_use_yasm(self):
         # When yasm is not available, this should raise.
@@ -849,7 +855,7 @@ class TestEmitterBasic(unittest.TestCase):
         objs = [o for o in self.read_topsrcdir(reader)
                 if isinstance(o, TestManifest)]
 
-        self.assertEqual(len(objs), 9)
+        self.assertEqual(len(objs), 8)
 
         metadata = {
             'a11y.ini': {
@@ -867,13 +873,6 @@ class TestEmitterBasic(unittest.TestCase):
                     'test_browser.js': True,
                     'support1': False,
                     'support2': False,
-                },
-            },
-            'metro.ini': {
-                'flavor': 'metro-chrome',
-                'installs': {
-                    'metro.ini': False,
-                    'test_metro.js': True,
                 },
             },
             'mochitest.ini': {
@@ -1127,6 +1126,13 @@ class TestEmitterBasic(unittest.TestCase):
         with self.assertRaisesRegexp(SandboxValidationError, 'XPIDL_MODULE '
             'cannot be defined'):
             reader = self.reader('xpidl-module-no-sources')
+            self.read_topsrcdir(reader)
+
+    def test_xpidl_module_no_sources(self):
+        """Missing XPIDL_SOURCES should be rejected."""
+        with self.assertRaisesRegexp(SandboxValidationError, 'File .* '
+            'from XPIDL_SOURCES does not exist'):
+            reader = self.reader('missing-xpidl')
             self.read_topsrcdir(reader)
 
     def test_missing_local_includes(self):
@@ -1485,8 +1491,10 @@ class TestEmitterBasic(unittest.TestCase):
                              extra_substs=dict(RUST_TARGET='i686-pc-windows-msvc'))
         objs = self.read_topsrcdir(reader)
 
-        ldflags, lib = objs
+        self.assertEqual(len(objs), 3)
+        ldflags, lib, cflags = objs
         self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
         self.assertIsInstance(lib, RustLibrary)
         self.assertRegexpMatches(lib.lib_name, "random_crate")
         self.assertRegexpMatches(lib.import_name, "random_crate")
@@ -1505,8 +1513,11 @@ class TestEmitterBasic(unittest.TestCase):
         reader = self.reader('rust-library-features',
                              extra_substs=dict(RUST_TARGET='i686-pc-windows-msvc'))
         objs = self.read_topsrcdir(reader)
-        ldflags, lib = objs
+
+        self.assertEqual(len(objs), 3)
+        ldflags, lib, cflags = objs
         self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
         self.assertIsInstance(lib, RustLibrary)
         self.assertEqual(lib.features, ['musthave', 'cantlivewithout'])
 
@@ -1554,8 +1565,10 @@ class TestEmitterBasic(unittest.TestCase):
                                                BIN_SUFFIX='.exe'))
         objs = self.read_topsrcdir(reader)
 
-        ldflags, prog = objs
+        self.assertEqual(len(objs), 3)
+        ldflags, cflags, prog = objs
         self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
         self.assertIsInstance(prog, RustProgram)
         self.assertEqual(prog.name, 'some')
 
@@ -1566,9 +1579,14 @@ class TestEmitterBasic(unittest.TestCase):
                                                HOST_BIN_SUFFIX='.exe'))
         objs = self.read_topsrcdir(reader)
 
-        self.assertEqual(len(objs), 1)
-        self.assertIsInstance(objs[0], HostRustProgram)
-        self.assertEqual(objs[0].name, 'some')
+        self.assertEqual(len(objs), 4)
+        print(objs)
+        ldflags, cflags, hostflags, prog = objs
+        self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
+        self.assertIsInstance(hostflags, ComputedFlags)
+        self.assertIsInstance(prog, HostRustProgram)
+        self.assertEqual(prog.name, 'some')
 
     def test_host_rust_libraries(self):
         '''Test HOST_RUST_LIBRARIES emission.'''
@@ -1576,10 +1594,14 @@ class TestEmitterBasic(unittest.TestCase):
                              extra_substs=dict(RUST_HOST_TARGET='i686-pc-windows-msvc',
                                                HOST_BIN_SUFFIX='.exe'))
         objs = self.read_topsrcdir(reader)
-        self.assertEqual(len(objs), 1)
-        self.assertIsInstance(objs[0], HostRustLibrary)
-        self.assertRegexpMatches(objs[0].lib_name, 'host_lib')
-        self.assertRegexpMatches(objs[0].import_name, 'host_lib')
+
+        self.assertEqual(len(objs), 3)
+        ldflags, lib, cflags = objs
+        self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
+        self.assertIsInstance(lib, HostRustLibrary)
+        self.assertRegexpMatches(lib.lib_name, 'host_lib')
+        self.assertRegexpMatches(lib.import_name, 'host_lib')
 
     def test_crate_dependency_path_resolution(self):
         '''Test recursive dependencies resolve with the correct paths.'''
@@ -1587,8 +1609,10 @@ class TestEmitterBasic(unittest.TestCase):
                              extra_substs=dict(RUST_TARGET='i686-pc-windows-msvc'))
         objs = self.read_topsrcdir(reader)
 
-        ldflags, lib = objs
+        self.assertEqual(len(objs), 3)
+        ldflags, lib, cflags = objs
         self.assertIsInstance(ldflags, ComputedFlags)
+        self.assertIsInstance(cflags, ComputedFlags)
         self.assertIsInstance(lib, RustLibrary)
 
     def test_install_shared_lib(self):

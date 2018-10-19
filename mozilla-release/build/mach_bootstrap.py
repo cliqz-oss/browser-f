@@ -39,6 +39,7 @@ MACH_MODULES = [
     'dom/bindings/mach_commands.py',
     'layout/tools/reftest/mach_commands.py',
     'python/mach_commands.py',
+    'python/safety/mach_commands.py',
     'python/mach/mach/commands/commandinfo.py',
     'python/mach/mach/commands/settings.py',
     'python/mozboot/mozboot/mach_commands.py',
@@ -233,7 +234,7 @@ def bootstrap(topsrcdir, mozilla_dir=None):
 
     def should_skip_dispatch(context, handler):
         # The user is performing a maintenance command.
-        if handler.name in ('bootstrap', 'doctor', 'mach-commands', 'mercurial-setup'):
+        if handler.name in ('bootstrap', 'doctor', 'mach-commands', 'vcs-setup'):
             return True
 
         # We are running in automation.

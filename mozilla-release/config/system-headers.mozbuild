@@ -1296,11 +1296,6 @@ if CONFIG['MOZ_ENABLE_CONTENTMANAGER']:
         'SelectSingleContentItemPage.h',
     ]
 
-if not CONFIG['MOZ_TREE_PIXMAN']:
-    system_headers += [
-        'pixman.h',
-    ]
-
 if CONFIG['MOZ_SYSTEM_LIBVPX']:
     system_headers += [
         'vpx_mem/vpx_mem.h',
@@ -1342,6 +1337,24 @@ if CONFIG['ENABLE_BIGINT']:
 
 if CONFIG['MOZ_WAYLAND']:
     system_headers += [
+        'xkbcommon/xkbcommon.h',
         'wayland-client.h',
         'wayland-egl.h',
+    ]
+
+if CONFIG['MOZ_LIB_SECRET']:
+    system_headers += [
+        'libsecret/secret.h',
+        'libsecret/secret-attributes.h',
+        'libsecret/secret-collection.h',
+        'libsecret/secret-enum-types.h',
+        'libsecret/secret-item.h',
+        'libsecret/secret-password.h',
+        'libsecret/secret-paths.h',
+        'libsecret/secret-prompt.h',
+        'libsecret/secret-schema.h',
+        'libsecret/secret-schemas.h',
+        'libsecret/secret-types.h',
+        'libsecret/secret-value.h',
+        'libsecret/secret-service.h',
     ]

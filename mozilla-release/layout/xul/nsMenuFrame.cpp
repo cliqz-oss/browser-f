@@ -831,9 +831,7 @@ nsMenuFrame::GetParentMenuListType()
     if (parentMenu) {
       nsCOMPtr<nsIDOMXULMenuListElement> menulist = do_QueryInterface(parentMenu->GetContent());
       if (menulist) {
-        bool isEditable = false;
-        menulist->GetEditable(&isEditable);
-        return isEditable ? eEditableMenuList : eReadonlyMenuList;
+        return eReadonlyMenuList;
       }
     }
   }
@@ -921,7 +919,7 @@ nsMenuFrame::UpdateMenuType()
         AutoWeakFrame weakFrame(this);
         mContent->AsElement()->UnsetAttr(kNameSpaceID_None, nsGkAtoms::checked,
                                          true);
-        ENSURE_TRUE(weakFrame.IsAlive());
+        NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
       }
       mType = eMenuType_Normal;
       break;
@@ -1015,7 +1013,7 @@ nsMenuFrame::BuildAcceleratorText(bool aNotify)
   // If anything below fails, just leave the accelerator text blank.
   AutoWeakFrame weakFrame(this);
   mContent->AsElement()->UnsetAttr(kNameSpaceID_None, nsGkAtoms::acceltext, aNotify);
-  ENSURE_TRUE(weakFrame.IsAlive());
+  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
 
   // See if we have a key node and use that instead.
   nsAutoString keyValue;
@@ -1153,7 +1151,7 @@ nsMenuFrame::BuildAcceleratorText(bool aNotify)
   mIgnoreAccelTextChange = true;
   mContent->AsElement()->SetAttr(kNameSpaceID_None, nsGkAtoms::acceltext,
                                  accelText, aNotify);
-  ENSURE_TRUE(weakFrame.IsAlive());
+  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
 
   mIgnoreAccelTextChange = false;
 }
@@ -1183,10 +1181,6 @@ nsMenuFrame::ShouldBlink()
   int32_t shouldBlink =
     LookAndFeel::GetInt(LookAndFeel::eIntID_ChosenMenuItemsShouldBlink, 0);
   if (!shouldBlink)
-    return false;
-
-  // Don't blink in editable menulists.
-  if (GetParentMenuListType() == eEditableMenuList)
     return false;
 
   return true;

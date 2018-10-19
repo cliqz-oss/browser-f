@@ -698,9 +698,11 @@ _getwindowobject(NPP npp)
   nsCOMPtr<nsPIDOMWindowOuter> outer = doc->GetWindow();
   NS_ENSURE_TRUE(outer, nullptr);
 
+  JS::Rooted<JSObject*> windowProxy(dom::RootingCx(),
+                                    nsGlobalWindowOuter::Cast(outer)->GetGlobalJSObject());
   JS::Rooted<JSObject*> global(dom::RootingCx(),
-                               nsGlobalWindowOuter::Cast(outer)->GetGlobalJSObject());
-  return nsJSObjWrapper::GetNewOrUsed(npp, global);
+                               JS::GetNonCCWObjectGlobal(windowProxy));
+  return nsJSObjWrapper::GetNewOrUsed(npp, windowProxy, global);
 }
 
 NPObject*
@@ -745,8 +747,8 @@ _getpluginelement(NPP npp)
   }
 
   JS::RootedObject obj(cx, &val.toObject());
-
-  return nsJSObjWrapper::GetNewOrUsed(npp, obj);
+  JS::RootedObject global(cx, JS::CurrentGlobalOrNull(cx));
+  return nsJSObjWrapper::GetNewOrUsed(npp, obj, global);
 }
 
 NPIdentifier
@@ -1052,11 +1054,16 @@ _evaluate(NPP npp, NPObject* npobj, NPString *script, NPVariant *result)
   options.setFileAndLine(spec, 0);
   JS::Rooted<JS::Value> rval(cx);
   JS::AutoObjectVector scopeChain(cx);
-  if (obj != js::GetGlobalForObjectCrossCompartment(obj) &&
-      !scopeChain.append(obj)) {
+  if (!JS_IsGlobalObject(obj) && !scopeChain.append(obj)) {
     return false;
   }
-  obj = js::GetGlobalForObjectCrossCompartment(obj);
+  // nsNPObjWrapper::GetNewOrUsed returns an object in the current compartment
+  // of the JSContext (it might be a CCW).
+  MOZ_RELEASE_ASSERT(js::GetObjectCompartment(obj) ==
+                     js::GetContextCompartment(cx),
+                     "nsNPObjWrapper::GetNewOrUsed must wrap its return value");
+  obj = JS::CurrentGlobalOrNull(cx);
+  MOZ_ASSERT(obj);
   nsresult rv = NS_OK;
   {
     nsJSUtils::ExecutionContext exec(cx, obj);

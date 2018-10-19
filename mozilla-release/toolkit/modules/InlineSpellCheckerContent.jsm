@@ -21,10 +21,7 @@ var InlineSpellCheckerContent = {
     if (!(editFlags & (SpellCheckHelper.TEXTAREA | SpellCheckHelper.INPUT))) {
       // Get the editor off the window.
       let win = event.target.ownerGlobal;
-      let editingSession = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIWebNavigation)
-                              .QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIEditingSession);
+      let editingSession = win.docShell.editingSession;
       spellChecker = this._spellChecker =
         new InlineSpellChecker(editingSession.getEditorForWindow(win));
     } else {
@@ -112,7 +109,7 @@ var InlineSpellCheckerContent = {
 
       "InlineSpellChecker:recheck",
 
-      "InlineSpellChecker:uninit"
+      "InlineSpellChecker:uninit",
     ],
 
   _addMessageListeners() {
@@ -142,5 +139,5 @@ var InlineSpellCheckerContent = {
         this.uninitContextMenu();
         break;
     }
-  }
+  },
 };

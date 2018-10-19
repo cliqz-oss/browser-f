@@ -17,7 +17,7 @@ Cu.importGlobalProperties(["URL"]);
 
 // Make sure media pre-loading is enabled on Android so that our <audio> and
 // <video> elements trigger the expected requests.
-Services.prefs.setBoolPref("media.autoplay.enabled", true);
+Services.prefs.setIntPref("media.autoplay.default", Ci.nsIAutoplay.ALLOWED);
 Services.prefs.setIntPref("media.preload.default", 3);
 
 // Increase the length of the code samples included in CSP reports so that we
@@ -835,7 +835,7 @@ function awaitCSP(urlsPromise) {
       let report = body["csp-report"];
 
       let origURL = report["blocked-uri"];
-      if (origURL !== "self" && origURL !== "") {
+      if (origURL !== "inline" && origURL !== "") {
         let {baseURL} = getOriginBase(origURL);
 
         if (expectedURLs.has(baseURL)) {
@@ -1071,7 +1071,7 @@ add_task(async function test_contentscript_csp() {
   let chaosMode = parseInt(env.get("MOZ_CHAOSMODE"), 16);
   let checkCSPReports = !(chaosMode === 0 || chaosMode & 0x02);
 
-  gContentSecurityPolicy = `default-src 'none'; script-src 'nonce-deadbeef' 'unsafe-eval'; report-uri ${CSP_REPORT_PATH};`;
+  gContentSecurityPolicy = `default-src 'none' 'report-sample'; script-src 'nonce-deadbeef' 'unsafe-eval' 'report-sample'; report-uri ${CSP_REPORT_PATH};`;
 
   let extension = ExtensionTestUtils.loadExtension(EXTENSION_DATA);
   await extension.startup();

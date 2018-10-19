@@ -10,6 +10,15 @@
 const TEST_URI = "data:text/html;charset=utf8,test autocompletion with $ or _";
 
 add_task(async function() {
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
+});
+
+async function performTests() {
   const { jsterm } = await openNewTabAndConsole(TEST_URI);
 
   await jsterm.execute("var testObject = {$$aaab: '', $$aaac: ''}");
@@ -28,12 +37,10 @@ add_task(async function() {
   await testAutocomplete(jsterm, "blargh");
   await testAutocomplete(jsterm, "foobar.a");
   await testAutocomplete(jsterm, "blargh.a");
-});
+}
 
 async function testAutocomplete(jsterm, inputString) {
-  jsterm.setInputValue(inputString);
-  await new Promise(resolve => jsterm.complete(jsterm.COMPLETE_HINT_ONLY, resolve));
-
+  await setInputValueForAutocompletion(jsterm, inputString);
   const popup = jsterm.autocompletePopup;
   ok(popup.itemCount > 0, `There's ${popup.itemCount} suggestions for '${inputString}'`);
 }

@@ -255,7 +255,7 @@ var Sanitizer = {
       shutdownClient.addBlocker("sanitize.js: Sanitize",
         promise,
         {
-          fetchState: () => ({ progress })
+          fetchState: () => ({ progress }),
         }
       );
     }
@@ -295,7 +295,7 @@ var Sanitizer = {
 
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsiObserver,
-    Ci.nsISupportsWeakReference
+    Ci.nsISupportsWeakReference,
   ]),
 
   // This method is meant to be used by tests.
@@ -314,7 +314,7 @@ var Sanitizer = {
         TelemetryStopwatch.start("FX_SANITIZE_CACHE", refObj);
         await clearData(range, Ci.nsIClearDataService.CLEAR_ALL_CACHES);
         TelemetryStopwatch.finish("FX_SANITIZE_CACHE", refObj);
-      }
+      },
     },
 
     cookies: {
@@ -331,7 +331,7 @@ var Sanitizer = {
     offlineApps: {
       async clear(range) {
         await clearData(range, Ci.nsIClearDataService.CLEAR_DOM_STORAGES);
-      }
+      },
     },
 
     history: {
@@ -341,7 +341,7 @@ var Sanitizer = {
         await clearData(range, Ci.nsIClearDataService.CLEAR_HISTORY |
                                Ci.nsIClearDataService.CLEAR_SESSION_HISTORY);
         TelemetryStopwatch.finish("FX_SANITIZE_HISTORY", refObj);
-      }
+      },
     },
 
     formdata: {
@@ -351,9 +351,7 @@ var Sanitizer = {
         TelemetryStopwatch.start("FX_SANITIZE_FORMDATA", refObj);
         try {
           // Clear undo history of all search bars.
-          let windows = Services.wm.getEnumerator("navigator:browser");
-          while (windows.hasMoreElements()) {
-            let currentWindow = windows.getNext();
+          for (let currentWindow of Services.wm.getEnumerator("navigator:browser")) {
             let currentDocument = currentWindow.document;
 
             // searchBar.textbox may not exist due to the search bar binding
@@ -395,7 +393,7 @@ var Sanitizer = {
               },
               handleCompletion() {
                 resolve();
-              }
+              },
             });
           });
         } catch (ex) {
@@ -406,7 +404,7 @@ var Sanitizer = {
         if (seenException) {
           throw seenException;
         }
-      }
+      },
     },
 
     downloads: {
@@ -415,7 +413,7 @@ var Sanitizer = {
         TelemetryStopwatch.start("FX_SANITIZE_DOWNLOADS", refObj);
         await clearData(range, Ci.nsIClearDataService.CLEAR_DOWNLOADS);
         TelemetryStopwatch.finish("FX_SANITIZE_DOWNLOADS", refObj);
-      }
+      },
     },
 
     sessions: {
@@ -425,7 +423,7 @@ var Sanitizer = {
         await clearData(range, Ci.nsIClearDataService.CLEAR_AUTH_TOKENS |
                                Ci.nsIClearDataService.CLEAR_AUTH_CACHE);
         TelemetryStopwatch.finish("FX_SANITIZE_SESSIONS", refObj);
-      }
+      },
     },
 
     siteSettings: {
@@ -437,7 +435,7 @@ var Sanitizer = {
                                Ci.nsIClearDataService.CLEAR_DOM_PUSH_NOTIFICATIONS |
                                Ci.nsIClearDataService.CLEAR_SECURITY_SETTINGS);
         TelemetryStopwatch.finish("FX_SANITIZE_SITESETTINGS", refObj);
-      }
+      },
     },
 
     openWindows: {
@@ -466,10 +464,8 @@ var Sanitizer = {
         let startDate = existingWindow.performance.now();
 
         // First check if all these windows are OK with being closed:
-        let windowEnumerator = Services.wm.getEnumerator("navigator:browser");
         let windowList = [];
-        while (windowEnumerator.hasMoreElements()) {
-          let someWin = windowEnumerator.getNext();
+        for (let someWin of Services.wm.getEnumerator("navigator:browser")) {
           windowList.push(someWin);
           // If someone says "no" to a beforeunload prompt, we abort here:
           if (!this._canCloseWindow(someWin)) {
@@ -497,7 +493,7 @@ var Sanitizer = {
         let handler = Cc["@mozilla.org/browser/clh;1"].getService(Ci.nsIBrowserHandler);
         let defaultArgs = handler.defaultArgs;
         let features = "chrome,all,dialog=no," + privateStateForNewWindow;
-        let newWindow = existingWindow.openDialog("chrome://browser/content/", "_blank",
+        let newWindow = existingWindow.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank",
                                                   features, defaultArgs);
 
         let onFullScreen = null;
@@ -563,7 +559,7 @@ var Sanitizer = {
         }
         newWindow.focus();
         await promiseReady;
-      }
+      },
     },
 
     pluginData: {
@@ -637,7 +633,7 @@ async function sanitizeInternal(items, aItemsToClear, progress, options = {}) {
       handles.push({ name,
                      promise: item.clear(range, options)
                                   .then(() => progress[name] = "cleared",
-                                        ex => annotateError(name, ex))
+                                        ex => annotateError(name, ex)),
                    });
     } catch (ex) {
       annotateError(name, ex);
@@ -690,9 +686,7 @@ async function sanitizeOnShutdown(progress) {
   await sanitizeSessionPrincipals();
 
   // Let's see if we have to forget some particular site.
-  let enumerator = Services.perms.enumerator;
-  while (enumerator.hasMoreElements()) {
-    let permission = enumerator.getNext().QueryInterface(Ci.nsIPermission);
+  for (let permission of Services.perms.enumerator) {
     if (permission.type == "cookie" && permission.capability == Ci.nsICookiePermission.ACCESS_SESSION) {
       await sanitizeSessionPrincipal(permission.principal);
     }

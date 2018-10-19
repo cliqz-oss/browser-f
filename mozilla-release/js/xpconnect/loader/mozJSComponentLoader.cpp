@@ -17,9 +17,12 @@
 #endif
 
 #include "jsapi.h"
+#include "js/AutoByteString.h"
+#include "js/CompilationAndEvaluation.h"
 #include "js/Printf.h"
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
+#include "nsExceptionHandler.h"
 #include "nsIComponentManager.h"
 #include "mozilla/Module.h"
 #include "nsIFile.h"
@@ -55,10 +58,6 @@
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Unused.h"
-
-#ifdef MOZ_CRASHREPORTER
-#include "mozilla/ipc/CrashReporterClient.h"
-#endif
 
 using namespace mozilla;
 using namespace mozilla::scache;
@@ -363,11 +362,10 @@ ResolveModuleObjectProperty(JSContext* aCx, HandleObject aModObj, const char* na
     return aModObj;
 }
 
-#ifdef MOZ_CRASHREPORTER
 static mozilla::Result<nsCString, nsresult> ReadScript(ComponentLoaderInfo& aInfo);
 
 static nsresult
-AnnotateScriptContents(const nsACString& aName, const nsACString& aURI)
+AnnotateScriptContents(CrashReporter::Annotation aName, const nsACString& aURI)
 {
     ComponentLoaderInfo info(aURI);
 
@@ -384,20 +382,17 @@ AnnotateScriptContents(const nsACString& aName, const nsACString& aURI)
 
     return NS_OK;
 }
-#endif // defined MOZ_CRASHREPORTER
 
 nsresult
 mozJSComponentLoader::AnnotateCrashReport()
 {
-#ifdef MOZ_CRASHREPORTER
     Unused << AnnotateScriptContents(
-        NS_LITERAL_CSTRING("nsAsyncShutdownComponent"),
+        CrashReporter::Annotation::nsAsyncShutdownComponent,
         NS_LITERAL_CSTRING("resource://gre/components/nsAsyncShutdown.js"));
 
     Unused << AnnotateScriptContents(
-        NS_LITERAL_CSTRING("AsyncShutdownModule"),
+        CrashReporter::Annotation::AsyncShutdownModule,
         NS_LITERAL_CSTRING("resource://gre/modules/AsyncShutdown.jsm"));
-#endif // defined MOZ_CRASHREPORTER
 
     return NS_OK;
 }
@@ -534,7 +529,7 @@ mozJSComponentLoader::FindTargetObject(JSContext* aCx,
     // instead. This is needed when calling the subscript loader within a frame
     // script, since it the FrameScript NSVO will have been found.
     if (!aTargetObject ||
-        !IsLoaderGlobal(js::GetGlobalForObjectCrossCompartment(aTargetObject))) {
+        !IsLoaderGlobal(JS::GetNonCCWObjectGlobal(aTargetObject))) {
         aTargetObject.set(CurrentGlobalOrNull(aCx));
     }
 }
@@ -635,7 +630,7 @@ mozJSComponentLoader::ReuseGlobal(nsIURI* aURI)
     // which sets a per-compartment flag that disables certain
     // security wrappers, so don't use the shared global for them
     // to avoid breaking tests.
-    if (FindInReadable(NS_LITERAL_CSTRING("chrome://specialpowers/"), spec)) {
+    if (FindInReadable(NS_LITERAL_CSTRING("resource://specialpowers/"), spec)) {
         return false;
     }
 
@@ -843,6 +838,13 @@ mozJSComponentLoader::ObjectForLocation(ComponentLoaderInfo& aInfo,
         // The script wasn't in the cache , so compile it now.
         LOG(("Slow loading %s\n", nativePath.get()));
 
+        // If we are debugging a replaying process and have diverged from the
+        // recording, trying to load and compile new code will cause the
+        // debugger operation to fail, so just abort now.
+        if (recordreplay::HasDivergedFromRecording()) {
+            return NS_ERROR_FAILURE;
+        }
+
         // Use lazy source if we're using the startup cache. Non-lazy source +
         // startup cache regresses installer size (due to source code stored in
         // XDR encoded modules in omni.ja). Also, XDR decoding is relatively
@@ -986,6 +988,7 @@ mozJSComponentLoader::ImportInto(const nsACString& registryLocation,
 
     RootedValue targetVal(cx, targetValArg);
     RootedObject targetObject(cx, nullptr);
+
     if (optionalArgc) {
         // The caller passed in the optional second argument. Get it.
         if (targetVal.isObject()) {
@@ -1011,10 +1014,7 @@ mozJSComponentLoader::ImportInto(const nsACString& registryLocation,
         FindTargetObject(cx, &targetObject);
     }
 
-    Maybe<JSAutoRealm> ar;
-    if (targetObject) {
-        ar.emplace(cx, targetObject);
-    }
+    js::AssertSameCompartment(cx, targetObject);
 
     RootedObject global(cx);
     nsresult rv = ImportInto(registryLocation, targetObject, cx, &global);
@@ -1058,7 +1058,7 @@ NS_IMETHODIMP mozJSComponentLoader::LoadedModules(uint32_t* length,
     *aModules = modules;
 
     for (auto iter = mImports.Iter(); !iter.Done(); iter.Next()) {
-        *modules = NS_strdup(iter.Data()->location);
+        *modules = NS_xstrdup(iter.Data()->location);
         modules++;
     }
 
@@ -1073,7 +1073,7 @@ NS_IMETHODIMP mozJSComponentLoader::LoadedComponents(uint32_t* length,
     *aComponents = comp;
 
     for (auto iter = mModules.Iter(); !iter.Done(); iter.Next()) {
-        *comp = NS_strdup(iter.Data()->location);
+        *comp = NS_xstrdup(iter.Data()->location);
         comp++;
     }
 
@@ -1298,6 +1298,8 @@ mozJSComponentLoader::Import(JSContext* aCx, const nsACString& aLocation,
         NS_ENSURE_SUCCESS(rv, rv);
     }
 
+    AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING(
+      "mozJSComponentLoader::Import", JS, aLocation);
     ComponentLoaderInfo info(aLocation);
 
     rv = info.EnsureKey();

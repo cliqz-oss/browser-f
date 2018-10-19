@@ -148,7 +148,7 @@ private:
     event.mClickCount = 1;
     event.button = WidgetMouseEvent::eLeftButton;
     event.mTime = PR_IntervalNow();
-    event.inputSource = MouseEventBinding::MOZ_SOURCE_UNKNOWN;
+    event.inputSource = MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 
     nsEventStatus status;
     aWindow->DispatchEvent(&event, status);
@@ -849,4 +849,18 @@ nsWindow::RoundsWidgetCoordinatesTo()
     return 2;
   }
   return 1;
+}
+
+already_AddRefed<nsIWidget>
+nsIWidget::CreateTopLevelWindow()
+{
+  nsCOMPtr<nsIWidget> window = new nsWindow();
+  return window.forget();
+}
+
+already_AddRefed<nsIWidget>
+nsIWidget::CreateChildWindow()
+{
+  nsCOMPtr<nsIWidget> window = new nsWindow();
+  return window.forget();
 }

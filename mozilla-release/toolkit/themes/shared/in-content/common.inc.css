@@ -41,6 +41,11 @@
   --in-content-table-background: #ebebeb;
   --in-content-table-border-dark-color: #d1d1d1;
   --in-content-table-header-background: #0a84ff;
+  --grey-20: #ededf0;
+  --grey-90: #0c0c0d;
+  --grey-90-a10: rgba(12, 12, 13, 0.1);
+  --grey-90-a20: rgba(12, 12, 13, 0.2);
+  --grey-90-a30: rgba(12, 12, 13, 0.3);
 }
 
 html|html,
@@ -108,7 +113,7 @@ xul|groupbox > xul|caption {
   padding: 4px 0;
 }
 
-xul|groupbox xul|label:not(.menu-accel):not(.menu-text):not(.indent):not(.learnMore):not(.tail-with-learn-more),
+xul|groupbox xul|label:not(.menu-accel):not(.menu-iconic-accel):not(.menu-text):not(.menu-iconic-text):not(.menulist-label):not(.indent):not(.learnMore):not(.tail-with-learn-more),
 xul|groupbox xul|description {
   /* !important needed to override toolkit !important rule */
   margin-inline-start: 0 !important;
@@ -130,18 +135,17 @@ xul|tabs {
   border-top: 1px solid var(--in-content-box-border-color);
   border-bottom: 1px solid var(--in-content-box-border-color);
   background-color: var(--in-content-page-background);
+  color: var(--in-content-tab-color);
 }
 
 xul|tab {
   -moz-appearance: none;
   margin-top: 0;
-  padding: 4px 20px;
+  padding: 4px 20px 0 !important;
   min-height: 44px;
-  color: var(--in-content-tab-color);
+  color: inherit;
   background-color: var(--in-content-page-background);
-  border-width: 0;
-  /* !important overrides tabbox.css RTL and visuallyselected rules */
-  border-radius: 0 !important;
+  border-bottom: 4px solid transparent;
   transition: background-color 50ms ease 0s;
 }
 
@@ -151,8 +155,7 @@ xul|tab:hover {
 
 xul|tab[selected] {
   background-color: var(--in-content-box-background-hover);
-  padding-bottom: 0; /* compensate the 4px border */
-  border-bottom: 4px solid var(--in-content-border-highlight);
+  border-bottom-color: var(--in-content-border-highlight);
 }
 
 /* html buttons */
@@ -227,13 +230,8 @@ html|select:disabled,
 html|*.numberbox-input:disabled::-moz-number-spin-box,
 xul|button[disabled="true"],
 xul|colorpicker[type="button"][disabled="true"],
-xul|menulist[disabled="true"],
-xul|listbox[disabled="true"] {
+xul|menulist[disabled="true"] {
   opacity: 0.5;
-}
-
-xul|listbox[disabled="true"] xul|listitem:hover {
-  background-color: transparent;
 }
 
 *|button.primary {
@@ -377,23 +375,23 @@ html|*.numberbox-input::-moz-number-spin-down  {
   background-image: url("chrome://global/skin/arrow/arrow-dn.gif");
 }
 
-xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker {
+xul|*.menulist-dropmarker {
   -moz-appearance: none;
   margin-inline-end: 4px;
   padding: 0;
   border: none;
   background-color: transparent;
-  list-style-image: url("chrome://global/skin/in-content/dropdown.svg");
+  list-style-image: url("chrome://global/skin/in-content/dropdown.svg") !important; /* override dropmarker.css */
   -moz-context-properties: fill;
   fill: -moz-DialogText;
 }
 
-xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker > xul|*.dropmarker-icon {
+xul|*.menulist-dropmarker > xul|*.dropmarker-icon {
   width: 18px;
   height: 18px;
 }
 
-xul|menulist[disabled="true"]:not([editable="true"]) > xul|*.menulist-dropmarker {
+xul|menulist[disabled="true"] > xul|*.menulist-dropmarker {
   fill: GrayText;
 }
 
@@ -504,6 +502,16 @@ html|input[type="text"]:focus,
 html|textarea:focus,
 xul|textbox[focused] {
   border-color: var(--in-content-border-focus);
+}
+
+/* Don't show the field error outlines and focus borders at the same time.
+   This doesn't apply to XUL <textbox> since they don't expose validity
+   attributes */
+html|input[type="email"]:-moz-ui-invalid:focus,
+html|input[type="tel"]:-moz-ui-invalid:focus,
+html|input[type="text"]:-moz-ui-invalid:focus,
+html|textarea:-moz-ui-invalid:focus {
+  border-color: transparent;
 }
 
 html|input[type="email"]:disabled,
@@ -644,7 +652,7 @@ xul|*.radio-label-box {
   width: 240px;
 }
 
-*|*.category {
+*|*#categories > *|*.category {
   min-height: 48px;
   -moz-appearance: none;
   color: var(--in-content-category-text);
@@ -654,28 +662,28 @@ xul|*.radio-label-box {
   transition: background-color 150ms;
 }
 
-*|*.category:hover {
+*|*#categories > *|*.category:hover {
   background-color: var(--in-content-category-background-hover);
   border-radius: 2px;
 }
 
-*|*.category:hover:active {
+*|*#categories > *|*.category:hover:active {
   background-color: var(--in-content-category-background-active);
 }
 
-*|*.category[selected],
-*|*.category.selected {
+*|*#categories > *|*.category[selected],
+*|*#categories > *|*.category.selected {
   color: var(--in-content-category-text-selected);
   background: none;
 }
 
-*|*.category[selected]:hover,
-*|*.category.selected:hover {
+*|*#categories > *|*.category[selected]:hover,
+*|*#categories > *|*.category.selected:hover {
   background-color: var(--in-content-category-background-selected-hover);
 }
 
-*|*.category[selected]:hover:active,
-*|*.category.selected:hover:active {
+*|*#categories > *|*.category[selected]:hover:active,
+*|*#categories > *|*.category.selected:hover:active {
   color: var(--in-content-category-text-selected-active);
   background-color: var(--in-content-category-background-selected-active);
 }
@@ -714,7 +722,7 @@ xul|*.radio-label-box {
     display: none;
   }
 
-  .category {
+  #categories > .category {
     padding-inline-start: 13px; /* make category icons align center */
     margin-inline-end: 33px;
   }
@@ -749,8 +757,7 @@ xul|*.radio-label-box {
 /* List boxes */
 
 html|select[size][multiple],
-xul|richlistbox,
-xul|listbox {
+xul|richlistbox {
   -moz-appearance: none;
   margin-inline-start: 0;
   background-color: var(--in-content-box-background);
@@ -760,8 +767,7 @@ xul|listbox {
 }
 
 html|select[size][multiple] > html|option,
-xul|treechildren::-moz-tree-row,
-xul|listbox xul|listitem {
+xul|treechildren::-moz-tree-row {
   padding: 0.3em;
   margin: 0;
   border: none;
@@ -769,14 +775,16 @@ xul|listbox xul|listitem {
   background-image: none;
 }
 
+xul|treechildren::-moz-tree-row(multicol, odd) {
+  background-color: var(--in-content-box-background-odd);
+}
+
 html|select[size][multiple] > html|option:hover,
-xul|treechildren::-moz-tree-row(hover),
-xul|listbox xul|listitem:hover {
+xul|treechildren::-moz-tree-row(hover) {
   background-color: var(--in-content-item-hover);
 }
 
-xul|treechildren::-moz-tree-row(selected),
-xul|listbox xul|listitem[selected="true"] {
+xul|treechildren::-moz-tree-row(selected) {
   background-color: var(--in-content-item-selected);
   color: var(--in-content-selected-text);
 }
@@ -853,4 +861,42 @@ xul|treechildren::-moz-tree-image {
 xul|treechildren::-moz-tree-cell-text(selected),
 xul|treechildren::-moz-tree-image(selected) {
   color: var(--in-content-selected-text);
+}
+
+/* Message bars */
+.message-bar {
+  background-color: var(--grey-20);
+  border-radius: 4px;
+  color: var(--grey-90);
+  min-height: 32px;
+  padding: 0 4px;
+}
+
+/* The message-bar-button styles have extra specificity to override
+ * the defaults for buttons. */
+.message-bar > hbox > .message-bar-button {
+  background-color: var(--grey-90-a10);
+  border: none;
+  border-radius: 2px;
+  height: 24px;
+  margin-inline-start: 8px;
+  padding: 0 8px;
+}
+
+.message-bar > hbox > .message-bar-button:hover {
+  background-color: var(--grey-90-a20);
+}
+
+.message-bar > hbox > .message-bar-button:active {
+  background-color: var(--grey-90-a30);
+}
+
+.message-bar-icon {
+  list-style-image: url("chrome://browser/skin/identity-icon.svg");
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  margin-inline-end: 4px;
+  -moz-context-properties: fill;
+  fill: currentColor;
 }

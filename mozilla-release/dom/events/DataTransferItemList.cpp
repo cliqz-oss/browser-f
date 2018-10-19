@@ -37,7 +37,7 @@ JSObject*
 DataTransferItemList::WrapObject(JSContext* aCx,
                                  JS::Handle<JSObject*> aGivenProto)
 {
-  return DataTransferItemListBinding::Wrap(aCx, this, aGivenProto);
+  return DataTransferItemList_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 already_AddRefed<DataTransferItemList>
@@ -152,7 +152,8 @@ DataTransferItemList::Add(const nsAString& aData,
     return nullptr;
   }
 
-  nsCOMPtr<nsIVariant> data(new storage::TextVariant(aData));
+  RefPtr<nsVariantCC> data(new nsVariantCC());
+  data->SetAsAString(aData);
 
   nsAutoString format;
   mDataTransfer->GetRealFormat(aType, format);

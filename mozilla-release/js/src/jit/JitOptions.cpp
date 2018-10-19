@@ -86,9 +86,6 @@ DefaultJitOptions::DefaultJitOptions()
     // Toggles whether Effective Address Analysis is globally disabled.
     SET_DEFAULT(disableEaa, false);
 
-    // Toggle whether eager simd unboxing is globally disabled.
-    SET_DEFAULT(disableEagerSimdUnbox, false);
-
     // Toggles whether Edge Case Analysis is gobally disabled.
     SET_DEFAULT(disableEdgeCaseAnalysis, false);
 
@@ -125,8 +122,8 @@ DefaultJitOptions::DefaultJitOptions()
     // Toggles whether CacheIR stubs are used.
     SET_DEFAULT(disableCacheIR, false);
 
-    // Toggles whether shared stubs are used in Ionmonkey.
-    SET_DEFAULT(disableSharedStubs, false);
+    // Toggles whether CacheIR stubs for binary arith operations are used
+    SET_DEFAULT(disableCacheIRBinaryArith, false);
 
     // Toggles whether sincos optimization is globally disabled.
     // See bug984018: The MacOS is the only one that has the sincos fast.
@@ -236,9 +233,6 @@ DefaultJitOptions::DefaultJitOptions()
 
     // Toggles whether unboxed plain objects can be created by the VM.
     SET_DEFAULT(disableUnboxedObjects, false);
-
-    // Test whether Atomics are allowed in asm.js code.
-    SET_DEFAULT(asmJSAtomicsEnable, false);
 
     // Toggles the optimization whereby offsets are folded into loads and not
     // included in the bounds check.

@@ -59,7 +59,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-using namespace mozilla::dom::SVGUnitTypesBinding;
+using namespace mozilla::dom::SVGUnitTypes_Binding;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 
@@ -308,7 +308,7 @@ nsSVGUtils::ObjectSpace(const gfxRect &aRect, const nsSVGLength2 *aLength)
                    aRect.Width(), aRect.Height()));
     break;
   default:
-    NS_NOTREACHED("unexpected ctx type");
+    MOZ_ASSERT_UNREACHABLE("unexpected ctx type");
     axis = 0.0f;
     break;
   }
@@ -523,11 +523,13 @@ nsSVGUtils::DetermineMaskUsage(nsIFrame* aFrame, bool aHandleOpacity,
       break;
     case StyleShapeSourceType::Shape:
     case StyleShapeSourceType::Box:
-      aUsage.shouldApplyBasicShape = true;
+    case StyleShapeSourceType::Path:
+      aUsage.shouldApplyBasicShapeOrPath = true;
       break;
     case StyleShapeSourceType::None:
       MOZ_ASSERT(!aUsage.shouldGenerateClipMaskLayer &&
-                 !aUsage.shouldApplyClipPath && !aUsage.shouldApplyBasicShape);
+                 !aUsage.shouldApplyClipPath &&
+                 !aUsage.shouldApplyBasicShapeOrPath);
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unsupported clip-path type.");
@@ -807,11 +809,11 @@ nsSVGUtils::PaintFrameWithEffects(nsIFrame *aFrame,
   /* If this frame has only a trivial clipPath, set up cairo's clipping now so
    * we can just do normal painting and get it clipped appropriately.
    */
-  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShape) {
+  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShapeOrPath) {
     if (maskUsage.shouldApplyClipPath) {
       clipPathFrame->ApplyClipPath(aContext, aFrame, aTransform);
     } else {
-      nsCSSClipPathInstance::ApplyBasicShapeClip(aContext, aFrame);
+      nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(aContext, aFrame);
     }
   }
 
@@ -833,7 +835,7 @@ nsSVGUtils::PaintFrameWithEffects(nsIFrame *aFrame,
                                       aDirtyRect->width, aDirtyRect->height));
       tmpDirtyRegion =
         nsLayoutUtils::RoundGfxRectToAppRect(
-          dirtyBounds, aFrame->PresContext()->AppUnitsPerCSSPixel()) -
+          dirtyBounds, AppUnitsPerCSSPixel()) -
         aFrame->GetPosition();
       dirtyRegion = &tmpDirtyRegion;
     }
@@ -856,7 +858,7 @@ nsSVGUtils::PaintFrameWithEffects(nsIFrame *aFrame,
      svgFrame->PaintSVG(*target, aTransform, aImgParams, aDirtyRect);
   }
 
-  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShape) {
+  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShapeOrPath) {
     aContext.PopClip();
   }
 
@@ -878,7 +880,7 @@ nsSVGUtils::HitTestClip(nsIFrame *aFrame, const gfxPoint &aPoint)
   if (!props.mClipPath) {
     const nsStyleSVGReset *style = aFrame->StyleSVGReset();
     if (style->HasClipPath()) {
-      return nsCSSClipPathInstance::HitTestBasicShapeClip(aFrame, aPoint);
+      return nsCSSClipPathInstance::HitTestBasicShapeOrPathClip(aFrame, aPoint);
     }
     return true;
   }
@@ -962,7 +964,7 @@ nsSVGUtils::TransformFrameRectToOuterSVG(const nsRect& aRect,
                                          nsPresContext* aPresContext)
 {
   gfxRect r(aRect.x, aRect.y, aRect.width, aRect.height);
-  r.Scale(1.0 / nsPresContext::AppUnitsPerCSSPixel());
+  r.Scale(1.0 / AppUnitsPerCSSPixel());
   return nsLayoutUtils::RoundGfxRectToAppRect(
     aMatrix.TransformBounds(r), aPresContext->AppUnitsPerDevPixel());
 }
@@ -1218,7 +1220,7 @@ nsSVGUtils::FrameSpaceInCSSPxToUserSpaceOffset(nsIFrame *aFrame)
   if (aFrame->IsFrameOfType(nsIFrame::eSVGGeometry) ||
       nsSVGUtils::IsInSVGTextSubtree(aFrame)) {
     return nsLayoutUtils::RectToGfxRect(aFrame->GetRect(),
-                                         nsPresContext::AppUnitsPerCSSPixel()).TopLeft();
+                                         AppUnitsPerCSSPixel()).TopLeft();
   }
 
   // For foreignObject frames, nsSVGUtils::GetBBox applies their local
@@ -1439,14 +1441,14 @@ nsSVGUtils::GetFallbackOrPaintColor(ComputedStyle *aComputedStyle,
     case eStyleSVGPaintType_Server:
     case eStyleSVGPaintType_ContextStroke:
       color = paint.GetFallbackType() == eStyleSVGFallbackType_Color ?
-                paint.GetFallbackColor() : NS_RGBA(0, 0, 0, 0);
+                paint.GetFallbackColor(aComputedStyle) : NS_RGBA(0, 0, 0, 0);
       break;
     case eStyleSVGPaintType_ContextFill:
       color = paint.GetFallbackType() == eStyleSVGFallbackType_Color ?
-                paint.GetFallbackColor() : NS_RGB(0, 0, 0);
+                paint.GetFallbackColor(aComputedStyle) : NS_RGB(0, 0, 0);
       break;
     default:
-      color = paint.GetColor();
+      color = paint.GetColor(aComputedStyle);
       break;
   }
   if (styleIfVisited) {
@@ -1461,7 +1463,7 @@ nsSVGUtils::GetFallbackOrPaintColor(ComputedStyle *aComputedStyle,
     // another simple color.
     if (paintIfVisited.Type() == eStyleSVGPaintType_Color &&
         paint.Type() == eStyleSVGPaintType_Color) {
-      nscolor colors[2] = { color, paintIfVisited.GetColor() };
+      nscolor colors[2] = { color, paintIfVisited.GetColor(aComputedStyle) };
       return ComputedStyle::CombineVisitedColors(
                colors, aComputedStyle->RelevantLinkVisited());
     }
@@ -1646,7 +1648,8 @@ nsSVGUtils::GetOpacity(nsStyleSVGOpacitySource aOpacityType,
     }
     break;
   default:
-    NS_NOTREACHED("Unknown object opacity inheritance type for SVG glyph");
+    MOZ_ASSERT_UNREACHABLE("Unknown object opacity inheritance type for SVG "
+                           "glyph");
   }
   return opacity;
 }
@@ -1703,7 +1706,7 @@ nsSVGUtils::GetGeometryHitTestFlags(nsIFrame* aFrame)
 {
   uint16_t flags = 0;
 
-  switch (aFrame->StyleUserInterface()->mPointerEvents) {
+  switch (aFrame->StyleUI()->mPointerEvents) {
   case NS_STYLE_POINTER_EVENTS_NONE:
     break;
   case NS_STYLE_POINTER_EVENTS_AUTO:

@@ -27,17 +27,16 @@ add_task(async function test_historyClear() {
     let bm = await PlacesUtils.bookmarks.insert({
       parentGuid: PlacesUtils.bookmarks.unfiledGuid,
       url: pageURI,
-      title: null
+      title: null,
     });
     let id = await PlacesUtils.promiseItemId(bm.guid);
     // Will persist because it's an EXPIRE_NEVER item anno.
     as.setItemAnnotation(id, "persist", "test", 0, as.EXPIRE_NEVER);
     // Will persist because the page is bookmarked.
-    as.setPageAnnotation(pageURI, "persist", "test", 0, as.EXPIRE_NEVER);
-    // All EXPIRE_SESSION annotations are expected to expire on clear history.
-    as.setItemAnnotation(id, "expire_session", "test", 0, as.EXPIRE_SESSION);
-    as.setPageAnnotation(pageURI, "expire_session", "test", 0, as.EXPIRE_SESSION);
-    // Annotations with timed policy will expire regardless bookmarked status.
+    await PlacesUtils.history.update({
+      url: pageURI,
+      annotations: new Map([["persist", "test"]]),
+    });
   }
 
   // Add some visited page and annotations for each.
@@ -46,33 +45,25 @@ add_task(async function test_historyClear() {
     // expire as well.
     let pageURI = uri("http://page_anno." + i + ".mozilla.org/");
     await PlacesTestUtils.addVisits({ uri: pageURI });
-    as.setPageAnnotation(pageURI, "expire", "test", 0, as.EXPIRE_NEVER);
-    as.setPageAnnotation(pageURI, "expire_session", "test", 0, as.EXPIRE_SESSION);
+    await PlacesUtils.history.update({
+      url: pageURI,
+      annotations: new Map([["expire", "test"]]),
+    });
   }
 
   // Expire all visits for the bookmarks
   await PlacesUtils.history.clear();
 
-  ["expire_session",
-   "expire"].forEach(function(aAnno) {
-    let pages = as.getPagesWithAnnotation(aAnno);
-    Assert.equal(pages.length, 0);
-  });
+  Assert.equal((await getPagesWithAnnotation("expire")).length, 0);
 
-  ["expire_session", "expire"].forEach(function(aAnno) {
-    let items = as.getItemsWithAnnotation(aAnno);
-    Assert.equal(items.length, 0);
-  });
-
-  let pages = as.getPagesWithAnnotation("persist");
+  let pages = await getPagesWithAnnotation("persist");
   Assert.equal(pages.length, 5);
 
-  let items = as.getItemsWithAnnotation("persist");
+  let items = await getItemsWithAnnotation("persist");
   Assert.equal(items.length, 5);
 
-  for (let itemId of items) {
+  for (let guid of items) {
     // Check item exists.
-    let guid = await PlacesUtils.promiseItemGuid(itemId);
     Assert.ok((await PlacesUtils.bookmarks.fetch({guid})), "item exists");
   }
 });

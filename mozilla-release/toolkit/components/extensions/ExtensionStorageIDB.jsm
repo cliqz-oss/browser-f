@@ -12,7 +12,6 @@ ChromeUtils.import("resource://gre/modules/IndexedDB.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
   ExtensionStorage: "resource://gre/modules/ExtensionStorage.jsm",
-  ExtensionUtils: "resource://gre/modules/ExtensionUtils.jsm",
   Services: "resource://gre/modules/Services.jsm",
   OS: "resource://gre/modules/osfile.jsm",
 });
@@ -31,6 +30,135 @@ const IDB_MIGRATE_RESULT_HISTOGRAM = "WEBEXT_STORAGE_LOCAL_IDB_MIGRATE_RESULT_CO
 
 // Whether or not the installed extensions should be migrated to the storage.local IndexedDB backend.
 const BACKEND_ENABLED_PREF = "extensions.webextensions.ExtensionStorageIDB.enabled";
+const IDB_MIGRATED_PREF_BRANCH = "extensions.webextensions.ExtensionStorageIDB.migrated";
+
+var DataMigrationTelemetry = {
+  initialized: false,
+
+  lazyInit() {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+
+    // Ensure that these telemetry events category is enabled.
+    Services.telemetry.setEventRecordingEnabled("extensions.data", true);
+
+    this.resultHistogram = Services.telemetry.getHistogramById(IDB_MIGRATE_RESULT_HISTOGRAM);
+  },
+
+  /**
+   * Get a trimmed version of the given string if it is longer than 80 chars.
+   *
+   * @param {string} str
+   *        The original string content.
+   *
+   * @returns {string}
+   *          The trimmed version of the string when longer than 80 chars, or the given string
+   *          unmodified otherwise.
+   */
+  getTrimmedString(str) {
+    if (str.length <= 80) {
+      return str;
+    }
+
+    const length = str.length;
+
+    // Trim the string to prevent a flood of warnings messages logged internally by recordEvent,
+    // the trimmed version is going to be composed by the first 40 chars and the last 37 and 3 dots
+    // that joins the two parts, to visually indicate that the string has been trimmed.
+    return `${str.slice(0, 40)}...${str.slice(length - 37, length)}`;
+  },
+
+  /**
+   * Get the DOMException error name for a given error object.
+   *
+   * @param {Error | undefined} error
+   *        The Error object to convert into a string, or undefined if there was no error.
+   *
+   * @returns {string | undefined}
+   *          The DOMException error name (sliced to a maximum of 80 chars),
+   *          "OtherError" if the error object is not a DOMException instance,
+   *          or `undefined` if there wasn't an error.
+   */
+  getErrorName(error) {
+    if (!error) {
+      return undefined;
+    }
+
+    if (error instanceof DOMException) {
+      if (error.name.length > 80) {
+        return this.getTrimmedString(error.name);
+      }
+
+      return error.name;
+    }
+
+    return "OtherError";
+  },
+
+  /**
+   * Record telemetry related to a data migration result.
+   *
+   * @param {object} telemetryData
+   * @param {string} telemetryData.backend
+   *        The backend selected ("JSONFile" or "IndexedDB").
+   * @param {boolean} telemetryData.dataMigrated
+   *        Old extension data has been migrated successfully.
+   * @param {string} telemetryData.extensionId
+   *        The id of the extension migrated.
+   * @param {Error | undefined} telemetryData.error
+   *        The error raised during the data migration, if any.
+   * @param {boolean} telemetryData.hasJSONFile
+   *        The extension has an existing JSONFile to migrate.
+   * @param {boolean} telemetryData.hasOldData
+   *        The extension's JSONFile wasn't empty.
+   * @param {string} telemetryData.histogramCategory
+   *        The histogram category for the result ("success" or "failure").
+   */
+  recordResult(telemetryData) {
+    try {
+      const {
+        backend,
+        dataMigrated,
+        extensionId,
+        error,
+        hasJSONFile,
+        hasOldData,
+        histogramCategory,
+      } = telemetryData;
+
+      this.lazyInit();
+      this.resultHistogram.add(histogramCategory);
+
+      const extra = {backend};
+
+      if (dataMigrated != null) {
+        extra.data_migrated = dataMigrated ? "y" : "n";
+      }
+
+      if (hasJSONFile != null) {
+        extra.has_jsonfile = hasJSONFile ? "y" : "n";
+      }
+
+      if (hasOldData != null) {
+        extra.has_olddata = hasOldData ? "y" : "n";
+      }
+
+      if (error) {
+        extra.error_name = this.getErrorName(error);
+      }
+
+      Services.telemetry.recordEvent("extensions.data", "migrateResult", "storageLocal",
+                                     this.getTrimmedString(extensionId), extra);
+    } catch (err) {
+      // Report any telemetry error on the browser console, but
+      // we treat it as a non-fatal error and we don't re-throw
+      // it to the caller.
+      Cu.reportError(err);
+    }
+  },
+};
 
 class ExtensionStorageLocalIDB extends IndexedDB {
   onupgradeneeded(event) {
@@ -76,6 +204,7 @@ class ExtensionStorageLocalIDB extends IndexedDB {
     // as soon as one of the put requests fails.
     const transaction = this.transaction(IDB_DATA_STORENAME, "readwrite");
     const objectStore = transaction.objectStore(IDB_DATA_STORENAME, "readwrite");
+    const transactionCompleted = transaction.promiseComplete();
 
     for (let key of Object.keys(items)) {
       try {
@@ -89,14 +218,17 @@ class ExtensionStorageLocalIDB extends IndexedDB {
         };
         changed = true;
       } catch (err) {
+        transactionCompleted.catch(err => {
+          // We ignore this rejection because we are explicitly aborting the transaction,
+          // the transaction.error will be null, and we throw the original error below.
+        });
         transaction.abort();
 
-        // Ensure that the error we throw is converted into an ExtensionError
-        // (e.g. DataCloneError instances raised from the internal IndexedDB
-        // operation have to be converted to be accessible to the extension code).
-        throw new ExtensionUtils.ExtensionError(String(err));
+        throw err;
       }
     }
+
+    await transactionCompleted;
 
     return changed ? changes : null;
   }
@@ -119,7 +251,9 @@ class ExtensionStorageLocalIDB extends IndexedDB {
     let keys;
     let defaultValues;
 
-    if (Array.isArray(keysOrItems)) {
+    if (typeof keysOrItems === "string") {
+      keys = [keysOrItems];
+    } else if (Array.isArray(keysOrItems)) {
       keys = keysOrItems;
     } else if (keysOrItems && typeof(keysOrItems) === "object") {
       keys = Object.keys(keysOrItems);
@@ -237,9 +371,13 @@ async function migrateJSONFileData(extension, storagePrincipal) {
   let idbConn;
   let jsonFile;
   let hasEmptyIDB;
-  let oldDataRead = false;
-  let migrated = false;
-  let histogram = Services.telemetry.getHistogramById(IDB_MIGRATE_RESULT_HISTOGRAM);
+  let nonFatalError;
+  let dataMigrateCompleted = false;
+  let hasOldData = false;
+
+  if (ExtensionStorageIDB.isMigratedExtension(extension)) {
+    return;
+  }
 
   try {
     idbConn = await ExtensionStorageLocalIDB.openForPrincipal(storagePrincipal);
@@ -250,14 +388,36 @@ async function migrateJSONFileData(extension, storagePrincipal) {
       // there is no "going back": any data that has not been migrated will be still on disk
       // but it is not going to be migrated anymore, it could be eventually used to allow
       // a user to manually retrieve the old data file).
+      ExtensionStorageIDB.setMigratedExtensionPref(extension, true);
       return;
     }
+  } catch (err) {
+    extension.logWarning(
+      `storage.local data migration cancelled, unable to open IDB connection: ${err.message}::${err.stack}`);
+
+    DataMigrationTelemetry.recordResult({
+      backend: "JSONFile",
+      extensionId: extension.id,
+      error: err,
+      histogramCategory: "failure",
+    });
+
+    throw err;
+  }
+
+  try {
+    oldStoragePath = ExtensionStorage.getStorageFile(extension.id);
+    oldStorageExists = await OS.File.exists(oldStoragePath).catch(fileErr => {
+      // If we can't access the oldStoragePath here, then extension is also going to be unable to
+      // access it, and so we log the error but we don't stop the extension from switching to
+      // the IndexedDB backend.
+      extension.logWarning(
+        `Unable to access extension storage.local data file: ${fileErr.message}::${fileErr.stack}`);
+      return false;
+    });
 
     // Migrate any data stored in the JSONFile backend (if any), and remove the old data file
     // if the migration has been completed successfully.
-    oldStoragePath = ExtensionStorage.getStorageFile(extension.id);
-    oldStorageExists = await OS.File.exists(oldStoragePath);
-
     if (oldStorageExists) {
       Services.console.logStringMessage(
         `Migrating storage.local data for ${extension.policy.debugName}...`);
@@ -266,46 +426,77 @@ async function migrateJSONFileData(extension, storagePrincipal) {
       const data = {};
       for (let [key, value] of jsonFile.data.entries()) {
         data[key] = value;
+        hasOldData = true;
       }
-      oldDataRead = true;
+
       await idbConn.set(data);
-      migrated = true;
       Services.console.logStringMessage(
         `storage.local data successfully migrated to IDB Backend for ${extension.policy.debugName}.`);
     }
+
+    dataMigrateCompleted = true;
   } catch (err) {
-    extension.logWarning(`Error on migrating storage.local data: ${err.message}::${err.stack}`);
-    if (oldDataRead) {
-      // If the data has been read successfully and it has been failed to be stored
-      // into the IndexedDB backend, then clear any partially stored data and reject
+    extension.logWarning(`Error on migrating storage.local data file: ${err.message}::${err.stack}`);
+
+    if (oldStorageExists && !dataMigrateCompleted) {
+      // If the data failed to be stored into the IndexedDB backend, then we clear the IndexedDB
+      // backend to allow the extension to retry the migration on its next startup, and reject
       // the data migration promise explicitly (which would prevent the new backend
       // from being enabled for this session).
       Services.qms.clearStoragesForPrincipal(storagePrincipal);
 
-      histogram.add("failure");
+      DataMigrationTelemetry.recordResult({
+        backend: "JSONFile",
+        dataMigrated: dataMigrateCompleted,
+        extensionId: extension.id,
+        error: err,
+        hasJSONFile: oldStorageExists,
+        hasOldData,
+        histogramCategory: "failure",
+      });
 
       throw err;
     }
+
+    // This error is not preventing the extension from switching to the IndexedDB backend,
+    // but we may still want to know that it has been triggered and include it into the
+    // telemetry data collected for the extension.
+    nonFatalError = err;
   } finally {
-    // Finalize the jsonFile and clear the jsonFilePromise cached by the ExtensionStorage
-    // (so that the file can be immediatelly removed when we call OS.File.remove).
-    ExtensionStorage.clearCachedFile(extension.id);
-    if (jsonFile) {
-      jsonFile.finalize();
-    }
+    // Clear the jsonFilePromise cached by the ExtensionStorage.
+    await ExtensionStorage.clearCachedFile(extension.id).catch(err => {
+      extension.logWarning(err.message);
+    });
   }
 
-  histogram.add("success");
-
-  // If the IDB backend has been enabled, try to remove the old storage.local data file,
-  // but keep using the selected backend even if it fails to be removed.
-  if (oldStorageExists && migrated) {
+  // If the IDB backend has been enabled, rename the old storage.local data file, but
+  // do not prevent the extension from switching to the IndexedDB backend if it fails.
+  if (oldStorageExists && dataMigrateCompleted) {
     try {
-      await OS.File.remove(oldStoragePath);
+      // Only migrate the file when it actually exists (e.g. the file name is not going to exist
+      // when it is corrupted, because JSONFile internally rename it to `.corrupt`.
+      if (await OS.File.exists(oldStoragePath)) {
+        let openInfo = await OS.File.openUnique(`${oldStoragePath}.migrated`, {humanReadable: true});
+        await openInfo.file.close();
+        await OS.File.move(oldStoragePath, openInfo.path);
+      }
     } catch (err) {
+      nonFatalError = err;
       extension.logWarning(err.message);
     }
   }
+
+  ExtensionStorageIDB.setMigratedExtensionPref(extension, true);
+
+  DataMigrationTelemetry.recordResult({
+    backend: "IndexedDB",
+    dataMigrated: dataMigrateCompleted,
+    extensionId: extension.id,
+    error: nonFatalError,
+    hasJSONFile: oldStorageExists,
+    hasOldData,
+    histogramCategory: "success",
+  });
 }
 
 /**
@@ -314,6 +505,7 @@ async function migrateJSONFileData(extension, storagePrincipal) {
  */
 this.ExtensionStorageIDB = {
   BACKEND_ENABLED_PREF,
+  IDB_MIGRATED_PREF_BRANCH,
   IDB_MIGRATE_RESULT_HISTOGRAM,
 
   // Map<extension-id, Set<Function>>
@@ -328,6 +520,18 @@ this.ExtensionStorageIDB = {
 
   init() {
     XPCOMUtils.defineLazyPreferenceGetter(this, "isBackendEnabled", BACKEND_ENABLED_PREF, false);
+  },
+
+  isMigratedExtension(extension) {
+    return Services.prefs.getBoolPref(`${IDB_MIGRATED_PREF_BRANCH}.${extension.id}`, false);
+  },
+
+  setMigratedExtensionPref(extension, val) {
+    Services.prefs.setBoolPref(`${IDB_MIGRATED_PREF_BRANCH}.${extension.id}`, !!val);
+  },
+
+  clearMigratedExtensionPref(extensionId) {
+    Services.prefs.clearUserPref(`${IDB_MIGRATED_PREF_BRANCH}.${extensionId}`);
   },
 
   getStoragePrincipal(extension) {

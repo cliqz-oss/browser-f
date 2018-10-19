@@ -106,7 +106,8 @@ Preferences
 
 ``toolkit.telemetry.log.level``
 
-  This sets the Telemetry logging verbosity per ``Log.jsm``, with ``Trace`` or ``0`` being the most verbose and the default being ``Warn``.
+  This sets the Telemetry logging verbosity per ``Log.jsm``. The available levels, in descending order of verbosity, are ``Trace``, ``Debug``, ``Config``, ``Info``, ``Warn``, ``Error`` and ``Fatal`` with the default being ``Warn``.
+
   By default logging goes only the console service.
 
 ``toolkit.telemetry.log.dump``
@@ -161,6 +162,11 @@ Preferences
 
   The maximum frequency at which an :doc:`../data/event-ping` will be sent.
   Default is 10 (minutes).
+
+``toolkit.telemetry.overrideUpdateChannel``
+
+  Override the ``channel`` value that is reported via Telemetry.
+  This is useful for distinguishing different types of builds that otherwise still report as the same update channel.
 
 Data-choices notification
 -------------------------

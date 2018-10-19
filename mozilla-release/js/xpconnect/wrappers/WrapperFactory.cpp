@@ -257,7 +257,7 @@ WrapperFactory::PrepareForWrapping(JSContext* cx, HandleObject scope,
                 return;
             }
 
-            RootedObject currentScope(cx, JS_GetGlobalForObject(cx, obj));
+            RootedObject currentScope(cx, JS::GetNonCCWObjectGlobal(obj));
             if (MOZ_UNLIKELY(wrapScope != currentScope)) {
                 // The wrapper claims it wants to be in the new scope, but
                 // currently has a reflection that lives in the old scope. This
@@ -673,7 +673,7 @@ TransplantObjectRetainingXrayExpandos(JSContext* cx, JS::HandleObject origobj,
 nsIGlobalObject*
 NativeGlobal(JSObject* obj)
 {
-    obj = js::GetGlobalForObjectCrossCompartment(obj);
+    obj = JS::GetNonCCWObjectGlobal(obj);
 
     // Every global needs to hold a native as its private or be a
     // WebIDL object with an nsISupports DOM object.
@@ -699,6 +699,12 @@ NativeGlobal(JSObject* obj)
     MOZ_ASSERT(global, "Native held by global needs to implement nsIGlobalObject!");
 
     return global;
+}
+
+nsIGlobalObject*
+CurrentNativeGlobal(JSContext* cx)
+{
+    return xpc::NativeGlobal(JS::CurrentGlobalOrNull(cx));
 }
 
 } // namespace xpc

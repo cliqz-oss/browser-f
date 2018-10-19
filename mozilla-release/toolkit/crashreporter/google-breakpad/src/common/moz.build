@@ -38,9 +38,11 @@ if CONFIG['OS_ARCH'] != 'WINNT':
         'dwarf_cfi_to_module.cc',
         'dwarf_cu_to_module.cc',
         'dwarf_line_to_module.cc',
+        'dwarf_range_list_handler.cc',
         'language.cc',
         'md5.cc',
         'module.cc',
+        'path_helper.cc',
         'string_conversion.cc',
     ]
     if CONFIG['OS_ARCH'] == 'Darwin':
@@ -50,6 +52,10 @@ if CONFIG['OS_ARCH'] != 'WINNT':
     HOST_CXXFLAGS += [
         '-O2',
         '-g',
+    ]
+    HOST_DEFINES['HAVE_RUST_DEMANGLE'] = True
+    LOCAL_INCLUDES += [
+        '/toolkit/crashreporter/rust',
     ]
     HostLibrary('host_breakpad_common_s')
 

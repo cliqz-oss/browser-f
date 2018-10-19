@@ -50,8 +50,7 @@ var ViewSourceContent = {
 
   get isViewSource() {
     let uri = content.document.documentURI;
-    return uri.startsWith("view-source:") ||
-           (uri.startsWith("data:") && uri.includes("MathML"));
+    return uri.startsWith("view-source:");
   },
 
   get isAboutBlank() {
@@ -185,18 +184,17 @@ var ViewSourceContent = {
 
     if (outerWindowID) {
       let contentWindow = Services.wm.getOuterWindowWithId(outerWindowID);
-      let requestor = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor);
+      let otherDocShell = contentWindow.docShell;
 
       try {
-        let otherWebNav = requestor.getInterface(Ci.nsIWebNavigation);
-        pageDescriptor = otherWebNav.QueryInterface(Ci.nsIWebPageDescriptor)
-                                    .currentDescriptor;
+        pageDescriptor = otherDocShell.QueryInterface(Ci.nsIWebPageDescriptor)
+                                      .currentDescriptor;
       } catch (e) {
         // We couldn't get the page descriptor, so we'll probably end up re-retrieving
         // this document off of the network.
       }
 
-      let utils = requestor.getInterface(Ci.nsIDOMWindowUtils);
+      let utils = contentWindow.windowUtils;
       let doc = contentWindow.document;
       forcedCharSet = utils.docCharsetIsForced ? doc.characterSet
                                                : null;
@@ -266,12 +264,11 @@ var ViewSourceContent = {
     shEntry.setTitle(viewSrcURL);
     let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
     shEntry.triggeringPrincipal = systemPrincipal;
-    shEntry.loadType = Ci.nsIDocShellLoadInfo.loadHistory;
+    shEntry.setAsHistoryLoad();
     shEntry.cacheKey = shEntrySource.cacheKey;
     docShell.QueryInterface(Ci.nsIWebNavigation)
             .sessionHistory
             .legacySHistory
-            .QueryInterface(Ci.nsISHistoryInternal)
             .addEntry(shEntry, true);
   },
 
@@ -713,7 +710,7 @@ var ViewSourceContent = {
       accesskey: true,
       handler() {
         sendAsyncMessage("ViewSource:PromptAndGoToLine");
-      }
+      },
     },
     {
       id: "wrapLongLines",
@@ -722,7 +719,7 @@ var ViewSourceContent = {
       },
       handler() {
         this.toggleWrapping();
-      }
+      },
     },
     {
       id: "highlightSyntax",
@@ -731,7 +728,7 @@ var ViewSourceContent = {
       },
       handler() {
         this.toggleSyntaxHighlighting();
-      }
+      },
     },
   ],
 

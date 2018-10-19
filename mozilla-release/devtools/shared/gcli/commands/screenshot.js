@@ -300,8 +300,7 @@ function createScreenshotData(document, args) {
 
   // Only adjust for scrollbars when considering the full window
   if (!args.selector) {
-    const winUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+    const winUtils = window.windowUtils;
     const scrollbarHeight = {};
     const scrollbarWidth = {};
     winUtils.getScrollbarSize(false, scrollbarWidth, scrollbarHeight);
@@ -374,9 +373,7 @@ function saveToClipboard(context, reply) {
       });
       const input = channel.open2();
 
-      const loadContext = context.environment.chromeWindow
-                                 .QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIWebNavigation)
+      const loadContext = context.environment.chromeWindow.docShell
                                  .QueryInterface(Ci.nsILoadContext);
 
       const callback = {
@@ -554,7 +551,6 @@ var saveToFile = Task.async(function* (context, reply) {
   // the downloads toolbar button when the save is done.
   const nsIWBP = Ci.nsIWebBrowserPersist;
   const flags = nsIWBP.PERSIST_FLAGS_REPLACE_EXISTING_FILES |
-                nsIWBP.PERSIST_FLAGS_FORCE_ALLOW_COOKIES |
                 nsIWBP.PERSIST_FLAGS_BYPASS_CACHE |
                 nsIWBP.PERSIST_FLAGS_AUTODETECT_APPLY_CONVERSION;
   const isPrivate =
@@ -573,7 +569,9 @@ var saveToFile = Task.async(function* (context, reply) {
           isPrivate);
   const listener = new DownloadListener(window, tr);
   persist.progressListener = listener;
+  const principal = Services.scriptSecurityManager.getSystemPrincipal();
   persist.savePrivacyAwareURI(sourceURI,
+                              principal,
                               0,
                               document.documentURIObject,
                               Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,

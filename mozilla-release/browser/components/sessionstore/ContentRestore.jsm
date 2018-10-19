@@ -6,7 +6,6 @@
 
 var EXPORTED_SYMBOLS = ["ContentRestore"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 
 ChromeUtils.defineModuleGetter(this, "DocShellCapabilities",
@@ -85,7 +84,7 @@ function ContentRestore(chromeGlobal) {
   let EXPORTED_METHODS = ["restoreHistory",
                           "restoreTabContent",
                           "restoreDocument",
-                          "resetRestore"
+                          "resetRestore",
                          ];
 
   for (let method of EXPORTED_METHODS) {
@@ -190,7 +189,7 @@ ContentRestoreInternal.prototype = {
 
         // Notify the parent.
         callbacks.onLoadStarted();
-      }
+      },
     });
   },
 
@@ -299,7 +298,7 @@ ContentRestoreInternal.prototype = {
         this.resetRestore();
 
         finishCallback();
-      }
+      },
     });
   },
 
@@ -315,8 +314,7 @@ ContentRestoreInternal.prototype = {
     let {formdata, scrollPositions} = this._restoringDocument;
     this._restoringDocument = null;
 
-    let window = this.docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                               .getInterface(Ci.nsIDOMWindow);
+    let window = this.docShell.domWindow;
 
     // Restore form data.
     restoreFrameTreeData(window, formdata, (frame, data) => {
@@ -355,7 +353,7 @@ ContentRestoreInternal.prototype = {
       this._progressListener.uninstall();
     }
     this._progressListener = null;
-  }
+  },
 };
 
 /*
@@ -373,7 +371,7 @@ function HistoryListener(docShell, callback) {
 HistoryListener.prototype = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsISHistoryListener,
-    Ci.nsISupportsWeakReference
+    Ci.nsISupportsWeakReference,
   ]),
 
   uninstall() {
@@ -383,8 +381,6 @@ HistoryListener.prototype = {
     }
   },
 
-  OnHistoryGoBack(backURI) { return true; },
-  OnHistoryGoForward(forwardURI) { return true; },
   OnHistoryGotoIndex(index, gotoURI) { return true; },
   OnHistoryPurge(numEntries) { return true; },
   OnHistoryReplaceEntry(index) {},
@@ -453,7 +449,7 @@ function ProgressListener(docShell, callbacks) {
 ProgressListener.prototype = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsIWebProgressListener,
-    Ci.nsISupportsWeakReference
+    Ci.nsISupportsWeakReference,
   ]),
 
   uninstall() {

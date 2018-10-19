@@ -5,7 +5,7 @@
 "use strict";
 
 var EXPORTED_SYMBOLS = [
-  "SelectParentHelper"
+  "SelectParentHelper",
 ];
 
 const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm", {});
@@ -145,9 +145,9 @@ var SelectParentHelper = {
 
     // Set the maximum height to show exactly MAX_ROWS items.
     let menupopup = menulist.menupopup;
-    let firstItem = menupopup.firstChild;
+    let firstItem = menupopup.firstElementChild;
     while (firstItem && firstItem.hidden) {
-      firstItem = firstItem.nextSibling;
+      firstItem = firstItem.nextElementSibling;
     }
 
     if (firstItem) {
@@ -211,7 +211,7 @@ var SelectParentHelper = {
         if (event.target.hasAttribute("value")) {
           currentBrowser.messageManager.sendAsyncMessage("Forms:SelectDropDownItem", {
             value: event.target.value,
-            closedWithEnter
+            closedWithEnter,
           });
         }
         break;
@@ -342,7 +342,7 @@ function populateChildren(menulist, options, selectedIndex, zoom,
 
   for (let option of options) {
     let isOptGroup = (option.tagName == "OPTGROUP");
-    let item = element.ownerDocument.createElement(isOptGroup ? "menucaption" : "menuitem");
+    let item = element.ownerDocument.createXULElement(isOptGroup ? "menucaption" : "menuitem");
 
     item.setAttribute("label", option.textContent);
     item.style.direction = option.textDirection;
@@ -449,7 +449,7 @@ function populateChildren(menulist, options, selectedIndex, zoom,
       && element.childElementCount > SEARCH_MINIMUM_ELEMENTS) {
 
     // Add a search text field as the first element of the dropdown
-    let searchbox = element.ownerDocument.createElement("textbox");
+    let searchbox = element.ownerDocument.createXULElement("textbox");
     searchbox.setAttribute("type", "search");
     searchbox.addEventListener("input", onSearchInput);
     searchbox.addEventListener("focus", onSearchFocus);
@@ -469,14 +469,14 @@ function populateChildren(menulist, options, selectedIndex, zoom,
         case "Enter":
         case "Tab":
           searchbox.blur();
-          if (searchbox.nextSibling.localName == "menuitem" &&
-              !searchbox.nextSibling.hidden) {
-            menulist.menuBoxObject.activeChild = searchbox.nextSibling;
+          if (searchbox.nextElementSibling.localName == "menuitem" &&
+              !searchbox.nextElementSibling.hidden) {
+            menulist.menuBoxObject.activeChild = searchbox.nextElementSibling;
           } else {
-            var currentOption = searchbox.nextSibling;
+            var currentOption = searchbox.nextElementSibling;
             while (currentOption && (currentOption.localName != "menuitem" ||
                   currentOption.hidden)) {
-              currentOption = currentOption.nextSibling;
+              currentOption = currentOption.nextElementSibling;
             }
             if (currentOption) {
               menulist.menuBoxObject.activeChild = currentOption;
@@ -491,7 +491,7 @@ function populateChildren(menulist, options, selectedIndex, zoom,
       event.preventDefault();
     }, true);
 
-    element.insertBefore(searchbox, element.childNodes[0]);
+    element.insertBefore(searchbox, element.children[0]);
   }
 
   return nthChildIndex;
@@ -532,7 +532,7 @@ function onSearchInput() {
         allHidden = true;
       } else {
         if (!currentItem.classList.contains("contentSelectDropdown-ingroup") &&
-            currentItem.previousSibling.classList.contains("contentSelectDropdown-ingroup")) {
+            currentItem.previousElementSibling.classList.contains("contentSelectDropdown-ingroup")) {
           if (prevCaption != null) {
             prevCaption.hidden = allHidden;
           }

@@ -88,7 +88,7 @@ async function notifyKeywordChange(url, keyword, source) {
                                          bookmark.type,
                                          bookmark.parentId,
                                          bookmark.guid, bookmark.parentGuid,
-                                         "", source
+                                         "", source,
                                        ]);
   }
 }
@@ -115,7 +115,7 @@ function getAnnotationsForItem(aItemId) {
       name,
       flags: flags.value,
       expires: exp.value,
-      value: value.value
+      value: value.value,
     });
   }
   return annos;
@@ -252,7 +252,8 @@ const BOOKMARK_VALIDATORS = Object.freeze({
   keyword: simpleValidateFunc(v => (typeof(v) == "string") && v.length),
   charset: simpleValidateFunc(v => (typeof(v) == "string") && v.length),
   postData: simpleValidateFunc(v => (typeof(v) == "string") && v.length),
-  tags: simpleValidateFunc(v => Array.isArray(v) && v.length),
+  tags: simpleValidateFunc(v => Array.isArray(v) && v.length &&
+                                v.every(item => item && typeof item == "string")),
 });
 
 // Sync bookmark records can contain additional properties.
@@ -261,13 +262,13 @@ const SYNC_BOOKMARK_VALIDATORS = Object.freeze({
   recordId: simpleValidateFunc(v => typeof v == "string" && (
                                 (PlacesSyncUtils.bookmarks.ROOTS.includes(v) || PlacesUtils.isValidGuid(v)))),
   parentRecordId: v => SYNC_BOOKMARK_VALIDATORS.recordId(v),
-  // Sync uses kinds instead of types, which distinguish between livemarks,
-  // queries, and smart bookmarks.
+  // Sync uses kinds instead of types, which distinguish between livemarks and
+  // queries.
   kind: simpleValidateFunc(v => typeof v == "string" &&
                                 Object.values(PlacesSyncUtils.bookmarks.KINDS).includes(v)),
   query: simpleValidateFunc(v => v === null || (typeof v == "string" && v)),
   folder: simpleValidateFunc(v => typeof v == "string" && v &&
-                                  v.length <= Ci.nsITaggingService.MAX_TAG_LENGTH),
+                                  v.length <= PlacesUtils.bookmarks.MAX_TAG_LENGTH),
   tags: v => {
     if (v === null) {
       return [];
@@ -277,15 +278,13 @@ const SYNC_BOOKMARK_VALIDATORS = Object.freeze({
     }
     for (let tag of v) {
       if (typeof tag != "string" || !tag ||
-          tag.length > Ci.nsITaggingService.MAX_TAG_LENGTH) {
+          tag.length > PlacesUtils.bookmarks.MAX_TAG_LENGTH) {
         throw new Error(`Invalid tag: ${tag}`);
       }
     }
     return v;
   },
   keyword: simpleValidateFunc(v => v === null || typeof v == "string"),
-  description: simpleValidateFunc(v => v === null || typeof v == "string"),
-  loadInSidebar: simpleValidateFunc(v => v === true || v === false),
   dateAdded: simpleValidateFunc(v => typeof v === "number"
     && v > PlacesSyncUtils.bookmarks.EARLIEST_BOOKMARK_TIMESTAMP),
   feed: v => v === null ? v : BOOKMARK_VALIDATORS.url(v),
@@ -340,6 +339,7 @@ var PlacesUtils = {
   TOPIC_BOOKMARKS_RESTORE_FAILED: "bookmarks-restore-failed",
 
   ACTION_SCHEME: "moz-action:",
+  observers: PlacesObservers,
 
   /**
     * GUIDs associated with virtual queries that are used for displaying the
@@ -492,7 +492,7 @@ var PlacesUtils = {
       let [, type, params] = url.match(MOZ_ACTION_REGEX);
       let action = {
         type,
-        params: JSON.parse(params)
+        params: JSON.parse(params),
       };
       for (let key in action.params) {
         action.params[key] = decodeURIComponent(action.params[key]);
@@ -1062,16 +1062,16 @@ var PlacesUtils = {
       throw new TypeError(`title property of PageInfo object: ${pageInfo.title} must be a string if provided`);
     }
 
-    if (typeof pageInfo.description === "string" || pageInfo.description === null) {
+    if ("description" in pageInfo && (typeof pageInfo.description === "string" || pageInfo.description === null)) {
       info.description = pageInfo.description ? pageInfo.description.slice(0, DB_DESCRIPTION_LENGTH_MAX) : null;
     } else if (pageInfo.description !== undefined) {
       throw new TypeError(`description property of pageInfo object: ${pageInfo.description} must be either a string or null if provided`);
     }
 
-    if (pageInfo.previewImageURL || pageInfo.previewImageURL === null) {
+    if ("previewImageURL" in pageInfo) {
       let previewImageURL = pageInfo.previewImageURL;
 
-      if (previewImageURL === null) {
+      if (!previewImageURL) {
         info.previewImageURL = null;
       } else if (typeof(previewImageURL) === "string" && previewImageURL.length <= DB_URL_LENGTH_MAX) {
         info.previewImageURL = new URL(previewImageURL);
@@ -1082,6 +1082,32 @@ var PlacesUtils = {
       } else {
         throw new TypeError("previewImageURL property of pageInfo object: ${previewImageURL} is invalid");
       }
+    }
+
+    if (pageInfo.annotations) {
+      if (typeof pageInfo.annotations != "object" ||
+          pageInfo.annotations.constructor.name != "Map") {
+        throw new TypeError("annotations must be a Map");
+      }
+
+      if (pageInfo.annotations.size == 0) {
+        throw new TypeError("there must be at least one annotation");
+      }
+
+      for (let [key, value] of pageInfo.annotations.entries()) {
+        if (typeof key != "string") {
+          throw new TypeError("all annotation keys must be strings");
+        }
+        if (typeof value != "string" &&
+            typeof value != "number" &&
+            typeof value != "boolean" &&
+            value !== null &&
+            value !== undefined) {
+          throw new TypeError("all annotation values must be Boolean, Numbers or Strings");
+        }
+      }
+
+      info.annotations = pageInfo.annotations;
     }
 
     if (!validateVisits) {
@@ -1252,37 +1278,19 @@ var PlacesUtils = {
     return this.tagsFolderId = this.bookmarks.tagsFolder;
   },
 
-  get unfiledBookmarksFolderId() {
-    delete this.unfiledBookmarksFolderId;
-    return this.unfiledBookmarksFolderId = this.bookmarks.unfiledBookmarksFolder;
-  },
-
-  get mobileFolderId() {
-    delete this.mobileFolderId;
-    return this.mobileFolderId = this.bookmarks.mobileFolder;
-  },
-
   /**
    * Checks if item is a root.
    *
-   * @param {Number|String} guid The guid or id of the item to look for.
+   * @param {String} guid The guid of the item to look for.
    * @returns {Boolean} true if guid is a root, false otherwise.
    */
   isRootItem(guid) {
-    if (typeof guid === "string") {
-      return guid == PlacesUtils.bookmarks.menuGuid ||
-             guid == PlacesUtils.bookmarks.toolbarGuid ||
-             guid == PlacesUtils.bookmarks.unfiledGuid ||
-             guid == PlacesUtils.bookmarks.tagsGuid ||
-             guid == PlacesUtils.bookmarks.rootGuid ||
-             guid == PlacesUtils.bookmarks.mobileGuid;
-    }
-    return guid == PlacesUtils.bookmarksMenuFolderId ||
-           guid == PlacesUtils.toolbarFolderId ||
-           guid == PlacesUtils.unfiledBookmarksFolderId ||
-           guid == PlacesUtils.tagsFolderId ||
-           guid == PlacesUtils.placesRootId ||
-           guid == PlacesUtils.mobileFolderId;
+    return guid == PlacesUtils.bookmarks.menuGuid ||
+           guid == PlacesUtils.bookmarks.toolbarGuid ||
+           guid == PlacesUtils.bookmarks.unfiledGuid ||
+           guid == PlacesUtils.bookmarks.tagsGuid ||
+           guid == PlacesUtils.bookmarks.rootGuid ||
+           guid == PlacesUtils.bookmarks.mobileGuid;
   },
 
   /**
@@ -1456,51 +1464,6 @@ var PlacesUtils = {
     }
     let db = await gAsyncDBWrapperPromised;
     return db.executeBeforeShutdown(name, task);
-  },
-
-  /**
-   * Sets the character-set for a URI.
-   *
-   * @param {nsIURI} aURI
-   * @param {String} aCharset character-set value.
-   * @return {Promise}
-   */
-  setCharsetForURI: function PU_setCharsetForURI(aURI, aCharset) {
-    return new Promise(resolve => {
-      // Delaying to catch issues with asynchronous behavior while waiting
-      // to implement asynchronous annotations in bug 699844.
-      Services.tm.dispatchToMainThread(function() {
-        if (aCharset && aCharset.length > 0) {
-          PlacesUtils.annotations.setPageAnnotation(
-            aURI, PlacesUtils.CHARSET_ANNO, aCharset, 0,
-            Ci.nsIAnnotationService.EXPIRE_NEVER);
-        } else {
-          PlacesUtils.annotations.removePageAnnotation(
-            aURI, PlacesUtils.CHARSET_ANNO);
-        }
-        resolve();
-      });
-    });
-  },
-
-  /**
-   * Gets the last saved character-set for a URI.
-   *
-   * @param aURI nsIURI
-   * @return {Promise}
-   * @resolve a character-set or null.
-   */
-  getCharsetForURI: function PU_getCharsetForURI(aURI) {
-    return new Promise(resolve => {
-      Services.tm.dispatchToMainThread(function() {
-        let charset = null;
-        try {
-          charset = PlacesUtils.annotations.getPageAnnotation(aURI,
-                                                              PlacesUtils.CHARSET_ANNO);
-        } catch (ex) { }
-        resolve(charset);
-      });
-    });
   },
 
   /**
@@ -1713,15 +1676,15 @@ var PlacesUtils = {
         case PlacesUtils.bookmarks.TYPE_FOLDER:
           item.type = PlacesUtils.TYPE_X_MOZ_PLACE_CONTAINER;
           // Mark root folders.
-          if (itemId == PlacesUtils.placesRootId)
+          if (item.guid == PlacesUtils.bookmarks.rootGuid)
             item.root = "placesRoot";
-          else if (itemId == PlacesUtils.bookmarksMenuFolderId)
+          else if (item.guid == PlacesUtils.bookmarks.menuGuid)
             item.root = "bookmarksMenuFolder";
-          else if (itemId == PlacesUtils.unfiledBookmarksFolderId)
+          else if (item.guid == PlacesUtils.bookmarks.unfiledGuid)
             item.root = "unfiledBookmarksFolder";
-          else if (itemId == PlacesUtils.toolbarFolderId)
+          else if (item.guid == PlacesUtils.bookmarks.toolbarGuid)
             item.root = "toolbarFolder";
-          else if (itemId == PlacesUtils.mobileFolderId)
+          else if (item.guid == PlacesUtils.bookmarks.mobileGuid)
             item.root = "mobileFolder";
           break;
         case PlacesUtils.bookmarks.TYPE_SEPARATOR:
@@ -1845,7 +1808,7 @@ var PlacesUtils = {
     }
 
     return rootItem;
-  }
+  },
 };
 
 XPCOMUtils.defineLazyGetter(PlacesUtils, "history", function() {
@@ -1865,7 +1828,7 @@ XPCOMUtils.defineLazyGetter(PlacesUtils, "history", function() {
         return property.bind(object);
       }
       return property;
-    }
+    },
   }));
 });
 
@@ -1879,7 +1842,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "bmsvc",
 XPCOMUtils.defineLazyGetter(PlacesUtils, "bookmarks", () => {
   return Object.freeze(new Proxy(Bookmarks, {
     get: (target, name) => Bookmarks.hasOwnProperty(name) ? Bookmarks[name]
-                                                          : bmsvc[name]
+                                                          : bmsvc[name],
   }));
 });
 
@@ -1960,7 +1923,7 @@ function setupDbForShutdown(conn, name) {
 XPCOMUtils.defineLazyGetter(this, "gAsyncDBConnPromised",
   () => Sqlite.cloneStorageConnection({
     connection: PlacesUtils.history.DBConnection,
-    readOnly:   true
+    readOnly:   true,
   }).then(conn => {
       setupDbForShutdown(conn, "PlacesUtils read-only connection");
       return conn;
@@ -2330,7 +2293,7 @@ PlacesUtils.keywords = {
     if (typeof(keywordOrEntry) == "string") {
       keywordOrEntry = {
         keyword: keywordOrEntry,
-        source: Ci.nsINavBookmarksService.SOURCE_DEFAULT
+        source: Ci.nsINavBookmarksService.SOURCE_DEFAULT,
       };
     }
 
@@ -2736,5 +2699,5 @@ var GuidHelper = {
         PlacesUtils.bookmarks.removeObserver(this.observer);
       });
     }
-  }
+  },
 };

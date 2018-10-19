@@ -23,6 +23,7 @@
 
 #include "jit/JitFrames-inl.h"
 #include "jit/MacroAssembler-inl.h"
+#include "vm/JSScript-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -57,7 +58,6 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator* gen, LIRGraph* graph, Mac
     lastOsiPointOffset_(0),
     safepoints_(graph->totalSlotCount(), (gen->info().nargs() + 1) * sizeof(Value)),
     returnLabel_(),
-    stubSpace_(),
     nativeToBytecodeMap_(nullptr),
     nativeToBytecodeMapSize_(0),
     nativeToBytecodeTableOffset_(0),
@@ -75,7 +75,6 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator* gen, LIRGraph* graph, Mac
     checkOsiPointRegisters(JitOptions.checkOsiPointRegisters),
 #endif
     frameDepth_(graph->paddedLocalSlotsSize() + graph->argumentsSize()),
-    frameInitialAdjustment_(0),
     frameClass_(FrameSizeClass::None())
 {
     if (gen->isProfilerInstrumentationEnabled())
@@ -88,17 +87,10 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator* gen, LIRGraph* graph, Mac
         MOZ_ASSERT(graph->argumentSlotCount() == 0);
         frameDepth_ += gen->wasmMaxStackArgBytes();
 
-        if (gen->usesSimd()) {
-            // If the function uses any SIMD then we may need to insert padding
-            // so that local slots are aligned for SIMD.
-            frameInitialAdjustment_ = ComputeByteAlignment(sizeof(wasm::Frame), WasmStackAlignment);
-            frameDepth_ += frameInitialAdjustment_;
+        static_assert(!SupportsSimd, "we need padding so that local slots are SIMD-aligned and "
+                                     "the stack must be kept SIMD-aligned too.");
 
-            // Keep the stack aligned. Some SIMD sequences build values on the
-            // stack and need the stack aligned.
-            frameDepth_ += ComputeByteAlignment(sizeof(wasm::Frame) + frameDepth_,
-                                                WasmStackAlignment);
-        } else if (gen->needsStaticStackAlignment()) {
+        if (gen->needsStaticStackAlignment()) {
             // An MWasmCall does not align the stack pointer at calls sites but
             // instead relies on the a priori stack adjustment. This must be the
             // last adjustment of frameDepth_.
@@ -127,6 +119,9 @@ CodeGeneratorShared::generatePrologue()
     // If profiling, save the current frame pointer to a per-thread global field.
     if (isProfilerInstrumentationEnabled())
         masm.profilerEnterFrame(masm.getStackPointer(), CallTempReg0);
+
+    if (gen->info().script()->trackRecordReplayProgress())
+        masm.inc64(AbsoluteAddress(mozilla::recordreplay::ExecutionProgressCounter()));
 
     // Ensure that the Ion frame is properly aligned.
     masm.assertStackAlignment(JitStackAlignment, 0);
@@ -287,8 +282,9 @@ CodeGeneratorShared::dumpNativeToBytecodeEntries()
 {
 #ifdef JS_JITSPEW
     InlineScriptTree* topTree = gen->info().inlineScriptTree();
-    JitSpewStart(JitSpew_Profiling, "Native To Bytecode Entries for %s:%u\n",
-                 topTree->script()->filename(), topTree->script()->lineno());
+    JitSpewStart(JitSpew_Profiling, "Native To Bytecode Entries for %s:%u:%u\n",
+                 topTree->script()->filename(), topTree->script()->lineno(),
+                 topTree->script()->column());
     for (unsigned i = 0; i < nativeToBytecodeList_.length(); i++)
         dumpNativeToBytecodeEntry(i);
 #endif
@@ -310,17 +306,18 @@ CodeGeneratorShared::dumpNativeToBytecodeEntry(uint32_t idx)
         if (nextRef->tree == ref.tree)
             pcDelta = nextRef->pc - ref.pc;
     }
-    JitSpewStart(JitSpew_Profiling, "    %08zx [+%-6d] => %-6ld [%-4d] {%-10s} (%s:%u",
+    JitSpewStart(JitSpew_Profiling, "    %08zx [+%-6d] => %-6ld [%-4d] {%-10s} (%s:%u:%u",
                  ref.nativeOffset.offset(),
                  nativeDelta,
                  (long) (ref.pc - script->code()),
                  pcDelta,
                  CodeName[JSOp(*ref.pc)],
-                 script->filename(), script->lineno());
+                 script->filename(), script->lineno(), script->column());
 
     for (tree = tree->caller(); tree; tree = tree->caller()) {
-        JitSpewCont(JitSpew_Profiling, " <= %s:%u", tree->script()->filename(),
-                                                    tree->script()->lineno());
+        JitSpewCont(JitSpew_Profiling, " <= %s:%u:%u", tree->script()->filename(),
+                                                       tree->script()->lineno(),
+                                                       tree->script()->column());
     }
     JitSpewCont(JitSpew_Profiling, ")");
     JitSpewFin(JitSpew_Profiling);
@@ -718,7 +715,7 @@ CodeGeneratorShared::createNativeToBytecodeScriptList(JSContext* cx)
     }
 
     // Allocate array for list.
-    JSScript** data = cx->zone()->pod_malloc<JSScript*>(scriptList.length());
+    JSScript** data = cx->pod_malloc<JSScript*>(scriptList.length());
     if (!data)
         return false;
 
@@ -765,7 +762,7 @@ CodeGeneratorShared::generateCompactNativeToBytecodeMap(JSContext* cx, JitCode* 
     MOZ_ASSERT(numRegions > 0);
 
     // Writer is done, copy it to sized buffer.
-    uint8_t* data = cx->zone()->pod_malloc<uint8_t>(writer.length());
+    uint8_t* data = cx->pod_malloc<uint8_t>(writer.length());
     if (!data) {
         js_free(nativeToBytecodeScriptList_);
         return false;
@@ -883,8 +880,6 @@ CodeGeneratorShared::generateCompactTrackedOptimizationsMap(JSContext* cx, JitCo
         return true;
 
     UniqueTrackedOptimizations unique(cx);
-    if (!unique.init())
-        return false;
 
     // Iterate through all entries to deduplicate their optimization attempts.
     for (size_t i = 0; i < trackedOptimizations_.length(); i++) {
@@ -921,7 +916,7 @@ CodeGeneratorShared::generateCompactTrackedOptimizationsMap(JSContext* cx, JitCo
     MOZ_ASSERT(attemptsTableOffset > typesTableOffset);
 
     // Copy over the table out of the writer's buffer.
-    uint8_t* data = cx->zone()->pod_malloc<uint8_t>(writer.length());
+    uint8_t* data = cx->pod_malloc<uint8_t>(writer.length());
     if (!data)
         return false;
 
@@ -1386,10 +1381,10 @@ CodeGeneratorShared::callVM(const VMFunction& fun, LInstruction* ins, const Regi
     // fill the frame descriptor.
     if (dynStack) {
         masm.addPtr(Imm32(masm.framePushed()), *dynStack);
-        masm.makeFrameDescriptor(*dynStack, JitFrame_IonJS, ExitFrameLayout::Size());
+        masm.makeFrameDescriptor(*dynStack, FrameType::IonJS, ExitFrameLayout::Size());
         masm.Push(*dynStack); // descriptor
     } else {
-        masm.pushStaticFrameDescriptor(JitFrame_IonJS, ExitFrameLayout::Size());
+        masm.pushStaticFrameDescriptor(FrameType::IonJS, ExitFrameLayout::Size());
     }
 
     // Call the wrapper function.  The wrapper is in charge to unwind the stack
@@ -1500,13 +1495,14 @@ CodeGeneratorShared::omitOverRecursedCheck() const
 }
 
 void
-CodeGeneratorShared::emitPreBarrier(Register base, const LAllocation* index, int32_t offsetAdjustment)
+CodeGeneratorShared::emitPreBarrier(Register elements, const LAllocation* index,
+                                    int32_t offsetAdjustment)
 {
     if (index->isConstant()) {
-        Address address(base, ToInt32(index) * sizeof(Value) + offsetAdjustment);
+        Address address(elements, ToInt32(index) * sizeof(Value) + offsetAdjustment);
         masm.guardedCallPreBarrier(address, MIRType::Value);
     } else {
-        BaseIndex address(base, ToRegister(index), TimesEight, offsetAdjustment);
+        BaseObjectElementIndex address(elements, ToRegister(index), offsetAdjustment);
         masm.guardedCallPreBarrier(address, MIRType::Value);
     }
 }

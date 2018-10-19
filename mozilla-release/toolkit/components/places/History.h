@@ -11,7 +11,6 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Mutex.h"
 #include "mozIAsyncHistory.h"
-#include "nsIDownloadHistory.h"
 #include "Database.h"
 
 #include "mozilla/dom/Link.h"
@@ -20,7 +19,6 @@
 #include "nsString.h"
 #include "nsURIHashKey.h"
 #include "nsTObserverArray.h"
-#include "nsDeque.h"
 #include "nsIMemoryReporter.h"
 #include "nsIObserver.h"
 #include "mozIStorageConnection.h"
@@ -48,7 +46,6 @@ class ConcurrentStatementsHolder;
 #define NOTIFY_VISITS_CHUNK_SIZE 100
 
 class History final : public IHistory
-                    , public nsIDownloadHistory
                     , public mozIAsyncHistory
                     , public nsIObserver
                     , public nsIMemoryReporter
@@ -56,7 +53,6 @@ class History final : public IHistory
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_IHISTORY
-  NS_DECL_NSIDOWNLOADHISTORY
   NS_DECL_MOZIASYNCHISTORY
   NS_DECL_NSIOBSERVER
   NS_DECL_NSIMEMORYREPORTER
@@ -216,7 +212,7 @@ private:
     KeyClass(const KeyClass& aOther)
     : nsURIHashKey(aOther)
     {
-      NS_NOTREACHED("Do not call me!");
+      MOZ_ASSERT_UNREACHABLE("Do not call me!");
     }
     size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
     {
@@ -240,7 +236,7 @@ private:
     }
     RecentURIKey(const RecentURIKey& aOther) : nsURIHashKey(aOther)
     {
-      NS_NOTREACHED("Do not call me!");
+      MOZ_ASSERT_UNREACHABLE("Do not call me!");
     }
     MOZ_INIT_OUTSIDE_CTOR PRTime time;
   };

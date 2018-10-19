@@ -23,6 +23,7 @@
 #include "mozilla/Services.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/intl/LocaleService.h"
+#include "mozilla/recordreplay/ParentIPC.h"
 
 #include "nsAppRunner.h"
 #include "mozilla/XREAppData.h"
@@ -342,7 +343,10 @@ SaveFileToEnv(const char *name, nsIFile *file)
 }
 
 // Load the path of a file saved with SaveFileToEnv
-static already_AddRefed<nsIFile>
+#ifndef MOZ_ASAN_REPORTER
+static
+#endif
+already_AddRefed<nsIFile>
 GetFileFromEnv(const char *name)
 {
   nsresult rv;
@@ -555,17 +559,6 @@ ProcessDDE(nsINativeAppSupport* aNative, bool aWait)
   }
 }
 #endif
-
-/**
- * Determines if there is support for showing the profile manager
- *
- * @return true in all environments
-*/
-static bool
-CanShowProfileManager()
-{
-  return true;
-}
 
 bool gSafeMode = false;
 
@@ -791,9 +784,10 @@ SYNC_ENUMS(IPDLUNITTEST, IPDLUnitTest)
 SYNC_ENUMS(GMPLUGIN, GMPlugin)
 SYNC_ENUMS(GPU, GPU)
 SYNC_ENUMS(PDFIUM, PDFium)
+SYNC_ENUMS(VR, VR)
 
 // .. and ensure that that is all of them:
-static_assert(GeckoProcessType_PDFium + 1 == GeckoProcessType_End,
+static_assert(GeckoProcessType_VR + 1 == GeckoProcessType_End,
               "Did not find the final GeckoProcessType");
 
 NS_IMETHODIMP
@@ -949,7 +943,7 @@ nsXULAppInfo::EnsureContentProcess()
     return NS_ERROR_NOT_AVAILABLE;
 
   RefPtr<ContentParent> unused = ContentParent::GetNewOrUsedBrowserProcess(
-    NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE));
+    nullptr, NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE));
   return NS_OK;
 }
 
@@ -1231,7 +1225,40 @@ NS_IMETHODIMP
 nsXULAppInfo::AnnotateCrashReport(const nsACString& key,
                                   const nsACString& data)
 {
-  return CrashReporter::AnnotateCrashReport(key, data);
+  CrashReporter::Annotation annotation;
+
+  if (!AnnotationFromString(annotation, PromiseFlatCString(key).get())) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  return CrashReporter::AnnotateCrashReport(annotation, data);
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::RemoveCrashReportAnnotation(const nsACString& key)
+{
+  CrashReporter::Annotation annotation;
+
+  if (!AnnotationFromString(annotation, PromiseFlatCString(key).get())) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  return CrashReporter::RemoveCrashReportAnnotation(annotation);
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::IsAnnotationWhitelistedForPing(const nsACString& aValue,
+                                             bool* aIsWhitelisted)
+{
+  CrashReporter::Annotation annotation;
+
+  if (!AnnotationFromString(annotation, PromiseFlatCString(aValue).get())) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  *aIsWhitelisted = CrashReporter::IsAnnotationWhitelistedForPing(annotation);
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1624,6 +1651,8 @@ DumpHelp()
   printf("  --headless         Run without a GUI.\n");
 #endif
 
+  printf("  --save-recordings  Save recordings for all content processes to a directory.\n");
+
   // this works, but only after the components have registered.  so if you drop in a new command line handler, --help
   // won't not until the second run.
   // out of the bug, because we ship a component.reg file, it works correctly.
@@ -1833,6 +1862,9 @@ static nsresult LaunchChild(nsINativeAppSupport* aNative,
   }
 
   SaveToEnv("MOZ_LAUNCHED_CHILD=1");
+#if defined(MOZ_LAUNCHER_PROCESS)
+  SaveToEnv("MOZ_LAUNCHER_PROCESS=1");
+#endif // defined(MOZ_LAUNCHER_PROCESS)
 
 #if !defined(MOZ_WIDGET_ANDROID) // Android has separate restart code.
 #if defined(XP_MACOSX)
@@ -2093,10 +2125,6 @@ static ReturnAbortOnError
 ShowProfileManager(nsIToolkitProfileService* aProfileSvc,
                    nsINativeAppSupport* aNative)
 {
-  if (!CanShowProfileManager()) {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-
   nsresult rv;
 
   nsCOMPtr<nsIFile> profD, profLD;
@@ -2169,7 +2197,7 @@ ShowProfileManager(nsIToolkitProfileService* aProfileSvc,
       rv = ioParamBlock->GetString(0, &profileNamePtr);
       NS_ENSURE_SUCCESS(rv, rv);
 
-      CopyUTF16toUTF8(profileNamePtr, profileName);
+      CopyUTF16toUTF8(MakeStringSpan(profileNamePtr), profileName);
       free(profileNamePtr);
 
       lock->Unlock();
@@ -2445,9 +2473,7 @@ SelectProfile(nsIProfileLock* *aResult, nsIToolkitProfileService* aProfileSvc, n
       return NS_ERROR_FAILURE;
     }
 
-    if (CanShowProfileManager()) {
-      return ShowProfileManager(aProfileSvc, aNative);
-    }
+    return ShowProfileManager(aProfileSvc, aNative);
   }
   if (ar) {
     ar = CheckArg("osint");
@@ -2497,9 +2523,7 @@ SelectProfile(nsIProfileLock* *aResult, nsIToolkitProfileService* aProfileSvc, n
       return ProfileLockedDialog(profile, unlocker, aNative, aResult);
     }
 
-    if (CanShowProfileManager()) {
-      return ShowProfileManager(aProfileSvc, aNative);
-    }
+    return ShowProfileManager(aProfileSvc, aNative);
   }
 
   ar = CheckArg("profilemanager", nullptr, CheckArgFlag::CheckOSInt | CheckArgFlag::RemoveArg);
@@ -2507,7 +2531,7 @@ SelectProfile(nsIProfileLock* *aResult, nsIToolkitProfileService* aProfileSvc, n
     PR_fprintf(PR_STDERR, "Error: argument --profilemanager is invalid when argument --osint is specified\n");
     return NS_ERROR_FAILURE;
   }
-  if (ar == ARG_FOUND && CanShowProfileManager()) {
+  if (ar == ARG_FOUND) {
     return ShowProfileManager(aProfileSvc, aNative);
   }
 
@@ -2560,7 +2584,7 @@ SelectProfile(nsIProfileLock* *aResult, nsIToolkitProfileService* aProfileSvc, n
   }
 
   bool useDefault = true;
-  if (count > 1 && CanShowProfileManager()) {
+  if (count > 1) {
     aProfileSvc->GetStartWithLastProfile(&useDefault);
   }
 
@@ -2626,10 +2650,6 @@ SelectProfile(nsIProfileLock* *aResult, nsIToolkitProfileService* aProfileSvc, n
 
       return ProfileLockedDialog(profile, unlocker, aNative, aResult);
     }
-  }
-
-  if (!CanShowProfileManager()) {
-    return NS_ERROR_FAILURE;
   }
 
   return ShowProfileManager(aProfileSvc, aNative);
@@ -3384,39 +3404,39 @@ XREMain::XRE_mainInit(bool* aExitFlag)
       CrashReporter::SetServerURL(nsDependentCString(mAppData->crashReporterURL));
 
     // We overwrite this once we finish starting up.
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("StartupCrash"),
-                                       NS_LITERAL_CSTRING("1"));
+    CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::StartupCrash,
+                                       true);
 
     // pass some basic info from the app data
     if (mAppData->vendor)
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Vendor"),
+      CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::Vendor,
                                          nsDependentCString(mAppData->vendor));
     if (mAppData->name)
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProductName"),
+      CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::ProductName,
                                          nsDependentCString(mAppData->name));
     if (mAppData->ID)
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProductID"),
+      CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::ProductID,
                                          nsDependentCString(mAppData->ID));
     if (mAppData->version)
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Version"),
+      CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::Version,
                                          nsDependentCString(mAppData->version));
     if (mAppData->buildID)
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("BuildID"),
+      CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::BuildID,
                                          nsDependentCString(mAppData->buildID));
 
     nsDependentCString releaseChannel(NS_STRINGIFY(MOZ_UPDATE_CHANNEL));
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ReleaseChannel"),
-                                       releaseChannel);
+    CrashReporter::AnnotateCrashReport(
+      CrashReporter::Annotation::ReleaseChannel, releaseChannel);
 #ifdef MOZ_LINKER
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("CrashAddressLikelyWrong"),
-                                       IsSignalHandlingBroken() ? NS_LITERAL_CSTRING("1")
-                                                                : NS_LITERAL_CSTRING("0"));
+    CrashReporter::AnnotateCrashReport(
+      CrashReporter::Annotation::CrashAddressLikelyWrong,
+      IsSignalHandlingBroken());
 #endif
 
 #ifdef XP_WIN
     nsAutoString appInitDLLs;
     if (widget::WinUtils::GetAppInitDLLs(appInitDLLs)) {
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AppInitDLLs"),
+      CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::AppInitDLLs,
                                          NS_ConvertUTF16toUTF8(appInitDLLs));
     }
 #endif
@@ -3577,16 +3597,15 @@ XREMain::XRE_mainInit(bool* aExitFlag)
     }
 
     if (cpuUpdateRevision > 0) {
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("CPUMicrocodeVersion"),
-                                         nsPrintfCString("0x%x",
-                                                         cpuUpdateRevision));
+      CrashReporter::AnnotateCrashReport(
+        CrashReporter::Annotation::CPUMicrocodeVersion,
+        nsPrintfCString("0x%x", cpuUpdateRevision));
     }
   }
 #endif
 
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("SafeMode"),
-                                       gSafeMode ? NS_LITERAL_CSTRING("1") :
-                                                   NS_LITERAL_CSTRING("0"));
+    CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::SafeMode,
+                                       gSafeMode);
 
   // Handle --no-remote and --new-instance command line arguments. Setup
   // the environment to better accommodate other components and various
@@ -3709,8 +3728,9 @@ static void AnnotateSystemManufacturer()
   hr = classObject->Get(L"Manufacturer", 0, &value, 0, 0);
 
   if (SUCCEEDED(hr) && V_VT(&value) == VT_BSTR) {
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("BIOS_Manufacturer"),
-                                       NS_ConvertUTF16toUTF8(V_BSTR(&value)));
+    CrashReporter::AnnotateCrashReport(
+      CrashReporter::Annotation::BIOS_Manufacturer,
+      NS_ConvertUTF16toUTF8(V_BSTR(&value)));
   }
 
   VariantClear(&value);
@@ -4246,6 +4266,18 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
 
   CrashReporter::SetProfileDirectory(mProfD);
 
+#ifdef MOZ_ASAN_REPORTER
+  // In ASan reporter builds, we need to set ASan's log_path as early as
+  // possible, so it dumps its errors into files there instead of using
+  // the default stderr location. Since this is crucial for ASan reporter
+  // to work at all (and we don't want people to use a non-functional
+  // ASan reporter build), all failures while setting log_path are fatal.
+  setASanReporterPath(mProfD);
+
+  // Export to env for child processes
+  SaveFileToEnv("ASAN_REPORTER_PATH", mProfD);
+#endif
+
   nsAutoCString version;
   BuildVersion(version);
 
@@ -4265,9 +4297,8 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   // If we see .purgecaches, that means someone did a make.
   // Re-register components to catch potential changes.
   nsCOMPtr<nsIFile> flagFile;
-  rv = NS_ERROR_FILE_NOT_FOUND;
   if (mAppData->directory) {
-    rv = mAppData->directory->Clone(getter_AddRefs(flagFile));
+    Unused << mAppData->directory->Clone(getter_AddRefs(flagFile));
   }
   if (flagFile) {
     flagFile->AppendNative(FILE_INVALIDATE_CACHES);
@@ -4343,7 +4374,7 @@ void AddSandboxAnnotations()
   levelString.AppendInt(level);
 
   CrashReporter::AnnotateCrashReport(
-    NS_LITERAL_CSTRING("ContentSandboxLevel"), levelString);
+    CrashReporter::Annotation::ContentSandboxLevel, levelString);
 
   // Include whether or not this instance is capable of content sandboxing
   bool sandboxCapable = false;
@@ -4356,11 +4387,13 @@ void AddSandboxAnnotations()
   sandboxCapable = true;
 #elif defined(XP_LINUX)
   sandboxCapable = SandboxInfo::Get().CanSandboxContent();
+#elif defined(__OpenBSD__)
+  sandboxCapable = true;
+  StartOpenBSDSandbox(GeckoProcessType_Default);
 #endif
 
   CrashReporter::AnnotateCrashReport(
-    NS_LITERAL_CSTRING("ContentSandboxCapable"),
-    sandboxCapable ? NS_LITERAL_CSTRING("1") : NS_LITERAL_CSTRING("0"));
+    CrashReporter::Annotation::ContentSandboxCapable, sandboxCapable);
 }
 #endif /* MOZ_CONTENT_SANDBOX */
 
@@ -4414,16 +4447,18 @@ XREMain::XRE_mainRun()
       nsAutoCString sval;
       rv = defaultPrefBranch->GetCharPref("app.update.channel", sval);
       if (NS_SUCCEEDED(rv)) {
-        CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ReleaseChannel"),
-                                            sval);
+        CrashReporter::AnnotateCrashReport(
+          CrashReporter::Annotation::ReleaseChannel, sval);
       }
     }
   }
   // Needs to be set after xpcom initialization.
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("FramePoisonBase"),
-                                     nsPrintfCString("%.16" PRIu64, uint64_t(gMozillaPoisonBase)));
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("FramePoisonSize"),
-                                     nsPrintfCString("%" PRIu32, uint32_t(gMozillaPoisonSize)));
+  CrashReporter::AnnotateCrashReport(
+    CrashReporter::Annotation::FramePoisonBase,
+    nsPrintfCString("%.16" PRIu64, uint64_t(gMozillaPoisonBase)));
+  CrashReporter::AnnotateCrashReport(
+    CrashReporter::Annotation::FramePoisonSize,
+    uint32_t(gMozillaPoisonSize));
 
   bool includeContextHeap =
     Preferences::GetBool("toolkit.crashreporter.include_context_heap", false);
@@ -4582,7 +4617,8 @@ XREMain::XRE_mainRun()
 
   nsCString userAgentLocale;
   LocaleService::GetInstance()->GetAppLocaleAsLangTag(userAgentLocale);
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("useragent_locale"), userAgentLocale);
+  CrashReporter::AnnotateCrashReport(
+    CrashReporter::Annotation::useragent_locale, userAgentLocale);
 
   appStartup->GetShuttingDown(&mShuttingDown);
 
@@ -4635,7 +4671,6 @@ XREMain::XRE_mainRun()
   SaveToEnv("XRE_PROFILE_LOCAL_PATH=");
   SaveToEnv("XRE_PROFILE_NAME=");
   SaveToEnv("XRE_START_OFFLINE=");
-  SaveToEnv("NO_EM_RESTART=");
   SaveToEnv("XUL_APP_FILE=");
   SaveToEnv("XRE_BINARY_PATH=");
 
@@ -4678,8 +4713,8 @@ XREMain::XRE_mainRun()
 
     (void)appStartup->DoneStartingUp();
 
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("StartupCrash"),
-                                       NS_LITERAL_CSTRING("0"));
+    CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::StartupCrash,
+                                       false);
 
     appStartup->GetShuttingDown(&mShuttingDown);
   }
@@ -4736,7 +4771,7 @@ XREMain::XRE_mainRun()
   flagsString.AppendInt(sandboxInfo.AsInteger());
 
   CrashReporter::AnnotateCrashReport(
-    NS_LITERAL_CSTRING("ContentSandboxCapabilities"), flagsString);
+    CrashReporter::Annotation::ContentSandboxCapabilities, flagsString);
 #endif /* MOZ_SANDBOX && XP_LINUX */
 
 #if defined(MOZ_CONTENT_SANDBOX)
@@ -5025,6 +5060,8 @@ XRE_InitCommandLine(int aArgc, char* aArgv[])
   delete[] canonArgs;
 #endif
 
+  recordreplay::parent::InitializeUIProcess(gArgc, gArgv);
+
   const char *path = nullptr;
   ArgResult ar = CheckArg("greomni", &path);
   if (ar == ARG_BAD) {
@@ -5081,6 +5118,12 @@ bool
 XRE_IsGPUProcess()
 {
   return XRE_GetProcessType() == GeckoProcessType_GPU;
+}
+
+bool
+XRE_IsVRProcess()
+{
+  return XRE_GetProcessType() == GeckoProcessType_VR;
 }
 
 /**
@@ -5188,7 +5231,6 @@ BrowserTabsRemoteAutostart()
 
   gBrowserTabsRemoteStatus = status;
 
-  mozilla::Telemetry::Accumulate(mozilla::Telemetry::E10S_STATUS, status);
   return gBrowserTabsRemoteAutostart;
 }
 
@@ -5296,3 +5338,32 @@ extern "C" void
 GeckoHandleOOM(size_t size) {
   mozalloc_handle_oom(size);
 }
+
+#ifdef MOZ_ASAN_REPORTER
+void setASanReporterPath(nsIFile* aDir) {
+  nsCOMPtr<nsIFile> dir;
+  aDir->Clone(getter_AddRefs(dir));
+
+  dir->Append(NS_LITERAL_STRING("asan"));
+  nsresult rv = dir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+  if (NS_WARN_IF(NS_FAILED(rv) && rv != NS_ERROR_FILE_ALREADY_EXISTS)) {
+    MOZ_CRASH("[ASan Reporter] Unable to create crash directory.");
+  }
+
+  dir->Append(NS_LITERAL_STRING("ff_asan_log"));
+
+#ifdef XP_WIN
+  nsAutoString nspathW;
+  rv = dir->GetPath(nspathW);
+  NS_ConvertUTF16toUTF8 nspath(nspathW);
+#else
+  nsAutoCString nspath;
+  rv = dir->GetNativePath(nspath);
+#endif
+  if (NS_FAILED(rv)) {
+    MOZ_CRASH("[ASan Reporter] Unable to get native path for crash directory.");
+  }
+
+  __sanitizer_set_report_path(nspath.get());
+}
+#endif

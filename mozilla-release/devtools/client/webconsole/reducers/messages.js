@@ -314,7 +314,7 @@ function messages(state = MessageState(), action, filtersState, prefsState) {
           ...networkMessagesUpdateById,
           [action.id]: {
             ...request,
-            ...processNetworkUpdates(action.data),
+            ...processNetworkUpdates(action.data, request),
           }
         }
       };
@@ -847,7 +847,15 @@ function isTextInMessageText(text, messageText) {
     return false;
   }
 
-  return messageText.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+  if (typeof messageText === "string") {
+    return messageText.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+  }
+
+  if (messageText.type === "longString") {
+    return messageText.initial.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+  }
+
+  return true;
 }
 
 /**

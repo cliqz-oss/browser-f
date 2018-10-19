@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-.tree {
-  overflow: auto;
+ /* We can remove the outline since we do add our own focus style on nodes */
+.tree:focus {
+  outline: none;
 }
 
 .tree.inline {
@@ -161,12 +162,6 @@ html[dir="rtl"] .tree-node img.arrow {
   display: inline-grid;
   grid-template-columns: auto auto;
   margin-top: 3px;
-}
-
-.objectBox-stackTrace-fn::before {
-  content: "\3BB"; /* The "lambda" symbol */
-  display: inline-block;
-  margin: 0 0.3em;
 }
 
 .objectBox-stackTrace-fn {

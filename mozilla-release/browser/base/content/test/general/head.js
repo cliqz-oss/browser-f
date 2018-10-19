@@ -4,6 +4,8 @@ ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
   "resource://testing-common/PlacesTestUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "BrowserTestUtils",
+  "resource://testing-common/BrowserTestUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "TabCrashHandler",
   "resource:///modules/ContentCrashHandlers.jsm");
 
@@ -205,19 +207,8 @@ function whenNewWindowLoaded(aOptions, aCallback) {
   }, {once: true});
 }
 
-function promiseWindowWillBeClosed(win) {
-  return new Promise((resolve, reject) => {
-    Services.obs.addObserver(function observe(subject, topic) {
-      if (subject == win) {
-        Services.obs.removeObserver(observe, topic);
-        executeSoon(resolve);
-      }
-    }, "domwindowclosed");
-  });
-}
-
 function promiseWindowClosed(win) {
-  let promise = promiseWindowWillBeClosed(win);
+  let promise = BrowserTestUtils.domWindowClosed(win);
   win.close();
   return promise;
 }
@@ -496,7 +487,7 @@ function promiseOnBookmarkItemAdded(aExpectedURI) {
       onItemMoved() {},
       QueryInterface: ChromeUtils.generateQI([
         Ci.nsINavBookmarkObserver,
-      ])
+      ]),
     };
     info("Waiting for a bookmark to be added");
     PlacesUtils.bookmarks.addObserver(bookmarksObserver);
@@ -519,7 +510,7 @@ async function loadBadCertPage(url) {
             resolve();
           });
         }
-      }
+      },
     };
 
     Services.obs.addObserver(certExceptionDialogObserver,
@@ -533,31 +524,22 @@ async function loadBadCertPage(url) {
   await ContentTask.spawn(gBrowser.selectedBrowser, null, async function() {
     content.document.getElementById("exceptionDialogButton").click();
   });
-  await exceptionDialogResolved;
+  if (!Services.prefs.getBoolPref("browser.security.newcerterrorpage.enabled", false)) {
+    await exceptionDialogResolved;
+  }
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 }
 
 // Utility function to get a handle on the certificate exception dialog.
 // Modified from toolkit/components/passwordmgr/test/prompt_common.js
 function getCertExceptionDialog(aLocation) {
-  let enumerator = Services.wm.getXULWindowEnumerator(null);
-
-  while (enumerator.hasMoreElements()) {
-    let win = enumerator.getNext();
-    let windowDocShell = win.QueryInterface(Ci.nsIXULWindow).docShell;
-
-    let containedDocShells = windowDocShell.getDocShellEnumerator(
-                                      Ci.nsIDocShellTreeItem.typeChrome,
-                                      Ci.nsIDocShell.ENUMERATE_FORWARDS);
-    while (containedDocShells.hasMoreElements()) {
-      // Get the corresponding document for this docshell
-      let childDocShell = containedDocShells.getNext();
-      let childDoc = childDocShell.QueryInterface(Ci.nsIDocShell)
-                                  .contentViewer
-                                  .DOMDocument;
-
-      if (childDoc.location.href == aLocation) {
-        return childDoc;
+  for (let {docShell} of Services.wm.getXULWindowEnumerator(null)) {
+    let containedDocShells = docShell.getDocShellEnumerator(
+                                      docShell.typeChrome,
+                                      docShell.ENUMERATE_FORWARDS);
+    for (let {domWindow} of containedDocShells) {
+      if (domWindow.location.href == aLocation) {
+        return domWindow.document;
       }
     }
   }

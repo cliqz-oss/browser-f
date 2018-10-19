@@ -275,23 +275,23 @@ static const ClassOps ArrayBufferObjectClassOps = {
     ArrayBufferObject::trace,
 };
 
-static const JSFunctionSpec static_functions[] = {
+static const JSFunctionSpec arraybuffer_functions[] = {
     JS_FN("isView", ArrayBufferObject::fun_isView, 1, 0),
     JS_FS_END
 };
 
-static const JSPropertySpec static_properties[] = {
+static const JSPropertySpec arraybuffer_properties[] = {
     JS_SELF_HOSTED_SYM_GET(species, "ArrayBufferSpecies", 0),
     JS_PS_END
 };
 
 
-static const JSFunctionSpec prototype_functions[] = {
+static const JSFunctionSpec arraybuffer_proto_functions[] = {
     JS_SELF_HOSTED_FN("slice", "ArrayBufferSlice", 2, 0),
     JS_FS_END
 };
 
-static const JSPropertySpec prototype_properties[] = {
+static const JSPropertySpec arraybuffer_proto_properties[] = {
     JS_PSG("byteLength", ArrayBufferObject::byteLengthGetter, 0),
     JS_STRING_SYM_PS(toStringTag, "ArrayBuffer", JSPROP_READONLY),
     JS_PS_END
@@ -300,10 +300,10 @@ static const JSPropertySpec prototype_properties[] = {
 static const ClassSpec ArrayBufferObjectClassSpec = {
     GenericCreateConstructor<ArrayBufferObject::class_constructor, 1, gc::AllocKind::FUNCTION>,
     CreateArrayBufferPrototype,
-    static_functions,
-    static_properties,
-    prototype_functions,
-    prototype_properties
+    arraybuffer_functions,
+    arraybuffer_properties,
+    arraybuffer_proto_functions,
+    arraybuffer_proto_properties
 };
 
 static const ClassExtension ArrayBufferObjectClassExtension = {
@@ -459,10 +459,8 @@ ArrayBufferObject::class_constructor(JSContext* cx, unsigned argc, Value* vp)
 static ArrayBufferObject::BufferContents
 AllocateArrayBufferContents(JSContext* cx, uint32_t nbytes)
 {
-    uint8_t* p = cx->zone()->pod_callocCanGC<uint8_t>(nbytes);
-    if (!p)
-        ReportOutOfMemory(cx);
-
+    uint8_t* p = cx->pod_callocCanGC<uint8_t>(nbytes,
+                                                      js::ArrayBufferContentsArena);
     return ArrayBufferObject::BufferContents::create<ArrayBufferObject::PLAIN>(p);
 }
 
@@ -481,7 +479,7 @@ NoteViewBufferWasDetached(ArrayBufferViewObject* view,
 ArrayBufferObject::detach(JSContext* cx, Handle<ArrayBufferObject*> buffer,
                           BufferContents newContents)
 {
-    assertSameCompartment(cx, buffer);
+    cx->check(buffer);
     MOZ_ASSERT(!buffer->isPreparedForAsmJS());
 
     // When detaching buffers where we don't know all views, the new data must
@@ -592,6 +590,8 @@ ArrayBufferObject::changeContents(JSContext* cx, BufferContents newContents,
 }
 
 /*
+ * [SMDOC] WASM Linear Memory structure
+ *
  * Wasm Raw Buf Linear Memory Structure
  *
  * The linear heap in Wasm is an mmaped array buffer. Several
@@ -928,8 +928,8 @@ ArrayBufferObject::prepareForAsmJS(JSContext* cx, Handle<ArrayBufferObject*> buf
             return true;
 
         // Non-prepared-for-asm.js wasm buffers can be detached at any time.
-        // This error can only be triggered for SIMD.js (which isn't shipping)
-        // on !WASM_HUGE_MEMORY so this error is only visible in testing.
+        // This error can only be triggered for Atomics on !WASM_HUGE_MEMORY
+        // so this error is only visible in testing.
         if (buffer->isWasm() || buffer->isPreparedForAsmJS())
             return false;
 
@@ -1281,7 +1281,7 @@ ArrayBufferObject*
 ArrayBufferObject::createEmpty(JSContext* cx)
 {
     AutoSetNewObjectMetadata metadata(cx);
-    ArrayBufferObject* obj = NewObjectWithClassProto<ArrayBufferObject>(cx, nullptr);
+    ArrayBufferObject* obj = NewBuiltinClassInstance<ArrayBufferObject>(cx);
     if (!obj)
         return nullptr;
 
@@ -1298,7 +1298,7 @@ ArrayBufferObject::createFromNewRawBuffer(JSContext* cx, WasmArrayRawBuffer* buf
                                           uint32_t initialSize)
 {
     AutoSetNewObjectMetadata metadata(cx);
-    ArrayBufferObject* obj = NewObjectWithClassProto<ArrayBufferObject>(cx, nullptr);
+    ArrayBufferObject* obj = NewBuiltinClassInstance<ArrayBufferObject>(cx);
     if (!obj) {
         WasmArrayRawBuffer::Release(buffer->dataPointer());
         return nullptr;
@@ -1350,7 +1350,7 @@ ArrayBufferObject::stealContents(JSContext* cx, Handle<ArrayBufferObject*> buffe
     // stealContents() is used internally by the impl of memory growth.
     MOZ_ASSERT_IF(hasStealableContents, buffer->hasStealableContents() ||
                                         (buffer->isWasm() && !buffer->isPreparedForAsmJS()));
-    assertSameCompartment(cx, buffer);
+    cx->check(buffer);
 
     BufferContents oldContents = buffer->contents();
 
@@ -1492,18 +1492,13 @@ ArrayBufferObject::addView(JSContext* cx, JSObject* viewArg)
  * InnerViewTable
  */
 
-static size_t VIEW_LIST_MAX_LENGTH = 500;
+constexpr size_t VIEW_LIST_MAX_LENGTH = 500;
 
 bool
 InnerViewTable::addView(JSContext* cx, ArrayBufferObject* buffer, ArrayBufferViewObject* view)
 {
     // ArrayBufferObject entries are only added when there are multiple views.
     MOZ_ASSERT(buffer->firstView());
-
-    if (!map.initialized() && !map.init()) {
-        ReportOutOfMemory(cx);
-        return false;
-    }
 
     Map::AddPtr p = map.lookupForAdd(buffer);
 
@@ -1553,9 +1548,6 @@ InnerViewTable::addView(JSContext* cx, ArrayBufferObject* buffer, ArrayBufferVie
 InnerViewTable::ViewVector*
 InnerViewTable::maybeViewsUnbarriered(ArrayBufferObject* buffer)
 {
-    if (!map.initialized())
-        return nullptr;
-
     Map::Ptr p = map.lookup(buffer);
     if (p)
         return &p->value();
@@ -1578,10 +1570,15 @@ InnerViewTable::sweepEntry(JSObject** pkey, ViewVector& views)
         return true;
 
     MOZ_ASSERT(!views.empty());
-    for (size_t i = 0; i < views.length(); i++) {
+    size_t i = 0;
+    while (i < views.length()) {
         if (IsAboutToBeFinalizedUnbarriered(&views[i])) {
-            views[i--] = views.back();
+            // If the current element is garbage then remove it from the
+            // vector by moving the last one into its place.
+            views[i] = views.back();
             views.popBack();
+        } else {
+            i++;
         }
     }
 
@@ -1623,15 +1620,12 @@ InnerViewTable::sweepAfterMinorGC()
 size_t
 InnerViewTable::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 {
-    if (!map.initialized())
-        return 0;
-
     size_t vectorSize = 0;
     for (Map::Enum e(map); !e.empty(); e.popFront())
         vectorSize += e.front().value().sizeOfExcludingThis(mallocSizeOf);
 
     return vectorSize
-         + map.sizeOfExcludingThis(mallocSizeOf)
+         + map.shallowSizeOfExcludingThis(mallocSizeOf)
          + nurseryKeys.sizeOfExcludingThis(mallocSizeOf);
 }
 
@@ -1819,7 +1813,7 @@ JS_DetachArrayBuffer(JSContext* cx, HandleObject obj)
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     if (!obj->is<ArrayBufferObject>()) {
         JS_ReportErrorASCII(cx, "ArrayBuffer object required");
@@ -1936,7 +1930,7 @@ JS_ExternalizeArrayBufferContents(JSContext* cx, HandleObject obj)
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     if (!obj->is<ArrayBufferObject>()) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_TYPED_ARRAY_BAD_ARGS);
@@ -1968,7 +1962,7 @@ JS_StealArrayBufferContents(JSContext* cx, HandleObject objArg)
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, objArg);
+    cx->check(objArg);
 
     JSObject* obj = CheckedUnwrap(objArg);
     if (!obj)
@@ -2056,7 +2050,7 @@ JS_GetArrayBufferViewBuffer(JSContext* cx, HandleObject objArg, bool* isSharedMe
 {
     AssertHeapIsIdle();
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, objArg);
+    cx->check(objArg);
 
     JSObject* obj = CheckedUnwrap(objArg);
     if (!obj)

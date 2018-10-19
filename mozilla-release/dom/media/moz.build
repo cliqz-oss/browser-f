@@ -41,6 +41,7 @@ DIRS += [
     'gmp-plugin-openh264',
     'imagecapture',
     'ipc',
+    'mediacapabilities',
     'mediasink',
     'mediasource',
     'mp3',
@@ -80,6 +81,7 @@ if CONFIG['MOZ_WEBRTC']:
 
 XPIDL_SOURCES += [
     'nsIAudioDeviceInfo.idl',
+    'nsIAutoplay.idl',
     'nsIDOMNavigatorUserMedia.idl',
     'nsIMediaManager.idl',
 ]
@@ -104,6 +106,7 @@ EXPORTS += [
     'BackgroundVideoDecodingPermissionObserver.h',
     'Benchmark.h',
     'BitReader.h',
+    'BitWriter.h',
     'BufferMediaResource.h',
     'BufferReader.h',
     'ByteWriter.h',
@@ -223,6 +226,7 @@ UNIFIED_SOURCES += [
     'BaseMediaResource.cpp',
     'Benchmark.cpp',
     'BitReader.cpp',
+    'BitWriter.cpp',
     'CanvasCaptureMediaStream.cpp',
     'ChannelMediaDecoder.cpp',
     'ChannelMediaResource.cpp',

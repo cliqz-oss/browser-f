@@ -21,7 +21,7 @@
   <head>
     <meta http-equiv="Content-Security-Policy" content="default-src chrome:" />
     <title>&loadError.label;</title>
-    <link rel="stylesheet" href="chrome://browser/skin/aboutNetError.css" type="text/css" media="all" />
+    <link rel="stylesheet" href="chrome://browser/skin/aboutNetError-new.css" type="text/css" media="all" />
     <!-- If the location of the favicon is changed here, the FAVICON_ERRORPAGE_URL symbol in
          toolkit/components/places/src/nsFaviconService.h should be updated. -->
     <link rel="icon" type="image/png" id="favicon" href="chrome://global/skin/icons/warning-16.png"/>
@@ -31,7 +31,7 @@
     <!-- ERROR ITEM CONTAINER (removed during loading to avoid bug 39098) -->
     <div id="errorContainer">
       <div id="errorPageTitlesContainer">
-        <span id="ept_nssBadCert">&certerror.pagetitle1;</span>
+        <span id="ept_nssBadCert">&certerror.pagetitle2;</span>
         <span id="ept_captivePortal">&captivePortal.title;</span>
         <span id="ept_dnsNotFound">&dnsNotFound.pageTitle;</span>
         <span id="ept_malformedURI">&malformedURI.pageTitle;</span>
@@ -59,13 +59,14 @@
         <h1 id="et_contentEncodingError">&contentEncodingError.title;</h1>
         <h1 id="et_unsafeContentType">&unsafeContentType.title;</h1>
         <h1 id="et_nssFailure2">&nssFailure2.title;</h1>
-        <h1 id="et_nssBadCert">&certerror.longpagetitle1;</h1>
+        <h1 id="et_nssBadCert">&certerror.longpagetitle2;</h1>
         <h1 id="et_cspBlocked">&cspBlocked.title;</h1>
         <h1 id="et_remoteXUL">&remoteXUL.title;</h1>
         <h1 id="et_corruptedContentErrorv2">&corruptedContentErrorv2.title;</h1>
         <h1 id="et_sslv3Used">&sslv3Used.title;</h1>
         <h1 id="et_inadequateSecurityError">&inadequateSecurityError.title;</h1>
         <h1 id="et_blockedByPolicy">&blockedByPolicy.title;</h1>
+        <h1 id="et_clockSkewError">&clockSkewError.title;</h1>
       </div>
       <div id="errorDescriptionsContainer">
         <div id="ed_generic">&generic.longDesc;</div>
@@ -89,13 +90,31 @@
         <div id="ed_contentEncodingError">&contentEncodingError.longDesc;</div>
         <div id="ed_unsafeContentType">&unsafeContentType.longDesc;</div>
         <div id="ed_nssFailure2">&nssFailure2.longDesc2;</div>
-        <div id="ed_nssBadCert">&certerror.introPara;</div>
+        <div id="ed_nssBadCert">&certerror.introPara2;</div>
         <div id="ed_cspBlocked">&cspBlocked.longDesc;</div>
         <div id="ed_remoteXUL">&remoteXUL.longDesc;</div>
         <div id="ed_corruptedContentErrorv2">&corruptedContentErrorv2.longDesc;</div>
         <div id="ed_sslv3Used">&sslv3Used.longDesc2;</div>
         <div id="ed_inadequateSecurityError">&inadequateSecurityError.longDesc;</div>
         <div id="ed_blockedByPolicy"></div>
+        <div id="ed_clockSkewError">&clockSkewError.longDesc;</div>
+      </div>
+      <div id="errorDescriptions2Container">
+          <div id="ed2_nssBadCert_SEC_ERROR_EXPIRED_CERTIFICATE">&certerror.expiredCert.secondPara;</div>
+      </div>
+      <div id="whatCanYouDoAboutItTitleContainer">
+        <div id="edd_nssBadCert"><strong>&certerror.whatCanYouDoAboutItTitle;</strong></div>
+      </div>
+      <div id="whatCanYouDoAboutItContainer">
+        <div id="es_nssBadCert_SEC_ERROR_UNKNOWN_ISSUER">&certerror.unknownIssuer.whatCanYouDoAboutIt;</div>
+        <div id="es_nssBadCert_SEC_ERROR_EXPIRED_CERTIFICATE">&certerror.expiredCert.whatCanYouDoAboutIt2;</div>
+        <div id="es_nssBadCert_SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE">&certerror.expiredCert.whatCanYouDoAboutIt2;</div>
+        <div id="es_nssBadCert_SEC_ERROR_OCSP_FUTURE_RESPONSE">&certerror.expiredCert.whatCanYouDoAboutIt2;</div>
+        <div id="es_nssBadCert_SEC_ERROR_OCSP_OLD_RESPONSE">&certerror.expiredCert.whatCanYouDoAboutIt2;</div>
+        <div id="es_nssBadCert_MOZILLA_PKIX_ERROR_NOT_YET_VALID_CERTIFICATE">&certerror.expiredCert.whatCanYouDoAboutIt2;</div>
+        <div id="es_nssBadCert_MOZILLA_PKIX_ERROR_NOT_YET_VALID_ISSUER_CERTIFICATE">&certerror.expiredCert.whatCanYouDoAboutIt2;</div>
+        <div id="es_nssBadCert_SSL_ERROR_BAD_CERT_DOMAIN">&certerror.badCertDomain.whatCanYouDoAboutIt;</div>
+        <div id="es_nssBadCert_SEC_ERROR_OCSP_INVALID_SIGNING_CERT">&certerror.badCertDomain.whatCanYouDoAboutIt;</div>
       </div>
     </div>
 
@@ -114,7 +133,24 @@
           <div id="errorShortDesc">
             <p id="errorShortDescText" />
           </div>
-          <p id="badStsCertExplanation" hidden="true">&certerror.whatShouldIDo.badStsCertExplanation;</p>
+
+          <div id="errorShortDesc2">
+              <p id="errorShortDescText2" />
+          </div>
+
+          <div id="errorWhatToDoTitle">
+              <p id="errorWhatToDoTitleText" />
+          </div>
+
+          <div id="errorWhatToDo">
+              <p id="badStsCertExplanation" hidden="true">&certerror.whatShouldIDo.badStsCertExplanation1;</p>
+              <p id="errorWhatToDoText" />
+          </div>
+
+          <div id="errorWhatToDo2">
+              <p id="errorWhatToDoText2" />
+              <p id="badStsCertExplanation" hidden="true">&certerror.whatShouldIDo.badStsCertExplanation1;</p>
+          </div>
 
           <div id="wrongSystemTimePanel">
             &certerror.wrongSystemTime2;
@@ -134,22 +170,17 @@
 
         <!-- UI for option to report certificate errors to Mozilla. Removed on
              init for other error types .-->
-        <div id="certificateErrorReporting">
-          <p class="toggle-container-with-text">
-            <input type="checkbox" id="automaticallyReportInFuture" role="checkbox" />
-            <label for="automaticallyReportInFuture" id="automaticallyReportInFuture">&errorReporting.automatic2;</label>
-          </p>
-        </div>
-
         <div id="prefChangeContainer" class="button-container">
           <p>&prefReset.longDesc;</p>
           <button id="prefResetButton" class="primary" autocomplete="off">&prefReset.label;</button>
         </div>
 
         <div id="certErrorAndCaptivePortalButtonContainer" class="button-container">
-          <button id="returnButton" class="primary" autocomplete="off">&returnToPreviousPage.label;</button>
+          <button id="returnButton" class="primary" autocomplete="off">&returnToPreviousPage1.label;</button>
           <button id="openPortalLoginPageButton" class="primary" autocomplete="off">&openPortalLoginPage.label2;</button>
-          <button id="advancedButton" autocomplete="off">&advanced.label;</button>
+          <button id="errorTryAgain" class="primary" autocomplete="off">&retry.label;</button>
+          <button id="advancedButton" autocomplete="off">&continue2.label;</button>
+          <button id="moreInformationButton" autocomplete="off">&moreInformation.label;</button>
         </div>
       </div>
 
@@ -160,9 +191,20 @@
       <div id="advancedPanelContainer">
         <div id="badCertAdvancedPanel" class="advanced-panel">
           <p id="badCertTechnicalInfo"/>
-          <div class="exceptionDialogButtonContainer">
-            <button id="exceptionDialogButton">&securityOverride.exceptionButtonLabel;</button>
+          <div id="advancedPanelButtonContainer" class="button-container">
+            <button id="advancedPanelReturnButton" class="primary" autocomplete="off">&returnToPreviousPage1.label;</button>
+            <button id="advancedPanelErrorTryAgain" class="primary" autocomplete="off">&retry.label;</button>
+            <div class="exceptionDialogButtonContainer">
+              <button id="exceptionDialogButton">&securityOverride.exceptionButton1Label;</button>
+            </div>
           </div>
+        </div>
+
+        <div id="certificateErrorReporting">
+            <p class="toggle-container-with-text">
+                <input type="checkbox" id="automaticallyReportInFuture" role="checkbox" />
+                <label for="automaticallyReportInFuture" id="automaticallyReportInFuture">&errorReporting.automatic2;</label>
+            </p>
         </div>
 
         <div id="certificateErrorDebugInformation">

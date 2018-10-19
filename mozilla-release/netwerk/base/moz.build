@@ -38,6 +38,7 @@ XPIDL_SOURCES += [
     'nsIDashboard.idl',
     'nsIDashboardEventNotifier.idl',
     'nsIDeprecationWarner.idl',
+    'nsIDHCPClient.idl',
     'nsIDivertableChannel.idl',
     'nsIDownloader.idl',
     'nsIEncodedChannel.idl',
@@ -52,7 +53,6 @@ XPIDL_SOURCES += [
     'nsIIncrementalStreamLoader.idl',
     'nsIInputStreamChannel.idl',
     'nsIInputStreamPump.idl',
-    'nsIIOActivityData.idl',
     'nsIIOService.idl',
     'nsILoadContextInfo.idl',
     'nsILoadGroup.idl',
@@ -126,7 +126,7 @@ XPIDL_SOURCES += [
     'nsIURI.idl',
     'nsIURIClassifier.idl',
     'nsIURIMutator.idl',
-    'nsIURIWithPrincipal.idl',
+    'nsIURIWithSpecialOrigin.idl',
     'nsIURL.idl',
     'nsIURLParser.idl',
     'nsPILoadGroupInternal.idl',
@@ -176,6 +176,7 @@ EXPORTS.mozilla.net += [
     'MemoryDownloader.h',
     'PartiallySeekableInputStream.h',
     'Predictor.h',
+    'RedirectChannelRegistrar.h',
     'ReferrerPolicy.h',
     'SimpleChannelParent.h',
     'TCPFastOpen.h',
@@ -306,3 +307,6 @@ LOCAL_INCLUDES += [
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

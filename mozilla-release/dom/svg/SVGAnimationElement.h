@@ -39,13 +39,11 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(SVGAnimationElement,
                                            SVGAnimationElementBase)
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override = 0;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override = 0;
 
   // nsIContent specializations
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
 
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
@@ -90,8 +88,7 @@ public:
  protected:
   // nsSVGElement overrides
 
-  void UpdateHrefTarget(nsIContent* aNodeForContext,
-                        const nsAString& aHrefStr);
+  void UpdateHrefTarget(const nsAString& aHrefStr);
   void AnimationTargetChanged();
 
   /**

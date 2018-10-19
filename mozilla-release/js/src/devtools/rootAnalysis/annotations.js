@@ -198,11 +198,6 @@ var ignoreFunctions = {
     // FIXME!
     "NS_DebugBreak": true,
 
-    // These are a little overzealous -- these destructors *can* GC if they end
-    // up wrapping a pending exception. See bug 898815 for the heavyweight fix.
-    "void js::AutoRealm::~AutoRealm(int32)" : true,
-    "void JSAutoRealm::~JSAutoRealm(int32)" : true,
-
     // Similar to heap snapshot mock classes, and GTests below. This posts a
     // synchronous runnable when a GTest fails, and we are pretty sure that the
     // particular runnable it posts can't even GC, but the analysis isn't
@@ -393,6 +388,10 @@ function isOverridableField(initialCSU, csu, field)
     if (field == "GetIsMainThread")
         return false;
     if (field == "GetThreadFromPRThread")
+        return false;
+    if (field == "ConstructUbiNode")
+        return false;
+    if (initialCSU == 'nsIXPCScriptable' && field == "GetScriptableFlags")
         return false;
     if (initialCSU == 'nsIXPConnectJSObjectHolder' && field == 'GetJSObject')
         return false;

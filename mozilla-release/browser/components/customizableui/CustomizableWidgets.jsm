@@ -26,7 +26,6 @@ XPCOMUtils.defineLazyGetter(this, "CharsetBundle", function() {
   return Services.strings.createBundle(kCharsetBundle);
 });
 
-const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const kPrefCustomizationDebug = "browser.uiCustomization.debug";
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
@@ -142,12 +141,12 @@ const CustomizableWidgets = [
       if (!elementCount)
         return;
 
-      let body = document.createElement("vbox");
+      let body = document.createXULElement("vbox");
       body.className = "panel-subview-body";
       body.appendChild(fragment);
       let footer;
       while (--elementCount >= 0) {
-        let element = body.childNodes[elementCount];
+        let element = body.children[elementCount];
         CustomizableUI.addShortcut(element);
         element.classList.add("subviewbutton");
         if (element.classList.contains("restoreallitem")) {
@@ -159,7 +158,7 @@ const CustomizableWidgets = [
       }
       panelview.appendChild(body);
       panelview.appendChild(footer);
-    }
+    },
   }, {
     id: "save-page-button",
     shortcutId: "key_savePage",
@@ -167,7 +166,7 @@ const CustomizableWidgets = [
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.saveBrowser(win.gBrowser.selectedBrowser);
-    }
+    },
   }, {
     id: "find-button",
     shortcutId: "key_find",
@@ -177,7 +176,7 @@ const CustomizableWidgets = [
       if (win.gLazyFindCommand) {
         win.gLazyFindCommand("onFindCommand");
       }
-    }
+    },
   }, {
     id: "open-file-button",
     shortcutId: "openFileKb",
@@ -185,7 +184,7 @@ const CustomizableWidgets = [
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.BrowserOpenFileWindow();
-    }
+    },
   }, {
     id: "sidebar-button",
     tooltiptext: "sidebar-button.tooltiptext2",
@@ -196,16 +195,16 @@ const CustomizableWidgets = [
     onCreated(aNode) {
       // Add an observer so the button is checked while the sidebar is open
       let doc = aNode.ownerDocument;
-      let obChecked = doc.createElementNS(kNSXUL, "observes");
+      let obChecked = doc.createXULElement("observes");
       obChecked.setAttribute("element", "sidebar-box");
       obChecked.setAttribute("attribute", "checked");
-      let obPosition = doc.createElementNS(kNSXUL, "observes");
+      let obPosition = doc.createXULElement("observes");
       obPosition.setAttribute("element", "sidebar-box");
       obPosition.setAttribute("attribute", "positionend");
 
       aNode.appendChild(obChecked);
       aNode.appendChild(obPosition);
-    }
+    },
   }, {
     id: "add-ons-button",
     shortcutId: "key_openAddons",
@@ -213,7 +212,7 @@ const CustomizableWidgets = [
     onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.BrowserOpenAddonsMgr();
-    }
+    },
   }, {
     id: "zoom-controls",
     type: "custom",
@@ -244,7 +243,7 @@ const CustomizableWidgets = [
         "class": "toolbarbutton-1 toolbarbutton-combined",
       }];
 
-      let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
+      let node = aDocument.createXULElement("toolbaritem");
       node.setAttribute("id", "zoom-controls");
       node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
       node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
@@ -255,13 +254,13 @@ const CustomizableWidgets = [
 
       buttons.forEach(function(aButton, aIndex) {
         if (aIndex != 0)
-          node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
-        let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+          node.appendChild(aDocument.createXULElement("separator"));
+        let btnNode = aDocument.createXULElement("toolbarbutton");
         setAttributes(btnNode, aButton);
         node.appendChild(btnNode);
       });
       return node;
-    }
+    },
   }, {
     id: "edit-controls",
     type: "custom",
@@ -290,7 +289,7 @@ const CustomizableWidgets = [
         "class": "toolbarbutton-1 toolbarbutton-combined",
       }];
 
-      let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
+      let node = aDocument.createXULElement("toolbaritem");
       node.setAttribute("id", "edit-controls");
       node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
       node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
@@ -301,8 +300,8 @@ const CustomizableWidgets = [
 
       buttons.forEach(function(aButton, aIndex) {
         if (aIndex != 0)
-          node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
-        let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+          node.appendChild(aDocument.createXULElement("separator"));
+        let btnNode = aDocument.createXULElement("toolbarbutton");
         setAttributes(btnNode, aButton);
         node.appendChild(btnNode);
       });
@@ -327,7 +326,7 @@ const CustomizableWidgets = [
       CustomizableUI.addListener(listener);
 
       return node;
-    }
+    },
   },
   {
     id: "feed-button",
@@ -366,7 +365,7 @@ const CustomizableWidgets = [
       if (!feeds || !feeds.length) {
         node.setAttribute("disabled", "true");
       }
-    }
+    },
   }, {
     id: "characterencoding-button",
     label: "characterencoding-button2.label",
@@ -386,7 +385,7 @@ const CustomizableWidgets = [
       let list = this.charsetInfo[aSection];
 
       for (let item of list) {
-        let elem = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+        let elem = aDocument.createXULElement("toolbarbutton");
         elem.setAttribute("label", item.label);
         elem.setAttribute("type", "checkbox");
         elem.section = aSection;
@@ -401,7 +400,7 @@ const CustomizableWidgets = [
 
       let pinnedContainer = aDocument.getElementById("PanelUI-characterEncodingView-pinned");
       let charsetContainer = aDocument.getElementById("PanelUI-characterEncodingView-charsets");
-      let elements = [...(pinnedContainer.childNodes), ...(charsetContainer.childNodes)];
+      let elements = [...(pinnedContainer.children), ...(charsetContainer.children)];
 
       this._updateElements(elements, currentCharset);
     },
@@ -413,7 +412,7 @@ const CustomizableWidgets = [
           "intl.charset.detector", Ci.nsIPrefLocalizedString).data;
       } catch (e) {}
 
-      this._updateElements(detectorContainer.childNodes, currentDetector);
+      this._updateElements(detectorContainer.children, currentDetector);
     },
     _updateElements(aElements, aCurrentItem) {
       if (!aElements.length) {
@@ -523,7 +522,7 @@ const CustomizableWidgets = [
 
           CustomizableUI.removeListener(listener);
           getPanel().removeEventListener("popupshowing", updateButton);
-        }
+        },
       };
       CustomizableUI.addListener(listener);
       this.onInit();
@@ -533,14 +532,14 @@ const CustomizableWidgets = [
       if (!this.charsetInfo) {
         this.charsetInfo = CharsetMenu.getData();
       }
-    }
+    },
   }, {
     id: "email-link-button",
     tooltiptext: "email-link-button.tooltiptext3",
     onCommand(aEvent) {
       let win = aEvent.view;
       win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser);
-    }
+    },
   }];
 
 if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
@@ -643,8 +642,8 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
 
         for (let client of clients) {
           // add a menu separator for all clients other than the first.
-          if (fragment.lastChild) {
-            let separator = doc.createElementNS(kNSXUL, "menuseparator");
+          if (fragment.lastElementChild) {
+            let separator = doc.createXULElement("menuseparator");
             fragment.appendChild(separator);
           }
           if (paginationInfo && paginationInfo.clientId == client.id) {
@@ -678,7 +677,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
       }
       let message = this._tabsList.getAttribute(messageAttr);
       let doc = this._tabsList.ownerDocument;
-      let messageLabel = doc.createElementNS(kNSXUL, "label");
+      let messageLabel = doc.createXULElement("label");
       messageLabel.textContent = message;
       appendTo.appendChild(messageLabel);
       return messageLabel;
@@ -686,7 +685,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     _appendClient(client, attachFragment, maxTabs = this.TABS_PER_PAGE) {
       let doc = attachFragment.ownerDocument;
       // Create the element for the remote client.
-      let clientItem = doc.createElementNS(kNSXUL, "label");
+      let clientItem = doc.createXULElement("label");
       clientItem.setAttribute("itemtype", "client");
       let window = doc.defaultView;
       clientItem.setAttribute("tooltiptext",
@@ -726,7 +725,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
       }
     },
     _createTabElement(doc, tabInfo) {
-      let item = doc.createElementNS(kNSXUL, "toolbarbutton");
+      let item = doc.createXULElement("toolbarbutton");
       let tooltipText = (tabInfo.title ? tabInfo.title + "\n" : "") + tabInfo.url;
       item.setAttribute("itemtype", "tab");
       item.setAttribute("class", "subviewbutton");
@@ -738,7 +737,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
       // respects different buttons (eg, to open in a new tab).
       item.addEventListener("click", e => {
         doc.defaultView.openUILink(tabInfo.url, e, {
-          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({})
+          triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
         });
         if (doc.defaultView.whereToOpenLink(e) != "current") {
           e.preventDefault();
@@ -758,7 +757,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
         labelAttr = "showMoreLabel";
         tooltipAttr = "showMoreTooltipText";
       }
-      let showAllItem = doc.createElementNS(kNSXUL, "toolbarbutton");
+      let showAllItem = doc.createXULElement("toolbarbutton");
       showAllItem.setAttribute("itemtype", "showmorebutton");
       showAllItem.setAttribute("class", "subviewbutton");
       let label = this._tabsList.getAttribute(labelAttr);
@@ -771,7 +770,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
         this._showTabs({ clientId, maxTabs: showCount });
       });
       return showAllItem;
-    }
+    },
   });
 }
 
@@ -780,7 +779,7 @@ let preferencesButton = {
   onCommand(aEvent) {
     let win = aEvent.target.ownerGlobal;
     win.openPreferences(undefined, {origin: "preferencesButton"});
-  }
+  },
 };
 if (AppConstants.platform == "win") {
   preferencesButton.label = "preferences-button.labelWin";
@@ -803,7 +802,7 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
       let doc = aEvent.target.ownerDocument;
       let group = doc.getElementById("PanelUI-panic-timeSpan");
       let itemsToClear = [
-        "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads", "offlineApps"
+        "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads", "offlineApps",
       ];
       let newWindowPrivateState = PrivateBrowsingUtils.isWindowPrivate(doc.defaultView) ?
                                   "private" : "non-private";
@@ -852,6 +851,6 @@ if (PrivateBrowsingUtils.enabled) {
     onCommand(e) {
       let win = e.target.ownerGlobal;
       win.OpenBrowserWindow({private: true});
-    }
+    },
   });
 }

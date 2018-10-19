@@ -26,24 +26,8 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "_openAutocompletePopup@chrome://browser/content/urlbarBindings.xml",
       "openAutocompletePopup@chrome://browser/content/urlbarBindings.xml",
       "openPopup@chrome://global/content/bindings/autocomplete.xml",
-      "set_popupOpen@chrome://global/content/bindings/autocomplete.xml"
+      "set_popupOpen@chrome://global/content/bindings/autocomplete.xml",
     ],
-  },
-
-  {
-    stack: [
-      "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
-      "onxblpopupshown@chrome://global/content/bindings/autocomplete.xml"
-    ],
-    maxCount: 5, // This number should only ever go down - never up.
-  },
-
-  {
-    stack: [
-      "adjustHeight@chrome://global/content/bindings/autocomplete.xml",
-      "_invalidate/this._adjustHeightTimeout<@chrome://global/content/bindings/autocomplete.xml",
-    ],
-    maxCount: 51, // This number should only ever go down - never up.
   },
 
   {
@@ -53,7 +37,7 @@ const EXPECTED_REFLOWS_FIRST_OPEN = [
       "_reuseAcItem@chrome://global/content/bindings/autocomplete.xml",
       "_appendCurrentResult@chrome://global/content/bindings/autocomplete.xml",
       "_invalidate@chrome://global/content/bindings/autocomplete.xml",
-      "invalidate@chrome://global/content/bindings/autocomplete.xml"
+      "invalidate@chrome://global/content/bindings/autocomplete.xml",
     ],
     maxCount: 60, // This number should only ever go down - never up.
   },
@@ -159,7 +143,7 @@ add_task(async function() {
   let dropmarkerRect = document.getAnonymousElementByAttribute(gURLBar,
     "anonid", "historydropmarker").getBoundingClientRect();
   let textBoxRect = document.getAnonymousElementByAttribute(gURLBar,
-    "anonid", "textbox-input-box").getBoundingClientRect();
+    "anonid", "moz-input-box").getBoundingClientRect();
 
   await withPerfObserver(async function() {
     let oldInvalidate = popup.invalidate.bind(popup);

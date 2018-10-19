@@ -163,9 +163,9 @@ let InternalFaviconLoader = {
     });
   },
 
-  loadFavicon(browser, principal, uri, requestContextID) {
+  loadFavicon(browser, principal, pageURI, uri, expiration, iconURI) {
     this.ensureInitialized();
-    let win = browser.ownerGlobal;
+    let {ownerGlobal: win, innerWindowID} = browser;
     if (!gFaviconLoadDataMap.has(win)) {
       gFaviconLoadDataMap.set(win, []);
       let unloadHandler = event => {
@@ -179,16 +179,20 @@ let InternalFaviconLoader = {
       win.addEventListener("unload", unloadHandler, true);
     }
 
-    let {innerWindowID, currentURI} = browser;
-
     // First we do the actual setAndFetch call:
     let loadType = PrivateBrowsingUtils.isWindowPrivate(win)
       ? PlacesUtils.favicons.FAVICON_LOAD_PRIVATE
       : PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE;
     let callback = this._makeCompletionCallback(win, innerWindowID);
-    let request = PlacesUtils.favicons.setAndFetchFaviconForPage(currentURI, uri, false,
-                                                                 loadType, callback, principal,
-                                                                 requestContextID);
+
+    if (iconURI && iconURI.schemeIs("data")) {
+      expiration = PlacesUtils.toPRTime(expiration);
+      PlacesUtils.favicons.replaceFaviconDataFromDataURL(uri, iconURI.spec,
+                                                         expiration, principal);
+    }
+
+    let request = PlacesUtils.favicons.setAndFetchFaviconForPage(
+      pageURI, uri, false, loadType, callback, principal);
 
     // Now register the result so we can cancel it if/when necessary.
     if (!request) {
@@ -209,8 +213,6 @@ let InternalFaviconLoader = {
 };
 
 var PlacesUIUtils = {
-  LOAD_IN_SIDEBAR_ANNO: "bookmarkProperties/loadInSidebar",
-  DESCRIPTION_ANNO: "bookmarkProperties/description",
   LAST_USED_FOLDERS_META_KEY: "bookmarks/lastusedfolders",
 
   /**
@@ -307,15 +309,18 @@ var PlacesUIUtils = {
 
   /**
    * set and fetch a favicon. Can only be used from the parent process.
-   * @param browser   {Browser}   The XUL browser element for which we're fetching a favicon.
-   * @param principal {Principal} The loading principal to use for the fetch.
-   * @param uri       {URI}       The URI to fetch.
+   * @param browser    {Browser}   The XUL browser element for which we're fetching a favicon.
+   * @param principal  {Principal} The loading principal to use for the fetch.
+   * @pram pageURI     {URI}       The page URI associated to this favicon load.
+   * @param uri        {URI}       The URI to fetch.
+   * @param expiration {Number}    An optional expiration time.
+   * @param iconURI    {URI}       An optional data: URI holding the icon's data.
    */
-  loadFavicon(browser, principal, uri, requestContextID) {
+  loadFavicon(browser, principal, pageURI, uri, expiration = 0, iconURI = null) {
     if (gInContentProcess) {
       throw new Error("Can't track loads from within the child process!");
     }
-    InternalFaviconLoader.loadFavicon(browser, principal, uri, requestContextID);
+    InternalFaviconLoader.loadFavicon(browser, principal, pageURI, uri, expiration, iconURI);
   },
 
   /**
@@ -451,6 +456,32 @@ var PlacesUIUtils = {
    */
   markPageAsFollowedLink: function PUIU_markPageAsFollowedLink(aURL) {
     PlacesUtils.history.markPageAsFollowedLink(this.createFixedURI(aURL));
+  },
+
+  /**
+   * Sets the character-set for a page. The character set will not be saved
+   * if the window is determined to be a private browsing window.
+   *
+   * @param {string|URL|nsIURI} url The URL of the page to set the charset on.
+   * @param {String} charset character-set value.
+   * @param {window} window The window that the charset is being set from.
+   * @return {Promise}
+   */
+  async setCharsetForPage(url, charset, window) {
+    if (PrivateBrowsingUtils.isWindowPrivate(window)) {
+      return;
+    }
+
+    // UTF-8 is the default. If we are passed the value then set it to null,
+    // to ensure any charset is removed from the database.
+    if (charset.toLowerCase() == "utf-8") {
+      charset = null;
+    }
+
+    await PlacesUtils.history.update({
+      url,
+      annotations: new Map([[PlacesUtils.CHARSET_ANNO, charset]]),
+    });
   },
 
   /**
@@ -599,7 +630,7 @@ var PlacesUIUtils = {
                   createInstance(Ci.nsIMutableArray);
       args.appendElement(uriList);
       browserWindow = Services.ww.openWindow(aWindow,
-                                             "chrome://browser/content/browser.xul",
+                                             AppConstants.BROWSER_CHROME_URL,
                                              null, "chrome,dialog=no,all", args);
       return;
     }
@@ -657,8 +688,8 @@ var PlacesUIUtils = {
   },
 
   /**
-   * Loads the node's URL in the appropriate tab or window or as a web
-   * panel given the user's preference specified by modifier keys tracked by a
+   * Loads the node's URL in the appropriate tab or window given the
+   * user's preference specified by modifier keys tracked by a
    * DOM mouse/key event.
    * @param   aNode
    *          An uri result node.
@@ -690,8 +721,7 @@ var PlacesUIUtils = {
   },
 
   /**
-   * Loads the node's URL in the appropriate tab or window or as a
-   * web panel.
+   * Loads the node's URL in the appropriate tab or window.
    * see also openUILinkIn
    */
   openNodeIn: function PUIU_openNodeIn(aNode, aWhere, aView, aPrivate) {
@@ -711,22 +741,11 @@ var PlacesUIUtils = {
           this.markPageAsTyped(aNode.uri);
       }
 
-      // Check whether the node is a bookmark which should be opened as
-      // a web panel
-      if (aWhere == "current" && isBookmark) {
-        if (PlacesUtils.annotations
-                       .itemHasAnnotation(aNode.itemId, this.LOAD_IN_SIDEBAR_ANNO)) {
-          let browserWin = BrowserWindowTracker.getTopWindow();
-          if (browserWin) {
-            browserWin.openWebPanel(aNode.title, aNode.uri);
-            return;
-          }
-        }
-      }
-
+      const isJavaScriptURL = aNode.uri.startsWith("javascript:");
       aWindow.openTrustedLinkIn(aNode.uri, aWhere, {
-        allowPopups: aNode.uri.startsWith("javascript:"),
+        allowPopups: isJavaScriptURL,
         inBackground: this.loadBookmarksInBackground,
+        allowInheritPrincipal: isJavaScriptURL && aWhere == "current",
         private: aPrivate,
       });
     }
@@ -824,7 +843,7 @@ var PlacesUIUtils = {
     let parent = {
       itemId: await PlacesUtils.promiseItemId(aFetchInfo.parentGuid),
       bookmarkGuid: aFetchInfo.parentGuid,
-      type: Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER
+      type: Ci.nsINavHistoryResultNode.RESULT_TYPE_FOLDER,
     };
 
     return Object.freeze({
@@ -852,7 +871,7 @@ var PlacesUIUtils = {
 
       get parent() {
         return parent;
-      }
+      },
     });
   },
 
@@ -1071,7 +1090,7 @@ XPCOMUtils.defineLazyPreferenceGetter(PlacesUIUtils, "openInTabClosesMenu",
  */
 function canMoveUnwrappedNode(unwrappedNode) {
   if ((unwrappedNode.concreteGuid && PlacesUtils.isRootItem(unwrappedNode.concreteGuid)) ||
-      unwrappedNode.id <= 0 || PlacesUtils.isRootItem(unwrappedNode.id)) {
+      (unwrappedNode.guid && PlacesUtils.isRootItem(unwrappedNode.guid))) {
     return false;
   }
 

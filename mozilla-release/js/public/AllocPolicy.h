@@ -26,8 +26,9 @@ enum class AllocFunction {
     Calloc,
     Realloc
 };
-/* Policy for using system memory functions and doing no error reporting. */
-class SystemAllocPolicy
+
+/* Base class allocation policies providing allocation methods. */
+class AllocPolicyBase
 {
   public:
     template <typename T> T* maybe_pod_malloc(size_t numElems) { return js_pod_malloc<T>(numElems); }
@@ -40,7 +41,13 @@ class SystemAllocPolicy
     template <typename T> T* pod_realloc(T* p, size_t oldSize, size_t newSize) {
         return maybe_pod_realloc<T>(p, oldSize, newSize);
     }
-    void free_(void* p) { js_free(p); }
+    template <typename T> void free_(T* p, size_t numElems = 0) { js_free(p); }
+};
+
+/* Policy for using system memory functions and doing no error reporting. */
+class SystemAllocPolicy : public AllocPolicyBase
+{
+  public:
     void reportAllocOverflow() const {}
     bool checkSimulatedOOM() const {
         return !js::oom::ShouldFailWithOOM();
@@ -58,7 +65,7 @@ MOZ_COLD JS_FRIEND_API(void) ReportOutOfMemory(JSContext* cx);
  * FIXME bug 647103 - rewrite this in terms of temporary allocation functions,
  * not the system ones.
  */
-class TempAllocPolicy
+class TempAllocPolicy : public AllocPolicyBase
 {
     JSContext* const cx_;
 
@@ -81,23 +88,8 @@ class TempAllocPolicy
     MOZ_IMPLICIT TempAllocPolicy(JSContext* cx) : cx_(cx) {}
 
     template <typename T>
-    T* maybe_pod_malloc(size_t numElems) {
-        return js_pod_malloc<T>(numElems);
-    }
-
-    template <typename T>
-    T* maybe_pod_calloc(size_t numElems) {
-        return js_pod_calloc<T>(numElems);
-    }
-
-    template <typename T>
-    T* maybe_pod_realloc(T* prior, size_t oldSize, size_t newSize) {
-        return js_pod_realloc<T>(prior, oldSize, newSize);
-    }
-
-    template <typename T>
     T* pod_malloc(size_t numElems) {
-        T* p = maybe_pod_malloc<T>(numElems);
+        T* p = this->maybe_pod_malloc<T>(numElems);
         if (MOZ_UNLIKELY(!p))
             p = onOutOfMemoryTyped<T>(AllocFunction::Malloc, numElems);
         return p;
@@ -105,7 +97,7 @@ class TempAllocPolicy
 
     template <typename T>
     T* pod_calloc(size_t numElems) {
-        T* p = maybe_pod_calloc<T>(numElems);
+        T* p = this->maybe_pod_calloc<T>(numElems);
         if (MOZ_UNLIKELY(!p))
             p = onOutOfMemoryTyped<T>(AllocFunction::Calloc, numElems);
         return p;
@@ -113,13 +105,14 @@ class TempAllocPolicy
 
     template <typename T>
     T* pod_realloc(T* prior, size_t oldSize, size_t newSize) {
-        T* p2 = maybe_pod_realloc<T>(prior, oldSize, newSize);
+        T* p2 = this->maybe_pod_realloc<T>(prior, oldSize, newSize);
         if (MOZ_UNLIKELY(!p2))
             p2 = onOutOfMemoryTyped<T>(AllocFunction::Realloc, newSize, prior);
         return p2;
     }
 
-    void free_(void* p) {
+    template <typename T>
+    void free_(T* p, size_t numElems = 0) {
         js_free(p);
     }
 
@@ -132,40 +125,6 @@ class TempAllocPolicy
         }
 
         return true;
-    }
-};
-
-/*
- * Allocation policy that uses Zone::pod_malloc and friends, so that memory
- * pressure is accounted for on the zone. This is suitable for memory associated
- * with GC things allocated in the zone.
- *
- * Since it doesn't hold a JSContext (those may not live long enough), it can't
- * report out-of-memory conditions itself; the caller must check for OOM and
- * take the appropriate action.
- *
- * FIXME bug 647103 - replace these *AllocPolicy names.
- */
-class ZoneAllocPolicy
-{
-    JS::Zone* const zone;
-
-  public:
-    MOZ_IMPLICIT ZoneAllocPolicy(JS::Zone* z) : zone(z) {}
-
-    // These methods are defined in gc/Zone.h.
-    template <typename T> inline T* maybe_pod_malloc(size_t numElems);
-    template <typename T> inline T* maybe_pod_calloc(size_t numElems);
-    template <typename T> inline T* maybe_pod_realloc(T* p, size_t oldSize, size_t newSize);
-    template <typename T> inline T* pod_malloc(size_t numElems);
-    template <typename T> inline T* pod_calloc(size_t numElems);
-    template <typename T> inline T* pod_realloc(T* p, size_t oldSize, size_t newSize);
-
-    void free_(void* p) { js_free(p); }
-    void reportAllocOverflow() const {}
-
-    MOZ_MUST_USE bool checkSimulatedOOM() const {
-        return !js::oom::ShouldFailWithOOM();
     }
 };
 

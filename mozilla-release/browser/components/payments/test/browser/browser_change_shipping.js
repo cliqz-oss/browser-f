@@ -2,7 +2,12 @@
 
 async function setup() {
   await setupFormAutofillStorage();
-  await addSampleAddressesAndBasicCard();
+  let prefilledGuids = await addSampleAddressesAndBasicCard();
+
+  info("associating the card with the billing address");
+  formAutofillStorage.creditCards.update(prefilledGuids.card1GUID, {
+    billingAddressGUID: prefilledGuids.address1GUID,
+  }, true);
 }
 
 add_task(async function test_change_shipping() {
@@ -69,7 +74,7 @@ add_task(async function test_change_shipping() {
       // Note: The update includes a modifier, and modifiers must include a total
       // so the expected total is that one
       is(content.document.querySelector("#total > currency-amount").textContent,
-         "\u20AC2.50",
+         "\u20AC2.50 EUR",
          "Check updated total currency amount");
 
       let btn = content.document.querySelector("#view-all");
@@ -95,6 +100,7 @@ add_task(async function test_change_shipping() {
       is(items.length, 1, "1 additional display item");
       is(items[0].amountCurrency, "EUR", "First display item is in Euros");
       is(items[0].amountValue, "1.00", "First display item has 1.00 value");
+      btn.click();
     });
 
     info("clicking pay");
@@ -139,10 +145,9 @@ add_task(async function test_default_shippingOptions_noneSelected() {
     );
 
     let shippingOptions =
-      await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.getShippingOptions);
-    is(shippingOptions.selectedOptionCurrency, "USD", "Shipping options should be in USD");
+        await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.getShippingOptions);
     is(shippingOptions.optionCount, 2, "there should be two shipping options");
-    is(shippingOptions.selectedOptionID, "1", "default selected should be the first");
+    is(shippingOptions.selectedOptionIndex, "-1", "no options should be selected");
 
     let shippingOptionDetailsEUR = deepClone(PTU.Details.twoShippingOptionsEUR);
     info("prepare EUR options by deselecting all and giving unique IDs");
@@ -150,6 +155,8 @@ add_task(async function test_default_shippingOptions_noneSelected() {
       opt.selected = false;
       opt.id += "-EUR";
     });
+
+    await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.selectShippingOptionById, "1");
 
     await ContentTask.spawn(browser, {
       eventName: "shippingaddresschange",
@@ -167,10 +174,8 @@ add_task(async function test_default_shippingOptions_noneSelected() {
 
     shippingOptions =
       await spawnPaymentDialogTask(frame, PTU.DialogContentTasks.getShippingOptions);
-    is(shippingOptions.selectedOptionCurrency, "EUR", "Shipping options should be in EUR");
     is(shippingOptions.optionCount, 2, "there should be two shipping options");
-    is(shippingOptions.selectedOptionID, "1-EUR",
-       "default selected should be the first");
+    is(shippingOptions.selectedOptionIndex, "-1", "no options should be selected again");
 
     spawnPaymentDialogTask(frame, PTU.DialogContentTasks.manuallyClickCancel);
     await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");

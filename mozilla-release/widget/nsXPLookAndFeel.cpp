@@ -137,7 +137,10 @@ nsLookAndFeelIntPref nsXPLookAndFeel::sIntPrefs[] =
     false, 0 },
   { "ui.systemUsesDarkTheme",
     eIntID_SystemUsesDarkTheme,
-    false, 0 }
+    false, 0 },
+  { "ui.prefersReducedMotion",
+    eIntID_PrefersReducedMotion,
+    false, 0 },
 };
 
 nsLookAndFeelFloatPref nsXPLookAndFeel::sFloatPrefs[] =
@@ -308,7 +311,9 @@ nsXPLookAndFeel::Shutdown()
   sInstance = nullptr;
 }
 
-nsXPLookAndFeel::nsXPLookAndFeel() : LookAndFeel()
+nsXPLookAndFeel::nsXPLookAndFeel()
+  : LookAndFeel()
+  , mShouldRetainCacheForTest(false)
 {
 }
 
@@ -1052,6 +1057,13 @@ void
 LookAndFeel::SetIntCache(const nsTArray<LookAndFeelInt>& aLookAndFeelIntCache)
 {
   return nsLookAndFeel::GetInstance()->SetIntCacheImpl(aLookAndFeelIntCache);
+}
+
+// static
+void
+LookAndFeel::SetShouldRetainCacheForTest(bool aValue)
+{
+  nsLookAndFeel::GetInstance()->SetShouldRetainCacheImplForTest(aValue);
 }
 
 } // namespace mozilla

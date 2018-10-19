@@ -16,7 +16,6 @@
 #include "frontend/BinSource-macros.h"
 #include "frontend/BinSourceRuntimeSupport.h"
 
-#include "gc/Zone.h"
 #include "js/Result.h"
 
 namespace js {
@@ -125,8 +124,6 @@ BinTokenReaderMultipart::readHeader()
         return raiseOOM();
     if (!slicesTable_.reserve(stringsNumberOfEntries))
         return raiseOOM();
-    if (!variantsTable_.init())
-        return cx_->alreadyReportedError();
 
     RootedAtom atom(cx_);
     for (uint32_t i = 0; i < stringsNumberOfEntries; ++i) {

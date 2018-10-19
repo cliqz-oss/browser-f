@@ -555,11 +555,13 @@ var DownloadIntegration = {
       aReferrer = NetUtil.newURI(aDownload.source.referrer);
     }
 
-    gDownloadPlatform.downloadDone(NetUtil.newURI(aDownload.source.url),
-                                   aReferrer,
-                                   new FileUtils.File(aDownload.target.path),
-                                   aDownload.contentType,
-                                   aDownload.source.isPrivate);
+    await gDownloadPlatform.downloadDone(
+      NetUtil.newURI(aDownload.source.url),
+      aReferrer,
+      new FileUtils.File(aDownload.target.path),
+      aDownload.contentType,
+      aDownload.source.isPrivate
+    );
   },
 
   /**
@@ -855,7 +857,7 @@ var DownloadObserver = {
         downloadsSet.delete(aDownload);
         // The download must also be removed from the canceled when offline set.
         this._canceledOfflineDownloads.delete(aDownload);
-      }
+      },
     };
 
     // We register the view asynchronously.
@@ -982,7 +984,7 @@ var DownloadObserver = {
     }
   },
 
-  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver]),
 };
 
 /**
@@ -1022,7 +1024,6 @@ this.DownloadHistoryObserver.prototype = {
   onTitleChanged() {},
   onBeginUpdateBatch() {},
   onEndUpdateBatch() {},
-  onVisits() {},
   onPageChanged() {},
   onDeleteVisits() {},
 };

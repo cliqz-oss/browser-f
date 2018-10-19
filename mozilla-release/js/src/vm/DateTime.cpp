@@ -6,29 +6,38 @@
 
 #include "vm/DateTime.h"
 
-#if defined(XP_WIN)
-#include "mozilla/UniquePtr.h"
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/ScopeExit.h"
+#include "mozilla/TextUtils.h"
+#include "mozilla/Unused.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
-#endif /* defined(XP_WIN) */
 #include <time.h>
+
+#if !defined(XP_WIN)
+#include <limits.h>
+#include <unistd.h>
+#endif /* !defined(XP_WIN) */
 
 #include "jsutil.h"
 
 #include "js/Date.h"
 #include "threading/ExclusiveData.h"
 
-#if ENABLE_INTL_API
+#if ENABLE_INTL_API && !MOZ_SYSTEM_ICU
+#include "unicode/basictz.h"
+#include "unicode/locid.h"
+#endif /* ENABLE_INTL_API && !MOZ_SYSTEM_ICU */
+
+#if ENABLE_INTL_API && (!MOZ_SYSTEM_ICU || defined(ICU_TZ_HAS_RECREATE_DEFAULT))
 #include "unicode/timezone.h"
-#if defined(XP_WIN)
 #include "unicode/unistr.h"
-#endif
-#endif /* ENABLE_INTL_API */
+#endif /* ENABLE_INTL_API && (!MOZ_SYSTEM_ICU || defined(ICU_TZ_HAS_RECREATE_DEFAULT)) */
 
+#include "util/Text.h"
 #include "vm/MutexIDs.h"
-
-using mozilla::UnspecifiedNaN;
 
 static bool
 ComputeLocalTime(time_t local, struct tm* ptm)
@@ -144,56 +153,87 @@ UTCToLocalStandardOffsetSeconds()
     return local_secs - (utc_secs + SecondsPerDay);
 }
 
-void
-js::DateTimeInfo::internalUpdateTimeZoneAdjustment()
+bool
+js::DateTimeInfo::internalUpdateTimeZoneAdjustment(ResetTimeZoneMode mode)
 {
     /*
      * The difference between local standard time and UTC will never change for
      * a given time zone.
      */
-    utcToLocalStandardOffsetSeconds = UTCToLocalStandardOffsetSeconds();
+    utcToLocalStandardOffsetSeconds_ = UTCToLocalStandardOffsetSeconds();
 
-    double newTZA = utcToLocalStandardOffsetSeconds * msPerSecond;
-    if (newTZA == localTZA_)
-        return;
+    int32_t newTZA = utcToLocalStandardOffsetSeconds_ * msPerSecond;
+    if (mode == ResetTimeZoneMode::DontResetIfOffsetUnchanged && newTZA == localTZA_)
+        return false;
 
     localTZA_ = newTZA;
 
-    /*
-     * The initial range values are carefully chosen to result in a cache miss
-     * on first use given the range of possible values.  Be careful to keep
-     * these values and the caching algorithm in sync!
-     */
-    offsetMilliseconds = 0;
-    rangeStartSeconds = rangeEndSeconds = INT64_MIN;
-    oldOffsetMilliseconds = 0;
-    oldRangeStartSeconds = oldRangeEndSeconds = INT64_MIN;
+    dstRange_.reset();
 
-    sanityCheck();
+#if ENABLE_INTL_API && !MOZ_SYSTEM_ICU
+    utcRange_.reset();
+    localRange_.reset();
+
+    {
+        // Tell the analysis the |pFree| function pointer called by uprv_free
+        // cannot GC.
+        JS::AutoSuppressGCAnalysis nogc;
+
+        timeZone_ = nullptr;
+    }
+
+    standardName_ = nullptr;
+    daylightSavingsName_ = nullptr;
+#endif /* ENABLE_INTL_API && !MOZ_SYSTEM_ICU */
+
+    return true;
 }
 
 js::DateTimeInfo::DateTimeInfo()
 {
-    // Set to an impossible TZA so that the comparison in
-    // |internalUpdateTimeZoneAdjustment()| initially fails, causing the
-    // remaining fields to be properly initialized at first adjustment.
-    localTZA_ = UnspecifiedNaN<double>();
-    internalUpdateTimeZoneAdjustment();
+    internalUpdateTimeZoneAdjustment(ResetTimeZoneMode::ResetEvenIfOffsetUnchaged);
 }
 
+js::DateTimeInfo::~DateTimeInfo() = default;
+
 int64_t
+js::DateTimeInfo::toClampedSeconds(int64_t milliseconds)
+{
+    int64_t seconds = milliseconds / msPerSecond;
+    if (seconds > MaxTimeT) {
+        seconds = MaxTimeT;
+    } else if (seconds < MinTimeT) {
+        /* Go ahead a day to make localtime work (does not work with 0). */
+        seconds = SecondsPerDay;
+    }
+    return seconds;
+}
+
+int32_t
 js::DateTimeInfo::computeDSTOffsetMilliseconds(int64_t utcSeconds)
 {
-    MOZ_ASSERT(utcSeconds >= 0);
-    MOZ_ASSERT(utcSeconds <= MaxUnixTimeT);
+    MOZ_ASSERT(utcSeconds >= MinTimeT);
+    MOZ_ASSERT(utcSeconds <= MaxTimeT);
 
+#if ENABLE_INTL_API && !MOZ_SYSTEM_ICU
+    UDate date = UDate(utcSeconds * msPerSecond);
+    constexpr bool dateIsLocalTime = false;
+    int32_t rawOffset, dstOffset;
+    UErrorCode status = U_ZERO_ERROR;
+
+    timeZone()->getOffset(date, dateIsLocalTime, rawOffset, dstOffset, status);
+    if (U_FAILURE(status))
+        return 0;
+
+    return dstOffset;
+#else
     struct tm tm;
     if (!ComputeLocalTime(static_cast<time_t>(utcSeconds), &tm))
         return 0;
 
     // NB: The offset isn't computed correctly when the standard local offset
     //     at |utcSeconds| is different from |utcToLocalStandardOffsetSeconds|.
-    int32_t dayoff = int32_t((utcSeconds + utcToLocalStandardOffsetSeconds) % SecondsPerDay);
+    int32_t dayoff = int32_t((utcSeconds + utcToLocalStandardOffsetSeconds_) % SecondsPerDay);
     int32_t tmoff = tm.tm_sec + (tm.tm_min * SecondsPerMinute) + (tm.tm_hour * SecondsPerHour);
 
     int32_t diff = tmoff - dayoff;
@@ -204,96 +244,248 @@ js::DateTimeInfo::computeDSTOffsetMilliseconds(int64_t utcSeconds)
         diff -= SecondsPerDay;
 
     return diff * msPerSecond;
+#endif /* ENABLE_INTL_API && !MOZ_SYSTEM_ICU */
 }
 
-int64_t
+int32_t
 js::DateTimeInfo::internalGetDSTOffsetMilliseconds(int64_t utcMilliseconds)
 {
-    sanityCheck();
+    int64_t utcSeconds = toClampedSeconds(utcMilliseconds);
+    return getOrComputeValue(dstRange_, utcSeconds, &DateTimeInfo::computeDSTOffsetMilliseconds);
+}
 
-    int64_t utcSeconds = utcMilliseconds / msPerSecond;
+int32_t
+js::DateTimeInfo::getOrComputeValue(RangeCache& range, int64_t seconds, ComputeFn compute)
+{
+    range.sanityCheck();
 
-    if (utcSeconds > MaxUnixTimeT) {
-        utcSeconds = MaxUnixTimeT;
-    } else if (utcSeconds < 0) {
-        /* Go ahead a day to make localtime work (does not work with 0). */
-        utcSeconds = SecondsPerDay;
-    }
+    auto checkSanity = mozilla::MakeScopeExit([&range]() {
+        range.sanityCheck();
+    });
 
-    /*
-     * NB: Be aware of the initial range values when making changes to this
-     *     code: the first call to this method, with those initial range
-     *     values, must result in a cache miss.
-     */
+    // NB: Be aware of the initial range values when making changes to this
+    //     code: the first call to this method, with those initial range
+    //     values, must result in a cache miss.
+    MOZ_ASSERT(seconds != INT64_MIN);
 
-    if (rangeStartSeconds <= utcSeconds && utcSeconds <= rangeEndSeconds)
-        return offsetMilliseconds;
+    if (range.startSeconds <= seconds && seconds <= range.endSeconds)
+        return range.offsetMilliseconds;
 
-    if (oldRangeStartSeconds <= utcSeconds && utcSeconds <= oldRangeEndSeconds)
-        return oldOffsetMilliseconds;
+    if (range.oldStartSeconds <= seconds && seconds <= range.oldEndSeconds)
+        return range.oldOffsetMilliseconds;
 
-    oldOffsetMilliseconds = offsetMilliseconds;
-    oldRangeStartSeconds = rangeStartSeconds;
-    oldRangeEndSeconds = rangeEndSeconds;
+    range.oldOffsetMilliseconds = range.offsetMilliseconds;
+    range.oldStartSeconds = range.startSeconds;
+    range.oldEndSeconds = range.endSeconds;
 
-    if (rangeStartSeconds <= utcSeconds) {
-        int64_t newEndSeconds = Min(rangeEndSeconds + RangeExpansionAmount, MaxUnixTimeT);
-        if (newEndSeconds >= utcSeconds) {
-            int64_t endOffsetMilliseconds = computeDSTOffsetMilliseconds(newEndSeconds);
-            if (endOffsetMilliseconds == offsetMilliseconds) {
-                rangeEndSeconds = newEndSeconds;
-                return offsetMilliseconds;
+    if (range.startSeconds <= seconds) {
+        int64_t newEndSeconds = Min(range.endSeconds + RangeExpansionAmount, MaxTimeT);
+        if (newEndSeconds >= seconds) {
+            int32_t endOffsetMilliseconds = (this->*compute)(newEndSeconds);
+            if (endOffsetMilliseconds == range.offsetMilliseconds) {
+                range.endSeconds = newEndSeconds;
+                return range.offsetMilliseconds;
             }
 
-            offsetMilliseconds = computeDSTOffsetMilliseconds(utcSeconds);
-            if (offsetMilliseconds == endOffsetMilliseconds) {
-                rangeStartSeconds = utcSeconds;
-                rangeEndSeconds = newEndSeconds;
+            range.offsetMilliseconds = (this->*compute)(seconds);
+            if (range.offsetMilliseconds == endOffsetMilliseconds) {
+                range.startSeconds = seconds;
+                range.endSeconds = newEndSeconds;
             } else {
-                rangeEndSeconds = utcSeconds;
+                range.endSeconds = seconds;
             }
-            return offsetMilliseconds;
+            return range.offsetMilliseconds;
         }
 
-        offsetMilliseconds = computeDSTOffsetMilliseconds(utcSeconds);
-        rangeStartSeconds = rangeEndSeconds = utcSeconds;
-        return offsetMilliseconds;
+        range.offsetMilliseconds = (this->*compute)(seconds);
+        range.startSeconds = range.endSeconds = seconds;
+        return range.offsetMilliseconds;
     }
 
-    int64_t newStartSeconds = Max<int64_t>(rangeStartSeconds - RangeExpansionAmount, 0);
-    if (newStartSeconds <= utcSeconds) {
-        int64_t startOffsetMilliseconds = computeDSTOffsetMilliseconds(newStartSeconds);
-        if (startOffsetMilliseconds == offsetMilliseconds) {
-            rangeStartSeconds = newStartSeconds;
-            return offsetMilliseconds;
+    int64_t newStartSeconds = Max<int64_t>(range.startSeconds - RangeExpansionAmount, MinTimeT);
+    if (newStartSeconds <= seconds) {
+        int32_t startOffsetMilliseconds = (this->*compute)(newStartSeconds);
+        if (startOffsetMilliseconds == range.offsetMilliseconds) {
+            range.startSeconds = newStartSeconds;
+            return range.offsetMilliseconds;
         }
 
-        offsetMilliseconds = computeDSTOffsetMilliseconds(utcSeconds);
-        if (offsetMilliseconds == startOffsetMilliseconds) {
-            rangeStartSeconds = newStartSeconds;
-            rangeEndSeconds = utcSeconds;
+        range.offsetMilliseconds = (this->*compute)(seconds);
+        if (range.offsetMilliseconds == startOffsetMilliseconds) {
+            range.startSeconds = newStartSeconds;
+            range.endSeconds = seconds;
         } else {
-            rangeStartSeconds = utcSeconds;
+            range.startSeconds = seconds;
         }
-        return offsetMilliseconds;
+        return range.offsetMilliseconds;
     }
 
-    rangeStartSeconds = rangeEndSeconds = utcSeconds;
-    offsetMilliseconds = computeDSTOffsetMilliseconds(utcSeconds);
-    return offsetMilliseconds;
+    range.startSeconds = range.endSeconds = seconds;
+    range.offsetMilliseconds = (this->*compute)(seconds);
+    return range.offsetMilliseconds;
 }
 
 void
-js::DateTimeInfo::sanityCheck()
+js::DateTimeInfo::RangeCache::reset()
 {
-    MOZ_ASSERT(rangeStartSeconds <= rangeEndSeconds);
-    MOZ_ASSERT_IF(rangeStartSeconds == INT64_MIN, rangeEndSeconds == INT64_MIN);
-    MOZ_ASSERT_IF(rangeEndSeconds == INT64_MIN, rangeStartSeconds == INT64_MIN);
-    MOZ_ASSERT_IF(rangeStartSeconds != INT64_MIN,
-                  rangeStartSeconds >= 0 && rangeEndSeconds >= 0);
-    MOZ_ASSERT_IF(rangeStartSeconds != INT64_MIN,
-                  rangeStartSeconds <= MaxUnixTimeT && rangeEndSeconds <= MaxUnixTimeT);
+    // The initial range values are carefully chosen to result in a cache miss
+    // on first use given the range of possible values. Be careful to keep
+    // these values and the caching algorithm in sync!
+    offsetMilliseconds = 0;
+    startSeconds = endSeconds = INT64_MIN;
+    oldOffsetMilliseconds = 0;
+    oldStartSeconds = oldEndSeconds = INT64_MIN;
+
+    sanityCheck();
 }
+
+void
+js::DateTimeInfo::RangeCache::sanityCheck()
+{
+    auto assertRange = [](int64_t start, int64_t end) {
+        MOZ_ASSERT(start <= end);
+        MOZ_ASSERT_IF(start == INT64_MIN, end == INT64_MIN);
+        MOZ_ASSERT_IF(end == INT64_MIN, start == INT64_MIN);
+        MOZ_ASSERT_IF(start != INT64_MIN,
+                      start >= MinTimeT && end >= MinTimeT);
+        MOZ_ASSERT_IF(start != INT64_MIN,
+                      start <= MaxTimeT && end <= MaxTimeT);
+    };
+
+    assertRange(startSeconds, endSeconds);
+    assertRange(oldStartSeconds, oldEndSeconds);
+}
+
+#if ENABLE_INTL_API && !MOZ_SYSTEM_ICU
+int32_t
+js::DateTimeInfo::computeUTCOffsetMilliseconds(int64_t localSeconds)
+{
+    MOZ_ASSERT(localSeconds >= MinTimeT);
+    MOZ_ASSERT(localSeconds <= MaxTimeT);
+
+    UDate date = UDate(localSeconds * msPerSecond);
+
+    // ES2019 draft rev 0ceb728a1adbffe42b26972a6541fd7f398b1557
+    //
+    // 20.3.1.7 LocalTZA
+    //
+    // If |localSeconds| represents either a skipped (at a positive time zone
+    // transition) or repeated (at a negative time zone transition) locale
+    // time, it must be interpreted as a time value before the transition.
+    constexpr int32_t skippedTime = icu::BasicTimeZone::kFormer;
+    constexpr int32_t repeatedTime = icu::BasicTimeZone::kFormer;
+
+    int32_t rawOffset, dstOffset;
+    UErrorCode status = U_ZERO_ERROR;
+
+    // All ICU TimeZone classes derive from BasicTimeZone, so we can safely
+    // perform the static_cast.
+    // Once <https://unicode-org.atlassian.net/browse/ICU-13705> is fixed we
+    // can remove this extra cast.
+    auto* basicTz = static_cast<icu::BasicTimeZone*>(timeZone());
+    basicTz->getOffsetFromLocal(date, skippedTime, repeatedTime, rawOffset, dstOffset, status);
+    if (U_FAILURE(status))
+        return 0;
+
+    return rawOffset + dstOffset;
+}
+
+int32_t
+js::DateTimeInfo::computeLocalOffsetMilliseconds(int64_t utcSeconds)
+{
+    MOZ_ASSERT(utcSeconds >= MinTimeT);
+    MOZ_ASSERT(utcSeconds <= MaxTimeT);
+
+    UDate date = UDate(utcSeconds * msPerSecond);
+    constexpr bool dateIsLocalTime = false;
+    int32_t rawOffset, dstOffset;
+    UErrorCode status = U_ZERO_ERROR;
+
+    timeZone()->getOffset(date, dateIsLocalTime, rawOffset, dstOffset, status);
+    if (U_FAILURE(status))
+        return 0;
+
+    return rawOffset + dstOffset;
+}
+
+int32_t
+js::DateTimeInfo::internalGetOffsetMilliseconds(int64_t milliseconds, TimeZoneOffset offset)
+{
+    int64_t seconds = toClampedSeconds(milliseconds);
+    return offset == TimeZoneOffset::UTC
+           ? getOrComputeValue(localRange_, seconds, &DateTimeInfo::computeLocalOffsetMilliseconds)
+           : getOrComputeValue(utcRange_, seconds, &DateTimeInfo::computeUTCOffsetMilliseconds);
+}
+
+bool
+js::DateTimeInfo::internalTimeZoneDisplayName(char16_t* buf, size_t buflen,
+                                              int64_t utcMilliseconds, const char* locale)
+{
+    MOZ_ASSERT(buf != nullptr);
+    MOZ_ASSERT(buflen > 0);
+    MOZ_ASSERT(locale != nullptr);
+
+    // Clear any previously cached names when the default locale changed.
+    if (!locale_ || std::strcmp(locale_.get(), locale) != 0) {
+        locale_ = DuplicateString(locale);
+        if (!locale_)
+            return false;
+
+        standardName_.reset();
+        daylightSavingsName_.reset();
+    }
+
+    bool daylightSavings = internalGetDSTOffsetMilliseconds(utcMilliseconds) != 0;
+
+    JS::UniqueTwoByteChars& cachedName = daylightSavings ? daylightSavingsName_ : standardName_;
+    if (!cachedName) {
+        // Retrieve the display name for the given locale.
+        icu::UnicodeString displayName;
+        timeZone()->getDisplayName(daylightSavings, icu::TimeZone::LONG, icu::Locale(locale),
+                                   displayName);
+
+        size_t capacity = displayName.length() + 1; // Null-terminate.
+        JS::UniqueTwoByteChars displayNameChars(js_pod_malloc<char16_t>(capacity));
+        if (!displayNameChars)
+            return false;
+
+        // Copy the display name. This operation always succeeds because the
+        // destination buffer is large enough to hold the complete string.
+        UErrorCode status = U_ZERO_ERROR;
+        displayName.extract(displayNameChars.get(), capacity, status);
+        MOZ_ASSERT(U_SUCCESS(status));
+        MOZ_ASSERT(displayNameChars[capacity - 1] == '\0');
+
+        cachedName = std::move(displayNameChars);
+    }
+
+    // Return an empty string if the display name doesn't fit into the buffer.
+    size_t length = js_strlen(cachedName.get());
+    if (length < buflen)
+        std::copy(cachedName.get(), cachedName.get() + length, buf);
+    else
+        length = 0;
+
+    buf[length] = '\0';
+    return true;
+}
+
+icu::TimeZone*
+js::DateTimeInfo::timeZone()
+{
+    if (!timeZone_) {
+        // The current default might be stale, because JS::ResetTimeZone()
+        // doesn't immediately update ICU's default time zone. So perform an
+        // update if needed.
+        js::ResyncICUDefaultTimeZone();
+
+        timeZone_.reset(icu::TimeZone::createDefault());
+        MOZ_ASSERT(timeZone_);
+    }
+
+    return timeZone_.get();
+}
+#endif /* ENABLE_INTL_API && !MOZ_SYSTEM_ICU */
 
 /* static */ js::ExclusiveData<js::DateTimeInfo>*
 js::DateTimeInfo::instance;
@@ -315,7 +507,12 @@ js::InitDateTimeState()
     MOZ_ASSERT(!IcuTimeZoneState,
                "we should be initializing only once");
 
-    IcuTimeZoneState = js_new<ExclusiveData<IcuTimeZoneStatus>>(mutexid::IcuTimeZoneStateMutex);
+    // Set the ICU time zone status into the invalid state, so we compute the
+    // actual defaults on first access. We don't yet want to initialize ICU's
+    // time zone classes, because that may cause I/O operations slowing down
+    // the JS engine initialization, which we're currently in the middle of.
+    IcuTimeZoneState = js_new<ExclusiveData<IcuTimeZoneStatus>>(mutexid::IcuTimeZoneStateMutex,
+                                                                IcuTimeZoneStatus::NeedsUpdate);
     if (!IcuTimeZoneState) {
         js_delete(DateTimeInfo::instance);
         DateTimeInfo::instance = nullptr;
@@ -335,14 +532,25 @@ js::FinishDateTimeState()
     DateTimeInfo::instance = nullptr;
 }
 
+void
+js::ResetTimeZoneInternal(ResetTimeZoneMode mode)
+{
+    bool needsUpdate = js::DateTimeInfo::updateTimeZoneAdjustment(mode);
+
+#if ENABLE_INTL_API && defined(ICU_TZ_HAS_RECREATE_DEFAULT)
+    if (needsUpdate) {
+        auto guard = js::IcuTimeZoneState->lock();
+        guard.get() = js::IcuTimeZoneStatus::NeedsUpdate;
+    }
+#else
+    mozilla::Unused << needsUpdate;
+#endif
+}
+
 JS_PUBLIC_API(void)
 JS::ResetTimeZone()
 {
-    js::DateTimeInfo::updateTimeZoneAdjustment();
-
-#if ENABLE_INTL_API && defined(ICU_TZ_HAS_RECREATE_DEFAULT)
-    js::IcuTimeZoneState->lock().get() = js::IcuTimeZoneStatus::NeedsUpdate;
-#endif
+    js::ResetTimeZoneInternal(js::ResetTimeZoneMode::ResetEvenIfOffsetUnchaged);
 }
 
 #if defined(XP_WIN)
@@ -395,7 +603,139 @@ IsOlsonCompatibleWindowsTimeZoneId(const char* tz)
     }
     return false;
 }
+#elif ENABLE_INTL_API && defined(ICU_TZ_HAS_RECREATE_DEFAULT)
+static inline const char*
+TZContainsAbsolutePath(const char* tzVar)
+{
+    // A TZ environment variable may be an absolute path. The path
+    // format of TZ may begin with a colon. (ICU handles relative paths.)
+    if (tzVar[0] == ':' && tzVar[1] == '/') {
+        return tzVar + 1;
+    }
+    if (tzVar[0] == '/') {
+        return tzVar;
+    }
+    return nullptr;
+}
+
+/**
+ * Given a presumptive path |tz| to a zoneinfo time zone file
+ * (e.g. /etc/localtime), attempt to compute the time zone encoded by that
+ * path by repeatedly resolving symlinks until a path containing "/zoneinfo/"
+ * followed by time zone looking components is found. If a symlink is broken,
+ * symlink-following recurs too deeply, non time zone looking components are
+ * encountered, or some other error is encountered, return the empty string.
+ *
+ * If a non-empty string is returned, it's only guaranteed to have certain
+ * syntactic validity. It might not actually *be* a time zone name.
+ */
+static icu::UnicodeString
+ReadTimeZoneLink(const char* tz)
+{
+    // The resolved link name can have different paths depending on the OS.
+    // Follow ICU and only search for "/zoneinfo/"; see $ICU/common/putil.cpp.
+    static constexpr char ZoneInfoPath[] = "/zoneinfo/";
+    constexpr size_t ZoneInfoPathLength = mozilla::ArrayLength(ZoneInfoPath) - 1; // exclude NUL
+
+    // Stop following symlinks after a fixed depth, because some common time
+    // zones are stored in files whose name doesn't match an Olson time zone
+    // name. For example on Ubuntu, "/usr/share/zoneinfo/America/New_York" is a
+    // symlink to "/usr/share/zoneinfo/posixrules" and "posixrules" is not an
+    // Olson time zone name.
+    // Four hops should be a reasonable limit for most use cases.
+    constexpr uint32_t FollowDepthLimit = 4;
+
+#ifdef PATH_MAX
+    constexpr size_t PathMax = PATH_MAX;
+#else
+    constexpr size_t PathMax = 4096;
 #endif
+    static_assert(PathMax > 0, "PathMax should be larger than zero");
+
+    char linkName[PathMax];
+    constexpr size_t linkNameLen = mozilla::ArrayLength(linkName) - 1; // -1 to null-terminate.
+
+    // Return if the TZ value is too large.
+    if (std::strlen(tz) > linkNameLen)
+        return icu::UnicodeString();
+
+    std::strcpy(linkName, tz);
+
+    char linkTarget[PathMax];
+    constexpr size_t linkTargetLen = mozilla::ArrayLength(linkTarget) - 1; // -1 to null-terminate.
+
+    uint32_t depth = 0;
+
+    // Search until we find "/zoneinfo/" in the link name.
+    const char* timeZoneWithZoneInfo;
+    while (!(timeZoneWithZoneInfo = std::strstr(linkName, ZoneInfoPath))) {
+        // Return if the symlink nesting is too deep.
+        if (++depth > FollowDepthLimit)
+            return icu::UnicodeString();
+
+        // Return on error or if the result was truncated.
+        ssize_t slen = readlink(linkName, linkTarget, linkTargetLen);
+        if (slen < 0 || size_t(slen) >= linkTargetLen)
+            return icu::UnicodeString();
+
+        // Ensure linkTarget is null-terminated. (readlink may not necessarily
+        // null-terminate the string.)
+        size_t len = size_t(slen);
+        linkTarget[len] = '\0';
+
+        // If the target is absolute, continue with that.
+        if (linkTarget[0] == '/') {
+            std::strcpy(linkName, linkTarget);
+            continue;
+        }
+
+        // If the target is relative, it must be resolved against either the
+        // directory the link was in, or against the current working directory.
+        char* separator = std::strrchr(linkName, '/');
+
+        // If the link name is just something like "foo", resolve linkTarget
+        // against the current working directory.
+        if (!separator) {
+            std::strcpy(linkName, linkTarget);
+            continue;
+        }
+
+        // Remove everything after the final path separator in linkName.
+        separator[1] = '\0';
+
+        // Return if the concatenated path name is too large.
+        if (std::strlen(linkName) + len > linkNameLen)
+            return icu::UnicodeString();
+
+        // Keep it simple and just concatenate the path names.
+        std::strcat(linkName, linkTarget);
+    }
+
+    const char* timeZone = timeZoneWithZoneInfo + ZoneInfoPathLength;
+    size_t timeZoneLen = std::strlen(timeZone);
+
+    // Reject the result if it doesn't match the time zone id pattern or
+    // legacy time zone names.
+    // See <https://github.com/eggert/tz/blob/master/theory.html>.
+    for (size_t i = 0; i < timeZoneLen; i++) {
+        char c = timeZone[i];
+
+        // According to theory.html, '.' is allowed in time zone ids, but the
+        // accompanying zic.c file doesn't allow it. Assume the source file is
+        // correct and disallow '.' here, too.
+        if (mozilla::IsAsciiAlphanumeric(c) || c == '_' || c == '-' || c == '+')
+            continue;
+
+        // Reject leading, trailing, or consecutive '/' characters.
+        if (c == '/' && i > 0 && i + 1 < timeZoneLen && timeZone[i + 1] != '/')
+            continue;
+
+        return icu::UnicodeString();
+    }
+
+    return icu::UnicodeString(timeZone, timeZoneLen, US_INV);
+}
+#endif /* ENABLE_INTL_API && defined(ICU_TZ_HAS_RECREATE_DEFAULT) */
 
 void
 js::ResyncICUDefaultTimeZone()
@@ -404,26 +744,43 @@ js::ResyncICUDefaultTimeZone()
     auto guard = IcuTimeZoneState->lock();
     if (guard.get() == IcuTimeZoneStatus::NeedsUpdate) {
         bool recreate = true;
+
+        if (const char* tz = std::getenv("TZ")) {
+            icu::UnicodeString tzid;
+
 #if defined(XP_WIN)
-        // If TZ is set and its value is valid under Windows' and IANA's time
-        // zone identifier rules, update the ICU default time zone to use this
-        // value.
-        const char* tz = std::getenv("TZ");
-        if (tz && IsOlsonCompatibleWindowsTimeZoneId(tz)) {
-            icu::UnicodeString tzid(tz, -1, US_INV);
-            mozilla::UniquePtr<icu::TimeZone> newTimeZone(icu::TimeZone::createTimeZone(tzid));
-            MOZ_ASSERT(newTimeZone);
-            if (*newTimeZone != icu::TimeZone::getUnknown()) {
-                // adoptDefault() takes ownership of the time zone.
-                icu::TimeZone::adoptDefault(newTimeZone.release());
-                recreate = false;
+            // If TZ is set and its value is valid under Windows' and IANA's
+            // time zone identifier rules, update the ICU default time zone to
+            // use this value.
+            if (IsOlsonCompatibleWindowsTimeZoneId(tz)) {
+                tzid.setTo(icu::UnicodeString(tz, -1, US_INV));
+            } else {
+                // If |tz| isn't a supported time zone identifier, use the
+                // default Windows time zone for ICU.
+                // TODO: Handle invalid time zone identifiers (bug 342068).
             }
-        } else {
-            // If |tz| isn't a supported time zone identifier, use the default
-            // Windows time zone for ICU.
-            // TODO: Handle invalid time zone identifiers (bug 342068).
+#else
+            // The TZ environment variable allows both absolute and
+            // relative paths, optionally beginning with a colon (':').
+            // (Relative paths, without the colon, are just Olson time
+            // zone names.)  We need to handle absolute paths ourselves,
+            // including handling that they might be symlinks.
+            // <https://unicode-org.atlassian.net/browse/ICU-13694>
+            if (const char* tzlink = TZContainsAbsolutePath(tz))
+                tzid.setTo(ReadTimeZoneLink(tzlink));
+#endif /* defined(XP_WIN) */
+
+            if (!tzid.isEmpty()) {
+                mozilla::UniquePtr<icu::TimeZone> newTimeZone(icu::TimeZone::createTimeZone(tzid));
+                MOZ_ASSERT(newTimeZone);
+                if (*newTimeZone != icu::TimeZone::getUnknown()) {
+                    // adoptDefault() takes ownership of the time zone.
+                    icu::TimeZone::adoptDefault(newTimeZone.release());
+                    recreate = false;
+                }
+            }
         }
-#endif
+
         if (recreate)
             icu::TimeZone::recreateDefault();
         guard.get() = IcuTimeZoneStatus::Valid;

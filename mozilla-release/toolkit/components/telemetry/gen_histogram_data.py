@@ -10,6 +10,7 @@ from shared_telemetry_utils import StringTable, static_assert, ParserError
 
 import sys
 import parse_histograms
+import buildconfig
 
 banner = """/* This file is auto-generated, see gen_histogram_data.py.  */
 """
@@ -17,26 +18,22 @@ banner = """/* This file is auto-generated, see gen_histogram_data.py.  */
 
 def print_array_entry(output, histogram, name_index, exp_index, label_index,
                       label_count, key_index, key_count):
-    cpp_guard = histogram.cpp_guard()
-    if cpp_guard:
-        print("#if defined(%s)" % cpp_guard, file=output)
-    print("  { %s, %s, %s, %s, %d, %d, %s, %d, %d, %d, %d, %s, %s, %s },"
-          % (histogram.low(),
-             histogram.high(),
-             histogram.n_buckets(),
-             histogram.nsITelemetry_kind(),
-             name_index,
-             exp_index,
-             histogram.dataset(),
-             label_index,
-             label_count,
-             key_index,
-             key_count,
-             " | ".join(histogram.record_in_processes_enum()),
-             "true" if histogram.keyed() else "false",
-             " | ".join(histogram.products_enum())), file=output)
-    if cpp_guard:
-        print("#endif", file=output)
+    if histogram.record_on_os(buildconfig.substs["OS_TARGET"]):
+        print("  { %s, %s, %s, %s, %d, %d, %s, %d, %d, %d, %d, %s, %s, %s },"
+              % (histogram.low(),
+                 histogram.high(),
+                 histogram.n_buckets(),
+                 histogram.nsITelemetry_kind(),
+                 name_index,
+                 exp_index,
+                 histogram.dataset(),
+                 label_index,
+                 label_count,
+                 key_index,
+                 key_count,
+                 " | ".join(histogram.record_in_processes_enum()),
+                 "true" if histogram.keyed() else "false",
+                 " | ".join(histogram.products_enum())), file=output)
 
 
 def write_histogram_table(output, histograms):
@@ -74,12 +71,20 @@ def write_histogram_table(output, histograms):
     static_assert(output, "sizeof(%s) <= UINT32_MAX" % strtab_name,
                   "index overflow")
 
-    print("\nconst uint32_t gHistogramLabelTable[] = {", file=output)
+    print("\n#if defined(_MSC_VER) && !defined(__clang__)", file=output)
+    print("const uint32_t gHistogramLabelTable[] = {", file=output)
+    print("#else", file=output)
+    print("constexpr uint32_t gHistogramLabelTable[] = {", file=output)
+    print("#endif", file=output)
     for name, indexes in label_table:
         print("/* %s */ %s," % (name, ", ".join(map(str, indexes))), file=output)
     print("};", file=output)
 
-    print("\nconst uint32_t gHistogramKeyTable[] = {", file=output)
+    print("\n#if defined(_MSC_VER) && !defined(__clang__)", file=output)
+    print("const uint32_t gHistogramKeyTable[] = {", file=output)
+    print("#else", file=output)
+    print("constexpr uint32_t gHistogramKeyTable[] = {", file=output)
+    print("#endif", file=output)
     for name, indexes in keys_table:
         print("/* %s */ %s," % (name, ", ".join(map(str, indexes))), file=output)
     print("};", file=output)
@@ -158,7 +163,11 @@ def write_histogram_ranges(output, histograms):
     # The format must exactly match that required in histogram.cc, which is
     # 0, buckets..., INT_MAX. Additionally, the list ends in a 0 to aid asserts
     # that validate that the length of the ranges list is correct.U cache miss.
+    print("#if defined(_MSC_VER) && !defined(__clang__)", file=output)
     print("const int gHistogramBucketLowerBounds[] = {", file=output)
+    print("#else", file=output)
+    print("constexpr int gHistogramBucketLowerBounds[] = {", file=output)
+    print("#endif", file=output)
 
     # Print the dummy buckets for expired histograms, and set the offset to match.
     print("0,1,2,INT_MAX,", file=output)
@@ -178,17 +187,17 @@ def write_histogram_ranges(output, histograms):
     if offset > 32767:
         raise Exception('Histogram offsets exceeded maximum value for an int16_t.')
 
+    target_os = buildconfig.substs["OS_TARGET"]
+    print("#if defined(_MSC_VER) && !defined(__clang__)", file=output)
     print("const int16_t gHistogramBucketLowerBoundIndex[] = {", file=output)
+    print("#else", file=output)
+    print("constexpr int16_t gHistogramBucketLowerBoundIndex[] = {", file=output)
+    print("#endif", file=output)
     for histogram in histograms:
-        cpp_guard = histogram.cpp_guard()
-        if cpp_guard:
-            print("#if defined(%s)" % cpp_guard, file=output)
+        if histogram.record_on_os(target_os):
+            our_offset = ranges_offsets[tuple(histogram.ranges())]
+            print("%d," % our_offset, file=output)
 
-        our_offset = ranges_offsets[tuple(histogram.ranges())]
-        print("%d," % our_offset, file=output)
-
-        if cpp_guard:
-            print("#endif", file=output)
     print("};", file=output)
 
 

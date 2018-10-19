@@ -16,10 +16,16 @@ loader.lazyRequireGetter(this, "getCssPath", "devtools/shared/inspector/css-logi
 loader.lazyRequireGetter(this, "getXPath", "devtools/shared/inspector/css-logic", true);
 loader.lazyRequireGetter(this, "findCssSelector", "devtools/shared/inspector/css-logic", true);
 
-loader.lazyRequireGetter(this, "isNativeAnonymous", "devtools/shared/layout/utils", true);
-loader.lazyRequireGetter(this, "isXBLAnonymous", "devtools/shared/layout/utils", true);
-loader.lazyRequireGetter(this, "isShadowAnonymous", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isAfterPseudoElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isAnonymous", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isBeforePseudoElement", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isDirectShadowHostChild", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isNativeAnonymous", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isShadowAnonymous", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isShadowHost", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isShadowRoot", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "getShadowRootMode", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isXBLAnonymous", "devtools/shared/layout/utils", true);
 
 loader.lazyRequireGetter(this, "InspectorActorUtils", "devtools/server/actors/inspector/utils");
 loader.lazyRequireGetter(this, "LongStringActor", "devtools/server/actors/string", true);
@@ -97,9 +103,12 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
 
     const parentNode = this.walker.parentNode(this);
     const inlineTextChild = this.walker.inlineTextChild(this);
+    const shadowRoot = isShadowRoot(this.rawNode);
+    const hostActor = shadowRoot ? this.walker.getNode(this.rawNode.host) : null;
 
     const form = {
       actor: this.actorID,
+      host: hostActor ? hostActor.actorID : undefined,
       baseURI: this.rawNode.baseURI,
       parent: parentNode ? parentNode.actorID : undefined,
       nodeType: this.rawNode.nodeType,
@@ -117,15 +126,17 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
       systemId: this.rawNode.systemId,
 
       attrs: this.writeAttrs(),
-      isBeforePseudoElement: this.isBeforePseudoElement,
-      isAfterPseudoElement: this.isAfterPseudoElement,
+      customElementLocation: this.getCustomElementLocation(),
+      isBeforePseudoElement: isBeforePseudoElement(this.rawNode),
+      isAfterPseudoElement: isAfterPseudoElement(this.rawNode),
       isAnonymous: isAnonymous(this.rawNode),
       isNativeAnonymous: isNativeAnonymous(this.rawNode),
       isXBLAnonymous: isXBLAnonymous(this.rawNode),
       isShadowAnonymous: isShadowAnonymous(this.rawNode),
-      isShadowRoot: this.isShadowRoot,
-      isShadowHost: this.isShadowHost,
-      isDirectShadowHostChild: this.isDirectShadowHostChild,
+      isShadowRoot: shadowRoot,
+      shadowRootMode: getShadowRootMode(this.rawNode),
+      isShadowHost: isShadowHost(this.rawNode),
+      isDirectShadowHostChild: isDirectShadowHostChild(this.rawNode),
       pseudoClassLocks: this.writePseudoClassLocks(),
 
       isDisplayed: this.isDisplayed,
@@ -170,40 +181,12 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
     this.rawNode.addEventListener("slotchange", this.slotchangeListener);
   },
 
-  get isBeforePseudoElement() {
-    return this.rawNode.nodeName === "_moz_generated_content_before";
-  },
-
-  get isAfterPseudoElement() {
-    return this.rawNode.nodeName === "_moz_generated_content_after";
-  },
-
-  get isShadowRoot() {
-    const isFragment = this.rawNode.nodeType === Node.DOCUMENT_FRAGMENT_NODE;
-    return isFragment && !!this.rawNode.host;
-  },
-
-  get isShadowHost() {
-    const shadowRoot = this.rawNode.shadowRoot;
-    return shadowRoot && shadowRoot.nodeType === Node.DOCUMENT_FRAGMENT_NODE;
-  },
-
-  get isDirectShadowHostChild() {
-    // Pseudo elements are always part of the anonymous tree.
-    if (this.isBeforePseudoElement || this.isAfterPseudoElement) {
-      return false;
-    }
-
-    const parentNode = this.rawNode.parentNode;
-    return parentNode && !!parentNode.shadowRoot;
-  },
-
   // Estimate the number of children that the walker will return without making
   // a call to children() if possible.
   get numChildren() {
     // For pseudo elements, childNodes.length returns 1, but the walker
     // will return 0.
-    if (this.isBeforePseudoElement || this.isAfterPseudoElement) {
+    if (isBeforePseudoElement(this.rawNode) || isAfterPseudoElement(this.rawNode)) {
       return 0;
     }
 
@@ -221,8 +204,9 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
 
     // Normal counting misses ::before/::after.  Also, some anonymous children
     // may ultimately be skipped, so we have to consult with the walker.
-    if (numChildren === 0 || hasAnonChildren || this.isShadowHost) {
-      numChildren = this.walker.children(this).nodes.length;
+    if (numChildren === 0 || hasAnonChildren || isShadowHost(this.rawNode) ||
+      isShadowAnonymous(this.rawNode)) {
+      numChildren = this.walker.countChildren(this);
     }
 
     return numChildren;
@@ -242,8 +226,8 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
     // Consider all non-element nodes as displayed.
     if (InspectorActorUtils.isNodeDead(this) ||
         this.rawNode.nodeType !== Node.ELEMENT_NODE ||
-        this.isAfterPseudoElement ||
-        this.isBeforePseudoElement) {
+        isAfterPseudoElement(this.rawNode) ||
+        isBeforePseudoElement(this.rawNode)) {
       return null;
     }
 
@@ -366,6 +350,36 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
     });
 
     return listenerArray;
+  },
+
+  /**
+   * Retrieve the script location of the custom element definition for this node, when
+   * relevant. To be linked to a custom element definition
+   */
+  getCustomElementLocation: function() {
+    // Get a reference to the custom element definition function.
+    const name = this.rawNode.localName;
+
+    const customElementsRegistry = this.rawNode.ownerGlobal.customElements;
+    const customElement = customElementsRegistry && customElementsRegistry.get(name);
+    if (!customElement) {
+      return undefined;
+    }
+    // Create debugger object for the customElement function.
+    const global = Cu.getGlobalForObject(customElement);
+    const dbg = this.parent().targetActor.makeDebugger();
+    const globalDO = dbg.addDebuggee(global);
+    const customElementDO = globalDO.makeDebuggeeValue(customElement);
+
+    // Return undefined if we can't find a script for the custom element definition.
+    if (!customElementDO.script) {
+      return undefined;
+    }
+
+    return {
+      url: customElementDO.script.url,
+      line: customElementDO.script.startLine,
+    };
   },
 
   /**
@@ -692,6 +706,19 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
       current = current.parentNode;
     }
     return "rgba(255, 255, 255, 1)";
+  },
+
+  /**
+   * Returns an object with the width and height of the node's owner window.
+   *
+   * @return {Object}
+   */
+  getOwnerGlobalDimensions: function() {
+    const win = this.rawNode.ownerGlobal;
+    return {
+      innerWidth: win.innerWidth,
+      innerHeight: win.innerHeight,
+    };
   }
 });
 

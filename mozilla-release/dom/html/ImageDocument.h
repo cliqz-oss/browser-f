@@ -25,6 +25,11 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
+  enum MediaDocumentKind MediaDocumentKind() const override
+  {
+    return MediaDocumentKind::Image;
+  }
+
   virtual nsresult Init() override;
 
   virtual nsresult StartDocumentLoad(const char*         aCommand,
@@ -38,7 +43,8 @@ public:
   virtual void SetScriptGlobalObject(nsIScriptGlobalObject* aScriptGlobalObject) override;
   virtual void Destroy() override;
   virtual void OnPageShow(bool aPersisted,
-                          EventTarget* aDispatchStartTarget) override;
+                          EventTarget* aDispatchStartTarget,
+                          bool aOnlySystemGroup = false) override;
 
   NS_DECL_NSIIMAGEDOCUMENT
   NS_DECL_IMGINOTIFICATIONOBSERVER

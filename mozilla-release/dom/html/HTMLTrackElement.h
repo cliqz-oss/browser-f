@@ -88,8 +88,7 @@ public:
 
   TextTrack* GetTrack();
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo, nsINode** aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   // Override ParseAttribute() to convert kind strings to enum values.
   virtual bool ParseAttribute(int32_t aNamespaceID,
@@ -102,8 +101,7 @@ public:
   // the child of a media element.
   virtual nsresult BindToTree(nsIDocument* aDocument,
                               nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
 
   void DispatchTrackRunnable(const nsString& aEventName);

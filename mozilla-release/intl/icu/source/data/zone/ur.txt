@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 ur{
-    Version{"2.1.39.11"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"کوآرڈینیٹڈ یونیورسل ٹائم"}
+        }
+        "Europe:Dublin"{
+            ld{"آئرش اسٹینڈرڈ ٹائم"}
+        }
+        "Europe:London"{
+            ld{"برٹش سمر ٹائم"}
+        }
         "meta:Afghanistan"{
             ls{"افغانستان کا وقت"}
         }

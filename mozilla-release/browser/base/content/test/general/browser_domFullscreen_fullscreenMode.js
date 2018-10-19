@@ -15,7 +15,7 @@ function frameScript() {
   addMessageListener("Test:QueryFullscreenState", () => {
     sendAsyncMessage("Test:FullscreenState", {
       inDOMFullscreen: !!content.document.fullscreenElement,
-      inFullscreen: content.fullScreen
+      inFullscreen: content.fullScreen,
     });
   });
   addMessageListener("Test:WaitActivated", () => {
@@ -24,12 +24,11 @@ function frameScript() {
   content.document.addEventListener("fullscreenchange", () => {
     sendAsyncMessage("Test:FullscreenChanged", {
       inDOMFullscreen: !!content.document.fullscreenElement,
-      inFullscreen: content.fullScreen
+      inFullscreen: content.fullScreen,
     });
   });
   function waitUntilActive() {
-    let doc = content.document;
-    if (doc.docShell.isActive && doc.hasFocus()) {
+    if (docShell.isActive && content.document.hasFocus()) {
       sendAsyncMessage("Test:Activated");
     } else {
       setTimeout(waitUntilActive, 10);
@@ -122,22 +121,22 @@ var gTests = [
     affectsFullscreenMode: false,
     exitFunc: () => {
       gMessageManager.sendAsyncMessage("Test:ExitFullscreen");
-    }
+    },
   },
   {
     desc: "escape key",
     affectsFullscreenMode: false,
     exitFunc: () => {
       executeSoon(() => EventUtils.synthesizeKey("KEY_Escape"));
-    }
+    },
   },
   {
     desc: "F11 key",
     affectsFullscreenMode: true,
     exitFunc() {
       executeSoon(() => EventUtils.synthesizeKey("KEY_F11"));
-    }
-  }
+    },
+  },
 ];
 
 function checkState(expectedStates, contentStates) {
@@ -224,7 +223,7 @@ add_task(async function() {
       test.affectsFullscreenMode ? FS_CHANGE_BOTH : FS_CHANGE_DOM);
     checkState({
       inDOMFullscreen: false,
-      inFullscreen: !test.affectsFullscreenMode
+      inFullscreen: !test.affectsFullscreenMode,
     }, contentStates);
 
     /* Cleanup */

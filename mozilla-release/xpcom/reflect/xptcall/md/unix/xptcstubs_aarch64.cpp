@@ -27,7 +27,6 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex, uint64_t* args,
     nsXPTCMiniVariant paramBuffer[PARAM_BUFFER_COUNT];
     nsXPTCMiniVariant* dispatchParams = NULL;
     const nsXPTMethodInfo* info;
-    nsresult result = NS_ERROR_FAILURE;
 
     NS_ASSERTION(self,"no self");
 
@@ -44,6 +43,8 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex, uint64_t* args,
     }
     NS_ASSERTION(dispatchParams,"no place for params");
 
+    const uint8_t indexOfJSContext = info->IndexOfJSContext();
+
     uint64_t* ap = args;
     uint32_t next_gpr = 1; // skip first arg which is 'self'
     uint32_t next_fpr = 0;
@@ -51,6 +52,13 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex, uint64_t* args,
         const nsXPTParamInfo& param = info->GetParam(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &dispatchParams[i];
+
+        if (i == indexOfJSContext) {
+            if (next_gpr < PARAM_GPR_COUNT)
+                next_gpr++;
+            else
+                ap++;
+        }
 
         if (param.IsOut() || !type.IsArithmetic()) {
             if (next_gpr < PARAM_GPR_COUNT) {
@@ -172,7 +180,8 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex, uint64_t* args,
         }
     }
 
-    result = self->mOuter->CallMethod((uint16_t)methodIndex, info, dispatchParams);
+    nsresult result = self->mOuter->CallMethod((uint16_t)methodIndex, info,
+                                               dispatchParams);
 
     if (dispatchParams != paramBuffer) {
         delete [] dispatchParams;

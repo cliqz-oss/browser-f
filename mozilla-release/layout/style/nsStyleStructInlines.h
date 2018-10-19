@@ -154,16 +154,12 @@ nsStyleDisplay::HasPerspective(const nsIFrame* aContextFrame) const
 }
 
 bool
-nsStyleDisplay::HasFixedPosContainingBlockStyleInternal(
+nsStyleDisplay::IsFixedPosContainingBlockForNonSVGTextFrames(
   mozilla::ComputedStyle& aStyle) const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the FIXPOS_CB flag set on them.
   NS_ASSERTION(aStyle.ThreadsafeStyleDisplay() == this, "unexpected aStyle");
-
-  if (IsContainPaint()) {
-    return true;
-  }
 
   if (mWillChangeBitField & NS_STYLE_WILL_CHANGE_FIXPOS_CB) {
     return true;
@@ -173,29 +169,39 @@ nsStyleDisplay::HasFixedPosContainingBlockStyleInternal(
 }
 
 bool
-nsStyleDisplay::IsFixedPosContainingBlockForAppropriateFrame(
-  mozilla::ComputedStyle& aStyle) const
+nsStyleDisplay::IsFixedPosContainingBlockForContainLayoutAndPaintSupportingFrames() const
+{
+  return IsContainPaint() || IsContainLayout();
+}
+
+bool
+nsStyleDisplay::IsFixedPosContainingBlockForTransformSupportingFrames() const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the FIXPOS_CB flag set on them.
-  return HasFixedPosContainingBlockStyleInternal(aStyle) ||
-         HasTransformStyle() || HasPerspectiveStyle();
+  return HasTransformStyle() || HasPerspectiveStyle();
 }
 
 bool
 nsStyleDisplay::IsFixedPosContainingBlock(const nsIFrame* aContextFrame) const
 {
+  mozilla::ComputedStyle* style = aContextFrame->Style();
+  NS_ASSERTION(style->ThreadsafeStyleDisplay() == this,
+               "unexpected aContextFrame");
   // NOTE: Any CSS properties that influence the output of this function
   // should have the FIXPOS_CB flag set on them.
-  if (!HasFixedPosContainingBlockStyleInternal(*aContextFrame->Style()) &&
-      !HasTransform(aContextFrame) && !HasPerspective(aContextFrame)) {
+  if (!IsFixedPosContainingBlockForNonSVGTextFrames(*style) &&
+      (!IsFixedPosContainingBlockForContainLayoutAndPaintSupportingFrames() ||
+       !aContextFrame->IsFrameOfType(nsIFrame::eSupportsContainLayoutAndPaint)) &&
+      (!IsFixedPosContainingBlockForTransformSupportingFrames() ||
+       !aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms))) {
     return false;
   }
   return !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
 }
 
 bool
-nsStyleDisplay::HasAbsPosContainingBlockStyleInternal() const
+nsStyleDisplay::IsAbsPosContainingBlockForNonSVGTextFrames() const
 {
   // NOTE: Any CSS properties that influence the output of this function
   // should have the ABSPOS_CB set on them.
@@ -205,27 +211,19 @@ nsStyleDisplay::HasAbsPosContainingBlockStyleInternal() const
 }
 
 bool
-nsStyleDisplay::IsAbsPosContainingBlockForAppropriateFrame(
-  mozilla::ComputedStyle& aStyle) const
-{
-  NS_ASSERTION(aStyle.ThreadsafeStyleDisplay() == this, "unexpected aStyle");
-  // NOTE: Any CSS properties that influence the output of this function
-  // should have the ABSPOS_CB set on them.
-  return HasAbsPosContainingBlockStyleInternal() ||
-         IsFixedPosContainingBlockForAppropriateFrame(aStyle);
-}
-
-bool
 nsStyleDisplay::IsAbsPosContainingBlock(const nsIFrame* aContextFrame) const
 {
-  NS_ASSERTION(aContextFrame->Style()->ThreadsafeStyleDisplay() == this,
+  mozilla::ComputedStyle *style = aContextFrame->Style();
+  NS_ASSERTION(style->ThreadsafeStyleDisplay() == this,
                "unexpected aContextFrame");
   // NOTE: Any CSS properties that influence the output of this function
   // should have the ABSPOS_CB set on them.
-  if (!HasAbsPosContainingBlockStyleInternal() &&
-      !HasFixedPosContainingBlockStyleInternal(*aContextFrame->Style()) &&
-      !HasTransform(aContextFrame) &&
-      !HasPerspective(aContextFrame)) {
+  if (!IsAbsPosContainingBlockForNonSVGTextFrames() &&
+      !IsFixedPosContainingBlockForNonSVGTextFrames(*style) &&
+      (!IsFixedPosContainingBlockForContainLayoutAndPaintSupportingFrames() ||
+       !aContextFrame->IsFrameOfType(nsIFrame::eSupportsContainLayoutAndPaint)) &&
+      (!IsFixedPosContainingBlockForTransformSupportingFrames() ||
+       !aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms))) {
     return false;
   }
   return !nsSVGUtils::IsInSVGTextSubtree(aContextFrame);
@@ -248,7 +246,7 @@ nsStyleDisplay::IsAbsolutelyPositioned(const nsIFrame* aContextFrame) const
 }
 
 uint8_t
-nsStyleUserInterface::GetEffectivePointerEvents(nsIFrame* aFrame) const
+nsStyleUI::GetEffectivePointerEvents(nsIFrame* aFrame) const
 {
   if (aFrame->GetContent() && !aFrame->GetContent()->GetParent()) {
     // The root element has a cluster of frames associated with it
@@ -257,7 +255,7 @@ nsStyleUserInterface::GetEffectivePointerEvents(nsIFrame* aFrame) const
     // frame.
     nsIFrame* f = aFrame->GetContent()->GetPrimaryFrame();
     if (f) {
-      return f->StyleUserInterface()->mPointerEvents;
+      return f->StyleUI()->mPointerEvents;
     }
   }
   return mPointerEvents;

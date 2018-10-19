@@ -54,9 +54,7 @@ var PageMetadata = {
     // pushState. In that case, we'll only return uri and title. If document is
     // via XHR or something, there is no view or history.
     if (document.defaultView) {
-      let docshell = document.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                                         .getInterface(Ci.nsIWebNavigation)
-                                         .QueryInterface(Ci.nsIDocShell);
+      let docshell = document.defaultView.docShell;
       let shentry = {};
       if (docshell.getCurrentSHEntry(shentry) &&
           shentry.value && shentry.value.URIWasModified) {
@@ -218,7 +216,7 @@ var PageMetadata = {
           result.alternate.push({
             type: element.getAttribute("type"),
             href: element.getAttribute("href"),
-            title: element.getAttribute("title")
+            title: element.getAttribute("title"),
           });
         }
       }

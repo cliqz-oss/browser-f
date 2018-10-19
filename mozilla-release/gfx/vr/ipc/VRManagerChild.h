@@ -7,6 +7,7 @@
 #ifndef MOZILLA_GFX_VR_VRMANAGERCHILD_H
 #define MOZILLA_GFX_VR_VRMANAGERCHILD_H
 
+#include "mozilla/dom/WindowBinding.h" // For FrameRequestCallback
 #include "mozilla/gfx/PVRManagerChild.h"
 #include "mozilla/ipc/SharedMemory.h"   // for SharedMemory, etc
 #include "ThreadSafeRefcountingWithMainThreadDestruction.h"
@@ -69,6 +70,7 @@ public:
     int32_t *aHandle);
   void CancelFrameRequestCallback(int32_t aHandle);
   void RunFrameRequestCallbacks();
+  void NotifyPresentationGenerationChanged(uint32_t aDisplayID);
 
   void UpdateDisplayInfo(nsTArray<VRDisplayInfo>& aDisplayUpdates);
   void FireDOMVRDisplayMountedEvent(uint32_t aDisplayID);
@@ -115,6 +117,7 @@ private:
   void FireDOMVRDisplayPresentChangeEventInternal(uint32_t aDisplayID);
   void FireDOMVRDisplayConnectEventsForLoadInternal(uint32_t aDisplayID,
                                                     dom::VREventObserver* aObserver);
+  void NotifyPresentationGenerationChangedInternal(uint32_t aDisplayID);
 
   nsTArray<RefPtr<VRDisplayClient> > mDisplays;
   bool mDisplaysInitialized;
@@ -139,6 +142,7 @@ private:
   uint32_t mPromiseID;
   nsRefPtrHashtable<nsUint32HashKey, dom::Promise> mPromiseList;
   RefPtr<dom::VRMockDisplay> mVRMockDisplay;
+  VRControllerState mLastControllerState[kVRControllerMaxCount];
 
   DISALLOW_COPY_AND_ASSIGN(VRManagerChild);
 };

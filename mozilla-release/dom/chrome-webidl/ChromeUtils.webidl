@@ -345,9 +345,52 @@ partial namespace ChromeUtils {
   object createError(DOMString message, optional object? stack = null);
 
   /**
-   * Request performance metrics to the current process & all ontent processes.
+   * Request performance metrics to the current process & all content processes.
    */
-  void requestPerformanceMetrics();
+  [Throws, Func="DOMPrefs::SchedulerTimingEnabled"]
+  Promise<sequence<PerformanceInfoDictionary>> requestPerformanceMetrics();
+
+  /**
+  * Returns a Promise containing a sequence of I/O activities
+  */
+  [Throws]
+  Promise<sequence<IOActivityDataDictionary>> requestIOActivity();
+
+  [ChromeOnly]
+  sequence<BrowsingContext> getRootBrowsingContexts();
+};
+
+/**
+ * Dictionaries duplicating IPDL types in dom/ipc/DOMTypes.ipdlh
+ * Used by requestPerformanceMetrics
+ */
+dictionary CategoryDispatchDictionary
+{
+  unsigned short category = 0;
+  unsigned short count = 0;
+};
+
+dictionary PerformanceInfoDictionary {
+  ByteString host = "";
+  unsigned long pid = 0;
+  unsigned long long windowId = 0;
+  unsigned long long duration = 0;
+  unsigned long long counterId = 0;
+  boolean isWorker = false;
+  boolean isTopLevel = false;
+  sequence<CategoryDispatchDictionary> items = [];
+};
+
+/**
+ * Used by requestIOActivity() to return the number of bytes
+ * that were read (rx) and/or written (tx) for a given location.
+ *
+ * Locations can be sockets or files.
+ */
+dictionary IOActivityDataDictionary {
+  ByteString location = "";
+  unsigned long long rx = 0;
+  unsigned long long tx = 0;
 };
 
 /**

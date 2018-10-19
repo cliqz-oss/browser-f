@@ -4,13 +4,13 @@ add_task(async function setup_test_preference() {
   setTestPluginEnabledState(Ci.nsIPluginTag.STATE_ENABLED, "Test Plug-in");
   await SpecialPowers.pushPrefEnv({"set": [
     ["media.useAudioChannelService.testing", true],
-    ["media.block-autoplay-until-in-foreground", true]
+    ["media.block-autoplay-until-in-foreground", true],
   ]});
 });
 
 add_task(async function block_plug_in() {
   info("- open new background tab -");
-  let tab = window.gBrowser.addTab("about:blank");
+  let tab = BrowserTestUtils.addTab(window.gBrowser, "about:blank");
   tab.linkedBrowser.loadURI(PAGE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 

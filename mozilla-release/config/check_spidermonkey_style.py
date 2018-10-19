@@ -84,8 +84,10 @@ included_inclnames_to_ignore = set([
     'prtypes.h',                # NSPR
     'selfhosted.out.h',         # generated in $OBJDIR
     'shellmoduleloader.out.h',  # generated in $OBJDIR
-    'unicode/timezone.h',       # ICU
+    'unicode/basictz.h',        # ICU
+    'unicode/locid.h',          # ICU
     'unicode/plurrule.h',       # ICU
+    'unicode/timezone.h',       # ICU
     'unicode/ucal.h',           # ICU
     'unicode/uchar.h',          # ICU
     'unicode/uclean.h',         # ICU
@@ -103,6 +105,7 @@ included_inclnames_to_ignore = set([
     'unicode/ureldatefmt.h',    # ICU
     'unicode/ustring.h',        # ICU
     'unicode/utypes.h',         # ICU
+    'unicode/uversion.h',       # ICU
     'vtune/VTuneWrapper.h'      # VTune
 ])
 
@@ -130,9 +133,6 @@ oddly_ordered_inclnames = set([
 # - This script has been broken somehow.
 #
 expected_output = '''\
-js/src/tests/style/BadIncludes2.h:1: error:
-    vanilla header includes an inline-header file "tests/style/BadIncludes2-inl.h"
-
 js/src/tests/style/BadIncludes.h:3: error:
     the file includes itself
 
@@ -147,6 +147,9 @@ js/src/tests/style/BadIncludes.h:8: error:
 js/src/tests/style/BadIncludes.h:10: error:
     "stdio.h" is included using the wrong path;
     did you forget a prefix, or is the file not yet committed?
+
+js/src/tests/style/BadIncludes2.h:1: error:
+    vanilla header includes an inline-header file "tests/style/BadIncludes2-inl.h"
 
 js/src/tests/style/BadIncludesOrder-inl.h:5:6: error:
     "vm/JSScript-inl.h" should be included after "vm/Interpreter-inl.h"
@@ -303,7 +306,7 @@ def check_style(enable_fixup):
         edges[inclname] = set()
 
     # Process all the JS files.
-    for filename in js_names.keys():
+    for filename in sorted(js_names.keys()):
         inclname = js_names[filename]
         file_kind = FileKind.get(filename)
         if file_kind == FileKind.C or file_kind == FileKind.CPP or \

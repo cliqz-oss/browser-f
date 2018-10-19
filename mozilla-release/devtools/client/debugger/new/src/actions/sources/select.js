@@ -8,11 +8,12 @@ exports.selectSourceURL = selectSourceURL;
 exports.selectSource = selectSource;
 exports.selectLocation = selectLocation;
 exports.selectSpecificLocation = selectSpecificLocation;
-exports.selectSpecificSource = selectSpecificSource;
 exports.jumpToMappedLocation = jumpToMappedLocation;
 exports.jumpToMappedSelectedLocation = jumpToMappedSelectedLocation;
 
 var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
+
+var _sources = require("../../reducers/sources");
 
 var _ast = require("../ast");
 
@@ -20,7 +21,7 @@ var _ui = require("../ui");
 
 var _prettyPrint = require("./prettyPrint");
 
-var _tabs = require("./tabs");
+var _tabs = require("../tabs");
 
 var _loadSourceText = require("./loadSourceText");
 
@@ -34,10 +35,14 @@ var _sourceMaps = require("../../utils/source-maps");
 
 var _selectors = require("../../selectors/index");
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/**
+ * Redux actions for the sources state
+ * @module actions/sources
+ */
 const setSelectedLocation = exports.setSelectedLocation = (source, location) => ({
   type: "SET_SELECTED_LOCATION",
   source,
@@ -56,7 +61,9 @@ const clearSelectedLocation = exports.clearSelectedLocation = () => ({
 /**
  * Deterministically select a source that has a given URL. This will
  * work regardless of the connection status or if the source exists
- * yet. This exists mostly for external things to interact with the
+ * yet.
+ *
+ * This exists mostly for external things to interact with the
  * debugger.
  *
  * @memberof actions/sources
@@ -64,22 +71,25 @@ const clearSelectedLocation = exports.clearSelectedLocation = () => ({
  */
 
 
-function selectSourceURL(url, options = {}) {
+function selectSourceURL(url, options = {
+  line: 1
+}) {
   return async ({
     dispatch,
-    getState
+    getState,
+    sourceMaps
   }) => {
     const source = (0, _selectors.getSourceByURL)(getState(), url);
 
-    if (source) {
-      const sourceId = source.id;
-      const location = (0, _location.createLocation)(_objectSpread({}, options.location, {
-        sourceId
-      }));
-      await dispatch(selectLocation(location));
-    } else {
-      dispatch(setPendingSelectedLocation(url, options));
+    if (!source) {
+      return dispatch(setPendingSelectedLocation(url, options));
     }
+
+    const sourceId = source.id;
+    const location = (0, _location.createLocation)({ ...options,
+      sourceId
+    });
+    return dispatch(selectLocation(location));
   };
 }
 /**
@@ -95,7 +105,7 @@ function selectSource(sourceId) {
     const location = (0, _location.createLocation)({
       sourceId
     });
-    return await dispatch(selectLocation(location));
+    return await dispatch(selectSpecificLocation(location));
   };
 }
 /**
@@ -104,21 +114,26 @@ function selectSource(sourceId) {
  */
 
 
-function selectLocation(location) {
+function selectLocation(location, {
+  keepContext = true
+} = {}) {
   return async ({
     dispatch,
     getState,
+    sourceMaps,
     client
   }) => {
+    const currentSource = (0, _selectors.getSelectedSource)(getState());
+
     if (!client) {
       // No connection, do nothing. This happens when the debugger is
       // shut down too fast and it tries to display a default source.
       return;
     }
 
-    const sourceRecord = (0, _selectors.getSource)(getState(), location.sourceId);
+    let source = (0, _selectors.getSource)(getState(), location.sourceId);
 
-    if (!sourceRecord) {
+    if (!source) {
       // If there is no source we deselect the current selected source
       return dispatch(clearSelectedLocation());
     }
@@ -127,27 +142,40 @@ function selectLocation(location) {
 
     if (activeSearch !== "file") {
       dispatch((0, _ui.closeActiveSearch)());
-    }
+    } // Preserve the current source map context (original / generated)
+    // when navigting to a new location.
 
-    const source = sourceRecord.toJS();
-    dispatch((0, _tabs.addTab)(source.url, 0));
-    dispatch(setSelectedLocation(source, location));
-    await dispatch((0, _loadSourceText.loadSourceText)(sourceRecord));
+
     const selectedSource = (0, _selectors.getSelectedSource)(getState());
 
-    if (!selectedSource) {
+    if (keepContext && selectedSource && (0, _devtoolsSourceMap.isOriginalId)(selectedSource.id) != (0, _devtoolsSourceMap.isOriginalId)(location.sourceId)) {
+      location = await (0, _sourceMaps.getMappedLocation)(getState(), sourceMaps, location);
+      source = (0, _sources.getSourceFromId)(getState(), location.sourceId);
+    }
+
+    dispatch((0, _tabs.addTab)(source.url));
+    dispatch(setSelectedLocation(source, location));
+    await dispatch((0, _loadSourceText.loadSourceText)(source));
+    const loadedSource = (0, _selectors.getSource)(getState(), source.id);
+
+    if (!loadedSource) {
+      // If there was a navigation while we were loading the loadedSource
       return;
     }
 
-    const sourceId = selectedSource.id;
-
-    if (_prefs.prefs.autoPrettyPrint && !(0, _selectors.getPrettySource)(getState(), sourceId) && (0, _source.shouldPrettyPrint)(selectedSource) && (0, _source.isMinified)(selectedSource)) {
-      await dispatch((0, _prettyPrint.togglePrettyPrint)(sourceId));
-      dispatch((0, _tabs.closeTab)(source.url));
+    if (keepContext && _prefs.prefs.autoPrettyPrint && !(0, _selectors.getPrettySource)(getState(), loadedSource.id) && (0, _source.shouldPrettyPrint)(loadedSource) && (0, _source.isMinified)(loadedSource)) {
+      await dispatch((0, _prettyPrint.togglePrettyPrint)(loadedSource.id));
+      dispatch((0, _tabs.closeTab)(loadedSource.url));
     }
 
-    dispatch((0, _ast.setSymbols)(sourceId));
-    dispatch((0, _ast.setOutOfScopeLocations)());
+    dispatch((0, _ast.setSymbols)(loadedSource.id));
+    dispatch((0, _ast.setOutOfScopeLocations)()); // If a new source is selected update the file search results
+
+    const newSource = (0, _selectors.getSelectedSource)(getState());
+
+    if (currentSource && currentSource !== newSource) {
+      dispatch((0, _ui.updateActiveFileSearch)());
+    }
   };
 }
 /**
@@ -157,60 +185,9 @@ function selectLocation(location) {
 
 
 function selectSpecificLocation(location) {
-  return async ({
-    dispatch,
-    getState,
-    client
-  }) => {
-    if (!client) {
-      // No connection, do nothing. This happens when the debugger is
-      // shut down too fast and it tries to display a default source.
-      return;
-    }
-
-    const sourceRecord = (0, _selectors.getSource)(getState(), location.sourceId);
-
-    if (!sourceRecord) {
-      // If there is no source we deselect the current selected source
-      return dispatch(clearSelectedLocation());
-    }
-
-    const activeSearch = (0, _selectors.getActiveSearch)(getState());
-
-    if (activeSearch !== "file") {
-      dispatch((0, _ui.closeActiveSearch)());
-    }
-
-    const source = sourceRecord.toJS();
-    dispatch((0, _tabs.addTab)(source, 0));
-    dispatch(setSelectedLocation(source, location));
-    await dispatch((0, _loadSourceText.loadSourceText)(sourceRecord));
-    const selectedSource = (0, _selectors.getSelectedSource)(getState());
-
-    if (!selectedSource) {
-      return;
-    }
-
-    const sourceId = selectedSource.id;
-    dispatch((0, _ast.setSymbols)(sourceId));
-    dispatch((0, _ast.setOutOfScopeLocations)());
-  };
-}
-/**
- * @memberof actions/sources
- * @static
- */
-
-
-function selectSpecificSource(sourceId) {
-  return async ({
-    dispatch
-  }) => {
-    const location = (0, _location.createLocation)({
-      sourceId
-    });
-    return await dispatch(selectSpecificLocation(location));
-  };
+  return selectLocation(location, {
+    keepContext: false
+  });
 }
 /**
  * @memberof actions/sources
@@ -229,16 +206,9 @@ function jumpToMappedLocation(location) {
       return;
     }
 
-    const source = (0, _selectors.getSource)(getState(), location.sourceId);
-    let pairedLocation;
-
-    if ((0, _devtoolsSourceMap.isOriginalId)(location.sourceId)) {
-      pairedLocation = await (0, _sourceMaps.getGeneratedLocation)(getState(), source, location, sourceMaps);
-    } else {
-      pairedLocation = await sourceMaps.getOriginalLocation(location, source.toJS());
-    }
-
-    return dispatch(selectLocation(_objectSpread({}, pairedLocation)));
+    const pairedLocation = await (0, _sourceMaps.getMappedLocation)(getState(), sourceMaps, location);
+    return dispatch(selectSpecificLocation({ ...pairedLocation
+    }));
   };
 }
 
@@ -248,6 +218,11 @@ function jumpToMappedSelectedLocation() {
     getState
   }) {
     const location = (0, _selectors.getSelectedLocation)(getState());
+
+    if (!location) {
+      return;
+    }
+
     await dispatch(jumpToMappedLocation(location));
   };
 }

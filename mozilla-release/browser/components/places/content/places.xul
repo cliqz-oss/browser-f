@@ -7,7 +7,7 @@
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
 
 <?xml-stylesheet href="chrome://global/skin/"?>
-<?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/tree-icons.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/organizer.css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/editBookmark.css"?>
 
@@ -53,22 +53,6 @@
           src="chrome://global/content/globalOverlay.js"/>
   <script type="application/javascript"
           src="chrome://browser/content/utilityOverlay.js"/>
-  <!-- On Mac, these are included via macWindow.inc.xul -->
-  <script type="application/javascript"><![CDATA[
-    ChromeUtils.defineModuleGetter(window,
-      "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
-    ChromeUtils.defineModuleGetter(window,
-      "PlacesUIUtils", "resource:///modules/PlacesUIUtils.jsm");
-    ChromeUtils.defineModuleGetter(window,
-      "PlacesTransactions", "resource://gre/modules/PlacesTransactions.jsm");
-
-    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-    XPCOMUtils.defineLazyScriptGetter(window, "PlacesTreeView",
-      "chrome://browser/content/places/treeView.js");
-    XPCOMUtils.defineLazyScriptGetter(window,
-      ["PlacesInsertionPoint", "PlacesController", "PlacesControllerDragHelper"],
-       "chrome://browser/content/places/controller.js");
-  ]]></script>
 #endif
 
   <stringbundleset id="placesStringSet">
@@ -441,25 +425,8 @@
           </description>
           <spacer flex="3"/>
         </vbox>
-        <vbox id="infoBox" minimal="true">
+        <vbox id="infoBox">
 #include editBookmarkPanel.inc.xul
-          <hbox id="infoBoxExpanderWrapper" align="center">
-
-            <button type="image" id="infoBoxExpander"
-                    class="expander-down"
-                    oncommand="PlacesOrganizer.toggleAdditionalInfoFields();"
-                    observes="paneElementsBroadcaster"/>
-
-            <label id="infoBoxExpanderLabel"
-                    lesslabel="&detailsPane.less.label;"
-                    lessaccesskey="&detailsPane.less.accesskey;"
-                    morelabel="&detailsPane.more.label;"
-                    moreaccesskey="&detailsPane.more.accesskey;"
-                    value="&detailsPane.more.label;"
-                    accesskey="&detailsPane.more.accesskey;"
-                    control="infoBoxExpander"/>
-
-          </hbox>
         </vbox>
       </deck>
     </vbox>

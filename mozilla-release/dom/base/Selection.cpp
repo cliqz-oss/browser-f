@@ -10,11 +10,18 @@
 
 #include "mozilla/dom/Selection.h"
 
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/AutoCopyListener.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/dom/Element.h"
+#include "mozilla/dom/SelectionBinding.h"
+#include "mozilla/dom/ShadowRoot.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/RangeBoundary.h"
+#include "mozilla/Telemetry.h"
 
 #include "nsCOMPtr.h"
 #include "nsString.h"
@@ -53,8 +60,6 @@
 #include "nsINamed.h"
 
 #include "nsISelectionController.h" //for the enums
-#include "nsAutoCopyListener.h"
-#include "SelectionChangeListener.h"
 #include "nsCopySupport.h"
 #include "nsIClipboard.h"
 #include "nsIFrameInlines.h"
@@ -62,12 +67,6 @@
 #include "nsIBidiKeyboard.h"
 
 #include "nsError.h"
-#include "mozilla/dom/Element.h"
-#include "mozilla/dom/ShadowRoot.h"
-#include "mozilla/ErrorResult.h"
-#include "mozilla/dom/SelectionBinding.h"
-#include "mozilla/AsyncEventDispatcher.h"
-#include "mozilla/Telemetry.h"
 #include "nsViewManager.h"
 
 #include "nsFocusManager.h"
@@ -666,9 +665,10 @@ Selection::Selection()
   , mDirection(eDirNext)
   , mSelectionType(SelectionType::eNormal)
   , mCustomColors(nullptr)
+  , mSelectionChangeBlockerCount(0)
   , mUserInitiated(false)
   , mCalledByJS(false)
-  , mSelectionChangeBlockerCount(0)
+  , mNotifyAutoCopy(false)
 {
 }
 
@@ -678,9 +678,10 @@ Selection::Selection(nsFrameSelection* aList)
   , mDirection(eDirNext)
   , mSelectionType(SelectionType::eNormal)
   , mCustomColors(nullptr)
+  , mSelectionChangeBlockerCount(0)
   , mUserInitiated(false)
   , mCalledByJS(false)
-  , mSelectionChangeBlockerCount(0)
+  , mNotifyAutoCopy(false)
 {
 }
 
@@ -734,6 +735,9 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Selection)
   // Unlink the selection listeners *before* we do RemoveAllRanges since
   // we don't want to notify the listeners during JS GC (they could be
   // in JS!).
+  tmp->mNotifyAutoCopy = false;
+  tmp->StopNotifyingAccessibleCaretEventHub();
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mSelectionChangeListener)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSelectionListeners)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCachedRange)
   tmp->RemoveAllRanges(IgnoreErrors());
@@ -750,6 +754,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Selection)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mAnchorFocusRange)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCachedRange)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFrameSelection)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSelectionChangeListener)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSelectionListeners)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(Selection)
@@ -1038,7 +1043,8 @@ Selection::AddItem(nsRange* aItem, int32_t* aOutIndex, bool aNoStartSelect)
         if (dispatchEvent) {
           nsContentUtils::DispatchTrustedEvent(GetParentObject(), target,
                                                NS_LITERAL_STRING("selectstart"),
-                                               true, true, &defaultAction);
+                                               CanBubble::eYes, Cancelable::eYes,
+                                               &defaultAction);
 
           if (!defaultAction) {
             return NS_OK;
@@ -2024,7 +2030,7 @@ Selection::DoAutoScroll(nsIFrame* aFrame, nsPoint aPoint)
       dx->GetRect(screen);
       nsPoint screenPoint = globalPoint +
                             rootmostFrame->GetScreenRectInAppUnits().TopLeft();
-      nscoord onePx = nsPresContext::AppUnitsPerCSSPixel();
+      nscoord onePx = AppUnitsPerCSSPixel();
       nscoord scrollAmount = 10 * onePx;
       if (std::abs(screen.x - screenPoint.x) <= onePx) {
         aPoint.x -= scrollAmount;
@@ -2103,6 +2109,10 @@ Selection::RemoveAllRangesTemporarily()
   RemoveAllRanges(result);
   if (result.Failed()) {
     mCachedRange = nullptr;
+  } else if (mCachedRange) {
+    // To save the computing cost to keep valid DOM point against DOM tree
+    // changes, we should clear the range temporarily.
+    mCachedRange->ResetTemporarily();
   }
   return result.StealNSResult();
 }
@@ -2118,14 +2128,35 @@ Selection::AddRangeJS(nsRange& aRange, ErrorResult& aRv)
 void
 Selection::AddRange(nsRange& aRange, ErrorResult& aRv)
 {
-  return AddRangeInternal(aRange, GetParentObject(), aRv);
+  RefPtr<nsIDocument> document(GetParentObject());
+  return AddRangeInternal(aRange, document, aRv);
 }
 
 void
 Selection::AddRangeInternal(nsRange& aRange, nsIDocument* aDocument,
                             ErrorResult& aRv)
 {
-  nsINode* rangeRoot = aRange.GetRoot();
+  // If the given range is part of another Selection, we need to clone the
+  // range first.
+  RefPtr<nsRange> range;
+  if (aRange.IsInSelection() && aRange.GetSelection() != this) {
+    // Because of performance reason, when there is a cached range, let's use
+    // it.  Otherwise, clone the range.
+    if (mCachedRange) {
+      range = std::move(mCachedRange);
+      nsresult rv = range->SetStartAndEnd(aRange.StartRef().AsRaw(),
+                                          aRange.EndRef().AsRaw());
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return;
+      }
+    } else {
+      range = aRange.CloneRange();
+    }
+  } else {
+    range = &aRange;
+  }
+
+  nsINode* rangeRoot = range->GetRoot();
   if (aDocument != rangeRoot && (!rangeRoot ||
                                  aDocument != rangeRoot->GetComposedDoc())) {
     // http://w3c.github.io/selection-api/#dom-selection-addrange
@@ -2145,14 +2176,14 @@ Selection::AddRangeInternal(nsRange& aRange, nsIDocument* aDocument,
   // and returns NS_OK if range doesn't contain just one table cell
   bool didAddRange;
   int32_t rangeIndex;
-  nsresult result = AddTableCellRange(&aRange, &didAddRange, &rangeIndex);
+  nsresult result = AddTableCellRange(range, &didAddRange, &rangeIndex);
   if (NS_FAILED(result)) {
     aRv.Throw(result);
     return;
   }
 
   if (!didAddRange) {
-    result = AddItem(&aRange, &rangeIndex);
+    result = AddItem(range, &rangeIndex);
     if (NS_FAILED(result)) {
       aRv.Throw(result);
       return;
@@ -2171,7 +2202,7 @@ Selection::AddRangeInternal(nsRange& aRange, nsIDocument* aDocument,
   }
 
   RefPtr<nsPresContext>  presContext = GetPresContext();
-  SelectFrames(presContext, &aRange, true);
+  SelectFrames(presContext, range, true);
 
   if (!mFrameSelection)
     return;//nothing to do
@@ -3450,8 +3481,6 @@ Selection::NotifySelectionListeners()
     // If there are no selection listeners, we're done!
     return NS_OK;
   }
-  AutoTArray<nsCOMPtr<nsISelectionListener>, 8>
-    selectionListeners(mSelectionListeners);
 
   nsCOMPtr<nsIDocument> doc;
   nsIPresShell* ps = GetPresShell();
@@ -3459,7 +3488,27 @@ Selection::NotifySelectionListeners()
     doc = ps->GetDocument();
   }
 
-  short reason = frameSelection->PopReason();
+  // We've notified all selection listeners even when some of them are removed
+  // (and may be destroyed) during notifying one of them.  Therefore, we should
+  // copy all listeners to the local variable first.
+  AutoTArray<nsCOMPtr<nsISelectionListener>, 5>
+    selectionListeners(mSelectionListeners);
+
+  int16_t reason = frameSelection->PopReason();
+
+  if (mNotifyAutoCopy) {
+    AutoCopyListener::OnSelectionChange(doc, *this, reason);
+  }
+
+  if (mAccessibleCaretEventHub) {
+    RefPtr<AccessibleCaretEventHub> hub(mAccessibleCaretEventHub);
+    hub->OnSelectionChange(doc, this, reason);
+  }
+
+  if (mSelectionChangeListener) {
+    RefPtr<SelectionChangeListener> listener(mSelectionChangeListener);
+    listener->OnSelectionChange(doc, this, reason);
+  }
   for (auto& listener : selectionListeners) {
     listener->NotifySelectionChanged(doc, this, reason);
   }
@@ -3862,7 +3911,7 @@ Selection::ResetColors(ErrorResult& aRv)
 JSObject*
 Selection::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::SelectionBinding::Wrap(aCx, this, aGivenProto);
+  return mozilla::dom::Selection_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 // AutoHideSelectionChanges

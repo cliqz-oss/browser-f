@@ -83,35 +83,10 @@ interface XULElement : Element {
   void                      click();
   void                      doCommand();
 
-  // XXXbz this isn't really a nodelist!  See bug 818548
-  NodeList            getElementsByAttribute(DOMString name,
-                                             DOMString value);
-  // XXXbz this isn't really a nodelist!  See bug 818548
-  [Throws]
-  NodeList            getElementsByAttributeNS(DOMString namespaceURI,
-                                               DOMString name,
-                                               DOMString value);
   [Constant]
   readonly attribute CSSStyleDeclaration style;
 };
 
-// And the things from nsIFrameLoaderOwner
-[NoInterfaceObject]
-interface MozFrameLoaderOwner {
-  [ChromeOnly]
-  readonly attribute FrameLoader? frameLoader;
-
-  [ChromeOnly, Throws]
-  void presetOpenerWindow(WindowProxy? window);
-
-  [ChromeOnly, Throws]
-  void swapFrameLoaders(XULElement aOtherLoaderOwner);
-
-  [ChromeOnly, Throws]
-  void swapFrameLoaders(HTMLIFrameElement aOtherLoaderOwner);
-};
-
 XULElement implements GlobalEventHandlers;
 XULElement implements TouchEventHandlers;
-XULElement implements MozFrameLoaderOwner;
 XULElement implements OnErrorEventHandlerForNodes;

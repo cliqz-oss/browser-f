@@ -9,7 +9,6 @@ var EXPORTED_SYMBOLS = [ "AboutReader" ];
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/ReaderMode.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AsyncPrefs", "resource://gre/modules/AsyncPrefs.jsm");
 ChromeUtils.defineModuleGetter(this, "NarrateControls", "resource://gre/modules/narrate/NarrateControls.jsm");
@@ -41,8 +40,7 @@ var AboutReader = function(mm, win, articlePromise) {
 
   this._docRef = Cu.getWeakReference(doc);
   this._winRef = Cu.getWeakReference(win);
-  this._innerWindowId = win.QueryInterface(Ci.nsIInterfaceRequestor)
-    .getInterface(Ci.nsIDOMWindowUtils).currentInnerWindowID;
+  this._innerWindowId = win.windowUtils.currentInnerWindowID;
 
   this._article = null;
   this._languagePromise = new Promise(resolve => {
@@ -88,7 +86,7 @@ var AboutReader = function(mm, win, articlePromise) {
     return {
       name: gStrings.GetStringFromName("aboutReader.colorScheme." + value),
       value,
-      itemClass: value + "-button"
+      itemClass: value + "-button",
     };
   });
 
@@ -101,7 +99,7 @@ var AboutReader = function(mm, win, articlePromise) {
     { name: fontTypeSample,
       description: gStrings.GetStringFromName("aboutReader.fontType.sans-serif"),
       value: "sans-serif",
-      itemClass: "sans-serif-button"
+      itemClass: "sans-serif-button",
     },
     { name: fontTypeSample,
       description: gStrings.GetStringFromName("aboutReader.fontType.serif"),
@@ -214,6 +212,8 @@ AboutReader.prototype = {
             btn.title = message.data.title;
           if (message.data.text)
             btn.textContent = message.data.text;
+          if (message.data.width && message.data.height)
+            btn.style.backgroundSize = `${message.data.width}px ${message.data.height}px`;
           let tb = this._toolbarElement;
           tb.appendChild(btn);
           this._setupButton(message.data.id, button => {
@@ -704,7 +704,7 @@ AboutReader.prototype = {
     this._mm.addMessageListener("Reader:FaviconReturn", handleFaviconReturn);
     this._mm.sendAsyncMessage("Reader:FaviconRequest", {
       url: this._article.url,
-      preferredWidth: 16 * this._win.devicePixelRatio
+      preferredWidth: 16 * this._win.devicePixelRatio,
     });
   },
 
@@ -1044,5 +1044,5 @@ AboutReader.prototype = {
     if (ref) {
       this._win.location.hash = ref;
     }
-  }
+  },
 };

@@ -30,7 +30,6 @@ stubPreparedMessages.set("GET request", new NetworkEventMessage({
   "indent": 0,
   "updates": [],
   "openedOnce": false,
-  "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
   "private": false,
@@ -78,7 +77,6 @@ stubPreparedMessages.set("GET request update", new NetworkEventMessage({
   "totalTime": 16,
   "indent": 0,
   "openedOnce": false,
-  "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
   "url": "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/inexistent.html",
@@ -109,7 +107,6 @@ stubPreparedMessages.set("XHR GET request", new NetworkEventMessage({
   "indent": 0,
   "updates": [],
   "openedOnce": false,
-  "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
   "private": false,
@@ -157,7 +154,6 @@ stubPreparedMessages.set("XHR GET request update", new NetworkEventMessage({
   "totalTime": 16,
   "indent": 0,
   "openedOnce": false,
-  "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
   "url": "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/inexistent.html",
@@ -188,7 +184,6 @@ stubPreparedMessages.set("XHR POST request", new NetworkEventMessage({
   "indent": 0,
   "updates": [],
   "openedOnce": false,
-  "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
   "private": false,
@@ -236,7 +231,6 @@ stubPreparedMessages.set("XHR POST request update", new NetworkEventMessage({
   "totalTime": 10,
   "indent": 0,
   "openedOnce": false,
-  "securityState": null,
   "securityInfo": null,
   "requestHeadersFromUploadStream": null,
   "url": "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/inexistent.html",
@@ -272,6 +266,7 @@ stubPackets.set(`GET request`, {
   "timings": {},
   "updates": [],
   "private": false,
+  "isThirdPartyTrackingResource": false,
   "from": "server1.conn0.child1/consoleActor2"
 });
 
@@ -323,6 +318,7 @@ stubPackets.set(`XHR GET request`, {
   "timings": {},
   "updates": [],
   "private": false,
+  "isThirdPartyTrackingResource": false,
   "from": "server1.conn1.child1/consoleActor2"
 });
 
@@ -374,6 +370,7 @@ stubPackets.set(`XHR POST request`, {
   "timings": {},
   "updates": [],
   "private": false,
+  "isThirdPartyTrackingResource": false,
   "from": "server1.conn2.child1/consoleActor2"
 });
 

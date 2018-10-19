@@ -10,6 +10,7 @@
 
 #include "nsHttp.h"
 #include "nsICacheEntry.h"
+#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/DocGroup.h"
@@ -57,6 +58,7 @@
 #include "nsStreamUtils.h"
 #include "nsThreadUtils.h"
 #include "nsCORSListenerProxy.h"
+#include "nsApplicationCache.h"
 
 #ifdef MOZ_TASK_TRACER
 #include "GeckoTaskTracer.h"
@@ -160,21 +162,23 @@ InterceptStreamListener::Cleanup()
 HttpChannelChild::HttpChannelChild()
   : HttpAsyncAborter<HttpChannelChild>(this)
   , NeckoTargetHolder(nullptr)
-  , mCacheKey(0)
+  , mBgChildMutex("HttpChannelChild::BgChildMutex")
+  , mEventTargetMutex("HttpChannelChild::EventTargetMutex")
   , mSynthesizedStreamLength(0)
-  , mIsFromCache(false)
-  , mCacheEntryAvailable(false)
   , mCacheEntryId(0)
-  , mAltDataCacheEntryAvailable(false)
+  , mCacheKey(0)
   , mCacheFetchCount(0)
   , mCacheExpirationTime(nsICacheEntry::NO_EXPIRATION_TIME)
-  , mSendResumeAt(false)
   , mDeletingChannelSent(false)
   , mIPCOpen(false)
-  , mKeptAlive(false)
   , mUnknownDecoderInvolved(false)
   , mDivertingToParent(false)
   , mFlushedForDiversion(false)
+  , mIsFromCache(false)
+  , mCacheEntryAvailable(false)
+  , mAltDataCacheEntryAvailable(false)
+  , mSendResumeAt(false)
+  , mKeptAlive(false)
   , mSuspendSent(false)
   , mSynthesizedResponse(false)
   , mShouldInterceptSubsequentRedirect(false)
@@ -183,8 +187,8 @@ HttpChannelChild::HttpChannelChild()
   , mPostRedirectChannelShouldUpgrade(false)
   , mShouldParentIntercept(false)
   , mSuspendParentAfterSynthesizeResponse(false)
-  , mBgChildMutex("HttpChannelChild::BgChildMutex")
-  , mEventTargetMutex("HttpChannelChild::EventTargetMutex")
+  , mCacheNeedToReportBytesReadInitialized(false)
+  , mNeedToReportBytesRead(true)
 {
   LOG(("Creating HttpChannelChild @%p\n", this));
 
@@ -398,10 +402,7 @@ HttpChannelChild::AssociateApplicationCache(const nsCString &groupID,
                                             const nsCString &clientID)
 {
   LOG(("HttpChannelChild::AssociateApplicationCache [this=%p]\n", this));
-  nsresult rv;
-  mApplicationCache = do_CreateInstance(NS_APPLICATIONCACHE_CONTRACTID, &rv);
-  if (NS_FAILED(rv))
-    return;
+  mApplicationCache = new nsApplicationCache();
 
   mLoadedFromApplicationCache = true;
   mApplicationCache->InitAsHandle(groupID, clientID);
@@ -694,6 +695,38 @@ public:
 
 NS_IMPL_ISUPPORTS(SyntheticDiversionListener, nsIStreamListener);
 
+static nsresult
+GetTopDocument(nsIChannel* aChannel, nsIDocument** aResult)
+{
+  nsresult rv;
+
+  nsCOMPtr<mozIThirdPartyUtil> thirdPartyUtil = services::GetThirdPartyUtil();
+  if (NS_WARN_IF(!thirdPartyUtil)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<mozIDOMWindowProxy> win;
+  rv = thirdPartyUtil->GetTopWindowForChannel(aChannel,
+                                              getter_AddRefs(win));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  auto* pwin = nsPIDOMWindowOuter::From(win);
+  nsCOMPtr<nsIDocShell> docShell = pwin->GetDocShell();
+  if (!docShell) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<nsIDocument> doc = docShell->GetDocument();
+  if (!doc) {
+    return NS_ERROR_FAILURE;
+  }
+
+  doc.forget(aResult);
+  return NS_OK;
+}
+
 void
 HttpChannelChild::DoOnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
 {
@@ -709,6 +742,30 @@ HttpChannelChild::DoOnStartRequest(nsIRequest* aRequest, nsISupports* aContext)
   if (mSynthesizedResponsePump && mLoadFlags & LOAD_CALL_CONTENT_SNIFFERS) {
     mSynthesizedResponsePump->PeekStream(CallTypeSniffers,
                                          static_cast<nsIChannel*>(this));
+  }
+
+  bool isTracker;
+  MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetIsTracker(&isTracker));
+  if (isTracker) {
+    bool isTrackerBlocked;
+    MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetIsTrackerBlocked(&isTrackerBlocked));
+    LOG(("HttpChannelChild::DoOnStartRequest FastBlock %d [this=%p]\n",
+         isTrackerBlocked,
+         this));
+
+    nsCOMPtr<nsIDocument> doc;
+    if (!NS_WARN_IF(NS_FAILED(GetTopDocument(this,
+                                             getter_AddRefs(doc))))) {
+      doc->IncrementTrackerCount();
+      if (isTrackerBlocked) {
+        doc->IncrementTrackerBlockedCount();
+
+        Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED label =
+          Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED::other;
+        MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetTrackerBlockedReason(&label));
+        doc->NoteTrackerBlockedReason(label);
+      }
+    }
   }
 
   nsresult rv = mListener->OnStartRequest(aRequest, aContext);
@@ -920,6 +977,50 @@ HttpChannelChild::OnTransportAndData(const nsresult& channelStatus,
 
   DoOnDataAvailable(this, mListenerContext, stringStream, offset, count);
   stringStream->Close();
+
+  if (NeedToReportBytesRead()) {
+    mUnreportBytesRead += count;
+    if (mUnreportBytesRead >= gHttpHandler->SendWindowSize() >> 2) {
+      if (NS_IsMainThread()) {
+        Unused << SendBytesRead(mUnreportBytesRead);
+      } else {
+        // PHttpChannel connects to the main thread
+        RefPtr<HttpChannelChild> self = this;
+        int32_t bytesRead = mUnreportBytesRead;
+        nsCOMPtr<nsIEventTarget> neckoTarget = GetNeckoTarget();
+        MOZ_ASSERT(neckoTarget);
+
+        DebugOnly<nsresult> rv = neckoTarget->Dispatch(
+          NS_NewRunnableFunction("net::HttpChannelChild::SendBytesRead",
+                                 [self, bytesRead]() {
+                                   Unused << self->SendBytesRead(bytesRead);
+                                 }),
+          NS_DISPATCH_NORMAL);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+      }
+      mUnreportBytesRead = 0;
+    }
+  }
+}
+
+bool
+HttpChannelChild::NeedToReportBytesRead() {
+ if (mCacheNeedToReportBytesReadInitialized) {
+    return mNeedToReportBytesRead;
+  }
+
+  // Might notify parent for partial cache, and the IPC message is ignored by
+  // parent.
+  int64_t contentLength = -1;
+  if (gHttpHandler->SendWindowSize() == 0 ||
+      mIsFromCache ||
+      NS_FAILED(GetContentLength(&contentLength)) ||
+      contentLength < gHttpHandler->SendWindowSize()) {
+    mNeedToReportBytesRead = false;
+  }
+
+  mCacheNeedToReportBytesReadInitialized = true;
+  return mNeedToReportBytesRead;
 }
 
 void
@@ -1945,12 +2046,30 @@ HttpChannelChild::ProcessNotifyTrackingProtectionDisabled()
 }
 
 void
-HttpChannelChild::ProcessNotifyTrackingResource()
+HttpChannelChild::ProcessNotifyTrackingCookieBlocked(uint32_t aRejectedReason)
 {
-  LOG(("HttpChannelChild::ProcessNotifyTrackingResource [this=%p]\n", this));
+  LOG(("HttpChannelChild::ProcessNotifyTrackingCookieBlocked [this=%p]\n", this));
   MOZ_ASSERT(OnSocketThread());
 
-  SetIsTrackingResource();
+  RefPtr<HttpChannelChild> self = this;
+  nsCOMPtr<nsIEventTarget> neckoTarget = GetNeckoTarget();
+  neckoTarget->Dispatch(
+    NS_NewRunnableFunction(
+      "nsChannelClassifier::NotifyTrackingCookieBlocked",
+      [self, aRejectedReason]() {
+        AntiTrackingCommon::NotifyRejection(self, aRejectedReason);
+      }),
+    NS_DISPATCH_NORMAL);
+}
+
+void
+HttpChannelChild::ProcessNotifyTrackingResource(bool aIsThirdParty)
+{
+  LOG(("HttpChannelChild::ProcessNotifyTrackingResource thirdparty=%d "
+       "[this=%p]\n", static_cast<int>(aIsThirdParty), this));
+  MOZ_ASSERT(OnSocketThread());
+
+  SetIsTrackingResource(aIsThirdParty);
 }
 
 void
@@ -2690,11 +2809,16 @@ HttpChannelChild::ContinueAsyncOpen()
   // This id identifies the inner window's top-level document,
   // which changes on every new load or navigation.
   uint64_t contentWindowId = 0;
+  TimeStamp navigationStartTimeStamp;
   if (tabChild) {
     MOZ_ASSERT(tabChild->WebNavigation());
     nsCOMPtr<nsIDocument> document = tabChild->GetDocument();
     if (document) {
       contentWindowId = document->InnerWindowID();
+      nsDOMNavigationTiming* navigationTiming = document->GetNavigationTiming();
+      if (navigationTiming) {
+        navigationStartTimeStamp = navigationTiming->GetNavigationStartTimeStamp();
+      }
       mTopLevelOuterContentWindowId = document->OuterWindowID();
     }
   }
@@ -2806,6 +2930,8 @@ HttpChannelChild::ContinueAsyncOpen()
   openArgs.handleFetchEventEnd()      = mHandleFetchEventEnd;
 
   openArgs.forceMainDocumentChannel() = mForceMainDocumentChannel;
+
+  openArgs.navigationStartTimeStamp() = navigationStartTimeStamp;
 
   // This must happen before the constructor message is sent. Otherwise messages
   // from the parent could arrive quickly and be delivered to the wrong event
@@ -3701,8 +3827,8 @@ HttpChannelChild::OnCopyComplete(nsresult aStatus)
 }
 
 nsresult
-HttpChannelChild::AsyncCall(void (HttpChannelChild::*funcPtr)(),
-                            nsRunnableMethod<HttpChannelChild> **retval)
+HttpChannelChild::AsyncCallImpl(void (HttpChannelChild::*funcPtr)(),
+                                nsRunnableMethod<HttpChannelChild> **retval)
 {
   nsresult rv;
 

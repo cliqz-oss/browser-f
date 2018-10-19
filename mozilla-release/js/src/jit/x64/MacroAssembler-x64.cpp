@@ -584,7 +584,7 @@ MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType value
                                   const Address& dest, MIRType slotType);
 template void
 MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType valueType,
-                                  const BaseIndex& dest, MIRType slotType);
+                                  const BaseObjectElementIndex& dest, MIRType slotType);
 
 // ========================================================================
 // wasm support
@@ -618,34 +618,6 @@ MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, 
       case Scalar::Float64:
         loadDouble(srcAddr, out.fpu());
         break;
-      case Scalar::Float32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movss zeroes out the high lanes.
-          case 1: loadFloat32(srcAddr, out.fpu()); break;
-          // See comment above, which also applies to movsd.
-          case 2: loadDouble(srcAddr, out.fpu()); break;
-          case 4: loadUnalignedSimd128Float(srcAddr, out.fpu()); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movd zeroes out the high lanes.
-          case 1: vmovd(srcAddr, out.fpu()); break;
-          // See comment above, which also applies to movq.
-          case 2: vmovq(srcAddr, out.fpu()); break;
-          case 4: loadUnalignedSimd128Int(srcAddr, out.fpu()); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int8x16:
-        MOZ_ASSERT(access.numSimdElems() == 16, "unexpected partial load");
-        loadUnalignedSimd128Int(srcAddr, out.fpu());
-        break;
-      case Scalar::Int16x8:
-        MOZ_ASSERT(access.numSimdElems() == 8, "unexpected partial load");
-        loadUnalignedSimd128Int(srcAddr, out.fpu());
-        break;
       case Scalar::Int64:
         MOZ_CRASH("int64 loads must use load64");
       case Scalar::Uint8Clamped:
@@ -660,8 +632,6 @@ void
 MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAddr, Register64 out)
 {
     memoryBarrierBefore(access.sync());
-
-    MOZ_ASSERT(!access.isSimd());
 
     append(access, size());
     switch (access.type()) {
@@ -689,10 +659,6 @@ MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAdd
         break;
       case Scalar::Float32:
       case Scalar::Float64:
-      case Scalar::Float32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-      case Scalar::Int32x4:
         MOZ_CRASH("non-int64 loads should use load()");
       case Scalar::Uint8Clamped:
       case Scalar::MaxTypedArrayViewType:
@@ -729,34 +695,6 @@ MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister valu
         break;
       case Scalar::Float64:
         storeUncanonicalizedDouble(value.fpu(), dstAddr);
-        break;
-      case Scalar::Float32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movss zeroes out the high lanes.
-          case 1: storeUncanonicalizedFloat32(value.fpu(), dstAddr); break;
-          // See comment above, which also applies to movsd.
-          case 2: storeUncanonicalizedDouble(value.fpu(), dstAddr); break;
-          case 4: storeUnalignedSimd128Float(value.fpu(), dstAddr); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movd zeroes out the high lanes.
-          case 1: vmovd(value.fpu(), dstAddr); break;
-          // See comment above, which also applies to movq.
-          case 2: vmovq(value.fpu(), dstAddr); break;
-          case 4: storeUnalignedSimd128Int(value.fpu(), dstAddr); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int8x16:
-        MOZ_ASSERT(access.numSimdElems() == 16, "unexpected partial store");
-        storeUnalignedSimd128Int(value.fpu(), dstAddr);
-        break;
-      case Scalar::Int16x8:
-        MOZ_ASSERT(access.numSimdElems() == 8, "unexpected partial store");
-        storeUnalignedSimd128Int(value.fpu(), dstAddr);
         break;
       case Scalar::Uint8Clamped:
       case Scalar::MaxTypedArrayViewType:
@@ -966,58 +904,69 @@ MacroAssembler::convertUInt64ToFloat32(Register64 input, FloatRegister output, R
 // Primitive atomic operations.
 
 void
-MacroAssembler::compareExchange64(const Synchronization&, const Address& mem, Register64 expected,
-                                  Register64 replacement, Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                      Register64 expected, Register64 replacement,
+                                      Register64 output)
 {
     MOZ_ASSERT(output.reg == rax);
     if (expected != output)
         movq(expected.reg, output.reg);
+    append(access, size());
     lock_cmpxchgq(replacement.reg, Operand(mem));
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization&, const BaseIndex& mem, Register64 expected,
-                                  Register64 replacement, Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                      Register64 expected, Register64 replacement,
+                                      Register64 output)
 {
     MOZ_ASSERT(output.reg == rax);
     if (expected != output)
         movq(expected.reg, output.reg);
+    append(access, size());
     lock_cmpxchgq(replacement.reg, Operand(mem));
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization& sync, const Address& mem, Register64 value, Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                     Register64 value, Register64 output)
 {
     if (value != output)
         movq(value.reg, output.reg);
+    append(access, masm.size());
     xchgq(output.reg, Operand(mem));
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization& sync, const BaseIndex& mem, Register64 value, Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                     Register64 value, Register64 output)
 {
     if (value != output)
         movq(value.reg, output.reg);
+    append(access, masm.size());
     xchgq(output.reg, Operand(mem));
 }
 
 template<typename T>
 static void
-AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, Register value, const T& mem, Register temp,
-                Register output)
+WasmAtomicFetchOp64(MacroAssembler& masm, const wasm::MemoryAccessDesc access, AtomicOp op,
+                    Register value, const T& mem, Register temp, Register output)
 {
     if (op == AtomicFetchAddOp) {
         if (value != output)
             masm.movq(value, output);
+        masm.append(access, masm.size());
         masm.lock_xaddq(output, Operand(mem));
     } else if (op == AtomicFetchSubOp) {
         if (value != output)
             masm.movq(value, output);
         masm.negq(output);
+        masm.append(access, masm.size());
         masm.lock_xaddq(output, Operand(mem));
     } else {
         Label again;
         MOZ_ASSERT(output == rax);
+        masm.append(access, masm.size());
         masm.movq(Operand(mem), rax);
         masm.bind(&again);
         masm.movq(rax, temp);
@@ -1033,23 +982,26 @@ AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, Register value, const T& mem,
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, Register64 value,
-                                const Address& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op,
+                                    Register64 value, const Address& mem, Register64 temp,
+                                    Register64 output)
 {
-    AtomicFetchOp64(*this, op, value.reg, mem, temp.reg, output.reg);
+    WasmAtomicFetchOp64(*this, access, op, value.reg, mem, temp.reg, output.reg);
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, Register64 value,
-                                const BaseIndex& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op,
+                                    Register64 value, const BaseIndex& mem, Register64 temp,
+                                    Register64 output)
 {
-    AtomicFetchOp64(*this, op, value.reg, mem, temp.reg, output.reg);
+    WasmAtomicFetchOp64(*this, access, op, value.reg, mem, temp.reg, output.reg);
 }
 
 void
-MacroAssembler::atomicEffectOp64(const Synchronization&, AtomicOp op, Register64 value,
-                                 const BaseIndex& mem)
+MacroAssembler::wasmAtomicEffectOp64(const wasm::MemoryAccessDesc& access, AtomicOp op,
+                                     Register64 value, const BaseIndex& mem)
 {
+    append(access, size());
     switch (op) {
       case AtomicFetchAddOp: lock_addq(value.reg, Operand(mem)); break;
       case AtomicFetchSubOp: lock_subq(value.reg, Operand(mem)); break;

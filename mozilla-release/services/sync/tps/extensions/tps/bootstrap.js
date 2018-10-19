@@ -7,10 +7,6 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(this, "categoryManager",
-                                   "@mozilla.org/categorymanager;1",
-                                   "nsICategoryManager");
-
 XPCOMUtils.defineLazyServiceGetter(this, "resProto",
                                    "@mozilla.org/network/protocol;1?name=resource",
                                    "nsISubstitutingProtocolHandler");
@@ -36,12 +32,12 @@ TPSCmdLine.prototype = {
     Cm.registerFactory(this.classID, this.classDescription,
                        this.contractID, this.factory);
 
-    categoryManager.addCategoryEntry(CATEGORY_NAME, CATEGORY_ENTRY,
+    Services.catMan.addCategoryEntry(CATEGORY_NAME, CATEGORY_ENTRY,
                                      this.contractID, false, true);
   },
 
   unregister() {
-    categoryManager.deleteCategoryEntry(CATEGORY_NAME, CATEGORY_ENTRY,
+    Services.catMan.deleteCategoryEntry(CATEGORY_NAME, CATEGORY_ENTRY,
                                         this.contractID, false);
 
     Cm.unregisterFactory(this.classID, this.factory);
@@ -60,14 +56,17 @@ TPSCmdLine.prototype = {
     let options = {};
 
     let uristr = cmdLine.handleFlagWithParam("tps", false);
-    if (uristr == null)
+    if (uristr == null) {
         return;
+    }
     let phase = cmdLine.handleFlagWithParam("tpsphase", false);
-    if (phase == null)
+    if (phase == null) {
         throw Error("must specify --tpsphase with --tps");
+    }
     let logfile = cmdLine.handleFlagWithParam("tpslogfile", false);
-    if (logfile == null)
+    if (logfile == null) {
         logfile = "";
+    }
 
     options.ignoreUnusedEngines = cmdLine.handleFlag("ignore-unused-engines",
                                                      false);

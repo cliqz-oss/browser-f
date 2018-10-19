@@ -1,9 +1,11 @@
+use {Intersection, Plane, Polygon, Splitter};
+
 use binary_space_partition::{BspNode, Plane as BspPlane, PlaneCut};
 use euclid::{TypedPoint3D, TypedVector3D};
 use euclid::approxeq::ApproxEq;
 use num_traits::{Float, One, Zero};
-use std::{fmt, ops};
-use {Intersection, Plane, Polygon, Splitter};
+
+use std::{fmt, iter, ops};
 
 
 impl<T, U> BspPlane for Polygon<T, U> where
@@ -41,7 +43,11 @@ impl<T, U> BspPlane for Polygon<T, U> where
                 let mut front = Vec::new();
                 let mut back = Vec::new();
 
-                for sub in Some(plane).into_iter().chain(res_add1).chain(res_add2) {
+                for sub in iter::once(plane)
+                    .chain(res_add1)
+                    .chain(res_add2)
+                    .filter(|p| !p.is_empty())
+                {
                     if self.plane.signed_distance_sum_to(&sub) > T::zero() {
                         front.push(sub)
                     } else {
@@ -52,8 +58,8 @@ impl<T, U> BspPlane for Polygon<T, U> where
                     line, front.len(), back.len());
 
                 PlaneCut::Cut {
-                    front: front,
-                    back: back,
+                    front,
+                    back,
                 }
             },
         }

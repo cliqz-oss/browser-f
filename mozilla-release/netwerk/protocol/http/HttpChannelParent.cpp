@@ -45,7 +45,7 @@
 #include "nsCORSListenerProxy.h"
 #include "nsIIPCSerializableInputStream.h"
 #include "nsIPrompt.h"
-#include "nsIRedirectChannelRegistrar.h"
+#include "mozilla/net/RedirectChannelRegistrar.h"
 #include "nsIWindowWatcher.h"
 #include "nsIDocument.h"
 #include "nsStreamUtils.h"
@@ -65,20 +65,24 @@ namespace net {
 HttpChannelParent::HttpChannelParent(const PBrowserOrId& iframeEmbedding,
                                      nsILoadContext* aLoadContext,
                                      PBOverrideStatus aOverrideStatus)
-  : mIPCClosed(false)
+  : mLoadContext(aLoadContext)
+  , mNestedFrameId(0)
+  , mIPCClosed(false)
+  , mPBOverride(aOverrideStatus)
+  , mStatus(NS_OK)
   , mIgnoreProgress(false)
   , mSentRedirect1BeginFailed(false)
   , mReceivedRedirect2Verify(false)
-  , mPBOverride(aOverrideStatus)
-  , mLoadContext(aLoadContext)
-  , mStatus(NS_OK)
+  , mHasSuspendedByBackPressure(false)
   , mPendingDiversion(false)
   , mDivertingFromChild(false)
   , mDivertedOnStartRequest(false)
   , mSuspendedForDiversion(false)
   , mSuspendAfterSynthesizeResponse(false)
   , mWillSynthesizeResponse(false)
-  , mNestedFrameId(0)
+  , mCacheNeedFlowControlInitialized(false)
+  , mNeedFlowControl(true)
+  , mSuspendedForFlowControl(false)
 {
   LOG(("Creating HttpChannelParent [this=%p]\n", this));
 
@@ -94,6 +98,8 @@ HttpChannelParent::HttpChannelParent(const PBrowserOrId& iframeEmbedding,
   } else {
     mNestedFrameId = iframeEmbedding.get_TabId();
   }
+
+  mSendWindowSize = gHttpHandler->SendWindowSize();
 
   mEventQ = new ChannelEventQueue(static_cast<nsIParentRedirectingChannel*>(this));
 }
@@ -154,7 +160,8 @@ HttpChannelParent::Init(const HttpChannelCreationArgs& aArgs)
                        a.dispatchFetchEventEnd(),
                        a.handleFetchEventStart(),
                        a.handleFetchEventEnd(),
-                       a.forceMainDocumentChannel());
+                       a.forceMainDocumentChannel(),
+                       a.navigationStartTimeStamp());
   }
   case HttpChannelCreationArgs::THttpChannelConnectArgs:
   {
@@ -162,7 +169,7 @@ HttpChannelParent::Init(const HttpChannelCreationArgs& aArgs)
     return ConnectChannel(cArgs.registrarId(), cArgs.shouldIntercept());
   }
   default:
-    NS_NOTREACHED("unknown open type");
+    MOZ_ASSERT_UNREACHABLE("unknown open type");
     return false;
   }
 }
@@ -454,7 +461,8 @@ HttpChannelParent::DoAsyncOpen(  const URIParams&           aURI,
                                  const TimeStamp&           aDispatchFetchEventEnd,
                                  const TimeStamp&           aHandleFetchEventStart,
                                  const TimeStamp&           aHandleFetchEventEnd,
-                                 const bool&                aForceMainDocumentChannel)
+                                 const bool&                aForceMainDocumentChannel,
+                                 const TimeStamp&           aNavigationStartTimeStamp)
 {
   nsCOMPtr<nsIURI> uri = DeserializeURI(aURI);
   if (!uri) {
@@ -639,6 +647,8 @@ HttpChannelParent::DoAsyncOpen(  const URIParams&           aURI,
   httpChannel->SetDispatchFetchEventEnd(aDispatchFetchEventEnd);
   httpChannel->SetHandleFetchEventStart(aHandleFetchEventStart);
   httpChannel->SetHandleFetchEventEnd(aHandleFetchEventEnd);
+
+  httpChannel->SetNavigationStartTimeStamp(aNavigationStartTimeStamp);
 
   nsCOMPtr<nsIApplicationCacheChannel> appCacheChan =
     do_QueryObject(httpChannel);
@@ -962,7 +972,7 @@ HttpChannelParent::RecvRedirect2Verify(const nsresult& aResult,
 
   // Wait for background channel ready on target channel
   nsCOMPtr<nsIRedirectChannelRegistrar> redirectReg =
-    do_GetService(NS_REDIRECTCHANNELREGISTRAR_CONTRACTID);
+    RedirectChannelRegistrar::GetOrCreate();
   MOZ_ASSERT(redirectReg);
 
   nsCOMPtr<nsIParentChannel> redirectParentChannel;
@@ -1579,6 +1589,10 @@ HttpChannelParent::OnStopRequest(nsIRequest *aRequest,
     return NS_ERROR_UNEXPECTED;
   }
 
+  if (NeedFlowControl()) {
+    Telemetry::Accumulate(Telemetry::NETWORK_BACK_PRESSURE_SUSPENSION_RATE, mHasSuspendedByBackPressure);
+  }
+
   return NS_OK;
 }
 
@@ -1618,6 +1632,8 @@ HttpChannelParent::OnDataAvailable(nsIRequest *aRequest,
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
+  int32_t count = static_cast<int32_t>(aCount);
+
   while (aCount) {
     nsresult rv = NS_ReadInputStreamToString(aInputStream, data, toRead);
     if (NS_FAILED(rv)) {
@@ -1639,7 +1655,64 @@ HttpChannelParent::OnDataAvailable(nsIRequest *aRequest,
     toRead = std::min<uint32_t>(aCount, kCopyChunkSize);
   }
 
+  if (NeedFlowControl()) {
+    // We're going to run out of sending window size
+    if (mSendWindowSize > 0 && mSendWindowSize <= count) {
+      MOZ_ASSERT(!mSuspendedForFlowControl);
+      Unused << mChannel->Suspend();
+      mSuspendedForFlowControl = true;
+      mHasSuspendedByBackPressure = true;
+    }
+    mSendWindowSize -= count;
+  }
+
   return NS_OK;
+}
+
+bool
+HttpChannelParent::NeedFlowControl()
+{
+  if (mCacheNeedFlowControlInitialized) {
+    return mNeedFlowControl;
+  }
+
+  int64_t contentLength = -1;
+
+  RefPtr<nsHttpChannel> httpChannelImpl = do_QueryObject(mChannel);
+
+  // By design, we won't trigger the flow control if
+  // a. pref-out
+  // b. the resource is from cache or partial cache
+  // c. the resource is small
+  // Note that we served the cached resource first for partical cache, which is
+  // ignored here since we only take the first ODA into consideration.
+  if (gHttpHandler->SendWindowSize() == 0 ||
+      !httpChannelImpl ||
+      httpChannelImpl->IsReadingFromCache() ||
+      NS_FAILED(httpChannelImpl->GetContentLength(&contentLength)) ||
+      contentLength < gHttpHandler->SendWindowSize()) {
+    mNeedFlowControl = false;
+  }
+  mCacheNeedFlowControlInitialized = true;
+  return mNeedFlowControl;
+}
+
+mozilla::ipc::IPCResult
+HttpChannelParent::RecvBytesRead(const int32_t& aCount)
+{
+  if (!NeedFlowControl()) {
+    return IPC_OK();
+  }
+
+  LOG(("HttpChannelParent::RecvBytesRead [this=%p count=%" PRId32 "]\n", this, aCount));
+
+  if (mSendWindowSize <= 0 && mSendWindowSize + aCount > 0) {
+    MOZ_ASSERT(mSuspendedForFlowControl);
+    Unused << mChannel->Resume();
+    mSuspendedForFlowControl = false;
+  }
+  mSendWindowSize += aCount;
+  return IPC_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -1732,7 +1805,18 @@ HttpChannelParent::NotifyTrackingProtectionDisabled()
   LOG(("HttpChannelParent::NotifyTrackingProtectionDisabled [this=%p]\n", this));
   if (!mIPCClosed) {
     MOZ_ASSERT(mBgParent);
-    Unused << mBgParent->OnNotifyTrackingProtectionDisabled();
+    Unused << NS_WARN_IF(!mBgParent->OnNotifyTrackingProtectionDisabled());
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpChannelParent::NotifyTrackingCookieBlocked(uint32_t aRejectedReason)
+{
+  LOG(("HttpChannelParent::NotifyTrackingCookieBlocked [this=%p]\n", this));
+  if (!mIPCClosed) {
+    MOZ_ASSERT(mBgParent);
+    Unused << NS_WARN_IF(!mBgParent->OnNotifyTrackingCookieBlocked(aRejectedReason));
   }
   return NS_OK;
 }
@@ -1751,12 +1835,13 @@ HttpChannelParent::SetClassifierMatchedInfo(const nsACString& aList,
 }
 
 NS_IMETHODIMP
-HttpChannelParent::NotifyTrackingResource()
+HttpChannelParent::NotifyTrackingResource(bool aIsThirdParty)
 {
-  LOG(("HttpChannelParent::NotifyTrackingResource [this=%p]\n", this));
+  LOG(("HttpChannelParent::NotifyTrackingResource thirdparty=%d [this=%p]\n",
+       static_cast<int>(aIsThirdParty), this));
   if (!mIPCClosed) {
     MOZ_ASSERT(mBgParent);
-    Unused << mBgParent->OnNotifyTrackingResource();
+    Unused << mBgParent->OnNotifyTrackingResource(aIsThirdParty);
   }
   return NS_OK;
 }

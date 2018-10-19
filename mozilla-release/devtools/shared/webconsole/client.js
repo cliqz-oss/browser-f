@@ -110,7 +110,8 @@ WebConsoleClient.prototype = {
         updates: [],
         private: actor.private,
         fromCache: actor.fromCache,
-        fromServiceWorker: actor.fromServiceWorker
+        fromServiceWorker: actor.fromServiceWorker,
+        isThirdPartyTrackingResource: actor.isThirdPartyTrackingResource,
       };
       this._networkRequests.set(actor.actor, networkInfo);
 
@@ -165,7 +166,7 @@ WebConsoleClient.prototype = {
         networkInfo.totalTime = packet.totalTime;
         break;
       case "securityInfo":
-        networkInfo.securityInfo = packet.state;
+        networkInfo.securityState = packet.state;
         break;
       case "responseCache":
         networkInfo.response.responseCache = packet.responseCache;
@@ -371,14 +372,12 @@ WebConsoleClient.prototype = {
    *        The code you want to autocomplete.
    * @param number cursor
    *        Cursor location inside the string. Index starts from 0.
-   * @param function onResponse
-   *        The function invoked when the response is received.
    * @param string frameActor
    *        The id of the frame actor that made the call.
    * @return request
    *         Request object that implements both Promise and EventEmitter interfaces
    */
-  autocomplete: function(string, cursor, onResponse, frameActor) {
+  autocomplete: function(string, cursor, frameActor) {
     const packet = {
       to: this._actor,
       type: "autocomplete",
@@ -386,7 +385,7 @@ WebConsoleClient.prototype = {
       cursor: cursor,
       frameActor: frameActor,
     };
-    return this._client.request(packet, onResponse);
+    return this._client.request(packet);
   },
 
   /**

@@ -89,7 +89,7 @@ class MakeUploadOutputParser(OutputParser):
         # key: property name, value: condition
         ('symbolsUrl', "m.endswith('crashreporter-symbols.zip') or "
                        "m.endswith('crashreporter-symbols-full.zip')"),
-        ('testsUrl', "m.endswith(('tests.tar.bz2', 'tests.zip'))"),
+        ('testsUrl', "m.endswith(('tests.tar.bz2', 'tests.zip', 'tests.tar.gz'))"),
         ('robocopApkUrl', "m.endswith('apk') and 'robocop' in m"),
         ('jsshellUrl', "'jsshell-' in m and m.endswith('.zip')"),
         ('partialMarUrl', "m.endswith('.mar') and '.partial.' in m"),
@@ -427,6 +427,7 @@ class BuildOptionParser(object):
         'api-16': 'builds/releng_sub_%s_configs/%s_api_16.py',
         'api-16-artifact': 'builds/releng_sub_%s_configs/%s_api_16_artifact.py',
         'api-16-debug': 'builds/releng_sub_%s_configs/%s_api_16_debug.py',
+        'api-16-debug-ccov': 'builds/releng_sub_%s_configs/%s_api_16_debug_ccov.py',
         'api-16-debug-artifact': 'builds/releng_sub_%s_configs/%s_api_16_debug_artifact.py',
         'api-16-gradle': 'builds/releng_sub_%s_configs/%s_api_16_gradle.py',
         'api-16-gradle-artifact': 'builds/releng_sub_%s_configs/%s_api_16_gradle_artifact.py',
@@ -435,9 +436,11 @@ class BuildOptionParser(object):
         'rusttests-debug': 'builds/releng_sub_%s_configs/%s_rusttests_debug.py',
         'x86': 'builds/releng_sub_%s_configs/%s_x86.py',
         'x86-artifact': 'builds/releng_sub_%s_configs/%s_x86_artifact.py',
+        'x86-fuzzing-debug': 'builds/releng_sub_%s_configs/%s_x86_fuzzing_debug.py',
         'api-16-partner-sample1': 'builds/releng_sub_%s_configs/%s_api_16_partner_sample1.py',
         'aarch64': 'builds/releng_sub_%s_configs/%s_aarch64.py',
         'android-test': 'builds/releng_sub_%s_configs/%s_test.py',
+        'android-test-ccov': 'builds/releng_sub_%s_configs/%s_test_ccov.py',
         'android-checkstyle': 'builds/releng_sub_%s_configs/%s_checkstyle.py',
         'android-lint': 'builds/releng_sub_%s_configs/%s_lint.py',
         'android-findbugs': 'builds/releng_sub_%s_configs/%s_findbugs.py',
@@ -1495,6 +1498,7 @@ or run without that action (ie: --no-{action})"
             'value': hits,
             'extraOptions': self.perfherder_resource_options(),
             'subtests': [],
+            'lowerIsBetter': False
         }
 
         yield {

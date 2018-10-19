@@ -9,6 +9,7 @@
 #include "ipc/IPCMessageUtils.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/ShadowRoot.h"
+#include "mozilla/EventDispatcher.h"
 #include "mozilla/ContentEvents.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/EventStateManager.h"
@@ -219,16 +220,12 @@ Event::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 JSObject*
 Event::WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return EventBinding::Wrap(aCx, this, aGivenProto);
+  return Event_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
 Event::GetType(nsAString& aType) const
 {
-  if (!mIsMainThreadEvent) {
-    aType = mEvent->mSpecifiedEventTypeString;
-    return;
-  }
   GetWidgetEventType(mEvent, aType);
 }
 
@@ -357,15 +354,15 @@ Event::EventPhase() const
   if ((mEvent->mCurrentTarget &&
        mEvent->mCurrentTarget == mEvent->mTarget) ||
        mEvent->mFlags.InTargetPhase()) {
-    return EventBinding::AT_TARGET;
+    return Event_Binding::AT_TARGET;
   }
   if (mEvent->mFlags.mInCapturePhase) {
-    return EventBinding::CAPTURING_PHASE;
+    return Event_Binding::CAPTURING_PHASE;
   }
   if (mEvent->mFlags.mInBubblingPhase) {
-    return EventBinding::BUBBLING_PHASE;
+    return Event_Binding::BUBBLING_PHASE;
   }
-  return EventBinding::NONE;
+  return Event_Binding::NONE;
 }
 
 void
@@ -456,16 +453,16 @@ Event::PreventDefaultInternal(bool aCalledByDefaultHandler,
 void
 Event::SetEventType(const nsAString& aEventTypeArg)
 {
+  mEvent->mSpecifiedEventTypeString.Truncate();
   if (mIsMainThreadEvent) {
-    mEvent->mSpecifiedEventTypeString.Truncate();
     mEvent->mSpecifiedEventType =
       nsContentUtils::GetEventMessageAndAtom(aEventTypeArg, mEvent->mClass,
                                              &(mEvent->mMessage));
     mEvent->SetDefaultComposed();
   } else {
-    mEvent->mSpecifiedEventType = nullptr;
+    mEvent->mSpecifiedEventType =
+      NS_Atomize(NS_LITERAL_STRING("on") + aEventTypeArg);
     mEvent->mMessage = eUnidentifiedEvent;
-    mEvent->mSpecifiedEventTypeString = aEventTypeArg;
     mEvent->SetComposed(aEventTypeArg);
   }
   mEvent->SetDefaultComposedInNativeAnonymousContent();
@@ -493,8 +490,8 @@ Event::EnsureWebAccessibleRelatedTarget(EventTarget* aRelatedTarget)
 
 void
 Event::InitEvent(const nsAString& aEventTypeArg,
-                 bool aCanBubbleArg,
-                 bool aCancelableArg)
+                 mozilla::CanBubble aCanBubbleArg,
+                 mozilla::Cancelable aCancelableArg)
 {
   // Make sure this event isn't already being dispatched.
   NS_ENSURE_TRUE_VOID(!mEvent->mFlags.mIsBeingDispatched);
@@ -508,8 +505,8 @@ Event::InitEvent(const nsAString& aEventTypeArg,
 
   SetEventType(aEventTypeArg);
 
-  mEvent->mFlags.mBubbles = aCanBubbleArg;
-  mEvent->mFlags.mCancelable = aCancelableArg;
+  mEvent->mFlags.mBubbles = aCanBubbleArg == CanBubble::eYes;
+  mEvent->mFlags.mCancelable = aCancelableArg == Cancelable::eYes;
 
   mEvent->mFlags.mDefaultPrevented = false;
   mEvent->mFlags.mDefaultPreventedByContent = false;
@@ -1006,6 +1003,20 @@ Event::DefaultPrevented(CallerType aCallerType) const
          aCallerType == CallerType::System;
 }
 
+bool
+Event::ReturnValue(CallerType aCallerType) const
+{
+  return !DefaultPrevented(aCallerType);
+}
+
+void
+Event::SetReturnValue(bool aReturnValue, CallerType aCallerType)
+{
+  if (!aReturnValue) {
+    PreventDefaultInternal(aCallerType == CallerType::System);
+  }
+}
+
 double
 Event::TimeStamp()
 {
@@ -1145,7 +1156,7 @@ Event::GetWidgetEventType(WidgetEvent* aEvent, nsAString& aType)
   const char* name = GetEventName(aEvent->mMessage);
 
   if (name) {
-    CopyASCIItoUTF16(name, aType);
+    CopyASCIItoUTF16(mozilla::MakeStringSpan(name), aType);
     return;
   } else if (aEvent->mMessage == eUnidentifiedEvent &&
              aEvent->mSpecifiedEventType) {

@@ -310,6 +310,8 @@ this.AppConstants = Object.freeze({
   MOZ_GOOGLE_API_KEY: "@MOZ_GOOGLE_API_KEY@",
   MOZ_MOZILLA_API_KEY: "@MOZ_MOZILLA_API_KEY@",
 
+  BROWSER_CHROME_URL: "@BROWSER_CHROME_URL@",
+
   // URL to the hg revision this was built from (e.g.
   // "https://hg.mozilla.org/mozilla-central/rev/6256ec9113c1")
   // On unofficial builds, this is an empty string.
@@ -327,6 +329,13 @@ this.AppConstants = Object.freeze({
 
   HAVE_SHELL_SERVICE:
 #ifdef HAVE_SHELL_SERVICE
+    true,
+#else
+    false,
+#endif
+
+  MOZ_CODE_COVERAGE:
+#ifdef MOZ_CODE_COVERAGE
     true,
 #else
     false,

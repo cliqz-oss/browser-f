@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint object-shorthand: ["error", "never"] */
 
 if (typeof Mozilla == "undefined") {
   var Mozilla = {};
@@ -10,6 +11,7 @@ if (typeof Mozilla == "undefined") {
   "use strict";
 
   var _canUpload = false;
+  var _initPromise = null;
 
   if (typeof Mozilla.ContentTelemetry == "undefined") {
     /**
@@ -33,9 +35,9 @@ if (typeof Mozilla == "undefined") {
     var event = new CustomEvent("mozTelemetry", {
       bubbles: true,
       detail: {
-        name,
-        data: data || {}
-      }
+        name: name,
+        data: data || {},
+      },
     });
 
     document.dispatchEvent(event);
@@ -47,16 +49,25 @@ if (typeof Mozilla == "undefined") {
    * respect user Privacy choices.
    */
   function _registerInternalPolicyHandler() {
-    // Register the handler that will update the policy boolean.
-    function policyChangeHandler(updatedPref) {
-      if (!("detail" in updatedPref) ||
-          !("canUpload" in updatedPref.detail) ||
-          typeof updatedPref.detail.canUpload != "boolean") {
-        return;
+    // Create a promise to wait on for HCT to be completely initialized.
+    _initPromise = new Promise(function(resolveInit, rejectInit) {
+      // Register the handler that will update the policy boolean.
+      function policyChangeHandler(updatedPref) {
+        if (!("detail" in updatedPref) ||
+            !("canUpload" in updatedPref.detail) ||
+            typeof updatedPref.detail.canUpload != "boolean") {
+          return;
+        }
+        _canUpload = updatedPref.detail.canUpload;
+        // Resolve the setup promise the first time we receive a message
+        // from the chrome.
+        resolveInit();
       }
-      _canUpload = updatedPref.detail.canUpload;
-    }
-    document.addEventListener("mozTelemetryPolicyChange", policyChangeHandler);
+      document.addEventListener("mozTelemetryPolicyChange", policyChangeHandler);
+      document.addEventListener("mozTelemetryUntrustedOrigin",
+                                () => rejectInit(new Error("Origin not trusted or HCT disabled.")),
+                                {once: true});
+    });
 
     // Make sure the chrome is initialized.
     _sendMessageToChrome("init");
@@ -66,12 +77,25 @@ if (typeof Mozilla == "undefined") {
     return _canUpload;
   };
 
+  Mozilla.ContentTelemetry.initPromise = function() {
+    return _initPromise;
+  };
+
   Mozilla.ContentTelemetry.registerEvents = function(category, eventData) {
-    _sendMessageToChrome("registerEvents", { category, eventData });
+    _sendMessageToChrome("registerEvents", {
+      category: category,
+      eventData: eventData,
+    });
   };
 
   Mozilla.ContentTelemetry.recordEvent = function(category, method, object, value, extra) {
-    _sendMessageToChrome("recordEvent", { category, method, object, value, extra });
+    _sendMessageToChrome("recordEvent", {
+      category: category,
+      method: method,
+      object: object,
+      value: value,
+      extra: extra,
+    });
   };
 
   // Register the policy handler so that |canUpload| is always up to date.

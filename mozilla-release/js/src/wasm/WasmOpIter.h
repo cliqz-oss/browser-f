@@ -39,116 +39,97 @@ enum class LabelKind : uint8_t
 
 // The type of values on the operand stack during validation. The Any type
 // represents the type of a value produced by an unconditional branch.
-enum class StackType
+
+class StackType
 {
-    I32    = uint8_t(ValType::I32),
-    I64    = uint8_t(ValType::I64),
-    F32    = uint8_t(ValType::F32),
-    F64    = uint8_t(ValType::F64),
+    PackedTypeCode tc_;
 
-    I8x16  = uint8_t(ValType::I8x16),
-    I16x8  = uint8_t(ValType::I16x8),
-    I32x4  = uint8_t(ValType::I32x4),
-    F32x4  = uint8_t(ValType::F32x4),
-    B8x16  = uint8_t(ValType::B8x16),
-    B16x8  = uint8_t(ValType::B16x8),
-    B32x4  = uint8_t(ValType::B32x4),
+#ifdef DEBUG
+    bool isValidCode() {
+        switch (UnpackTypeCodeType(tc_)) {
+          case TypeCode::I32:
+          case TypeCode::I64:
+          case TypeCode::F32:
+          case TypeCode::F64:
+          case TypeCode::AnyRef:
+          case TypeCode::Ref:
+          case TypeCode::Limit:
+            return true;
+          default:
+            return false;
+        }
+    }
+#endif
 
-    AnyRef = uint8_t(ValType::AnyRef),
+  public:
+    enum Code {
+        I32    = uint8_t(ValType::I32),
+        I64    = uint8_t(ValType::I64),
+        F32    = uint8_t(ValType::F32),
+        F64    = uint8_t(ValType::F64),
 
-    Any    = uint8_t(TypeCode::Limit),
+        AnyRef = uint8_t(ValType::AnyRef),
+        Ref    = uint8_t(ValType::Ref),
+
+        Any    = uint8_t(TypeCode::Limit),
+    };
+
+    StackType() : tc_(InvalidPackedTypeCode()) {}
+
+    MOZ_IMPLICIT StackType(Code c)
+      : tc_(PackTypeCode(TypeCode(c)))
+    {
+        MOZ_ASSERT(isValidCode());
+    }
+
+    explicit StackType(const ValType& t)
+      : tc_(t.packed())
+    {}
+
+    PackedTypeCode packed() const {
+        return tc_;
+    }
+
+    Code code() const {
+        return Code(UnpackTypeCodeType(tc_));
+    }
+
+    uint32_t refTypeIndex() const {
+        return UnpackTypeCodeIndex(tc_);
+    }
+
+    bool isRef() const {
+        return UnpackTypeCodeType(tc_) == TypeCode::Ref;
+    }
+
+    bool isRefOrAnyRef() const {
+        TypeCode tc = UnpackTypeCodeType(tc_);
+        return tc == TypeCode::Ref || tc == TypeCode::AnyRef;
+    }
+
+    bool operator ==(const StackType& that) const {
+        return tc_ == that.tc_;
+    }
+
+    bool operator !=(const StackType& that) const {
+        return tc_ != that.tc_;
+    }
+
+    bool operator ==(Code that) const {
+        MOZ_ASSERT(that != Code::Ref);
+        return code() == that;
+    }
+
+    bool operator !=(Code that) const {
+        return !(*this == that);
+    }
 };
-
-static inline StackType
-ToStackType(ValType type)
-{
-    return StackType(type.bitsUnsafe());
-}
 
 static inline ValType
 NonAnyToValType(StackType type)
 {
     MOZ_ASSERT(type != StackType::Any);
-    return ValType::fromTypeCode(uint32_t(type));
-}
-
-static inline bool
-IsRefType(StackType st)
-{
-    return IsRefType(NonAnyToValType(st));
-}
-
-static inline bool
-IsSubtypeOf(StackType one, StackType two)
-{
-    MOZ_ASSERT(IsRefType(one));
-    MOZ_ASSERT(IsRefType(two));
-    return one == two || two == StackType::AnyRef;
-}
-
-static inline bool
-Unify(HasGcTypes gcTypesEnabled, StackType observed, StackType expected, StackType* result)
-{
-    if (MOZ_LIKELY(observed == expected)) {
-        *result = observed;
-        return true;
-    }
-
-    if (observed == StackType::Any) {
-        *result = expected;
-        return true;
-    }
-
-    if (expected == StackType::Any) {
-        *result = observed;
-        return true;
-    }
-
-    if (gcTypesEnabled == HasGcTypes::True && IsRefType(observed) && IsRefType(expected) &&
-        IsSubtypeOf(observed, expected))
-    {
-        *result = expected;
-        return true;
-    }
-
-    return false;
-}
-
-static inline bool
-Join(HasGcTypes gcTypesEnabled, StackType one, StackType two, StackType* result)
-{
-    if (MOZ_LIKELY(one == two)) {
-        *result = one;
-        return true;
-    }
-
-    if (one == StackType::Any) {
-        *result = two;
-        return true;
-    }
-
-    if (two == StackType::Any) {
-        *result = one;
-        return true;
-    }
-
-    if (gcTypesEnabled == HasGcTypes::True && IsRefType(one) && IsRefType(two)) {
-        if (IsSubtypeOf(two, one)) {
-            *result = one;
-            return true;
-        }
-
-        if (IsSubtypeOf(one, two)) {
-            *result = two;
-            return true;
-        }
-
-        // No subtyping relations between the two types.
-        *result = StackType::AnyRef;
-        return true;
-    }
-
-    return false;
+    return ValType(type.packed());
 }
 
 #ifdef DEBUG
@@ -162,13 +143,6 @@ enum class OpKind {
     I64,
     F32,
     F64,
-    I8x16,
-    I16x8,
-    I32x4,
-    F32x4,
-    B8x16,
-    B16x8,
-    B32x4,
     Br,
     BrIf,
     BrTable,
@@ -213,11 +187,6 @@ enum class OpKind {
     Swizzle,
     Shuffle,
     Splat,
-    SimdSelect,
-    SimdCtor,
-    SimdBooleanReduction,
-    SimdShiftByScalar,
-    SimdComparison,
     MemCopy,
     MemFill,
     RefNull,
@@ -316,18 +285,18 @@ class TypeAndValue
     Value value_;
 
   public:
-    TypeAndValue() : type_(StackType(TypeCode::Limit)), value_() {}
+    TypeAndValue() : type_(StackType::Any), value_() {}
     explicit TypeAndValue(StackType type)
       : type_(type), value_()
     {}
     explicit TypeAndValue(ValType type)
-      : type_(ToStackType(type)), value_()
+      : type_(StackType(type)), value_()
     {}
     TypeAndValue(StackType type, Value value)
       : type_(type), value_(value)
     {}
     TypeAndValue(ValType type, Value value)
-      : type_(ToStackType(type)), value_(value)
+      : type_(StackType(type)), value_(value)
     {}
     StackType type() const {
         return type_;
@@ -350,11 +319,11 @@ class TypeAndValue<Nothing>
     StackType type_;
 
   public:
-    TypeAndValue() : type_(StackType(TypeCode::Limit)) {}
+    TypeAndValue() : type_(StackType::Any) {}
     explicit TypeAndValue(StackType type) : type_(type) {}
-    explicit TypeAndValue(ValType type) : type_(ToStackType(type)) {}
+    explicit TypeAndValue(ValType type) : type_(StackType(type)) {}
     TypeAndValue(StackType type, Nothing value) : type_(type) {}
-    TypeAndValue(ValType type, Nothing value) : type_(ToStackType(type)) {}
+    TypeAndValue(ValType type, Nothing value) : type_(StackType(type)) {}
 
     StackType type() const { return type_; }
     StackType& typeRef() { return type_; }
@@ -409,46 +378,6 @@ class MOZ_STACK_CLASS OpIter : private Policy
     MOZ_MUST_USE bool readFixedF64(double* out) {
         return d_.readFixedF64(out);
     }
-    MOZ_MUST_USE bool readFixedI8x16(I8x16* out) {
-        return d_.readFixedI8x16(out);
-    }
-    MOZ_MUST_USE bool readFixedI16x8(I16x8* out) {
-        return d_.readFixedI16x8(out);
-    }
-    MOZ_MUST_USE bool readFixedI32x4(I32x4* out) {
-        return d_.readFixedI32x4(out);
-    }
-    MOZ_MUST_USE bool readFixedF32x4(F32x4* out) {
-        return d_.readFixedF32x4(out);
-    }
-
-    MOZ_MUST_USE bool readAtomicViewType(Scalar::Type* viewType) {
-        uint8_t x;
-        if (!readFixedU8(&x))
-            return fail("unable to read atomic view");
-        if (x >= Scalar::MaxTypedArrayViewType)
-            return fail("invalid atomic view type");
-        *viewType = Scalar::Type(x);
-        return true;
-    }
-
-    MOZ_MUST_USE bool readAtomicBinOpOp(jit::AtomicOp* op) {
-        uint8_t x;
-        if (!readFixedU8(&x))
-            return fail("unable to read atomic opcode");
-        switch (x) {
-          case jit::AtomicFetchAddOp:
-          case jit::AtomicFetchSubOp:
-          case jit::AtomicFetchAndOp:
-          case jit::AtomicFetchOrOp:
-          case jit::AtomicFetchXorOp:
-            break;
-          default:
-            return fail("unrecognized atomic binop");
-        }
-        *op = jit::AtomicOp(x);
-        return true;
-    }
 
     MOZ_MUST_USE bool readLinearMemoryAddress(uint32_t byteSize, LinearMemoryAddress<Value>* addr);
     MOZ_MUST_USE bool readLinearMemoryAddressAligned(uint32_t byteSize, LinearMemoryAddress<Value>* addr);
@@ -458,7 +387,7 @@ class MOZ_STACK_CLASS OpIter : private Policy
     MOZ_MUST_USE bool popAnyType(StackType* type, Value* value);
     MOZ_MUST_USE bool typeMismatch(StackType actual, StackType expected);
     MOZ_MUST_USE bool popWithType(StackType expectedType, Value* value);
-    MOZ_MUST_USE bool popWithType(ValType valType, Value* value) { return popWithType(ToStackType(valType), value); }
+    MOZ_MUST_USE bool popWithType(ValType valType, Value* value) { return popWithType(StackType(valType), value); }
     MOZ_MUST_USE bool popWithType(ExprType expectedType, Value* value);
     MOZ_MUST_USE bool topWithType(ExprType expectedType, Value* value);
     MOZ_MUST_USE bool topWithType(ValType valType, Value* value);
@@ -485,7 +414,7 @@ class MOZ_STACK_CLASS OpIter : private Policy
         valueStack_.infallibleEmplaceBack(t);
     }
     void infalliblePush(ValType t) {
-        valueStack_.infallibleEmplaceBack(ToStackType(t));
+        valueStack_.infallibleEmplaceBack(StackType(t));
     }
     void infalliblePush(TypeAndValue<Value> tv) {
         valueStack_.infallibleAppend(tv);
@@ -495,6 +424,11 @@ class MOZ_STACK_CLASS OpIter : private Policy
         valueStack_.shrinkTo(controlStack_.back().valueStackStart());
         controlStack_.back().setPolymorphicBase();
     }
+
+    inline bool IsPrefixOf(StackType a, StackType b);
+    inline bool IsSubtypeOf(StackType one, StackType two);
+    inline bool Unify(StackType observed, StackType expected, StackType* result);
+    inline bool Join(StackType one, StackType two, StackType* result);
 
   public:
     typedef Vector<Value, 8, SystemAllocPolicy> ValueVector;
@@ -591,14 +525,7 @@ class MOZ_STACK_CLASS OpIter : private Policy
     MOZ_MUST_USE bool readI64Const(int64_t* i64);
     MOZ_MUST_USE bool readF32Const(float* f32);
     MOZ_MUST_USE bool readF64Const(double* f64);
-    MOZ_MUST_USE bool readI8x16Const(I8x16* i8x16);
-    MOZ_MUST_USE bool readI16x8Const(I16x8* i16x8);
-    MOZ_MUST_USE bool readI32x4Const(I32x4* i32x4);
-    MOZ_MUST_USE bool readF32x4Const(F32x4* f32x4);
-    MOZ_MUST_USE bool readB8x16Const(I8x16* i8x16);
-    MOZ_MUST_USE bool readB16x8Const(I16x8* i16x8);
-    MOZ_MUST_USE bool readB32x4Const(I32x4* i32x4);
-    MOZ_MUST_USE bool readRefNull();
+    MOZ_MUST_USE bool readRefNull(ValType* type);
     MOZ_MUST_USE bool readCall(uint32_t* calleeIndex, ValueVector* argValues);
     MOZ_MUST_USE bool readCallIndirect(uint32_t* funcTypeIndex, Value* callee, ValueVector* argValues);
     MOZ_MUST_USE bool readOldCallDirect(uint32_t numFuncImports, uint32_t* funcIndex,
@@ -626,40 +553,6 @@ class MOZ_STACK_CLASS OpIter : private Policy
                                         uint32_t byteSize,
                                         Value* oldValue,
                                         Value* newValue);
-    MOZ_MUST_USE bool readOldAtomicLoad(LinearMemoryAddress<Value>* addr,
-                                        Scalar::Type* viewType);
-    MOZ_MUST_USE bool readOldAtomicStore(LinearMemoryAddress<Value>* addr,
-                                         Scalar::Type* viewType,
-                                         Value* value);
-    MOZ_MUST_USE bool readOldAtomicBinOp(LinearMemoryAddress<Value>* addr,
-                                         Scalar::Type* viewType,
-                                         jit::AtomicOp* op,
-                                         Value* value);
-    MOZ_MUST_USE bool readOldAtomicCompareExchange(LinearMemoryAddress<Value>* addr,
-                                                   Scalar::Type* viewType,
-                                                   Value* oldValue,
-                                                   Value* newValue);
-    MOZ_MUST_USE bool readOldAtomicExchange(LinearMemoryAddress<Value>* addr,
-                                            Scalar::Type* viewType,
-                                            Value* newValue);
-    MOZ_MUST_USE bool readSimdComparison(ValType simdType, Value* lhs,
-                                         Value* rhs);
-    MOZ_MUST_USE bool readSimdShiftByScalar(ValType simdType, Value* lhs,
-                                            Value* rhs);
-    MOZ_MUST_USE bool readSimdBooleanReduction(ValType simdType, Value* input);
-    MOZ_MUST_USE bool readExtractLane(ValType simdType, uint8_t* lane,
-                                      Value* vector);
-    MOZ_MUST_USE bool readReplaceLane(ValType simdType, uint8_t* lane,
-                                      Value* vector, Value* scalar);
-    MOZ_MUST_USE bool readSplat(ValType simdType, Value* scalar);
-    MOZ_MUST_USE bool readSwizzle(ValType simdType, uint8_t (* lanes)[16], Value* vector);
-    MOZ_MUST_USE bool readShuffle(ValType simdType, uint8_t (* lanes)[16],
-                                  Value* lhs, Value* rhs);
-    MOZ_MUST_USE bool readSimdSelect(ValType simdType, Value* trueValue,
-                                     Value* falseValue,
-                                     Value* condition);
-    MOZ_MUST_USE bool readSimdCtor(ValType elementType, uint32_t numElements, ValType simdType,
-                                   ValueVector* argValues);
     MOZ_MUST_USE bool readMemCopy(Value* dest, Value* src, Value* len);
     MOZ_MUST_USE bool readMemFill(Value* start, Value* val, Value* len);
 
@@ -702,6 +595,90 @@ class MOZ_STACK_CLASS OpIter : private Policy
         return controlStack_.empty();
     }
 };
+
+template <typename Policy>
+inline bool
+OpIter<Policy>::IsPrefixOf(StackType a, StackType b)
+{
+    const StructType& other = env_.types[a.refTypeIndex()].structType();
+    return env_.types[b.refTypeIndex()].structType().hasPrefix(other);
+}
+
+template <typename Policy>
+inline bool
+OpIter<Policy>::IsSubtypeOf(StackType one, StackType two)
+{
+    MOZ_ASSERT(one.isRefOrAnyRef());
+    MOZ_ASSERT(two.isRefOrAnyRef());
+    return one == two || two == StackType::AnyRef || (one.isRef() && IsPrefixOf(two, one));
+}
+
+template <typename Policy>
+inline bool
+OpIter<Policy>::Unify(StackType observed, StackType expected, StackType* result)
+{
+    if (MOZ_LIKELY(observed == expected)) {
+        *result = observed;
+        return true;
+    }
+
+    if (observed == StackType::Any) {
+        *result = expected;
+        return true;
+    }
+
+    if (expected == StackType::Any) {
+        *result = observed;
+        return true;
+    }
+
+    if (env_.gcTypesEnabled == HasGcTypes::True && observed.isRefOrAnyRef() &&
+        expected.isRefOrAnyRef() && IsSubtypeOf(observed, expected))
+    {
+        *result = expected;
+        return true;
+    }
+
+    return false;
+}
+
+template <typename Policy>
+inline bool
+OpIter<Policy>::Join(StackType one, StackType two, StackType* result)
+{
+    if (MOZ_LIKELY(one == two)) {
+        *result = one;
+        return true;
+    }
+
+    if (one == StackType::Any) {
+        *result = two;
+        return true;
+    }
+
+    if (two == StackType::Any) {
+        *result = one;
+        return true;
+    }
+
+    if (env_.gcTypesEnabled == HasGcTypes::True && one.isRefOrAnyRef() && two.isRefOrAnyRef()) {
+        if (IsSubtypeOf(two, one)) {
+            *result = one;
+            return true;
+        }
+
+        if (IsSubtypeOf(one, two)) {
+            *result = two;
+            return true;
+        }
+
+        // No subtyping relations between the two types.
+        *result = StackType::AnyRef;
+        return true;
+    }
+
+    return false;
+}
 
 template <typename Policy>
 inline bool
@@ -798,7 +775,7 @@ OpIter<Policy>::popWithType(StackType expectedType, Value* value)
     TypeAndValue<Value> tv = valueStack_.popCopy();
 
     StackType _;
-    if (MOZ_UNLIKELY(!Unify(env_.gcTypesEnabled, tv.type(), expectedType, &_)))
+    if (MOZ_UNLIKELY(!Unify(tv.type(), expectedType, &_)))
         return typeMismatch(tv.type(), expectedType);
 
     *value = tv.value();
@@ -850,11 +827,8 @@ OpIter<Policy>::topWithType(ValType expectedType, Value* value)
 
     TypeAndValue<Value>& tv = valueStack_.back();
 
-    if (MOZ_UNLIKELY(!Unify(env_.gcTypesEnabled, tv.type(), ToStackType(expectedType),
-                            &tv.typeRef())))
-    {
-        return typeMismatch(tv.type(), ToStackType(expectedType));
-    }
+    if (MOZ_UNLIKELY(!Unify(tv.type(), StackType(expectedType), &tv.typeRef())))
+        return typeMismatch(tv.type(), StackType(expectedType));
 
     *value = tv.value();
     return true;
@@ -912,25 +886,24 @@ template <typename Policy>
 inline bool
 OpIter<Policy>::readBlockType(ExprType* type)
 {
-    uint8_t unchecked;
-    if (!d_.readBlockType(&unchecked))
+    uint8_t uncheckedCode;
+    uint32_t uncheckedRefTypeIndex;
+    if (!d_.readBlockType(&uncheckedCode, &uncheckedRefTypeIndex))
         return fail("unable to read block signature");
 
     bool known = false;
-    switch (unchecked) {
+    switch (uncheckedCode) {
       case uint8_t(ExprType::Void):
       case uint8_t(ExprType::I32):
       case uint8_t(ExprType::I64):
       case uint8_t(ExprType::F32):
       case uint8_t(ExprType::F64):
-      case uint8_t(ExprType::I8x16):
-      case uint8_t(ExprType::I16x8):
-      case uint8_t(ExprType::I32x4):
-      case uint8_t(ExprType::F32x4):
-      case uint8_t(ExprType::B8x16):
-      case uint8_t(ExprType::B16x8):
-      case uint8_t(ExprType::B32x4):
         known = true;
+        break;
+      case uint8_t(ExprType::Ref):
+        known = env_.gcTypesEnabled == HasGcTypes::True &&
+                uncheckedRefTypeIndex < MaxTypes &&
+                uncheckedRefTypeIndex < env_.types.length();
         break;
       case uint8_t(ExprType::AnyRef):
         known = env_.gcTypesEnabled == HasGcTypes::True;
@@ -942,7 +915,7 @@ OpIter<Policy>::readBlockType(ExprType* type)
     if (!known)
         return fail("invalid inline block type");
 
-    *type = ExprType(unchecked);
+    *type = ExprType(ExprType::Code(uncheckedCode), uncheckedRefTypeIndex);
     return true;
 }
 
@@ -1460,7 +1433,7 @@ OpIter<Policy>::readSelect(StackType* type, Value* trueValue, Value* falseValue,
     if (!popAnyType(&trueType, trueValue))
         return false;
 
-    if (!Join(env_.gcTypesEnabled, falseType, trueType, type))
+    if (!Join(falseType, trueType, type))
         return fail("select operand types must match");
 
     infalliblePush(*type);
@@ -1605,83 +1578,21 @@ OpIter<Policy>::readF64Const(double* f64)
 
 template <typename Policy>
 inline bool
-OpIter<Policy>::readI8x16Const(I8x16* i8x16)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::I8x16);
-
-    return readFixedI8x16(i8x16) &&
-           push(ValType::I8x16);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readI16x8Const(I16x8* i16x8)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::I16x8);
-
-    return readFixedI16x8(i16x8) &&
-           push(ValType::I16x8);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readI32x4Const(I32x4* i32x4)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::I32x4);
-
-    return readFixedI32x4(i32x4) &&
-           push(ValType::I32x4);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readF32x4Const(F32x4* f32x4)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::F32x4);
-
-    return readFixedF32x4(f32x4) &&
-           push(ValType::F32x4);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readB8x16Const(I8x16* i8x16)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::B8x16);
-
-    return readFixedI8x16(i8x16) &&
-           push(ValType::B8x16);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readB16x8Const(I16x8* i16x8)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::B16x8);
-
-    return readFixedI16x8(i16x8) &&
-           push(ValType::B16x8);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readB32x4Const(I32x4* i32x4)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::B32x4);
-
-    return readFixedI32x4(i32x4) &&
-           push(ValType::B32x4);
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readRefNull()
+OpIter<Policy>::readRefNull(ValType* type)
 {
     MOZ_ASSERT(Classify(op_) == OpKind::RefNull);
-    uint8_t valType;
-    if (!d_.readValType(&valType) || valType != uint8_t(ValType::AnyRef))
+    uint8_t code;
+    uint32_t refTypeIndex;
+    if (!d_.readValType(&code, &refTypeIndex))
         return fail("unknown nullref type");
-    return push(StackType::AnyRef);
+    if (code == uint8_t(TypeCode::Ref)) {
+        if (refTypeIndex >= MaxTypes || refTypeIndex >= env_.types.length())
+            return fail("invalid nullref type");
+    } else if (code != uint8_t(TypeCode::AnyRef)) {
+        return fail("unknown nullref type");
+    }
+    *type = ValType(ValType::Code(code), refTypeIndex);
+    return push(StackType(*type));
 }
 
 template <typename Policy>
@@ -1751,6 +1662,11 @@ OpIter<Policy>::readCallIndirect(uint32_t* funcTypeIndex, Value* callee, ValueVe
         return fail("expected signature type");
 
     const FuncType& funcType = env_.types[*funcTypeIndex].funcType();
+
+#ifdef WASM_PRIVATE_REFTYPES
+    if (env_.tables[0].importedOrExported && funcType.exposesRef())
+        return fail("cannot expose reference type");
+#endif
 
     if (!popCallArgs(funcType.args(), argValues))
         return false;
@@ -1937,311 +1853,6 @@ OpIter<Policy>::readAtomicCmpXchg(LinearMemoryAddress<Value>* addr, ValType resu
         return false;
 
     infalliblePush(resultType);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readOldAtomicLoad(LinearMemoryAddress<Value>* addr, Scalar::Type* viewType)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::OldAtomicLoad);
-
-    if (!readAtomicViewType(viewType))
-        return false;
-
-    uint32_t byteSize = Scalar::byteSize(*viewType);
-    if (!readLinearMemoryAddress(byteSize, addr))
-        return false;
-
-    infalliblePush(ValType::I32);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readOldAtomicStore(LinearMemoryAddress<Value>* addr, Scalar::Type* viewType,
-                                   Value* value)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::OldAtomicStore);
-
-    if (!readAtomicViewType(viewType))
-        return false;
-
-    uint32_t byteSize = Scalar::byteSize(*viewType);
-    if (!readLinearMemoryAddress(byteSize, addr))
-        return false;
-
-    if (!popWithType(ValType::I32, value))
-        return false;
-
-    infalliblePush(ValType::I32);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readOldAtomicBinOp(LinearMemoryAddress<Value>* addr, Scalar::Type* viewType,
-                                   jit::AtomicOp* op, Value* value)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::OldAtomicBinOp);
-
-    if (!readAtomicViewType(viewType))
-        return false;
-
-    if (!readAtomicBinOpOp(op))
-        return false;
-
-    uint32_t byteSize = Scalar::byteSize(*viewType);
-    if (!readLinearMemoryAddress(byteSize, addr))
-        return false;
-
-    if (!popWithType(ValType::I32, value))
-        return false;
-
-    infalliblePush(ValType::I32);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readOldAtomicCompareExchange(LinearMemoryAddress<Value>* addr,
-                                             Scalar::Type* viewType, Value* oldValue,
-                                             Value* newValue)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::OldAtomicCompareExchange);
-
-    if (!readAtomicViewType(viewType))
-        return false;
-
-    uint32_t byteSize = Scalar::byteSize(*viewType);
-    if (!readLinearMemoryAddress(byteSize, addr))
-        return false;
-
-    if (!popWithType(ValType::I32, newValue))
-        return false;
-
-    if (!popWithType(ValType::I32, oldValue))
-        return false;
-
-    infalliblePush(ValType::I32);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readOldAtomicExchange(LinearMemoryAddress<Value>* addr, Scalar::Type* viewType,
-                                      Value* value)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::OldAtomicExchange);
-
-    if (!readAtomicViewType(viewType))
-        return false;
-
-    uint32_t byteSize = Scalar::byteSize(*viewType);
-    if (!readLinearMemoryAddress(byteSize, addr))
-        return false;
-
-    if (!popWithType(ValType::I32, value))
-        return false;
-
-    infalliblePush(ValType::I32);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSimdComparison(ValType simdType, Value* lhs, Value* rhs)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::SimdComparison);
-
-    if (!popWithType(simdType, rhs))
-        return false;
-
-    if (!popWithType(simdType, lhs))
-        return false;
-
-    infalliblePush(SimdBoolType(simdType));
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSimdShiftByScalar(ValType simdType, Value* lhs, Value* rhs)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::SimdShiftByScalar);
-
-    if (!popWithType(ValType::I32, rhs))
-        return false;
-
-    if (!popWithType(simdType, lhs))
-        return false;
-
-    infalliblePush(simdType);
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSimdBooleanReduction(ValType simdType, Value* input)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::SimdBooleanReduction);
-
-    if (!popWithType(simdType, input))
-        return false;
-
-    infalliblePush(ValType::I32);
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readExtractLane(ValType simdType, uint8_t* lane, Value* vector)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::ExtractLane);
-
-    uint32_t laneBits;
-    if (!readVarU32(&laneBits))
-        return false;
-
-    if (laneBits >= NumSimdElements(simdType))
-        return fail("simd lane out of bounds for simd type");
-
-    *lane = uint8_t(laneBits);
-
-    if (!popWithType(simdType, vector))
-        return false;
-
-    infalliblePush(SimdElementType(simdType));
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readReplaceLane(ValType simdType, uint8_t* lane, Value* vector, Value* scalar)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::ReplaceLane);
-
-    uint32_t laneBits;
-    if (!readVarU32(&laneBits))
-        return false;
-
-    if (laneBits >= NumSimdElements(simdType))
-        return fail("simd lane out of bounds for simd type");
-
-    *lane = uint8_t(laneBits);
-
-    if (!popWithType(SimdElementType(simdType), scalar))
-        return false;
-
-    if (!popWithType(simdType, vector))
-        return false;
-
-    infalliblePush(simdType);
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSplat(ValType simdType, Value* scalar)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::Splat);
-
-    if (!popWithType(SimdElementType(simdType), scalar))
-        return false;
-
-    infalliblePush(simdType);
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSwizzle(ValType simdType, uint8_t (* lanes)[16], Value* vector)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::Swizzle);
-
-    uint32_t numSimdLanes = NumSimdElements(simdType);
-    MOZ_ASSERT(numSimdLanes <= mozilla::ArrayLength(*lanes));
-    for (uint32_t i = 0; i < numSimdLanes; ++i) {
-        if (!readFixedU8(&(*lanes)[i]))
-            return fail("unable to read swizzle lane");
-        if ((*lanes)[i] >= numSimdLanes)
-            return fail("swizzle index out of bounds");
-    }
-
-    if (!popWithType(simdType, vector))
-        return false;
-
-    infalliblePush(simdType);
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readShuffle(ValType simdType, uint8_t (* lanes)[16], Value* lhs, Value* rhs)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::Shuffle);
-
-    uint32_t numSimdLanes = NumSimdElements(simdType);
-    MOZ_ASSERT(numSimdLanes <= mozilla::ArrayLength(*lanes));
-    for (uint32_t i = 0; i < numSimdLanes; ++i) {
-        if (!readFixedU8(&(*lanes)[i]))
-            return fail("unable to read shuffle lane");
-        if ((*lanes)[i] >= numSimdLanes * 2)
-            return fail("shuffle index out of bounds");
-    }
-
-    if (!popWithType(simdType, rhs))
-        return false;
-
-    if (!popWithType(simdType, lhs))
-        return false;
-
-    infalliblePush(simdType);
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSimdSelect(ValType simdType, Value* trueValue, Value* falseValue,
-                               Value* condition)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::SimdSelect);
-
-    if (!popWithType(simdType, falseValue))
-        return false;
-    if (!popWithType(simdType, trueValue))
-        return false;
-    if (!popWithType(SimdBoolType(simdType), condition))
-        return false;
-
-    infalliblePush(simdType);
-
-    return true;
-}
-
-template <typename Policy>
-inline bool
-OpIter<Policy>::readSimdCtor(ValType elementType, uint32_t numElements, ValType simdType,
-                             ValueVector* argValues)
-{
-    MOZ_ASSERT(Classify(op_) == OpKind::SimdCtor);
-
-    if (!argValues->resize(numElements))
-        return false;
-
-    for (int32_t i = numElements - 1; i >= 0; i--) {
-        if (!popWithType(elementType, &(*argValues)[i]))
-            return false;
-    }
-
-    infalliblePush(simdType);
-
     return true;
 }
 

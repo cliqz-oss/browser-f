@@ -64,6 +64,8 @@
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/IOThreadChild.h"
 #include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/recordreplay/ChildIPC.h"
+#include "mozilla/recordreplay/ParentIPC.h"
 #include "ScopedXREEmbed.h"
 
 #include "mozilla/plugins/PluginProcessChild.h"
@@ -119,6 +121,8 @@ using mozilla::_ipdltest::IPDLUnitTestProcessChild;
 #if defined(XP_WIN) && defined(MOZ_ENABLE_SKIA_PDF)
 #include "mozilla/widget/PDFiumProcessChild.h"
 #endif
+
+#include "VRProcessChild.h"
 
 using namespace mozilla;
 
@@ -244,13 +248,14 @@ GeckoProcessType sChildProcessType = GeckoProcessType_Default;
 
 #if defined(MOZ_WIDGET_ANDROID)
 void
-XRE_SetAndroidChildFds (JNIEnv* env, int prefsFd, int ipcFd, int crashFd, int crashAnnotationFd)
+XRE_SetAndroidChildFds (JNIEnv* env, const XRE_AndroidChildFds& fds)
 {
   mozilla::jni::SetGeckoThreadEnv(env);
-  mozilla::dom::SetPrefsFd(prefsFd);
-  IPC::Channel::SetClientChannelFd(ipcFd);
-  CrashReporter::SetNotificationPipeForChild(crashFd);
-  CrashReporter::SetCrashAnnotationPipeForChild(crashAnnotationFd);
+  mozilla::dom::SetPrefsFd(fds.mPrefsFd);
+  mozilla::dom::SetPrefMapFd(fds.mPrefMapFd);
+  IPC::Channel::SetClientChannelFd(fds.mIpcFd);
+  CrashReporter::SetNotificationPipeForChild(fds.mCrashFd);
+  CrashReporter::SetCrashAnnotationPipeForChild(fds.mCrashAnnotationFd);
 }
 #endif // defined(MOZ_WIDGET_ANDROID)
 
@@ -292,6 +297,7 @@ XRE_SetRemoteExceptionHandler(const char* aPipe /*= 0*/,
 XRE_SetRemoteExceptionHandler(const char* aPipe /*= 0*/)
 #endif
 {
+  recordreplay::AutoPassThroughThreadEvents pt;
 #if defined(XP_WIN)
   return CrashReporter::SetRemoteExceptionHandler(nsDependentCString(aPipe),
                                                   aCrashTimeAnnotationFile);
@@ -318,10 +324,8 @@ AddContentSandboxLevelAnnotation()
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     int level = GetEffectiveContentSandboxLevel();
-    nsAutoCString levelString;
-    levelString.AppendInt(level);
     CrashReporter::AnnotateCrashReport(
-      NS_LITERAL_CSTRING("ContentSandboxLevel"), levelString);
+      CrashReporter::Annotation::ContentSandboxLevel, level);
   }
 }
 #endif /* MOZ_CONTENT_SANDBOX */
@@ -359,6 +363,32 @@ XRE_InitChildProcess(int aArgc,
   NS_ENSURE_ARG_POINTER(aArgv);
   NS_ENSURE_ARG_POINTER(aArgv[0]);
   MOZ_ASSERT(aChildData);
+
+  recordreplay::Initialize(aArgc, aArgv);
+
+#ifdef MOZ_ASAN_REPORTER
+  // In ASan reporter builds, we need to set ASan's log_path as early as
+  // possible, so it dumps its errors into files there instead of using
+  // the default stderr location. Since this is crucial for ASan reporter
+  // to work at all (and we don't want people to use a non-functional
+  // ASan reporter build), all failures while setting log_path are fatal.
+  //
+  // We receive this log_path via the ASAN_REPORTER_PATH environment variable
+  // because there is no other way to generically get the necessary profile
+  // directory in all child types without adding support for that in each
+  // child process type class (at the risk of missing this in a child).
+  //
+  // In certain cases (e.g. child startup through xpcshell or gtests), this
+  // code needs to remain disabled, as no ASAN_REPORTER_PATH would be available.
+  if (!PR_GetEnv("MOZ_DISABLE_ASAN_REPORTER") &&
+      !PR_GetEnv("MOZ_RUN_GTEST")) {
+    nsCOMPtr<nsIFile> asanReporterPath = GetFileFromEnv("ASAN_REPORTER_PATH");
+    if (!asanReporterPath) {
+      MOZ_CRASH("Child did not receive ASAN_REPORTER_PATH!");
+    }
+    setASanReporterPath(asanReporterPath);
+  }
+#endif
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
   // This has to happen before glib thread pools are started.
@@ -418,6 +448,9 @@ XRE_InitChildProcess(int aArgc,
   if (aArgc < 1)
     return NS_ERROR_FAILURE;
   const char* const mach_port_name = aArgv[--aArgc];
+
+  Maybe<recordreplay::AutoPassThroughThreadEvents> pt;
+  pt.emplace();
 
   const int kTimeoutMs = 1000;
 
@@ -485,6 +518,7 @@ XRE_InitChildProcess(int aArgc,
     return NS_ERROR_FAILURE;
   }
 
+  pt.reset();
 #endif
 
   SetupErrorHandling(aArgv[0]);
@@ -594,6 +628,9 @@ XRE_InitChildProcess(int aArgc,
     }
   }
 
+  // While replaying, use the parent PID that existed while recording.
+  parentPID = recordreplay::RecordReplayValue(parentPID);
+
 #ifdef XP_MACOSX
   mozilla::ipc::SharedMemoryBasic::SetupMachMemory(parentPID, ports_in_receiver, ports_in_sender,
                                                    ports_out_sender, ports_out_receiver, true);
@@ -633,12 +670,19 @@ XRE_InitChildProcess(int aArgc,
       break;
   case GeckoProcessType_GMPlugin:
   case GeckoProcessType_PDFium:
+  case GeckoProcessType_VR:
       uiLoopType = MessageLoop::TYPE_DEFAULT;
       break;
   default:
       uiLoopType = MessageLoop::TYPE_UI;
       break;
   }
+
+  // If we are recording or replaying, initialize state and update arguments
+  // according to those which were captured by the MiddlemanProcessChild in the
+  // middleman process. No argument manipulation should happen between this
+  // call and the point where the process child is initialized.
+  recordreplay::child::InitRecordingOrReplayingProcess(&aArgc, &aArgv);
 
   {
     // This is a lexical scope for the MessageLoop below.  We want it
@@ -687,6 +731,10 @@ XRE_InitChildProcess(int aArgc,
 #endif
       case GeckoProcessType_GPU:
         process = new gfx::GPUProcessImpl(parentPID);
+        break;
+
+      case GeckoProcessType_VR:
+        process = new gfx::VRProcessChild(parentPID);
         break;
 
       default:
@@ -937,7 +985,7 @@ TestShellParent* GetOrCreateTestShellParent()
         // processes.
         RefPtr<ContentParent> parent =
             ContentParent::GetNewOrUsedBrowserProcess(
-                NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE));
+		nullptr, NS_LITERAL_STRING(DEFAULT_REMOTE_TYPE));
         parent.forget(&gContentParent);
     } else if (!gContentParent->IsAlive()) {
         return nullptr;
@@ -954,7 +1002,7 @@ TestShellParent* GetOrCreateTestShellParent()
 bool
 XRE_SendTestShellCommand(JSContext* aCx,
                          JSString* aCommand,
-                         void* aCallback)
+                         JS::Value* aCallback)
 {
     JS::RootedString cmd(aCx, aCommand);
     TestShellParent* tsp = GetOrCreateTestShellParent();
@@ -971,8 +1019,7 @@ XRE_SendTestShellCommand(JSContext* aCx,
         tsp->SendPTestShellCommandConstructor(command));
     NS_ENSURE_TRUE(callback, false);
 
-    JS::Value callbackVal = *reinterpret_cast<JS::Value*>(aCallback);
-    NS_ENSURE_TRUE(callback->SetCallback(aCx, callbackVal), false);
+    NS_ENSURE_TRUE(callback->SetCallback(aCx, *aCallback), false);
 
     return true;
 }

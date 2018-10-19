@@ -28,7 +28,6 @@ PaymentAddress::PaymentAddress(nsPIDOMWindowInner* aWindow,
                                const nsAString& aDependentLocality,
                                const nsAString& aPostalCode,
                                const nsAString& aSortingCode,
-                               const nsAString& aLanguageCode,
                                const nsAString& aOrganization,
                                const nsAString& aRecipient,
                                const nsAString& aPhone)
@@ -39,7 +38,6 @@ PaymentAddress::PaymentAddress(nsPIDOMWindowInner* aWindow,
   , mDependentLocality(aDependentLocality)
   , mPostalCode(aPostalCode)
   , mSortingCode(aSortingCode)
-  , mLanguageCode(aLanguageCode)
   , mOrganization(aOrganization)
   , mRecipient(aRecipient)
   , mPhone(aPhone)
@@ -90,12 +88,6 @@ PaymentAddress::GetSortingCode(nsAString& aRetVal) const
 }
 
 void
-PaymentAddress::GetLanguageCode(nsAString& aRetVal) const
-{
-  aRetVal = mLanguageCode;
-}
-
-void
 PaymentAddress::GetOrganization(nsAString& aRetVal) const
 {
   aRetVal = mOrganization;
@@ -120,7 +112,7 @@ PaymentAddress::~PaymentAddress()
 JSObject*
 PaymentAddress::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PaymentAddressBinding::Wrap(aCx, this, aGivenProto);
+  return PaymentAddress_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 

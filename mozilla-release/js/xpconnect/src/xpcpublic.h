@@ -11,7 +11,9 @@
 #include "js/HeapAPI.h"
 #include "js/GCAPI.h"
 #include "js/Proxy.h"
+#include "js/Wrapper.h"
 
+#include "nsAtom.h"
 #include "nsISupports.h"
 #include "nsIURI.h"
 #include "nsIPrincipal.h"
@@ -52,6 +54,7 @@ public:
     void SetDocShellAllowsScript(bool aAllowed);
 
     static Scriptability& Get(JSObject* aScope);
+    static Scriptability& Get(JSScript* aScript);
 
 private:
     // Whenever a consumer wishes to prevent script from running on a global,
@@ -83,6 +86,12 @@ bool IsContentXBLCompartment(JS::Compartment* compartment);
 bool IsContentXBLScope(JS::Realm* realm);
 bool IsInContentXBLScope(JSObject* obj);
 
+bool IsUAWidgetCompartment(JS::Compartment* compartment);
+bool IsUAWidgetScope(JS::Realm* realm);
+bool IsInUAWidgetScope(JSObject* obj);
+
+bool IsInSandboxCompartment(JSObject* obj);
+
 // Return a raw XBL scope object corresponding to contentScope, which must
 // be an object whose global is a DOM window.
 //
@@ -99,11 +108,18 @@ bool IsInContentXBLScope(JSObject* obj);
 JSObject*
 GetXBLScope(JSContext* cx, JSObject* contentScope);
 
+JSObject*
+GetUAWidgetScope(JSContext* cx, nsIPrincipal* principal);
+
+JSObject*
+GetUAWidgetScope(JSContext* cx, JSObject* contentScope);
+
 inline JSObject*
 GetXBLScopeOrGlobal(JSContext* cx, JSObject* obj)
 {
+    MOZ_ASSERT(!js::IsCrossCompartmentWrapper(obj));
     if (IsInContentXBLScope(obj))
-        return js::GetGlobalForObjectCrossCompartment(obj);
+        return JS::GetNonCCWObjectGlobal(obj);
     return GetXBLScope(cx, obj);
 }
 
@@ -266,6 +282,28 @@ public:
         return true;
     }
 
+    static inline bool
+    DynamicAtomToJSVal(JSContext* cx, nsDynamicAtom* atom,
+                       JS::MutableHandleValue rval)
+    {
+        bool sharedAtom;
+        JSString* str = JS_NewMaybeExternalString(cx, atom->GetUTF16String(),
+                                                  atom->GetLength(),
+                                                  &sDynamicAtomFinalizer,
+                                                  &sharedAtom);
+        if (!str)
+            return false;
+        if (sharedAtom) {
+            // We only have non-owning atoms in DOMString for now.
+            // nsDynamicAtom::AddRef is always-inline and defined in a
+            // translation unit we can't get to here.  So we need to go through
+            // nsAtom::AddRef to call it.
+            static_cast<nsAtom*>(atom)->AddRef();
+        }
+        rval.setString(str);
+        return true;
+    }
+
     static MOZ_ALWAYS_INLINE bool IsLiteral(JSString* str)
     {
         return JS_IsExternalString(str) &&
@@ -279,11 +317,15 @@ public:
     }
 
 private:
-    static const JSStringFinalizer sLiteralFinalizer, sDOMStringFinalizer;
+    static const JSStringFinalizer
+      sLiteralFinalizer, sDOMStringFinalizer, sDynamicAtomFinalizer;
 
     static void FinalizeLiteral(const JSStringFinalizer* fin, char16_t* chars);
 
     static void FinalizeDOMString(const JSStringFinalizer* fin, char16_t* chars);
+
+    static void FinalizeDynamicAtom(const JSStringFinalizer* fin,
+                                    char16_t* chars);
 
     XPCStringConvert() = delete;
 };
@@ -364,6 +406,10 @@ bool NonVoidStringToJsval(JSContext* cx, mozilla::dom::DOMString& str,
     if (str.HasLiteral()) {
         return XPCStringConvert::StringLiteralToJSVal(cx, str.Literal(),
                                                       str.LiteralLength(), rval);
+    }
+
+    if (str.HasAtom()) {
+        return XPCStringConvert::DynamicAtomToJSVal(cx, str.Atom(), rval);
     }
 
     // It's an actual XPCOM string
@@ -453,22 +499,34 @@ UnwrapReflectorToISupports(JSObject* reflector);
 JSObject*
 UnprivilegedJunkScope();
 
+/**
+ * This will generally be the shared JSM global, but callers should not depend
+ * on that fact.
+ */
 JSObject*
 PrivilegedJunkScope();
 
 /**
  * Shared compilation scope for XUL prototype documents and XBL
- * precompilation. This compartment has a null principal. No code may run, and
- * it is invisible to the debugger.
+ * precompilation.
  */
 JSObject*
 CompilationScope();
 
 /**
- * Returns the nsIGlobalObject corresponding to |aObj|'s JS global.
+ * Returns the nsIGlobalObject corresponding to |obj|'s JS global. |obj| must
+ * not be a cross-compartment wrapper: CCWs are not associated with a single
+ * global.
  */
 nsIGlobalObject*
-NativeGlobal(JSObject* aObj);
+NativeGlobal(JSObject* obj);
+
+/**
+ * Returns the nsIGlobalObject corresponding to |cx|'s JS global. Must not be
+ * called when |cx| is not in a Realm.
+ */
+nsIGlobalObject*
+CurrentNativeGlobal(JSContext* cx);
 
 /**
  * If |aObj| is a window, returns the associated nsGlobalWindow.
@@ -479,13 +537,14 @@ WindowOrNull(JSObject* aObj);
 
 /**
  * If |aObj| has a window for a global, returns the associated nsGlobalWindow.
- * Otherwise, returns null.
+ * Otherwise, returns null. Note: aObj must not be a cross-compartment wrapper
+ * because CCWs are not associated with a single global/realm.
  */
 nsGlobalWindowInner*
 WindowGlobalOrNull(JSObject* aObj);
 
 /**
- * If |cx| is in a compartment whose global is a window, returns the associated
+ * If |cx| is in a realm whose global is a window, returns the associated
  * nsGlobalWindow. Otherwise, returns null.
  */
 nsGlobalWindowInner*
@@ -563,8 +622,12 @@ class ErrorReport : public ErrorBase {
     void LogToConsole();
     // Log to console, using the given stack object (which should be a stack of
     // the sort that JS::CaptureCurrentStack produces).  aStack is allowed to be
-    // null.
-    void LogToConsoleWithStack(JS::HandleObject aStack);
+    // null. If aStack is non-null, aStackGlobal must be a non-null global
+    // object that's same-compartment with aStack. Note that aStack might be a
+    // CCW. When recording/replaying, aTimeWarpTarget optionally indicates
+    // where the error occurred in the process' execution.
+    void LogToConsoleWithStack(JS::HandleObject aStack, JS::HandleObject aStackGlobal,
+                               uint64_t aTimeWarpTarget = 0);
 
     // Produce an error event message string from the given JSErrorReport.  Note
     // that this may produce an empty string if aReport doesn't have a
@@ -583,9 +646,9 @@ void
 DispatchScriptErrorEvent(nsPIDOMWindowInner* win, JS::RootingContext* rootingCx,
                          xpc::ErrorReport* xpcReport, JS::Handle<JS::Value> exception);
 
-// Get a stack of the sort that can be passed to
+// Get a stack (as stackObj outparam) of the sort that can be passed to
 // xpc::ErrorReport::LogToConsoleWithStack from the given exception value.  Can
-// return null if the exception value doesn't have an associated stack.  The
+// be nullptr if the exception value doesn't have an associated stack.  The
 // returned stack, if any, may also not be in the same compartment as
 // exceptionValue.
 //
@@ -594,9 +657,16 @@ DispatchScriptErrorEvent(nsPIDOMWindowInner* win, JS::RootingContext* rootingCx,
 // course.  If it's not null, this function may return a null stack object if
 // the window is far enough gone, because in those cases we don't want to have
 // the stack in the console message keeping the window alive.
-JSObject*
+//
+// If this function sets stackObj to a non-null value, stackGlobal is set to
+// either the JS exception object's global or the global of the SavedFrame we
+// got from a DOM or XPConnect exception. In all cases, stackGlobal is an
+// unwrapped global object and is same-compartment with stackObj.
+void
 FindExceptionStackForConsoleReport(nsPIDOMWindowInner* win,
-                                   JS::HandleValue exceptionValue);
+                                   JS::HandleValue exceptionValue,
+                                   JS::MutableHandleObject stackObj,
+                                   JS::MutableHandleObject stackGlobal);
 
 // Return a name for the realm.
 // This function makes reasonable efforts to make this name both mostly human-readable
@@ -663,9 +733,22 @@ namespace dom {
 bool IsChromeOrXBL(JSContext* cx, JSObject* /* unused */);
 
 /**
- * Same as IsChromeOrXBL but can be used in worker threads as well.
+ * This is used to prevent UA widget code from directly creating and adopting
+ * nodes via the content document, since they should use the special
+ * create-and-insert apis instead.
  */
-bool ThreadSafeIsChromeOrXBL(JSContext* cx, JSObject* obj);
+bool IsNotUAWidget(JSContext* cx, JSObject* /* unused */);
+
+/**
+ * A test for whether WebIDL methods that should only be visible to
+ * chrome, XBL scopes, or UA Widget scopes.
+ */
+bool IsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* /* unused */);
+
+/**
+ * Same as IsChromeOrXBLOrUAWidget but can be used in worker threads as well.
+ */
+bool ThreadSafeIsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* obj);
 
 } // namespace dom
 } // namespace mozilla

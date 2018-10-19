@@ -8,9 +8,11 @@ import PaymentStateSubscriberMixin from "../mixins/PaymentStateSubscriberMixin.j
 import paymentRequest from "../paymentRequest.js";
 
 import "../components/currency-amount.js";
+import "../components/payment-request-page.js";
 import "./address-picker.js";
 import "./address-form.js";
 import "./basic-card-form.js";
+import "./completion-error-page.js";
 import "./order-details.js";
 import "./payment-method-picker.js";
 import "./shipping-option-picker.js";
@@ -44,15 +46,16 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     this._mainContainer = contents.getElementById("main-container");
     this._orderDetailsOverlay = contents.querySelector("#order-details-overlay");
 
-    this._shippingTypeLabel = contents.querySelector("#shipping-type-label");
     this._shippingAddressPicker = contents.querySelector("address-picker.shipping-related");
+    this._shippingOptionPicker = contents.querySelector("shipping-option-picker");
     this._shippingRelatedEls = contents.querySelectorAll(".shipping-related");
     this._payerRelatedEls = contents.querySelectorAll(".payer-related");
     this._payerAddressPicker = contents.querySelector("address-picker.payer-related");
+    this._paymentMethodPicker = contents.querySelector("payment-method-picker");
 
     this._header = contents.querySelector("header");
 
-    this._errorText = contents.querySelector("#error-text");
+    this._errorText = contents.querySelector("header > .page-error");
 
     this._disabledOverlay = contents.getElementById("disabled-overlay");
 
@@ -112,6 +115,12 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     });
   }
 
+  _isPayerRequested(paymentOptions) {
+    return paymentOptions.requestPayerName ||
+           paymentOptions.requestPayerEmail ||
+           paymentOptions.requestPayerPhone;
+  }
+
   _getAdditionalDisplayItems(state) {
     let methodId = state.selectedPaymentCard;
     let modifier = paymentRequest.getModifierForPaymentMethod(state, methodId);
@@ -119,6 +128,21 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
       return modifier.additionalDisplayItems;
     }
     return [];
+  }
+
+  _updateCompleteStatus(state) {
+    let {completeStatus} = state.request;
+    switch (completeStatus) {
+      case "fail":
+      case "timeout":
+      case "unknown":
+        state.page = {
+          id: `completion-${completeStatus}-error`,
+        };
+        state.changesPrevented = false;
+        break;
+    }
+    return state;
   }
 
   /**
@@ -130,6 +154,9 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
    */
   setStateFromParent(state) {
     let oldAddresses = paymentRequest.getAddresses(this.requestStore.getState());
+    if (state.request) {
+      state = this._updateCompleteStatus(state);
+    }
     this.requestStore.setState(state);
 
     // Check if any foreign-key constraints were invalidated.
@@ -177,19 +204,13 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     }
 
     // Ensure `selectedShippingOption` never refers to a deleted shipping option and
-    // refers to a shipping option if one exists.
+    // matches the merchant's selected option if the user hasn't made a choice.
     if (shippingOptions && (!selectedShippingOption ||
                             !shippingOptions.find(option => option.id == selectedShippingOption))) {
-      // Use the DOM's computed selected shipping option:
-      selectedShippingOption = state.request.shippingOption;
-
-      // Otherwise, default to selecting the first option:
-      if (!selectedShippingOption && shippingOptions.length) {
-        selectedShippingOption = shippingOptions[0].id;
-      }
       this._cachedState.selectedShippingOption = selectedShippingOption;
       this.requestStore.setState({
-        selectedShippingOption,
+        // Use the DOM's computed selected shipping option:
+        selectedShippingOption: state.request.shippingOption,
       });
     }
 
@@ -203,19 +224,43 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
   }
 
   _renderPayButton(state) {
-    this._payButton.disabled = state.changesPrevented;
-    switch (state.completionState) {
-      case "initial":
+    let completeStatus = state.request.completeStatus;
+    switch (completeStatus) {
       case "processing":
       case "success":
-      case "fail":
-      case "unknown":
+      case "unknown": {
+        this._payButton.disabled = true;
+        this._payButton.textContent = this._payButton.dataset[completeStatus + "Label"];
         break;
-      default:
-        throw new Error("Invalid completionState");
+      }
+      case "": {
+        // initial/default state
+        this._payButton.textContent = this._payButton.dataset.label;
+        const INVALID_CLASS_NAME = "invalid-selected-option";
+        this._payButton.disabled =
+          (state.request.paymentOptions.requestShipping &&
+           (!this._shippingAddressPicker.selectedOption ||
+            this._shippingAddressPicker.classList.contains(INVALID_CLASS_NAME) ||
+            !this._shippingOptionPicker.selectedOption)) ||
+          (this._isPayerRequested(state.request.paymentOptions) &&
+           (!this._payerAddressPicker.selectedOption ||
+            this._payerAddressPicker.classList.contains(INVALID_CLASS_NAME))) ||
+          !this._paymentMethodPicker.selectedOption ||
+          this._paymentMethodPicker.classList.contains(INVALID_CLASS_NAME) ||
+          state.changesPrevented;
+        break;
+      }
+      case "fail":
+      case "timeout": {
+        // pay button is hidden in fail/timeout states.
+        this._payButton.textContent = this._payButton.dataset.label;
+        this._payButton.disabled = true;
+        break;
+      }
+      default: {
+        throw new Error(`Invalid completeStatus: ${completeStatus}`);
+      }
     }
-
-    this._payButton.textContent = this._payButton.dataset[state.completionState + "Label"];
   }
 
   stateChangeCallback(state) {
@@ -251,6 +296,10 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
       this.dataset[shippingType + "AddressTitleAdd"];
     this._shippingAddressPicker.dataset.editAddressTitle =
       this.dataset[shippingType + "AddressTitleEdit"];
+    let addressPickerLabel = this._shippingAddressPicker.dataset[shippingType + "AddressLabel"];
+    this._shippingAddressPicker.setAttribute("label", addressPickerLabel);
+    let optionPickerLabel = this._shippingOptionPicker.dataset[shippingType + "OptionsLabel"];
+    this._shippingOptionPicker.setAttribute("label", optionPickerLabel);
 
     let totalItem = paymentRequest.getTotalItem(state);
     let totalAmountEl = this.querySelector("#total > currency-amount");
@@ -262,15 +311,19 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     this._header.hidden = !state.page.onboardingWizard && state.page.id != "payment-summary";
 
     this._orderDetailsOverlay.hidden = !state.orderDetailsShowing;
-    this._errorText.textContent = paymentDetails.error;
+    let genericError = "";
+    if (this._shippingAddressPicker.selectedOption &&
+        (!request.paymentDetails.shippingOptions ||
+         !request.paymentDetails.shippingOptions.length)) {
+      genericError = this._errorText.dataset[shippingType + "GenericError"];
+    }
+    this._errorText.textContent = paymentDetails.error || genericError;
 
     let paymentOptions = request.paymentOptions;
     for (let element of this._shippingRelatedEls) {
       element.hidden = !paymentOptions.requestShipping;
     }
-    let payerRequested = paymentOptions.requestPayerName ||
-                         paymentOptions.requestPayerEmail ||
-                         paymentOptions.requestPayerPhone;
+    let payerRequested = this._isPayerRequested(paymentOptions);
     for (let element of this._payerRelatedEls) {
       element.hidden = !payerRequested;
     }
@@ -293,26 +346,19 @@ export default class PaymentDialog extends PaymentStateSubscriberMixin(HTMLEleme
     this._payerAddressPicker.dataset.addAddressTitle = this.dataset.payerTitleAdd;
     this._payerAddressPicker.dataset.editAddressTitle = this.dataset.payerTitleEdit;
 
-    this._shippingTypeLabel.querySelector("label").textContent =
-      this._shippingTypeLabel.dataset[shippingType + "AddressLabel"];
-
     this._renderPayButton(state);
 
     for (let page of this._mainContainer.querySelectorAll(":scope > .page")) {
       page.hidden = state.page.id != page.id;
     }
 
-    let {
-      changesPrevented,
-      completionState,
-    } = state;
-    if (changesPrevented) {
+    if (state.changesPrevented) {
       this.setAttribute("changes-prevented", "");
     } else {
       this.removeAttribute("changes-prevented");
     }
-    this.setAttribute("completion-state", completionState);
-    this._disabledOverlay.hidden = !changesPrevented;
+    this.setAttribute("complete-status", request.completeStatus);
+    this._disabledOverlay.hidden = !state.changesPrevented;
   }
 }
 

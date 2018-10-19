@@ -108,6 +108,7 @@ static setLcdFilterFunc setLcdFilter;
 extern FT_Face mozilla_NewFTFace(FT_Library aFTLibrary, const char* aFileName, int aFaceIndex);
 extern FT_Face mozilla_NewFTFaceFromData(FT_Library aFTLibrary, const uint8_t* aData, size_t aDataSize, int aFaceIndex);
 extern void mozilla_ReleaseFTFace(FT_Face aFace);
+extern FT_Error mozilla_LoadFTGlyph(FT_Face aFace, uint32_t aGlyphIndex, int32_t aFlags);
 extern void mozilla_LockFTLibrary(FT_Library aFTLibrary);
 extern void mozilla_UnlockFTLibrary(FT_Library aFTLibrary);
 
@@ -656,7 +657,10 @@ _cairo_ft_unscaled_font_destroy (void *abstract_font)
 	 */
 	if (unscaled->faces && unscaled->faces->unscaled == NULL) {
 	    assert (unscaled->faces->next == NULL);
+	    // Guard user-data destruction with the unscaled font mutex.
+	    CAIRO_MUTEX_LOCK (unscaled->mutex);
 	    cairo_font_face_destroy (&unscaled->faces->base);
+	    CAIRO_MUTEX_UNLOCK (unscaled->mutex);
 	}
     } else {
 	_font_map_release_face_lock_held (font_map, unscaled);
@@ -711,7 +715,20 @@ _cairo_ft_unscaled_font_lock_face (cairo_ft_unscaled_font_t *unscaled)
 	    if (entry == NULL)
 		break;
 
-	    _font_map_release_face_lock_held (font_map, entry);
+	    /* Must use try-lock here to avoid deadlock on multiple threads trying to
+	     * acquire the font map lock inside the unscaled font mutexes. In the worst
+	     * case, this may just cause a spin in the extremely unlikely circumstance
+	     * that all open faces are currently locked.
+	     */
+	    if (CAIRO_MUTEX_TRY_LOCK (entry->mutex))
+	    {
+		/* Verify the lock count is still actually 0 inside the mutex before
+		 * trying to free the entry.
+		 */
+		if (_has_unlocked_face (entry))
+		    _font_map_release_face_lock_held (font_map, entry);
+		CAIRO_MUTEX_UNLOCK (entry->mutex);
+	    }
 	}
     }
     _cairo_ft_unscaled_font_map_unlock ();
@@ -2331,7 +2348,7 @@ _cairo_ft_scaled_glyph_init (void			*abstract_font,
     load_flags |= FT_LOAD_COLOR;
 #endif
 
-    error = FT_Load_Glyph (scaled_font->unscaled->face,
+    error = mozilla_LoadFTGlyph (scaled_font->unscaled->face,
 			   _cairo_scaled_glyph_index(scaled_glyph),
 			   load_flags);
     /* XXX ignoring all other errors for now.  They are not fatal, typically
@@ -2485,7 +2502,7 @@ _cairo_ft_scaled_glyph_init (void			*abstract_font,
 	 * so reload it. This will probably never occur though
 	 */
 	if ((info & CAIRO_SCALED_GLYPH_INFO_SURFACE) != 0) {
-	    error = FT_Load_Glyph (face,
+	    error = mozilla_LoadFTGlyph (face,
 				   _cairo_scaled_glyph_index(scaled_glyph),
 				   load_flags | FT_LOAD_NO_BITMAP);
 	    /* XXX ignoring all other errors for now.  They are not fatal, typically
@@ -2744,6 +2761,9 @@ _cairo_ft_font_face_destroy (void *abstract_face)
 	    last_face = tmp_face;
 	}
 
+	// Ensure user-data destruction happens within the unscaled font mutex.
+	_cairo_user_data_array_fini (&font_face->base.user_data);
+
 	CAIRO_MUTEX_UNLOCK (font_face->unscaled->mutex);
 	_cairo_unscaled_font_destroy (&font_face->unscaled->base);
 	font_face->unscaled = NULL;
@@ -2814,6 +2834,24 @@ _cairo_ft_font_face_get_implementation (void                     *abstract_face,
     return abstract_face;
 }
 
+static void
+_cairo_ft_font_face_lock (void *abstract_face)
+{
+    cairo_ft_font_face_t *font_face = abstract_face;
+    if (font_face->unscaled) {
+	CAIRO_MUTEX_LOCK (font_face->unscaled->mutex);
+    }
+}
+
+static void
+_cairo_ft_font_face_unlock (void *abstract_face)
+{
+    cairo_ft_font_face_t *font_face = abstract_face;
+    if (font_face->unscaled) {
+	CAIRO_MUTEX_UNLOCK (font_face->unscaled->mutex);
+    }
+}
+
 const cairo_font_face_backend_t _cairo_ft_font_face_backend = {
     CAIRO_FONT_TYPE_FT,
 #if CAIRO_HAS_FC_FONT
@@ -2823,7 +2861,9 @@ const cairo_font_face_backend_t _cairo_ft_font_face_backend = {
 #endif
     _cairo_ft_font_face_destroy,
     _cairo_ft_font_face_scaled_font_create,
-    _cairo_ft_font_face_get_implementation
+    _cairo_ft_font_face_get_implementation,
+    _cairo_ft_font_face_lock,
+    _cairo_ft_font_face_unlock
 };
 
 #if CAIRO_HAS_FC_FONT
@@ -2911,6 +2951,7 @@ _cairo_ft_font_face_create (cairo_ft_unscaled_font_t *unscaled,
 	/* This "zombie" font_face (from _cairo_ft_font_face_destroy)
 	 * is no longer needed. */
 	assert (unscaled->from_face && unscaled->faces->next == NULL);
+	// The unscaled font mutex is held, so destroying user data is safe inside here.
 	cairo_font_face_destroy (&unscaled->faces->base);
 	unscaled->faces = NULL;
     }

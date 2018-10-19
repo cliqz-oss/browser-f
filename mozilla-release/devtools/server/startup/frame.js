@@ -21,13 +21,14 @@ try {
 
     const DevToolsUtils = require("devtools/shared/DevToolsUtils");
     const { dumpn } = DevToolsUtils;
-    const { DebuggerServer, ActorPool } = require("devtools/server/main");
+    const { DebuggerServer } = require("devtools/server/main");
+    const { ActorPool } = require("devtools/server/actors/common");
 
     DebuggerServer.init();
-    // We want a special server without any root actor and only tab actors.
+    // We want a special server without any root actor and only target-scoped actors.
     // We are going to spawn a FrameTargetActor instance in the next few lines,
     // it is going to act like a root actor without being one.
-    DebuggerServer.registerActors({ tab: true });
+    DebuggerServer.registerActors({ target: true });
 
     const connections = new Map();
 

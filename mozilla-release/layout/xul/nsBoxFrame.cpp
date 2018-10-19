@@ -62,7 +62,7 @@
 #include "mozilla/EventStateManager.h"
 #include "nsDisplayList.h"
 #include "mozilla/Preferences.h"
-#include "nsThemeConstants.h"
+#include "nsStyleConsts.h"
 #include "nsLayoutUtils.h"
 #include "nsSliderFrame.h"
 #include <algorithm>
@@ -1160,7 +1160,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     // Check for frames that are marked as a part of the region used
     // in calculating glass margins on Windows.
     const nsStyleDisplay* styles = StyleDisplay();
-    if (styles && styles->mAppearance == NS_THEME_WIN_EXCLUDE_GLASS) {
+    if (styles && styles->mAppearance == StyleAppearance::MozWinExcludeGlass) {
       aBuilder->AddWindowExcludeGlassRegion(
           this,
           nsRect(aBuilder->ToReferenceFrame(this), GetSize()));
@@ -1264,12 +1264,6 @@ nsBoxFrame::RegUnregAccessKey(bool aDoReg)
     esm->UnregisterAccessKey(mContent->AsElement(), key);
 }
 
-bool
-nsBoxFrame::SupportsOrdinalsInChildren()
-{
-  return true;
-}
-
 void
 nsBoxFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult)
 {
@@ -1293,8 +1287,7 @@ IsBoxOrdinalLEQ(nsIFrame* aFrame1,
 void
 nsBoxFrame::CheckBoxOrder()
 {
-  if (SupportsOrdinalsInChildren() &&
-      !nsIFrame::IsFrameListSorted<IsBoxOrdinalLEQ>(mFrames)) {
+  if (!nsIFrame::IsFrameListSorted<IsBoxOrdinalLEQ>(mFrames)) {
     nsIFrame::SortFrameList<IsBoxOrdinalLEQ>(mFrames);
   }
 }
@@ -1318,9 +1311,6 @@ nsBoxFrame::LayoutChildAt(nsBoxLayoutState& aState, nsIFrame* aBox, const nsRect
 nsresult
 nsBoxFrame::XULRelayoutChildAtOrdinal(nsIFrame* aChild)
 {
-  if (!SupportsOrdinalsInChildren())
-    return NS_OK;
-
   uint32_t ord = aChild->GetXULOrdinal();
 
   nsIFrame* child = mFrames.FirstChild();

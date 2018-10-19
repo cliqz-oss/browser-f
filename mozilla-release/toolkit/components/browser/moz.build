@@ -10,15 +10,12 @@ with Files('**'):
 DIRS += ['build']
 
 XPIDL_SOURCES += [
-    'nsCWebBrowser.idl',
     'nsIEmbeddingSiteWindow.idl',
     'nsIWebBrowser.idl',
     'nsIWebBrowserChrome.idl',
     'nsIWebBrowserChrome2.idl',
     'nsIWebBrowserChrome3.idl',
     'nsIWebBrowserChromeFocus.idl',
-    'nsIWebBrowserFocus.idl',
-    'nsIWebBrowserSetup.idl',
 ]
 
 if CONFIG['NS_PRINTING']:
@@ -47,4 +44,5 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
 
 EXPORTS += [
     'nsEmbedCID.h',
+    'nsWebBrowser.h',
 ]

@@ -8,7 +8,6 @@ var EXPORTED_SYMBOLS = ["UpdateListener"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Timer.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AppMenuNotifications",
                                "resource://gre/modules/AppMenuNotifications.jsm");
@@ -93,7 +92,7 @@ var UpdateListener = {
       callback() {
         Services.telemetry.getHistogramById("UPDATE_NOTIFICATION_DISMISSED").add(type);
       },
-      dismiss: true
+      dismiss: true,
     };
 
     AppMenuNotifications.showNotification("update-" + type,
@@ -223,5 +222,5 @@ var UpdateListener = {
         this.handleUpdateError(update, status);
         break;
     }
-  }
+  },
 };

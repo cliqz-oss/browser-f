@@ -47,11 +47,9 @@ add_task(async function cookie_test() {
   let tab = BrowserTestUtils.addTab(gBrowser, BASE_URL + "test_firstParty_cookie.html");
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, true);
 
-  let iter = Services.cookies.enumerator;
   let count = 0;
-  while (iter.hasMoreElements()) {
+  for (let cookie of Services.cookies.enumerator) {
     count++;
-    let cookie = iter.getNext().QueryInterface(Ci.nsICookie2);
     Assert.equal(cookie.value, "foo", "Cookie value should be foo");
     Assert.equal(cookie.originAttributes.firstPartyDomain, BASE_DOMAIN, "Cookie's origin attributes should be " + BASE_DOMAIN);
   }
@@ -277,4 +275,23 @@ add_task(async function window_open_form_test() {
 
   gBrowser.removeTab(tab);
   await BrowserTestUtils.closeWindow(win);
+});
+
+/**
+ * A test for using an IP address as the first party domain.
+ */
+add_task(async function ip_address_test() {
+  const ipAddr = "127.0.0.1";
+  const ipHost = `http://${ipAddr}/browser/browser/components/originattributes/test/browser/`;
+
+  let tab = BrowserTestUtils.addTab(gBrowser, ipHost + "test_firstParty.html");
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, true);
+
+  await ContentTask.spawn(tab.linkedBrowser, { firstPartyDomain: ipAddr }, async function(attrs) {
+    info("document principal: " + content.document.nodePrincipal.origin);
+    Assert.equal(content.document.nodePrincipal.originAttributes.firstPartyDomain,
+                   attrs.firstPartyDomain, "The firstPartyDomain should be set properly for the IP address");
+  });
+
+  gBrowser.removeTab(tab);
 });

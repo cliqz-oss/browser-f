@@ -8,7 +8,7 @@ use cssparser::{AtRuleParser, CowRcStr, Parser, ParserInput, QualifiedRuleParser
 use cssparser::{parse_one_rule, DeclarationListParser, DeclarationParser, SourceLocation, Token};
 use error_reporting::ContextualParseError;
 use parser::ParserContext;
-use properties::{DeclarationPushMode, Importance, PropertyDeclaration};
+use properties::{Importance, PropertyDeclaration};
 use properties::{LonghandId, PropertyDeclarationBlock, PropertyId};
 use properties::{PropertyDeclarationId, SourcePropertyDeclaration};
 use properties::LonghandIdSet;
@@ -218,6 +218,7 @@ impl Keyframe {
             Some(CssRuleType::Keyframe),
             ParsingMode::DEFAULT,
             parent_stylesheet_contents.quirks_mode,
+            None,
             None,
         );
         context.namespaces = Some(&*namespaces);
@@ -509,14 +510,8 @@ impl<'a, 'i> AtRuleParser<'i> for KeyframeListParser<'a> {
     type Error = StyleParseErrorKind<'i>;
 }
 
-/// A wrapper to wraps the KeyframeSelector with its source location
-struct KeyframeSelectorParserPrelude {
-    selector: KeyframeSelector,
-    source_location: SourceLocation,
-}
-
 impl<'a, 'i> QualifiedRuleParser<'i> for KeyframeListParser<'a> {
-    type Prelude = KeyframeSelectorParserPrelude;
+    type Prelude = KeyframeSelector;
     type QualifiedRule = Arc<Locked<Keyframe>>;
     type Error = StyleParseErrorKind<'i>;
 
@@ -525,27 +520,21 @@ impl<'a, 'i> QualifiedRuleParser<'i> for KeyframeListParser<'a> {
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::Prelude, ParseError<'i>> {
         let start_position = input.position();
-        let start_location = input.current_source_location();
-        match KeyframeSelector::parse(input) {
-            Ok(sel) => Ok(KeyframeSelectorParserPrelude {
-                selector: sel,
-                source_location: start_location,
-            }),
-            Err(e) => {
-                let location = e.location;
-                let error = ContextualParseError::InvalidKeyframeRule(
-                    input.slice_from(start_position),
-                    e.clone(),
+        KeyframeSelector::parse(input).map_err(|e| {
+            let location = e.location;
+            let error = ContextualParseError::InvalidKeyframeRule(
+                input.slice_from(start_position),
+                e.clone(),
                 );
-                self.context.log_css_error(location, error);
-                Err(e)
-            },
-        }
+            self.context.log_css_error(location, error);
+            e
+        })
     }
 
     fn parse_block<'t>(
         &mut self,
-        prelude: Self::Prelude,
+        selector: Self::Prelude,
+        source_location: SourceLocation,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::QualifiedRule, ParseError<'i>> {
         let context = ParserContext::new_with_rule_type(
@@ -566,7 +555,6 @@ impl<'a, 'i> QualifiedRuleParser<'i> for KeyframeListParser<'a> {
                     block.extend(
                         iter.parser.declarations.drain(),
                         Importance::Normal,
-                        DeclarationPushMode::Parsing,
                     );
                 },
                 Err((error, slice)) => {
@@ -580,9 +568,9 @@ impl<'a, 'i> QualifiedRuleParser<'i> for KeyframeListParser<'a> {
             // `parse_important` is not called here, `!important` is not allowed in keyframe blocks.
         }
         Ok(Arc::new(self.shared_lock.wrap(Keyframe {
-            selector: prelude.selector,
+            selector,
             block: Arc::new(self.shared_lock.wrap(block)),
-            source_location: prelude.source_location,
+            source_location,
         })))
     }
 }

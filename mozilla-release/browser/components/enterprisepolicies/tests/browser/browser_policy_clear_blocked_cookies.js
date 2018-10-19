@@ -17,22 +17,20 @@ add_task(async function setup() {
       "Cookies": {
         "Block": [
           `http://${HOSTNAME_DOMAIN}`,
-          `https://${ORIGIN_DOMAIN}:8080`
-        ]
-      }
-    }
+          `https://${ORIGIN_DOMAIN}:8080`,
+        ],
+      },
+    },
   });
 });
 
 function retrieve_all_cookies(host) {
   const values = [];
-  const cookies = Services.cookies.getCookiesFromHost(host, {});
-  while (cookies.hasMoreElements()) {
-    const cookie = cookies.getNext().QueryInterface(Ci.nsICookie);
+  for (let cookie of Services.cookies.getCookiesFromHost(host, {})) {
     values.push({
       host: cookie.host,
       name: cookie.name,
-      path: cookie.path
+      path: cookie.path,
     });
   }
   return values;
@@ -42,7 +40,7 @@ add_task(async function test_cookies_for_blocked_sites_cleared() {
   const cookies = {
     hostname: retrieve_all_cookies(HOSTNAME_DOMAIN),
     origin: retrieve_all_cookies(ORIGIN_DOMAIN),
-    keep: retrieve_all_cookies("example.net")
+    keep: retrieve_all_cookies("example.net"),
   };
   const expected = {
     hostname: [],
@@ -50,8 +48,8 @@ add_task(async function test_cookies_for_blocked_sites_cleared() {
     keep: [
       {host: "example.net",
        name: "secure",
-       path: "/"}
-    ]
+       path: "/"},
+    ],
   };
   is(JSON.stringify(cookies), JSON.stringify(expected),
      "All stored cookies for blocked origins should be cleared");

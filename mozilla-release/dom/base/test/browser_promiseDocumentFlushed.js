@@ -22,8 +22,7 @@ function dirtyStyle() {
   gNavToolbox.style.color = "red";
 }
 
-const gWindowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
+const gWindowUtils = window.windowUtils;
 
 /**
  * Asserts that no style or layout flushes are required by the
@@ -125,9 +124,7 @@ add_task(async function test_can_get_results_from_callback() {
                                               Ci.nsISupportsWeakReference])
     };
 
-    let docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIWebNavigation)
-                         .QueryInterface(Ci.nsIDocShell);
+    let docShell = window.docShell;
     docShell.addWeakReflowObserver(observer);
 
     let toolboxRect = gNavToolbox.getBoundingClientRect();
@@ -158,8 +155,7 @@ add_task(async function test_resolved_in_window_close() {
 
   await win.promiseDocumentFlushed(() => {});
 
-  let docShell = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDocShell);
+  let docShell = win.docShell;
   docShell.contentViewer.pausePainting();
 
   win.gNavToolbox.style.padding = "5px";

@@ -9,19 +9,9 @@ BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 
 JAR_MANIFESTS += ['jar.mn']
 
-XPIDL_SOURCES += [
-    'nsISessionStartup.idl',
-]
-
-XPIDL_MODULE = 'sessionstore'
-
-EXTRA_COMPONENTS += [
-    'nsSessionStartup.js',
-    'nsSessionStartup.manifest',
-]
-
 EXTRA_JS_MODULES.sessionstore = [
     'ContentRestore.jsm',
+    'ContentSessionStore.jsm',
     'DocShellCapabilities.jsm',
     'GlobalState.jsm',
     'RecentlyClosedTabsAndWindowsMenuUtils.jsm',
@@ -30,6 +20,7 @@ EXTRA_JS_MODULES.sessionstore = [
     'SessionFile.jsm',
     'SessionMigration.jsm',
     'SessionSaver.jsm',
+    'SessionStartup.jsm',
     'SessionStorage.jsm',
     'SessionStore.jsm',
     'SessionWorker.js',

@@ -15,7 +15,6 @@
 "use strict";
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
@@ -34,7 +33,7 @@ var EXPORTED_SYMBOLS = ["JsonSchemaValidator"];
 var JsonSchemaValidator = {
   validateAndParseParameters(param, properties) {
     return validateAndParseParamRecursive(param, properties);
-  }
+  },
 };
 
 function validateAndParseParamRecursive(param, properties) {
@@ -80,12 +79,21 @@ function validateAndParseParamRecursive(param, properties) {
         return [false, null];
       }
 
+      // strict defaults to true if not present
+      let strict = true;
+      if ("strict" in properties) {
+        strict = properties.strict;
+      }
+
       let parsedArray = [];
       for (let item of param) {
         log.debug(`in array, checking @${item}@ for type ${properties.items.type}`);
         let [valid, parsedValue] = validateAndParseParamRecursive(item, properties.items);
         if (!valid) {
-          return [false, null];
+          if (strict) {
+            return [false, null];
+          }
+          continue;
         }
 
         parsedArray.push(parsedValue);

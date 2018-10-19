@@ -13,7 +13,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   OS: "resource://gre/modules/osfile.jsm",
-  Services: "resource://gre/modules/Services.jsm"
+  Services: "resource://gre/modules/Services.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
 });
 
 /**
@@ -37,7 +38,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 function HistoryDownloadElementShell(download) {
   this._download = download;
 
-  this.element = document.createElement("richlistitem");
+  this.element = document.createXULElement("richlistitem");
   this.element._shell = this;
 
   this.element.classList.add("download");
@@ -264,8 +265,7 @@ DownloadsPlacesView.prototype = {
       }
 
       let rlbRect = this._richlistbox.getBoundingClientRect();
-      let winUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
+      let winUtils = window.windowUtils;
       let nodes = winUtils.nodesFromRect(rlbRect.left, rlbRect.top,
                                          0, rlbRect.width, rlbRect.height, 0,
                                          true, false);
@@ -612,9 +612,9 @@ DownloadsPlacesView.prototype = {
   downloadsCmd_clearDownloads() {
     this._downloadsData.removeFinished();
     if (this._place) {
-      Cc["@mozilla.org/browser/download-history;1"]
-        .getService(Ci.nsIDownloadHistory)
-        .removeAllDownloads();
+      PlacesUtils.history.removeVisitsByFilter({
+        transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD,
+      }).catch(Cu.reportError);
     }
     // There may be no selection or focus change as a result
     // of these change, and we want the command updated immediately.

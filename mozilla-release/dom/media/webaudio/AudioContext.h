@@ -70,6 +70,7 @@ class PannerNode;
 class ScriptProcessorNode;
 class StereoPannerNode;
 class WaveShaperNode;
+class Worklet;
 class PeriodicWave;
 struct PeriodicWaveConstraints;
 class Promise;
@@ -192,6 +193,9 @@ public:
   AudioListener* Listener();
 
   AudioContextState State() const { return mAudioContextState; }
+
+  Worklet* GetAudioWorklet(ErrorResult& aRv);
+
   bool IsRunning() const;
 
   // Those three methods return a promise to content, that is resolved when an
@@ -305,10 +309,6 @@ public:
   // unregistering would not be safe.
   void UnregisterActiveNode(AudioNode* aNode);
 
-  void UnregisterAudioBufferSourceNode(AudioBufferSourceNode* aNode);
-  void UnregisterPannerNode(PannerNode* aNode);
-  void UpdatePannerSource();
-
   uint32_t MaxChannelCount() const;
 
   uint32_t ActiveNodeCount() const;
@@ -352,6 +352,7 @@ private:
   AudioContextState mAudioContextState;
   RefPtr<AudioDestinationNode> mDestination;
   RefPtr<AudioListener> mListener;
+  RefPtr<Worklet> mWorklet;
   nsTArray<UniquePtr<WebAudioDecodeJob> > mDecodeJobs;
   // This array is used to keep the suspend/close promises alive until
   // they are resolved, so we can safely pass them accross threads.
@@ -366,9 +367,6 @@ private:
   nsTHashtable<nsRefPtrHashKey<AudioNode> > mActiveNodes;
   // Raw (non-owning) references to all AudioNodes for this AudioContext.
   nsTHashtable<nsPtrHashKey<AudioNode> > mAllNodes;
-  // Hashsets containing all the PannerNodes, to compute the doppler shift.
-  // These are weak pointers.
-  nsTHashtable<nsPtrHashKey<PannerNode> > mPannerNodes;
   // Cache to avoid recomputing basic waveforms all the time.
   RefPtr<BasicWaveFormCache> mBasicWaveFormCache;
   // Number of channels passed in the OfflineAudioContext ctor.

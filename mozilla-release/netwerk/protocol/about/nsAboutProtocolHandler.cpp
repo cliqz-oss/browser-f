@@ -185,7 +185,12 @@ nsAboutProtocolHandler::NewChannel2(nsIURI* uri,
             // a srcdoc iframe.  To ensure that it stays unresolvable, we pretend
             // that it doesn't exist.
             rv = NS_ERROR_FACTORY_NOT_REGISTERED;
-        } else {
+        } else if (!path.EqualsLiteral("blank") &&
+                   !path.EqualsLiteral("neterror") &&
+                   !path.EqualsLiteral("home") &&
+                   !path.EqualsLiteral("welcome") &&
+                   !path.EqualsLiteral("newtab") &&
+                   !path.EqualsLiteral("certerror")) {
             nsCOMPtr<nsIEnterprisePolicies> policyManager =
                 do_GetService("@mozilla.org/browser/enterprisepolicies;1", &rv2);
             if (NS_SUCCEEDED(rv2)) {
@@ -362,7 +367,7 @@ NS_INTERFACE_MAP_END_INHERITING(nsSimpleNestedURI)
 NS_IMETHODIMP
 nsNestedAboutURI::Read(nsIObjectInputStream *aStream)
 {
-    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    MOZ_ASSERT_UNREACHABLE("Use nsIURIMutator.read() instead");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -429,9 +434,9 @@ nsNestedAboutURI::StartClone(nsSimpleURI::RefHandlingEnum aRefHandlingMode,
     if (aRefHandlingMode == eHonorRef) {
         innerClone = mInnerURI;
     } else if (aRefHandlingMode == eReplaceRef) {
-        rv = mInnerURI->CloneWithNewRef(aNewRef, getter_AddRefs(innerClone));
+        rv = NS_GetURIWithNewRef(mInnerURI, aNewRef, getter_AddRefs(innerClone));
     } else {
-        rv = mInnerURI->CloneIgnoringRef(getter_AddRefs(innerClone));
+        rv = NS_GetURIWithoutRef(mInnerURI, getter_AddRefs(innerClone));
     }
 
     if (NS_FAILED(rv)) {

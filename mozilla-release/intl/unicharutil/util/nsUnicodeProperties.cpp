@@ -26,7 +26,9 @@ GetCharProps2(uint32_t aCh)
                                [aCh & ((1 << kCharProp2CharBits) - 1)];
     }
 
-    NS_NOTREACHED("Getting CharProps for codepoint outside Unicode range");
+    MOZ_ASSERT_UNREACHABLE("Getting CharProps for codepoint outside Unicode "
+                           "range");
+
     // Default values for unassigned
     using namespace mozilla::unicode;
     static const nsCharProps2 undefined = {
@@ -154,7 +156,9 @@ IsClusterExtender(uint32_t aCh, uint8_t aCategory)
     return ((aCategory >= HB_UNICODE_GENERAL_CATEGORY_SPACING_MARK &&
              aCategory <= HB_UNICODE_GENERAL_CATEGORY_NON_SPACING_MARK) ||
             (aCh >= 0x200c && aCh <= 0x200d) || // ZWJ, ZWNJ
-            (aCh >= 0xff9e && aCh <= 0xff9f));  // katakana sound marks
+            (aCh >= 0xff9e && aCh <= 0xff9f) || // katakana sound marks
+            (aCh >= 0x1F3FB && aCh <= 0x1F3FF) || // fitzpatrick skin tone modifiers
+            (aCh >= 0xe0020 && aCh <= 0xe007f)); // emoji (flag) tag characters
 }
 
 enum HSType {

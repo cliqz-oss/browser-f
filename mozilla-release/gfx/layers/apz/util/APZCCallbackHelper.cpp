@@ -19,15 +19,16 @@
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/TouchEvents.h"
-#include "nsContentUtils.h"
 #include "nsContainerFrame.h"
-#include "nsIScrollableFrame.h"
-#include "nsLayoutUtils.h"
-#include "nsIInterfaceRequestorUtils.h"
+#include "nsContentUtils.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMWindowUtils.h"
+#include "nsIDocument.h"
+#include "nsIInterfaceRequestorUtils.h"
+#include "nsIScrollableFrame.h"
+#include "nsLayoutUtils.h"
+#include "nsPrintfCString.h"
 #include "nsRefreshDriver.h"
 #include "nsString.h"
 #include "nsView.h"
@@ -74,11 +75,23 @@ RecenterDisplayPort(mozilla::layers::FrameMetrics& aFrameMetrics)
   aFrameMetrics.SetDisplayPortMargins(margins);
 }
 
+static already_AddRefed<nsIPresShell>
+GetPresShell(const nsIContent* aContent)
+{
+  nsCOMPtr<nsIPresShell> result;
+  if (nsIDocument* doc = aContent->GetComposedDoc()) {
+    result = doc->GetShell();
+  }
+  return result.forget();
+}
+
 static CSSPoint
 ScrollFrameTo(nsIScrollableFrame* aFrame, const FrameMetrics& aMetrics, bool& aSuccessOut)
 {
   aSuccessOut = false;
-  CSSPoint targetScrollPosition = aMetrics.GetScrollOffset();
+  CSSPoint targetScrollPosition = aMetrics.IsRootContent()
+    ? aMetrics.GetViewport().TopLeft()
+    : aMetrics.GetScrollOffset();
 
   if (!aFrame) {
     return targetScrollPosition;
@@ -93,18 +106,38 @@ ScrollFrameTo(nsIScrollableFrame* aFrame, const FrameMetrics& aMetrics, bool& aS
     return geckoScrollPosition;
   }
 
-  // If the frame is overflow:hidden on a particular axis, we don't want to allow
-  // user-driven scroll on that axis. Simply set the scroll position on that axis
-  // to whatever it already is. Note that this will leave the APZ's async scroll
-  // position out of sync with the gecko scroll position, but APZ can deal with that
-  // (by design). Note also that when we run into this case, even if both axes
-  // have overflow:hidden, we want to set aSuccessOut to true, so that the displayport
-  // follows the async scroll position rather than the gecko scroll position.
-  if (aFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
-    targetScrollPosition.y = geckoScrollPosition.y;
+  // If this frame is overflow:hidden, then the expectation is that it was
+  // sized in a way that respects its scrollable boundaries. For the root
+  // frame, this means that it cannot be scrolled in such a way that it moves
+  // the layout viewport. For a non-root frame, this means that it cannot be
+  // scrolled at all.
+  //
+  // In either case, |targetScrollPosition| should be the same as
+  // |geckoScrollPosition| here.
+  //
+  // However, this is slightly racy. We query the overflow property of the
+  // scroll frame at the time the repaint request arrives at the main thread
+  // (i.e., right now), but APZ made the decision of whether or not to allow
+  // scrolling based on the information it had at the time it processed the
+  // scroll event. The overflow property could have changed at some time
+  // between the two events and so APZ may have computed a scrollable region
+  // that is larger than what is actually allowed.
+  //
+  // Currently, we allow the scroll position to change even though the frame is
+  // overflow:hidden (that is, we take |targetScrollPosition|). If this turns
+  // out to be problematic, an alternative solution would be to ignore the
+  // scroll position change (that is, use |geckoScrollPosition|).
+  if (aFrame->GetScrollStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN &&
+      targetScrollPosition.y != geckoScrollPosition.y) {
+    NS_WARNING(nsPrintfCString(
+          "APZCCH: targetScrollPosition.y (%f) != geckoScrollPosition.y (%f)",
+          targetScrollPosition.y, geckoScrollPosition.y).get());
   }
-  if (aFrame->GetScrollbarStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN) {
-    targetScrollPosition.x = geckoScrollPosition.x;
+  if (aFrame->GetScrollStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN &&
+      targetScrollPosition.x != geckoScrollPosition.x) {
+    NS_WARNING(nsPrintfCString(
+          "APZCCH: targetScrollPosition.x (%f) != geckoScrollPosition.x (%f)",
+          targetScrollPosition.x, geckoScrollPosition.x).get());
   }
 
   // If the scrollable frame is currently in the middle of an async or smooth
@@ -142,6 +175,11 @@ ScrollFrame(nsIContent* aContent,
   if (sf) {
     sf->ResetScrollInfoIfGeneration(aMetrics.GetScrollGeneration());
     sf->SetScrollableByAPZ(!aMetrics.IsScrollInfoLayer());
+    if (sf->IsRootScrollFrameOfDocument()) {
+      if (nsCOMPtr<nsIPresShell> shell = GetPresShell(aContent)) {
+        shell->SetVisualViewportOffset(CSSPoint::ToAppUnits(aMetrics.GetScrollOffset()));
+      }
+    }
   }
   bool scrollUpdated = false;
   CSSPoint apzScrollOffset = aMetrics.GetScrollOffset();
@@ -162,6 +200,15 @@ ScrollFrame(nsIContent* aContent,
       // actual scroll offset.
       APZCCallbackHelper::AdjustDisplayPortForScrollDelta(aMetrics, actualScrollOffset);
     }
+  } else if (aMetrics.IsRootContent() &&
+             aMetrics.GetScrollOffset() != aMetrics.GetViewport().TopLeft()) {
+    // APZ uses the visual viewport's offset to calculate where to place the
+    // display port, so the display port is misplaced when a pinch zoom occurs.
+    //
+    // We need to force a display port adjustment in the following paint to
+    // account for a difference between mScrollOffset and the actual scroll
+    // offset in repaints requested by AsyncPanZoomController::NotifyLayersUpdated.
+    APZCCallbackHelper::AdjustDisplayPortForScrollDelta(aMetrics, actualScrollOffset);
   } else {
     // For whatever reason we couldn't update the scroll offset on the scroll frame,
     // which means the data APZ used for its displayport calculation is stale. Fall
@@ -212,19 +259,9 @@ SetDisplayPortMargins(nsIPresShell* aPresShell,
 
   CSSSize baseSize = aMetrics.CalculateCompositedSizeInCssPixels();
   nsRect base(0, 0,
-              baseSize.width * nsPresContext::AppUnitsPerCSSPixel(),
-              baseSize.height * nsPresContext::AppUnitsPerCSSPixel());
+              baseSize.width * AppUnitsPerCSSPixel(),
+              baseSize.height * AppUnitsPerCSSPixel());
   nsLayoutUtils::SetDisplayPortBaseIfNotSet(aContent, base);
-}
-
-static already_AddRefed<nsIPresShell>
-GetPresShell(const nsIContent* aContent)
-{
-  nsCOMPtr<nsIPresShell> result;
-  if (nsIDocument* doc = aContent->GetComposedDoc()) {
-    result = doc->GetShell();
-  }
-  return result.forget();
 }
 
 static void
@@ -518,7 +555,7 @@ APZCCallbackHelper::DispatchSynthesizedMouseEvent(EventMessage aMsg,
   event.mRefPoint = LayoutDeviceIntPoint::Truncate(aRefPoint.x, aRefPoint.y);
   event.mTime = aTime;
   event.button = WidgetMouseEvent::eLeftButton;
-  event.inputSource = dom::MouseEventBinding::MOZ_SOURCE_TOUCH;
+  event.inputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
   if (aMsg == eMouseLongTap) {
     event.mFlags.mOnlyChromeDispatch = true;
   }
@@ -862,7 +899,8 @@ APZCCallbackHelper::NotifyMozMouseScrollEvent(const FrameMetrics::ViewID& aScrol
   nsContentUtils::DispatchTrustedEvent(
     ownerDoc, targetContent,
     aEvent,
-    true, true);
+    CanBubble::eYes,
+    Cancelable::eYes);
 }
 
 void
@@ -882,48 +920,6 @@ APZCCallbackHelper::NotifyFlushComplete(nsIPresShell* aShell)
   nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
   MOZ_ASSERT(observerService);
   observerService->NotifyObservers(nullptr, "apz-repaints-flushed", nullptr);
-}
-
-static int32_t sActiveSuppressDisplayport = 0;
-static bool sDisplayPortSuppressionRespected = true;
-
-void
-APZCCallbackHelper::SuppressDisplayport(const bool& aEnabled,
-                                        const nsCOMPtr<nsIPresShell>& aShell)
-{
-  if (aEnabled) {
-    sActiveSuppressDisplayport++;
-  } else {
-    bool isSuppressed = IsDisplayportSuppressed();
-    sActiveSuppressDisplayport--;
-    if (isSuppressed && !IsDisplayportSuppressed() &&
-        aShell && aShell->GetRootFrame()) {
-      // We unsuppressed the displayport, trigger a paint
-      aShell->GetRootFrame()->SchedulePaint();
-    }
-  }
-
-  MOZ_ASSERT(sActiveSuppressDisplayport >= 0);
-}
-
-void
-APZCCallbackHelper::RespectDisplayPortSuppression(bool aEnabled,
-                                                  const nsCOMPtr<nsIPresShell>& aShell)
-{
-  bool isSuppressed = IsDisplayportSuppressed();
-  sDisplayPortSuppressionRespected = aEnabled;
-  if (isSuppressed && !IsDisplayportSuppressed() &&
-      aShell && aShell->GetRootFrame()) {
-    // We unsuppressed the displayport, trigger a paint
-    aShell->GetRootFrame()->SchedulePaint();
-  }
-}
-
-bool
-APZCCallbackHelper::IsDisplayportSuppressed()
-{
-  return sDisplayPortSuppressionRespected
-      && sActiveSuppressDisplayport > 0;
 }
 
 /* static */ bool

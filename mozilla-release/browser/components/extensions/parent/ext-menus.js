@@ -75,8 +75,8 @@ var gMenuBuilder = {
     menu.addEventListener("popuphidden", this);
 
     if (visible.length) {
-      const separator = menu.ownerDocument.createElement("menuseparator");
-      menu.insertBefore(separator, menu.firstChild);
+      const separator = menu.ownerDocument.createXULElement("menuseparator");
+      menu.insertBefore(separator, menu.firstElementChild);
       this.itemsToCleanUp.add(separator);
 
       for (const child of visible) {
@@ -91,7 +91,7 @@ var gMenuBuilder = {
     const element = this.buildSingleElement(item, contextData);
     const children = this.buildChildren(item, contextData);
     if (children.length) {
-      element.firstChild.append(...children);
+      element.firstElementChild.append(...children);
     }
     return element;
   },
@@ -118,7 +118,7 @@ var gMenuBuilder = {
 
   createTopLevelElement(root, contextData) {
     let rootElement = this.buildElementWithChildren(root, contextData);
-    if (!rootElement.firstChild || !rootElement.firstChild.childNodes.length) {
+    if (!rootElement.firstElementChild || !rootElement.firstElementChild.children.length) {
       // If the root has no visible children, there is no reason to show
       // the root menu item itself either.
       return null;
@@ -129,13 +129,17 @@ var gMenuBuilder = {
     // Display the extension icon on the root element.
     if (root.extension.manifest.icons) {
       this.setMenuItemIcon(rootElement, root.extension, contextData, root.extension.manifest.icons);
+    } else {
+      // Undo changes from setMenuItemIcon:
+      rootElement.removeAttribute("class");
+      rootElement.removeAttribute("image");
     }
     return rootElement;
   },
 
   appendTopLevelElement(rootElement) {
     if (this.itemsToCleanUp.size === 0) {
-      const separator = this.xulMenu.ownerDocument.createElement("menuseparator");
+      const separator = this.xulMenu.ownerDocument.createXULElement("menuseparator");
       this.itemsToCleanUp.add(separator);
       this.xulMenu.append(separator);
     }
@@ -156,9 +160,9 @@ var gMenuBuilder = {
   removeTopLevelMenuIfNeeded(element) {
     // If there is only one visible top level element we don't need the
     // root menu element for the extension.
-    let menuPopup = element.firstChild;
-    if (menuPopup && menuPopup.childNodes.length == 1) {
-      let onlyChild = menuPopup.firstChild;
+    let menuPopup = element.firstElementChild;
+    if (menuPopup && menuPopup.children.length == 1) {
+      let onlyChild = menuPopup.firstElementChild;
 
       // Keep single checkbox items in the submenu on Linux since
       // the extension icon overlaps the checkbox otherwise.
@@ -179,18 +183,18 @@ var gMenuBuilder = {
     if (item.children.length > 0) {
       element = this.createMenuElement(doc, item);
     } else if (item.type == "separator") {
-      element = doc.createElement("menuseparator");
+      element = doc.createXULElement("menuseparator");
     } else {
-      element = doc.createElement("menuitem");
+      element = doc.createXULElement("menuitem");
     }
 
     return this.customizeElement(element, item, contextData);
   },
 
   createMenuElement(doc, item) {
-    let element = doc.createElement("menu");
+    let element = doc.createXULElement("menu");
     // Menu elements need to have a menupopup child for its menu items.
-    let menupopup = doc.createElement("menupopup");
+    let menupopup = doc.createXULElement("menupopup");
     element.appendChild(menupopup);
     return element;
   },
@@ -198,6 +202,22 @@ var gMenuBuilder = {
   customizeElement(element, item, contextData) {
     let label = item.title;
     if (label) {
+      let accessKey;
+      label = label.replace(/&([\S\s]|$)/g, (_, nextChar, i) => {
+        if (nextChar === "&") {
+          return "&";
+        }
+        if (accessKey === undefined) {
+          if (nextChar === "%" && label.charAt(i + 2) === "s") {
+            accessKey = "";
+          } else {
+            accessKey = nextChar;
+          }
+        }
+        return nextChar;
+      });
+      element.setAttribute("accesskey", accessKey || "");
+
       if (contextData.isTextSelected && label.indexOf("%s") > -1) {
         let selection = contextData.selectionText.trim();
         // The rendering engine will truncate the title if it's longer than 64 characters.
@@ -270,8 +290,8 @@ var gMenuBuilder = {
         item.checked = true;
       }
 
-      if (!contextData.onBookmark) {
-        item.tabManager.addActiveTabPermission();
+      if (contextData.tab) {
+        item.tabManager.addActiveTabPermission(contextData.tab);
       }
 
       let info = item.getClickInfo(contextData, wasChecked);
@@ -333,14 +353,13 @@ var gMenuBuilder = {
       return;
     }
 
-    if (!gShownMenuItems.has(extension)) {
-      // The onShown event was not fired for the extension, so the extension
-      // does not know that a menu is being shown, and therefore they should
-      // not care whether the extension menu is updated.
-      return;
-    }
-
     if (contextData.onBrowserAction || contextData.onPageAction) {
+      if (contextData.extension.id !== extension.id) {
+        // The extension that just called refresh() is not the owner of the
+        // action whose context menu is showing, so it can't have any items in
+        // the menu anyway and nothing will change.
+        return;
+      }
       // The action menu can only have items from one extension, so remove all
       // items (including the separator) and rebuild the action menu (if any).
       for (let item of this.itemsToCleanUp) {
@@ -470,7 +489,7 @@ const getMenuContexts = contextData => {
   return contexts;
 };
 
-function addMenuEventInfo(info, contextData, includeSensitiveData) {
+function addMenuEventInfo(info, contextData, extension, includeSensitiveData) {
   if (contextData.onVideo) {
     info.mediaType = "video";
   } else if (contextData.onAudio) {
@@ -486,6 +505,12 @@ function addMenuEventInfo(info, contextData, includeSensitiveData) {
   }
   info.editable = contextData.onEditable || false;
   if (includeSensitiveData) {
+    // menus.getTargetElement requires the "menus" permission, so do not set
+    // targetElementId for extensions with only the "contextMenus" permission.
+    if (contextData.timeStamp && extension.hasPermission("menus")) {
+      // Convert to integer, in case the DOMHighResTimeStamp has a fractional part.
+      info.targetElementId = Math.floor(contextData.timeStamp);
+    }
     if (contextData.onLink) {
       info.linkText = contextData.linkText;
       info.linkUrl = contextData.linkUrl;
@@ -539,7 +564,7 @@ MenuItem.prototype = {
     }
 
     if (createProperties.targetUrlPatterns != null) {
-      this.targetUrlMatchPattern = new MatchPatternSet(this.targetUrlPatterns);
+      this.targetUrlMatchPattern = new MatchPatternSet(this.targetUrlPatterns, {restrictSchemes: false});
     }
 
     // If a child MenuItem does not specify any contexts, then it should
@@ -555,6 +580,7 @@ MenuItem.prototype = {
       checked: false,
       contexts: ["all"],
       enabled: true,
+      visible: true,
     });
   },
 
@@ -672,7 +698,7 @@ MenuItem.prototype = {
       info.parentMenuItemId = this.parentId;
     }
 
-    addMenuEventInfo(info, contextData, true);
+    addMenuEventInfo(info, contextData, this.extension, true);
 
     if ((this.type === "checkbox") || (this.type === "radio")) {
       info.checked = this.checked;
@@ -683,6 +709,9 @@ MenuItem.prototype = {
   },
 
   enabledForContext(contextData) {
+    if (!this.visible) {
+      return false;
+    }
     let contexts = getMenuContexts(contextData);
     if (!this.contexts.some(n => contexts.has(n))) {
       return false;
@@ -833,7 +862,7 @@ this.menusInternal = class extends ExtensionAPI {
               (nativeTab && extension.tabManager.hasActiveTabPermission(nativeTab)) ||
               (contextUrl && extension.whiteListedHosts.matches(contextUrl));
 
-            addMenuEventInfo(info, contextData, includeSensitiveData);
+            addMenuEventInfo(info, contextData, extension, includeSensitiveData);
 
             let tab = nativeTab && extension.tabManager.convert(nativeTab);
             fire.sync(info, tab);

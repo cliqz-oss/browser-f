@@ -24,7 +24,6 @@ var EXPORTED_SYMBOLS = ["PerformanceStats"];
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
-ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm", this);
 ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "setTimeout",
@@ -178,7 +177,7 @@ Probe.prototype = {
       throw new TypeError();
     }
     return this._impl.compose(stats);
-  }
+  },
 };
 
 // Utility function. Return the position of the last non-0 item in an
@@ -225,7 +224,7 @@ var Probes = {
         totalSystemTime: xpcom.totalSystemTime,
         totalCPUTime: xpcom.totalUserTime + xpcom.totalSystemTime,
         durations,
-        longestDuration: lastNonZero(durations)
+        longestDuration: lastNonZero(durations),
       };
     },
     isEqual(a, b) {
@@ -265,7 +264,7 @@ var Probes = {
         totalSystemTime: 0,
         totalCPUTime: 0,
         durations: [],
-        longestDuration: -1
+        longestDuration: -1,
       };
       for (let stat of stats) {
         result.totalUserTime += stat.totalUserTime;
@@ -277,7 +276,7 @@ var Probes = {
         result.longestDuration = Math.max(result.longestDuration, stat.longestDuration);
       }
       return result;
-    }
+    },
   }),
 
   /**
@@ -297,7 +296,7 @@ var Probes = {
     },
     extract(xpcom) {
       return {
-        totalCPOWTime: xpcom.totalCPOWTime
+        totalCPOWTime: xpcom.totalCPOWTime,
       };
     },
     isEqual(a, b) {
@@ -305,7 +304,7 @@ var Probes = {
     },
     subtract(a, b) {
       return {
-        totalCPOWTime: a.totalCPOWTime - b.totalCPOWTime
+        totalCPOWTime: a.totalCPOWTime - b.totalCPOWTime,
       };
     },
     importChildCompartments() { /* nothing to do */ },
@@ -334,7 +333,7 @@ var Probes = {
     get isActive() { return true; },
     extract(xpcom) {
       return {
-        ticks: xpcom.ticks
+        ticks: xpcom.ticks,
       };
     },
     isEqual(a, b) {
@@ -342,7 +341,7 @@ var Probes = {
     },
     subtract(a, b) {
       return {
-        ticks: a.ticks - b.ticks
+        ticks: a.ticks - b.ticks,
       };
     },
     importChildCompartments() { /* nothing to do */ },
@@ -482,7 +481,7 @@ PerformanceMonitor.prototype = {
         xpcom,
         childProcesses,
         probes,
-        date: Cu.now()
+        date: Cu.now(),
       });
     })();
   },
@@ -504,7 +503,7 @@ PerformanceMonitor.prototype = {
     this._probes = null;
     this._id = null;
     this._finalizer = null;
-  }
+  },
 };
 /**
  * @type {Map<string, Array<string>>} A map from id (as produced by `makeId`)
@@ -572,7 +571,7 @@ var PerformanceStats = {
    */
   getMonitor(probes) {
     return PerformanceMonitor.make(probes);
-  }
+  },
 };
 
 
@@ -657,7 +656,7 @@ PerformanceDataLeaf.prototype = {
    */
   subtract(to = null) {
     return (new PerformanceDiffLeaf(this, to));
-  }
+  },
 };
 
 function PerformanceData(timestamp) {
@@ -718,7 +717,7 @@ PerformanceData.prototype = {
   },
   get title() {
     return this._all[0].title;
-  }
+  },
 };
 
 function PerformanceDiff(current, old = null) {
@@ -777,7 +776,7 @@ PerformanceDiff.prototype = {
   },
   get processes() {
     return this._all.map(item => ({ isChildProcess: item.isChildProcess, processId: item.processId}));
-  }
+  },
 };
 
 /**
@@ -809,17 +808,15 @@ function ProcessSnapshot({xpcom, probes}) {
   this.componentsData = [];
 
   let subgroups = new Map();
-  let enumeration = xpcom.getComponentsData().enumerate();
-  while (enumeration.hasMoreElements()) {
-    let xpcom = enumeration.getNext().QueryInterface(Ci.nsIPerformanceStats);
-    let stat = (new PerformanceDataLeaf({xpcom, probes}));
+  for (let data of xpcom.getComponentsData().enumerate(Ci.nsIPerformanceStats)) {
+    let stat = (new PerformanceDataLeaf({xpcom: data, probes}));
 
-    if (!xpcom.parentId) {
+    if (!data.parentId) {
       this.componentsData.push(stat);
     } else {
-      let siblings = subgroups.get(xpcom.parentId);
+      let siblings = subgroups.get(data.parentId);
       if (!siblings) {
-        subgroups.set(xpcom.parentId, (siblings = []));
+        subgroups.set(data.parentId, (siblings = []));
       }
       siblings.push(stat);
     }
@@ -979,5 +976,5 @@ var Process = {
     this.loader.removeMessageListener(TOPIC, observer);
 
     return collected;
-  }
+  },
 };

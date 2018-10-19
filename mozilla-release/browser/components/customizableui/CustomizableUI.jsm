@@ -28,8 +28,6 @@ XPCOMUtils.defineLazyGetter(this, "gWidgetsBundle", function() {
 XPCOMUtils.defineLazyServiceGetter(this, "gELS",
   "@mozilla.org/eventlistenerservice;1", "nsIEventListenerService");
 
-const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-
 const kSpecialWidgetPfx = "customizableui-special-";
 
 const kPrefCustomizationState        = "browser.uiCustomization.state";
@@ -41,7 +39,7 @@ const kPrefUIDensity                 = "browser.uidensity";
 const kPrefAutoTouchMode             = "browser.touchmode.auto";
 const kPrefAutoHideDownloadsButton   = "browser.download.autohideButton";
 
-const kExpectedWindowURL = "chrome://browser/content/browser.xul";
+const kExpectedWindowURL = AppConstants.BROWSER_CHROME_URL;
 
 /**
  * The keys are the handlers that are fired when the event type (the value)
@@ -50,7 +48,7 @@ const kExpectedWindowURL = "chrome://browser/content/browser.xul";
  */
 const kSubviewEvents = [
   "ViewShowing",
-  "ViewHiding"
+  "ViewHiding",
 ];
 
 /**
@@ -791,11 +789,11 @@ var CustomizableUIInternal = {
     this.beginBatchUpdate();
 
     try {
-      let currentNode = container.firstChild;
+      let currentNode = container.firstElementChild;
       let placementsToRemove = new Set();
       for (let id of aPlacements) {
         while (currentNode && currentNode.getAttribute("skipintoolbarset") == "true") {
-          currentNode = currentNode.nextSibling;
+          currentNode = currentNode.nextElementSibling;
         }
 
         // Fix ids for specials and continue, for correctly placed specials.
@@ -804,7 +802,7 @@ var CustomizableUIInternal = {
           currentNode.id = id;
         }
         if (currentNode && currentNode.id == id) {
-          currentNode = currentNode.nextSibling;
+          currentNode = currentNode.nextElementSibling;
           continue;
         }
 
@@ -854,10 +852,10 @@ var CustomizableUIInternal = {
 
       if (currentNode) {
         let palette = aAreaNode.toolbox ? aAreaNode.toolbox.palette : null;
-        let limit = currentNode.previousSibling;
-        let node = container.lastChild;
+        let limit = currentNode.previousElementSibling;
+        let node = container.lastElementChild;
         while (node && node != limit) {
-          let previousSibling = node.previousSibling;
+          let previousSibling = node.previousElementSibling;
           // Nodes opt-in to removability. If they're removable, and we haven't
           // seen them in the placements array, then we toss them into the palette
           // if one exists. If no palette exists, we just remove the node. If the
@@ -1169,7 +1167,7 @@ var CustomizableUIInternal = {
 
     for (let [, areaMap] of gPendingBuildAreas) {
       let toDelete = [];
-      for (let [areaNode, ] of areaMap) {
+      for (let [areaNode ] of areaMap) {
         if (areaNode.ownerDocument == document) {
           toDelete.push(areaNode);
         }
@@ -1364,7 +1362,7 @@ var CustomizableUIInternal = {
 
   createSpecialWidget(aId, aDocument) {
     let nodeName = "toolbar" + aId.match(/spring|spacer|separator/)[0];
-    let node = aDocument.createElementNS(kNSXUL, nodeName);
+    let node = aDocument.createXULElement(nodeName);
     node.className = "chromeclass-toolbar-additional";
     node.id = this.ensureSpecialWidgetId(aId);
     return node;
@@ -1459,7 +1457,7 @@ var CustomizableUIInternal = {
       if (aWidget.onBeforeCreated) {
         aWidget.onBeforeCreated(aDocument);
       }
-      node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+      node = aDocument.createXULElement("toolbarbutton");
 
       node.setAttribute("id", aWidget.id);
       node.setAttribute("widget-id", aWidget.id);
@@ -1714,11 +1712,8 @@ var CustomizableUIInternal = {
           // Err, we're done.
           break;
         }
-        // Cue some voodoo
-        target = target.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                                   .getInterface(Ci.nsIWebNavigation)
-                                   .QueryInterface(Ci.nsIDocShell)
-                                   .chromeEventHandler;
+        // Find containing browser or iframe element in the parent doc.
+        target = target.defaultView.docShell.chromeEventHandler;
         if (!target) {
           break;
         }
@@ -2221,7 +2216,7 @@ var CustomizableUIInternal = {
     let evt = new aWindow.CustomEvent(aEventType, {
       bubbles: true,
       cancelable: true,
-      detail: aDetails
+      detail: aDetails,
     });
     aWindow.gNavToolbox.dispatchEvent(evt);
   },
@@ -2231,7 +2226,7 @@ var CustomizableUIInternal = {
       this._dispatchToolboxEventToWindow(aEventType, aDetails, aWindow);
       return;
     }
-    for (let [win, ] of gBuildWindows) {
+    for (let [win ] of gBuildWindows) {
       this._dispatchToolboxEventToWindow(aEventType, aDetails, win);
     }
   },
@@ -2248,7 +2243,7 @@ var CustomizableUIInternal = {
 
     // Clear our caches:
     gGroupWrapperCache.delete(widget.id);
-    for (let [win, ] of gBuildWindows) {
+    for (let [win ] of gBuildWindows) {
       let cache = gSingleWrapperCache.get(win);
       if (cache) {
         cache.delete(widget.id);
@@ -2277,7 +2272,7 @@ var CustomizableUIInternal = {
     // Look through previously saved state to see if we're restoring a widget.
     let seenAreas = new Set();
     let widgetMightNeedAutoAdding = true;
-    for (let [area, ] of gPlacements) {
+    for (let [area ] of gPlacements) {
       seenAreas.add(area);
       let areaIsRegistered = gAreas.has(area);
       let index = gPlacements.get(area).indexOf(widget.id);
@@ -2526,7 +2521,7 @@ var CustomizableUIInternal = {
     let widget = gPalette.get(aWidgetId);
     if (!widget) {
       gGroupWrapperCache.delete(aWidgetId);
-      for (let [window, ] of gBuildWindows) {
+      for (let [window ] of gBuildWindows) {
         let windowCache = gSingleWrapperCache.get(window);
         if (windowCache) {
           windowCache.delete(aWidgetId);
@@ -2552,7 +2547,7 @@ var CustomizableUIInternal = {
     // This will not remove the widget from gPlacements - we want to keep the
     // setting so the widget gets put back in it's old position if/when it
     // returns.
-    for (let [window, ] of gBuildWindows) {
+    for (let [window ] of gBuildWindows) {
       let windowCache = gSingleWrapperCache.get(window);
       if (windowCache) {
         windowCache.delete(aWidgetId);
@@ -2654,7 +2649,7 @@ var CustomizableUIInternal = {
     // Clear the saved state to ensure that defaults will be used.
     gSavedState = null;
     // Restore the state for each area to its defaults
-    for (let [areaId, ] of gAreas) {
+    for (let [areaId ] of gAreas) {
       this.restoreStateForArea(areaId);
     }
   },
@@ -2763,7 +2758,7 @@ var CustomizableUIInternal = {
 
       if (!widgetNode) {
         // Pick any of the build windows to look at.
-        let [window, ] = [...gBuildWindows][0];
+        let [window ] = [...gBuildWindows][0];
         [, widgetNode] = this.getWidgetNode(widgetId, window);
       }
       // If we don't have a node, we assume it's removable. This can happen because
@@ -3000,9 +2995,9 @@ var CustomizableUI = {
    */
   windows: {
     * [Symbol.iterator]() {
-      for (let [window, ] of gBuildWindows)
+      for (let [window ] of gBuildWindows)
         yield window;
-    }
+    },
   },
 
   /**
@@ -3906,12 +3901,12 @@ var CustomizableUI = {
       if (menuChild.localName == "menuseparator") {
         // Don't insert duplicate or leading separators. This can happen if there are
         // menus (which we don't copy) above the separator.
-        if (!fragment.lastChild || fragment.lastChild.localName == "menuseparator") {
+        if (!fragment.lastElementChild || fragment.lastElementChild.localName == "menuseparator") {
           continue;
         }
-        subviewItem = doc.createElementNS(kNSXUL, "menuseparator");
+        subviewItem = doc.createXULElement("menuseparator");
       } else if (menuChild.localName == "menuitem") {
-        subviewItem = doc.createElementNS(kNSXUL, "toolbarbutton");
+        subviewItem = doc.createXULElement("toolbarbutton");
         CustomizableUI.addShortcut(menuChild, subviewItem);
 
         let item = menuChild;
@@ -4443,7 +4438,7 @@ OverflowableToolbar.prototype = {
     if (!this._enabled)
       return;
 
-    let child = this._target.lastChild;
+    let child = this._target.lastElementChild;
 
     let thisOverflowResponse = ++this._lastOverflowCounter;
 
@@ -4456,7 +4451,7 @@ OverflowableToolbar.prototype = {
     }
 
     while (child && scrollLeftMin != scrollLeftMax) {
-      let prevChild = child.previousSibling;
+      let prevChild = child.previousElementSibling;
 
       if (child.getAttribute("overflows") != "false") {
         this._collapsed.set(child.id, this._target.clientWidth);
@@ -4465,7 +4460,7 @@ OverflowableToolbar.prototype = {
         CustomizableUIInternal.ensureButtonContextMenu(child, this._toolbar, true);
         CustomizableUIInternal.notifyListeners("onWidgetOverflow", child, this._target);
 
-        this._list.insertBefore(child, this._list.firstChild);
+        this._list.insertBefore(child, this._list.firstElementChild);
         if (!this._addedListener) {
           CustomizableUI.addListener(this);
         }
@@ -4516,13 +4511,13 @@ OverflowableToolbar.prototype = {
   _moveItemsBackToTheirOrigin(shouldMoveAllItems, targetWidth) {
     let placements = gPlacements.get(this._toolbar.id);
     let win = this._target.ownerGlobal;
-    while (this._list.firstChild) {
-      let child = this._list.firstChild;
+    while (this._list.firstElementChild) {
+      let child = this._list.firstElementChild;
       let minSize = this._collapsed.get(child.id);
 
       if (!shouldMoveAllItems && minSize) {
         if (!targetWidth) {
-          let dwu = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+          let dwu = win.windowUtils;
           targetWidth = Math.floor(dwu.getBoundsWithoutFlushing(this._target).width);
         }
         if (targetWidth <= minSize) {
@@ -4611,16 +4606,16 @@ OverflowableToolbar.prototype = {
     // ensure that we try to move items back as soon as that's possible.
     if (aNode.parentNode == this._list) {
       let updatedMinSize;
-      if (aNode.previousSibling) {
-        updatedMinSize = this._collapsed.get(aNode.previousSibling.id);
+      if (aNode.previousElementSibling) {
+        updatedMinSize = this._collapsed.get(aNode.previousElementSibling.id);
       } else {
         // Force (these) items to try to flow back into the bar:
         updatedMinSize = 1;
       }
-      let nextItem = aNode.nextSibling;
+      let nextItem = aNode.nextElementSibling;
       while (nextItem) {
         this._collapsed.set(nextItem.id, updatedMinSize);
-        nextItem = nextItem.nextSibling;
+        nextItem = nextItem.nextElementSibling;
       }
     }
   },
@@ -4640,7 +4635,7 @@ OverflowableToolbar.prototype = {
       if (nowOverflowed) {
         // NB: we're guaranteed that it has a previousSibling, because if it didn't,
         // we would have added it to the toolbar instead. See getOverflowedNextNode.
-        let prevId = aNode.previousSibling.id;
+        let prevId = aNode.previousElementSibling.id;
         let minSize = this._collapsed.get(prevId);
         this._collapsed.set(aNode.id, minSize);
         aNode.setAttribute("cui-anchorid", this._chevron.id);
@@ -4672,9 +4667,9 @@ OverflowableToolbar.prototype = {
         CustomizableUI.removeListener(this);
         this._addedListener = false;
       }
-    } else if (aNode.previousSibling) {
+    } else if (aNode.previousElementSibling) {
       // but if it still is, it must have changed places. Bookkeep:
-      let prevId = aNode.previousSibling.id;
+      let prevId = aNode.previousElementSibling.id;
       let minSize = this._collapsed.get(prevId);
       this._collapsed.set(aNode.id, minSize);
     } else {
@@ -4748,7 +4743,7 @@ OverflowableToolbar.prototype = {
         window.clearTimeout(this._hideTimeoutId);
       }
       this._hideTimeoutId = window.setTimeout(() => {
-        if (!this._panel.firstChild.matches(":hover")) {
+        if (!this._panel.firstElementChild.matches(":hover")) {
           PanelMultiView.hidePopup(this._panel);
         }
       }, OVERFLOW_PANEL_HIDE_DELAY_MS);

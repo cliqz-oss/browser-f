@@ -16,7 +16,7 @@ add_task(async function clearURLBarAfterParentProcessURL() {
     }, {capture: true, once: true});
   });
   document.getElementById("home-button").click();
-  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, HomePage.get());
   is(gURLBar.value, "", "URL bar should be empty");
   is(tab.linkedBrowser.userTypedValue, null, "The browser should have no recorded userTypedValue");
   BrowserTestUtils.removeTab(tab);
@@ -36,7 +36,7 @@ add_task(async function clearURLBarAfterParentProcessURLInExistingTab() {
     newTabBrowser.loadURI("about:preferences");
   });
   document.getElementById("home-button").click();
-  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, HomePage.get());
   is(gURLBar.value, "", "URL bar should be empty");
   is(tab.linkedBrowser.userTypedValue, null, "The browser should have no recorded userTypedValue");
   BrowserTestUtils.removeTab(tab);
@@ -101,7 +101,7 @@ add_task(async function dontTemporarilyShowAboutHome() {
   if (win.gBrowser.visibleTabs.length < 2) {
     await BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
   }
-  let otherTab = win.gBrowser.selectedTab.previousSibling;
+  let otherTab = win.gBrowser.selectedTab.previousElementSibling;
   let tabLoaded = BrowserTestUtils.browserLoaded(otherTab.linkedBrowser, false, "about:home");
   await BrowserTestUtils.switchTab(win.gBrowser, otherTab);
   await tabLoaded;

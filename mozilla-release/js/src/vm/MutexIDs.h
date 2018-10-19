@@ -18,9 +18,9 @@
   _(TestMutex,                   100) \
   _(ShellContextWatchdog,        100) \
   _(ShellWorkerThreads,          100) \
-  _(ShellArrayBufferMailbox,     100) \
+  _(ShellObjectMailbox,          100) \
                                       \
-  _(RuntimeExclusiveAccess,      200) \
+  _(AtomsTable,                  200) \
                                       \
   _(WasmInitBuiltinThunks,       250) \
   _(WasmLazyStubsTier1,          250) \
@@ -42,7 +42,6 @@
   _(CacheIRSpewer,               500) \
   _(TraceLoggerThreadState,      500) \
   _(DateTimeInfoMutex,           500) \
-  _(IcuTimeZoneStateMutex,       500) \
   _(ProcessExecutableRegion,     500) \
   _(OffThreadPromiseState,       500) \
   _(BufferStreamState,           500) \
@@ -50,13 +49,13 @@
   _(RuntimeScriptData,           500) \
   _(WasmFuncTypeIdSet,           500) \
   _(WasmCodeProfilingLabels,     500) \
-  _(WasmModuleTieringLock,       500) \
   _(WasmCompileTaskState,        500) \
   _(WasmCodeStreamEnd,           500) \
   _(WasmTailBytesPtr,            500) \
   _(WasmStreamStatus,            500) \
   _(WasmRuntimeInstances,        500) \
                                       \
+  _(IcuTimeZoneStateMutex,       600) \
   _(ThreadId,                    600) \
   _(WasmCodeSegmentMap,          600) \
   _(TraceLoggerGraphState,       600) \

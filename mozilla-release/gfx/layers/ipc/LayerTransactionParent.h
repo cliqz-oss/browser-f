@@ -48,7 +48,8 @@ public:
   LayerTransactionParent(HostLayerManager* aManager,
                          CompositorBridgeParentBase* aBridge,
                          CompositorAnimationStorage* aAnimStorage,
-                         LayersId aId);
+                         LayersId aId,
+                         TimeDuration aVsyncRate);
 
 protected:
   ~LayerTransactionParent();
@@ -61,7 +62,7 @@ public:
   LayersId GetId() const { return mId; }
   Layer* GetRoot() const { return mRoot; }
 
-  uint64_t GetChildEpoch() const { return mChildEpoch; }
+  LayersObserverEpoch GetChildEpoch() const { return mChildEpoch; }
   bool ShouldParentObserveEpoch();
 
   ShmemAllocator* AsShmemAllocator() override { return this; }
@@ -79,9 +80,13 @@ public:
   bool IsSameProcess() const override;
 
   const TransactionId& GetPendingTransactionId() { return mPendingTransaction; }
-  void SetPendingTransactionId(TransactionId aId, const TimeStamp& aTxnStartTime, const TimeStamp& aFwdTime)
+  void SetPendingTransactionId(TransactionId aId,
+                               const TimeStamp& aRefreshStartTime,
+                               const TimeStamp& aTxnStartTime,
+                               const TimeStamp& aFwdTime)
   {
     mPendingTransaction = aId;
+    mRefreshStartTime = aRefreshStartTime;
     mTxnStartTime = aTxnStartTime;
     mFwdTime = aFwdTime;
   }
@@ -110,7 +115,7 @@ protected:
 
   mozilla::ipc::IPCResult RecvUpdate(const TransactionInfo& aInfo) override;
 
-  mozilla::ipc::IPCResult RecvSetLayerObserverEpoch(const uint64_t& aLayerObserverEpoch) override;
+  mozilla::ipc::IPCResult RecvSetLayersObserverEpoch(const LayersObserverEpoch& aChildEpoch) override;
   mozilla::ipc::IPCResult RecvNewCompositable(const CompositableHandle& aHandle,
                                               const TextureInfo& aInfo) override;
   mozilla::ipc::IPCResult RecvReleaseLayer(const LayerHandle& aHandle) override;
@@ -120,11 +125,8 @@ protected:
   mozilla::ipc::IPCResult RecvScheduleComposite() override;
   mozilla::ipc::IPCResult RecvSetTestSampleTime(const TimeStamp& aTime) override;
   mozilla::ipc::IPCResult RecvLeaveTestMode() override;
-  mozilla::ipc::IPCResult RecvGetAnimationOpacity(const uint64_t& aCompositorAnimationsId,
-                                                  float* aOpacity,
-                                                  bool* aHasAnimationOpacity) override;
-  mozilla::ipc::IPCResult RecvGetAnimationTransform(const uint64_t& aCompositorAnimationsId,
-                                                    MaybeTransform* aTransform) override;
+  mozilla::ipc::IPCResult RecvGetAnimationValue(const uint64_t& aCompositorAnimationsId,
+                                                OMTAValue* aValue) override;
   mozilla::ipc::IPCResult RecvGetTransform(const LayerHandle& aHandle,
                                            MaybeTransform* aTransform) override;
   mozilla::ipc::IPCResult RecvSetAsyncScrollOffset(const FrameMetrics::ViewID& aId,
@@ -193,10 +195,13 @@ private:
   // parent. mChildEpoch is the latest epoch value received from the child.
   // mParentEpoch is the latest epoch value that we have told TabParent about
   // (via ObserveLayerUpdate).
-  uint64_t mChildEpoch;
-  uint64_t mParentEpoch;
+  LayersObserverEpoch mChildEpoch;
+  LayersObserverEpoch mParentEpoch;
+
+  TimeDuration mVsyncRate;
 
   TransactionId mPendingTransaction;
+  TimeStamp mRefreshStartTime;
   TimeStamp mTxnStartTime;
   TimeStamp mFwdTime;
 

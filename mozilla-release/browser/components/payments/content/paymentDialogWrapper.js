@@ -35,26 +35,48 @@ XPCOMUtils.defineLazyGetter(this, "formAutofillStorage", () => {
   return storage;
 });
 
+/**
+ * Temporary/transient storage for address and credit card records
+ *
+ * Implements a subset of the FormAutofillStorage collection class interface, and delegates to
+ * those classes for some utility methods
+ */
 class TempCollection {
-  constructor(data = {}) {
+  constructor(type, data = {}) {
+    /**
+     * The name of the collection. e.g. 'addresses' or 'creditCards'
+     * Used to access methods from the FormAutofillStorage collections
+     */
+    this._type = type;
     this._data = data;
   }
+
+  get _formAutofillCollection() {
+    // lazy getter for the formAutofill collection - to resolve on first access
+    Object.defineProperty(this, "_formAutofillCollection", {
+      value: formAutofillStorage[this._type], writable: false, configurable: true,
+    });
+    return this._formAutofillCollection;
+  }
+
   get(guid) {
     return this._data[guid];
   }
+
   update(guid, record, preserveOldProperties) {
-    if (preserveOldProperties) {
-      Object.assign(this._data[guid], record);
-    } else {
-      this._data[guid] = record;
-    }
-    return this._data[guid];
+    let recordToSave = Object.assign(preserveOldProperties ? this._data[guid] : {}, record);
+    this._formAutofillCollection.computeFields(recordToSave);
+    return (this._data[guid] = recordToSave);
   }
+
   add(record) {
     let guid = "temp-" + Math.abs(Math.random() * 0xffffffff|0);
-    this._data[guid] = record;
+    let recordToSave = Object.assign({guid}, record);
+    this._formAutofillCollection.computeFields(recordToSave);
+    this._data[guid] = recordToSave;
     return guid;
   }
+
   getAll() {
     return this._data;
   }
@@ -142,18 +164,14 @@ var paymentDialogWrapper = {
     }
 
     let cardNumber;
-    if (cardData.isTemporary) {
-      cardNumber = cardData["cc-number"];
-    } else {
-      try {
-        cardNumber = await MasterPassword.decrypt(cardData["cc-number-encrypted"], true);
-      } catch (ex) {
-        if (ex.result != Cr.NS_ERROR_ABORT) {
-          throw ex;
-        }
-        // User canceled master password entry
-        return null;
+    try {
+      cardNumber = await MasterPassword.decrypt(cardData["cc-number-encrypted"], true);
+    } catch (ex) {
+      if (ex.result != Cr.NS_ERROR_ABORT) {
+        throw ex;
       }
+      // User canceled master password entry
+      return null;
     }
 
     let billingAddressGUID = cardData.billingAddressGUID;
@@ -181,6 +199,8 @@ var paymentDialogWrapper = {
       throw new Error("Invalid PaymentRequest ID");
     }
 
+    window.addEventListener("unload", this);
+
     // The Request object returned by the Payment Service is live and
     // will automatically get updated if event.updateWith is used.
     this.request = paymentSrv.getPaymentRequestById(requestId);
@@ -202,8 +222,8 @@ var paymentDialogWrapper = {
     this.frame.loadURI("resource://payments/paymentRequest.xhtml");
 
     this.temporaryStore = {
-      addresses: new TempCollection(),
-      creditCards: new TempCollection(),
+      addresses: new TempCollection("addresses"),
+      creditCards: new TempCollection("creditCards"),
     };
   },
 
@@ -254,7 +274,6 @@ var paymentDialogWrapper = {
     dependentLocality = "",
     postalCode = "",
     sortingCode = "",
-    languageCode = "",
     organization = "",
     recipient = "",
     phone = "",
@@ -274,7 +293,6 @@ var paymentDialogWrapper = {
                         dependentLocality,
                         postalCode,
                         sortingCode,
-                        languageCode,
                         organization,
                         recipient,
                         phone);
@@ -535,70 +553,75 @@ var paymentDialogWrapper = {
     paymentSrv.changeShippingOption(this.request.requestId, optionID);
   },
 
-  async onUpdateAutofillRecord(collectionName, record, guid, {
-    errorStateChange,
-    preserveOldProperties,
-    selectedStateKey,
-    successStateChange,
-  }) {
-    if (collectionName == "creditCards" && !guid && !record.isTemporary) {
-      // We need to be logged in so we can encrypt the credit card number and
-      // that's only supported when we're adding a new record.
-      // TODO: "MasterPassword.ensureLoggedIn" can be removed after the storage
-      // APIs are refactored to be async functions (bug 1399367).
-      if (!await MasterPassword.ensureLoggedIn()) {
-        Cu.reportError("User canceled master password entry");
-        return;
-      }
-    }
+  onCloseDialogMessage() {
+    // The PR is complete(), just close the dialog
+    window.close();
+  },
 
-    let isTemporary = record.isTemporary;
-    let collection = isTemporary ? this.temporaryStore[collectionName] :
-                                   formAutofillStorage[collectionName];
-
+  async onUpdateAutofillRecord(collectionName, record, guid, messageID) {
+    let responseMessage = {
+      guid,
+      messageID,
+      stateChange: {},
+    };
     try {
+      if (collectionName == "creditCards" && !guid && !record.isTemporary) {
+        // We need to be logged in so we can encrypt the credit card number and
+        // that's only supported when we're adding a new record.
+        // TODO: "MasterPassword.ensureLoggedIn" can be removed after the storage
+        // APIs are refactored to be async functions (bug 1399367).
+        if (!await MasterPassword.ensureLoggedIn()) {
+          throw new Error("User canceled master password entry");
+        }
+      }
+
+      let isTemporary = record.isTemporary;
+      let collection = isTemporary ? this.temporaryStore[collectionName] :
+                                     formAutofillStorage[collectionName];
+
       if (guid) {
+        let preserveOldProperties = true;
         await collection.update(guid, record, preserveOldProperties);
       } else {
-        guid = await collection.add(record);
+        responseMessage.guid = await collection.add(record);
       }
 
       if (isTemporary && collectionName == "addresses") {
         // there will be no formautofill-storage-changed event to update state
         // so add updated collection here
-        Object.assign(successStateChange, {
+        Object.assign(responseMessage.stateChange, {
           tempAddresses: this.temporaryStore.addresses.getAll(),
         });
       }
       if (isTemporary && collectionName == "creditCards") {
         // there will be no formautofill-storage-changed event to update state
         // so add updated collection here
-        Object.assign(successStateChange, {
+        Object.assign(responseMessage.stateChange, {
           tempBasicCards: this.temporaryStore.creditCards.getAll(),
         });
       }
-
-      // Select the new record
-      if (selectedStateKey) {
-        if (selectedStateKey.length == 1) {
-          Object.assign(successStateChange, {
-            [selectedStateKey[0]]: guid,
-          });
-        } else if (selectedStateKey.length == 2) {
-          // Need to keep properties like preserveFieldValues from getting removed.
-          let subObj = Object.assign({}, successStateChange[selectedStateKey[0]]);
-          subObj[selectedStateKey[1]] = guid;
-          Object.assign(successStateChange, {
-            [selectedStateKey[0]]: subObj,
-          });
-        } else {
-          throw new Error(`selectedStateKey not supported: '${selectedStateKey}'`);
-        }
-      }
-
-      this.sendMessageToContent("updateState", successStateChange);
     } catch (ex) {
-      this.sendMessageToContent("updateState", errorStateChange);
+      responseMessage.error = true;
+    } finally {
+      this.sendMessageToContent("updateAutofillRecord:Response", responseMessage);
+    }
+  },
+
+  /**
+   * @implement {nsIDOMEventListener}
+   * @param {Event} event
+   */
+  handleEvent(event) {
+    switch (event.type) {
+      case "unload": {
+        // Remove the observer to avoid message manager errors while the dialog
+        // is closing and tests are cleaning up autofill storage.
+        Services.obs.removeObserver(this, "formautofill-storage-changed");
+        break;
+      }
+      default: {
+        throw new Error("Unexpected event handled");
+      }
     }
   },
 
@@ -640,6 +663,10 @@ var paymentDialogWrapper = {
         this.onChangeShippingOption(data);
         break;
       }
+      case "closeDialog": {
+        this.onCloseDialogMessage();
+        break;
+      }
       case "paymentCancel": {
         this.onPaymentCancel();
         break;
@@ -649,12 +676,7 @@ var paymentDialogWrapper = {
         break;
       }
       case "updateAutofillRecord": {
-        this.onUpdateAutofillRecord(data.collectionName, data.record, data.guid, {
-          errorStateChange: data.errorStateChange,
-          preserveOldProperties: data.preserveOldProperties,
-          selectedStateKey: data.selectedStateKey,
-          successStateChange: data.successStateChange,
-        });
+        this.onUpdateAutofillRecord(data.collectionName, data.record, data.guid, data.messageID);
         break;
       }
     }

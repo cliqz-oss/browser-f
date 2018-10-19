@@ -1,5 +1,7 @@
-commit a8f7012587250b32ffb43a3cbd8da8a9f9d1565e
-Author: Rick Waldron <waldron.rick@gmail.com>
-Date:   Tue May 22 15:47:50 2018 -0400
+commit ab436c465106be86719c4849c9cedecd7b570ff9
+Author: Leo Balter <leonardo.balter@gmail.com>
+Date:   Fri Aug 17 18:06:19 2018 -0400
 
-    Array.prototype.flatten => Array.prototype.flat (#1569)
+    Merge pull request #1677 from tc39/ofe-use-verifyproperty
+    
+    Object.fromEntries: use verifyProperty; add specification details

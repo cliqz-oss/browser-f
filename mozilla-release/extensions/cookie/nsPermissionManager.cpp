@@ -10,6 +10,8 @@
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/ContentPrincipal.h"
+#include "mozilla/Pair.h"
 #include "mozilla/Services.h"
 #include "mozilla/SystemGroup.h"
 #include "mozilla/Unused.h"
@@ -44,7 +46,6 @@
 #include "nsIObserverService.h"
 #include "nsPrintfCString.h"
 #include "mozilla/AbstractThread.h"
-#include "ContentPrincipal.h"
 #include "ExpandedPrincipal.h"
 
 static nsPermissionManager *gPermissionManager = nullptr;
@@ -134,7 +135,9 @@ static const char* kPreloadPermissions[] = {
   // interception when a user has disabled storage for a specific site.  Once
   // service worker interception moves to the parent process this should be
   // removed.  See bug 1428130.
-  "cookie"
+  "cookie",
+  "trackingprotection",
+  "trackingprotection-pb"
 };
 
 // A list of permissions that can have a fallback default permission
@@ -2101,6 +2104,64 @@ nsPermissionManager::RemoveAllSince(int64_t aSince)
   return RemoveAllModifiedSince(aSince);
 }
 
+template<class T>
+nsresult
+nsPermissionManager::RemovePermissionEntries(T aCondition)
+{
+  AutoTArray<Pair<nsCOMPtr<nsIPrincipal>, nsCString>, 10> array;
+  for (auto iter = mPermissionTable.Iter(); !iter.Done(); iter.Next()) {
+    PermissionHashKey* entry = iter.Get();
+    for (const auto& permEntry : entry->GetPermissions()) {
+      if (!aCondition(permEntry)) {
+        continue;
+      }
+
+      nsCOMPtr<nsIPrincipal> principal;
+      nsresult rv = GetPrincipalFromOrigin(entry->GetKey()->mOrigin,
+                                           getter_AddRefs(principal));
+      if (NS_FAILED(rv)) {
+        continue;
+      }
+
+      array.AppendElement(MakePair(principal,
+                                   mTypeArray.ElementAt(permEntry.mType)));
+    }
+  }
+
+  for (size_t i = 0; i < array.Length(); ++i) {
+    // AddInternal handles removal, so let it do the work...
+    AddInternal(
+      array[i].first(),
+      array[i].second(),
+      nsIPermissionManager::UNKNOWN_ACTION,
+      0,
+      nsIPermissionManager::EXPIRE_NEVER, 0, 0,
+      nsPermissionManager::eNotify,
+      nsPermissionManager::eWriteToDB);
+  }
+  // now re-import any defaults as they may now be required if we just deleted
+  // an override.
+  ImportDefaults();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsPermissionManager::RemoveByType(const char* aType)
+{
+  ENSURE_NOT_CHILD_PROCESS;
+
+  int32_t typeIndex = GetTypeIndex(aType, false);
+  // If type == -1, the type isn't known,
+  // so just return NS_OK
+  if (typeIndex == -1) {
+    return NS_OK;
+  }
+
+  return RemovePermissionEntries([typeIndex] (const PermissionEntry& aPermEntry) {
+    return static_cast<uint32_t> (typeIndex) == aPermEntry.mType;
+  });
+}
+
 void
 nsPermissionManager::CloseDB(bool aRebuildOnSuccess)
 {
@@ -2118,8 +2179,30 @@ nsPermissionManager::CloseDB(bool aRebuildOnSuccess)
 }
 
 nsresult
+nsPermissionManager::RemoveAllFromIPC()
+{
+  MOZ_ASSERT(IsChildProcess());
+
+  // Remove from memory and notify immediately. Since the in-memory
+  // database is authoritative, we do not need confirmation from the
+  // on-disk database to notify observers.
+  RemoveAllFromMemory();
+
+  return NS_OK;
+}
+
+nsresult
 nsPermissionManager::RemoveAllInternal(bool aNotifyObservers)
 {
+  ENSURE_NOT_CHILD_PROCESS;
+
+  // Let's broadcast the removeAll() to any content process.
+  nsTArray<ContentParent*> parents;
+  ContentParent::GetAll(parents);
+  for (ContentParent* parent : parents) {
+    Unused << parent->SendRemoveAllPermissions();
+  }
+
   // Remove from memory and notify immediately. Since the in-memory
   // database is authoritative, we do not need confirmation from the
   // on-disk database to notify observers.
@@ -2530,20 +2613,28 @@ NS_IMETHODIMP nsPermissionManager::GetEnumerator(nsISimpleEnumerator **aEnum)
     }
   }
 
-  return NS_NewArrayEnumerator(aEnum, array);
+  return NS_NewArrayEnumerator(aEnum, array, NS_GET_IID(nsIPermission));
 }
 
 NS_IMETHODIMP nsPermissionManager::GetAllForURI(nsIURI* aURI, nsISimpleEnumerator **aEnum)
 {
-  nsCOMArray<nsIPermission> array;
-
   nsCOMPtr<nsIPrincipal> principal;
   nsresult rv = GetPrincipal(aURI, getter_AddRefs(principal));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  MOZ_ASSERT(PermissionAvailable(principal, nullptr));
+  return GetAllForPrincipal(principal, aEnum);
+}
 
-  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(principal, rv);
+NS_IMETHODIMP
+nsPermissionManager::GetAllForPrincipal(nsIPrincipal* aPrincipal,
+                                        nsISimpleEnumerator** aEnum)
+{
+  nsCOMArray<nsIPermission> array;
+
+  MOZ_ASSERT(PermissionAvailable(aPrincipal, nullptr));
+
+  nsresult rv;
+  RefPtr<PermissionKey> key = PermissionKey::CreateFromPrincipal(aPrincipal, rv);
   if (!key) {
     MOZ_ASSERT(NS_FAILED(rv));
     return rv;
@@ -2559,7 +2650,7 @@ NS_IMETHODIMP nsPermissionManager::GetAllForURI(nsIURI* aURI, nsISimpleEnumerato
       }
 
       nsCOMPtr<nsIPermission> permission =
-        nsPermission::Create(principal,
+        nsPermission::Create(aPrincipal,
                              mTypeArray.ElementAt(permEntry.mType),
                              permEntry.mPermission,
                              permEntry.mExpireType,
@@ -2571,7 +2662,7 @@ NS_IMETHODIMP nsPermissionManager::GetAllForURI(nsIURI* aURI, nsISimpleEnumerato
     }
   }
 
-  return NS_NewArrayEnumerator(aEnum, array);
+  return NS_NewArrayEnumerator(aEnum, array, NS_GET_IID(nsIPermission));
 }
 
 NS_IMETHODIMP nsPermissionManager::Observe(nsISupports *aSubject, const char *aTopic, const char16_t *someData)
@@ -2597,64 +2688,9 @@ nsPermissionManager::RemoveAllModifiedSince(int64_t aModificationTime)
 {
   ENSURE_NOT_CHILD_PROCESS;
 
-  nsCOMArray<nsIPermission> array;
-  for (auto iter = mPermissionTable.Iter(); !iter.Done(); iter.Next()) {
-    PermissionHashKey* entry = iter.Get();
-    for (const auto& permEntry : entry->GetPermissions()) {
-      if (aModificationTime > permEntry.mModificationTime) {
-        continue;
-      }
-
-      nsCOMPtr<nsIPrincipal> principal;
-      nsresult rv = GetPrincipalFromOrigin(entry->GetKey()->mOrigin,
-                                           getter_AddRefs(principal));
-      if (NS_FAILED(rv)) {
-        continue;
-      }
-
-      nsCOMPtr<nsIPermission> permission =
-        nsPermission::Create(principal,
-                             mTypeArray.ElementAt(permEntry.mType),
-                             permEntry.mPermission,
-                             permEntry.mExpireType,
-                             permEntry.mExpireTime);
-      if (NS_WARN_IF(!permission)) {
-        continue;
-      }
-      array.AppendObject(permission);
-    }
-  }
-
-  for (int32_t i = 0; i<array.Count(); ++i) {
-    nsCOMPtr<nsIPrincipal> principal;
-    nsAutoCString type;
-
-    nsresult rv = array[i]->GetPrincipal(getter_AddRefs(principal));
-    if (NS_FAILED(rv)) {
-      NS_ERROR("GetPrincipal() failed!");
-      continue;
-    }
-
-    rv = array[i]->GetType(type);
-    if (NS_FAILED(rv)) {
-      NS_ERROR("GetType() failed!");
-      continue;
-    }
-
-    // AddInternal handles removal, so let it do the work...
-    AddInternal(
-      principal,
-      type,
-      nsIPermissionManager::UNKNOWN_ACTION,
-      0,
-      nsIPermissionManager::EXPIRE_NEVER, 0, 0,
-      nsPermissionManager::eNotify,
-      nsPermissionManager::eWriteToDB);
-  }
-  // now re-import any defaults as they may now be required if we just deleted
-  // an override.
-  ImportDefaults();
-  return NS_OK;
+  return RemovePermissionEntries([aModificationTime] (const PermissionEntry& aPermEntry) {
+    return aModificationTime <= aPermEntry.mModificationTime;
+  });
 }
 
 NS_IMETHODIMP
@@ -2672,7 +2708,7 @@ nsPermissionManager::RemovePermissionsWithAttributes(const nsAString& aPattern)
 nsresult
 nsPermissionManager::RemovePermissionsWithAttributes(mozilla::OriginAttributesPattern& aPattern)
 {
-  nsCOMArray<nsIPermission> permissions;
+  AutoTArray<Pair<nsCOMPtr<nsIPrincipal>, nsCString>, 10> permissions;
   for (auto iter = mPermissionTable.Iter(); !iter.Done(); iter.Next()) {
     PermissionHashKey* entry = iter.Get();
 
@@ -2688,28 +2724,14 @@ nsPermissionManager::RemovePermissionsWithAttributes(mozilla::OriginAttributesPa
     }
 
     for (const auto& permEntry : entry->GetPermissions()) {
-      nsCOMPtr<nsIPermission> permission =
-        nsPermission::Create(principal,
-                             mTypeArray.ElementAt(permEntry.mType),
-                             permEntry.mPermission,
-                             permEntry.mExpireType,
-                             permEntry.mExpireTime);
-      if (NS_WARN_IF(!permission)) {
-        continue;
-      }
-      permissions.AppendObject(permission);
+      permissions.AppendElement(MakePair(principal,
+                                         mTypeArray.ElementAt(permEntry.mType)));
     }
   }
 
-  for (int32_t i = 0; i < permissions.Count(); ++i) {
-    nsCOMPtr<nsIPrincipal> principal;
-    nsAutoCString type;
-
-    permissions[i]->GetPrincipal(getter_AddRefs(principal));
-    permissions[i]->GetType(type);
-
-    AddInternal(principal,
-                type,
+  for (size_t i = 0; i < permissions.Length(); ++i) {
+    AddInternal(permissions[i].first(),
+                permissions[i].second(),
                 nsIPermissionManager::UNKNOWN_ACTION,
                 0,
                 nsIPermissionManager::EXPIRE_NEVER,
@@ -3117,7 +3139,7 @@ nsPermissionManager::UpdateDB(OperationType aOp,
 
   default:
     {
-      NS_NOTREACHED("need a valid operation in UpdateDB()!");
+      MOZ_ASSERT_UNREACHABLE("need a valid operation in UpdateDB()!");
       rv = NS_ERROR_UNEXPECTED;
       break;
     }

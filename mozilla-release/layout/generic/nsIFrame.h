@@ -1690,12 +1690,13 @@ public:
     return IsThemed(StyleDisplay(), aTransparencyState);
   }
   bool IsThemed(const nsStyleDisplay* aDisp,
-                  nsITheme::Transparency* aTransparencyState = nullptr) const {
-    nsIFrame* mutable_this = const_cast<nsIFrame*>(this);
-    if (!aDisp->mAppearance)
+                nsITheme::Transparency* aTransparencyState = nullptr) const {
+    if (!aDisp->HasAppearance()) {
       return false;
+    }
+    nsIFrame* mutable_this = const_cast<nsIFrame*>(this);
     nsPresContext* pc = PresContext();
-    nsITheme *theme = pc->GetTheme();
+    nsITheme* theme = pc->GetTheme();
     if(!theme ||
        !theme->ThemeSupportsWidget(pc, mutable_this, aDisp->mAppearance))
       return false;
@@ -2190,7 +2191,7 @@ public:
     const nsLineList_iterator* mLine;
 
     // The line container. Private, to ensure we always use SetLineContainer
-    // to update it (so that we have a chance to store the mLineContainerWM).
+    // to update it.
     //
     // Note that nsContainerFrame::DoInlineIntrinsicISize will clear the
     // |mLine| and |mLineContainer| fields when following a next-in-flow link,
@@ -2203,9 +2204,6 @@ public:
     void SetLineContainer(nsIFrame* aLineContainer)
     {
       mLineContainer = aLineContainer;
-      if (mLineContainer) {
-        mLineContainerWM = mLineContainer->GetWritingMode();
-      }
     }
     nsIFrame* LineContainer() const { return mLineContainer; }
 
@@ -2225,10 +2223,6 @@ public:
     // should be true at the beginning of a block, after hard breaks
     // and when the last text ended with whitespace.
     bool mSkipWhitespace;
-
-    // Writing mode of the line container (stored here so that we don't
-    // lose track of it if the mLineContainer field is reset).
-    mozilla::WritingMode mLineContainerWM;
 
     // Floats encountered in the lines.
     class FloatInfo {
@@ -2868,6 +2862,11 @@ public:
     // inline-block sizing characteristics (like form controls).
     eReplacedSizing =                   1 << 16,
 
+    // Does this frame class support 'contain: layout' and
+    // 'contain:paint' (supporting one is equivalent to supporting the
+    // other).
+    eSupportsContainLayoutAndPaint =    1 << 17,
+
     // These are to allow nsFrame::Init to assert that IsFrameOfType
     // implementations all call the base class method.  They are only
     // meaningful in DEBUG builds.
@@ -2884,11 +2883,13 @@ public:
    */
   virtual bool IsFrameOfType(uint32_t aFlags) const
   {
+    return !(aFlags & ~(
 #ifdef DEBUG
-    return !(aFlags & ~(nsIFrame::eDEBUGAllFrames | nsIFrame::eSupportsCSSTransforms));
-#else
-    return !(aFlags & ~nsIFrame::eSupportsCSSTransforms);
+                        nsIFrame::eDEBUGAllFrames |
 #endif
+                        nsIFrame::eSupportsCSSTransforms |
+                        nsIFrame::eSupportsContainLayoutAndPaint
+                        ));
   }
 
   /**
@@ -3501,24 +3502,16 @@ public:
   virtual bool IsVisibleInSelection(mozilla::dom::Selection* aSelection);
 
   /**
-   * Determines if this frame has a container effect that requires
-   * it to paint as a visually atomic unit.
-   */
-  bool IsVisuallyAtomic(mozilla::EffectSet* aEffectSet,
-                        const nsStyleDisplay* aStyleDisplay,
-                        const nsStyleEffects* aStyleEffects);
-
-  /**
    * Determines if this frame is a stacking context.
    *
    * @param aIsPositioned The precomputed result of IsAbsPosContainingBlock
    * on the StyleDisplay().
-   * @param aIsVisuallyAtomic The precomputed result of IsVisuallyAtomic.
    */
-  bool IsStackingContext(const nsStyleDisplay* aStyleDisplay,
+  bool IsStackingContext(mozilla::EffectSet* aEffectSet,
+                         const nsStyleDisplay* aStyleDisplay,
                          const nsStylePosition* aStylePosition,
-                         bool aIsPositioned,
-                         bool aIsVisuallyAtomic);
+                         const nsStyleEffects* aStyleEffects,
+                         bool aIsPositioned);
   bool IsStackingContext();
 
   virtual bool HonorPrintBackgroundSettings() { return true; }
@@ -4024,7 +4017,7 @@ public:
   /**
    * Returns true if the frame is scrolled out of view.
    */
-  bool IsScrolledOutOfView();
+  bool IsScrolledOutOfView() const;
 
   /**
    * Computes a 2D matrix from the -moz-window-transform and
@@ -4778,6 +4771,25 @@ nsFrameList::FrameLinkEnumerator::Next()
 {
   mPrev = mFrame;
   Enumerator::Next();
+}
+
+template<typename Predicate>
+inline void
+nsFrameList::FrameLinkEnumerator::Find(Predicate&& aPredicate)
+{
+  static_assert(
+    std::is_same<typename mozilla::FunctionTypeTraits<Predicate>::ReturnType,
+                 bool>::value &&
+    mozilla::FunctionTypeTraits<Predicate>::arity == 1 &&
+    std::is_same<typename mozilla::FunctionTypeTraits<Predicate>::template ParameterType<0>,
+                 nsIFrame*>::value,
+    "aPredicate should be of this function signature: bool(nsIFrame*)");
+
+  for (; !AtEnd(); Next()) {
+    if (aPredicate(mFrame)) {
+      return;
+    }
+  }
 }
 
 // Operators of nsFrameList::Iterator

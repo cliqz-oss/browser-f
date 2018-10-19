@@ -27,9 +27,6 @@
 #include "nsFrameSelection.h"
 #include "nsGenericHTMLElement.h"
 #include "nsIHapticFeedback.h"
-#ifdef MOZ_WIDGET_ANDROID
-#include "nsWindow.h"
-#endif
 
 namespace mozilla {
 
@@ -73,8 +70,6 @@ std::ostream& operator<<(std::ostream& aStream,
 #undef AC_PROCESS_ENUM_TO_STREAM
 
 /* static */ bool
-AccessibleCaretManager::sSelectionBarEnabled = false;
-/* static */ bool
 AccessibleCaretManager::sCaretShownWhenLongTappingOnEmptyContent = false;
 /* static */ bool
 AccessibleCaretManager::sCaretsAlwaysTilt = false;
@@ -102,8 +97,6 @@ AccessibleCaretManager::AccessibleCaretManager(nsIPresShell* aPresShell)
 
   static bool addedPrefs = false;
   if (!addedPrefs) {
-    Preferences::AddBoolVarCache(&sSelectionBarEnabled,
-                                 "layout.accessiblecaret.bar.enabled");
     Preferences::AddBoolVarCache(&sCaretShownWhenLongTappingOnEmptyContent,
       "layout.accessiblecaret.caret_shown_when_long_tapping_on_empty_content");
     Preferences::AddBoolVarCache(&sCaretsAlwaysTilt,
@@ -191,7 +184,7 @@ AccessibleCaretManager::OnSelectionChanged(nsIDocument* aDoc,
 
   // For mouse input we don't want to show the carets.
   if (sHideCaretsForMouseInput &&
-      mLastInputSource == MouseEventBinding::MOZ_SOURCE_MOUSE) {
+      mLastInputSource == MouseEvent_Binding::MOZ_SOURCE_MOUSE) {
     HideCarets();
     return NS_OK;
   }
@@ -199,7 +192,7 @@ AccessibleCaretManager::OnSelectionChanged(nsIDocument* aDoc,
   // When we want to hide the carets for mouse input, hide them for select
   // all action fired by keyboard as well.
   if (sHideCaretsForMouseInput &&
-      mLastInputSource == MouseEventBinding::MOZ_SOURCE_KEYBOARD &&
+      mLastInputSource == MouseEvent_Binding::MOZ_SOURCE_KEYBOARD &&
       (aReason & nsISelectionListener::SELECTALL_REASON)) {
     HideCarets();
     return NS_OK;
@@ -330,7 +323,6 @@ AccessibleCaretManager::UpdateCaretsForCursorMode(const UpdateCaretsHintSet& aHi
       break;
   }
 
-  mFirstCaret->SetSelectionBarEnabled(false);
   mSecondCaret->SetAppearance(Appearance::None);
 
   if (!aHints.contains(UpdateCaretsHint::DispatchNoEvent) &&
@@ -362,7 +354,6 @@ AccessibleCaretManager::UpdateCaretsForSelectionMode(const UpdateCaretsHintSet& 
                                     int32_t aOffset) -> PositionChangedResult
   {
     PositionChangedResult result = aCaret->SetPosition(aFrame, aOffset);
-    aCaret->SetSelectionBarEnabled(sSelectionBarEnabled);
 
     switch (result) {
       case PositionChangedResult::NotChanged:
@@ -569,8 +560,13 @@ AccessibleCaretManager::SelectWordOrShortcut(const nsPoint& aPoint)
   }
 
   // Find the frame under point.
-  AutoWeakFrame ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, aPoint,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC);
+  uint32_t flags = nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC;
+#ifdef MOZ_WIDGET_ANDROID
+  // On Android, we need IGNORE_ROOT_SCROLL_FRAME for correct hit testing
+  // when zoomed in or out.
+  flags = nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME;
+#endif
+  AutoWeakFrame ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, aPoint, flags);
   if (!ptFrame.IsAlive()) {
     return NS_ERROR_FAILURE;
   }
@@ -677,7 +673,7 @@ AccessibleCaretManager::OnScrollEnd()
 
   // For mouse input we don't want to show the carets.
   if (sHideCaretsForMouseInput &&
-      mLastInputSource == MouseEventBinding::MOZ_SOURCE_MOUSE) {
+      mLastInputSource == MouseEvent_Binding::MOZ_SOURCE_MOUSE) {
     AC_LOG("%s: HideCarets()", __FUNCTION__);
     HideCarets();
     return;
@@ -900,17 +896,6 @@ AccessibleCaretManager::SetSelectionDragState(bool aState) const
   if (fs) {
     fs->SetDragState(aState);
   }
-
-  // Pin Fennecs DynamicToolbarAnimator in place before/after dragging,
-  // to avoid co-incident screen scrolling.
-#ifdef MOZ_WIDGET_ANDROID
-  if (XRE_IsParentProcess()) {
-    nsIDocument* doc = mPresShell->GetDocument();
-    MOZ_ASSERT(doc);
-    nsIWidget* widget = nsContentUtils::WidgetForDocument(doc);
-    static_cast<nsWindow*>(widget)->SetSelectionDragState(aState);
-  }
-#endif
 }
 
 bool
@@ -1075,7 +1060,7 @@ AccessibleCaretManager::GetFrameForFirstRangeStartOrLastRangeEnd(
   if (!startFrame) {
     ErrorResult err;
     RefPtr<TreeWalker> walker = mPresShell->GetDocument()->CreateTreeWalker(
-      *startNode, dom::NodeFilterBinding::SHOW_ALL, nullptr, err);
+      *startNode, dom::NodeFilter_Binding::SHOW_ALL, nullptr, err);
 
     if (!walker) {
       return nullptr;
@@ -1441,12 +1426,19 @@ AccessibleCaretManager::DispatchCaretStateChangedEvent(CaretChangedReason aReaso
     nsRect clampedRect = nsLayoutUtils::ClampRectToScrollFrames(commonAncestorFrame,
                                                                 rect);
     nsLayoutUtils::TransformRect(commonAncestorFrame, rootFrame, clampedRect);
-    domRect->SetLayoutRect(clampedRect);
+    rect = clampedRect;
     init.mSelectionVisible = !clampedRect.IsEmpty();
   } else {
-    domRect->SetLayoutRect(rect);
     init.mSelectionVisible = true;
   }
+
+  // The rect computed above is relative to rootFrame, which is the (layout)
+  // viewport frame. However, the consumers of this event expect the bounds
+  // of the selection relative to the screen (visual viewport origin), so
+  // translate between the two.
+  rect -= mPresShell->GetVisualViewportOffsetRelativeToLayoutViewport();
+
+  domRect->SetLayoutRect(rect);
 
   // Send isEditable info w/ event detail. This info can help determine
   // whether to show cut command on selection dialog or not.

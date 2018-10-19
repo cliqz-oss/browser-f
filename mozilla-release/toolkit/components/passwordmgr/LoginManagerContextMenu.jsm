@@ -41,7 +41,7 @@ var LoginManagerContextMenu = {
     let fragment = browser.ownerDocument.createDocumentFragment();
     let duplicateUsernames = this._findDuplicates(foundLogins);
     for (let login of foundLogins) {
-        let item = fragment.ownerDocument.createElement("menuitem");
+        let item = fragment.ownerDocument.createXULElement("menuitem");
 
         let username = login.username;
         // If login is empty or duplicated we want to append a modification date to it.
@@ -191,6 +191,6 @@ XPCOMUtils.defineLazyGetter(LoginManagerContextMenu, "_stringBundle", function()
 
 XPCOMUtils.defineLazyGetter(LoginManagerContextMenu, "dateAndTimeFormatter", function() {
   return new Services.intl.DateTimeFormat(undefined, {
-    dateStyle: "medium"
+    dateStyle: "medium",
   });
 });

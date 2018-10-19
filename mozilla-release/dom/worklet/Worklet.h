@@ -24,13 +24,14 @@ class Promise;
 class Worklet;
 class WorkletFetchHandler;
 class WorkletGlobalScope;
+struct WorkletOptions;
 class WorkletThread;
 enum class CallerType : uint32_t;
 
 class WorkletLoadInfo
 {
 public:
-  WorkletLoadInfo();
+  WorkletLoadInfo(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal);
   ~WorkletLoadInfo();
 
   uint64_t OuterWindowID() const { return mOuterWindowID; }
@@ -83,8 +84,9 @@ public:
   WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
 
   already_AddRefed<Promise>
-  Import(const nsAString& aModuleURL, CallerType aCallerType,
-         ErrorResult& aRv);
+  AddModule(const nsAString& aModuleURL,
+            const WorkletOptions& aOptions,
+            CallerType aCallerType, ErrorResult& aRv);
 
   WorkletType Type() const
   {

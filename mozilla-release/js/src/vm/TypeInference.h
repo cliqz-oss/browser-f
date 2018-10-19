@@ -213,6 +213,8 @@ class HeapTypeSet;
 class TemporaryTypeSet;
 
 /*
+ * [SMDOC] Type-Inference TypeSet
+ *
  * Information about the set of types associated with an lvalue. There are
  * three kinds of type sets:
  *
@@ -875,6 +877,13 @@ class TemporaryTypeSet : public TypeSet
 
     /* Get the class shared by all objects in this set, or nullptr. */
     const Class* getKnownClass(CompilerConstraintList* constraints);
+
+    /*
+     * Get the realm shared by all objects in this set, or nullptr. Returns
+     * nullptr if the set contains proxies (because cross-compartment wrappers
+     * don't have a single realm associated with them).
+     */
+    Realm* getKnownRealm(CompilerConstraintList* constraints);
 
     /* Result returned from forAllClasses */
     enum ForAllResult {

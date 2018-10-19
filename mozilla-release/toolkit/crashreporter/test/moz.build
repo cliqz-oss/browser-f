@@ -10,6 +10,7 @@ BROWSER_CHROME_MANIFESTS += ['browser/browser.ini']
 
 UNIFIED_SOURCES += [
     '../google-breakpad/src/processor/basic_code_modules.cc',
+    '../google-breakpad/src/processor/convert_old_arm64_context.cc',
     '../google-breakpad/src/processor/dump_context.cc',
     '../google-breakpad/src/processor/dump_object.cc',
     '../google-breakpad/src/processor/logging.cc',
@@ -25,7 +26,7 @@ SOURCES += [
 ]
 
 if CONFIG['OS_TARGET'] == 'WINNT' and CONFIG['CPU_ARCH'] == 'x86_64':
-    if CONFIG['CC_TYPE'] != 'gcc':
+    if CONFIG['CC_TYPE'] not in ('gcc', 'clang'):
         SOURCES += [
             'win64UnwindInfoTests.asm',
         ]
@@ -58,3 +59,6 @@ NO_PGO = True
 # Temporary workaround for an issue in upstream breakpad
 if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     CXXFLAGS += ['-wd4334']
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

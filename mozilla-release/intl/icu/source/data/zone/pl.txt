@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 pl{
-    Version{"2.1.39.15"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"uniwersalny czas koordynowany"}
+        }
+        "Europe:Dublin"{
+            ld{"Irlandia (czas letni)"}
+        }
+        "Europe:London"{
+            ld{"Brytyjski czas letni"}
+        }
         "meta:Afghanistan"{
             ls{"Afganistan"}
         }

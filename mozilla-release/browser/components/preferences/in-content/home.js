@@ -25,18 +25,23 @@ Preferences.addAll([
   { id: "pref.browser.homepage.disable_button.current_page", type: "bool" },
   { id: "pref.browser.homepage.disable_button.bookmark_page", type: "bool" },
   { id: "pref.browser.homepage.disable_button.restore_default", type: "bool" },
-  { id: "browser.newtabpage.enabled", type: "bool" }
+  { id: "browser.newtabpage.enabled", type: "bool" },
 ]);
 
 const HOMEPAGE_OVERRIDE_KEY = "homepage_override";
 const URL_OVERRIDES_TYPE = "url_overrides";
 const NEW_TAB_KEY = "newTabURL";
 
-let gHomePane = {
+var gHomePane = {
   HOME_MODE_FIREFOX_HOME: "0",
   HOME_MODE_BLANK: "1",
   HOME_MODE_CUSTOM: "2",
   NEWTAB_ENABLED_PREF: "browser.newtabpage.enabled",
+  ACTIVITY_STREAM_PREF_BRANCH: "browser.newtabpage.activity-stream.",
+
+  get homePanePrefs() {
+    return Preferences.getAll().filter(pref => pref.id.includes(this.ACTIVITY_STREAM_PREF_BRANCH));
+  },
 
   /**
    * _handleNewTabOverrides: disables new tab settings UI. Called by
@@ -56,11 +61,28 @@ let gHomePane = {
   watchNewTab() {
     this._handleNewTabOverrides();
     let newTabObserver = {
-      observe: this._handleNewTabOverrides.bind(this)
+      observe: this._handleNewTabOverrides.bind(this),
     };
     Services.obs.addObserver(newTabObserver, "newtab-url-changed");
     window.addEventListener("unload", () => {
       Services.obs.removeObserver(newTabObserver, "newtab-url-changed");
+    });
+  },
+
+  /**
+   * Listen for all preferences changes on the Home Tab in order to show or
+   * hide the Restore Defaults button.
+   */
+  watchHomeTabPrefChange() {
+    const observer = () => this.toggleRestoreDefaultsBtn();
+    Services.prefs.addObserver(this.ACTIVITY_STREAM_PREF_BRANCH, observer);
+    Services.prefs.addObserver("browser.startup.homepage", observer);
+    Services.prefs.addObserver(this.NEWTAB_ENABLED_PREF, observer);
+
+    window.addEventListener("unload", () => {
+      Services.prefs.removeObserver(this.ACTIVITY_STREAM_PREF_BRANCH, observer);
+      Services.prefs.removeObserver("browser.startup.homepage", observer);
+      Services.prefs.removeObserver(this.NEWTAB_ENABLED_PREF, observer);
     });
   },
 
@@ -240,7 +262,7 @@ let gHomePane = {
           startupPref.value = gMainPane.STARTUP_PREF_HOMEPAGE;
         }
         if (homePref.value !== homePref.defaultValue) {
-          homePref.value = homePref.defaultValue;
+          Services.prefs.clearUserPref(homePref.id);
         } else {
           this._renderCustomSettings({shouldShow: false});
         }
@@ -355,6 +377,35 @@ let gHomePane = {
     homePref.value = value;
   },
 
+  /**
+   * Check all Home Tab preferences for user set values.
+   */
+  _changedHomeTabDefaultPrefs() {
+    const homeContentChanged = this.homePanePrefs.some(pref => pref.hasUserValue);
+    const homePref = Preferences.get("browser.startup.homepage");
+    const newtabPref = Preferences.get(this.NEWTAB_ENABLED_PREF);
+
+    return homeContentChanged || homePref.hasUserValue || newtabPref.hasUserValue;
+  },
+
+  /**
+   * Show the Restore Defaults button if any preference on the Home tab was
+   * changed, or hide it otherwise.
+   */
+  toggleRestoreDefaultsBtn() {
+    const btn = document.getElementById("restoreDefaultHomePageBtn");
+    const prefChanged = this._changedHomeTabDefaultPrefs();
+    btn.style.visibility = prefChanged ? "visible" : "hidden";
+  },
+
+  /**
+   * Set all prefs on the Home tab back to their default values.
+   */
+  restoreDefaultPrefsForHome() {
+    this.restoreDefaultHomePage();
+    this.homePanePrefs.forEach(pref => Services.prefs.clearUserPref(pref.id));
+  },
+
   init() {
     // Event Listeners
     document.getElementById("homeMode").addEventListener("command", this.onMenuChange.bind(this));
@@ -362,7 +413,7 @@ let gHomePane = {
     document.getElementById("homePageUrl").addEventListener("input", this.onCustomHomePageInput.bind(this));
     document.getElementById("useCurrentBtn").addEventListener("command", this.setHomePageToCurrent.bind(this));
     document.getElementById("useBookmarkBtn").addEventListener("command", this.setHomePageToBookmark.bind(this));
-    document.getElementById("restoreDefaultHomePageBtn").addEventListener("command", this.restoreDefaultHomePage.bind(this));
+    document.getElementById("restoreDefaultHomePageBtn").addEventListener("command", this.restoreDefaultPrefsForHome.bind(this));
 
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
@@ -374,7 +425,8 @@ let gHomePane = {
     document.getElementById("disableNewTabExtension").addEventListener("command",
       makeDisableControllingExtension(URL_OVERRIDES_TYPE, NEW_TAB_KEY));
 
+    this.watchHomeTabPrefChange();
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "home-pane-loaded");
-  }
+  },
 };

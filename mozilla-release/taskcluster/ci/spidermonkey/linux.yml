@@ -126,6 +126,7 @@ sm-msan-linux64/opt:
     treeherder:
         symbol: SM(msan)
         platform: linux64/opt
+        tier: 3
     run:
         spidermonkey-variant: msan
 
@@ -139,7 +140,8 @@ sm-tsan-linux64/opt:
     run:
         spidermonkey-variant: tsan
     toolchains:
-        - linux64-clang-5
+        - linux64-clang
+        - linux64-rust
 
 sm-rootanalysis-linux64/debug:
     description: "Spidermonkey Root Analysis"

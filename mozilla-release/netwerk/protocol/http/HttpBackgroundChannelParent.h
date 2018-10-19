@@ -69,8 +69,11 @@ public:
   // To send NotifyTrackingProtectionDisabled message over background channel.
   bool OnNotifyTrackingProtectionDisabled();
 
+  // To send NotifyTrackingCookieBlocked message over background channel.
+  bool OnNotifyTrackingCookieBlocked(uint32_t aRejectedReason);
+
   // To send NotifyTrackingResource message over background channel.
-  bool OnNotifyTrackingResource();
+  bool OnNotifyTrackingResource(bool aIsThirdParty);
 
   // To send SetClassifierMatchedInfo message over background channel.
   bool OnSetClassifierMatchedInfo(const nsACString& aList,

@@ -149,7 +149,10 @@ class nsPipeInputStream final
   , public nsIBufferedInputStream
 {
 public:
-  NS_DECL_THREADSAFE_ISUPPORTS
+  // Pipe input streams preserve their refcount changes when record/replaying,
+  // as otherwise the thread which destroys the stream may vary between
+  // recording and replaying.
+  NS_DECL_THREADSAFE_ISUPPORTS_WITH_RECORDING(recordreplay::Behavior::Preserve)
   NS_DECL_NSIINPUTSTREAM
   NS_DECL_NSIASYNCINPUTSTREAM
   NS_DECL_NSISEEKABLESTREAM
@@ -280,7 +283,7 @@ private:
   nsPipe*                         mPipe;
 
   // separate refcnt so that we know when to close the producer
-  mozilla::ThreadSafeAutoRefCnt   mWriterRefCnt;
+  ThreadSafeAutoRefCntWithRecording<recordreplay::Behavior::Preserve> mWriterRefCnt;
   int64_t                         mLogicalOffset;
   bool                            mBlocking;
 
@@ -300,7 +303,9 @@ public:
   friend class nsPipeOutputStream;
   friend class AutoReadSegment;
 
-  NS_DECL_THREADSAFE_ISUPPORTS
+  // As for nsPipeInputStream, preserve refcount changes when recording or
+  // replaying.
+  NS_DECL_THREADSAFE_ISUPPORTS_WITH_RECORDING(recordreplay::Behavior::Preserve)
   NS_DECL_NSIPIPE
 
   // nsPipe methods:
@@ -1523,7 +1528,7 @@ nsPipeInputStream::AsyncWait(nsIInputStreamCallback* aCallback,
 NS_IMETHODIMP
 nsPipeInputStream::Seek(int32_t aWhence, int64_t aOffset)
 {
-  NS_NOTREACHED("nsPipeInputStream::Seek");
+  MOZ_ASSERT_UNREACHABLE("nsPipeInputStream::Seek");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -1544,7 +1549,7 @@ nsPipeInputStream::Tell(int64_t* aOffset)
 NS_IMETHODIMP
 nsPipeInputStream::SetEOF()
 {
-  NS_NOTREACHED("nsPipeInputStream::SetEOF");
+  MOZ_ASSERT_UNREACHABLE("nsPipeInputStream::SetEOF");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -1629,7 +1634,7 @@ nsPipeInputStream::Search(const char* aForString,
     limit1 = limit2;
   }
 
-  NS_NOTREACHED("can't get here");
+  MOZ_ASSERT_UNREACHABLE("can't get here");
   return NS_ERROR_UNEXPECTED;    // keep compiler happy
 }
 

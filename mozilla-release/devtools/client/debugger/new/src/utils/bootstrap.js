@@ -56,10 +56,9 @@ function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj;
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 const {
   Provider
 } = require("devtools/client/shared/vendor/react-redux");
@@ -84,17 +83,19 @@ function renderPanel(component, store) {
 function bootstrapStore(client, {
   services,
   toolboxActions
-}) {
+}, initialState) {
   const createStore = (0, _createStore2.default)({
     log: (0, _devtoolsEnvironment.isTesting)(),
     timing: (0, _devtoolsEnvironment.isDevelopment)(),
     makeThunkArgs: (args, state) => {
-      return _objectSpread({}, args, {
-        client
-      }, services, toolboxActions);
+      return { ...args,
+        client,
+        ...services,
+        ...toolboxActions
+      };
     }
   });
-  const store = createStore((0, _redux.combineReducers)(_reducers2.default));
+  const store = createStore((0, _redux.combineReducers)(_reducers2.default), initialState);
   store.subscribe(() => updatePrefs(store.getState()));
   const actions = (0, _redux.bindActionCreators)(require("../actions/index").default, store.dispatch);
   return {
@@ -145,10 +146,13 @@ function bootstrapApp(store) {
   }
 }
 
-function updatePrefs(state) {
-  const pendingBreakpoints = selectors.getPendingBreakpoints(state);
+let currentPendingBreakpoints;
 
-  if (_prefs.prefs.pendingBreakpoints !== pendingBreakpoints) {
-    _prefs.prefs.pendingBreakpoints = pendingBreakpoints;
+function updatePrefs(state) {
+  const previousPendingBreakpoints = currentPendingBreakpoints;
+  currentPendingBreakpoints = selectors.getPendingBreakpoints(state);
+
+  if (previousPendingBreakpoints && currentPendingBreakpoints !== previousPendingBreakpoints) {
+    _prefs.asyncStore.pendingBreakpoints = currentPendingBreakpoints;
   }
 }

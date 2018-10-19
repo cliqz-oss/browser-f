@@ -9,17 +9,6 @@ const EXPORTED_SYMBOLS = ["WebNavigationFrames"];
 /* exported WebNavigationFrames */
 
 /**
- * Retrieve the DOMWindow associated to the docShell passed as parameter.
- *
- * @param    {nsIDocShell}  docShell - the docShell that we want to get the DOMWindow from.
- * @returns  {nsIDOMWindow}          - the DOMWindow associated to the docShell.
- */
-function docShellToWindow(docShell) {
-  return docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIDOMWindow);
-}
-
-/**
  * The FrameDetail object which represents a frame in WebExtensions APIs.
  *
  * @typedef  {Object}  FrameDetail
@@ -35,14 +24,11 @@ function docShellToWindow(docShell) {
  * A generator function which iterates over a docShell tree, given a root docShell.
  *
  * @param   {nsIDocShell} docShell - the root docShell object
+ * @returns {Iterator<nsIDocShell>}
  */
-function* iterateDocShellTree(docShell) {
-  let docShellsEnum = docShell.getDocShellEnumerator(
+function iterateDocShellTree(docShell) {
+  return docShell.getDocShellEnumerator(
     docShell.typeContent, docShell.ENUMERATE_FORWARDS);
-
-  while (docShellsEnum.hasMoreElements()) {
-    yield docShellsEnum.getNext();
-  }
 }
 
 /**
@@ -58,7 +44,7 @@ function getFrameId(window) {
     return 0;
   }
 
-  let utils = window.getInterface(Ci.nsIDOMWindowUtils);
+  let utils = window.windowUtils;
   return utils.outerWindowID;
 }
 
@@ -81,8 +67,7 @@ function getDocShellFrameId(docShell) {
     return undefined;
   }
 
-  return getFrameId(docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                            .getInterface(Ci.nsIDOMWindow));
+  return getFrameId(docShell.domWindow);
 }
 
 /**
@@ -92,7 +77,7 @@ function getDocShellFrameId(docShell) {
  * @returns  {FrameDetail} the FrameDetail JSON object which represents the docShell.
  */
 function convertDocShellToFrameDetail(docShell) {
-  let window = docShellToWindow(docShell);
+  let window = docShell.domWindow;
 
   return {
     frameId: getFrameId(window),
@@ -113,7 +98,7 @@ function convertDocShellToFrameDetail(docShell) {
  */
 function findDocShell(frameId, rootDocShell) {
   for (let docShell of iterateDocShellTree(rootDocShell)) {
-    if (frameId == getFrameId(docShellToWindow(docShell))) {
+    if (frameId == getFrameId(docShell.domWindow)) {
       return docShell;
     }
   }

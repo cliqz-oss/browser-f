@@ -17,8 +17,8 @@ ChromeUtils.defineModuleGetter(this, "DeferredTask",
 ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
                                   "resource://gre/modules/ExtensionSettingsStore.jsm");
 
-XPCOMUtils.defineLazyPreferenceGetter(this, "trackingprotectionUiEnabled",
-                                      "privacy.trackingprotection.ui.enabled");
+XPCOMUtils.defineLazyPreferenceGetter(this, "contentBlockingUiEnabled",
+                                      "browser.contentblocking.ui.enabled");
 
 const PREF_SETTING_TYPE = "prefs";
 const PROXY_KEY = "proxy.settings";
@@ -48,13 +48,14 @@ let extensionControlledContentIds = {
   "proxy.settings": "proxyExtensionContent",
   get "websites.trackingProtectionMode"() {
     return {
-      button: "trackingProtectionExtensionContentButton",
-      section:
-        trackingprotectionUiEnabled ?
-          "trackingProtectionExtensionContentLabel" :
-          "trackingProtectionPBMExtensionContentLabel",
+      button: contentBlockingUiEnabled ?
+        "contentBlockingDisableTrackingProtectionExtension" :
+        "trackingProtectionExtensionContentButton",
+      section: contentBlockingUiEnabled ?
+        "contentBlockingTrackingProtectionExtensionContentLabel" :
+        "trackingProtectionExtensionContentLabel",
     };
-  }
+  },
 };
 
 const extensionControlledL10nKeys = {
@@ -62,7 +63,9 @@ const extensionControlledL10nKeys = {
   "newTabURL": "new-tab-url",
   "defaultSearch": "default-search",
   "privacy.containers": "privacy-containers",
-  "websites.trackingProtectionMode": "websites-tracking-protection-mode",
+  "websites.trackingProtectionMode": contentBlockingUiEnabled ?
+                                       "websites-content-blocking-all-trackers" :
+                                       "websites-tracking-protection-mode",
   "proxy.settings": "proxy-config",
 };
 
@@ -162,7 +165,7 @@ function setControllingExtensionDescription(elem, addon, settingName) {
   elem.appendChild(image);
   const l10nId = settingNameToL10nID(settingName);
   document.l10n.setAttributes(elem, l10nId, {
-    name: addon.name
+    name: addon.name,
   });
 }
 
@@ -222,14 +225,14 @@ function showEnableExtensionMessage(settingName) {
     img.className = "extension-controlled-icon";
     return img;
   };
-  let label = document.createElement("label");
+  let label = document.createXULElement("label");
   let addonIcon = icon("chrome://mozapps/skin/extensions/extensionGeneric-16.svg", "addons-icon");
   let toolbarIcon = icon("chrome://browser/skin/menu.svg", "menu-icon");
   label.appendChild(addonIcon);
   label.appendChild(toolbarIcon);
   document.l10n.setAttributes(label, "extension-controlled-enable");
   elements.description.appendChild(label);
-  let dismissButton = document.createElement("image");
+  let dismissButton = document.createXULElement("image");
   dismissButton.setAttribute("class", "extension-controlled-icon close-icon");
   dismissButton.addEventListener("click", function dismissHandler() {
     hideControllingExtension(settingName);

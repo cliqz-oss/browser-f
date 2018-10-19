@@ -20,7 +20,7 @@
 var EXPORTED_SYMBOLS = ["ExtensionControlledPopup"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AddonManager",
@@ -32,7 +32,9 @@ ChromeUtils.defineModuleGetter(this, "CustomizableUI",
 ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
                                "resource://gre/modules/ExtensionSettingsStore.jsm");
 
-let {makeWidgetId} = ExtensionUtils;
+let {
+  makeWidgetId,
+} = ExtensionCommon;
 
 XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
   return Services.strings.createBundle("chrome://global/locale/extensions.properties");
@@ -268,7 +270,7 @@ class ExtensionControlledPopup {
   getAddonDetails(doc, addon) {
     const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
 
-    let image = doc.createElement("image");
+    let image = doc.createXULElement("image");
     image.setAttribute("src", addon.iconURL || defaultIcon);
     image.classList.add("extension-controlled-icon");
 
@@ -293,7 +295,7 @@ class ExtensionControlledPopup {
         BrowserUtils.getLocalizedFragment(doc, message, addonDetails));
     }
 
-    let link = doc.createElement("label");
+    let link = doc.createXULElement("label");
     link.setAttribute("class", "learnMore text-link");
     link.href = Services.urlFormatter.formatURLPref("app.support.baseURL") + this.learnMoreLink;
     link.textContent = strBundle.GetStringFromName(this.learnMoreMessageId);

@@ -50,7 +50,6 @@ struct DefaultJitOptions
     bool disableInlineBacktracking;
     bool disableAma;
     bool disableEaa;
-    bool disableEagerSimdUnbox;
     bool disableEdgeCaseAnalysis;
     bool disableGvn;
     bool disableInlining;
@@ -63,7 +62,7 @@ struct DefaultJitOptions
     bool disableRecoverIns;
     bool disableScalarReplacement;
     bool disableCacheIR;
-    bool disableSharedStubs;
+    bool disableCacheIRBinaryArith;
     bool disableSincos;
     bool disableSink;
     bool eagerCompilation;
@@ -71,7 +70,6 @@ struct DefaultJitOptions
     bool fullDebugChecks;
     bool limitScriptSize;
     bool osr;
-    bool asmJSAtomicsEnable;
     bool wasmFoldOffsets;
     bool wasmDelayTier2;
     uint32_t baselineWarmUpThreshold;

@@ -15,16 +15,15 @@ MOCHITEST_MANIFESTS += ['test/mochitest.ini']
 MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
 
 if CONFIG['MOZ_XUL']:
-    XPIDL_SOURCES += [
-        'nsIXULOverlayProvider.idl',
-    ]
-
     EXPORTS += [
+        'nsXULCommandDispatcher.h',
         'nsXULElement.h',
     ]
 
     EXPORTS.mozilla.dom += [
+        'XULFrameElement.h',
         'XULPopupElement.h',
+        'XULScrollElement.h',
     ]
 
     UNIFIED_SOURCES += [
@@ -37,7 +36,9 @@ if CONFIG['MOZ_XUL']:
         'nsXULPrototypeDocument.cpp',
         'nsXULSortService.cpp',
         'XULDocument.cpp',
+        'XULFrameElement.cpp',
         'XULPopupElement.cpp',
+        'XULScrollElement.cpp',
     ]
 
 XPIDL_SOURCES += [

@@ -4,8 +4,11 @@
 
 from __future__ import absolute_import, unicode_literals
 
+import itertools
 import json
 import os
+
+from collections import defaultdict
 
 import mozpack.path as mozpath
 
@@ -28,13 +31,16 @@ from mozbuild.frontend.data import (
     GeneratedSources,
     GnProjectData,
     HostLibrary,
+    HostGeneratedSources,
     HostRustLibrary,
     IPDLCollection,
+    LocalizedPreprocessedFiles,
+    LocalizedFiles,
     RustLibrary,
     SharedLibrary,
     StaticLibrary,
     UnifiedSources,
-    XPIDLFile,
+    XPIDLModule,
     WebIDLCollection,
 )
 from mozbuild.jar import (
@@ -51,43 +57,48 @@ from mozbuild.util import (
 
 class XPIDLManager(object):
     """Helps manage XPCOM IDLs in the context of the build system."""
+
+    class Module(object):
+        def __init__(self):
+            self.idl_files = set()
+            self.directories = set()
+            self._stems = set()
+
+        def add_idls(self, idls):
+            self.idl_files.update(idl.full_path for idl in idls)
+            self.directories.update(mozpath.dirname(idl.full_path)
+                                    for idl in idls)
+            self._stems.update(mozpath.splitext(mozpath.basename(idl))[0]
+                               for idl in idls)
+
+        def stems(self):
+            return iter(self._stems)
+
     def __init__(self, config):
         self.config = config
         self.topsrcdir = config.topsrcdir
         self.topobjdir = config.topobjdir
 
-        self.idls = {}
-        self.modules = {}
+        self._idls = set()
+        self.modules = defaultdict(self.Module)
 
-    def register_idl(self, idl):
-        """Registers an IDL file with this instance.
+    def link_module(self, module):
+        """Links an XPIDL module with with this instance."""
+        for idl in module.idl_files:
+            basename = mozpath.basename(idl.full_path)
 
-        The IDL file will be built, installed, etc.
+            if basename in self._idls:
+                raise Exception('IDL already registered: %s' % basename)
+            self._idls.add(basename)
+
+        self.modules[module.name].add_idls(module.idl_files)
+
+    def idl_stems(self):
+        """Return an iterator of stems of the managed IDL files.
+
+        The stem of an IDL file is the basename of the file with no .idl extension.
         """
-        basename = mozpath.basename(idl.source_path)
-        dirname = mozpath.dirname(idl.source_path)
-        root = mozpath.splitext(basename)[0]
-        xpt = '%s.xpt' % idl.module
-
-        entry = {
-            'source': idl.source_path,
-            'module': idl.module,
-            'basename': basename,
-            'root': root,
-        }
-
-        if entry['basename'] in self.idls:
-            raise Exception('IDL already registered: %s' % entry['basename'])
-
-        self.idls[entry['basename']] = entry
-        # First element is a set of interface file basenames (no extension).
-        #
-        # Second element is a set of directory names where module IDLs
-        # can be found.  Yes, we have XPIDL modules with files from
-        # multiple directories.
-        t = self.modules.setdefault(entry['module'], (set(), set()))
-        t[0].add(entry['source'])
-        t[1].add(dirname)
+        return itertools.chain(*[m.stems() for m in self.modules.itervalues()])
 
 class BinariesCollection(object):
     """Tracks state of binaries produced by the build."""
@@ -108,10 +119,10 @@ class CommonBackend(BuildBackend):
     def consume_object(self, obj):
         self._configs.add(obj.config)
 
-        if isinstance(obj, XPIDLFile):
+        if isinstance(obj, XPIDLModule):
             # TODO bug 1240134 tracks not processing XPIDL files during
             # artifact builds.
-            self._idl_manager.register_idl(obj)
+            self._idl_manager.link_module(obj)
 
         elif isinstance(obj, ConfigFileSubstitution):
             # Do not handle ConfigFileSubstitution for Makefiles. Leave that
@@ -154,7 +165,7 @@ class CommonBackend(BuildBackend):
             self._binaries.shared_libraries.append(obj)
             return False
 
-        elif isinstance(obj, GeneratedSources):
+        elif isinstance(obj, (GeneratedSources, HostGeneratedSources)):
             self._handle_generated_sources(obj.files)
             return False
 
@@ -175,10 +186,11 @@ class CommonBackend(BuildBackend):
         return True
 
     def consume_finished(self):
-        if len(self._idl_manager.idls):
+        if len(self._idl_manager.modules):
             self._write_rust_xpidl_summary(self._idl_manager)
             self._handle_idl_manager(self._idl_manager)
-            self._handle_generated_sources(mozpath.join(self.environment.topobjdir, 'dist/include/%s.h' % idl['root']) for idl in self._idl_manager.idls.values())
+            self._handle_generated_sources(mozpath.join(self.environment.topobjdir, 'dist/include/%s.h' % stem)
+                                           for stem in self._idl_manager.idl_stems())
 
 
         for config in self._configs:
@@ -208,18 +220,27 @@ class CommonBackend(BuildBackend):
         no_pgo_objs = []
 
         seen_objs = set()
+        seen_pgo_gen_only_objs = set()
         seen_libs = set()
 
         def add_objs(lib):
+            seen_pgo_gen_only_objs.update(lib.pgo_gen_only_objs)
+
             for o in lib.objs:
-                if o not in seen_objs:
-                    seen_objs.add(o)
-                    objs.append(o)
-                    # This is slightly odd, buf for consistency with the
-                    # recursivemake backend we don't replace OBJ_SUFFIX if any
-                    # object in a library has `no_pgo` set.
-                    if lib.no_pgo_objs or lib.no_pgo:
-                        no_pgo_objs.append(o)
+                if o in seen_objs:
+                    continue
+
+                # The front end should keep pgo generate-only objects and
+                # normal objects separate.
+                assert o not in seen_pgo_gen_only_objs
+
+                seen_objs.add(o)
+                objs.append(o)
+                # This is slightly odd, but for consistency with the
+                # recursivemake backend we don't replace OBJ_SUFFIX if any
+                # object in a library has `no_pgo` set.
+                if lib.no_pgo_objs or lib.no_pgo:
+                    no_pgo_objs.append(o)
 
         def expand(lib, recurse_objs, system_libs):
             if isinstance(lib, StaticLibrary):
@@ -261,7 +282,8 @@ class CommonBackend(BuildBackend):
                 seen_libs.add(lib)
                 os_libs.append(lib)
 
-        return objs, no_pgo_objs, shared_libs, os_libs, static_libs
+        return (objs, sorted(seen_pgo_gen_only_objs), no_pgo_objs, \
+                shared_libs, os_libs, static_libs)
 
     def _make_list_file(self, objdir, objs, name):
         if not objs:
@@ -361,6 +383,27 @@ class CommonBackend(BuildBackend):
             self._write_unified_file(unified_file, source_filenames,
                                      output_directory, poison_windows_h)
 
+    def localized_path(self, relativesrcdir, filename):
+        '''Return the localized path for a file.
+
+        Given ``relativesrcdir``, a path relative to the topsrcdir, return a path to ``filename``
+        from the current locale as specified by ``MOZ_UI_LOCALE``, using ``L10NBASEDIR`` as the
+        parent directory for non-en-US locales.
+        '''
+        ab_cd = self.environment.substs['MOZ_UI_LOCALE'][0]
+        l10nbase = mozpath.join(self.environment.substs['L10NBASEDIR'], ab_cd)
+        # Filenames from LOCALIZED_FILES will start with en-US/.
+        if filename.startswith('en-US/'):
+            e, filename = filename.split('en-US/')
+            assert(not e)
+        if ab_cd == 'en-US':
+            return mozpath.join(self.environment.topsrcdir, relativesrcdir, 'en-US', filename)
+        if mozpath.basename(relativesrcdir) == 'locales':
+            l10nrelsrcdir = mozpath.dirname(relativesrcdir)
+        else:
+            l10nrelsrcdir = relativesrcdir
+        return mozpath.join(l10nbase, l10nrelsrcdir, filename)
+
     def _consume_jar_manifest(self, obj):
         # Ideally, this would all be handled somehow in the emitter, but
         # this would require all the magic surrounding l10n and addons in
@@ -368,15 +411,15 @@ class CommonBackend(BuildBackend):
         # any time soon enough.
         # Notably missing:
         # - DEFINES from config/config.mk
-        # - L10n support
         # - The equivalent of -e when USE_EXTENSION_MANIFEST is set in
         #   moz.build, but it doesn't matter in dist/bin.
         pp = Preprocessor()
         if obj.defines:
             pp.context.update(obj.defines.defines)
         pp.context.update(self.environment.defines)
+        ab_cd = obj.config.substs['MOZ_UI_LOCALE'][0]
         pp.context.update(
-            AB_CD='en-US',
+            AB_CD=ab_cd,
             BUILD_FASTER=1,
         )
         pp.out = JarManifestParser()
@@ -402,6 +445,8 @@ class CommonBackend(BuildBackend):
                 jar_context['DEFINES'] = obj.defines.defines
             files = jar_context['FINAL_TARGET_FILES']
             files_pp = jar_context['FINAL_TARGET_PP_FILES']
+            localized_files = jar_context['LOCALIZED_FILES']
+            localized_files_pp = jar_context['LOCALIZED_PP_FILES']
 
             for e in jarinfo.entries:
                 if e.is_locale:
@@ -418,7 +463,7 @@ class CommonBackend(BuildBackend):
                 if '*' not in e.source and not os.path.exists(src.full_path):
                     if e.is_locale:
                         raise Exception(
-                            '%s: Cannot find %s' % (obj.path, e.source))
+                            '%s: Cannot find %s (tried %s)' % (obj.path, e.source, src.full_path))
                     if e.source.startswith('/'):
                         src = Path(jar_context, '!' + e.source)
                     else:
@@ -438,15 +483,26 @@ class CommonBackend(BuildBackend):
                     if '*' in e.source:
                         raise Exception('%s: Wildcards are not supported with '
                                         'preprocessing' % obj.path)
-                    files_pp[path] += [src]
+                    if e.is_locale:
+                        localized_files_pp[path] += [src]
+                    else:
+                        files_pp[path] += [src]
                 else:
-                    files[path] += [src]
+                    if e.is_locale:
+                        localized_files[path] += [src]
+                    else:
+                        files[path] += [src]
 
             if files:
                 self.consume_object(FinalTargetFiles(jar_context, files))
             if files_pp:
                 self.consume_object(
                     FinalTargetPreprocessedFiles(jar_context, files_pp))
+            if localized_files:
+                self.consume_object(LocalizedFiles(jar_context, localized_files))
+            if localized_files_pp:
+                self.consume_object(
+                    LocalizedPreprocessedFiles(jar_context, localized_files_pp))
 
             for m in jarinfo.chrome_manifests:
                 entry = parse_manifest_line(
@@ -461,16 +517,19 @@ class CommonBackend(BuildBackend):
 
         include_tmpl = "include!(concat!(env!(\"MOZ_TOPOBJDIR\"), \"/dist/xpcrs/%s/%s.rs\"))"
 
+        # Ensure deterministic output files.
+        stems = sorted(manager.idl_stems())
+
         with self._write_file(mozpath.join(topobjdir, 'dist', 'xpcrs', 'rt', 'all.rs')) as fh:
             fh.write("// THIS FILE IS GENERATED - DO NOT EDIT\n\n")
-            for idl in manager.idls.values():
-                fh.write(include_tmpl % ("rt", idl['root']))
+            for stem in stems:
+                fh.write(include_tmpl % ("rt", stem))
                 fh.write(";\n")
 
         with self._write_file(mozpath.join(topobjdir, 'dist', 'xpcrs', 'bt', 'all.rs')) as fh:
             fh.write("// THIS FILE IS GENERATED - DO NOT EDIT\n\n")
             fh.write("&[\n")
-            for idl in manager.idls.values():
-                fh.write(include_tmpl % ("bt", idl['root']))
+            for stem in stems:
+                fh.write(include_tmpl % ("bt", stem))
                 fh.write(",\n")
             fh.write("]\n")

@@ -1,5 +1,6 @@
 (function() {
     "use strict";
+    var idCounter = 0;
 
     function getInViewCenterPoint(rect) {
         var left = Math.max(0, rect.left);
@@ -46,6 +47,42 @@
      * @namespace
      */
     window.test_driver = {
+        /**
+         * Trigger user interaction in order to grant additional privileges to
+         * a provided function.
+         *
+         * https://html.spec.whatwg.org/#triggered-by-user-activation
+         *
+         * @param {String} intent - a description of the action which much be
+         *                          triggered by user interaction
+         * @param {Function} action - code requiring escalated privileges
+         *
+         * @returns {Promise} fulfilled following user interaction and
+         *                    execution of the provided `action` function;
+         *                    rejected if interaction fails or the provided
+         *                    function throws an error
+         */
+        bless: function(intent, action) {
+            var button = document.createElement("button");
+            button.innerHTML = "This test requires user interaction.<br />" +
+                "Please click here to allow " + intent + ".";
+            button.id = "wpt-test-driver-bless-" + (idCounter += 1);
+            const elem = document.body || document.documentElement;
+            elem.appendChild(button);
+
+            return new Promise(function(resolve, reject) {
+                    button.addEventListener("click", resolve);
+
+                    test_driver.click(button).catch(reject);
+                }).then(function() {
+                    button.remove();
+
+                    if (typeof action === "function") {
+                        return action();
+                    }
+                });
+        },
+
         /**
          * Triggers a user-initiated click
          *
@@ -129,7 +166,7 @@
          * https://github.com/WICG/page-lifecycle/blob/master/README.md|Lifecycle API
          * for Web Pages}
          *
-         * @returns {Promise} fullfilled after the freeze request is sent, or rejected
+         * @returns {Promise} fulfilled after the freeze request is sent, or rejected
          *                    in case the WebDriver command errors
          */
         freeze: function() {
@@ -139,7 +176,7 @@
 
     window.test_driver_internal = {
         /**
-         * Triggers a user-initated click
+         * Triggers a user-initiated click
          *
          * @param {Element} element - element to be clicked
          * @param {{x: number, y: number} coords - viewport coordinates to click at
@@ -150,7 +187,7 @@
         },
 
         /**
-         * Triggers a user-initated click
+         * Triggers a user-initiated click
          *
          * @param {Element} element - element to be clicked
          * @param {String} keys - keys to send to the element
@@ -163,7 +200,7 @@
         /**
          * Freeze the current page
          *
-         * @returns {Promise} fullfilled after freeze request is sent, otherwise
+         * @returns {Promise} fulfilled after freeze request is sent, otherwise
          * it gets rejected
          */
         freeze: function() {

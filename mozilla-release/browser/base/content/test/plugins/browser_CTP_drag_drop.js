@@ -77,19 +77,18 @@ add_task(async function() {
     let bounds = plugin.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = content.windowUtils;
     utils.sendMouseEvent("mousedown", left, top, 0, 1, 0, false, 0, 0);
     utils.sendMouseEvent("mouseup", left, top, 0, 1, 0, false, 0, 0);
   });
 
-  let condition = () => !PopupNotifications.getNotification("click-to-play-plugins", gNewWindow.gBrowser.selectedBrowser).dismissed && gNewWindow.PopupNotifications.panel.firstChild;
+  let condition = () => !PopupNotifications.getNotification("click-to-play-plugins", gNewWindow.gBrowser.selectedBrowser).dismissed && gNewWindow.PopupNotifications.panel.firstElementChild;
   await promiseForCondition(condition);
 });
 
 add_task(async function() {
   // Click the activate button on doorhanger to make sure it works
-  gNewWindow.PopupNotifications.panel.firstChild.button.click();
+  gNewWindow.PopupNotifications.panel.firstElementChild.button.click();
 
   let pluginInfo = await promiseForPluginInfo("test", gNewWindow.gBrowser.selectedBrowser);
   ok(pluginInfo.activated, "plugin should be activated");

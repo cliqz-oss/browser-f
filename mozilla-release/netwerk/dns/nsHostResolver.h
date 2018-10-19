@@ -23,6 +23,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "nsRefPtrHashtable.h"
+#include "nsIThreadPool.h"
 
 class nsHostResolver;
 class nsResolveHostCallback;
@@ -56,16 +57,8 @@ struct nsHostKey
     uint16_t af;
     bool     pb;
     const nsCString originSuffix;
-
-    nsHostKey(const nsACString& host, uint16_t flags,
-              uint16_t af, bool pb, const nsACString& originSuffix)
-        : host(host)
-        , flags(flags)
-        , af(af)
-        , pb(pb)
-        , originSuffix(originSuffix) {
-    }
-
+    explicit nsHostKey(const nsACString& host, uint16_t flags,
+                       uint16_t af, bool pb, const nsACString& originSuffix);
     bool operator==(const nsHostKey& other) const;
     size_t SizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
     PLDHashNumber Hash() const;
@@ -444,7 +437,7 @@ private:
     uint32_t      mDefaultCacheLifetime; // granularity seconds
     uint32_t      mDefaultGracePeriod; // granularity seconds
     mutable Mutex mLock;    // mutable so SizeOfIncludingThis can be const
-    CondVar       mIdleThreadCV;
+    CondVar       mIdleTaskCV;
     nsRefPtrHashtable<nsGenericHashKey<nsHostKey>, nsHostRecord> mRecordDB;
     mozilla::LinkedList<RefPtr<nsHostRecord>> mHighQ;
     mozilla::LinkedList<RefPtr<nsHostRecord>> mMediumQ;
@@ -455,9 +448,11 @@ private:
     mozilla::TimeDuration mLongIdleTimeout;
     mozilla::TimeDuration mShortIdleTimeout;
 
+    RefPtr<nsIThreadPool> mResolverThreads;
+
     mozilla::Atomic<bool>     mShutdown;
-    mozilla::Atomic<uint32_t> mNumIdleThreads;
-    mozilla::Atomic<uint32_t> mThreadCount;
+    mozilla::Atomic<uint32_t> mNumIdleTasks;
+    mozilla::Atomic<uint32_t> mActiveTaskCount;
     mozilla::Atomic<uint32_t> mActiveAnyThreadCount;
     mozilla::Atomic<uint32_t> mPendingCount;
 

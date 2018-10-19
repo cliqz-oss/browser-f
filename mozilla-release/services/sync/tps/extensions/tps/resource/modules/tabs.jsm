@@ -25,7 +25,7 @@ Services
   addEventListener("load", function(event) {
     let subframe = event.target != content.document;
     sendAsyncMessage("tps:loadEvent", {subframe: subframe, url: event.target.documentURI});
-  }, true)`), true);
+  }, true)`), true, true);
 
 var BrowserTabs = {
   /**
@@ -70,17 +70,20 @@ var BrowserTabs = {
    */
   Find(uri, title, profile) {
     // Find the uri in Weave's list of tabs for the given profile.
-    let engine = Weave.Service.engineManager.get("tabs");
-    for (let [, client] of Object.entries(engine.getAllClients())) {
-      if (!client.tabs) {
+    let tabEngine = Weave.Service.engineManager.get("tabs");
+    for (let client of Weave.Service.clientsEngine.remoteClients) {
+      let tabClient = tabEngine.getClientById(client.id);
+      if (!tabClient || !tabClient.tabs) {
         continue;
       }
-      for (let key in client.tabs) {
-        let tab = client.tabs[key];
+      for (let key in tabClient.tabs) {
+        let tab = tabClient.tabs[key];
         let weaveTabUrl = tab.urlHistory[0];
-        if (uri == weaveTabUrl && profile == client.clientName)
-          if (title == undefined || title == tab.title)
+        if (uri == weaveTabUrl && profile == client.name) {
+          if (title == undefined || title == tab.title) {
             return true;
+          }
+        }
         }
         Logger.logInfo(`Dumping tabs for ${client.clientName}...\n` + JSON.stringify(client.tabs));
       }

@@ -70,6 +70,7 @@ add_task(async function sidebar_initial_install() {
   ok(document.getElementById("sidebar-box").hidden, "sidebar box is not visible");
   let extension = ExtensionTestUtils.loadExtension(getExtData());
   await extension.startup();
+  await extension.awaitMessage("sidebar");
 
   // Test sidebar is opened on install
   ok(!document.getElementById("sidebar-box").hidden, "sidebar box is visible");
@@ -151,7 +152,7 @@ add_task(async function sidebar_isOpen() {
   await sendMessage(extension2, "isOpen", {result: false});
 
   info("Test passing a windowId parameter");
-  let windowId = window.getInterface(Ci.nsIDOMWindowUtils).outerWindowID;
+  let windowId = window.windowUtils.outerWindowID;
   let WINDOW_ID_CURRENT = -2;
   await sendMessage(extension1, "isOpen", {arg: {windowId}, result: true});
   await sendMessage(extension2, "isOpen", {arg: {windowId}, result: false});

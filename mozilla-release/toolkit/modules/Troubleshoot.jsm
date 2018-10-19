@@ -25,9 +25,9 @@ const PREFS_WHITELIST = [
   "browser.download.hide_plugins_without_extensions",
   "browser.download.lastDir.savePerSite",
   "browser.download.manager.addToRecentDocs",
-  "browser.download.manager.alertOnEXEOpen",
   "browser.download.manager.resumeOnWakeDelay",
   "browser.download.preferred.",
+  "browser.download.skipConfirmLaunchExecutable",
   "browser.download.useDownloadDir",
   "browser.fixup.",
   "browser.history_expire_",
@@ -186,14 +186,10 @@ var dataProviders = {
 
     data.numTotalWindows = 0;
     data.numRemoteWindows = 0;
-    let winEnumer = Services.wm.getEnumerator("navigator:browser");
-    while (winEnumer.hasMoreElements()) {
+    for (let {docShell} of Services.wm.getEnumerator("navigator:browser")) {
       data.numTotalWindows++;
-      let remote = winEnumer.getNext().
-                   QueryInterface(Ci.nsIInterfaceRequestor).
-                   getInterface(Ci.nsIWebNavigation).
-                   QueryInterface(Ci.nsILoadContext).
-                   useRemoteTabs;
+      let remote = docShell.QueryInterface(Ci.nsILoadContext)
+                   .useRemoteTabs;
       if (remote) {
         data.numRemoteWindows++;
       }
@@ -359,11 +355,8 @@ var dataProviders = {
 
     data.numTotalWindows = 0;
     data.numAcceleratedWindows = 0;
-    let winEnumer = Services.ww.getWindowEnumerator();
-    while (winEnumer.hasMoreElements()) {
-      let winUtils = winEnumer.getNext().
-                     QueryInterface(Ci.nsIInterfaceRequestor).
-                     getInterface(Ci.nsIDOMWindowUtils);
+    for (let win of Services.ww.getWindowEnumerator()) {
+      let winUtils = win.windowUtils;
       try {
         // NOTE: windowless browser's windows should not be reported in the graphics troubleshoot report
         if (winUtils.layerManagerType == "None" || !winUtils.layerManagerRemote) {
@@ -555,16 +548,14 @@ var dataProviders = {
           maxRate: device.maxRate,
           minRate: device.minRate,
           maxLatency: device.maxLatency,
-          minLatency: device.minLatency
+          minLatency: device.minLatency,
         });
       }
       return infos;
     }
 
     let data = {};
-    let winUtils = Services.wm.getMostRecentWindow("").
-                   QueryInterface(Ci.nsIInterfaceRequestor).
-                   getInterface(Ci.nsIDOMWindowUtils);
+    let winUtils = Services.wm.getMostRecentWindow("").windowUtils;
     data.currentAudioBackend = winUtils.currentAudioBackend;
     data.currentMaxAudioChannels = winUtils.currentMaxAudioChannels;
     data.currentPreferredSampleRate = winUtils.currentPreferredSampleRate;
@@ -579,9 +570,7 @@ var dataProviders = {
     let data = {};
     let winEnumer = Services.ww.getWindowEnumerator();
     if (winEnumer.hasMoreElements())
-      data.incrementalGCEnabled = winEnumer.getNext().
-                                  QueryInterface(Ci.nsIInterfaceRequestor).
-                                  getInterface(Ci.nsIDOMWindowUtils).
+      data.incrementalGCEnabled = winEnumer.getNext().windowUtils.
                                   isIncrementalGCEnabled();
     done(data);
   },
@@ -635,7 +624,7 @@ var dataProviders = {
       },
       osPrefs: {
         systemLocales: osPrefs.getSystemLocales(),
-        regionalPrefsLocales: osPrefs.getRegionalPrefsLocales()
+        regionalPrefsLocales: osPrefs.getRegionalPrefsLocales(),
       },
     });
   },

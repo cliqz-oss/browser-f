@@ -41,7 +41,7 @@ const chromeWindowTargetPrototype = extend({}, browsingContextTargetPrototype);
  * this at the moment, it's named to match.
  *
  * Most of the implementation is inherited from BrowsingContextTargetActor.
- * ChromeWindowTargetActor exposes all tab actors via its form() request, like
+ * ChromeWindowTargetActor exposes all target-scoped actors via its form() request, like
  * BrowsingContextTargetActor.
  *
  * You can request a specific window's actor via RootActor.getWindow().
@@ -54,8 +54,7 @@ const chromeWindowTargetPrototype = extend({}, browsingContextTargetPrototype);
 chromeWindowTargetPrototype.initialize = function(connection, window) {
   BrowsingContextTargetActor.prototype.initialize.call(this, connection);
 
-  const docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDocShell);
+  const docShell = window.docShell;
   Object.defineProperty(this, "docShell", {
     value: docShell,
     configurable: true

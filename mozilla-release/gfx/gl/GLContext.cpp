@@ -81,6 +81,7 @@ static const char* const sExtensionNames[] = {
     "GL_ANGLE_texture_compression_dxt5",
     "GL_ANGLE_timer_query",
     "GL_APPLE_client_storage",
+    "GL_APPLE_fence",
     "GL_APPLE_framebuffer_multisample",
     "GL_APPLE_sync",
     "GL_APPLE_texture_range",
@@ -220,8 +221,8 @@ ParseVersion(const std::string& versionStr, uint32_t* const out_major,
     return true;
 }
 
-static uint8_t
-ChooseDebugFlags(CreateContextFlags createFlags)
+/*static*/ uint8_t
+GLContext::ChooseDebugFlags(const CreateContextFlags createFlags)
 {
     uint8_t debugFlags = 0;
 
@@ -263,37 +264,12 @@ ChooseDebugFlags(CreateContextFlags createFlags)
 
 GLContext::GLContext(CreateContextFlags flags, const SurfaceCaps& caps,
                      GLContext* sharedContext, bool isOffscreen, bool useTLSIsCurrent)
-  : mImplicitMakeCurrent(false),
-    mUseTLSIsCurrent(ShouldUseTLSIsCurrent(useTLSIsCurrent)),
+  : mUseTLSIsCurrent(ShouldUseTLSIsCurrent(useTLSIsCurrent)),
     mIsOffscreen(isOffscreen),
-    mContextLost(false),
-    mVersion(0),
-    mProfile(ContextProfile::Unknown),
-    mShadingLanguageVersion(0),
-    mVendor(GLVendor::Other),
-    mRenderer(GLRenderer::Other),
-    mTopError(LOCAL_GL_NO_ERROR),
     mDebugFlags(ChooseDebugFlags(flags)),
     mSharedContext(sharedContext),
-    mSymbols{},
-    mCaps(caps),
-    mScreen(nullptr),
-    mLockedSurface(nullptr),
-    mMaxTextureSize(0),
-    mMaxCubeMapTextureSize(0),
-    mMaxTextureImageSize(0),
-    mMaxRenderbufferSize(0),
-    mMaxSamples(0),
-    mNeedsTextureSizeChecks(false),
-    mNeedsFlushBeforeDeleteFB(false),
-    mTextureAllocCrashesOnMapFailure(false),
-    mNeedsCheckAfterAttachTextureToFb(false),
-    mWorkAroundDriverBugs(true),
-    mSyncGLCallCount(0),
-    mHeavyGLCallsSinceLastFlush(false)
+    mCaps(caps)
 {
-    mMaxViewportDims[0] = 0;
-    mMaxViewportDims[1] = 0;
     mOwningThreadId = PlatformThread::CurrentId();
     MOZ_ALWAYS_TRUE( sCurrentContext.init() );
     sCurrentContext.set(0);
@@ -1078,6 +1054,15 @@ GLContext::LoadMoreSymbols(const char* prefix, bool trygl)
             END_SYMBOLS
         };
         fnLoadForExt(symbols, APPLE_texture_range);
+    }
+
+    if (IsExtensionSupported(APPLE_fence)) {
+        const SymLoadStruct symbols[] = {
+            { (PRFuncPtr*) &mSymbols.fFinishObjectAPPLE, { "FinishObjectAPPLE", nullptr } },
+            { (PRFuncPtr*) &mSymbols.fTestObjectAPPLE, { "TestObjectAPPLE", nullptr } },
+            END_SYMBOLS
+        };
+        fnLoadForExt(symbols, APPLE_fence);
     }
 
     if (IsSupported(GLFeature::vertex_array_object)) {

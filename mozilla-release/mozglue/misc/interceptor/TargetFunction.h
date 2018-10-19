@@ -12,6 +12,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Tuple.h"
 #include "mozilla/Types.h"
+#include "mozilla/Unused.h"
 #include "mozilla/Vector.h"
 
 #include <memory>
@@ -360,7 +361,7 @@ private:
   // needs to touch the heap.
 #if defined(_M_IX86)
   static const size_t kInlineStorage = 16;
-#elif defined(_M_X64)
+#elif defined(_M_X64) || defined(_M_ARM64)
   static const size_t kInlineStorage = 32;
 #endif
   Vector<uint8_t, kInlineStorage> mLocalBytes;
@@ -475,7 +476,7 @@ public:
     : mMMPolicy(aOther.mMMPolicy)
     , mBase(aOther.mBase)
   {
-    mLocalBytes.appendAll(aOther.mLocalBytes);
+    Unused << mLocalBytes.appendAll(aOther.mLocalBytes);
   }
 
   ReadOnlyTargetBytes(const ReadOnlyTargetBytes& aOther,
@@ -487,8 +488,8 @@ public:
       return;
     }
 
-    mLocalBytes.append(aOther.mLocalBytes.begin() + aOffsetFromOther,
-                       aOther.mLocalBytes.end());
+    Unused << mLocalBytes.append(aOther.mLocalBytes.begin() + aOffsetFromOther,
+                                 aOther.mLocalBytes.end());
   }
 
   void EnsureLimit(uint32_t aDesiredLimit)
@@ -585,7 +586,7 @@ private:
   // needs to touch the heap.
 #if defined(_M_IX86)
   static const size_t kInlineStorage = 16;
-#elif defined(_M_X64)
+#elif defined(_M_X64) || defined(_M_ARM64)
   static const size_t kInlineStorage = 32;
 #endif
 
@@ -673,6 +674,13 @@ class MOZ_STACK_CLASS ReadOnlyTargetFunction final
 public:
   ReadOnlyTargetFunction(const MMPolicy& aMMPolicy, const void* aFunc)
     : mTargetBytes(TargetBytesPtr<MMPolicy>::Make(aMMPolicy, aFunc))
+    , mOffset(0)
+  {
+  }
+
+  ReadOnlyTargetFunction(const MMPolicy& aMMPolicy, FARPROC aFunc)
+    : mTargetBytes(TargetBytesPtr<MMPolicy>::Make(aMMPolicy,
+        reinterpret_cast<const void*>(aFunc)))
     , mOffset(0)
   {
   }
@@ -800,8 +808,8 @@ private:
   template <typename T>
   struct ChasePointerHelper
   {
-    template <typename MMPolicy>
-    static T Result(const MMPolicy&, T aValue)
+    template <typename MMPolicy_>
+    static T Result(const MMPolicy_&, T aValue)
     {
       return aValue;
     }
@@ -810,11 +818,11 @@ private:
   template <typename T>
   struct ChasePointerHelper<T*>
   {
-    template <typename MMPolicy>
-    static auto Result(const MMPolicy& aPolicy, T* aValue)
+    template <typename MMPolicy_>
+    static auto Result(const MMPolicy_& aPolicy, T* aValue)
     {
-      ReadOnlyTargetFunction<MMPolicy> ptr(aPolicy, aValue);
-      return ptr.ChasePointer<T>();
+      ReadOnlyTargetFunction<MMPolicy_> ptr(aPolicy, aValue);
+      return ptr.template ChasePointer<T>();
     }
   };
 
@@ -824,7 +832,7 @@ public:
   auto ChasePointer()
   {
     mTargetBytes->EnsureLimit(mOffset + sizeof(T));
-    const typename RemoveCV<T>::Type result = *reinterpret_cast<const RemoveCV<T>::Type*>(mTargetBytes->GetLocalBytes() + mOffset);
+    const typename RemoveCV<T>::Type result = *reinterpret_cast<const typename RemoveCV<T>::Type*>(mTargetBytes->GetLocalBytes() + mOffset);
     return ChasePointerHelper<typename RemoveCV<T>::Type>::Result(mTargetBytes->GetMMPolicy(), result);
   }
 

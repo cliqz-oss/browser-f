@@ -68,7 +68,7 @@ LOCAL_INCLUDES += [
 ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
-    if CONFIG['CC_TYPE'] == 'gcc':
+    if CONFIG['CC_TYPE'] in ('gcc', 'clang'):
         DEFINES['SK_JUMPER_USE_ASSEMBLY'] = 0
     elif CONFIG['CPU_ARCH'] == 'x86':
         SOURCES['skia/src/jumper/SkJumper_generated_win.S'].flags += ['-safeseh']
@@ -98,7 +98,7 @@ if CONFIG['INTEL_ARCHITECTURE'] and (CONFIG['CC_TYPE'] in ('clang', 'clang-cl', 
     SOURCES['skia/src/opts/SkOpts_sse42.cpp'].flags += ['-msse4.2']
     SOURCES['skia/src/opts/SkOpts_avx.cpp'].flags += ['-mavx']
     SOURCES['skia/src/opts/SkOpts_hsw.cpp'].flags += ['-mavx2']
-elif CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
+elif CONFIG['CC_TYPE'] in ('msvc', 'clang-cl') and CONFIG['INTEL_ARCHITECTURE']:
     # MSVC doesn't need special compiler flags, but Skia needs to be told that these files should
     # be built with the required SSE level or it will simply compile in stubs and cause runtime crashes
     SOURCES['skia/src/opts/SkBitmapProcState_opts_SSE2.cpp'].flags += ['-DSK_CPU_SSE_LEVEL=20']
@@ -456,7 +456,7 @@ def write_mozbuild(sources):
   write_sources(f, sources['linux'], 4)
 
   f.write("if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':\n")
-  f.write("    if CONFIG['CC_TYPE'] != 'gcc':\n")
+  f.write("    if CONFIG['CC_TYPE'] not in ('gcc', 'clang') and CONFIG['CPU_ARCH'] != 'aarch64':\n")
   write_list(f, "SOURCES", sources['no-mingw'], 8)
   # Windows-specific files don't get unification because of nasty headers.
   # Luckily there are not many files in this.

@@ -29,8 +29,6 @@ var _PreviewFunction = require("../../shared/PreviewFunction");
 
 var _PreviewFunction2 = _interopRequireDefault(_PreviewFunction);
 
-var _editor = require("../../../utils/editor/index");
-
 var _preview = require("../../../utils/preview");
 
 var _Svg = require("devtools/client/debugger/new/dist/vendors").vendored["Svg"];
@@ -63,19 +61,61 @@ const {
   loadItemProperties
 } = ObjectInspectorUtils.loadProperties;
 
-class Popup extends _react.Component {
-  constructor(...args) {
-    var _temp;
+function inPreview(event) {
+  const relatedTarget = event.relatedTarget;
 
-    return _temp = super(...args), this.onMouseLeave = e => {
+  if (!relatedTarget || relatedTarget.classList && relatedTarget.classList.contains("preview-expression")) {
+    return true;
+  } // $FlowIgnore
+
+
+  const inPreviewSelection = document.elementsFromPoint(event.clientX, event.clientY).some(el => el.classList.contains("preview-selection"));
+  return inPreviewSelection;
+}
+
+class Popup extends _react.Component {
+  constructor(props) {
+    super(props);
+
+    this.onMouseLeave = e => {
       const relatedTarget = e.relatedTarget;
 
-      if (relatedTarget && relatedTarget.classList && (relatedTarget.classList.contains("popover") || relatedTarget.classList.contains("debug-expression") || relatedTarget.classList.contains("editor-mount"))) {
-        return;
+      if (!relatedTarget) {
+        return this.props.onClose();
       }
 
-      this.props.onClose();
-    }, _temp;
+      if (!inPreview(e)) {
+        this.props.onClose();
+      }
+    };
+
+    this.onKeyDown = e => {
+      if (e.key === "Escape") {
+        this.props.onClose();
+      }
+    };
+
+    this.calculateMaxHeight = () => {
+      const {
+        editorRef
+      } = this.props;
+
+      if (!editorRef) {
+        return "auto";
+      }
+
+      return editorRef.getBoundingClientRect().height - this.state.top;
+    };
+
+    this.onPopoverCoords = coords => {
+      this.setState({
+        top: coords.top
+      });
+    };
+
+    this.state = {
+      top: 0
+    };
   }
 
   async componentWillMount() {
@@ -93,26 +133,6 @@ class Popup extends _react.Component {
         const properties = await onLoadItemProperties;
         setPopupObjectProperties(root.contents.value, properties);
       }
-    }
-  }
-
-  componentDidMount() {
-    const {
-      value,
-      editor,
-      range
-    } = this.props;
-
-    if (!value || !value.type == "object") {
-      return;
-    }
-
-    this.marker = (0, _editor.markText)(editor, "preview-selection", range);
-  }
-
-  componentWillUnmount() {
-    if (this.marker) {
-      this.marker.clear();
     }
   }
 
@@ -243,7 +263,10 @@ class Popup extends _react.Component {
     }
 
     return _react2.default.createElement("div", {
-      className: "preview-popup"
+      className: "preview-popup",
+      style: {
+        maxHeight: this.calculateMaxHeight()
+      }
     }, header, this.renderObjectInspector(roots));
   }
 
@@ -317,7 +340,9 @@ class Popup extends _react.Component {
     return _react2.default.createElement(_Popover2.default, {
       targetPosition: popoverPos,
       onMouseLeave: this.onMouseLeave,
+      onKeyDown: this.onKeyDown,
       type: type,
+      onPopoverCoords: this.onPopoverCoords,
       editorRef: editorRef
     }, this.renderPreview());
   }

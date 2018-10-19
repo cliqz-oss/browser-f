@@ -72,11 +72,8 @@ FilePicker.prototype = {
       this.appendFilter("*.xml");
     }
 
-    if (aFilterMask & Ci.nsIFilePicker.xulFilter) {
+    if (aFilterMask & Ci.nsIFilePicker.filterXUL) {
       this.appendFilter("*.xul");
-    }
-
-    if (aFilterMask & Ci.nsIFilePicker.xulFilter) {
       this.appendFilter("..apps");
     }
   },
@@ -168,7 +165,7 @@ FilePicker.prototype = {
   show: function() {
     if (this._domWin) {
       this.fireDialogEvent(this._domWin, "DOMWillOpenModalDialog");
-      let winUtils = this._domWin.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+      let winUtils = this._domWin.windowUtils;
       winUtils.enterModalState();
     }
 
@@ -179,7 +176,7 @@ FilePicker.prototype = {
     delete this._promptActive;
 
     if (this._domWin) {
-      let winUtils = this._domWin.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+      let winUtils = this._domWin.windowUtils;
       winUtils.leaveModalState();
       this.fireDialogEvent(this._domWin, "DOMModalDialogClosed");
     }
@@ -256,6 +253,9 @@ FilePicker.prototype = {
       QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
       mFiles: files,
       mIndex: 0,
+      [Symbol.iterator]() {
+        return this.mFiles.values();
+      },
       hasMoreElements: function() {
         return (this.mIndex < this.mFiles.length);
       },
@@ -275,8 +275,7 @@ FilePicker.prototype = {
         return;
       let event = aDomWin.document.createEvent("Events");
       event.initEvent(aEventName, true, true);
-      let winUtils = aDomWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
+      let winUtils = aDomWin.windowUtils;
       winUtils.dispatchEventToChromeOnly(aDomWin, event);
     } catch (ex) {
     }

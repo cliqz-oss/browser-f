@@ -47,6 +47,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(PaymentRequest,
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PaymentRequest)
+  NS_INTERFACE_MAP_ENTRY(nsIDocumentActivity)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(PaymentRequest, DOMEventTargetHelper)
@@ -642,6 +643,7 @@ PaymentRequest::PaymentRequest(nsPIDOMWindowInner* aWindow, const nsAString& aIn
   , mIPC(nullptr)
 {
   MOZ_ASSERT(aWindow);
+  RegisterActivityObserver();
 }
 
 already_AddRefed<Promise>
@@ -744,7 +746,7 @@ void
 PaymentRequest::RejectShowPayment(nsresult aRejectReason)
 {
   MOZ_ASSERT(mAcceptPromise);
-  MOZ_ASSERT(ReadyForUpdate());
+  MOZ_ASSERT(mState == eInteractive);
 
   mAcceptPromise->MaybeReject(aRejectReason);
   mState = eClosed;
@@ -760,7 +762,6 @@ PaymentRequest::RespondShowPayment(const nsAString& aMethodName,
                                    nsresult aRv)
 {
   MOZ_ASSERT(mAcceptPromise);
-  MOZ_ASSERT(ReadyForUpdate());
   MOZ_ASSERT(mState == eInteractive);
 
   if (NS_FAILED(aRv)) {
@@ -864,6 +865,9 @@ PaymentRequest::UpdatePayment(JSContext* aCx, const PaymentDetailsUpdate& aDetai
                               bool aDeferredShow)
 {
   NS_ENSURE_ARG_POINTER(aCx);
+  if (mState != eInteractive) {
+    return NS_ERROR_DOM_INVALID_STATE_ERR;
+  }
   RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
   if (NS_WARN_IF(!manager)) {
     return NS_ERROR_FAILURE;
@@ -881,6 +885,9 @@ PaymentRequest::AbortUpdate(nsresult aRv, bool aDeferredShow)
 {
   MOZ_ASSERT(NS_FAILED(aRv));
 
+  if (mState != eInteractive) {
+    return;
+  }
   // Close down any remaining user interface.
   RefPtr<PaymentRequestManager> manager = PaymentRequestManager::GetSingleton();
   MOZ_ASSERT(manager);
@@ -966,7 +973,6 @@ PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
                                       const nsAString& aDependentLocality,
                                       const nsAString& aPostalCode,
                                       const nsAString& aSortingCode,
-                                      const nsAString& aLanguageCode,
                                       const nsAString& aOrganization,
                                       const nsAString& aRecipient,
                                       const nsAString& aPhone)
@@ -974,11 +980,11 @@ PaymentRequest::UpdateShippingAddress(const nsAString& aCountry,
   nsTArray<nsString> emptyArray;
   mShippingAddress = new PaymentAddress(GetOwner(), aCountry, emptyArray,
                                         aRegion, aCity, aDependentLocality,
-                                        aPostalCode, aSortingCode, aLanguageCode,
+                                        aPostalCode, aSortingCode,
                                         EmptyString(), EmptyString(), EmptyString());
   mFullShippingAddress = new PaymentAddress(GetOwner(), aCountry, aAddressLine,
                                             aRegion, aCity, aDependentLocality,
-                                            aPostalCode, aSortingCode, aLanguageCode,
+                                            aPostalCode, aSortingCode,
                                             aOrganization, aRecipient, aPhone);
   // Fire shippingaddresschange event
   return DispatchUpdateEvent(NS_LITERAL_STRING("shippingaddresschange"));
@@ -1058,6 +1064,44 @@ PaymentRequest::RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
   mDeferredShow = false;
 }
 
+void
+PaymentRequest::RegisterActivityObserver()
+{
+  if (nsPIDOMWindowInner* window = GetOwner()) {
+    nsCOMPtr<nsIDocument> doc = window->GetExtantDoc();
+    if (doc) {
+      doc->RegisterActivityObserver(
+        NS_ISUPPORTS_CAST(nsIDocumentActivity*, this));
+    }
+  }
+}
+
+void
+PaymentRequest::UnregisterActivityObserver()
+{
+  if (nsPIDOMWindowInner* window = GetOwner()) {
+    nsCOMPtr<nsIDocument> doc = window->GetExtantDoc();
+    if (doc) {
+      doc->UnregisterActivityObserver(
+        NS_ISUPPORTS_CAST(nsIDocumentActivity*, this));
+    }
+  }
+}
+
+void
+PaymentRequest::NotifyOwnerDocumentActivityChanged()
+{
+  nsPIDOMWindowInner* window = GetOwner();
+  NS_ENSURE_TRUE_VOID(window);
+  nsIDocument* doc = window->GetExtantDoc();
+  NS_ENSURE_TRUE_VOID(doc);
+
+  if (!doc->IsCurrentActiveDocument()) {
+    RefPtr<PaymentRequestManager> mgr = PaymentRequestManager::GetSingleton();
+    mgr->ClosePayment(this);
+  }
+}
+
 PaymentRequest::~PaymentRequest()
 {
   if (mIPC) {
@@ -1065,12 +1109,13 @@ PaymentRequest::~PaymentRequest()
     // references to us and we can't be waiting for any replies.
     mIPC->MaybeDelete(false);
   }
+  UnregisterActivityObserver();
 }
 
 JSObject*
 PaymentRequest::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PaymentRequestBinding::Wrap(aCx, this, aGivenProto);
+  return PaymentRequest_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

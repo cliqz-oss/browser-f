@@ -205,6 +205,10 @@ hb_ot_shape_complex_categorize (const hb_ot_shape_planner_t *planner)
     /* Unicode-9.0 additions */
     case HB_SCRIPT_ADLAM:
 
+    /* Unicode-11.0 additions */
+    case HB_SCRIPT_HANIFI_ROHINGYA:
+    case HB_SCRIPT_SOGDIAN:
+
       /* For Arabic script, use the Arabic shaper even if no OT script tag was found.
        * This is because we do fallback shaping for Arabic script (and not others).
        * But note that Arabic shaping is applicable only to horizontal layout; for
@@ -275,20 +279,7 @@ hb_ot_shape_complex_categorize (const hb_ot_shape_planner_t *planner)
 	return &_hb_ot_complex_shaper_indic;
 
     case HB_SCRIPT_KHMER:
-      /* A number of Khmer fonts in the wild don't have a 'pref' feature,
-       * and as such won't shape properly via the Indic shaper;
-       * however, they typically have 'liga' / 'clig' features that implement
-       * the necessary "reordering" by means of ligature substitutions.
-       * So we send such pref-less fonts through the generic shaper instead. */
-      if (planner->map.found_script[0] &&
-	  hb_ot_layout_language_find_feature (planner->face, HB_OT_TAG_GSUB,
-					      planner->map.script_index[0],
-					      planner->map.language_index[0],
-					      HB_TAG ('p','r','e','f'),
-					      nullptr))
 	return &_hb_ot_complex_shaper_khmer;
-      else
-	return &_hb_ot_complex_shaper_default;
 
     case HB_SCRIPT_MYANMAR:
       if (planner->map.chosen_script[0] == HB_TAG ('m','y','m','2'))
@@ -379,6 +370,11 @@ hb_ot_shape_complex_categorize (const hb_ot_shape_planner_t *planner)
     case HB_SCRIPT_MASARAM_GONDI:
     case HB_SCRIPT_SOYOMBO:
     case HB_SCRIPT_ZANABAZAR_SQUARE:
+
+    /* Unicode-11.0 additions */
+    case HB_SCRIPT_DOGRA:
+    case HB_SCRIPT_GUNJALA_GONDI:
+    case HB_SCRIPT_MAKASAR:
 
       /* If the designer designed the font for the 'DFLT' script,
        * (or we ended up arbitrarily pick 'latn'), use the default shaper.

@@ -10,10 +10,14 @@ add_task(async function test_InsertVisitedURIs_UpdateFrecency_and_History_Insert
   // two birds with one stone and expect two notifications.  Trigger the path by
   // adding a download.
   let url = Services.io.newURI("http://example.com/a");
-  Cc["@mozilla.org/browser/download-history;1"].
-    getService(Ci.nsIDownloadHistory).
-    addDownload(url);
-  await Promise.all([onFrecencyChanged(url), onFrecencyChanged(url)]);
+  let promises = [onFrecencyChanged(url), onFrecencyChanged(url)];
+  await PlacesUtils.history.insert({
+    url,
+    visits: [{
+      transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD,
+    }],
+  });
+  await Promise.all(promises);
 });
 
 // nsNavHistory::UpdateFrecency
@@ -23,40 +27,39 @@ add_task(async function test_nsNavHistory_UpdateFrecency() {
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url,
-    title: "test"
+    title: "test",
   });
   await promise;
 });
 
-// nsNavHistory::invalidateFrecencies for particular pages
-add_task(async function test_nsNavHistory_invalidateFrecencies_somePages() {
-  let url = Services.io.newURI("http://test-nsNavHistory-invalidateFrecencies-somePages.com/");
+// History.jsm invalidateFrecencies()
+add_task(async function test_invalidateFrecencies() {
+  let url = Services.io.newURI("http://test-invalidateFrecencies.com/");
   // Bookmarking the URI is enough to add it to moz_places, and importantly, it
   // means that removeByFilter doesn't remove it from moz_places, so its
   // frecency is able to be changed.
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url,
-    title: "test"
+    title: "test",
   });
   let promise = onFrecencyChanged(url);
   await PlacesUtils.history.removeByFilter({ host: url.host });
   await promise;
 });
 
-// nsNavHistory::invalidateFrecencies for all pages
-add_task(async function test_nsNavHistory_invalidateFrecencies_allPages() {
+// History.jsm clear()
+add_task(async function test_clear() {
   await Promise.all([onManyFrecenciesChanged(), PlacesUtils.history.clear()]);
 });
 
-// nsNavHistory::DecayFrecency and nsNavHistory::FixInvalidFrecencies
-add_task(async function test_nsNavHistory_DecayFrecency_and_nsNavHistory_FixInvalidFrecencies() {
-  // FixInvalidFrecencies is at the end of a path that DecayFrecency is also on,
-  // so expect two notifications.  Trigger the path by making nsNavHistory
-  // observe the idle-daily notification.
+// nsNavHistory::FixAndDecayFrecency
+add_task(async function test_nsNavHistory_FixAndDecayFrecency() {
+  // Fix and decay frecencies by making nsNavHistory observe the idle-daily
+  // notification.
   PlacesUtils.history.QueryInterface(Ci.nsIObserver).
     observe(null, "idle-daily", "");
-  await Promise.all([onManyFrecenciesChanged(), onManyFrecenciesChanged()]);
+  await Promise.all([onManyFrecenciesChanged()]);
 });
 
 function onFrecencyChanged(expectedURI) {

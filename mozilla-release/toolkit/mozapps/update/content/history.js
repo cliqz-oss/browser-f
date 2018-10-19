@@ -3,8 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const NS_XUL  = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-
 var gUpdateHistory = {
   _view: null,
 
@@ -35,7 +33,7 @@ var gUpdateHistory = {
         if (!update.statusText)
           continue;
 
-        var element = document.createElementNS(NS_XUL, "richlistitem");
+        var element = document.createXULElement("richlistitem");
         element.className = "update";
         this._view.appendChild(element);
         element.name = bundle.getFormattedString("updateFullName",
@@ -63,6 +61,6 @@ var gUpdateHistory = {
     const dtOptions = { year: "numeric", month: "long", day: "numeric",
                         hour: "numeric", minute: "numeric", second: "numeric" };
     return date.toLocaleString(undefined, dtOptions);
-  }
+  },
 };
 

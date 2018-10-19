@@ -476,7 +476,7 @@ AccessibleWrap::get_accRole(
   uint32_t msaaRole = 0;
 
 #define ROLE(_geckoRole, stringRole, atkRole, macRole, \
-             _msaaRole, ia2Role, nameRule) \
+             _msaaRole, ia2Role, androidClass, nameRule) \
   case roles::_geckoRole: \
     msaaRole = _msaaRole; \
     break;
@@ -1339,8 +1339,13 @@ AccessibleWrap::GetHWNDFor(Accessible* aAccessible)
     // their tab is within.  Popups are always in the parent process, and so
     // never proxied, which means this is basically correct.
     Accessible* outerDoc = proxy->OuterDocOfRemoteBrowser();
-    NS_ASSERTION(outerDoc, "no outer doc for accessible remote tab!");
     if (!outerDoc) {
+      // In some cases, the outer document accessible may be unattached from its
+      // document at this point, if it is scheduled for removal. Do not assert
+      // in such case. An example: putting aria-hidden="true" on HTML:iframe
+      // element will destroy iframe's document asynchroniously, but
+      // the document may be a target of selection events until then, and thus
+      // it may attempt to deliever these events to MSAA clients.
       return nullptr;
     }
 
@@ -1765,7 +1770,7 @@ AccessibleWrap::InvalidateHandlers()
     if (hr == CO_E_OBJNOTCONNECTED || hr == kErrorServerDied) {
       sHandlerControllers->RemoveElement(controller);
     } else {
-      NS_WARN_IF(FAILED(hr));
+      Unused << NS_WARN_IF(FAILED(hr));
     }
   }
 }

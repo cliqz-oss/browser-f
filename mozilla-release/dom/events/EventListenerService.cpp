@@ -82,15 +82,22 @@ EventListenerChange::GetCountOfEventListenerChangesAffectingAccessibility(
 
 EventListenerInfo::EventListenerInfo(const nsAString& aType,
                                      JS::Handle<JSObject*> aScriptedListener,
+                                     JS::Handle<JSObject*> aScriptedListenerGlobal,
                                      bool aCapturing,
                                      bool aAllowsUntrusted,
                                      bool aInSystemEventGroup)
   : mType(aType)
   , mScriptedListener(aScriptedListener)
+  , mScriptedListenerGlobal(aScriptedListenerGlobal)
   , mCapturing(aCapturing)
   , mAllowsUntrusted(aAllowsUntrusted)
   , mInSystemEventGroup(aInSystemEventGroup)
 {
+  if (aScriptedListener) {
+    MOZ_ASSERT(JS_IsGlobalObject(aScriptedListenerGlobal));
+    js::AssertSameCompartment(aScriptedListener, aScriptedListenerGlobal);
+  }
+
   HoldJSObjects(this);
 }
 
@@ -106,10 +113,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(EventListenerInfo)
   tmp->mScriptedListener = nullptr;
+  tmp->mScriptedListenerGlobal = nullptr;
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(EventListenerInfo)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mScriptedListener)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mScriptedListenerGlobal)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(EventListenerInfo)
@@ -170,7 +179,7 @@ EventListenerInfo::GetJSVal(JSContext* aCx,
 {
   if (mScriptedListener) {
     aJSVal.setObject(*mScriptedListener);
-    aAr.emplace(aCx, mScriptedListener);
+    aAr.emplace(aCx, mScriptedListenerGlobal);
     return true;
   }
 
@@ -259,9 +268,7 @@ EventListenerService::GetEventTargetChainFor(EventTarget* aEventTarget,
   }
 
   *aOutArray =
-    static_cast<EventTarget**>(
-      moz_xmalloc(sizeof(EventTarget*) * count));
-  NS_ENSURE_TRUE(*aOutArray, NS_ERROR_OUT_OF_MEMORY);
+    static_cast<EventTarget**>(moz_xmalloc(sizeof(EventTarget*) * count));
 
   for (int32_t i = 0; i < count; ++i) {
     NS_ADDREF((*aOutArray)[i] = targets[i]);
@@ -291,8 +298,9 @@ ToEventListener(JSContext* aCx, JS::Handle<JS::Value> aValue)
   }
 
   JS::Rooted<JSObject*> obj(aCx, &aValue.toObject());
+  JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
   RefPtr<EventListener> listener =
-    new EventListener(aCx, obj, GetIncumbentGlobal());
+    new EventListener(aCx, obj, global, GetIncumbentGlobal());
   return listener.forget();
 }
 

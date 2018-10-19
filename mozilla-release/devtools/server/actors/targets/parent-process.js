@@ -38,17 +38,8 @@ const parentProcessTargetPrototype = extend({}, browsingContextTargetPrototype);
  * Creates a target actor for debugging all the chrome content in the parent process.
  * Most of the implementation is inherited from BrowsingContextTargetActor.
  * ParentProcessTargetActor is a child of RootActor, it can be instantiated via
- * RootActor.getProcess request. ParentProcessTargetActor exposes all tab actors via its
- * form() request, like BrowsingContextTargetActor.
- *
- * History lecture:
- * All tab actors used to also be registered as global actors, so that the root actor was
- * also exposing tab actors for the main process. Tab actors ended up having RootActor as
- * parent actor, but more and more features of the tab actors were relying on
- * BrowsingContextTargetActor. So we are now exposing a process actor that offers the same
- * API as BrowsingContextTargetActor by inheriting its functionality. Global actors are
- * now only the actors that are meant to be global, and are no longer related to any
- * specific scope/document.
+ * RootActor.getProcess request. ParentProcessTargetActor exposes all target-scoped actors
+ * via its form() request, like BrowsingContextTargetActor.
  *
  * @param connection DebuggerServerConnection
  *        The connection to the client.
@@ -85,9 +76,7 @@ parentProcessTargetPrototype.initialize = function(connection) {
   }
 
   // On XPCShell, there is no window/docshell
-  const docShell = window ? window.QueryInterface(Ci.nsIInterfaceRequestor)
-                                .getInterface(Ci.nsIDocShell)
-                        : null;
+  const docShell = window ? window.docShell : null;
   Object.defineProperty(this, "docShell", {
     value: docShell,
     configurable: true
@@ -104,12 +93,7 @@ Object.defineProperty(parentProcessTargetPrototype, "docShells", {
   get: function() {
     // Iterate over all top-level windows and all their docshells.
     let docShells = [];
-    const e = Services.ww.getWindowEnumerator();
-    while (e.hasMoreElements()) {
-      const window = e.getNext();
-      const docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIWebNavigation)
-                           .QueryInterface(Ci.nsIDocShell);
+    for (const {docShell} of Services.ww.getWindowEnumerator()) {
       docShells = docShells.concat(getChildDocShells(docShell));
     }
 
@@ -144,12 +128,7 @@ parentProcessTargetPrototype._attach = function() {
   Services.obs.addObserver(this, "chrome-webnavigation-destroy");
 
   // Iterate over all top-level windows.
-  const e = Services.ww.getWindowEnumerator();
-  while (e.hasMoreElements()) {
-    const window = e.getNext();
-    const docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIWebNavigation)
-                         .QueryInterface(Ci.nsIDocShell);
+  for (const {docShell} of Services.ww.getWindowEnumerator()) {
     if (docShell == this.docShell) {
       continue;
     }
@@ -167,12 +146,7 @@ parentProcessTargetPrototype._detach = function() {
   Services.obs.removeObserver(this, "chrome-webnavigation-destroy");
 
   // Iterate over all top-level windows.
-  const e = Services.ww.getWindowEnumerator();
-  while (e.hasMoreElements()) {
-    const window = e.getNext();
-    const docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIWebNavigation)
-                         .QueryInterface(Ci.nsIDocShell);
+  for (const {docShell} of Services.ww.getWindowEnumerator()) {
     if (docShell == this.docShell) {
       continue;
     }
@@ -190,11 +164,7 @@ parentProcessTargetPrototype._detach = function() {
  */
 parentProcessTargetPrototype.preNest = function() {
   // Disable events in all open windows.
-  const e = Services.wm.getEnumerator(null);
-  while (e.hasMoreElements()) {
-    const win = e.getNext();
-    const windowUtils = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+  for (const {windowUtils} of Services.wm.getEnumerator(null)) {
     windowUtils.suppressEventHandling(true);
     windowUtils.suspendTimeouts();
   }
@@ -205,11 +175,7 @@ parentProcessTargetPrototype.preNest = function() {
  */
 parentProcessTargetPrototype.postNest = function(nestData) {
   // Enable events in all open windows.
-  const e = Services.wm.getEnumerator(null);
-  while (e.hasMoreElements()) {
-    const win = e.getNext();
-    const windowUtils = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+  for (const {windowUtils} of Services.wm.getEnumerator(null)) {
     windowUtils.resumeTimeouts();
     windowUtils.suppressEventHandling(false);
   }

@@ -937,8 +937,7 @@ SessionStore.prototype = {
 
     // Save the current document resolution.
     let zoom = { value: 1 };
-    content.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(
-      Ci.nsIDOMWindowUtils).getResolution(zoom);
+    content.windowUtils.getResolution(zoom);
     scrolldata.zoom = {};
     scrolldata.zoom.resolution = zoom.value;
     log("onTabScroll() zoom level: " + zoom.value);
@@ -958,8 +957,7 @@ SessionStore.prototype = {
   _getContentViewerSize: function ss_getContentViewerSize(aWindow) {
     let displaySize = {};
     let width = {}, height = {};
-    aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(
-      Ci.nsIDOMWindowUtils).getContentViewerSize(width, height);
+    aWindow.windowUtils.getContentViewerSize(width, height);
 
     displaySize.width = width.value;
     displaySize.height = height.value;
@@ -1182,9 +1180,7 @@ SessionStore.prototype = {
   },
 
   _forEachBrowserWindow: function ss_forEachBrowserWindow(aFunc) {
-    let windowsEnum = Services.wm.getEnumerator("navigator:browser");
-    while (windowsEnum.hasMoreElements()) {
-      let window = windowsEnum.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       if (window.__SSID && !window.closed) {
         aFunc.call(this, window);
       }
@@ -1401,8 +1397,7 @@ SessionStore.prototype = {
       log("_restoreZoom(), resolution: " + aScrollData.zoom.resolution +
           ", old displayWidth: " + aScrollData.zoom.displaySize.width);
 
-      let utils = aBrowser.contentWindow.QueryInterface(
-        Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+      let utils = aBrowser.contentWindow.windowUtils;
       // Restore zoom level.
       utils.setRestoreResolution(aScrollData.zoom.resolution,
                                  aScrollData.zoom.displaySize.width,

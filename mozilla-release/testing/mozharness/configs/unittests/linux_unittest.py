@@ -46,7 +46,6 @@ config = {
         "cppunittest": "runcppunittests.py",
         "gtest": "rungtests.py",
         "jittest": "jit_test.py",
-        "mozbase": "test.py",
         "mozmill": "runtestlist.py",
     },
     "minimum_tests_zip_dirs": [
@@ -102,14 +101,6 @@ config = {
             ],
             "run_filename": "runtests.py",
             "testsdir": "mochitest"
-        },
-        "mozbase": {
-            "options": [
-                "-b",
-                "%(binary_path)s"
-            ],
-            "run_filename": "test.py",
-            "testsdir": "mozbase"
         },
         "mozmill": {
             "options": [
@@ -182,7 +173,11 @@ config = {
         "browser-chrome-coverage": ["--flavor=browser", "--chunk-by-runtime", "--timeout=1200"],
         "browser-chrome-screenshots": ["--flavor=browser", "--subsuite=screenshots"],
         "browser-chrome-instrumentation": ["--flavor=browser"],
-        "mochitest-gl": ["--subsuite=webgl"],
+        "mochitest-webgl1-core": ["--subsuite=webgl1-core"],
+        "mochitest-webgl1-ext": ["--subsuite=webgl1-ext"],
+        "mochitest-webgl2-core": ["--subsuite=webgl2-core"],
+        "mochitest-webgl2-ext": ["--subsuite=webgl2-ext"],
+        "mochitest-webgl2-deqp": ["--subsuite=webgl2-deqp"],
         "mochitest-devtools-chrome": ["--flavor=browser", "--subsuite=devtools"],
         "mochitest-devtools-chrome-chunked": ["--flavor=browser", "--subsuite=devtools", "--chunk-by-runtime"],
         "mochitest-devtools-chrome-coverage": ["--flavor=browser", "--subsuite=devtools", "--chunk-by-runtime", "--timeout=1200"],
@@ -241,9 +236,6 @@ config = {
         "jittest2": ["--total-chunks=2", "--this-chunk=2"],
         "jittest-chunked": [],
     },
-    "all_mozbase_suites": {
-        "mozbase": []
-    },
     "run_cmd_checks_enabled": True,
     "preflight_run_cmd_suites": [
         # NOTE 'enabled' is only here while we have unconsolidated configs
@@ -274,7 +266,6 @@ config = {
                              "mozmill": [],
                              "cppunittest": [],
                              "jittest": [],
-                             "mozbase": [],
                              },
     "download_minidump_stackwalk": True,
     "minidump_stackwalk_path": MINIDUMP_STACKWALK_PATH,
@@ -283,4 +274,5 @@ config = {
     "download_nodejs": True,
     "nodejs_path": NODEJS_PATH,
     "nodejs_tooltool_manifest_path": NODEJS_TOOLTOOL_MANIFEST_PATH,
+    # "log_format": "%(levelname)8s - %(message)s",
 }

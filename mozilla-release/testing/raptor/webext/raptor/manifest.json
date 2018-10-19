@@ -16,12 +16,18 @@
       "matches": ["*://*.amazon.com/*",
                   "*://*.facebook.com/*",
                   "*://*.google.com/*",
-                  "*://*.google.ca/*",
                   "*://*.youtube.com/*"],
       "js": ["measure.js"]
     },
     {
-      "matches": ["*://*/Speedometer/index.html*"],
+      "matches": ["*://*/Speedometer/index.html*",
+                  "*://*/StyleBench/*",
+                  "*://*/MotionMark/*",
+                  "*://*/SunSpider/*",
+                  "*://*/webaudio/*",
+                  "*://*/unity-webgl/index.html*",
+                  "*://*/wasm-misc/index.html*",
+                  "*://*/assorted-dom/assorted/results.html*"],
       "js": ["benchmark-relay.js"]
     }
   ],

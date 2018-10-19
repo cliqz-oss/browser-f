@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@import url("chrome://global/skin/");
-
 %include shared.inc
 %define toolbarButtonPressed :hover:active:not([disabled="true"]):not([cui-areatype="menu-panel"])
 
@@ -144,7 +142,7 @@
   border-top: 1px solid rgba(0,0,0,0.65);
 }
 
-#navigator-toolbox > toolbar:not(#TabsToolbar) {
+.browser-toolbar:not(#TabsToolbar) {
   -moz-appearance: none;
   background: var(--toolbar-bgcolor);
   color: var(--toolbar-color, inherit);
@@ -585,7 +583,7 @@ html|input.urlbar-input {
   }
 }
 
-#editBMPanel_tagsField > .textbox-input-box > html|*.textbox-input::placeholder {
+#editBMPanel_tagsField > moz-input-box > html|*.textbox-input::placeholder {
   opacity: 1.0;
   color: #bbb;
 }
@@ -594,20 +592,18 @@ html|input.urlbar-input {
 
 %include ../shared/sidebar.inc.css
 
+#browser {
+  --sidebar-border-color: hsla(240, 5%, 5%, .1);
+}
+
 #sidebar-box {
-  -moz-appearance: -moz-mac-source-list;
-  -moz-font-smoothing-background-color: -moz-mac-source-list;
   /* Default font size is 11px on mac, so this is 12px */
   font-size: 1.0909rem;
 }
 
-#sidebar-header {
-  border-bottom: 1px solid hsla(240, 5%, 5%, .1);
-  background-color: transparent;
-}
-
-.sidebar-splitter {
-  border-color: hsla(240, 5%, 5%, .1);
+#sidebar-box:not([lwt-sidebar]) {
+  -moz-appearance: -moz-mac-source-list;
+  -moz-font-smoothing-background-color: -moz-mac-source-list;
 }
 
 /* ----- CONTENT ----- */
@@ -707,6 +703,10 @@ html|input.urlbar-input {
 
 #tabbrowser-tabs {
   -moz-box-align: stretch;
+  padding-left: 0;
+  padding-right: 0;
+  margin-bottom: 0;
+  position: static;
 }
 
 /**

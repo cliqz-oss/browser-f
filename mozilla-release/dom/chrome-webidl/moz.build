@@ -30,13 +30,17 @@ PREPROCESSED_WEBIDL_FILES = [
 ]
 
 WEBIDL_FILES = [
+    'BrowsingContext.webidl',
     'ChannelWrapper.webidl',
     'DominatorTree.webidl',
     'HeapSnapshot.webidl',
     'InspectorUtils.webidl',
+    'IteratorResult.webidl',
     'MatchGlob.webidl',
     'MatchPattern.webidl',
     'MessageManager.webidl',
+    'MozDocumentObserver.webidl',
+    'MozSharedMap.webidl',
     'MozStorageAsyncStatementParams.webidl',
     'MozStorageStatementParams.webidl',
     'MozStorageStatementRow.webidl',
@@ -45,4 +49,18 @@ WEBIDL_FILES = [
     'StructuredCloneHolder.webidl',
     'WebExtensionContentScript.webidl',
     'WebExtensionPolicy.webidl',
+    'XULFrameElement.webidl',
+    'XULScrollElement.webidl'
 ]
+
+if CONFIG['MOZ_PLACES']:
+    WEBIDL_FILES += [
+        'PlacesEvent.webidl',
+        'PlacesObservers.webidl',
+    ]
+
+if CONFIG['MOZ_LIBPRIO']:
+    WEBIDL_FILES += [
+        'PrioEncoder.webidl',
+    ]
+

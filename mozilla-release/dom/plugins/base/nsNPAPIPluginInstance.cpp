@@ -783,7 +783,7 @@ nsNPAPIPluginInstance::DidComposite()
 nsresult
 nsNPAPIPluginInstance::NotifyPainted(void)
 {
-  NS_NOTREACHED("Dead code, shouldn't be called.");
+  MOZ_ASSERT_UNREACHABLE("Dead code, shouldn't be called.");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -855,7 +855,7 @@ nsNPAPIPluginInstance::GetFormValue(nsAString& aValue)
   if (NS_FAILED(rv) || !value)
     return NS_ERROR_FAILURE;
 
-  CopyUTF8toUTF16(value, aValue);
+  CopyUTF8toUTF16(MakeStringSpan(value), aValue);
 
   // NPPVformValue allocates with NPN_MemAlloc(), which uses
   // nsMemory.

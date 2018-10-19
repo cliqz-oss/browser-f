@@ -14,13 +14,12 @@
 #include "nsIPresShell.h"
 #include "nsNodeInfoManager.h"
 #include "nsContentCreatorFunctions.h"
-#include "nsContentUtils.h"
 #include "nsCheckboxRadioFrame.h"
 #include "nsFontMetrics.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLProgressElement.h"
 #include "nsCSSPseudoElements.h"
-#include "nsThemeConstants.h"
+#include "nsStyleConsts.h"
 #include <algorithm>
 
 using namespace mozilla;
@@ -276,11 +275,11 @@ nsProgressFrame::ShouldUseNativeStyle() const
   // - both frames use the native appearance;
   // - neither frame has author specified rules setting the border or the
   //   background.
-  return StyleDisplay()->mAppearance == NS_THEME_PROGRESSBAR &&
+  return StyleDisplay()->mAppearance == StyleAppearance::Progressbar &&
          !PresContext()->HasAuthorSpecifiedRules(this,
                                                  NS_AUTHOR_SPECIFIED_BORDER | NS_AUTHOR_SPECIFIED_BACKGROUND) &&
          barFrame &&
-         barFrame->StyleDisplay()->mAppearance == NS_THEME_PROGRESSCHUNK &&
+         barFrame->StyleDisplay()->mAppearance == StyleAppearance::Progresschunk &&
          !PresContext()->HasAuthorSpecifiedRules(barFrame,
                                                  NS_AUTHOR_SPECIFIED_BORDER | NS_AUTHOR_SPECIFIED_BACKGROUND);
 }

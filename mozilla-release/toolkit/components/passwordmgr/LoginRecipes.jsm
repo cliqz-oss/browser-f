@@ -234,11 +234,7 @@ var LoginRecipesContent = {
       }
     }
 
-    let mm = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                .getInterface(Ci.nsIWebNavigation)
-                .QueryInterface(Ci.nsIDocShell)
-                .QueryInterface(Ci.nsIInterfaceRequestor)
-                .getInterface(Ci.nsIContentFrameMessageManager);
+    let mm = win.docShell.messageManager;
 
     log.warn("getRecipes: falling back to a synchronous message for:", aHost);
     recipes = mm.sendSyncMessage("RemoteLogins:findRecipes", { formOrigin: aHost })[0];

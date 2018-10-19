@@ -50,8 +50,8 @@ function enableResistFingerprinting(autoDeclineNoInput) {
   return SpecialPowers.pushPrefEnv({
     set: [
       ["privacy.resistFingerprinting", true],
-      ["privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts", autoDeclineNoInput]
-    ]
+      ["privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts", autoDeclineNoInput],
+    ],
   });
 }
 
@@ -80,7 +80,7 @@ function extractCanvasData(grantPermission) {
 }
 
 function triggerCommand(button) {
-  let notifications = PopupNotifications.panel.childNodes;
+  let notifications = PopupNotifications.panel.children;
   let notification = notifications[0];
   EventUtils.synthesizeMouseAtCenter(notification[button], {});
 }

@@ -1,5 +1,5 @@
 add_task(async function() {
-  Services.prefs.setBoolPref("browser.ctrlTab.previews", true);
+  await SpecialPowers.pushPrefEnv({"set": [["browser.ctrlTab.recentlyUsedOrder", true]]});
 
   BrowserTestUtils.addTab(gBrowser);
   BrowserTestUtils.addTab(gBrowser);
@@ -91,12 +91,12 @@ add_task(async function() {
     ok(selectedTab.selected,
        "Ctrl+Tab*2 -> Ctrl+W -> Ctrl+Shift+Tab*2 keeps the selected tab");
   }
-  gBrowser.removeTab(gBrowser.tabContainer.lastChild);
+  gBrowser.removeTab(gBrowser.tabContainer.lastElementChild);
   checkTabs(2);
 
   await ctrlTabTest([1], 1, 0);
 
-  gBrowser.removeTab(gBrowser.tabContainer.lastChild);
+  gBrowser.removeTab(gBrowser.tabContainer.lastElementChild);
   checkTabs(1);
 
   { // test for bug 445768
@@ -112,10 +112,6 @@ add_task(async function() {
     is(focusedWindow, document.commandDispatcher.focusedWindow,
        "Ctrl+Tab doesn't change focus if one tab is open");
   }
-
-  // cleanup
-  if (Services.prefs.prefHasUserValue("browser.ctrlTab.previews"))
-    Services.prefs.clearUserPref("browser.ctrlTab.previews");
 
   /* private utility functions */
 
@@ -152,7 +148,8 @@ add_task(async function() {
   }
 
   function canOpen() {
-    return Services.prefs.getBoolPref("browser.ctrlTab.previews") && gBrowser.tabs.length > 2;
+    return Services.prefs.getBoolPref("browser.ctrlTab.recentlyUsedOrder") &&
+           gBrowser.tabs.length > 2;
   }
 
   function checkTabs(aTabs) {

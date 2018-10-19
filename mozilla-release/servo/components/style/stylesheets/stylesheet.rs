@@ -7,7 +7,7 @@ use context::QuirksMode;
 use cssparser::{Parser, ParserInput, RuleListParser};
 use error_reporting::{ContextualParseError, ParseErrorReporter};
 use fallible::FallibleVec;
-use fnv::FnvHashMap;
+use fxhash::FxHashMap;
 use invalidation::media_queries::{MediaListKey, ToMediaListKey};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
@@ -24,6 +24,7 @@ use stylesheets::loader::StylesheetLoader;
 use stylesheets::rule_parser::{State, TopLevelRuleParser};
 use stylesheets::rules_iterator::{EffectiveRules, EffectiveRulesIterator};
 use stylesheets::rules_iterator::{NestedRuleIterationCondition, RulesIterator};
+use use_counters::UseCounters;
 
 /// This structure holds the user-agent and user stylesheets.
 pub struct UserAgentStylesheets {
@@ -42,7 +43,7 @@ pub struct UserAgentStylesheets {
 #[allow(missing_docs)]
 pub struct Namespaces {
     pub default: Option<Namespace>,
-    pub prefixes: FnvHashMap<Prefix, Namespace>,
+    pub prefixes: FxHashMap<Prefix, Namespace>,
 }
 
 /// The contents of a given stylesheet. This effectively maps to a
@@ -78,6 +79,7 @@ impl StylesheetContents {
         error_reporter: Option<&ParseErrorReporter>,
         quirks_mode: QuirksMode,
         line_number_offset: u32,
+        use_counters: Option<&UseCounters>,
     ) -> Self {
         let namespaces = RwLock::new(Namespaces::default());
         let (rules, source_map_url, source_url) = Stylesheet::parse_rules(
@@ -90,6 +92,7 @@ impl StylesheetContents {
             error_reporter,
             quirks_mode,
             line_number_offset,
+            use_counters,
         );
 
         Self {
@@ -315,6 +318,8 @@ impl Stylesheet {
         line_number_offset: u32,
     ) {
         let namespaces = RwLock::new(Namespaces::default());
+
+        // FIXME: Consider adding use counters to Servo?
         let (rules, source_map_url, source_url) = Self::parse_rules(
             css,
             &url_data,
@@ -325,6 +330,7 @@ impl Stylesheet {
             error_reporter,
             existing.contents.quirks_mode,
             line_number_offset,
+            /* use_counters = */ None,
         );
 
         *existing.contents.url_data.write() = url_data;
@@ -350,6 +356,7 @@ impl Stylesheet {
         error_reporter: Option<&ParseErrorReporter>,
         quirks_mode: QuirksMode,
         line_number_offset: u32,
+        use_counters: Option<&UseCounters>,
     ) -> (Vec<CssRule>, Option<String>, Option<String>) {
         let mut rules = Vec::new();
         let mut input = ParserInput::new_with_line_number_offset(css, line_number_offset);
@@ -362,6 +369,7 @@ impl Stylesheet {
             ParsingMode::DEFAULT,
             quirks_mode,
             error_reporter,
+            use_counters,
         );
 
         let rule_parser = TopLevelRuleParser {
@@ -421,6 +429,7 @@ impl Stylesheet {
         quirks_mode: QuirksMode,
         line_number_offset: u32,
     ) -> Self {
+        // FIXME: Consider adding use counters to Servo?
         let contents = StylesheetContents::from_str(
             css,
             url_data,
@@ -430,6 +439,7 @@ impl Stylesheet {
             error_reporter,
             quirks_mode,
             line_number_offset,
+            /* use_counters = */ None,
         );
 
         Stylesheet {

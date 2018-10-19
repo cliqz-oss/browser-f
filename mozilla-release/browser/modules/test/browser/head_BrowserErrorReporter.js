@@ -20,6 +20,10 @@ const TELEMETRY_ERROR_REPORTED = "browser.errors.reported_success_count";
 const TELEMETRY_ERROR_REPORTED_FAIL = "browser.errors.reported_failure_count";
 const TELEMETRY_ERROR_SAMPLE_RATE = "browser.errors.sample_rate";
 
+const currentVersion = Services.appinfo.platformVersion;
+const expiringVersion = "64.0";
+const SCALARS_EXPIRED = Services.vc.compare(currentVersion, expiringVersion) === -1;
+
 add_task(async function testSetup() {
   const canRecordExtended = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
@@ -27,7 +31,7 @@ add_task(async function testSetup() {
 });
 
 function createScriptError(options = {}) {
-  const scriptError = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
+  let scriptError = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
   scriptError.init(
     options.message || "",
     "sourceName" in options ? options.sourceName : null,
@@ -37,7 +41,33 @@ function createScriptError(options = {}) {
     options.flags || Ci.nsIScriptError.errorFlag,
     options.category || "chrome javascript",
   );
+
+  // You can't really set the stack of a scriptError in JS, so we shadow it instead.
+   if (options.stack) {
+     scriptError = Object.create(scriptError, {
+       stack: {
+         value: createStack(options.stack),
+       },
+     });
+   }
+
   return scriptError;
+}
+
+function createStack(frames) {
+  for (let k = 0; k < frames.length - 1; k++) {
+    frames[k].parent = frames[k + 1];
+  }
+  return frames[0];
+}
+
+function frame(options = {}) {
+  return Object.assign({
+    functionDisplayName: "fooFunction",
+    source: "resource://modules/BrowserErrorReporter.jsm",
+    line: 5,
+    column: 10,
+  }, options);
 }
 
 function noop() {

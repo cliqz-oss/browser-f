@@ -220,7 +220,7 @@
     </content>
 
     <implementation>
-      <!-- Please keep in sync with toolkit/content/browser-content.js -->
+      <!-- Please keep in sync with toolkit/modules/FindBarChild.jsm -->
       <field name="FIND_NORMAL">0</field>
       <field name="FIND_TYPEAHEAD">1</field>
       <field name="FIND_LINKS">2</field>
@@ -330,6 +330,12 @@
             case "accessibility.typeaheadfind":
               this._self._findAsYouType = prefsvc.getBoolPref(aPrefName);
               break;
+            case "accessibility.typeaheadfind.manual":
+              this._self._manualFAYT = prefsvc.getBoolPref(aPrefName);
+              break;
+            case "accessibility.typeaheadfind.timeout":
+              this._self.quickFindTimeoutLength = prefsvc.getIntPref(aPrefName);
+              break;
             case "accessibility.typeaheadfind.linksonly":
               this._self._typeAheadLinksOnly = prefsvc.getBoolPref(aPrefName);
               break;
@@ -349,7 +355,7 @@
                 this._self.browser.finder.onModalHighlightChange(this._self._useModalHighlight);
               break;
           }
-        }
+        },
       })]]></field>
 
       <field name="_destroyed">false</field>
@@ -365,13 +371,15 @@
 
         let prefsvc = this._prefsvc;
 
-        this._quickFindTimeoutLength =
+        this.quickFindTimeoutLength =
           prefsvc.getIntPref("accessibility.typeaheadfind.timeout");
         this._flashFindBar =
           prefsvc.getIntPref("accessibility.typeaheadfind.flashBar");
         this._useModalHighlight = prefsvc.getBoolPref("findbar.modalHighlight");
 
         prefsvc.addObserver("accessibility.typeaheadfind",
+                            this._observer);
+        prefsvc.addObserver("accessibility.typeaheadfind.manual",
                             this._observer);
         prefsvc.addObserver("accessibility.typeaheadfind.linksonly",
                             this._observer);
@@ -383,6 +391,8 @@
 
         this._findAsYouType =
           prefsvc.getBoolPref("accessibility.typeaheadfind");
+        this._manualFAYT =
+          prefsvc.getBoolPref("accessibility.typeaheadfind.manual");
         this._typeAheadLinksOnly =
           prefsvc.getBoolPref("accessibility.typeaheadfind.linksonly");
         this._typeAheadCaseSensitive =
@@ -399,8 +409,10 @@
 
         // Make sure the FAYT keypress listener is attached by initializing the
         // browser property
-        if (this.getAttribute("browserid"))
+        if (this.getAttribute("browserid")) {
+          // eslint-disable-next-line no-self-assign
           setTimeout(function(aSelf) { aSelf.browser = aSelf.browser; }, 0, this);
+        }
       ]]></constructor>
 
       <destructor><![CDATA[
@@ -423,6 +435,8 @@
 
           let prefsvc = this._prefsvc;
           prefsvc.removeObserver("accessibility.typeaheadfind",
+                                 this._observer);
+          prefsvc.removeObserver("accessibility.typeaheadfind.manual",
                                  this._observer);
           prefsvc.removeObserver("accessibility.typeaheadfind.linksonly",
                                  this._observer);
@@ -467,11 +481,15 @@
             return;
           }
 
-          this._quickFindTimeout = setTimeout(() => {
-             if (this._findMode != this.FIND_NORMAL)
-               this.close();
-             this._quickFindTimeout = null;
-           }, this._quickFindTimeoutLength);
+          if (this.quickFindTimeoutLength < 1) {
+            this._quickFindTimeout = null;
+          } else {
+            this._quickFindTimeout = setTimeout(() => {
+              if (this._findMode != this.FIND_NORMAL)
+                  this.close();
+               this._quickFindTimeout = null;
+            }, this.quickFindTimeoutLength);
+          }
           this._updateBrowserWithState();
         ]]></body>
       </method>
@@ -782,9 +800,7 @@
           if (!this._xulBrowserWindow) {
             try {
               this._xulBrowserWindow =
-                window.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIWebNavigation)
-                      .QueryInterface(Ci.nsIDocShellTreeItem)
+                window.docShell
                       .treeOwner
                       .QueryInterface(Ci.nsIInterfaceRequestor)
                       .getInterface(Ci.nsIXULWindow)
@@ -849,7 +865,8 @@
           }
 
           let key = aFakeEvent.charCode ? String.fromCharCode(aFakeEvent.charCode) : null;
-          let manualstartFAYT = (key == FAYT_LINKS_KEY || key == FAYT_TEXT_KEY);
+          let manualstartFAYT = (key == FAYT_LINKS_KEY || key == FAYT_TEXT_KEY) &&
+                                this._manualFAYT;
           let autostartFAYT = !manualstartFAYT && this._findAsYouType &&
                               key && key != " ";
           if (manualstartFAYT || autostartFAYT) {
@@ -922,7 +939,7 @@
         <body><![CDATA[
           let showMinimalUI = this._findMode != this.FIND_NORMAL;
 
-          let nodes = this.getElement("findbar-container").childNodes;
+          let nodes = this.getElement("findbar-container").children;
           let wrapper = this.getElement("findbar-textbox-wrapper");
           let foundMatches = this._foundMatches;
           for (let node of nodes) {
@@ -1082,7 +1099,7 @@
             caseSensitive: !!this._typeAheadCaseSensitive,
             entireWord: this._entireWord,
             highlightAll: this._highlightAll,
-            findPrevious: aFindPrevious
+            findPrevious: aFindPrevious,
           });
           return this.dispatchEvent(event);
         ]]></body>

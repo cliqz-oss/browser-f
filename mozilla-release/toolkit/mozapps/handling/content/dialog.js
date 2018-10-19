@@ -58,12 +58,12 @@ var dialog = {
 
     var description = {
       image: document.getElementById("description-image"),
-      text:  document.getElementById("description-text")
+      text:  document.getElementById("description-text"),
     };
     var options = document.getElementById("item-action-text");
     var checkbox = {
       desc: document.getElementById("remember"),
-      text:  document.getElementById("remember-text")
+      text:  document.getElementById("remember-text"),
     };
 
     // Setting values
@@ -91,7 +91,7 @@ var dialog = {
         this._buttonDisabled = false;
         this.updateOKButton();
       },
-      focusTarget: window
+      focusTarget: window,
     });
   },
 
@@ -154,9 +154,7 @@ var dialog = {
       let gIOSvc = Cc["@mozilla.org/gio-service;1"]
                      .getService(Ci.nsIGIOService);
       var gioApps = gIOSvc.getAppsForURIScheme(this._URI.scheme);
-      let enumerator = gioApps.enumerate();
-      while (enumerator.hasMoreElements()) {
-        let handler = enumerator.getNext().QueryInterface(Ci.nsIHandlerApp);
+      for (let handler of gioApps.enumerate()) {
         // OS handler share the same name, it's most likely the same app, skipping...
         if (handler.name == this._handlerInfo.defaultDescription) {
           continue;
@@ -289,6 +287,6 @@ var dialog = {
   },
   set selectedItem(aItem) {
     return document.getElementById("items").selectedItem = aItem;
-  }
+  },
 
 };

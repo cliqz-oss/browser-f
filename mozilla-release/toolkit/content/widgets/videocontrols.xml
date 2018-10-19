@@ -258,7 +258,7 @@
         let adjustableControls = [
           ...this.prioritizedControls,
           this.controlBar,
-          this.clickToPlay
+          this.clickToPlay,
         ];
 
         for (let control of adjustableControls) {
@@ -279,40 +279,40 @@
                 let preDefinedSize = this.controlBarComputedStyles.getPropertyValue(propertyName);
 
                 return parseInt(preDefinedSize, 10);
-              }
+              },
             },
             isAdjustableControl: {
-              value: true
+              value: true,
             },
             modifier: {
               value: "",
-              writable: true
+              writable: true,
             },
             isWanted: {
               value: true,
-              writable: true
+              writable: true,
             },
             hidden: {
               set: (v) => {
                 control._isHiddenExplicitly = v;
                 control._updateHiddenAttribute();
               },
-              get: () => control.hasAttribute("hidden")
+              get: () => control.hasAttribute("hidden"),
             },
             hiddenByAdjustment: {
               set: (v) => {
                 control._isHiddenByAdjustment = v;
                 control._updateHiddenAttribute();
               },
-              get: () => control._isHiddenByAdjustment
+              get: () => control._isHiddenByAdjustment,
             },
             _isHiddenByAdjustment: {
               value: false,
-              writable: true
+              writable: true,
             },
             _isHiddenExplicitly: {
               value: false,
-              writable: true
+              writable: true,
             },
             _updateHiddenAttribute: {
               value: () => {
@@ -321,8 +321,8 @@
                 } else {
                   control.removeAttribute("hidden");
                 }
-              }
-            }
+              },
+            },
           });
         }
         this.adjustControlSize();
@@ -704,7 +704,7 @@
             try {
               this.video.removeEventListener(event, this, {
                 capture: true,
-                mozSystemGroup: true
+                mozSystemGroup: true,
               });
             } catch (ex) {}
           }
@@ -822,18 +822,18 @@
 
         Object.defineProperties(this.positionDurationBox, {
           durationSpan: {
-            value: durationSpan
+            value: durationSpan,
           },
           position: {
             set: (v) => {
               positionTextNode.textContent = positionFormat.replace("#1", v);
-            }
+            },
           },
           duration: {
             set: (v) => {
               durationSpan.textContent = v ? durationFormat.replace("#2", v) : "";
-            }
-          }
+            },
+          },
         });
       },
 
@@ -1099,59 +1099,38 @@
         clickToPlay: {
           keyframes: [
             { transform: "scale(3)", opacity: 0 },
-            { transform: "scale(1)", opacity: 0.55 }
+            { transform: "scale(1)", opacity: 0.55 },
           ],
           options: {
             easing: "ease",
-            duration: 400
-          }
+            duration: 400,
+            // The fill mode here and below is a workaround to avoid flicker
+            // due to bug 1495350.
+            fill: "both",
+          },
         },
         controlBar: {
           keyframes: [
             { opacity: 0 },
-            { opacity: 1 }
+            { opacity: 1 },
           ],
           options: {
             easing: "ease",
-            duration: 200
-          }
+            duration: 200,
+            fill: "both",
+          },
         },
         statusOverlay: {
           keyframes: [
             { opacity: 0 },
             { opacity: 0, offset: .72 }, // ~750ms into animation
-            { opacity: 1 }
+            { opacity: 1 },
           ],
           options: {
-            duration: 1050
-          }
-        }
-      },
-
-      // Polyfill animation.finished promise, also invalidate
-      // the previous promise.
-      // Remove when the platform implementation ships.
-      // (currently behind dom.animations-api.core.enabled)
-      installFinishedPromisePolyfill(animation) {
-        let handler = {
-          handleEvent(evt) {
-            animation.removeEventListener("finish", this);
-            animation.removeEventListener("cancel", this);
-            if (evt.type == "finish" &&
-                this === animation.finished) {
-              this.fn();
-            }
+            duration: 1050,
+            fill: "both",
           },
-          then(fn) {
-            this.fn = fn;
-          }
-        };
-        // Note that handler is not a real Promise.
-        // All it offered is a then() method to register a callback
-        // to be triggered at the right time.
-        animation.finished = handler;
-        animation.addEventListener("finish", handler);
-        animation.addEventListener("cancel", handler);
+        },
       },
 
       startFade(element, fadeIn, immediate = false) {
@@ -1171,15 +1150,8 @@
 
         let animation = this.animationMap.get(element);
         if (!animation) {
-          // Create the animation object but don't start it.
-          // To be replaced with the following when the constructors ship
-          // (currently behind dom.animations-api.core.enabled)
-          /*
           animation = new Animation(new KeyframeEffect(
             element, animationProp.keyframes, animationProp.options));
-          */
-          animation = element.animate(animationProp.keyframes, animationProp.options);
-          animation.cancel();
 
           this.animationMap.set(element, animation);
         }
@@ -1217,21 +1189,52 @@
         element.classList.toggle("fadein", fadeIn);
         let finishedPromise;
         if (!immediate) {
-          animation.playbackRate = fadeIn ? 1 : -1;
-          animation.play();
-          this.installFinishedPromisePolyfill(animation);
-          finishedPromise = animation.finished;
-        } else {
+          // At this point, if there is a pending animation, we just stop it to avoid it happening.
+          // If there is a running animation, we reverse it, to have it rewind to the beginning.
+          // If there is an idle/finished animation, we schedule a new one that reverses the finished one.
+          if (animation.pending) {
+            // Animation is running but pending.
+            // Just cancel the pending animation to stop its effect.
+            animation.cancel();
+            finishedPromise = Promise.resolve();
+          } else {
+            switch (animation.playState) {
+              case "idle":
+              case "finished":
+                // There is no animation currently playing.
+                // Schedule a new animation with the desired playback direction.
+                animation.playbackRate = fadeIn ? 1 : -1;
+                animation.play();
+                break;
+              case "running":
+                // Allow the animation to play from its current position in
+                // reverse to finish.
+                animation.reverse();
+                break;
+              case "pause":
+              default:
+                throw new Error("Unknown Animation playState: " + animation.playState);
+            }
+            finishedPromise = animation.finished;
+          }
+        } else { // immediate
           animation.cancel();
           finishedPromise = Promise.resolve();
         }
-        finishedPromise.then(() => {
+        finishedPromise.then(animation => {
           if (element == this.controlBar) {
             this.onControlBarAnimationFinished();
           }
           element.classList.remove(fadeIn ? "fadein" : "fadeout");
           if (!fadeIn) {
             element.hidden = true;
+          }
+          if (animation) {
+            // Explicitly clear the animation effect so that filling animations
+            // stop overwriting stylesheet styles. Remove when bug 1495350 is
+            // fixed and animations are no longer filling animations.
+            // This also stops them from accumulating (See bug 1253476).
+            animation.cancel();
           }
         }, () => { /* Do nothing on rejection */ });
       },
@@ -1728,7 +1731,7 @@
         const offLabel = this.textTrackList.getAttribute("offlabel");
         this.addNewTextTrack({
           label: offLabel,
-          kind: "subtitles"
+          kind: "subtitles",
         });
 
         for (let tt of this.overlayableTextTracks) {
@@ -1914,7 +1917,7 @@
           this.positionDurationBox,
           this.scrubberStack,
           this.durationSpan,
-          this.volumeStack
+          this.volumeStack,
         ];
 
         this.isAudioOnly = (this.video instanceof HTMLAudioElement);
@@ -1929,7 +1932,7 @@
         for (let event of this.videoEvents) {
           this.video.addEventListener(event, this, {
             capture: true,
-            mozSystemGroup: true
+            mozSystemGroup: true,
           });
         }
 
@@ -1970,7 +1973,7 @@
           { el: this.video.textTracks, type: "removetrack" },
           { el: this.video.textTracks, type: "change" },
 
-          { el: this.video, type: "media-videoCasting", touchOnly: true }
+          { el: this.video, type: "media-videoCasting", touchOnly: true },
         ];
 
         for (let { el, type, nonTouchOnly = false, touchOnly = false,
@@ -1983,7 +1986,7 @@
         }
 
         this.log("--- videocontrols initialized ---");
-      }
+      },
     };
 
     this.TouchUtils = {
@@ -2096,7 +2099,7 @@
           { el: this.Utils.scrubber, type: "touchstart" },
           { el: this.Utils.scrubber, type: "touchend" },
           { el: this.Utils.muteButton, type: "click" },
-          { el: this.Utils.controlsSpacer, type: "mouseup" }
+          { el: this.Utils.controlsSpacer, type: "mouseup" },
         ];
 
         for (let { el, type, mozSystemGroup = true } of this.controlsEvents) {
@@ -2121,7 +2124,7 @@
         if (this.video.currentTime !== 0) {
           this.delayHideControls(this.Utils.HIDE_CONTROLS_TIMEOUT_MS);
         }
-      }
+      },
     };
 
     this.Utils.init(this);
@@ -2195,7 +2198,7 @@
           try {
             this.video.removeEventListener(event, this, {
               capture: true,
-              mozSystemGroup: true
+              mozSystemGroup: true,
             });
           } catch (ex) {}
         }
@@ -2281,10 +2284,10 @@
         for (let event of this.videoEvents) {
           this.video.addEventListener(event, this, {
             capture: true,
-            mozSystemGroup: true
+            mozSystemGroup: true,
           });
         }
-      }
+      },
     };
     this.Utils.init(this);
     this.Utils.video.dispatchEvent(new CustomEvent("MozNoControlsVideoBindingAttached"));

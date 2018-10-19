@@ -9,7 +9,7 @@
 //
 //   --enable-blink-features=MojoJS,MojoJSTest
 let loadChromiumResources = Promise.resolve().then(() => {
-  if (!MojoInterfaceInterceptor) {
+  if (!('MojoInterfaceInterceptor' in self)) {
     // Do nothing on non-Chromium-based browsers or when the Mojo bindings are
     // not present in the global namespace.
     return;
@@ -21,7 +21,7 @@ let loadChromiumResources = Promise.resolve().then(() => {
     '/resources/chromium/string16.mojom.js',
     '/resources/chromium/device.mojom.js',
     '/resources/chromium/device_manager.mojom.js',
-    '/resources/chromium/chooser_service.mojom.js',
+    '/resources/chromium/web_usb_service.mojom.js',
     '/resources/chromium/webusb-test.js',
   ].forEach(path => {
     // Use importScripts for workers.

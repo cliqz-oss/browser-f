@@ -15,7 +15,7 @@
            inherited from the binding parent -->
       <method name="_getScrollableElements">
         <body><![CDATA[
-          return Array.filter(document.getBindingParent(this).childNodes,
+          return Array.filter(document.getBindingParent(this).children,
                               this._canScrollToElement, this);
         ]]></body>
       </method>
@@ -56,10 +56,8 @@
         // Ignore overflow events:
         // - from nested scrollable elements
         // - for vertical orientation
-        // - when the window is tiny initially
         if (event.originalTarget != this._scrollbox ||
-            event.detail == 0 ||
-            window.outerWidth <= 1) {
+            event.detail == 0) {
           return;
         }
 
@@ -111,9 +109,8 @@
               "emptyPrivateTabTitle" : "emptyTabTitle";
           this.emptyTabTitle = gTabBrowserBundle.GetStringFromName("tabs." + strId);
 
-          var tab = this.firstChild;
+          var tab = this.firstElementChild;
           tab.label = this.emptyTabTitle;
-          tab.setAttribute("onerror", "this.removeAttribute('image');");
 
           window.addEventListener("resize", this);
 
@@ -131,6 +128,11 @@
 
           this._tabMinWidth = this._tabMinWidthPref;
 
+          XPCOMUtils.defineLazyPreferenceGetter(this, "_multiselectEnabledPref",
+            "browser.tabs.multiselect", null,
+            (pref, prevValue, newValue) => this._multiselectEnabled = newValue);
+          this._multiselectEnabled = this._multiselectEnabledPref;
+
           this._setPositionalAttributes();
 
           CustomizableUI.addListener(this);
@@ -138,6 +140,10 @@
 
           XPCOMUtils.defineLazyPreferenceGetter(this, "_closeTabByDblclick",
             "browser.tabs.closeTabByDblclick", false);
+
+          if (gMultiProcessBrowser) {
+            this.tabbox.tabpanels.setAttribute("async", "true");
+          }
         ]]>
       </constructor>
 
@@ -175,6 +181,17 @@
         </setter>
       </property>
 
+      <property name="_multiselectEnabled">
+        <setter>
+          // Unlike boolean HTML attributes, the value of boolean ARIA attributes actually matters.
+          this.setAttribute("aria-multiselectable", !!val);
+          return val;
+        </setter>
+        <getter>
+          return this.getAttribute("aria-multiselectable") == "true";
+        </getter>
+      </property>
+
       <method name="observe">
         <parameter name="aSubject"/>
         <parameter name="aTopic"/>
@@ -206,8 +223,8 @@
 
                 gClickAndHoldListenersOnElement.remove(parent);
                 parent.removeAttribute("type");
-                if (parent.firstChild) {
-                  parent.firstChild.remove();
+                if (parent.firstElementChild) {
+                  parent.firstElementChild.remove();
                 }
 
                 if (containersEnabled) {
@@ -221,6 +238,12 @@
                   }
                   popup.className = "new-tab-popup";
                   popup.setAttribute("position", "after_end");
+                  popup.addEventListener("popupshowing", event => {
+                    createUserContextMenu(event, {
+                      useAccessKeys: false,
+                      showDefaultTab: Services.prefs.getIntPref("privacy.userContext.longPressBehavior") == 1,
+                    });
+                  });
                   parent.appendChild(popup);
 
                   // longPressBehavior == 2 means that the menu is shown after X
@@ -248,7 +271,7 @@
         <body><![CDATA[
           // Cannot access gBrowser before it's initialized.
           if (!gBrowser) {
-            return [ this.firstChild ];
+            return [ this.firstElementChild ];
           }
 
           return gBrowser.visibleTabs;
@@ -351,9 +374,7 @@
               // remove close buttons from background tabs so that people don't
               // accidentally close tabs by selecting them.
               let rect = ele => {
-                return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowUtils)
-                             .getBoundsWithoutFlushing(ele);
+                return window.windowUtils.getBoundsWithoutFlushing(ele);
               };
               let tab = this._getVisibleTabs()[gBrowser._numPinnedTabs];
               if (tab && rect(tab).width <= this._tabClipWidth) {
@@ -397,6 +418,7 @@
       <!-- Try to keep the active tab's close button under the mouse cursor -->
       <method name="_lockTabSizing">
         <parameter name="aTab"/>
+        <parameter name="aTabWidth"/>
         <body><![CDATA[
           let tabs = this._getVisibleTabs();
           if (!tabs.length) {
@@ -404,7 +426,6 @@
           }
 
           var isEndTab = (aTab._tPos > tabs[tabs.length - 1]._tPos);
-          var tabWidth = aTab.getBoundingClientRect().width;
 
           if (!this._tabDefaultMaxWidth) {
             this._tabDefaultMaxWidth =
@@ -424,7 +445,7 @@
             if (aTab.owner) {
               return;
             }
-            this._expandSpacerBy(tabWidth);
+            this._expandSpacerBy(aTabWidth);
           } else { // non-overflow mode
             // Locking is neither in effect nor needed, so let tabs expand normally.
             if (isEndTab && !this._hasTabTempMaxWidth) {
@@ -436,21 +457,32 @@
             // tabbar width is the same.
             if (isEndTab) {
               let numNormalTabs = tabs.length - numPinned;
-              tabWidth = tabWidth * (numNormalTabs + 1) / numNormalTabs;
-              if (tabWidth > this._tabDefaultMaxWidth) {
-                tabWidth = this._tabDefaultMaxWidth;
+              aTabWidth = aTabWidth * (numNormalTabs + 1) / numNormalTabs;
+              if (aTabWidth > this._tabDefaultMaxWidth) {
+                aTabWidth = this._tabDefaultMaxWidth;
               }
             }
-            tabWidth += "px";
+            aTabWidth += "px";
+            let tabsToReset = [];
             for (let i = numPinned; i < tabs.length; i++) {
               let tab = tabs[i];
-              tab.style.setProperty("max-width", tabWidth, "important");
+              tab.style.setProperty("max-width", aTabWidth, "important");
               if (!isEndTab) { // keep tabs the same width
                 tab.style.transition = "none";
-                tab.clientTop; // flush styles to skip animation; see bug 649247
-                tab.style.transition = "";
+                tabsToReset.push(tab);
               }
             }
+
+            if (tabsToReset.length) {
+              window.promiseDocumentFlushed(() => {}).then(() => {
+                window.requestAnimationFrame(() => {
+                  for (let tab of tabsToReset) {
+                    tab.style.transition = "";
+                  }
+                });
+              });
+            }
+
             this._hasTabTempMaxWidth = true;
             gBrowser.addEventListener("mousemove", this);
             window.addEventListener("mouseout", this);
@@ -516,16 +548,17 @@
               let arrowScrollbox = this.arrowScrollbox;
               layoutData = this._pinnedTabsLayoutCache = {
                 uiDensity,
-                pinnedTabWidth: this.childNodes[0].getBoundingClientRect().width,
-                scrollButtonWidth: arrowScrollbox._scrollButtonDown.getBoundingClientRect().width
+                pinnedTabWidth: this.children[0].getBoundingClientRect().width,
+                scrollButtonWidth: arrowScrollbox._scrollButtonDown.getBoundingClientRect().width,
               };
             }
 
             let width = 0;
             for (let i = numPinned - 1; i >= 0; i--) {
-              let tab = this.childNodes[i];
+              let tab = this.children[i];
               width += layoutData.pinnedTabWidth;
-              tab.style.marginInlineStart = -(width + layoutData.scrollButtonWidth) + "px";
+              tab.style.setProperty("margin-inline-start",
+                -(width + layoutData.scrollButtonWidth) + "px", "important");
               tab._pinnedUnscrollable = true;
             }
             this.style.paddingInlineStart = width + "px";
@@ -533,7 +566,7 @@
             this.removeAttribute("positionpinnedtabs");
 
             for (let i = 0; i < numPinned; i++) {
-              let tab = this.childNodes[i];
+              let tab = this.children[i];
               tab.style.marginInlineStart = "";
               tab._pinnedUnscrollable = false;
             }
@@ -556,7 +589,8 @@
           if (this.getAttribute("movingtab") != "true") {
             this.setAttribute("movingtab", "true");
             this.parentNode.setAttribute("movingtab", "true");
-            this.selectedItem = draggedTab;
+            if (!draggedTab.multiselected)
+              this.selectedItem = draggedTab;
           }
 
           if (!("animLastScreenX" in draggedTab._dragData))
@@ -566,6 +600,9 @@
           if (screenX == draggedTab._dragData.animLastScreenX)
             return;
 
+          // Direction of the mouse movement.
+          let ltrMove = screenX > draggedTab._dragData.animLastScreenX;
+
           draggedTab._dragData.animLastScreenX = screenX;
 
           let rtl = (window.getComputedStyle(this).direction == "rtl");
@@ -574,46 +611,61 @@
           let tabs = this._getVisibleTabs()
                          .slice(pinned ? 0 : numPinned,
                                 pinned ? numPinned : undefined);
+          let movingTabs = draggedTab._dragData.movingTabs;
           if (rtl) {
             tabs.reverse();
+            // Copy moving tabs array to avoid infinite reversing.
+            movingTabs = [...movingTabs].reverse();
           }
           let tabWidth = draggedTab.getBoundingClientRect().width;
+          let shiftWidth = tabWidth * movingTabs.length;
           draggedTab._dragData.tabWidth = tabWidth;
 
           // Move the dragged tab based on the mouse position.
 
           let leftTab = tabs[0];
           let rightTab = tabs[tabs.length - 1];
-          let tabScreenX = draggedTab.boxObject.screenX;
+          let rightMovingTabScreenX = movingTabs[movingTabs.length - 1].boxObject.screenX;
+          let leftMovingTabScreenX = movingTabs[0].boxObject.screenX;
           let translateX = screenX - draggedTab._dragData.screenX;
           if (!pinned) {
             translateX += this.arrowScrollbox._scrollbox.scrollLeft - draggedTab._dragData.scrollX;
           }
-          let leftBound = leftTab.boxObject.screenX - tabScreenX;
+          let leftBound = leftTab.boxObject.screenX - leftMovingTabScreenX;
           let rightBound = (rightTab.boxObject.screenX + rightTab.boxObject.width) -
-                           (tabScreenX + tabWidth);
-          translateX = Math.max(translateX, leftBound);
-          translateX = Math.min(translateX, rightBound);
-          draggedTab.style.transform = "translateX(" + translateX + "px)";
+                           (rightMovingTabScreenX + tabWidth);
+          translateX = Math.min(Math.max(translateX, leftBound), rightBound);
+
+          for (let tab of movingTabs) {
+            tab.style.transform = "translateX(" + translateX + "px)";
+          }
+
           draggedTab._dragData.translateX = translateX;
 
           // Determine what tab we're dragging over.
-          // * Point of reference is the center of the dragged tab. If that
+          // * Single tab dragging: Point of reference is the center of the dragged tab. If that
           //   point touches a background tab, the dragged tab would take that
           //   tab's position when dropped.
+          // * Multiple tabs dragging: All dragged tabs are one "giant" tab with two
+          //   points of reference (center of tabs on the extremities). When
+          //   mouse is moving from left to right, the right reference gets activated,
+          //   otherwise the left reference will be used. Everything else works the same
+          //   as single tab dragging.
           // * We're doing a binary search in order to reduce the amount of
           //   tabs we need to check.
 
-          let tabCenter = tabScreenX + translateX + tabWidth / 2;
+          tabs = tabs.filter(t => !movingTabs.includes(t) || t == draggedTab);
+          let leftTabCenter = leftMovingTabScreenX + translateX + tabWidth / 2;
+          let rightTabCenter = rightMovingTabScreenX + translateX + tabWidth / 2;
+          let tabCenter = ltrMove ? rightTabCenter : leftTabCenter;
           let newIndex = -1;
           let oldIndex = "animDropIndex" in draggedTab._dragData ?
-                         draggedTab._dragData.animDropIndex : draggedTab._tPos;
+                         draggedTab._dragData.animDropIndex : movingTabs[0]._tPos;
           let low = 0;
           let high = tabs.length - 1;
           while (low <= high) {
             let mid = Math.floor((low + high) / 2);
-            if (tabs[mid] == draggedTab &&
-                ++mid > high)
+            if (tabs[mid] == draggedTab && ++mid > high)
               break;
             let boxObject = tabs[mid].boxObject;
             screenX = boxObject.screenX + getTabShift(tabs[mid], oldIndex);
@@ -644,9 +696,9 @@
 
           function getTabShift(tab, dropIndex) {
             if (tab._tPos < draggedTab._tPos && tab._tPos >= dropIndex)
-              return rtl ? -tabWidth : tabWidth;
+              return (rtl ? -shiftWidth : shiftWidth);
             if (tab._tPos > draggedTab._tPos && tab._tPos < dropIndex)
-              return rtl ? tabWidth : -tabWidth;
+              return (rtl ? shiftWidth : -shiftWidth);
             return 0;
           }
         ]]></body>
@@ -759,7 +811,7 @@
         <parameter name="event"/>
         <parameter name="isLink"/>
         <body><![CDATA[
-          var tabs = this.childNodes;
+          var tabs = this.children;
           var tab = this._getDragTargetTab(event, isLink);
           if (window.getComputedStyle(this).direction == "ltr") {
             for (let i = tab ? tab._tPos : 0; i < tabs.length; i++)
@@ -858,7 +910,7 @@
 
           // Cannot access gBrowser before it's initialized.
           if (!gBrowser) {
-            return this.tabbox.tabpanels.firstChild;
+            return this.tabbox.tabpanels.firstElementChild;
           }
 
           // If the tab's browser is lazy, we need to `_insertBrowser` in order
@@ -951,7 +1003,10 @@
     </implementation>
 
     <handlers>
-      <handler event="TabSelect" action="this._handleTabSelect();"/>
+      <handler event="TabSelect"><![CDATA[
+        this._handleTabSelect();
+        gBrowser.clearMultiSelectedTabs(true);
+      ]]></handler>
 
       <handler event="TabClose"><![CDATA[
         this._hiddenSoundPlayingStatusChanged(event.target, {closed: true});
@@ -1164,11 +1219,34 @@
         // node to deliver the `dragend` event.  See bug 1345473.
         dt.addElement(tab);
 
+        // Regroup all selected tabs around the dragged tab
+        // for multiple tabs dragging
+        if (tab.multiselected) {
+          let selectedTabs = gBrowser.selectedTabs;
+          let draggedTabPos = tab._tPos;
+
+          // Move left selected tabs
+          let insertAtPos = draggedTabPos - 1;
+          for (let i = selectedTabs.indexOf(tab) - 1; i > -1; i--) {
+            let movingTab = selectedTabs[i];
+            gBrowser.moveTabTo(movingTab, insertAtPos);
+            insertAtPos--;
+          }
+
+          // Move right selected tabs
+          insertAtPos = draggedTabPos + 1;
+          for (let i = selectedTabs.indexOf(tab) + 1; i < selectedTabs.length; i++) {
+            let movingTab = selectedTabs[i];
+            gBrowser.moveTabTo(movingTab, insertAtPos);
+            insertAtPos++;
+          }
+        }
+
         // Create a canvas to which we capture the current tab.
         // Until canvas is HiDPI-aware (bug 780362), we need to scale the desired
         // canvas size (in CSS pixels) to the window's backing resolution in order
         // to get a full-resolution drag image for use on HiDPI displays.
-        let windowUtils = window.getInterface(Ci.nsIDOMWindowUtils);
+        let windowUtils = window.windowUtils;
         let scale = windowUtils.screenPixelsPerCSSPixel / windowUtils.fullZoom;
         let canvas = this._dndCanvas;
         if (!canvas) {
@@ -1202,7 +1280,7 @@
             // the pointer while a dnd session is on.
             if (!this._dndPanel) {
               this._dndCanvas = canvas;
-              this._dndPanel = document.createElement("panel");
+              this._dndPanel = document.createXULElement("panel");
               this._dndPanel.className = "dragfeedback-tab";
               this._dndPanel.setAttribute("type", "drag");
               let wrapper = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
@@ -1237,7 +1315,9 @@
           offsetX: event.screenX - window.screenX - tabOffsetX,
           offsetY: event.screenY - window.screenY,
           scrollX: this.arrowScrollbox._scrollbox.scrollLeft,
-          screenX: event.screenX
+          screenX: event.screenX,
+          movingTabs: (tab.multiselected ? gBrowser.selectedTabs : [tab])
+                      .filter(t => t.pinned == tab.pinned),
         };
 
         event.stopPropagation();
@@ -1311,14 +1391,14 @@
           newMargin = (pixelsToScroll > 0) ? maxMargin : minMargin;
         } else {
           let newIndex = this._getDropIndex(event, effects == "link");
-          if (newIndex == this.childNodes.length) {
-            let tabRect = this.childNodes[newIndex - 1].getBoundingClientRect();
+          if (newIndex == this.children.length) {
+            let tabRect = this.children[newIndex - 1].getBoundingClientRect();
             if (ltr)
               newMargin = tabRect.right - rect.left;
             else
               newMargin = rect.right - tabRect.left;
           } else {
-            let tabRect = this.childNodes[newIndex].getBoundingClientRect();
+            let tabRect = this.children[newIndex].getBoundingClientRect();
             if (ltr)
               newMargin = tabRect.left - rect.left;
             else
@@ -1340,11 +1420,13 @@
         var dt = event.dataTransfer;
         var dropEffect = dt.dropEffect;
         var draggedTab;
+        let movingTabs;
         if (dt.mozTypesAt(0)[0] == TAB_DROP_TYPE) { // tab copy or move
           draggedTab = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
           // not our drop then
           if (!draggedTab)
             return;
+          movingTabs = draggedTab._dragData.movingTabs;
         }
 
         this._tabDropIndicator.collapsed = true;
@@ -1352,10 +1434,15 @@
         if (draggedTab && dropEffect == "copy") {
           // copy the dropped tab (wherever it's from)
           let newIndex = this._getDropIndex(event, false);
-          let newTab = gBrowser.duplicateTab(draggedTab);
-          gBrowser.moveTabTo(newTab, newIndex);
+          let draggedTabCopy;
+          for (let tab of movingTabs) {
+            let newTab = gBrowser.duplicateTab(tab);
+            gBrowser.moveTabTo(newTab, newIndex++);
+            if (tab == draggedTab)
+              draggedTabCopy = newTab;
+          }
           if (draggedTab.parentNode != this || event.shiftKey) {
-            this.selectedItem = newTab;
+            this.selectedItem = draggedTabCopy;
           }
         } else if (draggedTab && draggedTab.parentNode == this) {
           let oldTranslateX = Math.round(draggedTab._dragData.translateX);
@@ -1370,39 +1457,57 @@
 
           let dropIndex = "animDropIndex" in draggedTab._dragData &&
                           draggedTab._dragData.animDropIndex;
-          if (dropIndex && dropIndex > draggedTab._tPos)
+          let incrementDropIndex = true;
+          if (dropIndex && dropIndex > movingTabs[0]._tPos) {
             dropIndex--;
+            incrementDropIndex = false;
+          }
 
           let animate = gBrowser.animationsEnabled;
           if (oldTranslateX && oldTranslateX != newTranslateX && animate) {
-            draggedTab.setAttribute("tabdrop-samewindow", "true");
-            draggedTab.style.transform = "translateX(" + newTranslateX + "px)";
-            let onTransitionEnd = transitionendEvent => {
-              if (transitionendEvent.propertyName != "transform" ||
-                  transitionendEvent.originalTarget != draggedTab) {
-                return;
-              }
-              draggedTab.removeEventListener("transitionend", onTransitionEnd);
+            for (let tab of movingTabs) {
+              tab.setAttribute("tabdrop-samewindow", "true");
+              tab.style.transform = "translateX(" + newTranslateX + "px)";
+              let onTransitionEnd = transitionendEvent => {
+                if (transitionendEvent.propertyName != "transform" ||
+                    transitionendEvent.originalTarget != tab) {
+                  return;
+                }
+                tab.removeEventListener("transitionend", onTransitionEnd);
 
-              draggedTab.removeAttribute("tabdrop-samewindow");
+                tab.removeAttribute("tabdrop-samewindow");
 
-              this._finishAnimateTabMove();
-              if (dropIndex !== false) {
-                gBrowser.moveTabTo(draggedTab, dropIndex);
-              }
+                this._finishAnimateTabMove();
+                if (dropIndex !== false) {
+                  gBrowser.moveTabTo(tab, dropIndex);
+                  if (incrementDropIndex)
+                    dropIndex++;
+                }
 
-              gBrowser.syncThrobberAnimations(draggedTab);
-            };
-            draggedTab.addEventListener("transitionend", onTransitionEnd);
+                gBrowser.syncThrobberAnimations(tab);
+              };
+              tab.addEventListener("transitionend", onTransitionEnd);
+            }
           } else {
             this._finishAnimateTabMove();
             if (dropIndex !== false) {
-              gBrowser.moveTabTo(draggedTab, dropIndex);
+              for (let tab of movingTabs) {
+                gBrowser.moveTabTo(tab, dropIndex);
+                if (incrementDropIndex)
+                  dropIndex++;
+              }
             }
           }
         } else if (draggedTab) {
           let newIndex = this._getDropIndex(event, false);
-          gBrowser.adoptTab(draggedTab, newIndex, true);
+          let newTabs = [];
+          for (let tab of movingTabs) {
+            let newTab = gBrowser.adoptTab(tab, newIndex++, tab == draggedTab);
+            newTabs.push(newTab);
+          }
+
+          // Restore tab selection
+          gBrowser.addRangeToMultiSelectedTabs(newTabs[0], newTabs[newTabs.length - 1]);
         } else {
           // Pass true to disallow dropping javascript: or data: urls
           let links;
@@ -1529,7 +1634,7 @@
             props.outerWidth = winWidth;
             props.outerHeight = winHeight;
           }
-          gBrowser.replaceTabWithWindow(draggedTab, props);
+          gBrowser.replaceTabsWithWindow(draggedTab, props);
         }
         event.stopPropagation();
       ]]></handler>
@@ -1574,6 +1679,9 @@
                      class="tab-throbber-fallback"
                      role="presentation"
                      layer="true"/>
+          <xul:hbox xbl:inherits="fadein,pinned,busy,progress,selected=visuallyselected,pendingicon"
+                    anonid="tab-icon-pending"
+                    class="tab-icon-pending"/>
           <xul:image xbl:inherits="src=image,triggeringprincipal=iconloadingprincipal,requestcontextid,fadein,pinned,selected=visuallyselected,busy,crashed,sharing"
                      anonid="tab-icon-image"
                      class="tab-icon-image"
@@ -1592,7 +1700,7 @@
                     onoverflow="this.setAttribute('textoverflow', 'true');"
                     onunderflow="this.removeAttribute('textoverflow');"
                     flex="1">
-            <xul:label class="tab-text tab-label"
+            <xul:label class="tab-text tab-label" anonid="tab-label"
                        xbl:inherits="xbl:text=label,accesskey,fadein,pinned,selected=visuallyselected,attention"
                        role="presentation"/>
           </xul:hbox>
@@ -1969,6 +2077,10 @@
 
       <handler event="mousedown" phase="capturing">
       <![CDATA[
+        if (event.button == 0 && !this.selected && this.multiselected) {
+          gBrowser.lockClearMultiSelectionOnce();
+        }
+
         let tabContainer = this.parentNode;
         if (tabContainer._closeTabByDblclick &&
             event.button == 0 &&
@@ -1981,7 +2093,7 @@
         } else {
           // When browser.tabs.multiselect config is set to false,
           // then we ignore the state of multi-selection keys (Ctrl/Cmd).
-          const tabSelectionToggled = Services.prefs.getBoolPref("browser.tabs.multiselect") &&
+          const tabSelectionToggled = tabContainer._multiselectEnabled &&
             (event.getModifierState("Accel") || event.shiftKey);
 
           if (this.mOverCloseButton || this._overPlayingIcon || tabSelectionToggled) {
@@ -1989,31 +2101,42 @@
             event.stopPropagation();
           }
         }
+
+        if (event.button == 1) {
+          gBrowser.warmupTab(gBrowser._findTabToBlurTo(this));
+        }
       ]]>
       </handler>
       <handler event="mouseup">
+        // Make sure that clear-selection is released.
+        // Otherwise selection using Shift key may be broken.
+        gBrowser.unlockClearMultiSelection();
+
         this.style.MozUserFocus = "";
       </handler>
 
       <handler event="click" button="0"><![CDATA[
-        if (Services.prefs.getBoolPref("browser.tabs.multiselect")) {
-          if (event.shiftKey) {
-            const lastSelectedTab = gBrowser.lastMultiSelectedTab || gBrowser.selectedTab;
+        let tabContainer = this.parentNode;
+        if (tabContainer._multiselectEnabled) {
+          let shiftKey = event.shiftKey;
+          let accelKey = event.getModifierState("Accel");
+          if (shiftKey) {
+            const lastSelectedTab = gBrowser.lastMultiSelectedTab;
+            if (!accelKey) {
+              gBrowser.selectedTab = lastSelectedTab;
+
+              // Make sure selection is cleared when tab-switch doesn't happen.
+              gBrowser.clearMultiSelectedTabs(false);
+            }
             gBrowser.addRangeToMultiSelectedTabs(lastSelectedTab, this);
-            gBrowser.lastMultiSelectedTab = this;
             return;
           }
-          if (event.getModifierState("Accel")) {
+          if (accelKey) {
             // Ctrl (Cmd for mac) key is pressed
             if (this.multiselected) {
-              gBrowser.removeFromMultiSelectedTabs(this);
-              if (this == gBrowser.selectedTab) {
-                gBrowser.selectedTab = gBrowser.lastMultiSelectedTab;
-              }
+              gBrowser.removeFromMultiSelectedTabs(this, true);
             } else if (this != gBrowser.selectedTab) {
-              for (let tab of [this, gBrowser.selectedTab]) {
-                gBrowser.addToMultiSelectedTabs(tab);
-              }
+              gBrowser.addToMultiSelectedTabs(this, false);
               gBrowser.lastMultiSelectedTab = this;
             }
             return;
@@ -2083,93 +2206,4 @@
       </handler>
     </handlers>
   </binding>
-
-  <binding id="tabbrowser-newtab-popup"
-           extends="chrome://global/content/bindings/popup.xml#popup">
-    <handlers>
-      <handler event="popupshowing">
-      <![CDATA[
-        createUserContextMenu(event, {
-          useAccessKeys: false,
-          showDefaultTab: Services.prefs.getIntPref("privacy.userContext.longPressBehavior") == 1
-        });
-      ]]></handler>
-    </handlers>
-  </binding>
-
-  <binding id="tabbrowser-tabpanels"
-           extends="chrome://global/content/bindings/tabbox.xml#tabpanels">
-    <implementation>
-      <field name="_selectedIndex">0</field>
-
-      <property name="selectedIndex">
-        <getter>
-        <![CDATA[
-          return this._selectedIndex;
-        ]]>
-        </getter>
-
-        <setter>
-        <![CDATA[
-          if (val < 0 || val >= this.childNodes.length)
-            return val;
-
-          let toTab = this.getRelatedElement(this.childNodes[val]);
-
-          gBrowser._getSwitcher().requestTab(toTab);
-
-          var panel = this._selectedPanel;
-          var newPanel = this.childNodes[val];
-          this._selectedPanel = newPanel;
-          if (this._selectedPanel != panel) {
-            var event = document.createEvent("Events");
-            event.initEvent("select", true, true);
-            this.dispatchEvent(event);
-
-            this._selectedIndex = val;
-          }
-
-          return val;
-        ]]>
-        </setter>
-      </property>
-    </implementation>
-  </binding>
-
-  <binding id="tabbrowser-browser"
-           extends="chrome://global/content/bindings/browser.xml#browser">
-    <implementation>
-      <field name="tabModalPromptBox">null</field>
-
-      <!-- throws exception for unknown schemes -->
-      <method name="loadURI">
-        <parameter name="aURI"/>
-        <parameter name="aParams"/>
-        <body>
-          <![CDATA[
-            _loadURI(this, aURI, aParams);
-          ]]>
-        </body>
-      </method>
-    </implementation>
-  </binding>
-
-  <binding id="tabbrowser-remote-browser"
-           extends="chrome://global/content/bindings/remote-browser.xml#remote-browser">
-    <implementation>
-      <field name="tabModalPromptBox">null</field>
-
-      <!-- throws exception for unknown schemes -->
-      <method name="loadURI">
-        <parameter name="aURI"/>
-        <parameter name="aParams"/>
-        <body>
-          <![CDATA[
-            _loadURI(this, aURI, aParams);
-          ]]>
-        </body>
-      </method>
-    </implementation>
-  </binding>
-
 </bindings>

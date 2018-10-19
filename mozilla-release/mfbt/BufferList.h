@@ -135,6 +135,28 @@ class BufferList : private AllocPolicy
     return AllocateSegment(aInitialSize, aInitialCapacity);
   }
 
+  bool CopyFrom(const BufferList& aOther)
+  {
+    MOZ_ASSERT(mOwning);
+
+    Clear();
+
+    // We don't make an exact copy of aOther. Instead, create a single segment
+    // with enough space to hold all data in aOther.
+    if (!Init(aOther.mSize, (aOther.mSize + kSegmentAlignment - 1) & ~(kSegmentAlignment - 1))) {
+      return false;
+    }
+
+    size_t offset = 0;
+    for (const Segment& segment : aOther.mSegments) {
+      memcpy(Start() + offset, segment.mData, segment.mSize);
+      offset += segment.mSize;
+    }
+    MOZ_ASSERT(offset == mSize);
+
+    return true;
+  }
+
   // Returns the sum of the sizes of all the buffers.
   size_t Size() const { return mSize; }
 
@@ -151,7 +173,7 @@ class BufferList : private AllocPolicy
   {
     if (mOwning) {
       for (Segment& segment : mSegments) {
-        this->free_(segment.mData);
+        this->free_(segment.mData, segment.mCapacity);
       }
     }
     mSegments.clear();
@@ -367,7 +389,7 @@ class BufferList : private AllocPolicy
     MOZ_ASSERT(mOwning);
 
     if (!mSegments.append(Segment(aData, aSize, aCapacity))) {
-      this->free_(aData);
+      this->free_(aData, aCapacity);
       return nullptr;
     }
     mSize += aSize;
@@ -394,7 +416,7 @@ private:
       return nullptr;
     }
     if (!mSegments.append(Segment(data, aSize, aCapacity))) {
-      this->free_(data);
+      this->free_(data, aCapacity);
       return nullptr;
     }
     mSize += aSize;

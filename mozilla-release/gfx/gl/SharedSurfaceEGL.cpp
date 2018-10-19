@@ -268,8 +268,12 @@ SharedSurface_SurfaceTexture::Commit()
 void
 SharedSurface_SurfaceTexture::WaitForBufferOwnership()
 {
-    MOZ_RELEASE_ASSERT(!mSurface->GetAvailable());
     mSurface->SetAvailable(true);
+}
+
+bool
+SharedSurface_SurfaceTexture::IsBufferAvailable() const {
+    return mSurface->GetAvailable();
 }
 
 bool

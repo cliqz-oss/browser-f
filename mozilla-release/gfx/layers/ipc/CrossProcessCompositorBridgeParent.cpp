@@ -94,14 +94,15 @@ CrossProcessCompositorBridgeParent::AllocPLayerTransactionParent(
     state->mCrossProcessParent = this;
     HostLayerManager* lm = state->mLayerManager;
     CompositorAnimationStorage* animStorage = state->mParent ? state->mParent->GetAnimationStorage() : nullptr;
-    LayerTransactionParent* p = new LayerTransactionParent(lm, this, animStorage, aId);
+    TimeDuration vsyncRate = state->mParent ? state->mParent->GetVsyncInterval() : TimeDuration();
+    LayerTransactionParent* p = new LayerTransactionParent(lm, this, animStorage, aId, vsyncRate);
     p->AddIPDLReference();
     sIndirectLayerTrees[aId].mLayerTree = p;
     return p;
   }
 
   NS_WARNING("Created child without a matching parent?");
-  LayerTransactionParent* p = new LayerTransactionParent(/* aManager */ nullptr, this, /* aAnimStorage */ nullptr, aId);
+  LayerTransactionParent* p = new LayerTransactionParent(/* aManager */ nullptr, this, /* aAnimStorage */ nullptr, aId, TimeDuration());
   p->AddIPDLReference();
   return p;
 }
@@ -243,7 +244,7 @@ CrossProcessCompositorBridgeParent::AllocPWebRenderBridgeParent(const wr::Pipeli
   RefPtr<AsyncImagePipelineManager> holder = root->AsyncImageManager();
   RefPtr<CompositorAnimationStorage> animStorage = cbp->GetAnimationStorage();
   WebRenderBridgeParent* parent = new WebRenderBridgeParent(
-          this, aPipelineId, nullptr, root->CompositorScheduler(), std::move(api), std::move(holder), std::move(animStorage));
+          this, aPipelineId, nullptr, root->CompositorScheduler(), std::move(api), std::move(holder), std::move(animStorage), cbp->GetVsyncInterval());
   parent->AddRef(); // IPDL reference
 
   { // scope lock
@@ -369,10 +370,10 @@ CrossProcessCompositorBridgeParent::ShadowLayersUpdated(
   if (aLayerTree->ShouldParentObserveEpoch()) {
     // Note that we send this through the window compositor, since this needs
     // to reach the widget owning the tab.
-    Unused << state->mParent->SendObserveLayerUpdate(id, aLayerTree->GetChildEpoch(), true);
+    Unused << state->mParent->SendObserveLayersUpdate(id, aLayerTree->GetChildEpoch(), true);
   }
 
-  aLayerTree->SetPendingTransactionId(aInfo.id(), aInfo.transactionStart(), aInfo.fwdTime());
+  aLayerTree->SetPendingTransactionId(aInfo.id(), aInfo.refreshStart(), aInfo.transactionStart(), aInfo.fwdTime());
 }
 
 void
@@ -397,11 +398,8 @@ CrossProcessCompositorBridgeParent::DidCompositeLocked(
     if (transactionId.IsValid()) {
       Unused << SendDidComposite(aId, transactionId, aCompositeStart, aCompositeEnd);
     }
-  } else if (WebRenderBridgeParent* wrbridge = sIndirectLayerTrees[aId].mWrBridge) {
-    TransactionId transactionId = wrbridge->FlushPendingTransactionIds();
-    if (transactionId.IsValid()) {
-      Unused << SendDidComposite(aId, transactionId, aCompositeStart, aCompositeEnd);
-    }
+  } else if (sIndirectLayerTrees[aId].mWrBridge) {
+    MOZ_ASSERT(false); // this should never get called for a WR compositor
   }
 }
 
@@ -431,7 +429,7 @@ CrossProcessCompositorBridgeParent::NotifyClearCachedResources(LayerTransactionP
   if (state && state->mParent) {
     // Note that we send this through the window compositor, since this needs
     // to reach the widget owning the tab.
-    Unused << state->mParent->SendObserveLayerUpdate(id, aLayerTree->GetChildEpoch(), false);
+    Unused << state->mParent->SendObserveLayersUpdate(id, aLayerTree->GetChildEpoch(), false);
   }
 }
 
@@ -650,7 +648,7 @@ CrossProcessCompositorBridgeParent::UpdatePaintTime(LayerTransactionParent* aLay
 }
 
 void
-CrossProcessCompositorBridgeParent::ObserveLayerUpdate(LayersId aLayersId, uint64_t aEpoch, bool aActive)
+CrossProcessCompositorBridgeParent::ObserveLayersUpdate(LayersId aLayersId, LayersObserverEpoch aEpoch, bool aActive)
 {
   MOZ_ASSERT(aLayersId.IsValid());
 
@@ -660,7 +658,7 @@ CrossProcessCompositorBridgeParent::ObserveLayerUpdate(LayersId aLayersId, uint6
     return;
   }
 
-  Unused << state->mParent->SendObserveLayerUpdate(aLayersId, aEpoch, aActive);
+  Unused << state->mParent->SendObserveLayersUpdate(aLayersId, aEpoch, aActive);
 }
 
 } // namespace layers

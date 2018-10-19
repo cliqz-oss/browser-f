@@ -13,8 +13,8 @@
 
 #include "nsCoord.h"
 #include "DisplayItemClip.h"
-#include "ScrollbarStyles.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/ScrollStyles.h"
 #include "mozilla/gfx/Point.h"
 #include "nsIScrollbarMediator.h"
 #include "Units.h"
@@ -65,7 +65,7 @@ public:
    * or NS_STYLE_OVERFLOW_AUTO) governing the horizontal and vertical
    * scrollbars for this frame.
    */
-  virtual mozilla::ScrollbarStyles GetScrollbarStyles() const = 0;
+  virtual mozilla::ScrollStyles GetScrollStyles() const = 0;
 
   enum { HORIZONTAL = 0x01, VERTICAL = 0x02 };
   /**
@@ -148,10 +148,19 @@ public:
    */
   virtual nsRect GetScrollRange() const = 0;
   /**
-   * Get the size of the scroll port to use when clamping the scroll
+   * Get the size of the view port to use when clamping the scroll
    * position.
    */
-  virtual nsSize GetScrollPositionClampingScrollPortSize() const = 0;
+  virtual nsSize GetVisualViewportSize() const = 0;
+  /**
+   * Returns the offset of the visual viewport relative to
+   * the origin of the scrolled content. Note that only the RCD-RSF
+   * has a distinct visual viewport; for other scroll frames, the
+   * visual viewport always coincides with the layout viewport, and
+   * consequently the offset this function returns is equal to
+   * GetScrollPosition().
+   */
+  virtual nsPoint GetVisualViewportOffset() const = 0;
   /**
    * Return how much we would try to scroll by in each direction if
    * asked to scroll by one "line" vertically and horizontally.

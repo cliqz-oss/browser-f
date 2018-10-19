@@ -41,7 +41,7 @@ var PlacesDBUtils = {
       this.checkCoherence,
       this._refreshUI,
       this.originFrecencyStats,
-      this.incrementalVacuum
+      this.incrementalVacuum,
     ];
     let telemetryStartTime = Date.now();
     let taskStatusMap = await PlacesDBUtils.runTasks(tasks);
@@ -211,6 +211,114 @@ var PlacesDBUtils = {
 
   async _getCoherenceStatements() {
     let cleanupStatements = [
+      // MOZ_PLACES
+      // L.1 remove duplicate URLs.
+      // This task uses a temp table of potential dupes, and a trigger to remove
+      // them. It runs first because it relies on subsequent tasks to clean up
+      // orphaned foreign key references. The task works like this: first, we
+      // insert all rows with the same hash into the temp table. This lets
+      // SQLite use the `url_hash` index for scanning `moz_places`. Hashes
+      // aren't unique, so two different URLs might have the same hash. To find
+      // the actual dupes, we use a unique constraint on the URL in the temp
+      // table. If that fails, we bump the dupe count. Then, we delete all dupes
+      // from the table. This fires the cleanup trigger, which updates all
+      // foreign key references to point to one of the duplicate Places, then
+      // deletes the others.
+      { query:
+        `CREATE TEMP TABLE IF NOT EXISTS moz_places_dupes_temp(
+          id INTEGER PRIMARY KEY
+        , hash INTEGER NOT NULL
+        , url TEXT UNIQUE NOT NULL
+        , count INTEGER NOT NULL DEFAULT 0
+        )`,
+      },
+      { query:
+        `CREATE TEMP TRIGGER IF NOT EXISTS moz_places_remove_dupes_temp_trigger
+        AFTER DELETE ON moz_places_dupes_temp
+        FOR EACH ROW
+        BEGIN
+          /* Reassign history visits. */
+          UPDATE moz_historyvisits SET
+            place_id = OLD.id
+          WHERE place_id IN (SELECT id FROM moz_places
+                             WHERE id <> OLD.id AND
+                                   url_hash = OLD.hash AND
+                                   url = OLD.url);
+
+          /* Merge autocomplete history entries. */
+          INSERT INTO moz_inputhistory(place_id, input, use_count)
+          SELECT OLD.id, a.input, a.use_count
+          FROM moz_inputhistory a
+          JOIN moz_places h ON h.id = a.place_id
+          WHERE h.id <> OLD.id AND
+                h.url_hash = OLD.hash AND
+                h.url = OLD.url
+          ON CONFLICT(place_id, input) DO UPDATE SET
+            place_id = excluded.place_id,
+            use_count = use_count + excluded.use_count;
+
+          /* Merge page annos, ignoring annos with the same name that are
+             already set on the destination. */
+          INSERT OR IGNORE INTO moz_annos(id, place_id, anno_attribute_id,
+                                          content, flags, expiration, type,
+                                          dateAdded, lastModified)
+          SELECT (SELECT k.id FROM moz_annos k
+                  WHERE k.place_id = OLD.id AND
+                        k.anno_attribute_id = a.anno_attribute_id), OLD.id,
+                 a.anno_attribute_id, a.content, a.flags, a.expiration, a.type,
+                 a.dateAdded, a.lastModified
+          FROM moz_annos a
+          JOIN moz_places h ON h.id = a.place_id
+          WHERE h.id <> OLD.id AND
+                url_hash = OLD.hash AND
+                url = OLD.url;
+
+          /* Reassign bookmarks, and bump the Sync change counter just in case
+             we have new keywords. */
+          UPDATE moz_bookmarks SET
+            fk = OLD.id,
+            syncChangeCounter = syncChangeCounter + 1
+          WHERE fk IN (SELECT id FROM moz_places
+                       WHERE url_hash = OLD.hash AND
+                             url = OLD.url);
+
+          /* Reassign keywords. */
+          UPDATE moz_keywords SET
+            place_id = OLD.id
+          WHERE place_id IN (SELECT id FROM moz_places
+                             WHERE id <> OLD.id AND
+                                   url_hash = OLD.hash AND
+                                   url = OLD.url);
+
+          /* Now that we've updated foreign key references, drop the
+             conflicting source. */
+          DELETE FROM moz_places
+          WHERE id <> OLD.id AND
+                url_hash = OLD.hash AND
+                url = OLD.url;
+
+          /* Recalculate frecency for the destination. */
+          UPDATE moz_places SET
+            frecency = calculate_frecency(id)
+          WHERE id = OLD.id;
+
+          /* Trigger frecency updates for affected origins. */
+          DELETE FROM moz_updateoriginsupdate_temp;
+        END`,
+      },
+      { query:
+        `INSERT INTO moz_places_dupes_temp(id, hash, url, count)
+        SELECT h.id, h.url_hash, h.url, 1
+        FROM moz_places h
+        JOIN (SELECT url_hash FROM moz_places
+              GROUP BY url_hash
+              HAVING count(*) > 1) d ON d.url_hash = h.url_hash
+        ON CONFLICT(url) DO UPDATE SET
+          count = count + 1`,
+      },
+      { query: `DELETE FROM moz_places_dupes_temp WHERE count > 1` },
+      { query: `DROP TABLE moz_places_dupes_temp` },
+
       // MOZ_ANNO_ATTRIBUTES
       // A.1 remove obsolete annotations from moz_annos.
       // The 'weave0' idiom exploits character ordering (0 follows /) to
@@ -221,7 +329,7 @@ var PlacesDBUtils = {
           SELECT id FROM moz_anno_attributes
           WHERE name = 'downloads/destinationFileName' OR
                 name BETWEEN 'weave/' AND 'weave0'
-        )`
+        )`,
       },
 
       // A.2 remove obsolete annotations from moz_items_annos.
@@ -232,7 +340,7 @@ var PlacesDBUtils = {
           WHERE name = 'sync/children'
              OR name = 'placesInternal/GUID'
              OR name BETWEEN 'weave/' AND 'weave0'
-        )`
+        )`,
       },
 
       // A.3 remove unused attributes.
@@ -243,7 +351,7 @@ var PlacesDBUtils = {
               (SELECT id FROM moz_annos WHERE anno_attribute_id = n.id LIMIT 1)
             AND NOT EXISTS
               (SELECT id FROM moz_items_annos WHERE anno_attribute_id = n.id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_ANNOS
@@ -254,7 +362,7 @@ var PlacesDBUtils = {
           WHERE NOT EXISTS
             (SELECT id FROM moz_anno_attributes
               WHERE id = a.anno_attribute_id LIMIT 1)
-        )`
+        )`,
       },
 
       // B.2 remove orphan annos
@@ -263,7 +371,7 @@ var PlacesDBUtils = {
           SELECT id FROM moz_annos a
           WHERE NOT EXISTS
             (SELECT id FROM moz_places WHERE id = a.place_id LIMIT 1)
-        )`
+        )`,
       },
 
       // C.1 Fix built-in folders with incorrect parents.
@@ -279,7 +387,7 @@ var PlacesDBUtils = {
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
           mobileGuid: PlacesUtils.bookmarks.mobileGuid,
-        }
+        },
       },
 
       // D.1 remove items without a valid place
@@ -299,7 +407,7 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.2 remove items that are not uri bookmarks from tag containers
@@ -320,7 +428,7 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.3 remove empty tags
@@ -341,14 +449,13 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.4 move orphan items to unsorted folder
       { query:
         `UPDATE moz_bookmarks SET
-          parent = :unsorted_folder,
-          syncChangeCounter = syncChangeCounter + 1
+          parent = (SELECT id FROM moz_bookmarks WHERE guid = :unfiledGuid)
         WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
@@ -357,13 +464,12 @@ var PlacesDBUtils = {
             (SELECT id FROM moz_bookmarks WHERE id = b.parent LIMIT 1)
         )`,
         params: {
-          unsorted_folder: PlacesUtils.unfiledBookmarksFolderId,
           rootGuid: PlacesUtils.bookmarks.rootGuid,
           menuGuid: PlacesUtils.bookmarks.menuGuid,
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.6 fix wrong item types
@@ -390,7 +496,7 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.7 fix wrong item types
@@ -415,7 +521,7 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.9 fix wrong parents
@@ -423,8 +529,7 @@ var PlacesDBUtils = {
       // as parent, if they have bad parent move them to unsorted bookmarks.
       { query:
         `UPDATE moz_bookmarks SET
-          parent = :unsorted_folder,
-          syncChangeCounter = syncChangeCounter + 1
+          parent = (SELECT id FROM moz_bookmarks WHERE guid = :unfiledGuid)
         WHERE guid NOT IN (
           :rootGuid, :menuGuid, :toolbarGuid, :unfiledGuid, :tagsGuid  /* skip roots */
         ) AND id IN (
@@ -435,7 +540,6 @@ var PlacesDBUtils = {
               LIMIT 1)
         )`,
         params: {
-          unsorted_folder: PlacesUtils.unfiledBookmarksFolderId,
           bookmark_type: PlacesUtils.bookmarks.TYPE_BOOKMARK,
           separator_type: PlacesUtils.bookmarks.TYPE_SEPARATOR,
           rootGuid: PlacesUtils.bookmarks.rootGuid,
@@ -443,7 +547,7 @@ var PlacesDBUtils = {
           toolbarGuid: PlacesUtils.bookmarks.toolbarGuid,
           unfiledGuid: PlacesUtils.bookmarks.unfiledGuid,
           tagsGuid: PlacesUtils.bookmarks.tagsGuid,
-        }
+        },
       },
 
       // D.10 recalculate positions
@@ -459,7 +563,7 @@ var PlacesDBUtils = {
           id INTEGER
         , parent INTEGER
         , position INTEGER
-        )`
+        )`,
       },
       { query:
         `INSERT INTO moz_bm_reindex_temp
@@ -471,17 +575,17 @@ var PlacesDBUtils = {
           GROUP BY parent
           HAVING (SUM(DISTINCT position + 1) - (count(*) * (count(*) + 1) / 2)) <> 0
         )
-        ORDER BY parent ASC, position ASC, ROWID ASC`
+        ORDER BY parent ASC, position ASC, ROWID ASC`,
       },
       { query:
         `CREATE INDEX IF NOT EXISTS moz_bm_reindex_temp_index
-        ON moz_bm_reindex_temp(parent)`
+        ON moz_bm_reindex_temp(parent)`,
       },
       { query:
         `UPDATE moz_bm_reindex_temp SET position = (
           ROWID - (SELECT MIN(t.ROWID) FROM moz_bm_reindex_temp t
                     WHERE t.parent = moz_bm_reindex_temp.parent)
-        )`
+        )`,
       },
       { query:
         `CREATE TEMP TRIGGER IF NOT EXISTS moz_bm_reindex_temp_trigger
@@ -489,7 +593,7 @@ var PlacesDBUtils = {
         FOR EACH ROW
         BEGIN
           UPDATE moz_bookmarks SET position = OLD.position WHERE id = OLD.id;
-        END`
+        END`,
       },
       { query: `DELETE FROM moz_bm_reindex_temp` },
       { query: `DROP INDEX moz_bm_reindex_temp_index` },
@@ -519,7 +623,7 @@ var PlacesDBUtils = {
           empty_title: "(notitle)",
           folder_type: PlacesUtils.bookmarks.TYPE_FOLDER,
           tags_folder: PlacesUtils.tagsFolderId,
-        }
+        },
       },
 
       // MOZ_ICONS
@@ -527,7 +631,7 @@ var PlacesDBUtils = {
       { query:
         `DELETE FROM moz_pages_w_icons WHERE page_url_hash NOT IN (
           SELECT url_hash FROM moz_places
-        )`
+        )`,
       },
 
       { query:
@@ -535,14 +639,14 @@ var PlacesDBUtils = {
           SELECT id FROM moz_icons WHERE root = 0
           EXCEPT
           SELECT icon_id FROM moz_icons_to_pages
-        )`
+        )`,
       },
 
       { query:
         `DELETE FROM moz_icons
          WHERE root = 1
            AND get_host_and_port(icon_url) NOT IN (SELECT host FROM moz_origins)
-           AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)`
+           AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)`,
       },
 
       // MOZ_HISTORYVISITS
@@ -552,7 +656,7 @@ var PlacesDBUtils = {
           SELECT id FROM moz_historyvisits v
           WHERE NOT EXISTS
             (SELECT id FROM moz_places WHERE id = v.place_id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_INPUTHISTORY
@@ -562,7 +666,7 @@ var PlacesDBUtils = {
           SELECT place_id FROM moz_inputhistory i
           WHERE NOT EXISTS
             (SELECT id FROM moz_places WHERE id = i.place_id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_ITEMS_ANNOS
@@ -573,7 +677,7 @@ var PlacesDBUtils = {
           WHERE NOT EXISTS
             (SELECT id FROM moz_anno_attributes
               WHERE id = t.anno_attribute_id LIMIT 1)
-        )`
+        )`,
       },
 
       // H.2 remove orphan item annos
@@ -582,7 +686,7 @@ var PlacesDBUtils = {
           SELECT id FROM moz_items_annos t
           WHERE NOT EXISTS
             (SELECT id FROM moz_bookmarks WHERE id = t.item_id LIMIT 1)
-        )`
+        )`,
       },
 
       // MOZ_KEYWORDS
@@ -592,7 +696,7 @@ var PlacesDBUtils = {
           SELECT id FROM moz_keywords k
           WHERE NOT EXISTS
             (SELECT 1 FROM moz_places h WHERE k.place_id = h.id)
-        )`
+        )`,
       },
 
       // MOZ_PLACES
@@ -609,7 +713,7 @@ var PlacesDBUtils = {
                                 WHERE v.place_id = h.id AND visit_type NOT IN (0,4,7,8,9))
               OR last_visit_date <> (SELECT MAX(visit_date) FROM moz_historyvisits v
                                     WHERE v.place_id = h.id)
-        )`
+        )`,
       },
 
       // L.3 recalculate hidden for redirects.
@@ -622,14 +726,14 @@ var PlacesDBUtils = {
           JOIN moz_historyvisits dst ON dst.from_visit = src.id AND dst.visit_type IN (5,6)
           LEFT JOIN moz_bookmarks on fk = h.id AND fk ISNULL
           GROUP BY src.place_id HAVING count(*) = visit_count
-        )`
+        )`,
       },
 
       // L.4 recalculate foreign_count.
       { query:
         `UPDATE moz_places SET foreign_count =
           (SELECT count(*) FROM moz_bookmarks WHERE fk = moz_places.id ) +
-          (SELECT count(*) FROM moz_keywords WHERE place_id = moz_places.id )`
+          (SELECT count(*) FROM moz_keywords WHERE place_id = moz_places.id )`,
       },
 
       // L.5 recalculate missing hashes.
@@ -640,7 +744,7 @@ var PlacesDBUtils = {
         `UPDATE moz_places
         SET guid = GENERATE_GUID()
         WHERE guid IS NULL OR
-              NOT IS_VALID_GUID(guid)`
+              NOT IS_VALID_GUID(guid)`,
       },
 
       // MOZ_BOOKMARKS
@@ -668,7 +772,6 @@ var PlacesDBUtils = {
       { query:
         `UPDATE moz_bookmarks
         SET guid = GENERATE_GUID(),
-            syncChangeCounter = syncChangeCounter + 1,
             syncStatus = :syncStatus
         WHERE guid IS NULL OR
               NOT IS_VALID_GUID(guid)`,
@@ -719,8 +822,8 @@ var PlacesDBUtils = {
       BEGIN
         UPDATE moz_bookmarks
         SET syncChangeCounter = syncChangeCounter + 1
-        WHERE id IN (OLD.parent, NEW.parent);
-      END`
+        WHERE id IN (OLD.parent, NEW.parent, NEW.id);
+      END`,
     });
     cleanupStatements.unshift({
       query:
@@ -735,7 +838,7 @@ var PlacesDBUtils = {
 
         INSERT INTO moz_bookmarks_deleted(guid, dateRemoved)
         VALUES(OLD.guid, STRFTIME('%s', 'now', 'localtime', 'utc') * 1000000);
-      END`
+      END`,
     });
     cleanupStatements.push({ query: `DROP TRIGGER moz_bm_sync_change_temp_trigger` });
     cleanupStatements.push({ query: `DROP TRIGGER moz_bm_sync_tombstone_temp_trigger` });
@@ -820,7 +923,7 @@ var PlacesDBUtils = {
                     "page_size",
                     "cache_size",
                     "journal_mode",
-                    "synchronous"
+                    "synchronous",
                   ].map(p => `pragma_${p}`);
     let pragmaQuery = `SELECT * FROM ${ pragmas.join(", ") }`;
     await PlacesUtils.withConnectionWrapper("PlacesDBUtils: pragma for stats", async db => {
@@ -878,7 +981,7 @@ var PlacesDBUtils = {
   originFrecencyStats() {
     return new Promise(resolve => {
       PlacesUtils.history.recalculateOriginFrecencyStats(() => resolve([
-        "Recalculated origin frecency stats"
+        "Recalculated origin frecency stats",
       ]));
     });
   },
@@ -926,7 +1029,7 @@ var PlacesDBUtils = {
         params: {
           tags_folder: PlacesUtils.tagsFolderId,
           type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-        }
+        },
       },
 
       { histogram: "PLACES_TAGS_COUNT",
@@ -934,7 +1037,7 @@ var PlacesDBUtils = {
                     WHERE parent = :tags_folder`,
         params: {
           tags_folder: PlacesUtils.tagsFolderId,
-        }
+        },
       },
 
       { histogram: "PLACES_KEYWORDS_COUNT",
@@ -956,7 +1059,7 @@ var PlacesDBUtils = {
           places_root: PlacesUtils.placesRootId,
           tags_folder: PlacesUtils.tagsFolderId,
           type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-        }
+        },
       },
 
       { histogram: "PLACES_TAGGED_BOOKMARKS_PERC",
@@ -973,7 +1076,7 @@ var PlacesDBUtils = {
         params: {
           tags_folder: PlacesUtils.tagsFolderId,
           type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-        }
+        },
       },
 
       { histogram: "PLACES_DATABASE_FILESIZE_MB",
@@ -981,7 +1084,7 @@ var PlacesDBUtils = {
           let placesDbPath = OS.Path.join(OS.Constants.Path.profileDir, "places.sqlite");
           let info = await OS.File.stat(placesDbPath);
           return parseInt(info.size / BYTES_PER_MEBIBYTE);
-        }
+        },
       },
 
       { histogram: "PLACES_DATABASE_PAGESIZE_B",
@@ -995,7 +1098,7 @@ var PlacesDBUtils = {
           let dbPageSize = probeValues.PLACES_DATABASE_PAGESIZE_B;
           let placesPageCount = probeValues.PLACES_PAGES_COUNT;
           return Math.round((dbPageSize * aDbPageCount) / placesPageCount);
-        }
+        },
       },
 
       { histogram: "PLACES_DATABASE_FAVICONS_FILESIZE_MB",
@@ -1003,7 +1106,7 @@ var PlacesDBUtils = {
           let faviconsDbPath = OS.Path.join(OS.Constants.Path.profileDir, "favicons.sqlite");
           let info = await OS.File.stat(faviconsDbPath);
           return parseInt(info.size / BYTES_PER_MEBIBYTE);
-        }
+        },
       },
 
       { histogram: "PLACES_ANNOS_BOOKMARKS_COUNT",
@@ -1021,7 +1124,7 @@ var PlacesDBUtils = {
           } catch (ex) {
             return 60;
           }
-        }
+        },
       },
     ];
 
@@ -1087,7 +1190,7 @@ var PlacesDBUtils = {
       tasksMap.set(task.name, result);
     }
     return tasksMap;
-  }
+  },
 };
 
 async function integrity(dbName) {

@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.lang.IllegalStateException;
 import java.net.MalformedURLException;
 import java.net.Proxy;
 import java.net.URLConnection;
@@ -28,9 +29,6 @@ import java.util.TreeMap;
 import org.mozilla.gecko.annotation.JNITarget;
 import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.annotation.WrapForJNI;
-import org.mozilla.gecko.permissions.Permissions;
-import org.mozilla.gecko.process.GeckoProcessManager;
-import org.mozilla.gecko.SysInfo;
 import org.mozilla.gecko.util.BitmapUtils;
 import org.mozilla.gecko.util.HardwareCodecCapabilityUtils;
 import org.mozilla.gecko.util.HardwareUtils;
@@ -39,28 +37,19 @@ import org.mozilla.gecko.util.ProxySelector;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.geckoview.BuildConfig;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
-import android.content.pm.ServiceInfo;
-import android.content.pm.Signature;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.RectF;
-import android.graphics.SurfaceTexture;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.hardware.Camera;
@@ -78,33 +67,22 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.LocaleList;
 import android.os.Looper;
-import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
 import android.os.StrictMode;
-import android.os.SystemClock;
 import android.os.Vibrator;
 import android.provider.Settings;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.util.SimpleArrayMap;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.ContextThemeWrapper;
 import android.view.Display;
 import android.view.HapticFeedbackConstants;
-import android.view.Surface;
-import android.view.SurfaceView;
-import android.view.TextureView;
-import android.view.View;
 import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
 import android.webkit.MimeTypeMap;
-import android.widget.AbsoluteLayout;
 
 public class GeckoAppShell
 {
@@ -209,6 +187,7 @@ public class GeckoAppShell
     private static final int HIGH_MEMORY_DEVICE_THRESHOLD_MB = 768;
 
     static private int sDensityDpi;
+    static private Float sDensity;
     static private int sScreenDepth;
 
     /* Is the value in sVibrationEndTime valid? */
@@ -260,7 +239,7 @@ public class GeckoAppShell
     @WrapForJNI(dispatchTo = "gecko")
     public static native void notifyUriVisited(String uri);
 
-    private static Rect sScreenSize;
+    private static Rect sScreenSizeOverride;
 
     @WrapForJNI(stubName = "NotifyObservers", dispatchTo = "gecko")
     private static native void nativeNotifyObservers(String topic, String data);
@@ -397,7 +376,7 @@ public class GeckoAppShell
 
     @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
     /* package */ static native void onSensorChanged(int hal_type, float x, float y, float z,
-                                                     float w, int accuracy, long time);
+                                                     float w, long time);
 
     @WrapForJNI(calledFrom = "any", dispatchTo = "gecko")
     /* package */ static native void onLocationChanged(double latitude, double longitude,
@@ -415,26 +394,11 @@ public class GeckoAppShell
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
         }
 
-        private static int HalSensorAccuracyFor(int androidAccuracy) {
-            switch (androidAccuracy) {
-            case SensorManager.SENSOR_STATUS_UNRELIABLE:
-                return GeckoHalDefines.SENSOR_ACCURACY_UNRELIABLE;
-            case SensorManager.SENSOR_STATUS_ACCURACY_LOW:
-                return GeckoHalDefines.SENSOR_ACCURACY_LOW;
-            case SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM:
-                return GeckoHalDefines.SENSOR_ACCURACY_MED;
-            case SensorManager.SENSOR_STATUS_ACCURACY_HIGH:
-                return GeckoHalDefines.SENSOR_ACCURACY_HIGH;
-            }
-            return GeckoHalDefines.SENSOR_ACCURACY_UNKNOWN;
-        }
-
         @Override
         public void onSensorChanged(SensorEvent s) {
             int sensor_type = s.sensor.getType();
             int hal_type = 0;
             float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
-            final int accuracy = HalSensorAccuracyFor(s.accuracy);
             // SensorEvent timestamp is in nanoseconds, Gecko expects microseconds.
             final long time = s.timestamp / 1000;
 
@@ -493,7 +457,7 @@ public class GeckoAppShell
                 break;
             }
 
-            GeckoAppShell.onSensorChanged(hal_type, x, y, z, w, accuracy, time);
+            GeckoAppShell.onSensorChanged(hal_type, x, y, z, w, time);
         }
 
         // Geolocation.
@@ -1022,18 +986,43 @@ public class GeckoAppShell
         getNotificationListener().closeNotification(name);
     }
 
-    @WrapForJNI(calledFrom = "gecko")
-    public static int getDpi() {
-        if (sDensityDpi == 0) {
-            sDensityDpi = getApplicationContext().getResources().getDisplayMetrics().densityDpi;
+    public static synchronized void setDisplayDpiOverride(@Nullable final Integer dpi) {
+        if (dpi == null) {
+            return;
         }
-
-        return sDensityDpi;
+        if (sDensityDpi != 0) {
+            Log.e(LOGTAG, "Tried to override screen DPI after it's already been set");
+            return;
+        }
+        sDensityDpi = dpi;
     }
 
     @WrapForJNI(calledFrom = "gecko")
-    private static float getDensity() {
-        return getApplicationContext().getResources().getDisplayMetrics().density;
+    public static synchronized int getDpi() {
+        if (sDensityDpi == 0) {
+            sDensityDpi = getApplicationContext().getResources().getDisplayMetrics().densityDpi;
+        }
+        return sDensityDpi;
+    }
+
+    public static synchronized void setDisplayDensityOverride(@Nullable final Float density) {
+        if (density == null) {
+            return;
+        }
+        if (sDensity != null) {
+            Log.e(LOGTAG, "Tried to override screen density after it's already been set");
+            return;
+        }
+        sDensity = density;
+    }
+
+    @WrapForJNI(calledFrom = "gecko")
+    private static synchronized float getDensity() {
+        if (sDensity == null) {
+            sDensity =  new Float(getApplicationContext().getResources().getDisplayMetrics().density);
+        }
+
+        return sDensity;
     }
 
     private static boolean isHighMemoryDevice() {
@@ -1058,16 +1047,6 @@ public class GeckoAppShell
         }
 
         return sScreenDepth;
-    }
-
-    @WrapForJNI(calledFrom = "gecko")
-    private static synchronized void setScreenDepthOverride(int aScreenDepth) {
-        if (sScreenDepth != 0) {
-            Log.e(LOGTAG, "Tried to override screen depth after it's already been set");
-            return;
-        }
-
-        sScreenDepth = aScreenDepth;
     }
 
     @WrapForJNI(calledFrom = "gecko")
@@ -1112,7 +1091,11 @@ public class GeckoAppShell
     private static void vibrate(long milliseconds) {
         sVibrationEndTime = System.nanoTime() + milliseconds * 1000000;
         sVibrationMaybePlaying = true;
-        vibrator().vibrate(milliseconds);
+        try {
+            vibrator().vibrate(milliseconds);
+        } catch (final SecurityException ignore) {
+            Log.w(LOGTAG, "No VIBRATE permission");
+        }
     }
 
     @WrapForJNI(calledFrom = "gecko")
@@ -1127,14 +1110,22 @@ public class GeckoAppShell
 
         sVibrationEndTime = System.nanoTime() + vibrationDuration * 1000000;
         sVibrationMaybePlaying = true;
-        vibrator().vibrate(pattern, repeat);
+        try {
+            vibrator().vibrate(pattern, repeat);
+        } catch (final SecurityException ignore) {
+            Log.w(LOGTAG, "No VIBRATE permission");
+        }
     }
 
     @WrapForJNI(calledFrom = "gecko")
     private static void cancelVibrate() {
         sVibrationMaybePlaying = false;
         sVibrationEndTime = 0;
-        vibrator().cancel();
+        try {
+            vibrator().cancel();
+        } catch (final SecurityException ignore) {
+            Log.w(LOGTAG, "No VIBRATE permission");
+        }
     }
 
     @WrapForJNI(calledFrom = "gecko")
@@ -1712,7 +1703,7 @@ public class GeckoAppShell
         final GeckoProfile profile = GeckoThread.getActiveProfile();
         if (profile != null) {
             File lock = profile.getFile(".parentlock");
-            return lock.exists() && lock.delete();
+            return lock != null && lock.exists() && lock.delete();
         }
         return false;
     }
@@ -1854,19 +1845,19 @@ public class GeckoAppShell
         return 0;
     }
 
-    public static synchronized void resetScreenSize() {
-        sScreenSize = null;
+    public static synchronized void setScreenSizeOverride(final Rect size) {
+        sScreenSizeOverride = size;
     }
 
     @WrapForJNI(calledFrom = "gecko")
     private static synchronized Rect getScreenSize() {
-        if (sScreenSize == null) {
-            final WindowManager wm = (WindowManager)
-                    getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
-            final Display disp = wm.getDefaultDisplay();
-            sScreenSize = new Rect(0, 0, disp.getWidth(), disp.getHeight());
+        if (sScreenSizeOverride != null) {
+            return sScreenSizeOverride;
         }
-        return sScreenSize;
+        final WindowManager wm = (WindowManager)
+                getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
+        final Display disp = wm.getDefaultDisplay();
+        return new Rect(0, 0, disp.getWidth(), disp.getHeight());
     }
 
     @WrapForJNI(calledFrom = "any")

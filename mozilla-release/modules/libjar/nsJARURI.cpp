@@ -107,7 +107,7 @@ nsJARURI::CreateEntryURL(const nsACString& entryFilename,
 NS_IMETHODIMP
 nsJARURI::Read(nsIObjectInputStream *aStream)
 {
-    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    MOZ_ASSERT_UNREACHABLE("Use nsIURIMutator.read() instead");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -186,8 +186,6 @@ NS_IMETHODIMP
 nsJARURI::GetClassID(nsCID * *aClassID)
 {
     *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
-    if (!*aClassID)
-        return NS_ERROR_OUT_OF_MEMORY;
     return GetClassIDNoAlloc(*aClassID);
 }
 
@@ -604,33 +602,6 @@ nsJARURI::Clone(nsIURI **result)
 }
 
 NS_IMETHODIMP
-nsJARURI::CloneIgnoringRef(nsIURI **result)
-{
-    nsresult rv;
-
-    nsCOMPtr<nsIJARURI> uri;
-    rv = CloneWithJARFileInternal(mJARFile, eIgnoreRef, getter_AddRefs(uri));
-    if (NS_FAILED(rv)) return rv;
-
-    uri.forget(result);
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsJARURI::CloneWithNewRef(const nsACString& newRef, nsIURI **result)
-{
-    nsresult rv;
-
-    nsCOMPtr<nsIJARURI> uri;
-    rv = CloneWithJARFileInternal(mJARFile, eReplaceRef, newRef,
-                                  getter_AddRefs(uri));
-    if (NS_FAILED(rv)) return rv;
-
-    uri.forget(result);
-    return NS_OK;
-}
-
-NS_IMETHODIMP
 nsJARURI::Resolve(const nsACString &relativePath, nsACString &result)
 {
     nsresult rv;
@@ -916,9 +887,9 @@ nsJARURI::CloneWithJARFileInternal(nsIURI *jarFile,
     if (refHandlingMode == eHonorRef) {
       newJAREntryURI = mJAREntry;
     } else if (refHandlingMode == eReplaceRef) {
-      rv = mJAREntry->CloneWithNewRef(newRef, getter_AddRefs(newJAREntryURI));
+      rv = NS_GetURIWithNewRef(mJAREntry, newRef, getter_AddRefs(newJAREntryURI));
     } else {
-      rv = mJAREntry->CloneIgnoringRef(getter_AddRefs(newJAREntryURI));
+      rv = NS_GetURIWithoutRef(mJAREntry, getter_AddRefs(newJAREntryURI));
     }
     if (NS_FAILED(rv)) return rv;
 

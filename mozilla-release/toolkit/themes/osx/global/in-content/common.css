@@ -8,9 +8,11 @@
 xul|tabs {
   padding-right: 0;
   padding-left: 0;
+  position: static;
 }
 
 xul|tab[visuallyselected] {
+  color: inherit !important;
   text-shadow: none;
 }
 
@@ -27,12 +29,12 @@ xul|groupbox > xul|*.groupbox-body {
   padding: 0;
 }
 
-xul|menulist:not([editable="true"]) > xul|menupopup > xul|menuitem[checked="true"]::before,
-xul|menulist:not([editable="true"]) > xul|menupopup > xul|menuitem[selected="true"]::before {
+xul|menulist > xul|menupopup > xul|menuitem[checked="true"]::before,
+xul|menulist > xul|menupopup > xul|menuitem[selected="true"]::before {
   display: none;
 }
 
-xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker {
+xul|*.menulist-dropmarker {
   display: -moz-box;
   margin-top: 1px;
   margin-bottom: 1px;
@@ -66,6 +68,7 @@ xul|*.text-link:-moz-focusring {
 xul|button:-moz-focusring,
 xul|menulist:-moz-focusring,
 xul|checkbox:-moz-focusring > .checkbox-check,
+*|button.primary:focus,
 html|input[type="checkbox"]:-moz-focusring + html|label:before,
 xul|radio[focused="true"] > .radio-check,
 xul|tab:-moz-focusring > .tab-middle > .tab-text {
@@ -86,7 +89,7 @@ html|*.numberbox-input::-moz-number-spin-down  {
   border-radius: 0 0 4px 4px;
 }
 
-xul|textbox[type="search"]:not([searchbutton]) > .textbox-input-box > .textbox-search-sign {
+xul|textbox[type="search"]:not([searchbutton]) > moz-input-box > .textbox-search-sign {
   list-style-image: url(chrome://global/skin/icons/search-textbox.svg);
   margin-inline-end: 5px;
 }

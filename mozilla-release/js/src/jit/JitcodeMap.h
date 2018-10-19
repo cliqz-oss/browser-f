@@ -11,7 +11,6 @@
 #include "jit/CompileInfo.h"
 #include "jit/ExecutableAllocator.h"
 #include "jit/OptimizationTracking.h"
-#include "jit/shared/CodeGenerator-shared.h"
 
 namespace js {
 namespace jit {
@@ -36,6 +35,12 @@ class JitcodeIonTable;
 class JitcodeRegionEntry;
 
 class JitcodeGlobalEntry;
+
+struct NativeToBytecode {
+    CodeOffset nativeOffset;
+    InlineScriptTree* tree;
+    jsbytecode* pc;
+};
 
 class JitcodeSkiplistTower
 {
@@ -139,7 +144,6 @@ class JitcodeGlobalEntry
         BytecodeLocation(JSScript* script, jsbytecode* pc) : script(script), pc(pc) {}
     };
     typedef Vector<BytecodeLocation, 0, SystemAllocPolicy> BytecodeLocationVector;
-    typedef Vector<const char*, 0, SystemAllocPolicy> ProfileStringVector;
 
     struct BaseEntry
     {
@@ -1262,13 +1266,13 @@ class JitcodeRegionEntry
     // Given a pointer into an array of NativeToBytecode (and a pointer to the end of the array),
     // compute the number of entries that would be consume by outputting a run starting
     // at this one.
-    static uint32_t ExpectedRunLength(const CodeGeneratorShared::NativeToBytecode* entry,
-                                      const CodeGeneratorShared::NativeToBytecode* end);
+    static uint32_t ExpectedRunLength(const NativeToBytecode* entry,
+                                      const NativeToBytecode* end);
 
     // Write a run, starting at the given NativeToBytecode entry, into the given buffer writer.
     static MOZ_MUST_USE bool WriteRun(CompactBufferWriter& writer, JSScript** scriptList,
                                       uint32_t scriptListSize, uint32_t runLength,
-                                      const CodeGeneratorShared::NativeToBytecode* entry);
+                                      const NativeToBytecode* entry);
 
     // Delta Run entry formats are encoded little-endian:
     //
@@ -1524,8 +1528,8 @@ class JitcodeIonTable
 
     static MOZ_MUST_USE bool WriteIonTable(CompactBufferWriter& writer,
                                            JSScript** scriptList, uint32_t scriptListSize,
-                                           const CodeGeneratorShared::NativeToBytecode* start,
-                                           const CodeGeneratorShared::NativeToBytecode* end,
+                                           const NativeToBytecode* start,
+                                           const NativeToBytecode* end,
                                            uint32_t* tableOffsetOut, uint32_t* numRegionsOut);
 };
 

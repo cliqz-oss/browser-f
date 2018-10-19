@@ -9,7 +9,7 @@
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIScriptContext.h"
 #include "nsIDocShell.h"
-#include "nsIDocShellLoadInfo.h"
+#include "nsDocShellLoadInfo.h"
 #include "nsIWebNavigation.h"
 #include "nsCDefaultURIFixup.h"
 #include "nsIURIFixup.h"
@@ -31,7 +31,7 @@
 #include "nsGlobalWindow.h"
 #include "mozilla/Likely.h"
 #include "nsCycleCollectionParticipant.h"
-#include "NullPrincipal.h"
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/LocationBinding.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -62,7 +62,7 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(Location)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(Location)
 
 nsresult
-Location::CheckURL(nsIURI* aURI, nsIDocShellLoadInfo** aLoadInfo)
+Location::CheckURL(nsIURI* aURI, nsDocShellLoadInfo** aLoadInfo)
 {
   *aLoadInfo = nullptr;
 
@@ -150,9 +150,7 @@ Location::CheckURL(nsIURI* aURI, nsIDocShellLoadInfo** aLoadInfo)
   }
 
   // Create load info
-  nsCOMPtr<nsIDocShellLoadInfo> loadInfo;
-  docShell->CreateLoadInfo(getter_AddRefs(loadInfo));
-  NS_ENSURE_TRUE(loadInfo, NS_ERROR_FAILURE);
+  RefPtr<nsDocShellLoadInfo> loadInfo = new nsDocShellLoadInfo();
 
   loadInfo->SetTriggeringPrincipal(triggeringPrincipal);
 
@@ -209,39 +207,19 @@ Location::GetURI(nsIURI** aURI, bool aGetInnermostURI)
 }
 
 nsresult
-Location::GetWritableURI(nsIURI** aURI, const nsACString* aNewRef)
-{
-  *aURI = nullptr;
-
-  nsCOMPtr<nsIURI> uri;
-
-  nsresult rv = GetURI(getter_AddRefs(uri));
-  if (NS_FAILED(rv) || !uri) {
-    return rv;
-  }
-
-  if (!aNewRef) {
-    uri.forget(aURI);
-    return NS_OK;
-  }
-
-  return uri->CloneWithNewRef(*aNewRef, aURI);
-}
-
-nsresult
 Location::SetURI(nsIURI* aURI, bool aReplace)
 {
   nsCOMPtr<nsIDocShell> docShell(do_QueryReferent(mDocShell));
   if (docShell) {
-    nsCOMPtr<nsIDocShellLoadInfo> loadInfo;
+    RefPtr<nsDocShellLoadInfo> loadInfo;
 
     if(NS_FAILED(CheckURL(aURI, getter_AddRefs(loadInfo))))
       return NS_ERROR_FAILURE;
 
     if (aReplace) {
-      loadInfo->SetLoadType(nsIDocShellLoadInfo::loadStopContentAndReplace);
+      loadInfo->SetLoadType(LOAD_STOP_CONTENT_AND_REPLACE);
     } else {
-      loadInfo->SetLoadType(nsIDocShellLoadInfo::loadStopContent);
+      loadInfo->SetLoadType(LOAD_STOP_CONTENT);
     }
 
     // Get the incumbent script's browsing context to set as source.
@@ -315,7 +293,14 @@ Location::SetHash(const nsAString& aHash,
   }
 
   nsCOMPtr<nsIURI> uri;
-  aRv = GetWritableURI(getter_AddRefs(uri), &hash);
+  aRv = GetURI(getter_AddRefs(uri));
+  if (NS_WARN_IF(aRv.Failed()) || !uri) {
+    return;
+  }
+
+  aRv = NS_MutateURI(uri)
+          .SetRef(hash)
+          .Finalize(uri);
   if (NS_WARN_IF(aRv.Failed()) || !uri) {
     return;
   }
@@ -1003,7 +988,7 @@ Location::CallerSubsumes(nsIPrincipal* aSubjectPrincipal)
 JSObject*
 Location::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return LocationBinding::Wrap(aCx, this, aGivenProto);
+  return Location_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // dom namespace

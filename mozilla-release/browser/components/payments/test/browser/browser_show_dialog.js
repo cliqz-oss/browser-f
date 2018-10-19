@@ -122,6 +122,9 @@ add_task(async function test_show_completePayment2() {
     }, PTU.ContentTasks.awaitPaymentRequestEventPromise);
     info("got shippingoptionchange event");
 
+    info("select the shipping address");
+    await selectPaymentDialogShippingAddressByCountry(frame, "US");
+
     info("clicking pay");
     spawnPaymentDialogTask(frame, PTU.DialogContentTasks.completePayment);
 
@@ -131,6 +134,71 @@ add_task(async function test_show_completePayment2() {
 
     is(result.response.shippingOption, "1", "Check shipping option");
 
+    await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");
+  });
+});
+
+add_task(async function test_show_closeReject_dialog() {
+  await BrowserTestUtils.withNewTab({
+    gBrowser,
+    url: BLANK_PAGE_URL,
+  }, async browser => {
+    let {win} =
+      await setupPaymentDialog(browser, {
+        methodData,
+        details,
+        merchantTaskFn: PTU.ContentTasks.createAndShowRequest,
+      }
+    );
+    await ContentTask.spawn(browser, null, PTU.ContentTasks.catchShowPromiseRejection);
+
+    info("Closing the dialog to reject the payment request");
+    BrowserTestUtils.closeWindow(win);
+    await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");
+
+    let result = await ContentTask.spawn(browser, null, async () => content.rqResult);
+    ok(result.showException, "Expected promise rejection from the rq.show() promise");
+    ok(!result.response,
+       "rq.show() shouldn't resolve to a response");
+  });
+});
+
+add_task(async function test_localized() {
+  await BrowserTestUtils.withNewTab({
+    gBrowser,
+    url: BLANK_PAGE_URL,
+  }, async browser => {
+    let {win, frame} =
+      await setupPaymentDialog(browser, {
+        methodData,
+        details,
+        merchantTaskFn: PTU.ContentTasks.createAndShowRequest,
+      }
+    );
+
+    await spawnPaymentDialogTask(frame, async function check_l10n() {
+      await ContentTaskUtils.waitForCondition(() => {
+        let telephoneLabel = content.document.querySelector("#tel-container > .label-text");
+        return telephoneLabel && telephoneLabel.textContent.includes("Phone");
+      }, "Check that the telephone number label is localized");
+
+      await ContentTaskUtils.waitForCondition(() => {
+        let ccNumberField = content.document.querySelector("#cc-number");
+        if (!ccNumberField) {
+          return false;
+        }
+        let ccNumberLabel = ccNumberField.parentElement.querySelector(".label-text");
+        return ccNumberLabel.textContent.includes("Number");
+      }, "Check that the cc-number label is localized");
+
+      const L10N_ATTRIBUTE_SELECTOR = "[data-localization], [data-localization-region]";
+      await ContentTaskUtils.waitForCondition(() => {
+        return content.document.querySelectorAll(L10N_ATTRIBUTE_SELECTOR).length === 0;
+      }, "Check that there are no unlocalized strings");
+    });
+
+    // abort the payment request
+    ContentTask.spawn(browser, null, async () => content.rq.abort());
     await BrowserTestUtils.waitForCondition(() => win.closed, "dialog should be closed");
   });
 });

@@ -23,7 +23,6 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsFrameMessageManager.h"
 #include "nsIPresShell.h"
-#include "nsIScriptObjectPrincipal.h"
 #include "nsWeakReference.h"
 #include "nsITabChild.h"
 #include "nsITooltipListener.h"
@@ -48,6 +47,7 @@
 class nsIDOMWindowUtils;
 class nsIHttpChannel;
 class nsISerialEventTarget;
+class nsWebBrowser;
 
 template<typename T> class nsTHashtable;
 template<typename T> class nsPtrHashKey;
@@ -79,44 +79,34 @@ class ClonedMessageData;
 class CoalescedMouseData;
 class CoalescedWheelData;
 
-class TabChildGlobal : public ContentFrameMessageManager,
-                       public nsIContentFrameMessageManager,
-                       public nsIScriptObjectPrincipal,
-                       public nsIGlobalObject,
-                       public nsSupportsWeakReference
+class TabChildMessageManager : public ContentFrameMessageManager,
+                               public nsIMessageSender,
+                               public DispatcherTrait,
+                               public nsSupportsWeakReference
 {
 public:
-  explicit TabChildGlobal(TabChild* aTabChild);
-  void Init();
+  explicit TabChildMessageManager(TabChild* aTabChild);
+
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, DOMEventTargetHelper)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildMessageManager, DOMEventTargetHelper)
 
   void MarkForCC();
 
-  virtual JSObject* WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aGivenProto) override
-  {
-    MOZ_CRASH("We should never get here!");
-  }
-  bool WrapGlobalObject(JSContext* aCx,
-                        JS::RealmOptions& aOptions,
-                        JS::MutableHandle<JSObject*> aReflector);
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
 
   virtual already_AddRefed<nsPIDOMWindowOuter> GetContent(ErrorResult& aError) override;
   virtual already_AddRefed<nsIDocShell> GetDocShell(ErrorResult& aError) override;
   virtual already_AddRefed<nsIEventTarget> GetTabEventTarget() override;
+  virtual uint64_t ChromeOuterWindowID() override;
 
   NS_FORWARD_SAFE_NSIMESSAGESENDER(mMessageManager)
-  NS_DECL_NSICONTENTFRAMEMESSAGEMANAGER
 
   void
   GetEventTargetParent(EventChainPreVisitor& aVisitor) override
   {
     aVisitor.mForceContentDispatch = true;
   }
-
-  virtual nsIPrincipal* GetPrincipal() override;
-  virtual JSObject* GetGlobalJSObject() override;
 
   // Dispatch a runnable related to the global.
   virtual nsresult Dispatch(mozilla::TaskCategory aCategory,
@@ -131,7 +121,7 @@ public:
   RefPtr<TabChild> mTabChild;
 
 protected:
-  ~TabChildGlobal();
+  ~TabChildMessageManager();
 };
 
 class ContentListener final : public nsIDOMEventListener
@@ -162,12 +152,12 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TabChildBase)
 
-  virtual bool WrapGlobalObject(JSContext* aCx,
-                                JS::RealmOptions& aOptions,
-                                JS::MutableHandle<JSObject*> aReflector) override
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto)
   {
-    return mTabChildGlobal->WrapGlobalObject(aCx, aOptions, aReflector);
+    return mTabChildMessageManager->WrapObject(aCx, aGivenProto);
   }
+
 
   virtual nsIWebNavigation* WebNavigation() const = 0;
   virtual PuppetWidget* WebWidget() = 0;
@@ -200,7 +190,7 @@ protected:
   bool UpdateFrameHandler(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
 protected:
-  RefPtr<TabChildGlobal> mTabChildGlobal;
+  RefPtr<TabChildMessageManager> mTabChildMessageManager;
   nsCOMPtr<nsIWebBrowserChrome3> mWebBrowserChrome;
 };
 
@@ -278,9 +268,9 @@ public:
 
   FORWARD_SHMEM_ALLOCATOR_TO(PBrowserChild)
 
-  TabChildGlobal* GetMessageManager()
+  TabChildMessageManager* GetMessageManager()
   {
-    return mTabChildGlobal;
+    return mTabChildMessageManager;
   }
 
   /**
@@ -487,7 +477,7 @@ public:
     mMaxTouchPoints = aMaxTouchPoints;
   }
 
-  ScreenOrientationInternal GetOrientation() const { return mOrientation; }
+  hal::ScreenOrientation GetOrientation() const { return mOrientation; }
 
   void SetBackgroundColor(const nscolor& aColor);
 
@@ -655,8 +645,10 @@ public:
                   const uint32_t& aFlags);
 
   // Request that the docshell be marked as active.
-  void PaintWhileInterruptingJS(uint64_t aLayerObserverEpoch,
+  void PaintWhileInterruptingJS(const layers::LayersObserverEpoch& aEpoch,
                                 bool aForceRepaint);
+
+  layers::LayersObserverEpoch LayersObserverEpoch() const { return mLayersObserverEpoch; }
 
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
   uintptr_t GetNativeWindowHandle() const { return mNativeWindowHandle; }
@@ -729,7 +721,7 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvSetDocShellIsActive(const bool& aIsActive) override;
 
-  virtual mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled, const bool& aForce, const uint64_t& aLayerObserverEpoch) override;
+  virtual mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled, const bool& aForce, const layers::LayersObserverEpoch& aEpoch) override;
 
   virtual mozilla::ipc::IPCResult RecvNavigateByKey(const bool& aForward,
                                                     const bool& aForDocumentNavigation) override;
@@ -770,7 +762,7 @@ private:
 
   void ActorDestroy(ActorDestroyReason why) override;
 
-  bool InitTabChildGlobal();
+  bool InitTabChildMessageManager();
 
   void InitRenderingState(const TextureFactoryIdentifier& aTextureFactoryIdentifier,
                           const layers::LayersId& aLayersId,
@@ -820,6 +812,7 @@ private:
   class DelayedDeleteRunnable;
 
   TextureFactoryIdentifier mTextureFactoryIdentifier;
+  RefPtr<nsWebBrowser> mWebBrowser;
   nsCOMPtr<nsIWebNavigation> mWebNav;
   RefPtr<mozilla::dom::TabGroup> mTabGroup;
   RefPtr<PuppetWidget> mPuppetWidget;
@@ -828,16 +821,14 @@ private:
   RefPtr<nsIContentChild> mManager;
   uint32_t mChromeFlags;
   uint32_t mMaxTouchPoints;
-  int32_t mActiveSuppressDisplayport;
   layers::LayersId mLayersId;
   int64_t mBeforeUnloadListeners;
   CSSRect mUnscaledOuterRect;
-  nscolor mLastBackgroundColor;
   Maybe<bool> mLayersConnected;
   bool mDidFakeShow;
   bool mNotified;
   bool mTriedBrowserInit;
-  ScreenOrientationInternal mOrientation;
+  hal::ScreenOrientation mOrientation;
 
   bool mIgnoreKeyPressEvent;
   RefPtr<APZEventState> mAPZEventState;
@@ -849,6 +840,11 @@ private:
   // Position of tab, relative to parent widget (typically the window)
   LayoutDeviceIntPoint mChromeOffset;
   TabId mUniqueId;
+
+  // Whether or not this tab has siblings (other tabs in the same window).
+  // This is one factor used when choosing to allow or deny a non-system
+  // script's attempt to resize the window.
+  bool mHasSiblings;
 
   // Holds the compositor options for the compositor rendering this tab,
   // once we find out which compositor that is.
@@ -889,7 +885,7 @@ private:
   RefPtr<layers::IAPZCTreeManager> mApzcTreeManager;
 
   // The most recently seen layer observer epoch in RecvSetDocShellIsActive.
-  uint64_t mLayerObserverEpoch;
+  layers::LayersObserverEpoch mLayersObserverEpoch;
 
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
   // The handle associated with the native window that contains this tab
@@ -912,7 +908,7 @@ private:
   bool mPendingDocShellReceivedMessage;
   bool mPendingRenderLayers;
   bool mPendingRenderLayersReceivedMessage;
-  uint64_t mPendingLayerObserverEpoch;
+  layers::LayersObserverEpoch mPendingLayersObserverEpoch;
   // When mPendingDocShellBlockers is greater than 0, the DocShell is blocked,
   // and once it reaches 0, it is no longer blocked.
   uint32_t mPendingDocShellBlockers;

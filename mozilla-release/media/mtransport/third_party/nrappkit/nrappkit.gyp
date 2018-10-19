@@ -201,6 +201,20 @@
                  ],
               }],
 
+              # Windows, clang-cl build
+              [ 'clang_cl == 1', {
+                'cflags_mozilla': [
+                    '-Xclang',
+                    '-Wall',
+                    '-Xclang',
+                    '-Wno-parentheses',
+                    '-Wno-strict-prototypes',
+                    '-Wmissing-prototypes',
+                    '-Wno-format',
+                    '-Wno-format-security',
+                 ],
+              }],
+
               ## Linux/Android
               [ '(OS == "linux") or (OS == "android")', {
                  'cflags_mozilla': [

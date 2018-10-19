@@ -104,6 +104,12 @@ class AsyncTabSwitcher {
     // True if we're in the midst of switching tabs.
     this.switchInProgress = false;
 
+    // Transaction id for the composite that will show the requested
+    // tab for the first tab after a tab switch.
+    // Set to -1 when we're not waiting for notification of a
+    // completed switch.
+    this.switchPaintId = -1;
+
     // Set of tabs that might be visible right now. We maintain
     // this set because we can't be sure when a tab is actually
     // drawn. A tab is added to this set when we ask to make it
@@ -126,7 +132,7 @@ class AsyncTabSwitcher {
     // For telemetry, keeps track of what most recently cleared
     // the loadTimer, which can tell us something about the cause
     // of tab switch spinners.
-    this._loadTimerClearedBy = "none",
+    this._loadTimerClearedBy = "none";
 
     this._useDumpForLogging = false;
     this._logInit = false;
@@ -192,7 +198,7 @@ class AsyncTabSwitcher {
   // dialogs.
   setTimer(callback, timeout) {
     let event = {
-      notify: callback
+      notify: callback,
     };
 
     var timer = Cc["@mozilla.org/timer;1"]
@@ -316,7 +322,7 @@ class AsyncTabSwitcher {
 
     let event = new this.window.CustomEvent("TabSwitchDone", {
       bubbles: true,
-      cancelable: true
+      cancelable: true,
     });
     this.tabbrowser.dispatchEvent(event);
   }
@@ -414,26 +420,25 @@ class AsyncTabSwitcher {
 
       let tabpanels = this.tabbrowser.tabpanels;
       let showPanel = this.tabbrowser.tabContainer.getRelatedElement(showTab);
-      let index = Array.indexOf(tabpanels.childNodes, showPanel);
+      let index = Array.indexOf(tabpanels.children, showPanel);
       if (index != -1) {
         this.log(`Switch to tab ${index} - ${this.tinfo(showTab)}`);
         tabpanels.setAttribute("selectedIndex", index);
         if (showTab === this.requestedTab) {
-          if (this._requestingTab) {
-            /*
-             * If _requestingTab is set, that means that we're switching the
-             * visibility of the tab synchronously, and we need to wait for
-             * the "select" event before shifting focus so that
-             * _adjustFocusAfterTabSwitch runs with the right information for
-             * the tab switch.
-             */
-            this.tabbrowser.addEventListener("select", () => {
-              this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
-            }, { once: true });
+          if (requestedTabState == this.STATE_LOADED) {
+            // The new tab will be made visible in the next paint, record the expected
+            // transaction id for that, and we'll mark when we get notified of its
+            // completion.
+            this.switchPaintId = this.window.windowUtils.lastTransactionId + 1;
           } else {
-            this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
+            // We're making the tab visible even though we haven't yet got layers for it.
+            // It's hard to know which composite the layers will first be available in (and
+            // the parent process might not even get MozAfterPaint delivered for it), so just
+            // give up measuring this for now. :(
+            TelemetryStopwatch.cancel("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
           }
 
+          this.tabbrowser._adjustFocusAfterTabSwitch(showTab);
           this.maybeActivateDocShell(this.requestedTab);
         }
       }
@@ -523,7 +528,7 @@ class AsyncTabSwitcher {
       }
     }
 
-    for (let [tab, ] of this.tabState) {
+    for (let [tab ] of this.tabState) {
       if (!tab.linkedBrowser) {
         this.tabState.delete(tab);
         this.unwarmTab(tab);
@@ -733,7 +738,18 @@ class AsyncTabSwitcher {
   // Fires when we paint the screen. Any tab switches we initiated
   // previously are done, so there's no need to keep the old layers
   // around.
-  onPaint() {
+  onPaint(event) {
+    if (this.switchPaintId != -1 &&
+        event.transactionId >= this.switchPaintId) {
+      let time = TelemetryStopwatch.timeElapsed("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
+      if (time != -1) {
+        TelemetryStopwatch.finish("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
+        this.log("DEBUG: tab switch time including compositing = " + time);
+      }
+      this.addMarker("AsyncTabSwitch:Composited");
+      this.switchPaintId = -1;
+    }
+
     this.maybeVisibleTabs.clear();
   }
 
@@ -976,7 +992,6 @@ class AsyncTabSwitcher {
         .add(warmingState);
     }
 
-    this._requestingTab = true;
     this.logState("requestTab " + this.tinfo(tab));
     this.startTabSwitch();
 
@@ -995,7 +1010,6 @@ class AsyncTabSwitcher {
     this.lastPrimaryTab = tab;
 
     this.queueUnload(this.UNLOAD_DELAY);
-    this._requestingTab = false;
   }
 
   queueUnload(unloadTimeout) {
@@ -1027,7 +1041,7 @@ class AsyncTabSwitcher {
         this.onLayersReady(event.originalTarget);
         break;
       case "MozAfterPaint":
-        this.onPaint();
+        this.onPaint(event);
         break;
       case "MozLayerTreeCleared":
         this.onLayersCleared(event.originalTarget);
@@ -1059,6 +1073,9 @@ class AsyncTabSwitcher {
   startTabSwitch() {
     TelemetryStopwatch.cancel("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
     TelemetryStopwatch.start("FX_TAB_SWITCH_TOTAL_E10S_MS", this.window);
+
+    TelemetryStopwatch.cancel("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
+    TelemetryStopwatch.start("FX_TAB_SWITCH_COMPOSITE_E10S_MS", this.window);
     this.addMarker("AsyncTabSwitch:Start");
     this.switchInProgress = true;
   }

@@ -26,7 +26,7 @@ var permissionObserver = {
           initRow(permission.type);
       }
     }
-  }
+  },
 };
 
 function onLoadPermission(uri, principal) {
@@ -97,7 +97,7 @@ function initRow(aPartId) {
     command.setAttribute("disabled", "true");
   }
 
-  if (scope == SitePermissions.SCOPE_POLICY) {
+  if ([SitePermissions.SCOPE_POLICY, SitePermissions.SCOPE_GLOBAL].includes(scope)) {
     checkbox.setAttribute("disabled", "true");
     command.setAttribute("disabled", "true");
   }
@@ -114,41 +114,41 @@ function createRow(aPartId) {
   let labelId = "perm-" + aPartId + "-label";
   let radiogroupId = aPartId + "RadioGroup";
 
-  let command = document.createElement("command");
+  let command = document.createXULElement("command");
   command.setAttribute("id", commandId);
   command.setAttribute("oncommand", "onRadioClick('" + aPartId + "');");
   document.getElementById("pageInfoCommandSet").appendChild(command);
 
-  let row = document.createElement("vbox");
+  let row = document.createXULElement("vbox");
   row.setAttribute("id", rowId);
   row.setAttribute("class", "permission");
 
-  let label = document.createElement("label");
+  let label = document.createXULElement("label");
   label.setAttribute("id", labelId);
   label.setAttribute("control", radiogroupId);
   label.setAttribute("value", SitePermissions.getPermissionLabel(aPartId));
   label.setAttribute("class", "permissionLabel");
   row.appendChild(label);
 
-  let controls = document.createElement("hbox");
+  let controls = document.createXULElement("hbox");
   controls.setAttribute("role", "group");
   controls.setAttribute("aria-labelledby", labelId);
 
-  let checkbox = document.createElement("checkbox");
+  let checkbox = document.createXULElement("checkbox");
   checkbox.setAttribute("id", aPartId + "Def");
   checkbox.setAttribute("oncommand", "onCheckboxClick('" + aPartId + "');");
   checkbox.setAttribute("label", gBundle.getString("permissions.useDefault"));
   controls.appendChild(checkbox);
 
-  let spacer = document.createElement("spacer");
+  let spacer = document.createXULElement("spacer");
   spacer.setAttribute("flex", "1");
   controls.appendChild(spacer);
 
-  let radiogroup = document.createElement("radiogroup");
+  let radiogroup = document.createXULElement("radiogroup");
   radiogroup.setAttribute("id", radiogroupId);
   radiogroup.setAttribute("orient", "horizontal");
   for (let state of SitePermissions.getAvailableStates(aPartId)) {
-    let radio = document.createElement("radio");
+    let radio = document.createXULElement("radio");
     radio.setAttribute("id", aPartId + "#" + state);
     radio.setAttribute("label", SitePermissions.getMultichoiceStateLabel(state));
     radio.setAttribute("command", commandId);

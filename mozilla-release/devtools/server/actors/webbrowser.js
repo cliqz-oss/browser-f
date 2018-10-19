@@ -25,20 +25,6 @@ loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.j
  */
 
 /**
- * Yield all windows of type |windowType|, from the oldest window to the
- * youngest, using nsIWindowMediator::getEnumerator. We're usually
- * interested in "navigator:browser" windows.
- */
-function* allAppShellDOMWindows(windowType) {
-  const e = Services.wm.getEnumerator(windowType);
-  while (e.hasMoreElements()) {
-    yield e.getNext();
-  }
-}
-
-exports.allAppShellDOMWindows = allAppShellDOMWindows;
-
-/**
  * Retrieve the window type of the top-level window |window|.
  */
 function appShellDOMWindowType(window) {
@@ -50,7 +36,7 @@ function appShellDOMWindowType(window) {
  * Send Debugger:Shutdown events to all "navigator:browser" windows.
  */
 function sendShutdownEvent() {
-  for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+  for (const win of Services.wm.getEnumerator(DebuggerServer.chromeWindowType)) {
     const evt = win.document.createEvent("Event");
     evt.initEvent("Debugger:Shutdown", true, false);
     win.document.documentElement.dispatchEvent(evt);
@@ -63,14 +49,14 @@ exports.sendShutdownEvent = sendShutdownEvent;
  * Construct a root actor appropriate for use in a server running in a
  * browser. The returned root actor:
  * - respects the factories registered with DebuggerServer.addGlobalActor,
- * - uses a BrowserTabList to supply tab actors,
+ * - uses a BrowserTabList to supply target actors for tabs,
  * - sends all navigator:browser window documents a Debugger:Shutdown event
  *   when it exits.
  *
  * * @param connection DebuggerServerConnection
  *          The conection to the client.
  */
-function createRootActor(connection) {
+exports.createRootActor = function createRootActor(connection) {
   return new RootActor(connection, {
     tabList: new BrowserTabList(connection),
     addonList: new BrowserAddonList(connection),
@@ -81,7 +67,7 @@ function createRootActor(connection) {
     globalActorFactories: DebuggerServer.globalActorFactories,
     onShutdown: sendShutdownEvent
   });
-}
+};
 
 /**
  * A live list of FrameTargetActorProxys representing the current browser tabs,
@@ -94,7 +80,7 @@ function createRootActor(connection) {
  * list" interface.)
  *
  * @param connection DebuggerServerConnection
- *     The connection in which this list's tab actors may participate.
+ *     The connection in which this list's target actors may participate.
  *
  * Some notes:
  *
@@ -121,14 +107,14 @@ function createRootActor(connection) {
  *   been closed.
  *
  * This means that TabOpen and TabClose events alone are not sufficient to
- * maintain an accurate list of live tabs and mark tab actors as closed
+ * maintain an accurate list of live tabs and mark target actors as closed
  * promptly. Our nsIWindowMediatorListener onCloseWindow handler must find and
  * exit all actors for tabs that were in the closing window.
  *
- * Since this is a bit hairy, we don't make each individual attached tab actor
- * responsible for noticing when it has been closed; we watch for that, and
- * promise to call each actor's 'exit' method when it's closed, regardless of
- * how we learn the news.
+ * Since this is a bit hairy, we don't make each individual attached target
+ * actor responsible for noticing when it has been closed; we watch for that,
+ * and promise to call each actor's 'exit' method when it's closed, regardless
+ * of how we learn the news.
  *
  * - nsIWindowMediator locks
  *
@@ -172,12 +158,12 @@ function BrowserTabList(connection) {
    * window objects.
    *
    * This map's keys are "browser" XUL elements; it maps each browser element
-   * to the tab actor we've created for its content window, if we've created
+   * to the target actor we've created for its content window, if we've created
    * one. This map serves several roles:
    *
    * - During iteration, we use it to find actors we've created previously.
    *
-   * - On a TabClose event, we use it to find the tab's actor and exit it.
+   * - On a TabClose event, we use it to find the tab's target actor and exit it.
    *
    * - When the onCloseWindow handler is called, we iterate over it to find all
    *   tabs belonging to the closing XUL window, and exit them.
@@ -228,7 +214,7 @@ BrowserTabList.prototype._getSelectedBrowser = function(window) {
  */
 BrowserTabList.prototype._getBrowsers = function* () {
   // Iterate over all navigator:browser XUL windows.
-  for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+  for (const win of Services.wm.getEnumerator(DebuggerServer.chromeWindowType)) {
     // For each tab in this XUL window, ensure that we have an actor for
     // it, reusing existing actors where possible.
     for (const browser of this._getChildren(win)) {
@@ -335,9 +321,7 @@ BrowserTabList.prototype.getTab = function({ outerWindowID, tabId }) {
       });
     }
     if (window) {
-      const iframe = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils)
-                         .containerElement;
+      const iframe = window.windowUtils.containerElement;
       if (iframe) {
         return this._getActorForBrowser(iframe);
       }
@@ -490,7 +474,7 @@ BrowserTabList.prototype._listenForEventsIf =
   function(shouldListen, guard, eventNames) {
     if (!shouldListen !== !this[guard]) {
       const op = shouldListen ? "addEventListener" : "removeEventListener";
-      for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+      for (const win of Services.wm.getEnumerator(DebuggerServer.chromeWindowType)) {
         for (const name of eventNames) {
           win[op](name, this, false);
         }
@@ -514,7 +498,7 @@ BrowserTabList.prototype._listenForMessagesIf =
   function(shouldListen, guard, messageNames) {
     if (!shouldListen !== !this[guard]) {
       const op = shouldListen ? "addMessageListener" : "removeMessageListener";
-      for (const win of allAppShellDOMWindows(DebuggerServer.chromeWindowType)) {
+      for (const win of Services.wm.getEnumerator(DebuggerServer.chromeWindowType)) {
         for (const name of messageNames) {
           win.messageManager[op](name, this);
         }
@@ -659,8 +643,9 @@ DevToolsUtils.makeInfallible(function(window) {
 
 BrowserTabList.prototype.onCloseWindow =
 DevToolsUtils.makeInfallible(function(window) {
-  window = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindow);
+  if (window instanceof Ci.nsIXULWindow) {
+    window = window.docShell.domWindow;
+  }
 
   if (appShellDOMWindowType(window) !== DebuggerServer.chromeWindowType) {
     return;
@@ -757,11 +742,3 @@ BrowserAddonList.prototype._adjustListener = function() {
 };
 
 exports.BrowserAddonList = BrowserAddonList;
-
-exports.register = function(handle) {
-  handle.setRootActor(createRootActor);
-};
-
-exports.unregister = function(handle) {
-  handle.setRootActor(null);
-};

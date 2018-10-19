@@ -10,15 +10,17 @@ var _react2 = _interopRequireDefault(_react);
 
 var _reactRedux = require("devtools/client/shared/vendor/react-redux");
 
+var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
+
+var _classnames = require("devtools/client/debugger/new/dist/vendors").vendored["classnames"];
+
+var _classnames2 = _interopRequireDefault(_classnames);
+
 var _actions = require("../../actions/index");
 
 var _actions2 = _interopRequireDefault(_actions);
 
 var _selectors = require("../../selectors/index");
-
-var _classnames = require("devtools/client/debugger/new/dist/vendors").vendored["classnames"];
-
-var _classnames2 = _interopRequireDefault(_classnames);
 
 var _prefs = require("../../utils/prefs");
 
@@ -50,7 +52,7 @@ class SourceFooter extends _react.PureComponent {
     const tooltip = L10N.getStr("sourceTabs.prettyPrint");
     const type = "prettyPrint";
     return _react2.default.createElement("button", {
-      onClick: () => togglePrettyPrint(selectedSource.get("id")),
+      onClick: () => togglePrettyPrint(selectedSource.id),
       className: (0, _classnames2.default)("action", type, {
         active: sourceLoaded,
         pretty: (0, _source.isPretty)(selectedSource)
@@ -70,7 +72,7 @@ class SourceFooter extends _react.PureComponent {
     } = this.props;
     const sourceLoaded = selectedSource && (0, _source.isLoaded)(selectedSource);
 
-    if (!sourceLoaded) {
+    if (!sourceLoaded || selectedSource.isPrettyPrinted) {
       return;
     }
 
@@ -78,7 +80,7 @@ class SourceFooter extends _react.PureComponent {
     const tooltip = L10N.getStr("sourceFooter.blackbox");
     const type = "black-box";
     return _react2.default.createElement("button", {
-      onClick: () => toggleBlackBox(selectedSource.toJS()),
+      onClick: () => toggleBlackBox(selectedSource),
       className: (0, _classnames2.default)("action", type, {
         active: sourceLoaded,
         blackboxed: blackboxed
@@ -148,23 +150,23 @@ class SourceFooter extends _react.PureComponent {
       selectedSource
     } = this.props;
 
-    if (mappedSource) {
-      const filename = (0, _source.getFilename)(mappedSource);
-      const tooltip = L10N.getFormatStr("sourceFooter.mappedSourceTooltip", filename);
-      const title = L10N.getFormatStr("sourceFooter.mappedSource", filename);
-      const mappedSourceLocation = {
-        sourceId: selectedSource.get("id"),
-        line: 1,
-        column: 1
-      };
-      return _react2.default.createElement("button", {
-        className: "mapped-source",
-        onClick: () => jumpToMappedLocation(mappedSourceLocation),
-        title: tooltip
-      }, _react2.default.createElement("span", null, title));
+    if (!mappedSource || !(0, _devtoolsSourceMap.isOriginalId)(selectedSource.id)) {
+      return null;
     }
 
-    return null;
+    const filename = (0, _source.getFilename)(mappedSource);
+    const tooltip = L10N.getFormatStr("sourceFooter.mappedSourceTooltip", filename);
+    const title = L10N.getFormatStr("sourceFooter.mappedSource", filename);
+    const mappedSourceLocation = {
+      sourceId: selectedSource.id,
+      line: 1,
+      column: 1
+    };
+    return _react2.default.createElement("button", {
+      className: "mapped-source",
+      onClick: () => jumpToMappedLocation(mappedSourceLocation),
+      title: tooltip
+    }, _react2.default.createElement("span", null, title));
   }
 
   render() {
@@ -195,4 +197,10 @@ const mapStateToProps = state => {
   };
 };
 
-exports.default = (0, _reactRedux.connect)(mapStateToProps, _actions2.default)(SourceFooter);
+exports.default = (0, _reactRedux.connect)(mapStateToProps, {
+  togglePrettyPrint: _actions2.default.togglePrettyPrint,
+  toggleBlackBox: _actions2.default.toggleBlackBox,
+  jumpToMappedLocation: _actions2.default.jumpToMappedLocation,
+  recordCoverage: _actions2.default.recordCoverage,
+  togglePaneCollapse: _actions2.default.togglePaneCollapse
+})(SourceFooter);

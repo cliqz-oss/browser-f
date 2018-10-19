@@ -20,7 +20,11 @@ function isMinified(source) {
     return _minifiedCache.get(source.id);
   }
 
-  let text = source.get("text");
+  if (source.isWasm) {
+    return false;
+  }
+
+  let text = source.text;
 
   if (!text) {
     return false;

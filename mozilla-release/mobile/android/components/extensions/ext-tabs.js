@@ -6,9 +6,7 @@ ChromeUtils.defineModuleGetter(this, "PromiseUtils",
                                "resource://gre/modules/PromiseUtils.jsm");
 
 const getBrowserWindow = window => {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDocShell)
-               .QueryInterface(Ci.nsIDocShellTreeItem).rootTreeItem
-               .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+  return window.docShell.rootTreeItem.domWindow;
 };
 
 let tabListener = {
@@ -249,6 +247,7 @@ this.tabs = class extends ExtensionAPI {
         }).api(),
 
         async create(createProperties) {
+          let principal = context.principal;
           let window = createProperties.windowId !== null ?
             windowTracker.getWindow(createProperties.windowId, context) :
             windowTracker.topWindow;
@@ -262,6 +261,9 @@ this.tabs = class extends ExtensionAPI {
             if (!context.checkLoadURL(url, {dontReportErrors: true})) {
               return Promise.reject({message: `Illegal URL: ${url}`});
             }
+          } else {
+            // Falling back to system here as about:newtab requires it, however is safe.
+            principal = Services.scriptSecurityManager.getSystemPrincipal();
           }
 
           let options = {};
@@ -276,13 +278,18 @@ this.tabs = class extends ExtensionAPI {
             options.tabIndex = createProperties.index;
           }
 
-          // Make sure things like about:blank and data: URIs never inherit,
+          // Make sure things like about:blank URIs never inherit,
           // and instead always get a NullPrincipal.
-          options.disallowInheritPrincipal = true;
+          if (url && url.startsWith("about:")) {
+            options.disallowInheritPrincipal = true;
+          } else {
+            options.triggeringPrincipal = context.principal;
+          }
 
           options.parentId = BrowserApp.selectedTab.id;
 
           tabListener.initTabReady();
+          options.triggeringPrincipal = principal;
           let nativeTab = BrowserApp.addTab(url, options);
 
           if (createProperties.url) {

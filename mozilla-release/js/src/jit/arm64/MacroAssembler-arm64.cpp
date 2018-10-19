@@ -283,47 +283,49 @@ MacroAssemblerCompat::wasmLoadImpl(const wasm::MemoryAccessDesc& access, Registe
 
     asMasm().memoryBarrierBefore(access.sync());
 
+    // Reg+Reg addressing is directly encodable in one Load instruction, hence
+    // the AutoForbidPools will ensure that the access metadata is emitted at
+    // the address of the Load.
     MemOperand srcAddr(memoryBase, ptr);
 
-    append(access, asMasm().currentOffset());
-    switch (access.type()) {
-      case Scalar::Int8:
-        Ldrsb(SelectGPReg(outany, out64), srcAddr);
-        break;
-      case Scalar::Uint8:
-        Ldrb(SelectGPReg(outany, out64), srcAddr);
-        break;
-      case Scalar::Int16:
-        Ldrsh(SelectGPReg(outany, out64), srcAddr);
-        break;
-      case Scalar::Uint16:
-        Ldrh(SelectGPReg(outany, out64), srcAddr);
-        break;
-      case Scalar::Int32:
-        if (out64 != Register64::Invalid())
-            Ldrsw(SelectGPReg(outany, out64), srcAddr);
-        else
+    {
+        AutoForbidPools afp(this, /* max number of instructions in scope = */ 1);
+        append(access, asMasm().currentOffset());
+        switch (access.type()) {
+          case Scalar::Int8:
+            Ldrsb(SelectGPReg(outany, out64), srcAddr);
+            break;
+          case Scalar::Uint8:
+            Ldrb(SelectGPReg(outany, out64), srcAddr);
+            break;
+          case Scalar::Int16:
+            Ldrsh(SelectGPReg(outany, out64), srcAddr);
+            break;
+          case Scalar::Uint16:
+            Ldrh(SelectGPReg(outany, out64), srcAddr);
+            break;
+          case Scalar::Int32:
+            if (out64 != Register64::Invalid())
+                Ldrsw(SelectGPReg(outany, out64), srcAddr);
+            else
+                Ldr(SelectGPReg(outany, out64, 32), srcAddr);
+            break;
+          case Scalar::Uint32:
             Ldr(SelectGPReg(outany, out64, 32), srcAddr);
-        break;
-      case Scalar::Uint32:
-        Ldr(SelectGPReg(outany, out64, 32), srcAddr);
-        break;
-      case Scalar::Int64:
-        Ldr(SelectGPReg(outany, out64), srcAddr);
-        break;
-      case Scalar::Float32:
-        Ldr(SelectFPReg(outany, out64, 32), srcAddr);
-        break;
-      case Scalar::Float64:
-        Ldr(SelectFPReg(outany, out64, 64), srcAddr);
-        break;
-      case Scalar::Uint8Clamped:
-      case Scalar::MaxTypedArrayViewType:
-      case Scalar::Float32x4:
-      case Scalar::Int32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-        MOZ_CRASH("unexpected array type");
+            break;
+          case Scalar::Int64:
+            Ldr(SelectGPReg(outany, out64), srcAddr);
+            break;
+          case Scalar::Float32:
+            Ldr(SelectFPReg(outany, out64, 32), srcAddr);
+            break;
+          case Scalar::Float64:
+            Ldr(SelectFPReg(outany, out64, 64), srcAddr);
+            break;
+          case Scalar::Uint8Clamped:
+          case Scalar::MaxTypedArrayViewType:
+            MOZ_CRASH("unexpected array type");
+        }
     }
 
     asMasm().memoryBarrierAfter(access.sync());
@@ -346,38 +348,40 @@ MacroAssemblerCompat::wasmStoreImpl(const wasm::MemoryAccessDesc& access, AnyReg
 
     asMasm().memoryBarrierBefore(access.sync());
 
+    // Reg+Reg addressing is directly encodable in one Store instruction, hence
+    // the AutoForbidPools will ensure that the access metadata is emitted at
+    // the address of the Store.
     MemOperand dstAddr(memoryBase, ptr);
 
-    append(access, asMasm().currentOffset());
-    switch (access.type()) {
-      case Scalar::Int8:
-      case Scalar::Uint8:
-        Strb(SelectGPReg(valany, val64), dstAddr);
-        break;
-      case Scalar::Int16:
-      case Scalar::Uint16:
-        Strh(SelectGPReg(valany, val64), dstAddr);
-        break;
-      case Scalar::Int32:
-      case Scalar::Uint32:
-        Str(SelectGPReg(valany, val64), dstAddr);
-        break;
-      case Scalar::Int64:
-        Str(SelectGPReg(valany, val64), dstAddr);
-        break;
-      case Scalar::Float32:
-        Str(SelectFPReg(valany, val64, 32), dstAddr);
-        break;
-      case Scalar::Float64:
-        Str(SelectFPReg(valany, val64, 64), dstAddr);
-        break;
-      case Scalar::Float32x4:
-      case Scalar::Int32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-      case Scalar::Uint8Clamped:
-      case Scalar::MaxTypedArrayViewType:
-        MOZ_CRASH("unexpected array type");
+    {
+        AutoForbidPools afp(this, /* max number of instructions in scope = */ 1);
+        append(access, asMasm().currentOffset());
+        switch (access.type()) {
+          case Scalar::Int8:
+          case Scalar::Uint8:
+            Strb(SelectGPReg(valany, val64), dstAddr);
+            break;
+          case Scalar::Int16:
+          case Scalar::Uint16:
+            Strh(SelectGPReg(valany, val64), dstAddr);
+            break;
+          case Scalar::Int32:
+          case Scalar::Uint32:
+            Str(SelectGPReg(valany, val64), dstAddr);
+            break;
+          case Scalar::Int64:
+            Str(SelectGPReg(valany, val64), dstAddr);
+            break;
+          case Scalar::Float32:
+            Str(SelectFPReg(valany, val64, 32), dstAddr);
+            break;
+          case Scalar::Float64:
+            Str(SelectFPReg(valany, val64, 64), dstAddr);
+            break;
+          case Scalar::Uint8Clamped:
+          case Scalar::MaxTypedArrayViewType:
+            MOZ_CRASH("unexpected array type");
+        }
     }
 
     asMasm().memoryBarrierAfter(access.sync());
@@ -631,7 +635,7 @@ MacroAssembler::call(JitCode* c)
     const ARMRegister scratch64 = temps.AcquireX();
     syncStackPtr();
     BufferOffset off = immPool64(scratch64, uint64_t(c->raw()));
-    addPendingJump(off, ImmPtr(c->raw()), Relocation::JITCODE);
+    addPendingJump(off, ImmPtr(c->raw()), RelocationKind::JITCODE);
     blr(scratch64);
 }
 
@@ -1054,7 +1058,7 @@ MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType value
                                   const Address& dest, MIRType slotType);
 template void
 MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType valueType,
-                                  const BaseIndex& dest, MIRType slotType);
+                                  const BaseObjectElementIndex& dest, MIRType slotType);
 
 void
 MacroAssembler::comment(const char* msg)
@@ -1517,32 +1521,62 @@ SignOrZeroExtend(MacroAssembler& masm, Scalar::Type srcType, Width targetWidth, 
 // the targetWidth is 32.
 
 static void
-LoadExclusive(MacroAssembler& masm, Scalar::Type srcType, Width targetWidth, MemOperand ptr,
-              Register dest)
+LoadExclusive(MacroAssembler& masm, const wasm::MemoryAccessDesc* access,
+              Scalar::Type srcType, Width targetWidth, MemOperand ptr, Register dest)
 {
     bool signExtend = Scalar::isSignedIntType(srcType);
 
+    // With this address form, a single native ldxr* will be emitted, and the
+    // AutoForbidPools ensures that the metadata is emitted at the address of
+    // the ldxr*.
+    MOZ_ASSERT(ptr.IsImmediateOffset() && ptr.offset() == 0);
+
     switch (Scalar::byteSize(srcType)) {
-      case 1:
-        masm.Ldxrb(W(dest), ptr);
+      case 1: {
+        {
+            AutoForbidPools afp(&masm, /* max number of instructions in scope = */ 1);
+            if (access)
+                masm.append(*access, masm.currentOffset());
+            masm.Ldxrb(W(dest), ptr);
+        }
         if (signExtend)
             masm.Sbfm(R(dest, targetWidth), R(dest, targetWidth), 0, 7);
         break;
-      case 2:
-        masm.Ldxrh(W(dest), ptr);
+      }
+      case 2: {
+        {
+            AutoForbidPools afp(&masm, /* max number of instructions in scope = */ 1);
+            if (access)
+                masm.append(*access, masm.currentOffset());
+            masm.Ldxrh(W(dest), ptr);
+        }
         if (signExtend)
             masm.Sbfm(R(dest, targetWidth), R(dest, targetWidth), 0, 15);
         break;
-      case 4:
-        masm.Ldxr(W(dest), ptr);
+      }
+      case 4: {
+        {
+            AutoForbidPools afp(&masm, /* max number of instructions in scope = */ 1);
+            if (access)
+                masm.append(*access, masm.currentOffset());
+            masm.Ldxr(W(dest), ptr);
+        }
         if (targetWidth == Width::_64 && signExtend)
             masm.Sbfm(X(dest), X(dest), 0, 31);
         break;
-      case 8:
-        masm.Ldxr(X(dest), ptr);
+      }
+      case 8: {
+        {
+            AutoForbidPools afp(&masm, /* max number of instructions in scope = */ 1);
+            if (access)
+                masm.append(*access, masm.currentOffset());
+            masm.Ldxr(X(dest), ptr);
+        }
         break;
-      default:
+      }
+      default: {
         MOZ_CRASH();
+      }
     }
 }
 
@@ -1568,8 +1602,8 @@ StoreExclusive(MacroAssembler& masm, Scalar::Type type, Register status, Registe
 
 template<typename T>
 static void
-CompareExchange(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
-                const Synchronization& sync, const T& mem, Register oldval,
+CompareExchange(MacroAssembler& masm, const wasm::MemoryAccessDesc* access, Scalar::Type type,
+                Width targetWidth, const Synchronization& sync, const T& mem, Register oldval,
                 Register newval, Register output)
 {
     Label again;
@@ -1586,7 +1620,7 @@ CompareExchange(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
 
     masm.bind(&again);
     SignOrZeroExtend(masm, type, targetWidth, oldval, scratch);
-    LoadExclusive(masm, type, targetWidth, ptr, output);
+    LoadExclusive(masm, access, type, targetWidth, ptr, output);
     masm.Cmp(R(output, targetWidth), R(scratch, targetWidth));
     masm.B(&done, MacroAssembler::NotEqual);
     StoreExclusive(masm, type, scratch, newval, ptr);
@@ -1598,8 +1632,8 @@ CompareExchange(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
 
 template<typename T>
 static void
-AtomicExchange(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
-               const Synchronization& sync, const T& mem, Register value,
+AtomicExchange(MacroAssembler& masm, const wasm::MemoryAccessDesc* access, Scalar::Type type,
+               Width targetWidth, const Synchronization& sync, const T& mem, Register value,
                Register output)
 {
     Label again;
@@ -1614,7 +1648,7 @@ AtomicExchange(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
     Register scratch = temps.AcquireX().asUnsized();
 
     masm.bind(&again);
-    LoadExclusive(masm, type, targetWidth, ptr, output);
+    LoadExclusive(masm, access, type, targetWidth, ptr, output);
     StoreExclusive(masm, type, scratch, value, ptr);
     masm.Cbnz(W(scratch), &again);
 
@@ -1623,8 +1657,8 @@ AtomicExchange(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
 
 template<bool wantResult, typename T>
 static void
-AtomicFetchOp(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
-              const Synchronization& sync, AtomicOp op, const T& mem,
+AtomicFetchOp(MacroAssembler& masm, const wasm::MemoryAccessDesc* access, Scalar::Type type,
+              Width targetWidth, const Synchronization& sync, AtomicOp op, const T& mem,
               Register value, Register temp, Register output)
 {
     Label again;
@@ -1639,7 +1673,7 @@ AtomicFetchOp(MacroAssembler& masm, Scalar::Type type, Width targetWidth,
     Register scratch = temps.AcquireX().asUnsized();
 
     masm.bind(&again);
-    LoadExclusive(masm, type, targetWidth, ptr, output);
+    LoadExclusive(masm, access, type, targetWidth, ptr, output);
     switch (op) {
       case AtomicFetchAddOp: masm.Add(X(temp), X(output), X(value)); break;
       case AtomicFetchSubOp: masm.Sub(X(temp), X(output), X(value)); break;
@@ -1659,100 +1693,152 @@ void
 MacroAssembler::compareExchange(Scalar::Type type, const Synchronization& sync, const Address& mem,
                                 Register oldval, Register newval, Register output)
 {
-    CompareExchange(*this, type, Width::_32, sync, mem, oldval, newval, output);
+    CompareExchange(*this, nullptr, type, Width::_32, sync, mem, oldval, newval, output);
 }
 
 void
 MacroAssembler::compareExchange(Scalar::Type type, const Synchronization& sync, const BaseIndex& mem,
                                 Register oldval, Register newval, Register output)
 {
-    CompareExchange(*this, type, Width::_32, sync, mem, oldval, newval, output);
+    CompareExchange(*this, nullptr, type, Width::_32, sync, mem, oldval, newval, output);
+}
+
+void
+MacroAssembler::wasmCompareExchange(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                    Register oldval, Register newval, Register output)
+{
+    CompareExchange(*this, &access, access.type(), Width::_32, access.sync(), mem, oldval, newval,
+                    output);
+}
+
+void
+MacroAssembler::wasmCompareExchange(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                    Register oldval, Register newval, Register output)
+{
+    CompareExchange(*this, &access, access.type(), Width::_32, access.sync(), mem, oldval, newval,
+                    output);
 }
 
 void
 MacroAssembler::atomicExchange(Scalar::Type type, const Synchronization& sync, const Address& mem,
                                Register value, Register output)
 {
-    AtomicExchange(*this, type, Width::_32, sync, mem, value, output);
+    AtomicExchange(*this, nullptr, type, Width::_32, sync, mem, value, output);
 }
 
 void
 MacroAssembler::atomicExchange(Scalar::Type type, const Synchronization& sync, const BaseIndex& mem,
                                Register value, Register output)
 {
-    AtomicExchange(*this, type, Width::_32, sync, mem, value, output);
+    AtomicExchange(*this, nullptr, type, Width::_32, sync, mem, value, output);
+}
+
+void
+MacroAssembler::wasmAtomicExchange(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                   Register value, Register output)
+{
+    AtomicExchange(*this, &access, access.type(), Width::_32, access.sync(), mem, value, output);
+}
+
+void
+MacroAssembler::wasmAtomicExchange(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                   Register value, Register output)
+{
+    AtomicExchange(*this, &access, access.type(), Width::_32, access.sync(), mem, value, output);
 }
 
 void
 MacroAssembler::atomicFetchOp(Scalar::Type type, const Synchronization& sync, AtomicOp op,
                               Register value, const Address& mem, Register temp, Register output)
 {
-    AtomicFetchOp<true>(*this, type, Width::_32, sync, op, mem, value, temp, output);
+    AtomicFetchOp<true>(*this, nullptr, type, Width::_32, sync, op, mem, value, temp, output);
 }
 
 void
 MacroAssembler::atomicFetchOp(Scalar::Type type, const Synchronization& sync, AtomicOp op,
                               Register value, const BaseIndex& mem, Register temp, Register output)
 {
-    AtomicFetchOp<true>(*this, type, Width::_32, sync, op, mem, value, temp, output);
+    AtomicFetchOp<true>(*this, nullptr, type, Width::_32, sync, op, mem, value, temp, output);
 }
 
 void
-MacroAssembler::atomicEffectOp(Scalar::Type type, const Synchronization& sync, AtomicOp op,
-                               Register value, const Address& mem, Register temp)
+MacroAssembler::wasmAtomicFetchOp(const wasm::MemoryAccessDesc& access, AtomicOp op, Register value,
+                                  const Address& mem, Register temp, Register output)
 {
-    AtomicFetchOp<false>(*this, type, Width::_32, sync, op, mem, value, temp, temp);
+    AtomicFetchOp<true>(*this, &access, access.type(), Width::_32, access.sync(), op, mem, value,
+                        temp, output);
 }
 
 void
-MacroAssembler::atomicEffectOp(Scalar::Type type, const Synchronization& sync, AtomicOp op,
-                               Register value, const BaseIndex& mem, Register temp)
+MacroAssembler::wasmAtomicFetchOp(const wasm::MemoryAccessDesc& access, AtomicOp op, Register value,
+                                  const BaseIndex& mem, Register temp, Register output)
 {
-    AtomicFetchOp<false>(*this, type, Width::_32, sync, op, mem, value, temp, temp);
+    AtomicFetchOp<true>(*this, &access, access.type(), Width::_32, access.sync(), op, mem, value,
+                        temp, output);
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization& sync, const Address& mem, Register64 expect,
-                                  Register64 replace, Register64 output)
+MacroAssembler::wasmAtomicEffectOp(const wasm::MemoryAccessDesc& access, AtomicOp op, Register value,
+                                   const Address& mem, Register temp)
 {
-    CompareExchange(*this, Scalar::Int64, Width::_64, sync, mem, expect.reg, replace.reg, output.reg);
+    AtomicFetchOp<false>(*this, &access, access.type(), Width::_32, access.sync(), op, mem, value,
+                         temp, temp);
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization& sync, const BaseIndex& mem, Register64 expect,
-                                  Register64 replace, Register64 output)
+MacroAssembler::wasmAtomicEffectOp(const wasm::MemoryAccessDesc& access, AtomicOp op, Register value,
+                                   const BaseIndex& mem, Register temp)
 {
-    CompareExchange(*this, Scalar::Int64, Width::_64, sync, mem, expect.reg, replace.reg, output.reg);
+    AtomicFetchOp<false>(*this, &access, access.type(), Width::_32, access.sync(), op, mem, value,
+                         temp, temp);
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization& sync, const Address& mem, Register64 value,
-                                 Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                      Register64 expect, Register64 replace, Register64 output)
 {
-    AtomicExchange(*this, Scalar::Int64, Width::_64, sync, mem, value.reg, output.reg);
+    CompareExchange(*this, &access, Scalar::Int64, Width::_64, access.sync(), mem, expect.reg,
+                    replace.reg, output.reg);
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization& sync, const BaseIndex& mem, Register64 value,
-                                 Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                      Register64 expect, Register64 replace, Register64 output)
 {
-    AtomicExchange(*this, Scalar::Int64, Width::_64, sync, mem, value.reg, output.reg);
+    CompareExchange(*this, &access, Scalar::Int64, Width::_64, access.sync(), mem, expect.reg,
+                    replace.reg, output.reg);
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization& sync, AtomicOp op, Register64 value,
-                                const Address& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                     Register64 value, Register64 output)
 {
-    AtomicFetchOp<true>(*this, Scalar::Int64, Width::_64, sync, op, mem, value.reg, temp.reg,
-                        output.reg);
+    AtomicExchange(*this, &access, Scalar::Int64, Width::_64, access.sync(), mem, value.reg,
+                   output.reg);
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization& sync, AtomicOp op, Register64 value,
-                                const BaseIndex& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                     Register64 value, Register64 output)
 {
-    AtomicFetchOp<true>(*this, Scalar::Int64, Width::_64, sync, op, mem, value.reg, temp.reg,
-                        output.reg);
+    AtomicExchange(*this, &access, Scalar::Int64, Width::_64, access.sync(), mem, value.reg,
+                   output.reg);
+}
+
+void
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op, Register64 value,
+                                    const Address& mem, Register64 temp, Register64 output)
+{
+    AtomicFetchOp<true>(*this, &access, Scalar::Int64, Width::_64, access.sync(), op, mem, value.reg,
+                        temp.reg, output.reg);
+}
+
+void
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op, Register64 value,
+                                    const BaseIndex& mem, Register64 temp, Register64 output)
+{
+    AtomicFetchOp<true>(*this, &access, Scalar::Int64, Width::_64, access.sync(), op, mem, value.reg,
+                        temp.reg, output.reg);
 }
 
 // ========================================================================
@@ -1848,16 +1934,50 @@ MacroAssembler::atomicFetchOpJS(Scalar::Type arrayType, const Synchronization& s
 
 void
 MacroAssembler::atomicEffectOpJS(Scalar::Type arrayType, const Synchronization& sync, AtomicOp op,
-                           Register value, const BaseIndex& mem, Register temp)
+                                 Register value, const BaseIndex& mem, Register temp)
 {
-    atomicEffectOp(arrayType, sync, op, value, mem, temp);
+    AtomicFetchOp<false>(*this, nullptr, arrayType, Width::_32, sync, op, mem, value, temp, temp);
 }
 
 void
 MacroAssembler::atomicEffectOpJS(Scalar::Type arrayType, const Synchronization& sync, AtomicOp op,
-                           Register value, const Address& mem, Register temp)
+                                 Register value, const Address& mem, Register temp)
 {
-    atomicEffectOp(arrayType, sync, op, value, mem, temp);
+    AtomicFetchOp<false>(*this, nullptr, arrayType, Width::_32, sync, op, mem, value, temp, temp);
+}
+
+void
+MacroAssembler::flexibleQuotient32(Register rhs, Register srcDest, bool isUnsigned,
+                                   const LiveRegisterSet&)
+{
+    quotient32(rhs, srcDest, isUnsigned);
+}
+
+void
+MacroAssembler::flexibleRemainder32(Register rhs, Register srcDest, bool isUnsigned,
+                                    const LiveRegisterSet&)
+{
+    remainder32(rhs, srcDest, isUnsigned);
+}
+
+void
+MacroAssembler::flexibleDivMod32(Register rhs, Register srcDest, Register remOutput,
+                                 bool isUnsigned, const LiveRegisterSet&)
+{
+    vixl::UseScratchRegisterScope temps(this);
+    ARMRegister scratch = temps.AcquireW();
+    ARMRegister src = temps.AcquireW();
+
+    // Preserve src for remainder computation
+    Mov(src, ARMRegister(srcDest, 32));
+
+    if (isUnsigned)
+        Udiv(ARMRegister(srcDest, 32), src, ARMRegister(rhs, 32));
+    else
+        Sdiv(ARMRegister(srcDest, 32), src, ARMRegister(rhs, 32));
+    //Compute remainder
+    Mul(scratch, ARMRegister(srcDest, 32), ARMRegister(rhs, 32));
+    Sub(ARMRegister(remOutput, 32), src, scratch);
 }
 
 // ========================================================================

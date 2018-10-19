@@ -99,6 +99,11 @@ MacroAssemblerMIPS64Compat::convertDoubleToFloat32(FloatRegister src, FloatRegis
     as_cvtsd(dest, src);
 }
 
+const int CauseBitPos = int(Assembler::CauseI);
+const int CauseBitCount = 1 + int(Assembler::CauseV) - int(Assembler::CauseI);
+const int CauseIOrVMask = ((1 << int(Assembler::CauseI)) |
+                           (1 << int(Assembler::CauseV))) >> int(Assembler::CauseI);
+
 // Checks whether a double is representable as a 32-bit integer. If so, the
 // integer is written to the output register. Otherwise, a bailout is taken to
 // the given snapshot. This function overwrites the scratch float register.
@@ -116,8 +121,8 @@ MacroAssemblerMIPS64Compat::convertDoubleToInt32(FloatRegister src, Register des
     as_truncwd(ScratchFloat32Reg, src);
     as_cfc1(ScratchRegister, Assembler::FCSR);
     moveFromFloat32(ScratchFloat32Reg, dest);
-    ma_ext(ScratchRegister, ScratchRegister, Assembler::CauseI, 6);
-    as_andi(ScratchRegister, ScratchRegister, 0x11);//masking for Inexact and Invalid flag.
+    ma_ext(ScratchRegister, ScratchRegister, CauseBitPos, CauseBitCount);
+    as_andi(ScratchRegister, ScratchRegister, CauseIOrVMask); //masking for Inexact and Invalid flag.
     ma_b(ScratchRegister, Imm32(0), fail, Assembler::NotEqual);
 }
 
@@ -136,7 +141,8 @@ MacroAssemblerMIPS64Compat::convertFloat32ToInt32(FloatRegister src, Register de
     as_truncws(ScratchFloat32Reg, src);
     as_cfc1(ScratchRegister, Assembler::FCSR);
     moveFromFloat32(ScratchFloat32Reg, dest);
-    ma_ext(ScratchRegister, ScratchRegister, Assembler::CauseI, 1);
+    ma_ext(ScratchRegister, ScratchRegister, CauseBitPos, CauseBitCount);
+    as_andi(ScratchRegister, ScratchRegister, CauseIOrVMask);
     ma_b(ScratchRegister, Imm32(0), fail, Assembler::NotEqual);
 }
 
@@ -914,7 +920,7 @@ MacroAssemblerMIPS64::ma_push(FloatRegister f)
 bool
 MacroAssemblerMIPS64Compat::buildOOLFakeExitFrame(void* fakeReturnAddr)
 {
-    uint32_t descriptor = MakeFrameDescriptor(asMasm().framePushed(), JitFrame_IonJS,
+    uint32_t descriptor = MakeFrameDescriptor(asMasm().framePushed(), FrameType::IonJS,
                                               ExitFrameLayout::Size());
 
     asMasm().Push(Imm32(descriptor)); // descriptor_
@@ -1884,7 +1890,7 @@ MacroAssemblerMIPS64Compat::toggledCall(JitCode* target, bool enabled)
 {
     BufferOffset bo = nextOffset();
     CodeOffset offset(bo.getOffset());
-    addPendingJump(bo, ImmPtr(target->raw()), Relocation::JITCODE);
+    addPendingJump(bo, ImmPtr(target->raw()), RelocationKind::JITCODE);
     ma_liPatchable(ScratchRegister, ImmPtr(target->raw()));
     if (enabled) {
         as_jalr(ScratchRegister);
@@ -2251,7 +2257,7 @@ MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType value
                                   const Address& dest, MIRType slotType);
 template void
 MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType valueType,
-                                  const BaseIndex& dest, MIRType slotType);
+                                  const BaseObjectElementIndex& dest, MIRType slotType);
 
 
 void
@@ -2528,17 +2534,19 @@ MacroAssemblerMIPS64Compat::wasmStoreI64Impl(const wasm::MemoryAccessDesc& acces
 
 template <typename T>
 static void
-CompareExchange64(MacroAssembler& masm, const Synchronization& sync, const T& mem,
-                  Register64 expect, Register64 replace, Register64 output)
+WasmCompareExchange64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access,
+                      const T& mem, Register64 expect, Register64 replace, Register64 output)
 {
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
     Label tryAgain;
     Label exit;
 
-    masm.memoryBarrierBefore(sync);
+    masm.memoryBarrierBefore(access.sync());
 
     masm.bind(&tryAgain);
+
+    // FIXME: emit signal handling information
 
     masm.as_lld(output.reg, SecondScratchReg, 0);
     masm.ma_b(output.reg, expect.reg, &exit, Assembler::NotEqual, ShortJump);
@@ -2546,72 +2554,76 @@ CompareExchange64(MacroAssembler& masm, const Synchronization& sync, const T& me
     masm.as_scd(ScratchRegister, SecondScratchReg, 0);
     masm.ma_b(ScratchRegister, ScratchRegister, &tryAgain, Assembler::Zero, ShortJump);
 
-    masm.memoryBarrierAfter(sync);
+    masm.memoryBarrierAfter(access.sync());
 
     masm.bind(&exit);
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization& sync, const Address& mem,
-                                  Register64 expect, Register64 replace, Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                      Register64 expect, Register64 replace, Register64 output)
 {
-    CompareExchange64(*this, sync, mem, expect, replace, output);
+    WasmCompareExchange64(*this, access, mem, expect, replace, output);
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization& sync, const BaseIndex& mem,
-                                  Register64 expect, Register64 replace, Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                      Register64 expect, Register64 replace, Register64 output)
 {
-    CompareExchange64(*this, sync, mem, expect, replace, output);
+    WasmCompareExchange64(*this, access, mem, expect, replace, output);
 }
 
 template <typename T>
 static void
-AtomicExchange64(MacroAssembler& masm, const Synchronization& sync, const T& mem,
-                 Register64 src, Register64 output)
+AtomicExchange64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access,
+                 const T& mem, Register64 src, Register64 output)
 {
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
     Label tryAgain;
 
-    masm.memoryBarrierBefore(sync);
+    masm.memoryBarrierBefore(access.sync());
 
     masm.bind(&tryAgain);
+
+    // FIXME: emit signal handling information
 
     masm.as_lld(output.reg, SecondScratchReg, 0);
     masm.movePtr(src.reg, ScratchRegister);
     masm.as_scd(ScratchRegister, SecondScratchReg, 0);
     masm.ma_b(ScratchRegister, ScratchRegister, &tryAgain, Assembler::Zero, ShortJump);
 
-    masm.memoryBarrierAfter(sync);
+    masm.memoryBarrierAfter(access.sync());
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization& sync, const Address& mem, Register64 src,
-                                 Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                     Register64 src, Register64 output)
 {
-    AtomicExchange64(*this, sync, mem, src, output);
+    AtomicExchange64(*this, access, mem, src, output);
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization& sync, const BaseIndex& mem, Register64 src,
-                                 Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                     Register64 src, Register64 output)
 {
-    AtomicExchange64(*this, sync, mem, src, output);
+    AtomicExchange64(*this, access, mem, src, output);
 }
 
 template<typename T>
 static void
-AtomicFetchOp64(MacroAssembler& masm, const Synchronization& sync, AtomicOp op, Register64 value,
-                const T& mem, Register64 temp, Register64 output)
+AtomicFetchOp64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access, AtomicOp op,
+                Register64 value, const T& mem, Register64 temp, Register64 output)
 {
     masm.computeEffectiveAddress(mem, SecondScratchReg);
 
     Label tryAgain;
 
-    masm.memoryBarrierBefore(sync);
+    masm.memoryBarrierBefore(access.sync());
 
     masm.bind(&tryAgain);
+
+    // FIXME: Emit signal handling information.
 
     masm.as_lld(output.reg, SecondScratchReg, 0);
 
@@ -2638,21 +2650,22 @@ AtomicFetchOp64(MacroAssembler& masm, const Synchronization& sync, AtomicOp op, 
     masm.as_scd(temp.reg, SecondScratchReg, 0);
     masm.ma_b(temp.reg, temp.reg, &tryAgain, Assembler::Zero, ShortJump);
 
-    masm.memoryBarrierAfter(sync);
+    masm.memoryBarrierAfter(access.sync());
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization& sync, AtomicOp op, Register64 value,
-                                const Address& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op,
+                                    Register64 value, const Address& mem, Register64 temp,
+                                    Register64 output)
 {
-    AtomicFetchOp64(*this, sync, op, value, mem, temp, output);
+    AtomicFetchOp64(*this, access, op, value, mem, temp, output);
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization& sync, AtomicOp op, Register64 value,
-                                const BaseIndex& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op, Register64 value,
+                                    const BaseIndex& mem, Register64 temp, Register64 output)
 {
-    AtomicFetchOp64(*this, sync, op, value, mem, temp, output);
+    AtomicFetchOp64(*this, access, op, value, mem, temp, output);
 }
 
 // ========================================================================

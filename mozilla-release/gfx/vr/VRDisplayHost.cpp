@@ -28,6 +28,9 @@
 
 #if defined(MOZ_WIDGET_ANDROID)
 #include "mozilla/layers/CompositorThread.h"
+// Max frame duration on Android before the watchdog submits a new one.
+// Probably we can get rid of this when we enforce that SubmitFrame can only be called in a VRDisplay loop.
+#define ANDROID_MAX_FRAME_DURATION 4000
 #endif // defined(MOZ_WIDGET_ANDROID)
 
 
@@ -79,6 +82,11 @@ VRDisplayHost::VRDisplayHost(VRDeviceType aType)
   mDisplayInfo.mFrameId = 0;
   mDisplayInfo.mDisplayState.mPresentingGeneration = 0;
   mDisplayInfo.mDisplayState.mDisplayName[0] = '\0';
+
+#if defined(MOZ_WIDGET_ANDROID)
+  mLastSubmittedFrameId = 0;
+  mLastStartedFrame = 0;
+#endif // defined(MOZ_WIDGET_ANDROID)
 }
 
 VRDisplayHost::~VRDisplayHost()
@@ -200,10 +208,24 @@ VRDisplayHost::StartFrame()
 {
   AUTO_PROFILER_TRACING("VR", "GetSensorState");
 
+#if defined(MOZ_WIDGET_ANDROID)
+  const bool isPresenting = mLastUpdateDisplayInfo.GetPresentingGroups() != 0;
+  double duration = mLastFrameStart.IsNull() ? 0.0 : (TimeStamp::Now() - mLastFrameStart).ToMilliseconds();
+  /**
+   * Do not start more VR frames until the last submitted frame is already processed.
+   */
+  if (isPresenting && mLastStartedFrame > 0 && mDisplayInfo.mDisplayState.mLastSubmittedFrameId < mLastStartedFrame && duration < (double)ANDROID_MAX_FRAME_DURATION) {
+    return;
+  }
+#endif // !defined(MOZ_WIDGET_ANDROID)
+
   mLastFrameStart = TimeStamp::Now();
   ++mDisplayInfo.mFrameId;
   mDisplayInfo.mLastSensorState[mDisplayInfo.mFrameId % kVRMaxLatencyFrames] = GetSensorState();
   mFrameStarted = true;
+#if defined(MOZ_WIDGET_ANDROID)
+  mLastStartedFrame = mDisplayInfo.mFrameId;
+#endif // !defined(MOZ_WIDGET_ANDROID)  
 }
 
 void
@@ -316,6 +338,19 @@ VRDisplayHost::SubmitFrame(VRLayerParent* aLayer,
     return;
   }
 
+#if defined(MOZ_WIDGET_ANDROID)
+  /**
+   * Do not queue more submit frames until the last submitted frame is already processed 
+   * and the new WebGL texture is ready.
+   */
+  if (mLastSubmittedFrameId > 0 && mLastSubmittedFrameId != mDisplayInfo.mDisplayState.mLastSubmittedFrameId) {
+    mLastStartedFrame = 0;
+    return;
+  }
+
+  mLastSubmittedFrameId = aFrameId;
+#endif // !defined(MOZ_WIDGET_ANDROID)
+
   mFrameStarted = false;
 
   RefPtr<Runnable> submit =
@@ -345,6 +380,18 @@ VRDisplayHost::CheckClearDisplayInfoDirty()
   return true;
 }
 
+void
+VRDisplayHost::StartVRNavigation()
+{
+  
+}
+
+void
+VRDisplayHost::StopVRNavigation(const TimeDuration& aTimeout)
+{
+  
+}
+
 VRControllerHost::VRControllerHost(VRDeviceType aType, dom::GamepadHand aHand,
                                    uint32_t aDisplayID)
  : mControllerInfo{}
@@ -352,7 +399,7 @@ VRControllerHost::VRControllerHost(VRDeviceType aType, dom::GamepadHand aHand,
 {
   MOZ_COUNT_CTOR(VRControllerHost);
   mControllerInfo.mType = aType;
-  mControllerInfo.mControllerState.mHand = aHand;
+  mControllerInfo.mControllerState.hand = aHand;
   mControllerInfo.mMappingType = dom::GamepadMappingType::_empty;
   mControllerInfo.mDisplayID = aDisplayID;
   mControllerInfo.mControllerID = VRSystemManager::AllocateControllerID();
@@ -372,25 +419,25 @@ VRControllerHost::GetControllerInfo() const
 void
 VRControllerHost::SetButtonPressed(uint64_t aBit)
 {
-  mControllerInfo.mControllerState.mButtonPressed = aBit;
+  mControllerInfo.mControllerState.buttonPressed = aBit;
 }
 
 uint64_t
 VRControllerHost::GetButtonPressed()
 {
-  return mControllerInfo.mControllerState.mButtonPressed;
+  return mControllerInfo.mControllerState.buttonPressed;
 }
 
 void
 VRControllerHost::SetButtonTouched(uint64_t aBit)
 {
-  mControllerInfo.mControllerState.mButtonTouched = aBit;
+  mControllerInfo.mControllerState.buttonTouched = aBit;
 }
 
 uint64_t
 VRControllerHost::GetButtonTouched()
 {
-  return mControllerInfo.mControllerState.mButtonTouched;
+  return mControllerInfo.mControllerState.buttonTouched;
 }
 
 void
@@ -408,7 +455,7 @@ VRControllerHost::GetPose()
 dom::GamepadHand
 VRControllerHost::GetHand()
 {
-  return mControllerInfo.mControllerState.mHand;
+  return mControllerInfo.mControllerState.hand;
 }
 
 void
@@ -422,3 +469,4 @@ VRControllerHost::GetVibrateIndex()
 {
   return mVibrateIndex;
 }
+

@@ -21,6 +21,7 @@ class HeapSnapshot;
 namespace dom {
 
 class ArrayBufferViewOrArrayBuffer;
+class BrowsingContext;
 class IdleRequestCallback;
 struct IdleRequestOptions;
 class MozQueryInterface;
@@ -160,7 +161,9 @@ public:
 
   static void ClearRecentJSDevError(GlobalObject& aGlobal);
 
-  static void RequestPerformanceMetrics(GlobalObject& aGlobal);
+  static already_AddRefed<Promise>
+  RequestPerformanceMetrics(GlobalObject& aGlobal,
+                            ErrorResult& aRv);
 
   static void Import(const GlobalObject& aGlobal,
                      const nsAString& aResourceURI,
@@ -182,6 +185,13 @@ public:
   CreateError(const GlobalObject& global, const nsAString& message,
               JS::Handle<JSObject*> stack,
               JS::MutableHandle<JSObject*> aRetVal, ErrorResult& aRv);
+
+  static already_AddRefed<Promise>
+  RequestIOActivity(GlobalObject& aGlobal, ErrorResult& aRv);
+
+  static void
+  GetRootBrowsingContexts(GlobalObject& aGlobal,
+                          nsTArray<RefPtr<BrowsingContext>>& aBrowsingContexts);
 };
 
 } // namespace dom

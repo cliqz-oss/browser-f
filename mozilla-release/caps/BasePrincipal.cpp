@@ -12,14 +12,15 @@
 #include "nsIObjectOutputStream.h"
 #include "nsIStandardURL.h"
 
-#include "ContentPrincipal.h"
 #include "ExpandedPrincipal.h"
 #include "nsNetUtil.h"
-#include "nsIURIWithPrincipal.h"
-#include "NullPrincipal.h"
+#include "nsIURIWithSpecialOrigin.h"
 #include "nsScriptSecurityManager.h"
 #include "nsServiceManagerUtils.h"
 
+#include "mozilla/ContentPrincipal.h"
+#include "mozilla/NullPrincipal.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/ChromeUtils.h"
 #include "mozilla/dom/CSPDictionariesBinding.h"
 #include "mozilla/dom/ToJSValue.h"
@@ -283,6 +284,13 @@ BasePrincipal::GetIsSystemPrincipal(bool* aResult)
 }
 
 NS_IMETHODIMP
+BasePrincipal::GetIsAddonOrExpandedAddonPrincipal(bool* aResult)
+{
+  *aResult = AddonPolicy() || ContentScriptAddonPolicy();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 BasePrincipal::GetOriginAttributes(JSContext* aCx, JS::MutableHandle<JS::Value> aVal)
 {
   if (NS_WARN_IF(!ToJSValue(aCx, mOriginAttributes, aVal))) {
@@ -404,15 +412,27 @@ BasePrincipal::CreateCodebasePrincipal(nsIURI* aURI,
   }
 
   // Check whether the URI knows what its principal is supposed to be.
-  nsCOMPtr<nsIURIWithPrincipal> uriPrinc = do_QueryInterface(aURI);
-  if (uriPrinc) {
-    nsCOMPtr<nsIPrincipal> principal;
-    uriPrinc->GetPrincipal(getter_AddRefs(principal));
-    if (!principal) {
-      return NullPrincipal::Create(aAttrs);
+#if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
+  nsCOMPtr<nsIURIWithSpecialOrigin> uriWithSpecialOrigin = do_QueryInterface(aURI);
+  if (uriWithSpecialOrigin) {
+    nsCOMPtr<nsIURI> origin;
+    rv = uriWithSpecialOrigin->GetOrigin(getter_AddRefs(origin));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return nullptr;
     }
-    RefPtr<BasePrincipal> concrete = Cast(principal);
-    return concrete.forget();
+    MOZ_ASSERT(origin);
+    OriginAttributes attrs;
+    RefPtr<BasePrincipal> principal = CreateCodebasePrincipal(origin, attrs);
+    return principal.forget();
+  }
+#endif
+
+  nsCOMPtr<nsIPrincipal> blobPrincipal;
+  if (dom::BlobURLProtocolHandler::GetBlobURLPrincipal(aURI,
+                                                       getter_AddRefs(blobPrincipal))) {
+    MOZ_ASSERT(blobPrincipal);
+    RefPtr<BasePrincipal> principal = Cast(blobPrincipal);
+    return principal.forget();
   }
 
   // Mint a codebase principal.
@@ -432,7 +452,7 @@ BasePrincipal::CreateCodebasePrincipal(const nsACString& aOrigin)
              "CreateCodebasePrincipal does not support NullPrincipal");
 
   nsAutoCString originNoSuffix;
-  mozilla::OriginAttributes attrs;
+  OriginAttributes attrs;
   if (!attrs.PopulateFromOrigin(aOrigin, originNoSuffix)) {
     return nullptr;
   }

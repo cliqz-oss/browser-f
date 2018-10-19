@@ -10,7 +10,6 @@
 #include <stdint.h>
 
 #include "jit/JSJitFrameIter.h"
-#include "jit/Safepoints.h"
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
 
@@ -23,6 +22,8 @@ enum CalleeTokenTag
     CalleeToken_FunctionConstructing = 0x1,
     CalleeToken_Script = 0x2
 };
+
+struct SafepointSlotEntry;
 
 static const uintptr_t CalleeTokenMask = ~uintptr_t(0x3);
 
@@ -189,6 +190,7 @@ class OsiIndex
 // [ frame size | has cached saved frame bit | frame header size | frame type ]
 // < highest - - - - - - - - - - - - - - lowest >
 static const uintptr_t FRAMETYPE_BITS = 4;
+static const uintptr_t FRAMETYPE_MASK = (1 << FRAMETYPE_BITS) - 1;
 static const uintptr_t FRAME_HEADER_SIZE_SHIFT = FRAMETYPE_BITS;
 static const uintptr_t FRAME_HEADER_SIZE_BITS = 3;
 static const uintptr_t FRAME_HEADER_SIZE_MASK = (1 << FRAME_HEADER_SIZE_BITS) - 1;
@@ -301,9 +303,10 @@ EncodeFrameHeaderSize(size_t headerSize)
 static inline uint32_t
 MakeFrameDescriptor(uint32_t frameSize, FrameType type, uint32_t headerSize)
 {
-    MOZ_ASSERT(headerSize < FRAMESIZE_MASK);
+    MOZ_ASSERT(frameSize < FRAMESIZE_MASK);
     headerSize = EncodeFrameHeaderSize(headerSize);
-    return 0 | (frameSize << FRAMESIZE_SHIFT) | (headerSize << FRAME_HEADER_SIZE_SHIFT) | type;
+    return 0 | (frameSize << FRAMESIZE_SHIFT) | (headerSize << FRAME_HEADER_SIZE_SHIFT) |
+           uint32_t(type);
 }
 
 // Returns the JSScript associated with the topmost JIT frame.
@@ -311,7 +314,7 @@ inline JSScript*
 GetTopJitJSScript(JSContext* cx)
 {
     JSJitFrameIter frame(cx->activation()->asJit());
-    MOZ_ASSERT(frame.type() == JitFrame_Exit);
+    MOZ_ASSERT(frame.type() == FrameType::Exit);
     ++frame;
 
     if (frame.isBaselineStub()) {
@@ -341,8 +344,6 @@ class CommonFrameLayout
     uint8_t* returnAddress_;
     uintptr_t descriptor_;
 
-    static const uintptr_t FrameTypeMask = (1 << FRAMETYPE_BITS) - 1;
-
   public:
     static size_t offsetOfDescriptor() {
         return offsetof(CommonFrameLayout, descriptor_);
@@ -354,11 +355,11 @@ class CommonFrameLayout
         return offsetof(CommonFrameLayout, returnAddress_);
     }
     FrameType prevType() const {
-        return FrameType(descriptor_ & FrameTypeMask);
+        return FrameType(descriptor_ & FRAMETYPE_MASK);
     }
     void changePrevType(FrameType type) {
-        descriptor_ &= ~FrameTypeMask;
-        descriptor_ |= type;
+        descriptor_ &= ~FRAMETYPE_MASK;
+        descriptor_ |= uintptr_t(type);
     }
     size_t prevFrameLocalSize() const {
         return descriptor_ >> FRAMESIZE_SHIFT;
@@ -471,18 +472,19 @@ class IonICCallFrameLayout : public CommonFrameLayout
 
 enum class ExitFrameType : uint8_t
 {
-    CallNative        = 0x0,
-    ConstructNative   = 0x1,
-    IonDOMGetter      = 0x2,
-    IonDOMSetter      = 0x3,
-    IonDOMMethod      = 0x4,
-    IonOOLNative      = 0x5,
-    IonOOLProxy       = 0x6,
-    WasmJitEntry      = 0x7,
-    InterpreterStub   = 0xFC,
-    VMFunction        = 0xFD,
-    LazyLink          = 0xFE,
-    Bare              = 0xFF,
+    CallNative          = 0x0,
+    ConstructNative     = 0x1,
+    IonDOMGetter        = 0x2,
+    IonDOMSetter        = 0x3,
+    IonDOMMethod        = 0x4,
+    IonOOLNative        = 0x5,
+    IonOOLProxy         = 0x6,
+    WasmGenericJitEntry = 0x7,
+    DirectWasmJitCall   = 0x8,
+    InterpreterStub     = 0xFC,
+    VMFunction          = 0xFD,
+    LazyLink            = 0xFE,
+    Bare                = 0xFF,
 };
 
 // GC related data used to keep alive data surrounding the Exit frame.
@@ -855,10 +857,10 @@ class InterpreterStubExitFrameLayout : public CalledFromJitExitFrameLayout
     static ExitFrameType Type() { return ExitFrameType::InterpreterStub; }
 };
 
-class WasmExitFrameLayout : CalledFromJitExitFrameLayout
+class WasmGenericJitEntryFrameLayout : CalledFromJitExitFrameLayout
 {
   public:
-    static ExitFrameType Type() { return ExitFrameType::WasmJitEntry; }
+    static ExitFrameType Type() { return ExitFrameType::WasmGenericJitEntry; }
 };
 
 template<>
@@ -867,7 +869,7 @@ ExitFrameLayout::is<CalledFromJitExitFrameLayout>()
 {
     return is<InterpreterStubExitFrameLayout>() ||
            is<LazyLinkExitFrameLayout>() ||
-           is<WasmExitFrameLayout>();
+           is<WasmGenericJitEntryFrameLayout>();
 }
 
 template <>
@@ -880,6 +882,15 @@ ExitFrameLayout::as<CalledFromJitExitFrameLayout>()
     return reinterpret_cast<CalledFromJitExitFrameLayout*>(sp);
 }
 
+class DirectWasmJitCallFrameLayout
+{
+  protected: // silence clang warning about unused private fields
+    ExitFooterFrame footer_;
+    ExitFrameLayout exit_;
+  public:
+    static ExitFrameType Type() { return ExitFrameType::DirectWasmJitCall; }
+};
+
 class ICStub;
 
 class JitStubFrameLayout : public CommonFrameLayout
@@ -889,7 +900,7 @@ class JitStubFrameLayout : public CommonFrameLayout
     // --------------------
     // |JitStubFrameLayout|
     // +------------------+
-    // | - Descriptor     | => Marks end of JitFrame_IonJS
+    // | - Descriptor     | => Marks end of FrameType::IonJS
     // | - returnaddres   |
     // +------------------+
     // | - StubPtr        | => First thing pushed in a stub only when the stub will do
@@ -918,7 +929,7 @@ class BaselineStubFrameLayout : public JitStubFrameLayout
     // -------------------------
     // |BaselineStubFrameLayout|
     // +-----------------------+
-    // | - Descriptor          | => Marks end of JitFrame_BaselineJS
+    // | - Descriptor          | => Marks end of FrameType::BaselineJS
     // | - returnaddres        |
     // +-----------------------+
     // | - StubPtr             | => First thing pushed in a stub only when the stub will do

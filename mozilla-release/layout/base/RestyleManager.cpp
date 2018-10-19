@@ -11,12 +11,14 @@
 #include "mozilla/ComputedStyle.h"
 #include "mozilla/ComputedStyleInlines.h"
 #include "mozilla/DocumentStyleRootIterator.h"
+#include "mozilla/LayerAnimationInfo.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoStyleSetInlines.h"
 #include "mozilla/Unused.h"
 #include "mozilla/ViewportFrame.h"
 #include "mozilla/dom/ChildIterator.h"
 #include "mozilla/dom/ElementInlines.h"
+#include "mozilla/dom/HTMLBodyElement.h"
 
 #include "Layers.h"
 #include "LayerAnimationInfo.h" // For LayerAnimationInfo::sRecords
@@ -26,6 +28,7 @@
 #include "nsContentUtils.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsCSSRendering.h"
+#include "nsIDocumentInlines.h"
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
 #include "nsImageFrame.h"
@@ -493,7 +496,7 @@ RestyleManager::ContentRemoved(nsIContent* aOldChild,
  * This is called from both Restyle managers.
  */
 void
-RestyleManager::ContentStateChangedInternal(Element* aElement,
+RestyleManager::ContentStateChangedInternal(const Element& aElement,
                                             EventStates aStateMask,
                                             nsChangeHint* aOutChangeHint)
 {
@@ -507,7 +510,7 @@ RestyleManager::ContentStateChangedInternal(Element* aElement,
   // based on content states, so if we already don't have a frame we don't
   // need to force a reframe -- if it's needed, the HasStateDependentStyle
   // call will handle things.
-  nsIFrame* primaryFrame = aElement->GetPrimaryFrame();
+  nsIFrame* primaryFrame = aElement.GetPrimaryFrame();
   if (primaryFrame) {
     // If it's generated content, ignore LOADING/etc state changes on it.
     if (!primaryFrame->IsGeneratedContentFrame() &&
@@ -517,14 +520,15 @@ RestyleManager::ContentStateChangedInternal(Element* aElement,
                                          NS_EVENT_STATE_LOADING)) {
       *aOutChangeHint = nsChangeHint_ReconstructFrame;
     } else {
-      uint8_t app = primaryFrame->StyleDisplay()->mAppearance;
-      if (app) {
+      auto* disp = primaryFrame->StyleDisplay();
+      if (disp->HasAppearance()) {
         nsITheme* theme = PresContext()->GetTheme();
         if (theme &&
-            theme->ThemeSupportsWidget(PresContext(), primaryFrame, app)) {
+            theme->ThemeSupportsWidget(PresContext(), primaryFrame,
+                                       disp->mAppearance)) {
           bool repaint = false;
-          theme->WidgetStateChanged(primaryFrame, app, nullptr, &repaint,
-                                    nullptr);
+          theme->WidgetStateChanged(primaryFrame, disp->mAppearance, nullptr,
+                                    &repaint, nullptr);
           if (repaint) {
             *aOutChangeHint |= nsChangeHint_RepaintFrame;
           }
@@ -595,7 +599,7 @@ RestyleManager::ChangeHintToString(nsChangeHint aHint)
     "NeutralChange", "InvalidateRenderingObservers",
     "ReflowChangesSizeOrPosition", "UpdateComputedBSize",
     "UpdateUsesOpacity", "UpdateBackgroundPosition",
-    "AddOrRemoveTransform", "CSSOverflowChange",
+    "AddOrRemoveTransform", "ScrollbarChange",
     "UpdateWidgetProperties", "UpdateTableCellSpans",
     "VisibilityChange"
   };
@@ -1127,6 +1131,42 @@ SyncViewsAndInvalidateDescendants(nsIFrame* aFrame, nsChangeHint aChange)
   }
 }
 
+static bool
+IsPrimaryFrameOfRootOrBodyElement(nsIFrame* aFrame)
+{
+  nsIContent* content = aFrame->GetContent();
+  if (!content) {
+    return false;
+  }
+
+  nsIDocument* document = content->OwnerDoc();
+  Element* root = document->GetRootElement();
+  if (!root) {
+    return false;
+  }
+  nsIFrame* rootFrame = root->GetPrimaryFrame();
+  if (!rootFrame) {
+    return false;
+  }
+  if (aFrame == rootFrame) {
+    return true;
+  }
+
+  Element* body = document->GetBodyElement();
+  if (!body) {
+    return false;
+  }
+  nsIFrame* bodyFrame = body->GetPrimaryFrame();
+  if (!bodyFrame) {
+    return false;
+  }
+  if (aFrame == bodyFrame) {
+    return true;
+  }
+
+  return false;
+}
+
 static void
 ApplyRenderingChangeToTree(nsIPresShell* aPresShell,
                            nsIFrame* aFrame,
@@ -1154,17 +1194,15 @@ ApplyRenderingChangeToTree(nsIPresShell* aPresShell,
   gInApplyRenderingChangeToTree = true;
 #endif
   if (aChange & nsChangeHint_RepaintFrame) {
-    // If the frame's background is propagated to an ancestor, walk up to
-    // that ancestor and apply the RepaintFrame change hint to it.
-    ComputedStyle* bgSC;
-    nsIFrame* propagatedFrame = aFrame;
-    while (!nsCSSRendering::FindBackground(propagatedFrame, &bgSC)) {
-      propagatedFrame = propagatedFrame->GetParent();
-      NS_ASSERTION(aFrame, "root frame must paint");
-    }
-
-    if (propagatedFrame != aFrame) {
-      DoApplyRenderingChangeToTree(propagatedFrame, nsChangeHint_RepaintFrame);
+    // If the frame is the primary frame of either the body element or
+    // the html element, we propagate the repaint change hint to the
+    // viewport. This is necessary for background and scrollbar colors
+    // propagation.
+    if (IsPrimaryFrameOfRootOrBodyElement(aFrame)) {
+      nsIFrame* rootFrame = aFrame->
+        PresShell()->FrameConstructor()->GetRootFrame();
+      MOZ_ASSERT(rootFrame, "No root frame?");
+      DoApplyRenderingChangeToTree(rootFrame, nsChangeHint_RepaintFrame);
       aChange &= ~nsChangeHint_RepaintFrame;
       if (!aChange) {
         return;
@@ -1317,11 +1355,11 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
   nsPresContext* presContext = PresContext();
   nsCSSFrameConstructor* frameConstructor = presContext->FrameConstructor();
 
-  // Handle nsChangeHint_CSSOverflowChange, by either updating the
+  // Handle nsChangeHint_ScrollbarChange, by either updating the
   // scrollbars on the viewport, or upgrading the change hint to frame-reconstruct.
   for (nsStyleChangeData& data : aChangeList) {
-    if (data.mHint & nsChangeHint_CSSOverflowChange) {
-      data.mHint &= ~nsChangeHint_CSSOverflowChange;
+    if (data.mHint & nsChangeHint_ScrollbarChange) {
+      data.mHint &= ~nsChangeHint_ScrollbarChange;
       bool doReconstruct = true; // assume the worst
 
       // Only bother with this if we're html/body, since:
@@ -1343,9 +1381,9 @@ RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
         // to reconstruct - we can just reflow, because no scrollframe is being
         // added/removed.
         nsIContent* prevOverrideNode =
-          presContext->GetViewportScrollbarStylesOverrideElement();
+          presContext->GetViewportScrollStylesOverrideElement();
         nsIContent* newOverrideNode =
-          presContext->UpdateViewportScrollbarStylesOverride();
+          presContext->UpdateViewportScrollStylesOverride();
 
         if (data.mContent == prevOverrideNode ||
             data.mContent == newOverrideNode) {
@@ -1747,6 +1785,7 @@ RestyleManager::IncrementAnimationGeneration()
 /* static */ void
 RestyleManager::AddLayerChangesForAnimation(nsIFrame* aFrame,
                                             nsIContent* aContent,
+                                            nsChangeHint aHintForThisFrame,
                                             nsStyleChangeList&
                                               aChangeListToProcess)
 {
@@ -1760,25 +1799,46 @@ RestyleManager::AddLayerChangesForAnimation(nsIFrame* aFrame,
   nsChangeHint hint = nsChangeHint(0);
   for (const LayerAnimationInfo::Record& layerInfo :
          LayerAnimationInfo::sRecords) {
-    layers::Layer* layer =
-      FrameLayerBuilder::GetDedicatedLayer(aFrame, layerInfo.mLayerType);
-    if (layer && frameGeneration != layer->GetAnimationGeneration()) {
-      // If we have a transform layer but don't have any transform style, we
+    Maybe<uint64_t> generation =
+      layers::AnimationInfo::GetGenerationFromFrame(aFrame,
+                                                    layerInfo.mLayerType);
+    if (generation && frameGeneration != *generation) {
+      // If we have a transform layer bug don't have any transform style, we
       // probably just removed the transform but haven't destroyed the layer
-      // yet. In this case we will add the appropriate change hint
-      // (nsChangeHint_UpdateContainingBlock) when we compare styles so we can
-      // skip adding any change hint here. (If we *were* to add
-      // nsChangeHint_UpdateTransformLayer, ApplyRenderingChangeToTree would
-      // complain that we're updating a transform layer without a transform).
+      // yet. In this case we will typically add the appropriate change hint
+      // (nsChangeHint_UpdateContainingBlock) when we compare styles so in
+      // theory we could skip adding any change hint here.
+      //
+      // However, sometimes when we compare styles we'll get no change. For
+      // example, if the transform style was 'none' when we sent the transform
+      // animation to the compositor and the current transform style is now
+      // 'none' we'll think nothing changed but actually we still need to
+      // trigger an update to clear whatever style the transform animation set
+      // on the compositor. To handle this case we simply set all the change
+      // hints relevant to removing transform style (since we don't know exactly
+      // what changes happened while the animation was running on the
+      // compositor).
+      //
+      // Note that we *don't* add nsChangeHint_UpdateTransformLayer since if we
+      // did, ApplyRenderingChangeToTree would complain that we're updating a
+      // transform layer without a transform.
       if (layerInfo.mLayerType == DisplayItemType::TYPE_TRANSFORM &&
           !aFrame->StyleDisplay()->HasTransformStyle()) {
+        // Add all the hints for a removing a transform if they are not already
+        // set for this frame.
+        if (!(NS_IsHintSubset(
+                nsChangeHint_ComprehensiveAddOrRemoveTransform,
+                aHintForThisFrame))) {
+          hint |= nsChangeHint_ComprehensiveAddOrRemoveTransform;
+        }
         continue;
       }
       hint |= layerInfo.mChangeHint;
     }
 
     // We consider it's the first paint for the frame if we have an animation
-    // for the property but have no layer.
+    // for the property but have no layer, for the case of WebRender,  no
+    // corresponding animation info.
     // Note that in case of animations which has properties preventing running
     // on the compositor, e.g., width or height, corresponding layer is not
     // created at all, but even in such cases, we normally set valid change
@@ -1789,7 +1849,7 @@ RestyleManager::AddLayerChangesForAnimation(nsIFrame* aFrame,
     // not have those properies just before. e.g, setting transform by
     // setKeyframes or changing target element from other target which prevents
     // running on the compositor, etc.
-    if (!layer &&
+    if (!generation &&
         nsLayoutUtils::HasEffectiveAnimation(aFrame, layerInfo.mProperty)) {
       hint |= layerInfo.mChangeHint;
     }
@@ -1929,7 +1989,7 @@ ExpectedOwnerForChild(const nsIFrame& aFrame)
   // generated by our DOM parent, and go find the owner frame for it.
   while (parent && (IsAnonBox(*parent) || parent->IsLineFrame())) {
     auto* pseudo = parent->Style()->GetPseudo();
-    if (pseudo == nsCSSAnonBoxes::tableWrapper) {
+    if (pseudo == nsCSSAnonBoxes::tableWrapper()) {
       const nsIFrame* tableFrame = parent->PrincipalChildList().FirstChild();
       MOZ_ASSERT(tableFrame->IsTableFrame());
       // Handle :-moz-table and :-moz-inline-table.
@@ -1997,10 +2057,10 @@ ServoRestyleState::AddPendingWrapperRestyle(nsIFrame* aWrapperFrame)
              "All our wrappers are anon boxes, and why would we restyle "
              "non-inheriting ones?");
   MOZ_ASSERT(aWrapperFrame->Style()->GetPseudo() !=
-             nsCSSAnonBoxes::cellContent,
+             nsCSSAnonBoxes::cellContent(),
              "Someone should be using TableAwareParentFor");
   MOZ_ASSERT(aWrapperFrame->Style()->GetPseudo() !=
-             nsCSSAnonBoxes::tableWrapper,
+             nsCSSAnonBoxes::tableWrapper(),
              "Someone should be using TableAwareParentFor");
   // Make sure we only add first continuations.
   aWrapperFrame = aWrapperFrame->FirstContinuation();
@@ -2128,7 +2188,7 @@ ServoRestyleState::TableAwareParentFor(const nsIFrame* aChild)
 
   nsIFrame* parent = aChild->GetParent();
   // Now if parent is a cell-content frame, we actually want the cellframe.
-  if (parent->Style()->GetPseudo() == nsCSSAnonBoxes::cellContent) {
+  if (parent->Style()->GetPseudo() == nsCSSAnonBoxes::cellContent()) {
     parent = parent->GetParent();
   } else if (parent->IsTableWrapperFrame()) {
     // Must be a caption.  In that case we want the table here.
@@ -2140,8 +2200,8 @@ ServoRestyleState::TableAwareParentFor(const nsIFrame* aChild)
 
 void
 RestyleManager::PostRestyleEvent(Element* aElement,
-                                      nsRestyleHint aRestyleHint,
-                                      nsChangeHint aMinChangeHint)
+                                 nsRestyleHint aRestyleHint,
+                                 nsChangeHint aMinChangeHint)
 {
   MOZ_ASSERT(!(aMinChangeHint & nsChangeHint_NeutralChange),
              "Didn't expect explicit change hints to be neutral!");
@@ -2320,14 +2380,14 @@ public:
                            ComputedStyle& aNewStyle)
   {
     MOZ_ASSERT(aTextFrame);
-    MOZ_ASSERT(aNewStyle.GetPseudo() == nsCSSAnonBoxes::mozText);
+    MOZ_ASSERT(aNewStyle.GetPseudo() == nsCSSAnonBoxes::mozText());
 
     if (MOZ_LIKELY(!mShouldPostHints)) {
       return;
     }
 
     ComputedStyle* oldStyle = aTextFrame->Style();
-    MOZ_ASSERT(oldStyle->GetPseudo() == nsCSSAnonBoxes::mozText);
+    MOZ_ASSERT(oldStyle->GetPseudo() == nsCSSAnonBoxes::mozText());
 
     // We rely on the fact that all the text children for the same element share
     // style to avoid recomputing style differences for all of them.
@@ -2352,7 +2412,7 @@ private:
   ComputedStyle& ParentStyle() {
     if (!mParentContext) {
       mLazilyResolvedParentContext =
-        mParentRestyleState.StyleSet().ResolveServoStyle(&mParentElement);
+        mParentRestyleState.StyleSet().ResolveServoStyle(mParentElement);
       mParentContext = mLazilyResolvedParentContext;
     }
     return *mParentContext;
@@ -2675,7 +2735,7 @@ RestyleManager::ProcessPostTraversal(
     Servo_Element_IsDisplayContents(aElement);
   if (isDisplayContents) {
     oldOrDisplayContentsStyle =
-      aRestyleState.StyleSet().ResolveServoStyle(aElement);
+      aRestyleState.StyleSet().ResolveServoStyle(*aElement);
   }
 
   Maybe<ServoRestyleState> thisFrameRestyleState;
@@ -2694,7 +2754,7 @@ RestyleManager::ProcessPostTraversal(
 
   RefPtr<ComputedStyle> upToDateContext =
     wasRestyled
-      ? aRestyleState.StyleSet().ResolveServoStyle(aElement)
+      ? aRestyleState.StyleSet().ResolveServoStyle(*aElement)
       : oldOrDisplayContentsStyle;
 
   ServoPostTraversalFlags childrenFlags =
@@ -2748,7 +2808,7 @@ RestyleManager::ProcessPostTraversal(
     // style or not, we need to call it *after* setting |newStyle| to
     // |styleFrame| to ensure the animated transform has been removed first.
     AddLayerChangesForAnimation(
-      styleFrame, aElement, aRestyleState.ChangeList());
+      styleFrame, aElement, changeHint, aRestyleState.ChangeList());
 
     childrenFlags |= SendA11yNotifications(mPresContext,
                                            aElement,
@@ -2885,7 +2945,7 @@ RestyleManager::ClearSnapshots()
 }
 
 ServoElementSnapshot&
-RestyleManager::SnapshotFor(Element* aElement)
+RestyleManager::SnapshotFor(Element& aElement)
 {
   MOZ_ASSERT(!mInStyleRefresh);
 
@@ -2899,14 +2959,14 @@ RestyleManager::SnapshotFor(Element* aElement)
   //
   // Can't wait to make ProcessPendingRestyles the only entry-point for styling,
   // so this becomes much easier to reason about. Today is not that day though.
-  MOZ_ASSERT(aElement->HasServoData());
-  MOZ_ASSERT(!aElement->HasFlag(ELEMENT_HANDLED_SNAPSHOT));
+  MOZ_ASSERT(aElement.HasServoData());
+  MOZ_ASSERT(!aElement.HasFlag(ELEMENT_HANDLED_SNAPSHOT));
 
-  ServoElementSnapshot* snapshot = mSnapshots.LookupOrAdd(aElement, aElement);
-  aElement->SetFlags(ELEMENT_HAS_SNAPSHOT);
+  ServoElementSnapshot* snapshot = mSnapshots.LookupOrAdd(&aElement, aElement);
+  aElement.SetFlags(ELEMENT_HAS_SNAPSHOT);
 
   // Now that we have a snapshot, make sure a restyle is triggered.
-  aElement->NoteDirtyForServo();
+  aElement.NoteDirtyForServo();
   return *snapshot;
 }
 
@@ -3117,30 +3177,45 @@ RestyleManager::ContentStateChanged(nsIContent* aContent,
     return;
   }
 
-  Element* aElement = aContent->AsElement();
-  if (!aElement->HasServoData()) {
+  Element& element = *aContent->AsElement();
+  if (!element.HasServoData()) {
     return;
   }
 
+  const EventStates kVisitedAndUnvisited =
+    NS_EVENT_STATE_VISITED | NS_EVENT_STATE_UNVISITED;
+  // NOTE: We want to return ASAP for visitedness changes, but we don't want to
+  // mess up the situation where the element became a link or stopped being one.
+  if (aChangedBits.HasAllStates(kVisitedAndUnvisited) &&
+      !Gecko_VisitedStylesEnabled(element.OwnerDoc())) {
+    aChangedBits &= ~kVisitedAndUnvisited;
+    if (aChangedBits.IsEmpty()) {
+      return;
+    }
+  }
+
   nsChangeHint changeHint;
-  ContentStateChangedInternal(aElement, aChangedBits, &changeHint);
+  ContentStateChangedInternal(element, aChangedBits, &changeHint);
 
   // Don't bother taking a snapshot if no rules depend on these state bits.
   //
   // We always take a snapshot for the LTR/RTL event states, since Servo doesn't
   // track those bits in the same way, and we know that :dir() rules are always
   // present in UA style sheets.
+  //
+  // FIXME(emilio): Doesn't this early-return drop the change hint on the floor?
+  // Should it?
   if (!aChangedBits.HasAtLeastOneOfStates(DIRECTION_STATES) &&
-      !StyleSet()->HasStateDependency(*aElement, aChangedBits)) {
+      !StyleSet()->HasStateDependency(element, aChangedBits)) {
     return;
   }
 
-  ServoElementSnapshot& snapshot = SnapshotFor(aElement);
-  EventStates previousState = aElement->StyleState() ^ aChangedBits;
+  ServoElementSnapshot& snapshot = SnapshotFor(element);
+  EventStates previousState = element.StyleState() ^ aChangedBits;
   snapshot.AddState(previousState);
 
   if (changeHint) {
-    Servo_NoteExplicitHints(aElement, nsRestyleHint(0), changeHint);
+    Servo_NoteExplicitHints(&element, nsRestyleHint(0), changeHint);
   }
 
   // Assuming we need to invalidate cached style in getComputedStyle for
@@ -3211,30 +3286,30 @@ RestyleManager::AttributeWillChange(Element* aElement,
                                     int32_t aModType,
                                     const nsAttrValue* aNewValue)
 {
-  TakeSnapshotForAttributeChange(aElement, aNameSpaceID, aAttribute);
+  TakeSnapshotForAttributeChange(*aElement, aNameSpaceID, aAttribute);
 }
 
 void
 RestyleManager::ClassAttributeWillBeChangedBySMIL(Element* aElement)
 {
-  TakeSnapshotForAttributeChange(aElement, kNameSpaceID_None,
+  TakeSnapshotForAttributeChange(*aElement, kNameSpaceID_None,
                                  nsGkAtoms::_class);
 }
 
 void
-RestyleManager::TakeSnapshotForAttributeChange(Element* aElement,
+RestyleManager::TakeSnapshotForAttributeChange(Element& aElement,
                                                int32_t aNameSpaceID,
                                                nsAtom* aAttribute)
 {
   MOZ_ASSERT(!mInStyleRefresh);
 
-  if (!aElement->HasServoData()) {
+  if (!aElement.HasServoData()) {
     return;
   }
 
   bool influencesOtherPseudoClassState;
   if (!NeedToRecordAttrChange(*StyleSet(),
-                              *aElement,
+                              aElement,
                               aNameSpaceID,
                               aAttribute,
                               &influencesOtherPseudoClassState)) {
@@ -3306,7 +3381,7 @@ RestyleManager::AttributeChanged(Element* aElement,
   if (nsIFrame* primaryFrame = aElement->GetPrimaryFrame()) {
     // See if we have appearance information for a theme.
     const nsStyleDisplay* disp = primaryFrame->StyleDisplay();
-    if (disp->mAppearance) {
+    if (disp->HasAppearance()) {
       nsITheme* theme = PresContext()->GetTheme();
       if (theme && theme->ThemeSupportsWidget(PresContext(), primaryFrame,
                                               disp->mAppearance)) {

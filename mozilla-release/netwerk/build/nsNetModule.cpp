@@ -28,7 +28,6 @@
 #include "nsSOCKSSocketProvider.h"
 #include "nsCacheService.h"
 #include "nsDiskCacheDeviceSQL.h"
-#include "nsApplicationCache.h"
 #include "nsApplicationCacheService.h"
 #include "nsMimeTypes.h"
 #include "nsDNSPrefetch.h"
@@ -39,6 +38,7 @@
 #include "Predictor.h"
 #include "nsIThreadPool.h"
 #include "mozilla/net/NeckoChild.h"
+#include "RedirectChannelRegistrar.h"
 
 #include "nsNetCID.h"
 
@@ -131,10 +131,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsEffectiveTLDService, Init)
 #include "nsSerializationHelper.h"
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSerializationHelper)
 
-#include "RedirectChannelRegistrar.h"
-typedef mozilla::net::RedirectChannelRegistrar RedirectChannelRegistrar;
-NS_GENERIC_FACTORY_CONSTRUCTOR(RedirectChannelRegistrar)
-
 #include "CacheStorageService.h"
 typedef mozilla::net::CacheStorageService CacheStorageService;
 NS_GENERIC_FACTORY_CONSTRUCTOR(CacheStorageService)
@@ -148,7 +144,8 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(LoadContextInfoFactory)
 #include "mozilla/net/CaptivePortalService.h"
 namespace mozilla {
 namespace net {
-  NS_GENERIC_FACTORY_CONSTRUCTOR(CaptivePortalService)
+  NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsICaptivePortalService,
+    CaptivePortalService::GetSingleton)
 } // namespace net
 } // namespace mozilla
 
@@ -232,8 +229,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsNestedAboutURIMutator)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsAboutCacheEntry)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsApplicationCacheService)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsApplicationCacheNamespace)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsApplicationCache)
 
 // file
 #include "nsFileProtocolHandler.h"
@@ -651,6 +646,8 @@ static void nsNetShutdown()
 
     mozilla::net::Http2CompressionCleanup();
 
+    mozilla::net::RedirectChannelRegistrar::Shutdown();
+
     delete gNetSniffers;
     gNetSniffers = nullptr;
     delete gDataSniffers;
@@ -743,8 +740,6 @@ NS_DEFINE_NAMED_CID(NS_SOCKS4SOCKETPROVIDER_CID);
 NS_DEFINE_NAMED_CID(NS_UDPSOCKETPROVIDER_CID);
 NS_DEFINE_NAMED_CID(NS_CACHESERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_APPLICATIONCACHESERVICE_CID);
-NS_DEFINE_NAMED_CID(NS_APPLICATIONCACHENAMESPACE_CID);
-NS_DEFINE_NAMED_CID(NS_APPLICATIONCACHE_CID);
 #ifdef NECKO_COOKIES
 NS_DEFINE_NAMED_CID(NS_COOKIEMANAGER_CID);
 NS_DEFINE_NAMED_CID(NS_COOKIESERVICE_CID);
@@ -767,7 +762,6 @@ NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_SERIALIZATION_HELPER_CID);
-NS_DEFINE_NAMED_CID(NS_REDIRECTCHANNELREGISTRAR_CID);
 NS_DEFINE_NAMED_CID(NS_CACHE_STORAGE_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_NSILOADCONTEXTINFOFACTORY_CID);
 NS_DEFINE_NAMED_CID(NS_NETWORKPREDICTOR_CID);
@@ -866,8 +860,6 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_UDPSOCKETPROVIDER_CID, false, nullptr, nsUDPSocketProviderConstructor },
     { &kNS_CACHESERVICE_CID, false, nullptr, nsCacheService::Create },
     { &kNS_APPLICATIONCACHESERVICE_CID, false, nullptr, nsApplicationCacheServiceConstructor },
-    { &kNS_APPLICATIONCACHENAMESPACE_CID, false, nullptr, nsApplicationCacheNamespaceConstructor },
-    { &kNS_APPLICATIONCACHE_CID, false, nullptr, nsApplicationCacheConstructor },
 #ifdef NECKO_COOKIES
     { &kNS_COOKIEMANAGER_CID, false, nullptr, nsICookieServiceConstructor },
     { &kNS_COOKIESERVICE_CID, false, nullptr, nsICookieServiceConstructor },
@@ -892,11 +884,10 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_NETWORK_LINK_SERVICE_CID, false, nullptr, nsNotifyAddrListenerConstructor },
 #endif
     { &kNS_SERIALIZATION_HELPER_CID, false, nullptr, nsSerializationHelperConstructor },
-    { &kNS_REDIRECTCHANNELREGISTRAR_CID, false, nullptr, RedirectChannelRegistrarConstructor },
     { &kNS_CACHE_STORAGE_SERVICE_CID, false, nullptr, CacheStorageServiceConstructor },
     { &kNS_NSILOADCONTEXTINFOFACTORY_CID, false, nullptr, LoadContextInfoFactoryConstructor },
     { &kNS_NETWORKPREDICTOR_CID, false, nullptr, mozilla::net::Predictor::Create },
-    { &kNS_CAPTIVEPORTAL_CID, false, nullptr, mozilla::net::CaptivePortalServiceConstructor },
+    { &kNS_CAPTIVEPORTAL_CID, false, nullptr, mozilla::net::nsICaptivePortalServiceConstructor },
     { &kNS_REQUESTCONTEXTSERVICE_CID, false, nullptr, RequestContextServiceConstructor },
 #ifdef BUILD_NETWORK_INFO_SERVICE
     { &kNETWORKINFOSERVICE_CID, false, nullptr, nsNetworkInfoServiceConstructor },
@@ -992,8 +983,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_NETWORK_SOCKET_CONTRACTID_PREFIX "udp", &kNS_UDPSOCKETPROVIDER_CID },
     { NS_CACHESERVICE_CONTRACTID, &kNS_CACHESERVICE_CID },
     { NS_APPLICATIONCACHESERVICE_CONTRACTID, &kNS_APPLICATIONCACHESERVICE_CID },
-    { NS_APPLICATIONCACHENAMESPACE_CONTRACTID, &kNS_APPLICATIONCACHENAMESPACE_CID },
-    { NS_APPLICATIONCACHE_CONTRACTID, &kNS_APPLICATIONCACHE_CID },
 #ifdef NECKO_COOKIES
     { NS_COOKIEMANAGER_CONTRACTID, &kNS_COOKIEMANAGER_CID },
     { NS_COOKIESERVICE_CONTRACTID, &kNS_COOKIESERVICE_CID },
@@ -1016,7 +1005,6 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
     { NS_NETWORK_LINK_SERVICE_CONTRACTID, &kNS_NETWORK_LINK_SERVICE_CID },
 #endif
     { NS_SERIALIZATION_HELPER_CONTRACTID, &kNS_SERIALIZATION_HELPER_CID },
-    { NS_REDIRECTCHANNELREGISTRAR_CONTRACTID, &kNS_REDIRECTCHANNELREGISTRAR_CID },
     { NS_CACHE_STORAGE_SERVICE_CONTRACTID, &kNS_CACHE_STORAGE_SERVICE_CID },
     { NS_CACHE_STORAGE_SERVICE_CONTRACTID2, &kNS_CACHE_STORAGE_SERVICE_CID },
     { NS_NSILOADCONTEXTINFOFACTORY_CONTRACTID, &kNS_NSILOADCONTEXTINFOFACTORY_CID },

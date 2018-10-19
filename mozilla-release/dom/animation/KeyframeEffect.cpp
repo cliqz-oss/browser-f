@@ -21,6 +21,7 @@
 #include "mozilla/LookAndFeel.h" // For LookAndFeel::GetInt
 #include "mozilla/KeyframeUtils.h"
 #include "mozilla/ServoBindings.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/TypeTraits.h"
 #include "Layers.h" // For Layer
 #include "nsComputedDOMStyle.h" // nsComputedDOMStyle::GetComputedStyle
@@ -28,7 +29,6 @@
 #include "nsCSSPropertyIDSet.h"
 #include "nsCSSProps.h" // For nsCSSProps::PropHasFlags
 #include "nsCSSPseudoElements.h" // For CSSPseudoElementType
-#include "nsDocument.h" // For nsDocument::IsWebAnimationsEnabled
 #include "nsIFrame.h"
 #include "nsIPresShell.h"
 #include "nsIScriptError.h"
@@ -85,26 +85,18 @@ JSObject*
 KeyframeEffect::WrapObject(JSContext* aCx,
                                    JS::Handle<JSObject*> aGivenProto)
 {
-  return KeyframeEffectBinding::Wrap(aCx, this, aGivenProto);
+  return KeyframeEffect_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-IterationCompositeOperation KeyframeEffect::IterationComposite(
-  CallerType /*aCallerType*/) const
+IterationCompositeOperation KeyframeEffect::IterationComposite() const
 {
   return mEffectOptions.mIterationComposite;
 }
 
 void
 KeyframeEffect::SetIterationComposite(
-  const IterationCompositeOperation& aIterationComposite,
-  CallerType aCallerType)
+  const IterationCompositeOperation& aIterationComposite)
 {
-  // Ignore iterationComposite if the Web Animations API is not enabled,
-  // then the default value 'Replace' will be used.
-  if (!nsDocument::IsWebAnimationsEnabled(aCallerType)) {
-    return;
-  }
-
   if (mEffectOptions.mIterationComposite == aIterationComposite) {
     return;
   }
@@ -511,11 +503,11 @@ KeyframeEffect::ComposeStyle(
     ComposeStyleRule(aComposeResult, prop, *segment, computedTiming);
   }
 
-  // If the animation produces a transform change hint that affects the overflow
-  // region, we need to record the current time to unthrottle the animation
+  // If the animation produces a change hint that affects the overflow region,
+  // we need to record the current time to unthrottle the animation
   // periodically when the animation is being throttled because it's scrolled
   // out of view.
-  if (HasTransformThatMightAffectOverflow()) {
+  if (HasPropertiesThatMightAffectOverflow()) {
     nsPresContext* presContext =
       nsContentUtils::GetContextForContent(mTarget->mElement);
     if (presContext) {
@@ -524,7 +516,7 @@ KeyframeEffect::ComposeStyle(
         EffectSet::GetEffectSet(mTarget->mElement, mTarget->mPseudoType);
       MOZ_ASSERT(effectSet, "ComposeStyle should only be called on an effect "
                             "that is part of an effect set");
-      effectSet->UpdateLastTransformSyncTime(now);
+      effectSet->UpdateLastOverflowAnimationSyncTime(now);
     }
   }
 }
@@ -597,9 +589,9 @@ KeyframeEffectParamsFromUnion(const OptionsType& aOptions,
 {
   KeyframeEffectParams result;
   if (aOptions.IsUnrestrictedDouble() ||
-      // Ignore iterationComposite if the Web Animations API is not enabled,
-      // then the default value 'Replace' will be used.
-      !nsDocument::IsWebAnimationsEnabled(aCallerType)) {
+      // Ignore iterationComposite and composite if the corresponding pref is
+      // not set. The default value 'Replace' will be used instead.
+      !StaticPrefs::dom_animations_api_compositing_enabled()) {
     return result;
   }
 
@@ -634,8 +626,8 @@ KeyframeEffect::ConvertTarget(
   return result;
 }
 
-template <class KeyframeEffectType, class OptionsType>
-/* static */ already_AddRefed<KeyframeEffectType>
+template <class OptionsType>
+/* static */ already_AddRefed<KeyframeEffect>
 KeyframeEffect::ConstructKeyframeEffect(
     const GlobalObject& aGlobal,
     const Nullable<ElementOrCSSPseudoElement>& aTarget,
@@ -668,49 +660,14 @@ KeyframeEffect::ConstructKeyframeEffect(
     KeyframeEffectParamsFromUnion(aOptions, aGlobal.CallerType());
 
   Maybe<OwningAnimationTarget> target = ConvertTarget(aTarget);
-  RefPtr<KeyframeEffectType> effect =
-    new KeyframeEffectType(doc, target, timingParams, effectOptions);
+  RefPtr<KeyframeEffect> effect =
+    new KeyframeEffect(doc, target, timingParams, effectOptions);
 
   effect->SetKeyframes(aGlobal.Context(), aKeyframes, aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
 
-  return effect.forget();
-}
-
-template<class KeyframeEffectType>
-/* static */ already_AddRefed<KeyframeEffectType>
-KeyframeEffect::ConstructKeyframeEffect(const GlobalObject& aGlobal,
-                                        KeyframeEffect& aSource,
-                                        ErrorResult& aRv)
-{
-  nsIDocument* doc = AnimationUtils::GetCurrentRealmDocument(aGlobal.Context());
-  if (!doc) {
-    aRv.Throw(NS_ERROR_FAILURE);
-    return nullptr;
-  }
-
-  // Create a new KeyframeEffect object with aSource's target,
-  // iteration composite operation, composite operation, and spacing mode.
-  // The constructor creates a new AnimationEffect object by
-  // aSource's TimingParams.
-  // Note: we don't need to re-throw exceptions since the value specified on
-  //       aSource's timing object can be assumed valid.
-  RefPtr<KeyframeEffectType> effect =
-    new KeyframeEffectType(doc,
-                           aSource.mTarget,
-                           aSource.SpecifiedTiming(),
-                           aSource.mEffectOptions);
-  // Copy cumulative change hint. mCumulativeChangeHint should be the same as
-  // the source one because both of targets are the same.
-  effect->mCumulativeChangeHint = aSource.mCumulativeChangeHint;
-
-  // Copy aSource's keyframes and animation properties.
-  // Note: We don't call SetKeyframes directly, which might revise the
-  //       computed offsets and rebuild the animation properties.
-  effect->mKeyframes = aSource.mKeyframes;
-  effect->mProperties = aSource.mProperties;
   return effect.forget();
 }
 
@@ -861,7 +818,7 @@ void
 DumpAnimationProperties(nsTArray<AnimationProperty>& aAnimationProperties)
 {
   for (auto& p : aAnimationProperties) {
-    printf("%s\n", nsCSSProps::GetStringValue(p.mProperty).get());
+    printf("%s\n", nsCString(nsCSSProps::GetStringValue(p.mProperty)).get());
     for (auto& s : p.mSegments) {
       nsString fromValue, toValue;
       s.mFromValue.SerializeSpecifiedValue(p.mProperty, fromValue);
@@ -882,16 +839,7 @@ KeyframeEffect::Constructor(
     const UnrestrictedDoubleOrKeyframeEffectOptions& aOptions,
     ErrorResult& aRv)
 {
-  return ConstructKeyframeEffect<KeyframeEffect>(aGlobal, aTarget,
-                                                 aKeyframes, aOptions, aRv);
-}
-
-/* static */ already_AddRefed<KeyframeEffect>
-KeyframeEffect::Constructor(const GlobalObject& aGlobal,
-                            KeyframeEffect& aSource,
-                            ErrorResult& aRv)
-{
-  return ConstructKeyframeEffect<KeyframeEffect>(aGlobal, aSource, aRv);
+  return ConstructKeyframeEffect(aGlobal, aTarget, aKeyframes, aOptions, aRv);
 }
 
 /* static */ already_AddRefed<KeyframeEffect>
@@ -902,8 +850,41 @@ KeyframeEffect::Constructor(
     const UnrestrictedDoubleOrKeyframeAnimationOptions& aOptions,
     ErrorResult& aRv)
 {
-  return ConstructKeyframeEffect<KeyframeEffect>(aGlobal, aTarget, aKeyframes,
-                                                 aOptions, aRv);
+  return ConstructKeyframeEffect(aGlobal, aTarget, aKeyframes, aOptions, aRv);
+}
+
+/* static */ already_AddRefed<KeyframeEffect>
+KeyframeEffect::Constructor(const GlobalObject& aGlobal,
+                            KeyframeEffect& aSource,
+                            ErrorResult& aRv)
+{
+  nsIDocument* doc = AnimationUtils::GetCurrentRealmDocument(aGlobal.Context());
+  if (!doc) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  // Create a new KeyframeEffect object with aSource's target,
+  // iteration composite operation, composite operation, and spacing mode.
+  // The constructor creates a new AnimationEffect object by
+  // aSource's TimingParams.
+  // Note: we don't need to re-throw exceptions since the value specified on
+  //       aSource's timing object can be assumed valid.
+  RefPtr<KeyframeEffect> effect =
+    new KeyframeEffect(doc,
+                       aSource.mTarget,
+                       aSource.SpecifiedTiming(),
+                       aSource.mEffectOptions);
+  // Copy cumulative change hint. mCumulativeChangeHint should be the same as
+  // the source one because both of targets are the same.
+  effect->mCumulativeChangeHint = aSource.mCumulativeChangeHint;
+
+  // Copy aSource's keyframes and animation properties.
+  // Note: We don't call SetKeyframes directly, which might revise the
+  //       computed offsets and rebuild the animation properties.
+  effect->mKeyframes = aSource.mKeyframes;
+  effect->mProperties = aSource.mProperties;
+  return effect.forget();
 }
 
 void
@@ -927,7 +908,7 @@ KeyframeEffect::GetTarget(Nullable<OwningElementOrCSSPseudoElement>& aRv) const
       break;
 
     default:
-      NS_NOTREACHED("Animation of unsupported pseudo-type");
+      MOZ_ASSERT_UNREACHABLE("Animation of unsupported pseudo-type");
       aRv.SetNull();
   }
 }
@@ -969,6 +950,7 @@ KeyframeEffect::SetTarget(const Nullable<ElementOrCSSPseudoElement>& aTarget)
     nsAutoAnimationMutationBatch mb(mTarget->mElement->OwnerDoc());
     if (mAnimation) {
       nsNodeUtils::AnimationAdded(mAnimation);
+      mAnimation->ReschedulePendingTasks();
     }
   }
 }
@@ -1117,9 +1099,7 @@ KeyframeEffect::GetKeyframes(JSContext*& aCx,
       keyframe.mTimingFunction.ref().AppendToString(keyframeDict.mEasing);
     } // else if null, leave easing as its default "linear".
 
-    if (keyframe.mComposite) {
-      keyframeDict.mComposite.SetValue(keyframe.mComposite.value());
-    }
+    keyframeDict.mComposite = keyframe.mComposite;
 
     JS::Rooted<JS::Value> keyframeJSValue(aCx);
     if (!ToJSValue(aCx, keyframeDict, &keyframeJSValue)) {
@@ -1194,6 +1174,46 @@ KeyframeEffect::OverflowRegionRefreshInterval()
 }
 
 bool
+KeyframeEffect::CanThrottleIfNotVisible(nsIFrame& aFrame) const
+{
+  // Unless we are newly in-effect, we can throttle the animation if the
+  // animation is paint only and the target frame is out of view or the document
+  // is in background tabs.
+  if (!mInEffectOnLastAnimationTimingUpdate || !CanIgnoreIfNotVisible()) {
+    return false;
+  }
+
+  nsIPresShell* presShell = GetPresShell();
+  if (presShell && !presShell->IsActive()) {
+    return true;
+  }
+
+  const bool isVisibilityHidden =
+    !aFrame.IsVisibleOrMayHaveVisibleDescendants();
+  if ((!isVisibilityHidden || HasVisibilityChange()) &&
+      !aFrame.IsScrolledOutOfView()) {
+    return false;
+  }
+
+  // If there are no overflow change hints, we don't need to worry about
+  // unthrottling the animation periodically to update scrollbar positions for
+  // the overflow region.
+  if (!HasPropertiesThatMightAffectOverflow()) {
+    return true;
+  }
+
+  // Don't throttle finite animations since the animation might suddenly
+  // come into view and if it was throttled it will be out-of-sync.
+  if (HasFiniteActiveDuration()) {
+    return false;
+  }
+
+  return isVisibilityHidden
+    ? CanThrottleOverflowChangesInScrollable(aFrame)
+    : CanThrottleOverflowChanges(aFrame);
+}
+
+bool
 KeyframeEffect::CanThrottle() const
 {
   // Unthrottle if we are not in effect or current. This will be the case when
@@ -1218,35 +1238,8 @@ KeyframeEffect::CanThrottle() const
     return true;
   }
 
-  // Unless we are newly in-effect, we can throttle the animation if the
-  // animation is paint only and the target frame is out of view or the document
-  // is in background tabs.
-  if (mInEffectOnLastAnimationTimingUpdate && CanIgnoreIfNotVisible()) {
-    nsIPresShell* presShell = GetPresShell();
-    if (presShell && !presShell->IsActive()) {
-      return true;
-    }
-
-    const bool isVisibilityHidden =
-      !frame->IsVisibleOrMayHaveVisibleDescendants();
-    if ((isVisibilityHidden && !HasVisibilityChange()) ||
-        frame->IsScrolledOutOfView()) {
-      // If there are transform change hints, unthrottle the animation
-      // periodically since it might affect the overflow region.
-      if (HasTransformThatMightAffectOverflow()) {
-        // Don't throttle finite transform animations since the animation might
-        // suddenly come into view and if it was throttled it will be
-        // out-of-sync.
-        if (HasFiniteActiveDuration()) {
-          return false;
-        }
-
-        return isVisibilityHidden
-          ? CanThrottleTransformChangesInScrollable(*frame)
-          : CanThrottleTransformChanges(*frame);
-      }
-      return true;
-    }
+  if (CanThrottleIfNotVisible(*frame)) {
+    return true;
   }
 
   // First we need to check layer generation and transform overflow
@@ -1279,8 +1272,8 @@ KeyframeEffect::CanThrottle() const
 
     // If this is a transform animation that affects the overflow region,
     // we should unthrottle the animation periodically.
-    if (HasTransformThatMightAffectOverflow() &&
-        !CanThrottleTransformChangesInScrollable(*frame)) {
+    if (HasPropertiesThatMightAffectOverflow() &&
+        !CanThrottleOverflowChangesInScrollable(*frame)) {
       return false;
     }
   }
@@ -1295,24 +1288,24 @@ KeyframeEffect::CanThrottle() const
 }
 
 bool
-KeyframeEffect::CanThrottleTransformChanges(const nsIFrame& aFrame) const
+KeyframeEffect::CanThrottleOverflowChanges(const nsIFrame& aFrame) const
 {
   TimeStamp now = aFrame.PresContext()->RefreshDriver()->MostRecentRefresh();
 
   EffectSet* effectSet = EffectSet::GetEffectSet(mTarget->mElement,
                                                  mTarget->mPseudoType);
-  MOZ_ASSERT(effectSet, "CanThrottleTransformChanges is expected to be called"
+  MOZ_ASSERT(effectSet, "CanOverflowTransformChanges is expected to be called"
                         " on an effect in an effect set");
-  MOZ_ASSERT(mAnimation, "CanThrottleTransformChanges is expected to be called"
+  MOZ_ASSERT(mAnimation, "CanOverflowTransformChanges is expected to be called"
                          " on an effect with a parent animation");
-  TimeStamp lastSyncTime = effectSet->LastTransformSyncTime();
+  TimeStamp lastSyncTime = effectSet->LastOverflowAnimationSyncTime();
   // If this animation can cause overflow, we can throttle some of the ticks.
   return (!lastSyncTime.IsNull() &&
     (now - lastSyncTime) < OverflowRegionRefreshInterval());
 }
 
 bool
-KeyframeEffect::CanThrottleTransformChangesInScrollable(nsIFrame& aFrame) const
+KeyframeEffect::CanThrottleOverflowChangesInScrollable(nsIFrame& aFrame) const
 {
   // If the target element is not associated with any documents, we don't care
   // it.
@@ -1333,7 +1326,7 @@ KeyframeEffect::CanThrottleTransformChangesInScrollable(nsIFrame& aFrame) const
     return true;
   }
 
-  if (CanThrottleTransformChanges(aFrame)) {
+  if (CanThrottleOverflowChanges(aFrame)) {
     return true;
   }
 
@@ -1351,7 +1344,7 @@ KeyframeEffect::CanThrottleTransformChangesInScrollable(nsIFrame& aFrame) const
     return true;
   }
 
-  ScrollbarStyles ss = scrollable->GetScrollbarStyles();
+  ScrollStyles ss = scrollable->GetScrollStyles();
   if (ss.mVertical == NS_STYLE_OVERFLOW_HIDDEN &&
       ss.mHorizontal == NS_STYLE_OVERFLOW_HIDDEN &&
       scrollable->GetLogicalScrollPosition() == nsPoint(0, 0)) {
@@ -1604,9 +1597,23 @@ KeyframeEffect::CalculateCumulativeChangeHint(const ComputedStyle* aComputedStyl
       // on invisible elements because we can't calculate the change hint for
       // such properties until we compose it.
       if (!segment.HasReplaceableValues()) {
-        mCumulativeChangeHint = ~nsChangeHint_Hints_CanIgnoreIfNotVisible;
-        return;
+        if (property.mProperty != eCSSProperty_transform) {
+          mCumulativeChangeHint = ~nsChangeHint_Hints_CanIgnoreIfNotVisible;
+          return;
+        }
+        // We try a little harder to optimize transform animations simply
+        // because they are so common (the second-most commonly animated
+        // property at the time of writing).  So if we encounter a transform
+        // segment that needs composing with the underlying value, we just add
+        // all the change hints a transform animation is known to be able to
+        // generate.
+        mCumulativeChangeHint |=
+          nsChangeHint_ComprehensiveAddOrRemoveTransform |
+          nsChangeHint_UpdatePostTransformOverflow |
+          nsChangeHint_UpdateTransformLayer;
+        continue;
       }
+
       RefPtr<ComputedStyle> fromContext =
         CreateComputedStyleForAnimationValue(property.mProperty,
                                              segment.mFromValue,

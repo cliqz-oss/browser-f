@@ -163,10 +163,12 @@ gfxFT2Font::AddRange(const char16_t *aText, uint32_t aOffset,
 
 gfxFT2Font::gfxFT2Font(const RefPtr<UnscaledFontFreeType>& aUnscaledFont,
                        cairo_scaled_font_t *aCairoFont,
+                       FT_Face aFTFace,
                        FT2FontEntry *aFontEntry,
                        const gfxFontStyle *aFontStyle)
     : gfxFT2FontBase(aUnscaledFont, aCairoFont, aFontEntry, aFontStyle)
     , mCharGlyphCache(32)
+    , mFTFace(aFTFace)
 {
     NS_ASSERTION(mFontEntry, "Unable to find font entry for font.  Something is whack.");
     // TODO: use FreeType emboldening instead of multi-strike?
@@ -182,12 +184,15 @@ gfxFT2Font::GetScaledFont(DrawTarget *aTarget)
 {
     if (!mAzureScaledFont) {
         NativeFont nativeFont;
-        nativeFont.mType = NativeFontType::CAIRO_FONT_FACE;
-        nativeFont.mFont = GetCairoScaledFont();
+        nativeFont.mType = NativeFontType::FREETYPE_FACE;
+        nativeFont.mFont = mFTFace;
+
         mAzureScaledFont =
-            Factory::CreateScaledFontForNativeFont(nativeFont,
-                                                   GetUnscaledFont(),
-                                                   GetAdjustedSize());
+          Factory::CreateScaledFontForNativeFont(nativeFont,
+                                                 GetUnscaledFont(),
+                                                 GetAdjustedSize(),
+                                                 GetCairoScaledFont());
+        InitializeScaledFont();
     }
 
     RefPtr<ScaledFont> scaledFont(mAzureScaledFont);
@@ -212,7 +217,7 @@ gfxFT2Font::FillGlyphDataForChar(FT_Face face, uint32_t ch, CachedGlyphData *gd)
     FT_Int32 flags = gfxPlatform::GetPlatform()->FontHintingEnabled() ?
                      FT_LOAD_DEFAULT :
                      (FT_LOAD_NO_AUTOHINT | FT_LOAD_NO_HINTING);
-    FT_Error err = FT_Load_Glyph(face, gid, flags);
+    FT_Error err = Factory::LoadFTGlyph(face, gid, flags);
 
     if (err) {
         // hmm, this is weird, we failed to load a glyph that we had?

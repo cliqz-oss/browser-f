@@ -986,6 +986,11 @@ Actor.prototype = extend(Pool.prototype, {
   },
 
   _sendEvent: function(name, request, ...args) {
+    if (!this.actorID) {
+      console.error(`Tried to send a '${name}' event on an already destroyed actor` +
+                    ` '${this.typeName}'`);
+      return;
+    }
     let packet;
     try {
       packet = request.write(args, this);
@@ -1029,6 +1034,20 @@ Actor.prototype = extend(Pool.prototype, {
     const pending = this._pendingResponse || Promise.resolve(null);
     const response = create(pending);
     this._pendingResponse = response;
+  },
+
+  /**
+   * Throw an error with the passed message and attach an `error` property to the Error
+   * object so it can be consumed by the writeError function.
+   * @param {String} error: A string (usually a single word serving as an id) that will
+   *                        be assign to error.error.
+   * @param {String} message: The string that will be passed to the Error constructor.
+   * @throws This always throw.
+   */
+  throwError: function(error, message) {
+    const err = new Error(message);
+    err.error = error;
+    throw err;
   }
 });
 exports.Actor = Actor;
@@ -1628,3 +1647,15 @@ exports.dumpProtocolSpec = function() {
 
   return ret;
 };
+
+function getFront(client, typeName, form) {
+  const type = types.getType(typeName);
+  if (!type) {
+    throw new Error(`No spec for front type '${typeName}'.`);
+  }
+  if (!type.frontClass) {
+    lazyLoadFront(typeName);
+  }
+  return type.frontClass(client, form);
+}
+exports.getFront = getFront;

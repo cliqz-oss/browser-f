@@ -24,7 +24,6 @@
 #include "nsContentCID.h"
 #include "mozilla/dom/XMLDocument.h"
 #include "nsGkAtoms.h"
-#include "nsIMemory.h"
 #include "nsIObserverService.h"
 #include "nsXBLContentSink.h"
 #include "nsXBLBinding.h"
@@ -915,7 +914,7 @@ nsXBLService::LoadBindingDocumentInfo(nsIContent* aBoundElement,
   RefPtr<nsXBLDocumentInfo> info;
 
   nsCOMPtr<nsIURI> documentURI;
-  nsresult rv = aBindingURI->CloneIgnoringRef(getter_AddRefs(documentURI));
+  nsresult rv = NS_GetURIWithoutRef(aBindingURI, getter_AddRefs(documentURI));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsBindingManager *bindingManager = nullptr;

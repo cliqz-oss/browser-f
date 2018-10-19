@@ -30,6 +30,8 @@ public:
   }
 
   // nsIContent
+  virtual void DoneAddingChildren(bool aHaveNotified) override;
+
   virtual bool ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
                                 const nsAString& aValue,
@@ -37,8 +39,7 @@ public:
                                 nsAttrValue& aResult) override;
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
 
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
@@ -46,8 +47,7 @@ public:
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   // WebIDL API
   // HTMLParamElement

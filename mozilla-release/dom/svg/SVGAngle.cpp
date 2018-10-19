@@ -19,7 +19,7 @@ NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(SVGAngle, Release)
 JSObject*
 SVGAngle::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SVGAngleBinding::Wrap(aCx, this, aGivenProto);
+  return SVGAngle_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 uint16_t
@@ -48,8 +48,8 @@ SVGAngle::SetValue(float aValue, ErrorResult& rv)
     return;
   }
   bool isBaseVal = mType == BaseValue;
-  mVal->SetBaseValue(aValue, isBaseVal ? mSVGElement.get() : nullptr,
-                     isBaseVal);
+  mVal->SetBaseValue(aValue, mVal->mBaseValUnit,
+                     isBaseVal ? mSVGElement.get() : nullptr, isBaseVal);
 }
 
 float

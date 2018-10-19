@@ -6,7 +6,6 @@
 
 var EXPORTED_SYMBOLS = ["FormData"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "CreditCard",
   "resource://gre/modules/CreditCard.jsm");
 
@@ -42,7 +41,7 @@ function getDocumentURI(doc) {
 // https://dxr.mozilla.org/mozilla-central/search?q=kInputTypeTable&redirect=false
 const IGNORE_PROPERTIES = [
   ["type", new Set(["password", "hidden", "button", "image", "submit", "reset"])],
-  ["autocomplete", new Set(["off"])]
+  ["autocomplete", new Set(["off"])],
 ];
 function shouldIgnoreNode(node) {
   for (let i = 0; i < IGNORE_PROPERTIES.length; ++i) {
@@ -69,7 +68,7 @@ var FormData = Object.freeze({
 
   restoreTree(root, data) {
     FormDataInternal.restoreTree(root, data);
-  }
+  },
 });
 
 /**
@@ -78,7 +77,7 @@ var FormData = Object.freeze({
 var FormDataInternal = {
   namespaceURIs: {
     "xhtml": "http://www.w3.org/1999/xhtml",
-    "xul": "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+    "xul": "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
   },
 
   /**
@@ -431,5 +430,5 @@ var FormDataInternal = {
         this.restoreTree(frames[index], data.children[index]);
       }
     }
-  }
+  },
 };

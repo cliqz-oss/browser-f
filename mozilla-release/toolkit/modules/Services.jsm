@@ -60,6 +60,7 @@ XPCOMUtils.defineLazyGetter(Services, "io", () => {
 var initTable = {
   appShell: ["@mozilla.org/appshell/appShellService;1", "nsIAppShellService"],
   cache2: ["@mozilla.org/netwerk/cache-storage-service;1", "nsICacheStorageService"],
+  catMan: ["@mozilla.org/categorymanager;1", "nsICategoryManager"],
   clearData: ["@mozilla.org/clear-data-service;1", "nsIClearDataService"],
   cpmm: ["@mozilla.org/childprocessmessagemanager;1", "nsIMessageSender"],
   console: ["@mozilla.org/consoleservice;1", "nsIConsoleService"],
@@ -97,6 +98,7 @@ var initTable = {
   netUtils: ["@mozilla.org/network/util;1", "nsINetUtil"],
   loadContextInfo: ["@mozilla.org/load-context-info-factory;1", "nsILoadContextInfoFactory"],
   qms: ["@mozilla.org/dom/quota-manager-service;1", "nsIQuotaManagerService"],
+  xulStore: ["@mozilla.org/xul/xulstore;1", "nsIXULStore"],
 };
 
 if (AppConstants.platform == "android") {

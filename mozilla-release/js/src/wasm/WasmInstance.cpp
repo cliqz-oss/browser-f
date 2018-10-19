@@ -22,9 +22,11 @@
 #include "jit/BaselineJIT.h"
 #include "jit/InlinableNatives.h"
 #include "jit/JitCommon.h"
+#include "jit/JitRealm.h"
 #include "wasm/WasmBuiltins.h"
 #include "wasm/WasmModule.h"
 
+#include "gc/StoreBuffer-inl.h"
 #include "vm/ArrayBufferObject-inl.h"
 #include "vm/JSObject-inl.h"
 
@@ -40,16 +42,7 @@ class FuncTypeIdSet
 
   public:
     ~FuncTypeIdSet() {
-        MOZ_ASSERT_IF(!JSRuntime::hasLiveRuntimes(), !map_.initialized() || map_.empty());
-    }
-
-    bool ensureInitialized(JSContext* cx) {
-        if (!map_.initialized() && !map_.init()) {
-            ReportOutOfMemory(cx);
-            return false;
-        }
-
-        return true;
+        MOZ_ASSERT_IF(!JSRuntime::hasLiveRuntimes(), map_.empty());
     }
 
     bool allocateFuncTypeId(JSContext* cx, const FuncType& funcType, const void** funcTypeId) {
@@ -108,6 +101,8 @@ bool
 Instance::callImport(JSContext* cx, uint32_t funcImportIndex, unsigned argc, const uint64_t* argv,
                      MutableHandleValue rval)
 {
+    AssertRealmUnchanged aru(cx);
+
     Tier tier = code().bestTier();
 
     const FuncImport& fi = metadata(tier).funcImports[funcImportIndex];
@@ -133,24 +128,20 @@ Instance::callImport(JSContext* cx, uint32_t funcImportIndex, unsigned argc, con
           case ValType::F64:
             args[i].set(JS::CanonicalizedDoubleValue(*(double*)&argv[i]));
             break;
+          case ValType::Ref:
           case ValType::AnyRef: {
             args[i].set(ObjectOrNullValue(*(JSObject**)&argv[i]));
             break;
           }
           case ValType::I64:
-          case ValType::I8x16:
-          case ValType::I16x8:
-          case ValType::I32x4:
-          case ValType::F32x4:
-          case ValType::B8x16:
-          case ValType::B16x8:
-          case ValType::B32x4:
             MOZ_CRASH("unhandled type in callImport");
         }
     }
 
     FuncImportTls& import = funcImportTls(fi);
     RootedFunction importFun(cx, &import.obj->as<JSFunction>());
+    MOZ_ASSERT(cx->realm() == importFun->realm());
+
     RootedValue fval(cx, ObjectValue(*import.obj));
     RootedValue thisv(cx, UndefinedValue());
     if (!Call(cx, fval, thisv, args, rval))
@@ -205,15 +196,9 @@ Instance::callImport(JSContext* cx, uint32_t funcImportIndex, unsigned argc, con
           case ValType::I32:    type = TypeSet::Int32Type(); break;
           case ValType::F32:    type = TypeSet::DoubleType(); break;
           case ValType::F64:    type = TypeSet::DoubleType(); break;
+          case ValType::Ref:    MOZ_CRASH("case guarded above");
           case ValType::AnyRef: MOZ_CRASH("case guarded above");
           case ValType::I64:    MOZ_CRASH("NYI");
-          case ValType::I8x16:  MOZ_CRASH("NYI");
-          case ValType::I16x8:  MOZ_CRASH("NYI");
-          case ValType::I32x4:  MOZ_CRASH("NYI");
-          case ValType::F32x4:  MOZ_CRASH("NYI");
-          case ValType::B8x16:  MOZ_CRASH("NYI");
-          case ValType::B16x8:  MOZ_CRASH("NYI");
-          case ValType::B32x4:  MOZ_CRASH("NYI");
         }
         if (!TypeScript::ArgTypes(script, i)->hasType(type))
             return true;
@@ -319,6 +304,10 @@ Instance::growMemory_i32(Instance* instance, uint32_t delta)
 /* static */ uint32_t
 Instance::currentMemory_i32(Instance* instance)
 {
+    // This invariant must hold when running Wasm code. Assert it here so we can
+    // write tests for cross-realm calls.
+    MOZ_ASSERT(TlsContext.get()->realm() == instance->realm());
+
     uint32_t byteLength = instance->memory()->volatileMemoryLength();
     MOZ_ASSERT(byteLength % wasm::PageSize == 0);
     return byteLength / wasm::PageSize;
@@ -384,7 +373,7 @@ Instance::wake(Instance* instance, uint32_t byteOffset, int32_t count)
         return -1;
     }
 
-    int64_t woken = atomics_wake_impl(instance->sharedMemoryBuffer(), byteOffset, int64_t(count));
+    int64_t woken = atomics_notify_impl(instance->sharedMemoryBuffer(), byteOffset, int64_t(count));
 
     if (woken > INT32_MAX) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_WAKE_OVERFLOW);
@@ -402,15 +391,12 @@ Instance::memCopy(Instance* instance, uint32_t destByteOffset, uint32_t srcByteO
 
     // Knowing that len > 0 below simplifies the wraparound checks.
     if (len == 0) {
-
         // Even though the length is zero, we must check for a valid offset.
         if (destByteOffset < memLen && srcByteOffset < memLen)
             return 0;
 
         // else fall through to failure case
-
     } else {
-
         ArrayBufferObjectMaybeShared& arrBuf = mem->buffer();
         uint8_t* rawBuf = arrBuf.dataPointerEither().unwrap();
 
@@ -443,15 +429,12 @@ Instance::memFill(Instance* instance, uint32_t byteOffset, uint32_t value, uint3
 
     // Knowing that len > 0 below simplifies the wraparound check.
     if (len == 0) {
-
         // Even though the length is zero, we must check for a valid offset.
         if (byteOffset < memLen)
             return 0;
 
         // else fall through to failure case
-
     } else {
-
         ArrayBufferObjectMaybeShared& arrBuf = mem->buffer();
         uint8_t* rawBuf = arrBuf.dataPointerEither().unwrap();
 
@@ -466,13 +449,21 @@ Instance::memFill(Instance* instance, uint32_t byteOffset, uint32_t value, uint3
             return 0;
         }
         // else fall through to failure case
-
     }
 
     JSContext* cx = TlsContext.get();
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_OUT_OF_BOUNDS);
     return -1;
 }
+
+#ifdef ENABLE_WASM_GC
+/* static */ void
+Instance::postBarrier(Instance* instance, gc::Cell** location)
+{
+    MOZ_ASSERT(location);
+    TlsContext.get()->runtime()->gc.storeBuffer().putCell(location);
+}
+#endif // ENABLE_WASM_GC
 
 Instance::Instance(JSContext* cx,
                    Handle<WasmInstanceObject*> object,
@@ -482,7 +473,7 @@ Instance::Instance(JSContext* cx,
                    HandleWasmMemoryObject memory,
                    SharedTableVector&& tables,
                    Handle<FunctionVector> funcImports,
-                   const ValVector& globalImportValues,
+                   HandleValVector globalImportValues,
                    const WasmGlobalObjectVector& globalObjs)
   : realm_(cx->realm()),
     object_(object),
@@ -504,9 +495,14 @@ Instance::Instance(JSContext* cx,
     tlsData()->boundsCheckLimit = memory ? memory->buffer().wasmBoundsCheckLimit() : 0;
 #endif
     tlsData()->instance = this;
+    tlsData()->realm = realm_;
     tlsData()->cx = cx;
     tlsData()->resetInterrupt(cx);
     tlsData()->jumpTable = code_->tieringJumpTable();
+#ifdef ENABLE_WASM_GC
+    tlsData()->addressOfNeedsIncrementalBarrier =
+        (uint8_t*)cx->compartment()->zone()->addressOfNeedsIncrementalBarrier();
+#endif
 
     Tier callerTier = code_->bestTier();
 
@@ -520,16 +516,19 @@ Instance::Instance(JSContext* cx,
             Tier calleeTier = calleeInstance.code().bestTier();
             const CodeRange& codeRange = calleeInstanceObj->getExportedFunctionCodeRange(f, calleeTier);
             import.tls = calleeInstance.tlsData();
+            import.realm = f->realm();
             import.code = calleeInstance.codeBase(calleeTier) + codeRange.funcNormalEntry();
             import.baselineScript = nullptr;
             import.obj = calleeInstanceObj;
         } else if (void* thunk = MaybeGetBuiltinThunk(f, fi.funcType())) {
             import.tls = tlsData();
+            import.realm = f->realm();
             import.code = thunk;
             import.baselineScript = nullptr;
             import.obj = f;
         } else {
             import.tls = tlsData();
+            import.realm = f->realm();
             import.code = codeBase(callerTier) + fi.interpExitCodeOffset();
             import.baselineScript = nullptr;
             import.obj = f;
@@ -557,7 +556,7 @@ Instance::Instance(JSContext* cx,
             if (global.isIndirect())
                 *(void**)globalAddr = globalObjs[imported]->cell();
             else
-                globalImportValues[imported].writePayload(globalAddr);
+                globalImportValues[imported].get().writePayload(globalAddr);
             break;
           }
           case GlobalKind::Variable: {
@@ -567,7 +566,7 @@ Instance::Instance(JSContext* cx,
                 if (global.isIndirect())
                     *(void**)globalAddr = globalObjs[i]->cell();
                 else
-                    init.val().writePayload(globalAddr);
+                    Val(init.val()).writePayload(globalAddr);
                 break;
               }
               case InitExpr::Kind::GetGlobal: {
@@ -577,12 +576,13 @@ Instance::Instance(JSContext* cx,
                 // the source global should never be indirect.
                 MOZ_ASSERT(!imported.isIndirect());
 
+                RootedVal dest(cx, globalImportValues[imported.importIndex()].get());
                 if (global.isIndirect()) {
                     void* address = globalObjs[i]->cell();
                     *(void**)globalAddr = address;
-                    globalImportValues[imported.importIndex()].writePayload((uint8_t*)address);
+                    dest.get().writePayload((uint8_t*)address);
                 } else {
-                    globalImportValues[imported.importIndex()].writePayload(globalAddr);
+                    dest.get().writePayload(globalAddr);
                 }
                 break;
               }
@@ -610,9 +610,6 @@ Instance::init(JSContext* cx)
     if (!metadata().funcTypeIds.empty()) {
         ExclusiveData<FuncTypeIdSet>::Guard lockedFuncTypeIdSet = funcTypeIdSet.lock();
 
-        if (!lockedFuncTypeIdSet->ensureInitialized(cx))
-            return false;
-
         for (const FuncTypeWithId& funcType : metadata().funcTypeIds) {
             const void* funcTypeId;
             if (!lockedFuncTypeIdSet->allocateFuncTypeId(cx, funcType, &funcTypeId))
@@ -627,6 +624,9 @@ Instance::init(JSContext* cx)
         return false;
     jsJitArgsRectifier_ = jitRuntime->getArgumentsRectifier();
     jsJitExceptionHandler_ = jitRuntime->getExceptionTail();
+#ifdef ENABLE_WASM_GC
+    preBarrierCode_ = jitRuntime->preBarrier(MIRType::Object);
+#endif
     return true;
 }
 
@@ -694,6 +694,16 @@ Instance::tracePrivate(JSTracer* trc)
     for (const SharedTable& table : tables_)
         table->trace(trc);
 
+#ifdef ENABLE_WASM_GC
+    for (const GlobalDesc& global : code().metadata().globals) {
+        // Indirect anyref global get traced by the owning WebAssembly.Global.
+        if (!global.type().isRefOrAnyRef() || global.isConstant() || global.isIndirect())
+            continue;
+        GCPtrObject* obj = (GCPtrObject*)(globalData() + global.offset());
+        TraceNullableEdge(trc, obj, "wasm ref/anyref global");
+    }
+#endif
+
     TraceNullableEdge(trc, &memory_, "wasm buffer");
 }
 
@@ -758,12 +768,12 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
 
     // The calling convention for an external call into wasm is to pass an
     // array of 16-byte values where each value contains either a coerced int32
-    // (in the low word), a double value (in the low dword) or a SIMD vector
-    // value, with the coercions specified by the wasm signature. The external
-    // entry point unpacks this array into the system-ABI-specified registers
-    // and stack memory and then calls into the internal entry point. The return
-    // value is stored in the first element of the array (which, therefore, must
-    // have length >= 1).
+    // (in the low word), or a double value (in the low dword) value, with the
+    // coercions specified by the wasm signature. The external entry point
+    // unpacks this array into the system-ABI-specified registers and stack
+    // memory and then calls into the internal entry point. The return value is
+    // stored in the first element of the array (which, therefore, must have
+    // length >= 1).
     Vector<ExportArg, 8> exportArgs(cx);
     if (!exportArgs.resize(Max<size_t>(1, func.funcType().args().length())))
         return false;
@@ -786,61 +796,10 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
             if (!ToNumber(cx, v, (double*)&exportArgs[i]))
                 return false;
             break;
+          case ValType::Ref:
           case ValType::AnyRef: {
             if (!ToRef(cx, v, &exportArgs[i]))
                 return false;
-            break;
-          }
-          case ValType::I8x16: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Int8x16>(cx, v, &simd))
-                return false;
-            memcpy(&exportArgs[i], simd.asInt8x16(), Simd128DataSize);
-            break;
-          }
-          case ValType::I16x8: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Int16x8>(cx, v, &simd))
-                return false;
-            memcpy(&exportArgs[i], simd.asInt16x8(), Simd128DataSize);
-            break;
-          }
-          case ValType::I32x4: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Int32x4>(cx, v, &simd))
-                return false;
-            memcpy(&exportArgs[i], simd.asInt32x4(), Simd128DataSize);
-            break;
-          }
-          case ValType::F32x4: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Float32x4>(cx, v, &simd))
-                return false;
-            memcpy(&exportArgs[i], simd.asFloat32x4(), Simd128DataSize);
-            break;
-          }
-          case ValType::B8x16: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Bool8x16>(cx, v, &simd))
-                return false;
-            // Bool8x16 uses the same representation as Int8x16.
-            memcpy(&exportArgs[i], simd.asInt8x16(), Simd128DataSize);
-            break;
-          }
-          case ValType::B16x8: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Bool16x8>(cx, v, &simd))
-                return false;
-            // Bool16x8 uses the same representation as Int16x8.
-            memcpy(&exportArgs[i], simd.asInt16x8(), Simd128DataSize);
-            break;
-          }
-          case ValType::B32x4: {
-            SimdConstant simd;
-            if (!ToSimdConstant<Bool32x4>(cx, v, &simd))
-                return false;
-            // Bool32x4 uses the same representation as Int32x4.
-            memcpy(&exportArgs[i], simd.asInt32x4(), Simd128DataSize);
             break;
           }
         }
@@ -877,7 +836,7 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
 
     bool expectsObject = false;
     JSObject* retObj = nullptr;
-    switch (func.funcType().ret()) {
+    switch (func.funcType().ret().code()) {
       case ExprType::Void:
         args.rval().set(UndefinedValue());
         break;
@@ -892,44 +851,10 @@ Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args)
       case ExprType::F64:
         args.rval().set(NumberValue(*(double*)retAddr));
         break;
+      case ExprType::Ref:
       case ExprType::AnyRef:
         retObj = *(JSObject**)retAddr;
         expectsObject = true;
-        break;
-      case ExprType::I8x16:
-        retObj = CreateSimd<Int8x16>(cx, (int8_t*)retAddr);
-        if (!retObj)
-            return false;
-        break;
-      case ExprType::I16x8:
-        retObj = CreateSimd<Int16x8>(cx, (int16_t*)retAddr);
-        if (!retObj)
-            return false;
-        break;
-      case ExprType::I32x4:
-        retObj = CreateSimd<Int32x4>(cx, (int32_t*)retAddr);
-        if (!retObj)
-            return false;
-        break;
-      case ExprType::F32x4:
-        retObj = CreateSimd<Float32x4>(cx, (float*)retAddr);
-        if (!retObj)
-            return false;
-        break;
-      case ExprType::B8x16:
-        retObj = CreateSimd<Bool8x16>(cx, (int8_t*)retAddr);
-        if (!retObj)
-            return false;
-        break;
-      case ExprType::B16x8:
-        retObj = CreateSimd<Bool16x8>(cx, (int16_t*)retAddr);
-        if (!retObj)
-            return false;
-        break;
-      case ExprType::B32x4:
-        retObj = CreateSimd<Bool32x4>(cx, (int32_t*)retAddr);
-        if (!retObj)
-            return false;
         break;
       case ExprType::Limit:
         MOZ_CRASH("Limit");

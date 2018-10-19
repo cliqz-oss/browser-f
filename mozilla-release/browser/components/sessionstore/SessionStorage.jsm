@@ -7,7 +7,6 @@
 var EXPORTED_SYMBOLS = ["SessionStorage"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const ssu = Cc["@mozilla.org/browser/sessionstore/utils;1"]
               .createInstance(Ci.nsISessionStoreUtils);
@@ -74,9 +73,7 @@ var SessionStorageInternal = {
   collect(content) {
     let data = {};
     let visitedOrigins = new Set();
-    let docShell = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                          .getInterface(Ci.nsIWebNavigation)
-                          .QueryInterface(Ci.nsIDocShell);
+    let docShell = content.docShell;
 
     forEachNonDynamicChildFrame(content, frame => {
       let principal = getPrincipalForFrame(docShell, frame);
@@ -151,7 +148,7 @@ var SessionStorageInternal = {
       }
 
       let storageManager = aDocShell.QueryInterface(Ci.nsIDOMStorageManager);
-      let window = aDocShell.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+      let window = aDocShell.domWindow;
 
       // There is no need to pass documentURI, it's only used to fill documentURI property of
       // domstorage event, which in this case has no consumer. Prevention of events in case
@@ -180,7 +177,7 @@ var SessionStorageInternal = {
     let hostData = {};
     let storage;
 
-    let window = aDocShell.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+    let window = aDocShell.domWindow;
 
     try {
       let storageManager = aDocShell.QueryInterface(Ci.nsIDOMStorageManager);
@@ -196,9 +193,7 @@ var SessionStorageInternal = {
     }
 
     // If the DOMSessionStorage contains too much data, ignore it.
-    let usage = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIDOMWindowUtils)
-                      .getStorageUsage(storage);
+    let usage = window.windowUtils.getStorageUsage(storage);
     if (usage > Services.prefs.getIntPref(DOM_STORAGE_LIMIT_PREF)) {
       return hostData;
     }
@@ -213,5 +208,5 @@ var SessionStorageInternal = {
     }
 
     return hostData;
-  }
+  },
 };

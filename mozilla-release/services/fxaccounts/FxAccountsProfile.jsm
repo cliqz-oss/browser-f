@@ -14,7 +14,6 @@
 
 var EXPORTED_SYMBOLS = ["FxAccountsProfile"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
@@ -77,7 +76,7 @@ this.FxAccountsProfile.prototype = {
     }
     let profileCache = {
       profile,
-      etag: response.etag
+      etag: response.etag,
     };
     await this.fxa.setProfileCache(profileCache);
     if (profile.email != userData.email) {

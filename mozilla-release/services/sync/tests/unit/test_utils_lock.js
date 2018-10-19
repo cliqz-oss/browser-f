@@ -4,8 +4,9 @@ ChromeUtils.import("resource://services-sync/util.js");
 // Utility that we only use here.
 
 function do_check_begins(thing, startsWith) {
-  if (!(thing && thing.indexOf && (thing.indexOf(startsWith) == 0)))
+  if (!(thing && thing.indexOf && (thing.indexOf(startsWith) == 0))) {
     do_throw(thing + " doesn't begin with " + startsWith);
+  }
 }
 
 add_task(async function run_test() {
@@ -43,7 +44,7 @@ add_task(async function run_test() {
                                 didCall = true;
                                 return this.throwy();
                               })();
-    }
+    },
   };
 
   _("Make sure a normal call will call and return");

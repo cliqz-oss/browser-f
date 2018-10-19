@@ -11,13 +11,10 @@
 
 #include "webrtc/common_types.h"
 
-#include "CSFLog.h"
+#include "mozilla/Logging.h"
 
-static const char* mpfLogTag = "MediaPipelineFilter";
-#ifdef LOGTAG
-#undef LOGTAG
-#endif
-#define LOGTAG mpfLogTag
+// defined in MediaPipeline.cpp
+extern mozilla::LazyLogModule gMediaPipelineLog;
 
 namespace mozilla {
 
@@ -45,10 +42,10 @@ bool MediaPipelineFilter::Filter(const webrtc::RTPHeader& header,
     return true;
   }
   if (!header.extension.rtpStreamId.empty()) {
-    CSFLogDebug(LOGTAG,
-                "MediaPipelineFilter ignoring seq# %u ssrc: %u RID: %s",
-                header.sequenceNumber, header.ssrc,
-                header.extension.rtpStreamId.data());
+    MOZ_LOG(gMediaPipelineLog, LogLevel::Debug,
+            ("MediaPipelineFilter ignoring seq# %u ssrc: %u RID: %s",
+             header.sequenceNumber, header.ssrc,
+             header.extension.rtpStreamId.data()));
   }
 
   if (remote_ssrc_set_.count(header.ssrc)) {
@@ -92,34 +89,6 @@ void MediaPipelineFilter::Update(const MediaPipelineFilter& filter_update) {
 
   payload_type_set_ = filter_update.payload_type_set_;
   correlator_ = filter_update.correlator_;
-}
-
-bool
-MediaPipelineFilter::FilterSenderReport(const unsigned char* data,
-                                        size_t len) const {
-
-  if (!data) {
-    return false;
-  }
-
-  if (len < FIRST_SSRC_OFFSET + 4) {
-    return false;
-  }
-
-  uint8_t payload_type = data[PT_OFFSET];
-
-  if (payload_type != SENDER_REPORT_T) {
-    // Not a sender report, let it through
-    return true;
-  }
-
-  uint32_t ssrc = 0;
-  ssrc += (uint32_t)data[FIRST_SSRC_OFFSET] << 24;
-  ssrc += (uint32_t)data[FIRST_SSRC_OFFSET + 1] << 16;
-  ssrc += (uint32_t)data[FIRST_SSRC_OFFSET + 2] << 8;
-  ssrc += (uint32_t)data[FIRST_SSRC_OFFSET + 3];
-
-  return !!remote_ssrc_set_.count(ssrc);
 }
 
 } // end namespace mozilla

@@ -7,7 +7,11 @@
 # file so that ESLint works correctly:
 # tools/lint/eslint/eslint-plugin-mozilla/lib/environments/browser-window.js
 
-<script type="application/javascript">
+<script type="text/javascript"
+#ifdef BROWSER_XHTML
+xmlns="http://www.w3.org/1999/xhtml"
+#endif
+>
 Components.utils.import("resource://gre/modules/Services.jsm");
 
 for (let script of [
@@ -15,6 +19,7 @@ for (let script of [
 
   "chrome://browser/content/browser-captivePortal.js",
   "chrome://browser/content/browser-compacttheme.js",
+  "chrome://browser/content/browser-contentblocking.js",
   "chrome://browser/content/browser-feeds.js",
   "chrome://browser/content/browser-media.js",
   "chrome://browser/content/browser-pageActions.js",
@@ -23,7 +28,6 @@ for (let script of [
   "chrome://browser/content/browser-sidebar.js",
   "chrome://browser/content/browser-siteIdentity.js",
   "chrome://browser/content/browser-tabsintitlebar.js",
-  "chrome://browser/content/browser-trackingprotection.js",
 
   "chrome://global/content/globalOverlay.js",
   "chrome://browser/content/utilityOverlay.js",

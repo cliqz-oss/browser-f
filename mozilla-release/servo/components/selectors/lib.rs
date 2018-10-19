@@ -9,7 +9,7 @@
 extern crate bitflags;
 #[macro_use]
 extern crate cssparser;
-extern crate fnv;
+extern crate fxhash;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -18,6 +18,7 @@ extern crate phf;
 extern crate precomputed_hash;
 extern crate servo_arc;
 extern crate smallvec;
+extern crate thin_slice;
 
 pub mod attr;
 pub mod bloom;

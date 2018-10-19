@@ -65,29 +65,30 @@ function PeerConnectionTest(options) {
   options.opus = "opus" in options ? options.opus : true;
   options.ssrc = "ssrc" in options ? options.ssrc : true;
 
+  options.config_local = options.config_local || {}
+  options.config_remote = options.config_remote || {}
+
+  if (!options.bundle) {
+    // Make sure neither end tries to use bundle-only!
+    options.config_local.bundlePolicy = "max-compat";
+    options.config_remote.bundlePolicy = "max-compat";
+  }
+
   if (iceServersArray.length) {
     if (!options.turn_disabled_local) {
-      options.config_local = options.config_local || {}
       options.config_local.iceServers = iceServersArray;
     }
     if (!options.turn_disabled_remote) {
-      options.config_remote = options.config_remote || {}
       options.config_remote.iceServers = iceServersArray;
     }
   }
   else if (typeof turnServers !== "undefined") {
     if ((!options.turn_disabled_local) && (turnServers.local)) {
-      if (!options.hasOwnProperty("config_local")) {
-        options.config_local = {};
-      }
       if (!options.config_local.hasOwnProperty("iceServers")) {
         options.config_local.iceServers = turnServers.local.iceServers;
       }
     }
     if ((!options.turn_disabled_remote) && (turnServers.remote)) {
-      if (!options.hasOwnProperty("config_remote")) {
-        options.config_remote = {};
-      }
       if (!options.config_remote.hasOwnProperty("iceServers")) {
         options.config_remote.iceServers = turnServers.remote.iceServers;
       }
@@ -1821,11 +1822,9 @@ PeerConnectionWrapper.prototype = {
           ok(res.ssrc || res.type == "inbound-rtp", "Outbound RTP stats has an ssrc.");
 
           if (res.ssrc) {
-            // ssrc is a 32 bit number returned as a string by spec
-            ok(res.ssrc.length > 0, "Ssrc has length");
-            ok(res.ssrc.length < 11, "Ssrc not lengthy");
-            ok(!/[^0-9]/.test(res.ssrc), "Ssrc numeric");
-            ok(parseInt(res.ssrc) < Math.pow(2,32), "Ssrc within limits");
+            // ssrc is a 32 bit number returned as an unsigned long
+            ok(!/[^0-9]/.test(`${res.ssrc}`), "SSRC is numeric");
+            ok(parseInt(res.ssrc) < Math.pow(2,32), "SSRC is within limits");
           }
 
           if (res.type == "outbound-rtp") {

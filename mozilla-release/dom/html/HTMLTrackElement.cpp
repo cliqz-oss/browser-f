@@ -167,7 +167,7 @@ HTMLTrackElement::OnChannelRedirect(nsIChannel* aChannel,
 JSObject*
 HTMLTrackElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLTrackElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLTrackElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 TextTrack*
@@ -350,13 +350,11 @@ HTMLTrackElement::LoadResource()
 nsresult
 HTMLTrackElement::BindToTree(nsIDocument* aDocument,
                              nsIContent* aParent,
-                             nsIContent* aBindingParent,
-                             bool aCompileEventHandlers)
+                             nsIContent* aBindingParent)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument,
                                                  aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   LOG(LogLevel::Debug, ("Track Element bound to tree."));
@@ -454,7 +452,7 @@ HTMLTrackElement::DispatchTrustedEvent(const nsAString& aName)
     return;
   }
   nsContentUtils::DispatchTrustedEvent(doc, static_cast<nsIContent*>(this),
-                                       aName, false, false);
+                                       aName, CanBubble::eNo, Cancelable::eNo);
 }
 
 void

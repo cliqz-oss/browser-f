@@ -29,7 +29,7 @@
 #include "js/Value.h"
 #include "js/Vector.h"
 
-// JS::ubi::Node
+// [SMDOC] ubi::Node (Heap Analysis framework)
 //
 // JS::ubi::Node is a pointer-like type designed for internal use by heap
 // analysis tools. A ubi::Node can refer to:
@@ -484,13 +484,14 @@ ConstructSavedFrameStackSlow(JSContext* cx,
 // by an offline heap snapshot from an older SpiderMonkey/Firefox version to
 // break. Consider this enum append only.
 enum class CoarseType: uint32_t {
-    Other  = 0,
-    Object = 1,
-    Script = 2,
-    String = 3,
+    Other   = 0,
+    Object  = 1,
+    Script  = 2,
+    String  = 3,
+    DOMNode = 4,
 
-    FIRST  = Other,
-    LAST   = String
+    FIRST   = Other,
+    LAST    = DOMNode
 };
 
 inline uint32_t
@@ -618,6 +619,13 @@ class JS_PUBLIC_API(Base) {
         MOZ_CRASH("Concrete classes that have an allocation stack must override both "
                   "hasAllocationStack and allocationStack.");
     }
+
+    // In some cases, Concrete<T> can return a more descriptive
+    // referent type name than simply `T`. This method returns an
+    // identifier as specific as is efficiently available.
+    // The string returned is borrowed from the ubi::Node's referent.
+    // If nothing more specific than typeName() is available, return nullptr.
+    virtual const char16_t* descriptiveTypeName() const { return nullptr; }
 
     // Methods for JSObject Referents
     //
@@ -778,12 +786,13 @@ class Node {
     // not all!) JSObjects can be exposed.
     JS::Value exposeToJS() const;
 
-    CoarseType coarseType()         const { return base()->coarseType(); }
-    const char16_t* typeName()      const { return base()->typeName(); }
-    JS::Zone* zone()                const { return base()->zone(); }
-    JS::Compartment* compartment()  const { return base()->compartment(); }
-    JS::Realm* realm()              const { return base()->realm(); }
-    const char* jsObjectClassName() const { return base()->jsObjectClassName(); }
+    CoarseType coarseType()               const { return base()->coarseType(); }
+    const char16_t* typeName()            const { return base()->typeName(); }
+    JS::Zone* zone()                      const { return base()->zone(); }
+    JS::Compartment* compartment()        const { return base()->compartment(); }
+    JS::Realm* realm()                    const { return base()->realm(); }
+    const char* jsObjectClassName()       const { return base()->jsObjectClassName(); }
+    const char16_t* descriptiveTypeName() const { return base()->descriptiveTypeName(); }
     MOZ_MUST_USE bool jsObjectConstructorName(JSContext* cx, UniqueTwoByteChars& outName) const {
         return base()->jsObjectConstructorName(cx, outName);
     }
@@ -1029,8 +1038,10 @@ class JS_PUBLIC_API(Concrete<RootList>) : public Base {
 // JS::TraceChildren.
 template<typename Referent>
 class JS_PUBLIC_API(TracerConcrete) : public Base {
-    js::UniquePtr<EdgeRange> edges(JSContext* cx, bool wantNames) const override;
     JS::Zone* zone() const override;
+
+  public:
+    js::UniquePtr<EdgeRange> edges(JSContext* cx, bool wantNames) const override;
 
   protected:
     explicit TracerConcrete(Referent* ptr) : Base(ptr) { }
@@ -1108,9 +1119,7 @@ class JS_PUBLIC_API(Concrete<JSObject>) : public TracerConcrete<JSObject> {
     explicit Concrete(JSObject* ptr) : TracerConcrete<JSObject>(ptr) { }
 
   public:
-    static void construct(void* storage, JSObject* ptr) {
-        new (storage) Concrete(ptr);
-    }
+    static void construct(void* storage, JSObject* ptr);
 
     JS::Compartment* compartment() const override;
     JS::Realm* realm() const override;
@@ -1163,16 +1172,25 @@ class JS_PUBLIC_API(Concrete<void>) : public Base {
     static void construct(void* storage, void* ptr) { new (storage) Concrete(ptr); }
 };
 
+// The |callback| callback is much like the |Concrete<T>::construct| method: a call to
+// |callback| should construct an instance of the most appropriate JS::ubi::Base subclass
+// for |obj| in |storage|. The callback may assume that
+// |obj->getClass()->isDOMClass()|, and that |storage| refers to the
+// sizeof(JS::ubi::Base) bytes of space that all ubi::Base implementations should
+// require.
+
+// Set |cx|'s runtime hook for constructing ubi::Nodes for DOM classes to |callback|.
+void SetConstructUbiNodeForDOMObjectCallback(JSContext* cx, void (*callback)(void*, JSObject*));
 
 } // namespace ubi
 } // namespace JS
 
-namespace js {
+namespace mozilla {
 
 // Make ubi::Node::HashPolicy the default hash policy for ubi::Node.
 template<> struct DefaultHasher<JS::ubi::Node> : JS::ubi::Node::HashPolicy { };
 template<> struct DefaultHasher<JS::ubi::StackFrame> : JS::ubi::StackFrame::HashPolicy { };
 
-} // namespace js
+} // namespace mozilla
 
 #endif // js_UbiNode_h

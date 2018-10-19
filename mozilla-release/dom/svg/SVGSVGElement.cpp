@@ -32,8 +32,8 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace dom {
 
-using namespace SVGPreserveAspectRatioBinding;
-using namespace SVGSVGElementBinding;
+using namespace SVGPreserveAspectRatio_Binding;
+using namespace SVGSVGElement_Binding;
 
 nsSVGEnumMapping SVGSVGElement::sZoomAndPanMap[] = {
   {&nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
@@ -102,7 +102,7 @@ DOMSVGTranslatePoint::MatrixTransform(SVGMatrix& matrix)
 JSObject*
 SVGSVGElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SVGSVGElementBinding::Wrap(aCx, this, aGivenProto);
+  return SVGSVGElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 //----------------------------------------------------------------------
@@ -466,8 +466,7 @@ SVGSVGElement::GetTimedDocumentRoot()
 nsresult
 SVGSVGElement::BindToTree(nsIDocument* aDocument,
                           nsIContent* aParent,
-                          nsIContent* aBindingParent,
-                          bool aCompileEventHandlers)
+                          nsIContent* aBindingParent)
 {
   nsSMILAnimationController* smilController = nullptr;
 
@@ -491,8 +490,7 @@ SVGSVGElement::BindToTree(nsIDocument* aDocument,
   }
 
   nsresult rv = SVGGraphicsElement::BindToTree(aDocument, aParent,
-                                              aBindingParent,
-                                              aCompileEventHandlers);
+                                              aBindingParent);
   NS_ENSURE_SUCCESS(rv,rv);
 
   if (mTimedDocumentRoot && smilController) {

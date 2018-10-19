@@ -740,15 +740,7 @@ HandleOutOfBounds(CONTEXT* context, uint8_t* pc, uint8_t* faultingAddress,
 
     Trap trap;
     BytecodeOffset bytecode;
-    if (!segment->code().lookupTrap(pc, &trap, &bytecode)) {
-        // If there is no associated TrapSite for the faulting PC, this must be
-        // experimental SIMD.js or Atomics. When these are converted to
-        // non-experimental wasm features, this case, as well as outOfBoundsCode,
-        // can be removed.
-        activation->startWasmTrap(Trap::OutOfBounds, 0, ToRegisterState(context));
-        *ppc = segment->outOfBoundsCode();
-        return true;
-    }
+    MOZ_ALWAYS_TRUE(segment->code().lookupTrap(pc, &trap, &bytecode));
 
     if (trap != Trap::OutOfBounds)
         return false;
@@ -871,9 +863,8 @@ HandleOutOfBounds(CONTEXT* context, uint8_t* pc, uint8_t* faultingAddress,
             // Assign the JS-defined result value to the destination register
             // (ToInt32(undefined) or ToNumber(undefined), determined by the
             // type of the destination register). Very conveniently, we can
-            // infer the type from the register class, since all SIMD accesses
-            // throw on out of bounds (see above), so the only types using FP
-            // registers are float32 and double.
+            // infer the type from the register class, so the only types using
+            // FP registers are float32 and double.
             SetRegisterToCoercedUndefined(context, access.size(), access.otherOperand());
             break;
           case Disassembler::HeapAccess::Store:
@@ -1324,18 +1315,6 @@ HandleFault(int signum, siginfo_t* info, void* ctx)
             return false;
     }
 
-#ifdef JS_CODEGEN_ARM
-    if (signum == SIGBUS) {
-        // TODO: We may see a bus error for something that is an unaligned access that
-        // partly overlaps the end of the heap.  In this case, it is an out-of-bounds
-        // error and we should signal that properly, but to do so we must inspect
-        // the operand of the failed access.
-        activation->startWasmTrap(wasm::Trap::UnalignedAccess, 0, ToRegisterState(context));
-        *ppc = moduleSegment->unalignedAccessCode();
-        return true;
-    }
-#endif
-
     return HandleOutOfBounds(context, pc, faultingAddress, moduleSegment, *instance, activation, ppc);
 }
 
@@ -1397,6 +1376,10 @@ ProcessHasSignalHandlers()
     // If there is no JIT, then there should be no Wasm signal handlers.
     return false;
 #endif
+
+    // Signal handlers are currently disabled when recording or replaying.
+    if (mozilla::recordreplay::IsRecordingOrReplaying())
+        return false;
 
 #if defined(ANDROID) && defined(MOZ_LINKER)
     // Signal handling is broken on some android systems.

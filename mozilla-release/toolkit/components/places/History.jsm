@@ -37,6 +37,8 @@
  *     passed as argument to a function of this API will be ignored.
  *  - visits: (Array<VisitInfo>)
  *     All the visits for this page, if any.
+ *  - annotations: (Map)
+ *     A map containing key/value pairs of the annotations for this page, if any.
  *
  * See the documentation of individual methods to find out which properties
  * are required for `PageInfo` arguments or returned for `PageInfo` results.
@@ -123,6 +125,8 @@ var History = Object.freeze({
    *           By default, `visits` is undefined inside the returned `PageInfo`.
    *        - `includeMeta` (boolean) set this to true to fetch page meta fields,
    *           i.e. `description` and `preview_image_url`.
+   *        - `includeAnnotations` (boolean) set this to true to fetch any
+   *           annotations that are associated with the page.
    *
    * @return (Promise)
    *      A promise resolved once the operation is complete.
@@ -156,8 +160,39 @@ var History = Object.freeze({
       throw new TypeError("includeMeta should be a boolean if exists");
     }
 
+    let hasIncludeAnnotations = "includeAnnotations" in options;
+    if (hasIncludeAnnotations && typeof options.includeAnnotations !== "boolean") {
+      throw new TypeError("includeAnnotations should be a boolean if exists");
+    }
+
     return PlacesUtils.promiseDBConnection()
                       .then(db => fetch(db, guidOrURI, options));
+  },
+
+  /**
+   * Fetches all pages which have one or more of the specified annotations.
+   *
+   * @param annotations: An array of strings containing the annotation names to
+   *                     find.
+   * @return (Promise)
+   *      A promise resolved once the operation is complete.
+   * @resolves (Map)
+   *      A Map containing the annotations, pages and their contents, e.g.
+   *      Map("anno1" => [{page, content}, {page, content}]), "anno2" => ....);
+   * @rejects (Error) XXX
+   *      Rejects if the insert was unsuccessful.
+   */
+  fetchAnnotatedPages(annotations) {
+    // See if options exists and make sense
+    if (!annotations || !Array.isArray(annotations)) {
+      throw new TypeError("annotations should be an Array and not null");
+    }
+    if (annotations.some(name => typeof name !== "string")) {
+      throw new TypeError("all annotation values should be strings");
+    }
+
+    return PlacesUtils.promiseDBConnection()
+                      .then(db => fetchAnnotatedPages(db, annotations));
   },
 
   /**
@@ -372,6 +407,8 @@ var History = Object.freeze({
    *          - limit: (Number) Limit the number of visits
    *                we remove to this number
    *          - url: (URL) Only remove visits to this URL
+   *          - transition: (Integer)
+   *                The type of the transition (see TRANSITIONS below)
    *      If both `beginDate` and `endDate` are specified,
    *      visits between `beginDate` (inclusive) and `end`
    *      (inclusive) are removed.
@@ -398,6 +435,7 @@ var History = Object.freeze({
     let hasEndDate = "endDate" in filter;
     let hasURL = "url" in filter;
     let hasLimit = "limit" in filter;
+    let hasTransition = "transition" in filter;
     if (hasBeginDate) {
       this.ensureDate(filter.beginDate);
     }
@@ -407,7 +445,11 @@ var History = Object.freeze({
     if (hasBeginDate && hasEndDate && filter.beginDate > filter.endDate) {
       throw new TypeError("`beginDate` should be at least as old as `endDate`");
     }
-    if (!hasBeginDate && !hasEndDate && !hasURL && !hasLimit) {
+    if (hasTransition &&
+        !this.isValidTransition(filter.transition)) {
+      throw new TypeError("`transition` should be valid");
+    }
+    if (!hasBeginDate && !hasEndDate && !hasURL && !hasLimit && !hasTransition) {
       throw new TypeError("Expected a non-empty filter");
     }
 
@@ -573,11 +615,11 @@ var History = Object.freeze({
   /**
    * Is a value a valid transition type?
    *
-   * @param transitionType: (String)
+   * @param transition: (String)
    * @return (Boolean)
    */
-  isValidTransition(transitionType) {
-    return Object.values(History.TRANSITIONS).includes(transitionType);
+  isValidTransition(transition) {
+    return Object.values(History.TRANSITIONS).includes(transition);
   },
 
   /**
@@ -592,7 +634,7 @@ var History = Object.freeze({
    /**
    * Update information for a page.
    *
-   * Currently, it supports updating the description and the preview image URL
+   * Currently, it supports updating the description, preview image URL and annotations
    * for a page, any other fields will be ignored.
    *
    * Note that this function will ignore the update if the target page has not
@@ -618,6 +660,14 @@ var History = Object.freeze({
    *      2). It throws if its length is greater than DB_URL_LENGTH_MAX
    *          defined in PlacesUtils.jsm.
    *
+   *      If a property `annotations` is provided, the annotations will be
+   *      updated. Note that:
+   *      1). It should be a Map containing key/value pairs to be updated.
+   *      2). If the value is falsy, the annotation will be removed.
+   *      3). If the value is non-falsy, the annotation will be added or updated.
+   *      For `annotations` the keys must all be strings, the values should be
+   *      Boolean, Number or Strings. null and undefined are supported as falsy values.
+   *
    * @return (Promise)
    *      A promise resolved once the update is complete.
    * @rejects (Error)
@@ -636,8 +686,9 @@ var History = Object.freeze({
   update(pageInfo) {
     let info = PlacesUtils.validatePageInfo(pageInfo, false);
 
-    if (info.description === undefined && info.previewImageURL === undefined) {
-      throw new TypeError("pageInfo object must at least have either a description or a previewImageURL property");
+    if (info.description === undefined && info.previewImageURL === undefined &&
+        info.annotations === undefined) {
+      throw new TypeError("pageInfo object must at least have either a description, previewImageURL or annotations property.");
     }
 
     return PlacesUtils.withConnectionWrapper("History.jsm: update", db => update(db, info));
@@ -791,17 +842,9 @@ var clear = async function(db) {
                               AND fixup_url(get_host_and_port(icon_url)) NOT IN (SELECT host FROM moz_origins)`);
 
     // Expire annotations.
-    await db.execute(`DELETE FROM moz_items_annos WHERE expiration = :expire_session`,
-                     { expire_session: Ci.nsIAnnotationService.EXPIRE_SESSION });
-    await db.execute(`DELETE FROM moz_annos WHERE id in (
-                        SELECT a.id FROM moz_annos a
-                        LEFT JOIN moz_places h ON a.place_id = h.id
-                        WHERE h.id IS NULL
-                           OR expiration = :expire_session
-                           OR (expiration = :expire_with_history
-                               AND h.last_visit_date ISNULL)
-                      )`, { expire_session: Ci.nsIAnnotationService.EXPIRE_SESSION,
-                            expire_with_history: Ci.nsIAnnotationService.EXPIRE_WITH_HISTORY });
+    await db.execute(`DELETE FROM moz_annos WHERE NOT EXISTS (
+                        SELECT 1 FROM moz_places WHERE id = place_id
+                      )`);
 
     // Expire inputhistory.
     await db.execute(`DELETE FROM moz_inputhistory WHERE place_id IN (
@@ -908,9 +951,12 @@ var cleanupPages = async function(db, pages) {
  *          - hasForeign: (boolean) If `true`, the page has at least
  *              one foreign reference (i.e. a bookmark), so the page should
  *              be kept and its frecency updated.
+ * @param transition: (Number)
+ *      Set to a valid TRANSITIONS value to indicate all transitions of a
+ *      certain type have been removed, otherwise defaults to -1 (unknown value).
  * @return (Promise)
  */
-var notifyCleanup = async function(db, pages) {
+var notifyCleanup = async function(db, pages, transition = -1) {
   let notifiedCount = 0;
   let observers = PlacesUtils.history.getObservers();
 
@@ -919,16 +965,11 @@ var notifyCleanup = async function(db, pages) {
   for (let page of pages) {
     let uri = NetUtil.newURI(page.url.href);
     let guid = page.guid;
-    if (page.hasVisits) {
-      // For the moment, we do not have the necessary observer API
-      // to notify when we remove a subset of visits, see bug 937560.
-      continue;
-    }
-    if (page.hasForeign) {
+    if (page.hasVisits || page.hasForeign) {
       // We have removed all visits, but the page is still alive, e.g.
       // because of a bookmark.
       notify(observers, "onDeleteVisits",
-        [uri, /* last visit*/0, guid, reason, -1]);
+        [uri, page.hasVisits > 0, guid, reason, transition]);
     } else {
       // The page has been entirely removed.
       notify(observers, "onDeleteURI",
@@ -1004,6 +1045,7 @@ var fetch = async function(db, guidOrURL, options) {
                ${whereClauseFragment}
                ${visitOrderFragment}`;
   let pageInfo = null;
+  let placeId = null;
   await db.executeCached(
     query,
     params,
@@ -1014,8 +1056,9 @@ var fetch = async function(db, guidOrURL, options) {
           guid: row.getResultByName("guid"),
           url: new URL(row.getResultByName("url")),
           frecency: row.getResultByName("frecency"),
-          title: row.getResultByName("title") || ""
+          title: row.getResultByName("title") || "",
         };
+        placeId = row.getResultByName("id");
       }
       if (options.includeMeta) {
         pageInfo.description = row.getResultByName("description") || "";
@@ -1034,7 +1077,55 @@ var fetch = async function(db, guidOrURL, options) {
         pageInfo.visits.push({ date, transition });
       }
     });
+
+  // Only try to get annotations if requested, and if there's an actual page found.
+  if (pageInfo && options.includeAnnotations) {
+    let rows = await db.executeCached(`
+      SELECT n.name, a.content FROM moz_anno_attributes n
+      JOIN moz_annos a ON n.id = a.anno_attribute_id
+      WHERE a.place_id = :placeId
+    `, {placeId});
+
+    pageInfo.annotations = new Map(rows.map(
+      row => [row.getResultByName("name"), row.getResultByName("content")]
+    ));
+  }
   return pageInfo;
+};
+
+// Inner implementation of History.fetchAnnotatedPages.
+var fetchAnnotatedPages = async function(db, annotations) {
+  let result = new Map();
+  let rows = await db.execute(`
+    SELECT n.name, h.url, a.content FROM moz_anno_attributes n
+    JOIN moz_annos a ON n.id = a.anno_attribute_id
+    JOIN moz_places h ON h.id = a.place_id
+    WHERE n.name IN (${new Array(annotations.length).fill("?").join(",")})
+  `, annotations);
+
+  for (let row of rows) {
+    let uri;
+    try {
+      uri = new URL(row.getResultByName("url"));
+    } catch (ex) {
+      Cu.reportError("Invalid URL read from database in fetchAnnotatedPages");
+      continue;
+    }
+
+    let anno = {
+      uri,
+      content: row.getResultByName("content"),
+    };
+    let annoName = row.getResultByName("name");
+    let pageAnnos = result.get(annoName);
+    if (!pageAnnos) {
+      pageAnnos = [];
+      result.set(annoName, pageAnnos);
+    }
+    pageAnnos.push(anno);
+  }
+
+  return result;
 };
 
 // Inner implementation of History.removeVisitsByFilter.
@@ -1044,6 +1135,7 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
   // so we need to *1000 one way and /1000 the other way.
   let conditions = [];
   let args = {};
+  let transition = -1;
   if ("beginDate" in filter) {
     conditions.push("v.visit_date >= :begin * 1000");
     args.begin = Number(filter.beginDate);
@@ -1054,6 +1146,11 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
   }
   if ("limit" in filter) {
     args.limit = Number(filter.limit);
+  }
+  if ("transition" in filter) {
+    conditions.push("v.visit_type = :transition");
+    args.transition = filter.transition;
+    transition = filter.transition;
   }
 
   let optionalJoin = "";
@@ -1088,7 +1185,7 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
        if (onResult) {
          onResultData.push({
            date: new Date(row.getResultByName("date")),
-           transition: row.getResultByName("visit_type")
+           transition: row.getResultByName("visit_type"),
          });
        }
      }
@@ -1130,7 +1227,7 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
       await cleanupPages(db, pages);
     });
 
-    notifyCleanup(db, pages);
+    notifyCleanup(db, pages, transition);
     notifyOnResult(onResultData, onResult); // don't wait
   } finally {
     // Ensure we cleanup embed visits, even if we bailed out early.
@@ -1220,7 +1317,7 @@ var removeByFilter = async function(db, filter, onResult = null) {
           guid,
           title: row.getResultByName("title"),
           frecency: row.getResultByName("frecency"),
-          url: new URL(url)
+          url: new URL(url),
         });
       }
     });
@@ -1284,7 +1381,7 @@ var remove = async function(db, {guids, urls}, onResult = null) {
         guid,
         title: row.getResultByName("title"),
         frecency: row.getResultByName("frecency"),
-        url: new URL(url)
+        url: new URL(url),
       });
     }
   });
@@ -1340,7 +1437,7 @@ function mergeUpdateInfoIntoPageInfo(updateInfo, pageInfo = {}) {
       return {
         date: PlacesUtils.toDate(visit.visitDate),
         transition: visit.transitionType,
-        referrer: (visit.referrerURI) ? new URL(visit.referrerURI.spec) : null
+        referrer: (visit.referrerURI) ? new URL(visit.referrerURI.spec) : null,
       };
     });
   }
@@ -1361,7 +1458,7 @@ var insert = function(db, pageInfo) {
       },
       handleCompletion: () => {
         resolve(pageInfo);
-      }
+      },
     });
   });
 };
@@ -1397,40 +1494,111 @@ var insertMany = function(db, pageInfos, onResult, onError) {
         } else {
           reject({message: "No items were added to history."});
         }
-      }
+      },
     }, true);
   });
 };
 
 // Inner implementation of History.update.
 var update = async function(db, pageInfo) {
-  let updateFragments = [];
-  let whereClauseFragment = "";
-  let params = {};
-
-  // Prefer GUID over url if it's present
+  // Check for page existence first; we can skip most of the work if it doesn't
+  // exist and anyway we'll need the place id multiple times later.
+  // Prefer GUID over url if it's present.
+  let id;
   if (typeof pageInfo.guid === "string") {
-    whereClauseFragment = "guid = :guid";
-    params.guid = pageInfo.guid;
+    let rows = await db.executeCached(
+      "SELECT id FROM moz_places WHERE guid = :guid",
+      {guid: pageInfo.guid}
+    );
+    id = rows.length ? rows[0].getResultByName("id") : null;
   } else {
-    whereClauseFragment = "url_hash = hash(:url) AND url = :url";
-    params.url = pageInfo.url.href;
+    let rows = await db.executeCached(
+      "SELECT id FROM moz_places WHERE url_hash = hash(:url) AND url = :url",
+    {url: pageInfo.url.href});
+    id = rows.length ? rows[0].getResultByName("id") : null;
+  }
+  if (!id) {
+    return;
   }
 
-  if (pageInfo.description || pageInfo.description === null) {
+  let updateFragments = [];
+  let params = {};
+  if ("description" in pageInfo) {
     updateFragments.push("description");
     params.description = pageInfo.description;
   }
-  if (pageInfo.previewImageURL || pageInfo.previewImageURL === null) {
+  if ("previewImageURL" in pageInfo) {
     updateFragments.push("preview_image_url");
     params.preview_image_url = pageInfo.previewImageURL ? pageInfo.previewImageURL.href : null;
   }
-  // Since this data may be written at every visit and is textual, avoid
-  // overwriting the existing record if it didn't change.
-  await db.execute(`
-    UPDATE moz_places
-    SET ${updateFragments.map(v => `${v} = :${v}`).join(", ")}
-    WHERE ${whereClauseFragment}
-      AND (${updateFragments.map(v => `IFNULL(${v}, "") <> IFNULL(:${v}, "")`).join(" OR ")})
-  `, params);
+  if (updateFragments.length > 0) {
+    // Since this data may be written at every visit and is textual, avoid
+    // overwriting the existing record if it didn't change.
+    await db.execute(`
+      UPDATE moz_places
+      SET ${updateFragments.map(v => `${v} = :${v}`).join(", ")}
+      WHERE id = :id
+        AND (${updateFragments.map(v => `IFNULL(${v}, "") <> IFNULL(:${v}, "")`).join(" OR ")})
+    `, {id, ...params});
+  }
+
+  if (pageInfo.annotations) {
+    let annosToRemove = [];
+    let annosToUpdate = [];
+
+    for (let anno of pageInfo.annotations) {
+      anno[1] ? annosToUpdate.push(anno[0]) : annosToRemove.push(anno[0]);
+    }
+
+    await db.executeTransaction(async function() {
+      if (annosToUpdate.length) {
+        await db.execute(`
+          INSERT OR IGNORE INTO moz_anno_attributes (name)
+          VALUES ${Array.from(annosToUpdate.keys()).map(k => `(:${k})`).join(", ")}
+        `, Object.assign({}, annosToUpdate));
+
+        for (let anno of annosToUpdate) {
+          let content = pageInfo.annotations.get(anno);
+          // TODO: We only really need to save the type whilst we still support
+          // accessing page annotations via the annotation service.
+          let type = typeof content == "string" ? Ci.nsIAnnotationService.TYPE_STRING :
+            Ci.nsIAnnotationService.TYPE_INT64;
+          let date = PlacesUtils.toPRTime(new Date());
+
+          // This will replace the id every time an annotation is updated. This is
+          // not currently an issue as we're not joining on the id field.
+          await db.execute(`
+            INSERT OR REPLACE INTO moz_annos
+              (place_id, anno_attribute_id, content, flags,
+               expiration, type, dateAdded, lastModified)
+            VALUES (:id,
+                    (SELECT id FROM moz_anno_attributes WHERE name = :anno_name),
+                    :content, 0, :expiration, :type, :date_added,
+                    :last_modified)
+          `, {
+            id,
+            anno_name: anno,
+            content,
+            expiration: PlacesUtils.annotations.EXPIRE_NEVER,
+            type,
+            // The date fields are unused, so we just set them both to the latest.
+            date_added: date,
+            last_modified: date,
+          });
+        }
+      }
+
+      for (let anno of annosToRemove) {
+        // We don't remove anything from the moz_anno_attributes table. If we
+        // delete the last item of a given name, that item really should go away.
+        // It will be cleaned up by expiration.
+        await db.execute(`
+          DELETE FROM moz_annos
+          WHERE place_id = :id
+          AND anno_attribute_id =
+            (SELECT id FROM moz_anno_attributes WHERE name = :anno_name)
+        `, { id, anno_name: anno });
+      }
+    });
+  }
 };

@@ -162,8 +162,6 @@ class SavedStacks {
         creatingSavedFrame(false)
     { }
 
-    MOZ_MUST_USE bool init();
-    bool initialized() const { return frames.initialized(); }
     MOZ_MUST_USE bool saveCurrentStack(JSContext* cx, MutableHandleSavedFrame frame,
                                        JS::StackCapture&& capture = JS::StackCapture(JS::AllFrames()));
     MOZ_MUST_USE bool copyAsyncStack(JSContext* cx, HandleObject asyncStack,
@@ -323,7 +321,7 @@ struct MutableWrappedPtrOperations<SavedStacks::LocationValue, Wrapper>
 };
 
 UTF8CharsZ
-BuildUTF8StackString(JSContext* cx, HandleObject stack);
+BuildUTF8StackString(JSContext* cx, JSPrincipals* principals, HandleObject stack);
 
 uint32_t
 FixupColumnForDisplay(uint32_t column);

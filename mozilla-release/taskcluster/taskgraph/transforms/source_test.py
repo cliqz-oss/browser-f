@@ -19,9 +19,12 @@ from taskgraph.util.schema import (
     validate_schema,
     resolve_keyed_by,
 )
+from taskgraph.util.treeherder import join_symbol, split_symbol
+
 from voluptuous import (
     Any,
     Extra,
+    Optional,
     Required,
     Schema,
 )
@@ -56,6 +59,7 @@ source_test_description_schema = Schema({
         job_description_schema['worker'],
         {'by-platform': {basestring: job_description_schema['worker']}},
     ),
+    Optional('python-version'): [int],
 })
 
 transforms = TransformSequence()
@@ -103,6 +107,57 @@ def expand_platforms(config, jobs):
             yield pjob
 
 
+@transforms.add
+def split_python(config, jobs):
+    for job in jobs:
+        key = 'python-version'
+        versions = job.pop(key, [])
+        if not versions:
+            yield job
+            continue
+        for version in versions:
+            group = 'py{0}'.format(version)
+            pyjob = copy.deepcopy(job)
+            if 'name' in pyjob:
+                pyjob['name'] += '-{0}'.format(group)
+            else:
+                pyjob['label'] += '-{0}'.format(group)
+            symbol = split_symbol(pyjob['treeherder']['symbol'])[1]
+            pyjob['treeherder']['symbol'] = join_symbol(group, symbol)
+            pyjob['run'][key] = version
+            yield pyjob
+
+
+@transforms.add
+def split_jsshell(config, jobs):
+    all_shells = {
+        'sm': "Spidermonkey",
+        'v8': "Google V8"
+    }
+
+    for job in jobs:
+        if not job['name'].startswith('jsshell'):
+            yield job
+            continue
+
+        test = job.pop('test')
+        for shell in job.get('shell', all_shells.keys()):
+            assert shell in all_shells
+
+            new_job = copy.deepcopy(job)
+            new_job['name'] = '{}-{}'.format(new_job['name'], shell)
+            new_job['description'] = '{} on {}'.format(new_job['description'], all_shells[shell])
+            new_job['shell'] = shell
+
+            group = 'js-bench-{}'.format(shell)
+            symbol = split_symbol(new_job['treeherder']['symbol'])[1]
+            new_job['treeherder']['symbol'] = join_symbol(group, symbol)
+
+            run = new_job['run']
+            run['command'] = run['command'].format(shell=shell, SHELL=shell.upper(), test=test)
+            yield new_job
+
+
 def add_build_dependency(config, job):
     """
     Add build dependency to the job and installer_url to env.
@@ -146,4 +201,26 @@ def handle_platform(config, jobs):
             add_build_dependency(config, job)
 
         del job['platform']
+        yield job
+
+
+@transforms.add
+def handle_shell(config, jobs):
+    """
+    Handle the 'shell' property.
+    """
+    fields = [
+        'run-on-projects',
+        'worker.env',
+    ]
+
+    for job in jobs:
+        if not job.get('shell'):
+            yield job
+            continue
+
+        for field in fields:
+            resolve_keyed_by(job, field, item_name=job['name'])
+
+        del job['shell']
         yield job

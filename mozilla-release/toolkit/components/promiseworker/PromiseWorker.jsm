@@ -19,8 +19,6 @@
 
 var EXPORTED_SYMBOLS = ["BasePromiseWorker"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
-
 ChromeUtils.defineModuleGetter(this, "PromiseUtils",
   "resource://gre/modules/PromiseUtils.jsm");
 
@@ -42,7 +40,7 @@ Queue.prototype = {
   },
   isEmpty: function isEmpty() {
     return this._array.length == 0;
-  }
+  },
 };
 
 /**
@@ -380,7 +378,7 @@ this.BasePromiseWorker.prototype = {
       let {deferred} = this._queue.pop();
       deferred.reject(error);
     }
-  }
+  },
 };
 
 /**

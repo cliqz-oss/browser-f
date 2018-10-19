@@ -31,6 +31,8 @@ using mozilla::Maybe;
 namespace js {
 namespace jit {
 
+class AutoSaveLiveRegisters;
+
 // IonCacheIRCompiler compiles CacheIR to IonIC native code.
 class MOZ_RAII IonCacheIRCompiler : public CacheIRCompiler
 {
@@ -99,7 +101,7 @@ class MOZ_RAII IonCacheIRCompiler : public CacheIRCompiler
         return ptr;
     }
 
-    void prepareVMCall(MacroAssembler& masm);
+    void prepareVMCall(MacroAssembler& masm, const AutoSaveLiveRegisters&);
     MOZ_MUST_USE bool callVM(MacroAssembler& masm, const VMFunction& fun);
 
     MOZ_MUST_USE bool emitAddAndStoreSlotShared(CacheOp op);
@@ -292,7 +294,7 @@ static void*
 GetReturnAddressToIonCode(JSContext* cx)
 {
     JSJitFrameIter frame(cx->activation()->asJit());
-    MOZ_ASSERT(frame.type() == JitFrame_Exit,
+    MOZ_ASSERT(frame.type() == FrameType::Exit,
                "An exit frame is expected as update functions are called with a VMFunction.");
 
     void* returnAddr = frame.returnAddress();
@@ -303,10 +305,11 @@ GetReturnAddressToIonCode(JSContext* cx)
     return returnAddr;
 }
 
+// The AutoSaveLiveRegisters parameter is used to ensure registers were saved
 void
-IonCacheIRCompiler::prepareVMCall(MacroAssembler& masm)
+IonCacheIRCompiler::prepareVMCall(MacroAssembler& masm, const AutoSaveLiveRegisters&)
 {
-    uint32_t descriptor = MakeFrameDescriptor(masm.framePushed(), JitFrame_IonJS,
+    uint32_t descriptor = MakeFrameDescriptor(masm.framePushed(), FrameType::IonJS,
                                               IonICCallFrameLayout::Size());
     pushStubCodePointer();
     masm.Push(Imm32(descriptor));
@@ -325,7 +328,7 @@ IonCacheIRCompiler::callVM(MacroAssembler& masm, const VMFunction& fun)
     TrampolinePtr code = cx_->runtime()->jitRuntime()->getVMWrapper(fun);
 
     uint32_t frameSize = fun.explicitStackSlots() * sizeof(void*);
-    uint32_t descriptor = MakeFrameDescriptor(frameSize, JitFrame_IonICCall,
+    uint32_t descriptor = MakeFrameDescriptor(frameSize, FrameType::IonICCall,
                                               ExitFrameLayout::Size());
     masm.Push(Imm32(descriptor));
     masm.callJit(code);
@@ -520,11 +523,39 @@ IonCacheIRCompiler::init()
         allocator.initInputLocation(0, ic->input());
         break;
       }
+      case CacheKind::BinaryArith: {
+        IonBinaryArithIC* ic = ic_->asBinaryArithIC();
+        ValueOperand output = ic->output();
+
+        available.add(output);
+
+        liveRegs_.emplace(ic->liveRegs());
+        outputUnchecked_.emplace(TypedOrValueRegister(output));
+
+        MOZ_ASSERT(numInputs == 2);
+        allocator.initInputLocation(0, ic->lhs());
+        allocator.initInputLocation(1, ic->rhs());
+        break;
+      }
+      case CacheKind::Compare: {
+        IonCompareIC *ic = ic_->asCompareIC();
+        ValueOperand output = ic->output();
+
+        available.add(output);
+
+        liveRegs_.emplace(ic->liveRegs());
+        outputUnchecked_.emplace(TypedOrValueRegister(output));
+
+        MOZ_ASSERT(numInputs == 2);
+        allocator.initInputLocation(0, ic->lhs());
+        allocator.initInputLocation(1, ic->rhs());
+        break;
+      }
       case CacheKind::Call:
-      case CacheKind::Compare:
       case CacheKind::TypeOf:
       case CacheKind::ToBool:
       case CacheKind::GetIntrinsic:
+      case CacheKind::NewObject:
         MOZ_CRASH("Unsupported IC");
     }
 
@@ -561,8 +592,6 @@ IonCacheIRCompiler::compile()
 
         allocator.nextOp();
     } while (reader.more());
-
-    MOZ_RELEASE_ASSERT(nextStubField_ == writer_.numStubFields());
 
     masm.assumeUnreachable("Should have returned from IC");
 
@@ -811,87 +840,6 @@ IonCacheIRCompiler::emitGuardSpecificSymbol()
 }
 
 bool
-IonCacheIRCompiler::emitGuardXrayExpandoShapeAndDefaultProto()
-{
-    Register obj = allocator.useRegister(masm, reader.objOperandId());
-    bool hasExpando = reader.readBool();
-    JSObject* shapeWrapper = objectStubField(reader.stubOffset());
-    MOZ_ASSERT(hasExpando == !!shapeWrapper);
-
-    AutoScratchRegister scratch(allocator, masm);
-    Maybe<AutoScratchRegister> scratch2, scratch3;
-    if (hasExpando) {
-        scratch2.emplace(allocator, masm);
-        scratch3.emplace(allocator, masm);
-    }
-
-    FailurePath* failure;
-    if (!addFailurePath(&failure))
-        return false;
-
-    masm.loadPtr(Address(obj, ProxyObject::offsetOfReservedSlots()), scratch);
-    Address holderAddress(scratch, sizeof(Value) * GetXrayJitInfo()->xrayHolderSlot);
-    Address expandoAddress(scratch, NativeObject::getFixedSlotOffset(GetXrayJitInfo()->holderExpandoSlot));
-
-    if (hasExpando) {
-        masm.branchTestObject(Assembler::NotEqual, holderAddress, failure->label());
-        masm.unboxObject(holderAddress, scratch);
-        masm.branchTestObject(Assembler::NotEqual, expandoAddress, failure->label());
-        masm.unboxObject(expandoAddress, scratch);
-
-        // Unwrap the expando before checking its shape.
-        masm.loadPtr(Address(scratch, ProxyObject::offsetOfReservedSlots()), scratch);
-        masm.unboxObject(Address(scratch, detail::ProxyReservedSlots::offsetOfPrivateSlot()), scratch);
-
-        masm.movePtr(ImmGCPtr(shapeWrapper), scratch2.ref());
-        LoadShapeWrapperContents(masm, scratch2.ref(), scratch2.ref(), failure->label());
-        masm.branchTestObjShape(Assembler::NotEqual, scratch, *scratch2, *scratch3, scratch,
-                                failure->label());
-
-        // The reserved slots on the expando should all be in fixed slots.
-        Address protoAddress(scratch, NativeObject::getFixedSlotOffset(GetXrayJitInfo()->expandoProtoSlot));
-        masm.branchTestUndefined(Assembler::NotEqual, protoAddress, failure->label());
-    } else {
-        Label done;
-        masm.branchTestObject(Assembler::NotEqual, holderAddress, &done);
-        masm.unboxObject(holderAddress, scratch);
-        masm.branchTestObject(Assembler::Equal, expandoAddress, failure->label());
-        masm.bind(&done);
-    }
-
-    return true;
-}
-
-bool
-IonCacheIRCompiler::emitGuardFunctionPrototype()
-{
-    Register obj = allocator.useRegister(masm, reader.objOperandId());
-    Register prototypeObject = allocator.useRegister(masm, reader.objOperandId());
-
-    // Allocate registers before the failure path to make sure they're registered
-    // by addFailurePath.
-    AutoScratchRegister scratch1(allocator, masm);
-    AutoScratchRegister scratch2(allocator, masm);
-
-    FailurePath* failure;
-    if (!addFailurePath(&failure))
-        return false;
-
-     // Guard on the .prototype object.
-    masm.loadPtr(Address(obj, NativeObject::offsetOfSlots()), scratch1);
-    uintptr_t slot =  readStubWord(reader.stubOffset(), StubField::Type::RawWord);
-    masm.move32(Imm32(slot), scratch2);
-    BaseValueIndex prototypeSlot(scratch1, scratch2);
-    masm.branchTestObject(Assembler::NotEqual, prototypeSlot, failure->label());
-    masm.unboxObject(prototypeSlot, scratch1);
-    masm.branchPtr(Assembler::NotEqual,
-                   prototypeObject,
-                   scratch1, failure->label());
-
-    return true;
-}
-
-bool
 IonCacheIRCompiler::emitLoadValueResult()
 {
    MOZ_CRASH("Baseline-specific op");
@@ -963,12 +911,15 @@ IonCacheIRCompiler::emitCallScriptedGetterResult()
     JSFunction* target = &objectStubField(reader.stubOffset())->as<JSFunction>();
     AutoScratchRegister scratch(allocator, masm);
 
+    bool isCrossRealm = reader.readBool();
+    MOZ_ASSERT(isCrossRealm == (cx_->realm() != target->realm()));
+
     allocator.discardStack(masm);
 
     uint32_t framePushedBefore = masm.framePushed();
 
     // Construct IonICCallFrameLayout.
-    uint32_t descriptor = MakeFrameDescriptor(masm.framePushed(), JitFrame_IonJS,
+    uint32_t descriptor = MakeFrameDescriptor(masm.framePushed(), FrameType::IonJS,
                                               IonICCallFrameLayout::Size());
     pushStubCodePointer();
     masm.Push(Imm32(descriptor));
@@ -987,9 +938,12 @@ IonCacheIRCompiler::emitCallScriptedGetterResult()
         masm.Push(UndefinedValue());
     masm.Push(TypedOrValueRegister(MIRType::Object, AnyRegister(obj)));
 
+    if (isCrossRealm)
+        masm.switchToRealm(target->realm(), scratch);
+
     masm.movePtr(ImmGCPtr(target), scratch);
 
-    descriptor = MakeFrameDescriptor(argSize + padding, JitFrame_IonICCall,
+    descriptor = MakeFrameDescriptor(argSize + padding, FrameType::IonICCall,
                                      JitFrameLayout::Size());
     masm.Push(Imm32(0)); // argc
     masm.Push(scratch);
@@ -1004,8 +958,14 @@ IonCacheIRCompiler::emitCallScriptedGetterResult()
     MOZ_ASSERT(target->hasJitEntry());
     masm.loadJitCodeRaw(scratch, scratch);
     masm.callJit(scratch);
-    masm.storeCallResultValue(output);
 
+    if (isCrossRealm) {
+        static_assert(!JSReturnOperand.aliases(ReturnReg),
+                      "ReturnReg available as scratch after scripted calls");
+        masm.switchToRealm(cx_->realm(), ReturnReg);
+    }
+
+    masm.storeCallResultValue(output);
     masm.freeStack(masm.framePushed() - framePushedBefore);
     return true;
 }
@@ -1051,6 +1011,9 @@ IonCacheIRCompiler::emitCallNativeGetterResult()
         return false;
     masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameType::IonOOLNative);
 
+    if (target->realm() != cx_->realm())
+        masm.switchToRealm(target->realm(), scratch);
+
     // Construct and execute call.
     masm.setupUnalignedABICall(scratch);
     masm.passABIArg(argJSContext);
@@ -1061,6 +1024,9 @@ IonCacheIRCompiler::emitCallNativeGetterResult()
 
     // Test for failure.
     masm.branchIfFalseBool(ReturnReg, masm.exceptionLabel());
+
+    if (target->realm() != cx_->realm())
+        masm.switchToRealm(cx_->realm(), ReturnReg);
 
     // Load the outparam vp[0] into output register(s).
     Address outparam(masm.getStackPointer(), IonOOLNativeExitFrameLayout::offsetOfResult());
@@ -1137,10 +1103,6 @@ IonCacheIRCompiler::emitCallProxyGetResult()
     return true;
 }
 
-typedef bool (*ProxyGetPropertyByValueFn)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
-static const VMFunction ProxyGetPropertyByValueInfo =
-    FunctionInfo<ProxyGetPropertyByValueFn>(ProxyGetPropertyByValue, "ProxyGetPropertyByValue");
-
 bool
 IonCacheIRCompiler::emitCallProxyGetByValueResult()
 {
@@ -1152,7 +1114,7 @@ IonCacheIRCompiler::emitCallProxyGetByValueResult()
 
     allocator.discardStack(masm);
 
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(idVal);
     masm.Push(obj);
@@ -1163,12 +1125,6 @@ IonCacheIRCompiler::emitCallProxyGetByValueResult()
     masm.storeCallResultValue(output);
     return true;
 }
-
-typedef bool (*ProxyHasFn)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
-static const VMFunction ProxyHasInfo = FunctionInfo<ProxyHasFn>(ProxyHas, "ProxyHas");
-
-typedef bool (*ProxyHasOwnFn)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
-static const VMFunction ProxyHasOwnInfo = FunctionInfo<ProxyHasOwnFn>(ProxyHasOwn, "ProxyHasOwn");
 
 bool
 IonCacheIRCompiler::emitCallProxyHasPropResult()
@@ -1182,7 +1138,7 @@ IonCacheIRCompiler::emitCallProxyHasPropResult()
 
     allocator.discardStack(masm);
 
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(idVal);
     masm.Push(obj);
@@ -1285,11 +1241,6 @@ IonCacheIRCompiler::emitLoadStringResult()
     MOZ_CRASH("not used in ion");
 }
 
-typedef bool (*StringSplitHelperFn)(JSContext*, HandleString, HandleString, HandleObjectGroup,
-                              uint32_t limit, MutableHandleValue);
-static const VMFunction StringSplitHelperInfo =
-    FunctionInfo<StringSplitHelperFn>(StringSplitHelper, "StringSplitHelper");
-
 bool
 IonCacheIRCompiler::emitCallStringSplitResult()
 {
@@ -1302,7 +1253,7 @@ IonCacheIRCompiler::emitCallStringSplitResult()
 
     allocator.discardStack(masm);
 
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(str);
     masm.Push(sep);
@@ -1319,6 +1270,7 @@ IonCacheIRCompiler::emitCallStringSplitResult()
 bool
 IonCacheIRCompiler::emitCompareStringResult()
 {
+    AutoSaveLiveRegisters save(*this);
     AutoOutputRegister output(*this);
 
     Register left = allocator.useRegister(masm, reader.stringOperandId());
@@ -1326,10 +1278,6 @@ IonCacheIRCompiler::emitCompareStringResult()
     JSOp op = reader.jsop();
 
     AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
-
-    FailurePath* failure;
-    if (!addFailurePath(&failure))
-        return false;
 
     allocator.discardStack(masm);
 
@@ -1339,7 +1287,7 @@ IonCacheIRCompiler::emitCompareStringResult()
     masm.jump(&done);
     masm.bind(&slow);
 
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
     masm.Push(right);
     masm.Push(left);
 
@@ -2066,6 +2014,9 @@ IonCacheIRCompiler::emitCallNativeSetter()
         return false;
     masm.enterFakeExitFrame(argJSContext, scratch, ExitFrameType::IonOOLNative);
 
+    if (target->realm() != cx_->realm())
+        masm.switchToRealm(target->realm(), scratch);
+
     // Make the call.
     masm.setupUnalignedABICall(scratch);
     masm.passABIArg(argJSContext);
@@ -2076,6 +2027,9 @@ IonCacheIRCompiler::emitCallNativeSetter()
 
     // Test for failure.
     masm.branchIfFalseBool(ReturnReg, masm.exceptionLabel());
+
+    if (target->realm() != cx_->realm())
+        masm.switchToRealm(cx_->realm(), ReturnReg);
 
     masm.adjustStack(IonOOLNativeExitFrameLayout::Size(1));
     return true;
@@ -2090,6 +2044,9 @@ IonCacheIRCompiler::emitCallScriptedSetter()
     JSFunction* target = &objectStubField(reader.stubOffset())->as<JSFunction>();
     ConstantOrRegister val = allocator.useConstantOrRegister(masm, reader.valOperandId());
 
+    bool isCrossRealm = reader.readBool();
+    MOZ_ASSERT(isCrossRealm == (cx_->realm() != target->realm()));
+
     AutoScratchRegister scratch(allocator, masm);
 
     allocator.discardStack(masm);
@@ -2097,7 +2054,7 @@ IonCacheIRCompiler::emitCallScriptedSetter()
     uint32_t framePushedBefore = masm.framePushed();
 
     // Construct IonICCallFrameLayout.
-    uint32_t descriptor = MakeFrameDescriptor(masm.framePushed(), JitFrame_IonJS,
+    uint32_t descriptor = MakeFrameDescriptor(masm.framePushed(), FrameType::IonJS,
                                               IonICCallFrameLayout::Size());
     pushStubCodePointer();
     masm.Push(Imm32(descriptor));
@@ -2118,9 +2075,12 @@ IonCacheIRCompiler::emitCallScriptedSetter()
     masm.Push(val);
     masm.Push(TypedOrValueRegister(MIRType::Object, AnyRegister(obj)));
 
+    if (isCrossRealm)
+        masm.switchToRealm(target->realm(), scratch);
+
     masm.movePtr(ImmGCPtr(target), scratch);
 
-    descriptor = MakeFrameDescriptor(argSize + padding, JitFrame_IonICCall,
+    descriptor = MakeFrameDescriptor(argSize + padding, FrameType::IonICCall,
                                      JitFrameLayout::Size());
     masm.Push(Imm32(1)); // argc
     masm.Push(scratch);
@@ -2136,13 +2096,12 @@ IonCacheIRCompiler::emitCallScriptedSetter()
     masm.loadJitCodeRaw(scratch, scratch);
     masm.callJit(scratch);
 
+    if (isCrossRealm)
+        masm.switchToRealm(cx_->realm(), ReturnReg);
+
     masm.freeStack(masm.framePushed() - framePushedBefore);
     return true;
 }
-
-typedef bool (*SetArrayLengthFn)(JSContext*, HandleObject, HandleValue, bool);
-static const VMFunction SetArrayLengthInfo =
-    FunctionInfo<SetArrayLengthFn>(SetArrayLength, "SetArrayLength");
 
 bool
 IonCacheIRCompiler::emitCallSetArrayLength()
@@ -2154,7 +2113,7 @@ IonCacheIRCompiler::emitCallSetArrayLength()
     ConstantOrRegister val = allocator.useConstantOrRegister(masm, reader.valOperandId());
 
     allocator.discardStack(masm);
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(Imm32(strict));
     masm.Push(val);
@@ -2162,10 +2121,6 @@ IonCacheIRCompiler::emitCallSetArrayLength()
 
     return callVM(masm, SetArrayLengthInfo);
 }
-
-typedef bool (*ProxySetPropertyFn)(JSContext*, HandleObject, HandleId, HandleValue, bool);
-static const VMFunction ProxySetPropertyInfo =
-    FunctionInfo<ProxySetPropertyFn>(ProxySetProperty, "ProxySetProperty");
 
 bool
 IonCacheIRCompiler::emitCallProxySet()
@@ -2180,7 +2135,7 @@ IonCacheIRCompiler::emitCallProxySet()
     AutoScratchRegister scratch(allocator, masm);
 
     allocator.discardStack(masm);
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(Imm32(strict));
     masm.Push(val);
@@ -2189,10 +2144,6 @@ IonCacheIRCompiler::emitCallProxySet()
 
     return callVM(masm, ProxySetPropertyInfo);
 }
-
-typedef bool (*ProxySetPropertyByValueFn)(JSContext*, HandleObject, HandleValue, HandleValue, bool);
-static const VMFunction ProxySetPropertyByValueInfo =
-    FunctionInfo<ProxySetPropertyByValueFn>(ProxySetPropertyByValue, "ProxySetPropertyByValue");
 
 bool
 IonCacheIRCompiler::emitCallProxySetByValue()
@@ -2205,7 +2156,7 @@ IonCacheIRCompiler::emitCallProxySetByValue()
     bool strict = reader.readBool();
 
     allocator.discardStack(masm);
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(Imm32(strict));
     masm.Push(val);
@@ -2226,7 +2177,7 @@ IonCacheIRCompiler::emitMegamorphicSetElement()
     bool strict = reader.readBool();
 
     allocator.discardStack(masm);
-    prepareVMCall(masm);
+    prepareVMCall(masm, save);
 
     masm.Push(Imm32(strict));
     masm.Push(TypedOrValueRegister(MIRType::Object, AnyRegister(obj)));
@@ -2481,4 +2432,54 @@ IonIC::attachCacheIRStub(JSContext* cx, const CacheIRWriter& writer, CacheKind k
 
     attachStub(newStub, code);
     *attached = true;
+}
+
+bool
+IonCacheIRCompiler::emitCallStringConcatResult()
+{
+    AutoSaveLiveRegisters save(*this);
+    AutoOutputRegister output(*this);
+
+    Register lhs = allocator.useRegister(masm, reader.stringOperandId());
+    Register rhs = allocator.useRegister(masm, reader.stringOperandId());
+
+    allocator.discardStack(masm);
+
+    prepareVMCall(masm, save);
+
+    masm.Push(rhs);
+    masm.Push(lhs);
+
+    if (!callVM(masm, ConcatStringsInfo))
+        return false;
+
+    masm.tagValue(JSVAL_TYPE_STRING, ReturnReg, output.valueReg());
+    return true;
+}
+
+typedef bool (*DoConcatStringObjectFn)(JSContext*, HandleValue, HandleValue,
+                                       MutableHandleValue);
+const VMFunction DoIonConcatStringObjectInfo =
+    FunctionInfo<DoConcatStringObjectFn>(DoConcatStringObject, "DoIonConcatStringObject");
+
+bool
+IonCacheIRCompiler::emitCallStringObjectConcatResult()
+{
+    AutoSaveLiveRegisters save(*this);
+    AutoOutputRegister output(*this);
+
+    ValueOperand lhs = allocator.useValueRegister(masm, reader.valOperandId());
+    ValueOperand rhs = allocator.useValueRegister(masm, reader.valOperandId());
+
+    allocator.discardStack(masm);
+
+    prepareVMCall(masm, save);
+    masm.Push(rhs);
+    masm.Push(lhs);
+
+    if (!callVM(masm, DoIonConcatStringObjectInfo))
+        return false;
+
+    masm.storeCallResultValue(output);
+    return true;
 }

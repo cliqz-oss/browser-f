@@ -12,7 +12,6 @@ exports.getShownSource = getShownSource;
 exports.getPaneCollapse = getPaneCollapse;
 exports.getHighlightedLineRange = getHighlightedLineRange;
 exports.getConditionalPanelLine = getConditionalPanelLine;
-exports.getProjectDirectoryRoot = getProjectDirectoryRoot;
 exports.getOrientation = getOrientation;
 
 var _makeRecord = require("../utils/makeRecord");
@@ -35,8 +34,7 @@ const createUIState = exports.createUIState = (0, _makeRecord2.default)({
   selectedPrimaryPaneTab: "sources",
   activeSearch: null,
   contextMenu: {},
-  shownSource: "",
-  projectDirectoryRoot: _prefs.prefs.projectDirectoryRoot,
+  shownSource: null,
   startPanelCollapsed: _prefs.prefs.startPanelCollapsed,
   endPanelCollapsed: _prefs.prefs.endPanelCollapsed,
   frameworkGroupingOn: _prefs.prefs.frameworkGroupingOn,
@@ -70,7 +68,7 @@ function update(state = createUIState(), action) {
 
     case "SHOW_SOURCE":
       {
-        return state.set("shownSource", action.sourceUrl);
+        return state.set("shownSource", action.source);
       }
 
     case "TOGGLE_PANE":
@@ -112,10 +110,6 @@ function update(state = createUIState(), action) {
     case "CLOSE_CONDITIONAL_PANEL":
       return state.set("conditionalPanelLine", null);
 
-    case "SET_PROJECT_DIRECTORY_ROOT":
-      _prefs.prefs.projectDirectoryRoot = action.url;
-      return state.set("projectDirectoryRoot", action.url);
-
     case "SET_PRIMARY_PANE_TAB":
       return state.set("selectedPrimaryPaneTab", action.tabName);
 
@@ -126,6 +120,11 @@ function update(state = createUIState(), action) {
         }
 
         return state;
+      }
+
+    case "NAVIGATE":
+      {
+        return state.set("activeSearch", null).set("highlightedLineRange", {});
       }
 
     default:
@@ -171,10 +170,6 @@ function getHighlightedLineRange(state) {
 
 function getConditionalPanelLine(state) {
   return state.ui.get("conditionalPanelLine");
-}
-
-function getProjectDirectoryRoot(state) {
-  return state.ui.get("projectDirectoryRoot");
 }
 
 function getOrientation(state) {

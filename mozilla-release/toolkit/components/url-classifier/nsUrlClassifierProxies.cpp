@@ -58,7 +58,7 @@ NS_IMETHODIMP
 UrlClassifierDBServiceWorkerProxy::SetHashCompleter
   (const nsACString&, nsIUrlClassifierHashCompleter*)
 {
-  NS_NOTREACHED("This method should not be called!");
+  MOZ_ASSERT_UNREACHABLE("This method should not be called!");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -264,7 +264,7 @@ UrlClassifierDBServiceWorkerProxy::GetCacheInfoRunnable::Run()
 {
   MOZ_ASSERT(mCallback);
 
-  mTarget->GetCacheInfo(mTable, &mCache);
+  mTarget->GetCacheInfo(mTable, getter_AddRefs(mCache));
 
   nsCOMPtr<nsIRunnable> r = new GetCacheInfoCallbackRunnable(mCache, mCallback);
   return NS_DispatchToMainThread(r);
@@ -278,7 +278,6 @@ UrlClassifierDBServiceWorkerProxy::GetCacheInfoCallbackRunnable::Run()
   MOZ_ASSERT(mCallback);
 
   mCallback->OnGetCacheComplete(mCache);
-  NS_RELEASE(mCache);
 
   return NS_OK;
 }

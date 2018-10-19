@@ -15,15 +15,15 @@ const ADDONS = {
       "manifest_version": 2,
       "applications": {
         "gecko": {
-          "id": ID
-        }
+          "id": ID,
+        },
       },
       "icons": {
         "48": "icon48.png",
-        "64": "icon64.png"
-      }
+        "64": "icon64.png",
+      },
     },
-    "chrome.manifest": "content webex ./\n"
+    "chrome.manifest": "content webex ./\n",
   },
 };
 
@@ -34,7 +34,7 @@ const manifestSample = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "1"
+    maxVersion: "1",
   }],
 };
 
@@ -44,8 +44,6 @@ async function tearDownAddon(addon) {
 }
 
 add_task(async function test_reloading_a_temp_addon() {
-  if (AppConstants.MOZ_APP_NAME == "thunderbird")
-    return;
   await promiseRestartManager();
   let xpi = AddonTestUtils.createTempXPIFile(ADDONS.webextension_1);
   const addon = await AddonManager.installTemporaryAddon(xpi);
@@ -110,7 +108,7 @@ add_task(async function test_can_reload_permanent_addon() {
     onEnabled: (aAddon) => {
       Assert.ok(disabledCalled);
       enabledCalled = true;
-    }
+    },
   });
 
   await addon.reload();
@@ -139,7 +137,7 @@ add_task(async function test_reload_to_invalid_version_fails() {
     applications: {
       gecko: {
         id: addonId,
-      }
+      },
     },
   };
 

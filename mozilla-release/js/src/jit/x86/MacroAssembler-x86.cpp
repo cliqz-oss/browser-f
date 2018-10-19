@@ -592,7 +592,7 @@ MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType value
                                   const Address& dest, MIRType slotType);
 template void
 MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value, MIRType valueType,
-                                  const BaseIndex& dest, MIRType slotType);
+                                  const BaseObjectElementIndex& dest, MIRType slotType);
 
 // wasm specific methods, used in both the wasm baseline compiler and ion.
 
@@ -645,34 +645,6 @@ MacroAssembler::wasmLoad(const wasm::MemoryAccessDesc& access, Operand srcAddr, 
       case Scalar::Float64:
         vmovsd(srcAddr, out.fpu());
         break;
-      case Scalar::Float32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movss zeroes out the high lanes.
-          case 1: vmovss(srcAddr, out.fpu()); break;
-          // See comment above, which also applies to movsd.
-          case 2: vmovsd(srcAddr, out.fpu()); break;
-          case 4: vmovups(srcAddr, out.fpu()); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movd zeroes out the high lanes.
-          case 1: vmovd(srcAddr, out.fpu()); break;
-          // See comment above, which also applies to movq.
-          case 2: vmovq(srcAddr, out.fpu()); break;
-          case 4: vmovdqu(srcAddr, out.fpu()); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int8x16:
-        MOZ_ASSERT(access.numSimdElems() == 16, "unexpected partial load");
-        vmovdqu(srcAddr, out.fpu());
-        break;
-      case Scalar::Int16x8:
-        MOZ_ASSERT(access.numSimdElems() == 8, "unexpected partial load");
-        vmovdqu(srcAddr, out.fpu());
-        break;
       case Scalar::Int64:
       case Scalar::Uint8Clamped:
       case Scalar::MaxTypedArrayViewType:
@@ -687,7 +659,6 @@ MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAdd
 {
     // Atomic i64 load must use lock_cmpxchg8b.
     MOZ_ASSERT_IF(access.isAtomic(), access.byteSize() <= 4);
-    MOZ_ASSERT(!access.isSimd());
     MOZ_ASSERT(srcAddr.kind() == Operand::MEM_REG_DISP || srcAddr.kind() == Operand::MEM_SCALE);
 
     memoryBarrierBefore(access.sync());
@@ -744,10 +715,6 @@ MacroAssembler::wasmLoadI64(const wasm::MemoryAccessDesc& access, Operand srcAdd
       }
       case Scalar::Float32:
       case Scalar::Float64:
-      case Scalar::Float32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-      case Scalar::Int32x4:
         MOZ_CRASH("non-int64 loads should use load()");
       case Scalar::Uint8Clamped:
       case Scalar::MaxTypedArrayViewType:
@@ -785,34 +752,6 @@ MacroAssembler::wasmStore(const wasm::MemoryAccessDesc& access, AnyRegister valu
       case Scalar::Float64:
         vmovsd(value.fpu(), dstAddr);
         break;
-      case Scalar::Float32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movss zeroes out the high lanes.
-          case 1: vmovss(value.fpu(), dstAddr); break;
-          // See comment above, which also applies to movsd.
-          case 2: vmovsd(value.fpu(), dstAddr); break;
-          case 4: vmovups(value.fpu(), dstAddr); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int32x4:
-        switch (access.numSimdElems()) {
-          // In memory-to-register mode, movd zeroes out the high lanes.
-          case 1: vmovd(value.fpu(), dstAddr); break;
-          // See comment above, which also applies to movsd.
-          case 2: vmovq(value.fpu(), dstAddr); break;
-          case 4: vmovdqu(value.fpu(), dstAddr); break;
-          default: MOZ_CRASH("unexpected size for partial load");
-        }
-        break;
-      case Scalar::Int8x16:
-        MOZ_ASSERT(access.numSimdElems() == 16, "unexpected partial store");
-        vmovdqu(value.fpu(), dstAddr);
-        break;
-      case Scalar::Int16x8:
-        MOZ_ASSERT(access.numSimdElems() == 8, "unexpected partial store");
-        vmovdqu(value.fpu(), dstAddr);
-        break;
       case Scalar::Int64:
         MOZ_CRASH("Should be handled in storeI64.");
       case Scalar::MaxTypedArrayViewType:
@@ -827,7 +766,6 @@ MacroAssembler::wasmStoreI64(const wasm::MemoryAccessDesc& access, Register64 va
 {
     // Atomic i64 store must use lock_cmpxchg8b.
     MOZ_ASSERT(!access.isAtomic());
-    MOZ_ASSERT(!access.isSimd());
     MOZ_ASSERT(dstAddr.kind() == Operand::MEM_REG_DISP || dstAddr.kind() == Operand::MEM_SCALE);
 
     append(access, size());
@@ -839,7 +777,8 @@ MacroAssembler::wasmStoreI64(const wasm::MemoryAccessDesc& access, Register64 va
 
 template <typename T>
 static void
-AtomicLoad64(MacroAssembler& masm, const T& address, Register64 temp, Register64 output)
+AtomicLoad64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access, const T& address,
+             Register64 temp, Register64 output)
 {
     MOZ_ASSERT(temp.low == ebx);
     MOZ_ASSERT(temp.high == ecx);
@@ -848,31 +787,32 @@ AtomicLoad64(MacroAssembler& masm, const T& address, Register64 temp, Register64
 
     // In the event edx:eax matches what's in memory, ecx:ebx will be
     // stored.  The two pairs must therefore have the same values.
-
     masm.movl(edx, ecx);
     masm.movl(eax, ebx);
 
+    masm.append(access, masm.size());
     masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(address));
 }
 
 void
-MacroAssembler::atomicLoad64(const Synchronization&, const Address& mem, Register64 temp,
-                             Register64 output)
+MacroAssembler::wasmAtomicLoad64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                 Register64 temp, Register64 output)
 {
-    AtomicLoad64(*this, mem, temp, output);
+    AtomicLoad64(*this, access, mem, temp, output);
 }
 
 void
-MacroAssembler::atomicLoad64(const Synchronization&, const BaseIndex& mem, Register64 temp,
-                             Register64 output)
+MacroAssembler::wasmAtomicLoad64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                 Register64 temp, Register64 output)
 {
-    AtomicLoad64(*this, mem, temp, output);
+    AtomicLoad64(*this, access, mem, temp, output);
 }
 
 template <typename T>
 static void
-CompareExchange64(MacroAssembler& masm, const T& mem, Register64 expected,
-                  Register64 replacement, Register64 output)
+WasmCompareExchange64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access,
+                      const T& mem, Register64 expected, Register64 replacement,
+                      Register64 output)
 {
     MOZ_ASSERT(expected == output);
     MOZ_ASSERT(expected.high == edx);
@@ -880,26 +820,28 @@ CompareExchange64(MacroAssembler& masm, const T& mem, Register64 expected,
     MOZ_ASSERT(replacement.high == ecx);
     MOZ_ASSERT(replacement.low == ebx);
 
+    masm.append(access, masm.size());
     masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(mem));
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization&, const Address& mem, Register64 expected,
-                                  Register64 replacement, Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                      Register64 expected, Register64 replacement, Register64 output)
 {
-    CompareExchange64(*this, mem, expected, replacement, output);
+    WasmCompareExchange64(*this, access, mem, expected, replacement, output);
 }
 
 void
-MacroAssembler::compareExchange64(const Synchronization&, const BaseIndex& mem, Register64 expected,
-                                  Register64 replacement, Register64 output)
+MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                      Register64 expected, Register64 replacement, Register64 output)
 {
-    CompareExchange64(*this, mem, expected, replacement, output);
+    WasmCompareExchange64(*this, access, mem, expected, replacement, output);
 }
 
 template <typename T>
 static void
-AtomicExchange64(MacroAssembler& masm, const T& mem, Register64 value, Register64 output)
+WasmAtomicExchange64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access, const T& mem,
+                     Register64 value, Register64 output)
 {
     MOZ_ASSERT(value.low == ebx);
     MOZ_ASSERT(value.high == ecx);
@@ -911,28 +853,29 @@ AtomicExchange64(MacroAssembler& masm, const T& mem, Register64 value, Register6
 
     Label again;
     masm.bind(&again);
+    masm.append(access, masm.size());
     masm.lock_cmpxchg8b(edx, eax, ecx, ebx, Operand(mem));
     masm.j(MacroAssembler::NonZero, &again);
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization&, const Address& mem, Register64 value,
-                                 Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const Address& mem,
+                                     Register64 value, Register64 output)
 {
-    AtomicExchange64(*this, mem, value, output);
+    WasmAtomicExchange64(*this, access, mem, value, output);
 }
 
 void
-MacroAssembler::atomicExchange64(const Synchronization&, const BaseIndex& mem, Register64 value,
-                                 Register64 output)
+MacroAssembler::wasmAtomicExchange64(const wasm::MemoryAccessDesc& access, const BaseIndex& mem,
+                                     Register64 value, Register64 output)
 {
-    AtomicExchange64(*this, mem, value, output);
+    WasmAtomicExchange64(*this, access, mem, value, output);
 }
 
 template<typename T>
 static void
-AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, const Address& value, const T& mem,
-                Register64 temp, Register64 output)
+WasmAtomicFetchOp64(MacroAssembler& masm, const wasm::MemoryAccessDesc& access, AtomicOp op,
+                    const Address& value, const T& mem, Register64 temp, Register64 output)
 {
 
 // We don't have enough registers for all the operands on x86, so the rhs
@@ -944,6 +887,7 @@ AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, const Address& value, const T
         MOZ_ASSERT(output.high == edx);                            \
         MOZ_ASSERT(temp.low == ebx);                               \
         MOZ_ASSERT(temp.high == ecx);                              \
+        masm.append(access, masm.size());                          \
         masm.load64(mem, output);                                  \
         Label again;                                               \
         masm.bind(&again);                                         \
@@ -977,17 +921,19 @@ AtomicFetchOp64(MacroAssembler& masm, AtomicOp op, const Address& value, const T
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, const Address& value,
-                                const Address& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op,
+                                    const Address& value, const Address& mem, Register64 temp,
+                                    Register64 output)
 {
-    AtomicFetchOp64(*this, op, value, mem, temp, output);
+    WasmAtomicFetchOp64(*this, access, op, value, mem, temp, output);
 }
 
 void
-MacroAssembler::atomicFetchOp64(const Synchronization&, AtomicOp op, const Address& value,
-                                const BaseIndex& mem, Register64 temp, Register64 output)
+MacroAssembler::wasmAtomicFetchOp64(const wasm::MemoryAccessDesc& access, AtomicOp op,
+                                    const Address& value, const BaseIndex& mem, Register64 temp,
+                                    Register64 output)
 {
-    AtomicFetchOp64(*this, op, value, mem, temp, output);
+    WasmAtomicFetchOp64(*this, access, op, value, mem, temp, output);
 }
 
 void

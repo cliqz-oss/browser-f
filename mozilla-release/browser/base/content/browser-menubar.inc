@@ -33,12 +33,11 @@
                           accesskey="&newPrivateWindow.accesskey;"
                           command="Tools:PrivateBrowsing"
                           key="key_privatebrowsing"/>
-#ifdef MAC_NON_BROWSER_WINDOW
                 <menuitem id="menu_openLocation"
+                          hidden="true"
                           label="&openLocationCmd.label;"
                           command="Browser:OpenLocation"
                           key="focusURLBar"/>
-#endif
                 <menuitem id="menu_openFile"
                           label="&openFileCmd.label;"
                           command="Browser:OpenFile"
@@ -90,8 +89,7 @@
                           label="&goOfflineCmd.label;"
                           accesskey="&goOfflineCmd.accesskey;"
                           type="checkbox"
-                          observes="workOfflineMenuitemState"
-                          oncommand="BrowserOffline.toggleOfflineStatus();"/>
+                          command="cmd_toggleOfflineStatus"/>
                 <menuitem id="menu_FileQuitItem"
 #ifdef XP_WIN
                           label="&quitApplicationCmdWin2.label;"
@@ -200,15 +198,19 @@
                       accesskey="&viewSidebarMenu.accesskey;">
                   <menupopup id="viewSidebarMenu">
                     <menuitem id="menu_bookmarksSidebar"
+                              type="checkbox"
                               key="viewBookmarksSidebarKb"
-                              observes="viewBookmarksSidebar"/>
+                              oncommand="SidebarUI.toggle('viewBookmarksSidebar');"
+                              label="&bookmarksButton.label;"/>
                     <menuitem id="menu_historySidebar"
+                              type="checkbox"
                               key="key_gotoHistory"
-                              observes="viewHistorySidebar"
+                              oncommand="SidebarUI.toggle('viewHistorySidebar');"
                               label="&historyButton.label;"/>
                     <menuitem id="menu_tabsSidebar"
+                              type="checkbox"
                               class="sync-ui-item"
-                              observes="viewTabsSidebar"
+                              oncommand="SidebarUI.toggle('viewTabsSidebar');"
                               label="&syncedTabs.sidebar.label;"/>
                   </menupopup>
                 </menu>
@@ -339,7 +341,7 @@
                 <menuseparator id="sanitizeSeparator"/>
                 <menuitem id="sync-tabs-menuitem"
                           label="&syncTabsMenu3.label;"
-                          oncommand="BrowserOpenSyncTabs();"
+                          oncommand="gSync.openSyncedTabsPanel();"
                           hidden="true"/>
                 <menuitem id="historyRestoreLastSession"
                           label="&historyRestoreLastSession.label;"
@@ -397,22 +399,22 @@
       <menuseparator id="organizeBookmarksSeparator"/>
       <menuitem id="menu_bookmarkThisPage"
                 command="Browser:AddBookmarkAs"
-                observes="bookmarkThisPageBroadcaster"
                 key="addBookmarkAsKb"/>
       <menuitem id="subscribeToPageMenuitem"
+                disabled="true"
 #ifndef XP_MACOSX
                 class="menuitem-iconic"
 #endif
                 label="&subscribeToPageMenuitem.label;"
                 oncommand="return FeedHandler.subscribeToFeed(null, event);"
                 onclick="checkForMiddleClick(this, event);"
-                observes="singleFeedMenuitemState"/>
+                />
       <menu id="subscribeToPageMenupopup"
+            hidden="true"
 #ifndef XP_MACOSX
             class="menu-iconic"
 #endif
-            label="&subscribeToPageMenupopup.label;"
-            observes="multipleFeedsMenuState">
+            label="&subscribeToPageMenupopup.label;">
         <menupopup id="subscribeToPageSubmenuMenupopup"
                    onpopupshowing="return FeedHandler.buildFeedList(event.target);"
                    oncommand="return FeedHandler.subscribeToFeed(null, event);"
@@ -486,25 +488,25 @@
                         class="sync-ui-item"
                         label="&syncSignIn.label;"
                         accesskey="&syncSignIn.accesskey;"
-                        observes="sync-setup-state"
+                        hidden="true"
                         oncommand="gSync.openPrefs('menubar')"/>
               <menuitem id="sync-unverifieditem"
                         class="sync-ui-item"
                         label="&syncSignIn.label;"
                         accesskey="&syncSignIn.accesskey;"
-                        observes="sync-unverified-state"
+                        hidden="true"
                         oncommand="gSync.openPrefs('menubar')"/>
               <menuitem id="sync-syncnowitem"
                         class="sync-ui-item"
                         label="&syncSyncNowItem.label;"
                         accesskey="&syncSyncNowItem.accesskey;"
-                        observes="sync-syncnow-state"
+                        hidden="true"
                         oncommand="gSync.doSync(event);"/>
               <menuitem id="sync-reauthitem"
                         class="sync-ui-item"
                         label="&syncReAuthItem.label;"
                         accesskey="&syncReAuthItem.accesskey;"
-                        observes="sync-reauth-state"
+                        hidden="true"
                         oncommand="gSync.openSignInAgainPage('menubar');"/>
               <menuseparator id="devToolsSeparator"/>
               <menu id="webDeveloperMenu"
@@ -512,8 +514,24 @@
                     accesskey="&webDeveloperMenu.accesskey;">
                 <menupopup id="menuWebDeveloperPopup">
                   <menuitem id="menu_pageSource"
-                            observes="devtoolsMenuBroadcaster_PageSource"
-                            accesskey="&pageSourceCmd.accesskey;"/>
+                            label="&pageSourceCmd.label;"
+                            key="key_viewSource"
+                            command="View:PageSource"
+                            accesskey="&pageSourceCmd.accesskey;">
+                     <observes element="canViewSource" attribute="disabled"/>
+                  </menuitem>
+                  <menuitem id="menu_devtools_recordExecution"
+                            label="&devtoolsRecordExecution.label;"
+                            command="Tools:RecordExecution"
+                            hidden="true"/>
+                  <menuitem id="menu_devtools_saveRecording"
+                            label="&devtoolsSaveRecording.label;"
+                            command="Tools:SaveRecording"
+                            hidden="true"/>
+                  <menuitem id="menu_devtools_replayExecution"
+                            label="&devtoolsReplayExecution.label;"
+                            command="Tools:ReplayExecution"
+                            hidden="true"/>
                 </menupopup>
               </menu>
               <menuitem id="menu_pageInfo"
@@ -531,7 +549,8 @@
                         oncommand="openPreferences(undefined, {origin: 'menubar'});"/>
 #endif
 #ifdef MOZ_DEBUG
-              <menuitem label="&ldbCmd.label;"
+              <menuitem id="menu_layout_debugger"
+                        label="&ldbCmd.label;"
                         accesskey="&ldbCmd.accesskey;"
                         oncommand="toOpenWindowByType('mozapp:layoutdebug',
                                           'chrome://layoutdebug/content/');"/>
@@ -610,14 +629,14 @@
                 <menuitem id="menu_HelpPopup_reportPhishingtoolmenu"
                           label="&reportDeceptiveSiteMenu.title;"
                           accesskey="&reportDeceptiveSiteMenu.accesskey;"
-                          observes="reportPhishingBroadcaster"
+                          disabled="true"
                           oncommand="openUILink(gSafeBrowsing.getReportURL('Phish'), event, {triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({})});"
                           onclick="checkForMiddleClick(this, event);"
                           hidden="true"/>
                 <menuitem id="menu_HelpPopup_reportPhishingErrortoolmenu"
                           label="&safeb.palm.notdeceptive.label;"
                           accesskey="&safeb.palm.notdeceptive.accesskey;"
-                          observes="reportPhishingErrorBroadcaster"
+                          disabled="true"
                           oncommand="ReportFalseDeceptiveSite();"
                           onclick="checkForMiddleClick(this, event);"
                           hidden="true"/>

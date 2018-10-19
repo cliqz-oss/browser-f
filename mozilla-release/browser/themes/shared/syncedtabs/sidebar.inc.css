@@ -6,13 +6,15 @@
 
 html {
   height: 100%;
+  box-sizing: border-box;
 }
 
 body {
   height: 100%;
   margin: 0;
   font: message-box;
-  color: #333333;
+  background-color: -moz-Field;
+  color: -moz-FieldText;
   -moz-user-select: none;
 }
 
@@ -67,7 +69,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   outline: none;
-  color: -moz-FieldText;
 }
 
 .item.selected > .item-title-container {
@@ -80,6 +81,23 @@ body {
   color: HighlightText;
 }
 
+.item.client .item-twisty-container {
+  min-width: 8px;
+  height: 8px;
+  background-image: url("chrome://global/skin/icons/twisty-expanded.svg");
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: 1;
+}
+
+.item.client.closed .item-twisty-container {
+  background-image: url("chrome://global/skin/icons/twisty-collapsed.svg");
+}
+
+.item.client.closed .item-twisty-container:dir(rtl) {
+  background-image: url("chrome://global/skin/icons/twisty-collapsed-rtl.svg");
+}
+
 .client .item.tab > .item-title-container {
   padding-inline-start: 35px;
 }
@@ -90,11 +108,7 @@ body {
 
 .item.client[clientType] > .item-title-container > .item-icon-container {
   -moz-context-properties: fill;
-  fill: #4d4d4d;
-}
-
-.item.client[clientType].selected:focus > .item-title-container > .item-icon-container {
-  fill: white;
+  fill: currentColor;
 }
 
 .item.client[clientType=phone] > .item-title-container > .item-icon-container {
@@ -133,6 +147,7 @@ body {
   flex-flow: row;
   overflow: hidden;
   flex-grow: 1;
+  align-items: center;
   padding: 4px;
 }
 
@@ -181,7 +196,6 @@ body {
 .sync-state > p {
   padding-inline-end: 10px;
   padding-inline-start: 10px;
-  color: #888;
 }
 
 .text-link {
@@ -240,6 +254,11 @@ body {
   margin: 0 auto;
 }
 
+body[lwt-sidebar] .deck .instructions {
+  color: inherit;
+  opacity: .6;
+}
+
 .deck .button {
   display: block;
   background-color: #0060df;
@@ -279,4 +298,27 @@ body {
 
 .filtered .textbox-search-icons .textbox-search-clear {
   display: block;
+}
+
+/* Themed sidebars */
+
+body[lwt-sidebar] {
+  background-color: var(--lwt-sidebar-background-color);
+  color: var(--lwt-sidebar-text-color);
+}
+
+body[lwt-sidebar] .item.selected > .item-title-container {
+  background-color: hsla(0,0%,80%,.3);
+  color: inherit;
+}
+
+body[lwt-sidebar-brighttext] .item.selected > .item-title-container {
+  -moz-appearance: none;
+  background-color: rgba(249,249,250,.1);
+}
+
+body[lwt-sidebar-highlight] .item.selected:focus > .item-title-container {
+  -moz-appearance: none;
+  background-color: var(--lwt-sidebar-highlight-background-color);
+  color: var(--lwt-sidebar-highlight-text-color);
 }

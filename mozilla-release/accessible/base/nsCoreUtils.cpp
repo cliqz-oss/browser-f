@@ -97,9 +97,8 @@ nsCoreUtils::DispatchClickEvent(nsITreeBoxObject *aTreeBoxObj,
   if (NS_FAILED(rv))
     return;
 
-  nsCOMPtr<nsIContent> tcXULElm(do_QueryInterface(tcElm));
   nsCOMPtr<nsIBoxObject> tcBoxObj =
-    nsXULElement::FromNode(tcXULElm)->GetBoxObject(IgnoreErrors());
+    nsXULElement::FromNode(tcElm)->GetBoxObject(IgnoreErrors());
 
   int32_t tcX = 0;
   tcBoxObj->GetX(&tcX);
@@ -143,7 +142,7 @@ nsCoreUtils::DispatchMouseEvent(EventMessage aMessage, int32_t aX, int32_t aY,
   event.mClickCount = 1;
   event.button = WidgetMouseEvent::eLeftButton;
   event.mTime = PR_IntervalNow();
-  event.inputSource = dom::MouseEventBinding::MOZ_SOURCE_UNKNOWN;
+  event.inputSource = dom::MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 
   nsEventStatus status = nsEventStatus_eIgnore;
   aPresShell->HandleEventWithTarget(&event, aFrame, aContent, &status);

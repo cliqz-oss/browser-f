@@ -39,6 +39,8 @@ const UIService = {
                       "");                        // payer phone
     paymentSrv.respondPayment(showResponse.QueryInterface(Ci.nsIPaymentActionResponse));
   },
+  closePayment: function(requestId) {
+  },
   QueryInterface: ChromeUtils.generateQI([Ci.nsIPaymentUIService]),
 };
 
@@ -51,6 +53,5 @@ addMessageListener("set-ui-service", function() {
 });
 
 addMessageListener("teardown", function() {
-  paymentSrv.cleanup();
   sendAsyncMessage("teardown-complete");
 });

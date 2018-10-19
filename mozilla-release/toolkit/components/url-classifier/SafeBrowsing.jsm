@@ -38,6 +38,8 @@ const tablePreferences = [
   "urlclassifier.downloadBlockTable",
   "urlclassifier.downloadAllowTable",
   "urlclassifier.passwordAllowTable",
+  "urlclassifier.trackingAnnotationTable",
+  "urlclassifier.trackingAnnotationWhitelistTable",
   "urlclassifier.trackingTable",
   "urlclassifier.trackingWhitelistTable",
   "urlclassifier.blockedTable",
@@ -47,7 +49,7 @@ const tablePreferences = [
   "urlclassifier.flashExceptTable",
   "urlclassifier.flashSubDocTable",
   "urlclassifier.flashSubDocExceptTable",
-  "urlclassifier.flashInfobarTable"
+  "urlclassifier.flashInfobarTable",
 ];
 
 var SafeBrowsing = {
@@ -58,6 +60,7 @@ var SafeBrowsing = {
       return;
     }
 
+    Services.prefs.addObserver("browser.contentblocking.enabled", this);
     Services.prefs.addObserver("browser.safebrowsing", this);
     Services.prefs.addObserver("privacy.trackingprotection", this);
     Services.prefs.addObserver("urlclassifier", this);
@@ -110,6 +113,12 @@ var SafeBrowsing = {
     for (let i = 0; i < this.passwordAllowLists.length; ++i) {
       this.registerTableWithURLs(this.passwordAllowLists[i]);
     }
+    for (let i = 0; i < this.trackingAnnotationLists.length; ++i) {
+      this.registerTableWithURLs(this.trackingAnnotationLists[i]);
+    }
+    for (let i = 0; i < this.trackingAnnotationWhitelists.length; ++i) {
+      this.registerTableWithURLs(this.trackingAnnotationWhitelists[i]);
+    }
     for (let i = 0; i < this.trackingProtectionLists.length; ++i) {
       this.registerTableWithURLs(this.trackingProtectionLists[i]);
     }
@@ -155,6 +164,8 @@ var SafeBrowsing = {
   downloadBlockLists:           [],
   downloadAllowLists:           [],
   passwordAllowLists:           [],
+  trackingAnnotationLists:      [],
+  trackingAnnotationWhiteLists: [],
   trackingProtectionLists:      [],
   trackingProtectionWhitelists: [],
   blockedLists:                 [],
@@ -220,11 +231,13 @@ var SafeBrowsing = {
     loggingEnabled = Services.prefs.getBoolPref(PREF_DEBUG_ENABLED);
     log("reading prefs");
 
+    let contentBlockingEnabled = Services.prefs.getBoolPref("browser.contentblocking.enabled", true);
+
     this.phishingEnabled = Services.prefs.getBoolPref("browser.safebrowsing.phishing.enabled");
     this.malwareEnabled = Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled");
     this.downloadsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled");
     this.passwordsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
-    this.trackingEnabled = Services.prefs.getBoolPref("privacy.trackingprotection.enabled") || Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled");
+    this.trackingEnabled = contentBlockingEnabled && (Services.prefs.getBoolPref("privacy.trackingprotection.enabled") || Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
     this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.trackingAnnotations = Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
     this.flashBlockEnabled = Services.prefs.getBoolPref("plugins.flashBlock.enabled");
@@ -242,6 +255,8 @@ var SafeBrowsing = {
                        this.downloadBlockLists,
                        this.downloadAllowLists,
                        this.passwordAllowLists,
+                       this.trackingAnnotationLists,
+                       this.trackingAnnotationWhitelists,
                        this.trackingProtectionLists,
                        this.trackingProtectionWhitelists,
                        this.blockedLists,
@@ -254,6 +269,8 @@ var SafeBrowsing = {
      this.downloadBlockLists,
      this.downloadAllowLists,
      this.passwordAllowLists,
+     this.trackingAnnotationLists,
+     this.trackingAnnotationWhitelists,
      this.trackingProtectionLists,
      this.trackingProtectionWhitelists,
      this.blockedLists,
@@ -277,6 +294,8 @@ var SafeBrowsing = {
                       this.downloadBlockLists,
                       this.downloadAllowLists,
                       this.passwordAllowLists,
+                      this.trackingAnnotationLists,
+                      this.trackingAnnotationWhitelists,
                       this.trackingProtectionLists,
                       this.trackingProtectionWhitelists,
                       this.blockedLists,
@@ -391,74 +410,66 @@ var SafeBrowsing = {
     let listManager = Cc["@mozilla.org/url-classifier/listmanager;1"].
                       getService(Ci.nsIUrlListManager);
 
+    listManager.disableAllUpdates();
+
     for (let i = 0; i < this.phishingLists.length; ++i) {
       if (this.phishingEnabled) {
         listManager.enableUpdate(this.phishingLists[i]);
-      } else {
-        listManager.disableUpdate(this.phishingLists[i]);
       }
     }
     for (let i = 0; i < this.malwareLists.length; ++i) {
       if (this.malwareEnabled) {
         listManager.enableUpdate(this.malwareLists[i]);
-      } else {
-        listManager.disableUpdate(this.malwareLists[i]);
       }
     }
     for (let i = 0; i < this.downloadBlockLists.length; ++i) {
       if (this.malwareEnabled && this.downloadsEnabled) {
         listManager.enableUpdate(this.downloadBlockLists[i]);
-      } else {
-        listManager.disableUpdate(this.downloadBlockLists[i]);
       }
     }
     for (let i = 0; i < this.downloadAllowLists.length; ++i) {
       if (this.malwareEnabled && this.downloadsEnabled) {
         listManager.enableUpdate(this.downloadAllowLists[i]);
-      } else {
-        listManager.disableUpdate(this.downloadAllowLists[i]);
       }
     }
     for (let i = 0; i < this.passwordAllowLists.length; ++i) {
       if (this.passwordsEnabled) {
         listManager.enableUpdate(this.passwordAllowLists[i]);
-      } else {
-        listManager.disableUpdate(this.passwordAllowLists[i]);
+      }
+    }
+    for (let i = 0; i < this.trackingAnnotationLists.length; ++i) {
+      if (this.trackingAnnotations) {
+        listManager.enableUpdate(this.trackingAnnotationLists[i]);
+      }
+    }
+    for (let i = 0; i < this.trackingAnnotationWhitelists.length; ++i) {
+      if (this.trackingAnnotations) {
+        listManager.enableUpdate(this.trackingAnnotationWhitelists[i]);
       }
     }
     for (let i = 0; i < this.trackingProtectionLists.length; ++i) {
-      if (this.trackingEnabled || this.trackingAnnotations) {
+      if (this.trackingEnabled) {
         listManager.enableUpdate(this.trackingProtectionLists[i]);
-      } else {
-        listManager.disableUpdate(this.trackingProtectionLists[i]);
       }
     }
     for (let i = 0; i < this.trackingProtectionWhitelists.length; ++i) {
-      if (this.trackingEnabled || this.trackingAnnotations) {
+      if (this.trackingEnabled) {
         listManager.enableUpdate(this.trackingProtectionWhitelists[i]);
-      } else {
-        listManager.disableUpdate(this.trackingProtectionWhitelists[i]);
       }
     }
     for (let i = 0; i < this.blockedLists.length; ++i) {
       if (this.blockedEnabled) {
         listManager.enableUpdate(this.blockedLists[i]);
-      } else {
-        listManager.disableUpdate(this.blockedLists[i]);
       }
     }
     for (let i = 0; i < this.flashLists.length; ++i) {
       if (this.flashBlockEnabled) {
         listManager.enableUpdate(this.flashLists[i]);
-      } else {
-        listManager.disableUpdate(this.flashLists[i]);
       }
     }
     for (let i = 0; i < this.flashInfobarLists.length; ++i) {
       if (this.flashInfobarListEnabled) {
         listManager.enableUpdate(this.flashInfobarLists[i]);
-      } else {
-        listManager.disableUpdate(this.flashInfobarLists[i]);
       }
     }
     listManager.maybeToggleUpdateChecking();
@@ -519,7 +530,7 @@ var SafeBrowsing = {
       },
       updateSuccess() {
         Services.obs.notifyObservers(db, "mozentries-update-finished", "success");
-      }
+      },
     };
 
     try {

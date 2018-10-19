@@ -180,7 +180,8 @@ protected:
               const TimeStamp&           aDispatchFetchEventEnd,
               const TimeStamp&           aHandleFetchEventStart,
               const TimeStamp&           aHandleFetchEventEnd,
-              const bool&                aForceMainDocumentChannel);
+              const bool&                aForceMainDocumentChannel,
+              const TimeStamp&           aNavigationStartTimeStamp);
 
   virtual mozilla::ipc::IPCResult RecvSetPriority(const int16_t& priority) override;
   virtual mozilla::ipc::IPCResult RecvSetClassOfService(const uint32_t& cos) override;
@@ -208,6 +209,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvDivertComplete() override;
   virtual mozilla::ipc::IPCResult RecvRemoveCorsPreflightCacheEntry(const URIParams& uri,
                                                                     const mozilla::ipc::PrincipalInfo& requestingPrincipal) override;
+  virtual mozilla::ipc::IPCResult RecvBytesRead(const int32_t& aCount) override;
   virtual void ActorDestroy(ActorDestroyReason why) override;
 
   // Supporting function for ADivertableParentChannel.
@@ -261,6 +263,12 @@ private:
   // DocumentChannelCleanup.
   void CleanupBackgroundChannel();
 
+  // Check if the channel needs to enable the flow control on the IPC channel.
+  // That is, we may suspend the channel if the ODA-s to child process are not
+  // consumed quickly enough. Otherwise, memory explosion could happen.
+  bool NeedFlowControl();
+  int32_t mSendWindowSize;
+
   friend class HttpBackgroundChannelParent;
   friend class DivertDataAvailableEvent;
   friend class DivertStopRequestEvent;
@@ -269,23 +277,11 @@ private:
   RefPtr<HttpBaseChannel>       mChannel;
   nsCOMPtr<nsICacheEntry>       mCacheEntry;
   nsCOMPtr<nsIAssociatedContentSecurity>  mAssociatedContentSecurity;
-  Atomic<bool> mIPCClosed; // PHttpChannel actor has been Closed()
 
   nsCOMPtr<nsIChannel> mRedirectChannel;
   nsCOMPtr<nsIAsyncVerifyRedirectCallback> mRedirectCallback;
 
   nsAutoPtr<class nsHttpChannel::OfflineCacheEntryAsForeignMarker> mOfflineForeignMarker;
-
-  // OnStatus is always called before OnProgress.
-  // Set true in OnStatus if next OnProgress can be ignored
-  // since the information can be recontructed from ODA.
-  bool mIgnoreProgress              : 1;
-
-  bool mSentRedirect1BeginFailed    : 1;
-  bool mReceivedRedirect2Verify     : 1;
-
-  PBOverrideStatus mPBOverride;
-
   nsCOMPtr<nsILoadContext> mLoadContext;
   RefPtr<nsHttpHandler>  mHttpHandler;
 
@@ -293,43 +289,63 @@ private:
   // The listener we are diverting to or will divert to if mPendingDiversion
   // is set.
   nsCOMPtr<nsIStreamListener> mDivertListener;
-  // Set to the canceled status value if the main channel was canceled.
-  nsresult mStatus;
-  // Indicates that diversion has been requested, but we could not start it
-  // yet because the channel is still being opened with a synthesized response.
-  bool mPendingDiversion;
-  // Once set, no OnStart/OnData/OnStop calls should be accepted; conversely, it
-  // must be set when RecvDivertOnData/~DivertOnStop/~DivertComplete are
-  // received from the child channel.
-  bool mDivertingFromChild;
-
-  // Set if OnStart|StopRequest was called during a diversion from the child.
-  bool mDivertedOnStartRequest;
-
-  bool mSuspendedForDiversion;
-
-  // Set if this channel should be suspended after synthesizing a response.
-  bool mSuspendAfterSynthesizeResponse;
-  // Set if this channel will synthesize its response.
-  bool mWillSynthesizeResponse;
-
-  dom::TabId mNestedFrameId;
 
   RefPtr<ChannelEventQueue> mEventQ;
 
   RefPtr<HttpBackgroundChannelParent> mBgParent;
+
+  MozPromiseHolder<GenericPromise> mPromise;
+  MozPromiseRequestHolder<GenericPromise> mRequest;
+
+  dom::TabId mNestedFrameId;
+
+  Atomic<bool> mIPCClosed; // PHttpChannel actor has been Closed()
+
+  // Corresponding redirect channel registrar Id. 0 means redirection is not started.
+  uint32_t mRedirectRegistrarId = 0;
+
+  PBOverrideStatus mPBOverride;
+
+  // Set to the canceled status value if the main channel was canceled.
+  nsresult mStatus;
+
+  // OnStatus is always called before OnProgress.
+  // Set true in OnStatus if next OnProgress can be ignored
+  // since the information can be recontructed from ODA.
+  uint8_t mIgnoreProgress              : 1;
+
+  uint8_t mSentRedirect1BeginFailed    : 1;
+  uint8_t mReceivedRedirect2Verify     : 1;
+  uint8_t mHasSuspendedByBackPressure  : 1;
+
+  // Indicates that diversion has been requested, but we could not start it
+  // yet because the channel is still being opened with a synthesized response.
+  uint8_t mPendingDiversion            : 1;
+  // Once set, no OnStart/OnData/OnStop calls should be accepted; conversely, it
+  // must be set when RecvDivertOnData/~DivertOnStop/~DivertComplete are
+  // received from the child channel.
+  uint8_t mDivertingFromChild          : 1;
+
+  // Set if OnStart|StopRequest was called during a diversion from the child.
+  uint8_t mDivertedOnStartRequest      : 1;
+
+  uint8_t mSuspendedForDiversion       : 1;
+
+  // Set if this channel should be suspended after synthesizing a response.
+  uint8_t mSuspendAfterSynthesizeResponse : 1;
+  // Set if this channel will synthesize its response.
+  uint8_t mWillSynthesizeResponse         : 1;
+
+  // Set if we get the result of and cache |mNeedFlowControl|
+  uint8_t mCacheNeedFlowControlInitialized : 1;
+  uint8_t mNeedFlowControl : 1;
+  uint8_t mSuspendedForFlowControl : 1;
 
   // Number of events to wait before actually invoking AsyncOpen on the main
   // channel. For each asynchronous step required before InvokeAsyncOpen, should
   // increase 1 to mAsyncOpenBarrier and invoke TryInvokeAsyncOpen after
   // finished. This attribute is main thread only.
   uint8_t mAsyncOpenBarrier = 0;
-
-  // Corresponding redirect channel registrar Id. 0 means redirection is not started.
-  uint32_t mRedirectRegistrarId = 0;
-
-  MozPromiseHolder<GenericPromise> mPromise;
-  MozPromiseRequestHolder<GenericPromise> mRequest;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(HttpChannelParent,

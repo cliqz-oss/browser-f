@@ -15,13 +15,14 @@ gecko_debug = ["style/gecko_debug"]
 
 [dependencies]
 atomic_refcell = "0.1"
-cssparser = "0.23.0"
+cssparser = "0.24.0"
 cstr = "0.1.2"
 libc = "0.2"
 log = {version = "0.4", features = ["release_max_level_info"]}
 malloc_size_of = {path = "../../components/malloc_size_of"}
 nsstring = {path = "../../support/gecko/nsstring"}
-parking_lot = "0.5"
+num-traits = "0.2"
+parking_lot = "0.6"
 selectors = {path = "../../components/selectors"}
 servo_arc = {path = "../../components/servo_arc"}
 smallvec = "0.6"

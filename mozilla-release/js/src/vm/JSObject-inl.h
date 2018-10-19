@@ -158,8 +158,7 @@ JSObject::setSingleton(JSContext* cx, js::HandleObject obj)
 {
     MOZ_ASSERT(!IsInsideNursery(obj));
 
-    js::ObjectGroupRealm& realm = js::ObjectGroupRealm::get(obj->group_);
-    js::ObjectGroup* group = js::ObjectGroup::lazySingletonGroup(cx, realm, obj->getClass(),
+    js::ObjectGroup* group = js::ObjectGroup::lazySingletonGroup(cx, obj->group_, obj->getClass(),
                                                                  obj->taggedProto());
     if (!group)
         return false;
@@ -212,6 +211,13 @@ js::IsExtensible(JSContext* cx, HandleObject obj, bool* extensible)
     }
 
     *extensible = obj->nonProxyIsExtensible();
+
+    // If the following assertion fails, there's somewhere else a missing
+    // call to shrinkCapacityToInitializedLength() which needs to be found and
+    // fixed.
+    MOZ_ASSERT_IF(obj->isNative() && !*extensible,
+                  obj->as<NativeObject>().getDenseInitializedLength() ==
+                  obj->as<NativeObject>().getDenseCapacity());
     return true;
 }
 
@@ -389,12 +395,6 @@ SetNewObjectMetadata(JSContext* cx, T* obj)
 }
 
 } // namespace js
-
-inline js::GlobalObject&
-JSObject::deprecatedGlobal() const
-{
-    return *deprecatedRealm()->unsafeUnbarrieredMaybeGlobal();
-}
 
 inline js::GlobalObject&
 JSObject::nonCCWGlobal() const
@@ -690,8 +690,7 @@ NewObjectWithClassProto(JSContext* cx, const Class* clasp, HandleObject proto,
 
 template<class T>
 inline T*
-NewObjectWithClassProto(JSContext* cx, HandleObject proto = nullptr,
-                        NewObjectKind newKind = GenericObject)
+NewObjectWithClassProto(JSContext* cx, HandleObject proto, NewObjectKind newKind = GenericObject)
 {
     JSObject* obj = NewObjectWithClassProto(cx, &T::class_, proto, newKind);
     return obj ? &obj->as<T>() : nullptr;
@@ -812,7 +811,7 @@ InitClass(JSContext* cx, HandleObject obj, HandleObject parent_proto,
 MOZ_ALWAYS_INLINE const char*
 GetObjectClassName(JSContext* cx, HandleObject obj)
 {
-    assertSameCompartment(cx, obj);
+    cx->check(obj);
 
     if (obj->is<ProxyObject>())
         return Proxy::className(cx, obj);
@@ -865,6 +864,10 @@ JSObject::isCallable() const
 {
     if (is<JSFunction>())
         return true;
+    if (is<js::ProxyObject>()) {
+        const js::ProxyObject& p = as<js::ProxyObject>();
+        return p.handler()->isCallable(const_cast<JSObject*>(this));
+    }
     return callHook() != nullptr;
 }
 
@@ -875,39 +878,23 @@ JSObject::isConstructor() const
         const JSFunction& fun = as<JSFunction>();
         return fun.isConstructor();
     }
+    if (is<js::ProxyObject>()) {
+        const js::ProxyObject& p = as<js::ProxyObject>();
+        return p.handler()->isConstructor(const_cast<JSObject*>(this));
+    }
     return constructHook() != nullptr;
 }
 
 MOZ_ALWAYS_INLINE JSNative
 JSObject::callHook() const
 {
-    const js::Class* clasp = getClass();
-
-    if (JSNative call = clasp->getCall())
-        return call;
-
-    if (is<js::ProxyObject>()) {
-        const js::ProxyObject& p = as<js::ProxyObject>();
-        if (p.handler()->isCallable(const_cast<JSObject*>(this)))
-            return js::proxy_Call;
-    }
-    return nullptr;
+    return getClass()->getCall();
 }
 
 MOZ_ALWAYS_INLINE JSNative
 JSObject::constructHook() const
 {
-    const js::Class* clasp = getClass();
-
-    if (JSNative construct = clasp->getConstruct())
-        return construct;
-
-    if (is<js::ProxyObject>()) {
-        const js::ProxyObject& p = as<js::ProxyObject>();
-        if (p.handler()->isConstructor(const_cast<JSObject*>(this)))
-            return js::proxy_Construct;
-    }
-    return nullptr;
+    return getClass()->getConstruct();
 }
 
 #endif /* vm_JSObject_inl_h */

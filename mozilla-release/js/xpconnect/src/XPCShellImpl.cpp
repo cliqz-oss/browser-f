@@ -7,6 +7,8 @@
 #include "nsXULAppAPI.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
+#include "js/AutoByteString.h"
+#include "js/CompilationAndEvaluation.h"
 #include "js/Printf.h"
 #include "mozilla/ChaosMode.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -195,7 +197,8 @@ GetLocationProperty(JSContext* cx, unsigned argc, Value* vp)
                 !symlink)
                 location->Normalize();
             RootedObject locationObj(cx);
-            rv = nsXPConnect::XPConnect()->WrapNative(cx, &args.thisv().toObject(),
+            RootedObject scope(cx, JS::CurrentGlobalOrNull(cx));
+            rv = nsXPConnect::XPConnect()->WrapNative(cx, scope,
                                                       location,
                                                       NS_GET_IID(nsIFile),
                                                       locationObj.address());
@@ -455,7 +458,7 @@ SendCommand(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    if (args.length() > 1 && JS_TypeOfValue(cx, args[1]) != JSTYPE_FUNCTION) {
+    if (args.get(1).isObject() && !JS_ObjectIsFunction(cx, &args[1].toObject())) {
         JS_ReportErrorASCII(cx, "Could not convert argument 2 to function!");
         return false;
     }
@@ -542,6 +545,8 @@ XPCShellInterruptCallback(JSContext* cx)
     if (callback.isUndefined())
         return true;
 
+    MOZ_ASSERT(js::IsFunctionObject(&callback.toObject()));
+
     JSAutoRealm ar(cx, &callback.toObject());
     RootedValue rv(cx);
     if (!JS_CallFunctionValue(cx, nullptr, callback, JS::HandleValueArray::empty(), &rv) ||
@@ -573,9 +578,9 @@ SetInterruptCallback(JSContext* cx, unsigned argc, Value* vp)
         return true;
     }
 
-    // Otherwise, we should have a callable object.
-    if (!args[0].isObject() || !JS::IsCallable(&args[0].toObject())) {
-        JS_ReportErrorASCII(cx, "Argument must be callable");
+    // Otherwise, we should have a function object.
+    if (!args[0].isObject() || !js::IsFunctionObject(&args[0].toObject())) {
+        JS_ReportErrorASCII(cx, "Argument must be a function");
         return false;
     }
 
@@ -1079,6 +1084,10 @@ XRE_XPCShellMain(int argc, char** argv, char** envp,
     profiler_init(&aLocal);
 #endif
 
+#ifdef MOZ_ASAN_REPORTER
+    PR_SetEnv("MOZ_DISABLE_ASAN_REPORTER=1");
+#endif
+
     if (PR_GetEnv("MOZ_CHAOSMODE")) {
         ChaosFeature feature = ChaosFeature::Any;
         long featureInt = strtol(PR_GetEnv("MOZ_CHAOSMODE"), nullptr, 16);
@@ -1505,7 +1514,7 @@ XPCShellDirProvider::GetFiles(const char* prop, nsISimpleEnumerator* *result)
         if (NS_SUCCEEDED(rv))
             dirs.AppendObject(file);
 
-        return NS_NewArrayEnumerator(result, dirs);
+        return NS_NewArrayEnumerator(result, dirs, NS_GET_IID(nsIFile));
     } else if (!strcmp(prop, NS_APP_PREFS_DEFAULTS_DIR_LIST)) {
         nsCOMArray<nsIFile> dirs;
         nsCOMPtr<nsIFile> appDir;
@@ -1516,7 +1525,7 @@ XPCShellDirProvider::GetFiles(const char* prop, nsISimpleEnumerator* *result)
             NS_SUCCEEDED(appDir->AppendNative(NS_LITERAL_CSTRING("preferences"))) &&
             NS_SUCCEEDED(appDir->Exists(&exists)) && exists) {
             dirs.AppendObject(appDir);
-            return NS_NewArrayEnumerator(result, dirs);
+            return NS_NewArrayEnumerator(result, dirs, NS_GET_IID(nsIFile));
         }
         return NS_ERROR_FAILURE;
     } else if (!strcmp(prop, NS_APP_PLUGINS_DIR_LIST)) {
@@ -1541,7 +1550,7 @@ XPCShellDirProvider::GetFiles(const char* prop, nsISimpleEnumerator* *result)
                 }
             }
         }
-        return NS_NewArrayEnumerator(result, dirs);
+        return NS_NewArrayEnumerator(result, dirs, NS_GET_IID(nsIFile));
     }
     return NS_ERROR_FAILURE;
 }

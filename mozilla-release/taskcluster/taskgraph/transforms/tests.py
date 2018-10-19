@@ -72,6 +72,11 @@ WINDOWS_WORKER_TYPES = {
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
+    'windows7-32-msvc': {
+      'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
+      'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
+      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
+    },
     'windows10-64': {
       'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
@@ -98,6 +103,11 @@ WINDOWS_WORKER_TYPES = {
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
     'windows10-64-asan': {
+      'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
+      'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
+      'hardware': 'releng-hardware/gecko-t-win10-64-hw',
+    },
+    'windows10-64-msvc': {
       'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
@@ -135,6 +145,9 @@ test_description_schema = Schema({
     Required('suite'): optionally_keyed_by(
         'test-platform',
         basestring),
+
+    # base work directory used to set up the task.
+    Optional('workdir'): basestring,
 
     # the name by which this test suite is addressed in try syntax; defaults to
     # the test-name.  This will translate to the `unittest_try_name` or
@@ -378,6 +391,11 @@ test_description_schema = Schema({
         'test-platform',
         Any(basestring, None),
     ),
+
+    # A list of artifacts to install from 'fetch' tasks.
+    Optional('fetches'): {
+        basestring: [basestring],
+    },
 }, required=True)
 
 
@@ -457,12 +475,14 @@ def validate(config, tests):
 def setup_talos(config, tests):
     """Add options that are specific to talos jobs (identified by suite=talos)"""
     for test in tests:
-        if test['suite'] != 'talos':
+        if test['suite'] not in ['talos', 'raptor']:
             yield test
             continue
 
-        extra_options = test.setdefault('mozharness', {}).setdefault('extra-options', [])
-        extra_options.append('--use-talos-json')
+        if test['suite'] == 'talos':
+            extra_options = test.setdefault('mozharness', {}).setdefault('extra-options', [])
+            extra_options.append('--use-talos-json')
+
         # win7 needs to test skip
         if test['build-platform'].startswith('win32'):
             extra_options.append('--add-option')
@@ -470,7 +490,7 @@ def setup_talos(config, tests):
 
         # Per https://bugzilla.mozilla.org/show_bug.cgi?id=1357753#c3, branch
         # name is only required for try
-        if config.params.is_try():
+        if test['suite'] == 'talos' and config.params.is_try():
             extra_options.append('--branch-name')
             extra_options.append('try')
 
@@ -545,6 +565,7 @@ def set_treeherder_machine_platform(config, tests):
         # The build names for Android platforms have partially evolved over the
         # years and need to be translated.
         'android-api-16/debug': 'android-em-4-3-armv7-api16/debug',
+        'android-api-16-ccov/debug': 'android-em-4-3-armv7-api16-ccov/debug',
         'android-api-16/opt': 'android-em-4-3-armv7-api16/opt',
         'android-x86/opt': 'android-em-4-2-x86/opt',
         'android-api-16-gradle/opt': 'android-api-16-gradle/opt',
@@ -561,6 +582,8 @@ def set_treeherder_machine_platform(config, tests):
             test['treeherder-machine-platform'] = test['test-platform']
         elif 'android-hw' in test['test-platform']:
             test['treeherder-machine-platform'] = test['test-platform']
+        elif 'android-em-7.0-x86' in test['test-platform']:
+            test['treeherder-machine-platform'] = 'android-em-7-0-x86/opt'
         else:
             test['treeherder-machine-platform'] = translation.get(
                 test['build-platform'], test['test-platform'])
@@ -587,6 +610,8 @@ def set_tier(config, tests):
                                          'linux64-pgo/opt',
                                          'linux64-devedition/opt',
                                          'linux64-asan/opt',
+                                         'linux64-qr/opt',
+                                         'linux64-qr/debug',
                                          'windows7-32/debug',
                                          'windows7-32/opt',
                                          'windows7-32-pgo/opt',
@@ -598,10 +623,14 @@ def set_tier(config, tests):
                                          'windows10-64-devedition/opt',
                                          'windows10-64-nightly/opt',
                                          'windows10-64-asan/opt',
+                                         'windows10-64-qr/opt',
+                                         'windows10-64-qr/debug',
                                          'macosx64/opt',
                                          'macosx64/debug',
                                          'macosx64-nightly/opt',
                                          'macosx64-devedition/opt',
+                                         'macosx64-qr/opt',
+                                         'macosx64-qr/debug',
                                          'android-em-4.3-arm7-api-16/opt',
                                          'android-em-4.3-arm7-api-16/debug',
                                          'android-em-4.2-x86/opt']:
@@ -706,6 +735,16 @@ def enable_code_coverage(config, tests):
     """Enable code coverage for the ccov and jsdcov build-platforms"""
     for test in tests:
         if 'ccov' in test['build-platform']:
+            # Do not run tests on fuzzing or opt build
+            if 'opt' in test['build-platform'] or 'fuzzing' in test['build-platform']:
+                test['run-on-projects'] = []
+                continue
+            # Skip this transform for android code coverage builds.
+            if 'android' in test['build-platform']:
+                test.setdefault('fetches', {}).setdefault('fetch', []).append('grcov-linux-x86_64')
+                test['mozharness'].setdefault('extra-options', []).append('--java-code-coverage')
+                yield test
+                continue
             test['mozharness'].setdefault('extra-options', []).append('--code-coverage')
             test['instance-size'] = 'xlarge'
             # Ensure we always run on the projects defined by the build, unless the test
@@ -718,6 +757,18 @@ def enable_code_coverage(config, tests):
             test.pop('schedules-component', None)
             test.pop('when', None)
             test['optimization'] = None
+
+            # Add a fetch task for the grcov binary.
+            if any(p in test['build-platform'] for p in ('linux', 'osx', 'win')):
+                test.setdefault('fetches', {})
+                test['fetches'].setdefault('fetch', [])
+
+            if 'linux' in test['build-platform']:
+                test['fetches']['fetch'].append('grcov-linux-x86_64')
+            elif 'osx' in test['build-platform']:
+                test['fetches']['fetch'].append('grcov-osx-x86_64')
+            elif 'win' in test['build-platform']:
+                test['fetches']['fetch'].append('grcov-win-x86_64')
 
             if 'talos' in test['test-name']:
                 test['max-run-time'] = 7200
@@ -735,7 +786,7 @@ def enable_code_coverage(config, tests):
                 test['max-run-time'] = 1800
                 if 'linux' in test['build-platform']:
                     test['docker-image'] = {"in-tree": "desktop1604-test"}
-        elif test['build-platform'] == 'linux64-jsdcov/opt':
+        elif 'jsdcov' in test['build-platform']:
             # Ensure we always run on the projects defined by the build, unless the test
             # is try only or shouldn't run at all.
             if test['run-on-projects'] not in [[], ['try']]:
@@ -792,7 +843,8 @@ def split_chunks(config, tests):
            test['suite'].startswith('test-coverage'):
             env = config.params.get('try_task_config', {}) or {}
             env = env.get('templates', {}).get('env', {})
-            test['chunks'] = perfile_number_of_chunks(env.get('MOZHARNESS_TEST_PATHS', ''),
+            test['chunks'] = perfile_number_of_chunks(config.params.is_try(),
+                                                      env.get('MOZHARNESS_TEST_PATHS', ''),
                                                       config.params.get('head_repository', ''),
                                                       config.params.get('head_rev', ''),
                                                       test['test-name'])
@@ -942,10 +994,12 @@ def set_worker_type(config, tests):
                 test['worker-type'] = 'proj-autophone/gecko-t-ap-perf-p2'
             else:
                 test['worker-type'] = 'proj-autophone/gecko-t-ap-unit-p2'
+        elif test_platform.startswith('android-em-7.0-x86'):
+            test['worker-type'] = 'terraform-packet/gecko-t-linux'
         elif test_platform.startswith('linux') or test_platform.startswith('android'):
-            if test.get('suite', '') == 'talos' and \
+            if test.get('suite', '') in ['talos', 'raptor'] and \
                  not test['build-platform'].startswith('linux64-ccov'):
-                test['worker-type'] = 'releng-hardware/gecko-t-linux-talos'
+                test['worker-type'] = 'releng-hardware/gecko-t-linux-talos-tw'
             else:
                 test['worker-type'] = LINUX_WORKER_TYPES[test['instance-size']]
         else:
@@ -993,6 +1047,9 @@ def make_job_description(config, tests):
         jobdesc['attributes'] = attributes
         jobdesc['dependencies'] = {'build': build_label}
         jobdesc['job-from'] = test['job-from']
+
+        if test.get('fetches'):
+            jobdesc['fetches'] = test['fetches']
 
         if test['mozharness']['requires-signed-builds'] is True:
             jobdesc['dependencies']['build-signing'] = test['build-signing-label']
@@ -1043,7 +1100,12 @@ def make_job_description(config, tests):
         run['using'] = 'mozharness-test'
         run['test'] = test
 
+        if 'workdir' in test:
+            run['workdir'] = test.pop('workdir')
+
         jobdesc['worker-type'] = test.pop('worker-type')
+        if test.get('fetches'):
+            jobdesc['fetches'] = test.pop('fetches')
 
         yield jobdesc
 

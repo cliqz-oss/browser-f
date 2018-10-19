@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.getBreakpointAtLocation = getBreakpointAtLocation;
+exports.getBreakpointsAtLine = getBreakpointsAtLine;
 
 var _sources = require("../reducers/sources");
 
@@ -15,8 +16,7 @@ var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 function isGenerated(selectedSource) {
-  const sourceId = selectedSource.get("id");
-  return (0, _devtoolsSourceMap.isGeneratedId)(sourceId);
+  return (0, _devtoolsSourceMap.isGeneratedId)(selectedSource.id);
 }
 
 function getColumn(column, selectedSource) {
@@ -35,7 +35,7 @@ function getBreakpointsForSource(state, selectedSource) {
   const breakpoints = (0, _breakpoints.getBreakpoints)(state);
   return breakpoints.filter(bp => {
     const location = getLocation(bp, selectedSource);
-    return location.sourceId === selectedSource.get("id");
+    return location.sourceId === selectedSource.id;
   });
 }
 
@@ -71,4 +71,10 @@ function getBreakpointAtLocation(state, location) {
   const selectedSource = (0, _sources.getSelectedSource)(state);
   const breakpoints = getBreakpointsForSource(state, selectedSource);
   return findBreakpointAtLocation(breakpoints, selectedSource, location);
+}
+
+function getBreakpointsAtLine(state, line) {
+  const selectedSource = (0, _sources.getSelectedSource)(state);
+  const breakpoints = getBreakpointsForSource(state, selectedSource);
+  return breakpoints.filter(breakpoint => getLocation(breakpoint, selectedSource).line === line);
 }

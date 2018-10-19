@@ -45,7 +45,7 @@ add_task(async function test_bookmarks_query() {
   });
 
   let options = PlacesUtils.history.getNewQueryOptions();
-  options.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_LASMODIFIED_DESCENDING;
+  options.sortingMode = Ci.nsINavHistoryQueryOptions.SORT_BY_LASTMODIFIED_DESCENDING;
   options.queryType = options.QUERY_TYPE_BOOKMARKS;
   let query = PlacesUtils.history.getNewQuery();
 
@@ -74,6 +74,6 @@ add_task(async function test_bookmarks_query() {
 function cleanupTest() {
   return Promise.all([
     PlacesUtils.history.clear(),
-    PlacesUtils.bookmarks.eraseEverything()
+    PlacesUtils.bookmarks.eraseEverything(),
   ]);
 }

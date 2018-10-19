@@ -39,7 +39,7 @@
   <description id="appDescription"/>
   <separator class="thin"/>
   <hbox flex="1">
-    <listbox id="appList" onselect="gAppManagerDialog.onSelect();" flex="1"/>
+    <richlistbox id="appList" onselect="gAppManagerDialog.onSelect();" flex="1"/>
     <vbox>
       <button id="remove"
               data-l10n-id="app-manager-remove"

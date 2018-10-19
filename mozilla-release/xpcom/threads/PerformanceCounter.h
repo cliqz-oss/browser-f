@@ -80,12 +80,16 @@ public:
    * This is called everytime a runnable is dispatched.
    *
    * aCategory can be used to distinguish counts per TaskCategory
+   *
+   * Note that an overflow will simply reset the counter.
    */
   void IncrementDispatchCounter(DispatchCategory aCategory);
 
   /**
    * This is called via nsThread::ProcessNextEvent to measure runnable
    * execution duration.
+   *
+   * Note that an overflow will simply reset the counter.
    */
   void IncrementExecutionDuration(uint32_t aMicroseconds);
 
@@ -110,9 +114,17 @@ public:
   uint64_t GetTotalDispatchCount();
 
   /**
-   * Reset all counters and execution duration.
+   * Returns the unique id for the instance.
+   *
+   * Used to distinguish instances since the lifespan of
+   * a PerformanceCounter can be shorter than the
+   * host it's tracking. That leads to edge cases
+   * where a counter appears to have values that go
+   * backwards. Having this id let the consumers
+   * detect that they are dealing with a new counter
+   * when it happens.
    */
-  void ResetPerformanceCounters();
+  uint64_t GetID() const;
 
 private:
   ~PerformanceCounter() {}
@@ -121,6 +133,7 @@ private:
   Atomic<uint64_t> mTotalDispatchCount;
   DispatchCounter mDispatchCounter;
   nsCString mName;
+  const uint64_t mID;
 };
 
 } // namespace mozilla

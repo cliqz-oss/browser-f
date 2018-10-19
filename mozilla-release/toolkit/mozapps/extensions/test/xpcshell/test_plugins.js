@@ -37,9 +37,7 @@ async function run_test() {
 
 // Finds the test plugin library
 function get_test_plugin() {
-  var pluginEnum = Services.dirsvc.get("APluginsDL", Ci.nsISimpleEnumerator);
-  while (pluginEnum.hasMoreElements()) {
-    let dir = pluginEnum.getNext().QueryInterface(Ci.nsIFile);
+  for (let dir of Services.dirsvc.get("APluginsDL", Ci.nsISimpleEnumerator)) {
     let plugin = dir.clone();
     // OSX plugin
     plugin.append("npswftest.plugin");
@@ -127,7 +125,7 @@ async function run_test_2(p) {
   test[gID] = [
     ["onDisabling", false],
     "onDisabled",
-    ["onPropertyChanged", ["userDisabled"]]
+    ["onPropertyChanged", ["userDisabled"]],
   ];
   prepare_test(test);
 
@@ -154,7 +152,7 @@ async function run_test_3(p) {
   let test = {};
   test[gID] = [
     ["onEnabling", false],
-    "onEnabled"
+    "onEnabled",
   ];
   prepare_test(test);
 

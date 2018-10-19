@@ -202,15 +202,15 @@ flag to geckodriver through WPT:
 Submitting patches
 ------------------
 
-You can submit patches by uploading .diff files to Bugzilla or by
-sending them to [MozReview].
+You can submit patches by uploading .diff files to the `Testing ::
+geckodriver`` component in Bugzilla.  You may request review from
+_ato_, _automatedtester_, _jgraham_, or _whimboo_.
 
 Once you have contributed a couple of patches, we are happy to
 sponsor you in [becoming a Mozilla committer].  When you have been
 granted commit access level 1 you will have permission to use the
 [Firefox CI] to trigger your own “try runs” to test your changes.
 
-[MozReview]: http://mozilla-version-control-tools.readthedocs.io/en/latest/mozreview.html
 [becoming a Mozilla committer]: https://www.mozilla.org/en-US/about/governance/policies/commit/
 
 
@@ -225,4 +225,4 @@ channel on irc.mozilla.org.  Don’t ask if you can ask a question, just
 ask, and please wait for an answer as we might not be in your timezone.
 
 [subscribe]: https://lists.mozilla.org/listinfo/tools-marionette
-[archive]: https://groups.google.com/group/mozilla.tools.marionette
+[archive]: https://lists.mozilla.org/pipermail/tools-marionette/

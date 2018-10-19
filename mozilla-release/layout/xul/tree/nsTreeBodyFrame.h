@@ -38,9 +38,12 @@ class ScrollbarActivity;
 // An entry in the tree's image cache
 struct nsTreeImageCacheEntry
 {
-  nsTreeImageCacheEntry() {}
-  nsTreeImageCacheEntry(imgIRequest *aRequest, imgINotificationObserver *aListener)
-    : request(aRequest), listener(aListener) {}
+  nsTreeImageCacheEntry() = default;
+  nsTreeImageCacheEntry(imgIRequest* aRequest,
+                        imgINotificationObserver* aListener)
+    : request(aRequest)
+    , listener(aListener)
+  { }
 
   nsCOMPtr<imgIRequest> request;
   nsCOMPtr<imgINotificationObserver> listener;
@@ -86,7 +89,7 @@ public:
   int32_t RowHeight() const;
   int32_t RowWidth();
   int32_t GetHorizontalPosition() const;
-  nsresult GetSelectionRegion(nsIScriptableRegion **aRegion);
+  mozilla::Maybe<mozilla::CSSIntRegion> GetSelectionRegion();
   int32_t FirstVisibleRow() const { return mTopRowIndex; }
   int32_t LastVisibleRow() const { return mTopRowIndex + mPageLength; }
   int32_t PageLength() const { return mPageLength; }
@@ -191,11 +194,18 @@ public:
 
   nsITreeBoxObject* GetTreeBoxObject() const { return mTreeBoxObject; }
 
-  // Get the base element, <tree> or <select>
+  // Get the base element, <tree>
   mozilla::dom::Element* GetBaseElement();
 
   bool GetVerticalOverflow() const { return mVerticalOverflow; }
   bool GetHorizontalOverflow() const {return mHorizontalOverflow; }
+
+  // This returns the property array where atoms are stored for style during
+  // draw, whether the row currently being drawn is selected, hovered, etc.
+  const mozilla::AtomArray& GetPropertyArrayForCurrentDrawingItem()
+  {
+    return mScratchArray;
+  }
 
 protected:
   friend class nsOverflowChecker;
@@ -414,9 +424,6 @@ protected:
                            int16_t* aOrient,
                            int16_t* aScrollLines);
 
-  // Mark ourselves dirty if we're a select widget
-  void MarkDirtyIfSelect();
-
   void InvalidateDropFeedback(int32_t aRow, int16_t aOrientation) {
     InvalidateRow(aRow);
     if (aOrientation != nsITreeView::DROP_ON)
@@ -507,7 +514,13 @@ protected: // Data Members
 
   class Slots {
     public:
-      Slots() {
+      Slots()
+        : mDropAllowed(false)
+        , mIsDragging(false)
+        , mDropRow(-1)
+        , mDropOrient(-1)
+        , mScrollLines(0)
+        , mDragAction(0) {
       }
 
       ~Slots() {

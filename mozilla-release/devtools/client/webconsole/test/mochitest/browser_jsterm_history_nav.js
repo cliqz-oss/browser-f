@@ -12,6 +12,16 @@ const TEST_URI = "data:text/html;charset=utf-8,<p>bug 660806 - history " +
                  "navigation must not show the autocomplete popup";
 
 add_task(async function() {
+  // Run in legacy JsTerm.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await testHistory();
+
+  // And then in codeMirror JsTerm.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await testHistory();
+});
+
+async function testHistory() {
   const { jsterm } = await openNewTabAndConsole(TEST_URI);
   const popup = jsterm.autocompletePopup;
 
@@ -19,25 +29,17 @@ add_task(async function() {
   const onShown = function() {
     ok(false, "popup shown");
   };
+  popup.on("popup-opened", onShown);
 
   await jsterm.execute(`window.foobarBug660806 = {
     'location': 'value0',
     'locationbar': 'value1'
   }`);
-
-  popup.on("popup-opened", onShown);
-
   ok(!popup.isOpen, "popup is not open");
 
-  ok(!jsterm.lastInputValue, "no lastInputValue");
-  jsterm.setInputValue("window.foobarBug660806.location");
-  is(jsterm.lastInputValue, "window.foobarBug660806.location",
-     "lastInputValue is correct");
-
-  EventUtils.synthesizeKey("KEY_Enter");
-
-  // Wait for the execution to complete and clear the value.
-  await waitFor(() => !jsterm.lastInputValue);
+  // Let's add this expression in the input history. We don't use setInputValue since
+  // it _does_ trigger an autocompletion request in codeMirror JsTerm.
+  await jsterm.execute("window.foobarBug660806.location");
 
   const onSetInputValue = jsterm.once("set-input-value");
   EventUtils.synthesizeKey("KEY_ArrowUp");
@@ -47,9 +49,9 @@ add_task(async function() {
   // before checking the popup status.
   await new Promise(executeSoon);
 
-  is(jsterm.lastInputValue, "window.foobarBug660806.location",
-     "lastInputValue is correct, again");
+  is(jsterm.getInputValue(), "window.foobarBug660806.location",
+    "input has expected value");
 
   ok(!popup.isOpen, "popup is not open");
   popup.off("popup-opened", onShown);
-});
+}

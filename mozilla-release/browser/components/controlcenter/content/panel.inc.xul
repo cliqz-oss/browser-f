@@ -11,11 +11,6 @@
        onpopuphidden="gIdentityHandler.onPopupHidden(event);"
        orient="vertical">
 
-  <broadcasterset>
-    <broadcaster id="identity-popup-mcb-learn-more" class="text-link plain" value="&identity.learnMore;"/>
-    <broadcaster id="identity-popup-insecure-login-forms-learn-more" class="text-link plain" value="&identity.learnMore;"/>
-  </broadcasterset>
-
   <panelmultiview id="identity-popup-multiView"
                   mainViewId="identity-popup-mainView">
     <panelview id="identity-popup-mainView"
@@ -47,7 +42,7 @@
           </vbox>
         </vbox>
         <button id="identity-popup-security-expander"
-                class="identity-popup-expander subviewkeynav"
+                class="identity-popup-expander"
                 when-connection="not-secure secure secure-ev secure-cert-user-overridden"
                 oncommand="gIdentityHandler.showSecuritySubView();"/>
       </hbox>
@@ -56,53 +51,80 @@
       <hbox id="tracking-protection-container"
             class="identity-popup-section"
             when-connection="not-secure secure secure-ev secure-cert-user-overridden extension">
-        <vbox id="tracking-protection-content" flex="1">
-          <hbox>
-            <label id="tracking-protection-label-on"
+        <vbox id="identity-popup-content-blocking-content" flex="1">
+          <hbox align="start">
+            <label id="tracking-protection-label"
                    class="identity-popup-headline"
-                   flex="1">&trackingProtection.on;</label>
-            <label id="tracking-protection-label-off"
+                   flex="1">&trackingProtection.title;</label>
+            <label id="content-blocking-label"
                    class="identity-popup-headline"
-                   flex="1">&trackingProtection.off;</label>
+                   flex="1">&contentBlocking.title;</label>
+            <hbox id="identity-popup-content-blocking-disabled-label">
+              <image/>
+              <label id="identity-popup-content-blocking-disabled-label-exception"
+                     value="&contentBlocking.disabled.label;"
+                     tooltiptext="&contentBlocking.exception.tooltip;"/>
+              <label id="identity-popup-content-blocking-disabled-label-global"
+                     value="&contentBlocking.disabled.label;"
+                     tooltiptext="&contentBlocking.disabled.tooltip;"/>
+            </hbox>
             <toolbarbutton id="tracking-protection-preferences-button"
                            class="identity-popup-preferences-button subviewbutton"
                            tooltiptext="&trackingProtection.tooltip;"
-                           oncommand="TrackingProtection.openPreferences('identityPopup-TP-preferencesButton');" />
+                           oncommand="ContentBlocking.openPreferences('identityPopup-TP-preferencesButton');" />
           </hbox>
 
-          <description id="tracking-blocked"
-                       crop="end">&trackingProtection.detectedBlocked4;</description>
-          <description id="tracking-loaded"
-                       crop="end">&trackingProtection.detectedNotBlocked5;</description>
-          <description id="tracking-not-detected"
-                       crop="end">&trackingProtection.notDetected5;</description>
-          <description id="tracking-loaded-exception"
-                       crop="end">&trackingProtection.detectedException;</description>
-          <description id="tracking-not-detected-exception"
-                       crop="end">&trackingProtection.notDetectedException;</description>
-          <description id="tracking-reload-required"
-                       crop="end">&trackingProtection.reloadRequired2;</description>
+          <description id="identity-popup-content-blocking-detected"
+                       crop="end">&contentBlocking.detected;</description>
+          <description id="identity-popup-content-blocking-not-detected"
+                       crop="end">&contentBlocking.notDetected;</description>
 
-          <button id="tracking-action-reload"
-                  class="tracking-protection-button subviewkeynav"
-                  label="&trackingProtection.reload2.label;"
-                  accesskey="&trackingProtection.reload2.accesskey;"
-                  oncommand="TrackingProtection.hideIdentityPopupAndReload();" />
+          <vbox id="identity-popup-content-blocking-category-list">
+            <hbox id="identity-popup-content-blocking-category-fastblock"
+                  class="identity-popup-content-blocking-category" align="center" role="group">
+              <image class="identity-popup-content-blocking-category-icon fastblock-icon"/>
+              <label flex="1" class="identity-popup-content-blocking-category-label">&contentBlocking.fastBlock.label;</label>
+              <label flex="1" class="identity-popup-content-blocking-category-state-label">&contentBlocking.fastBlock.blocked.label;</label>
+              <label flex="1" class="identity-popup-content-blocking-category-add-blocking text-link"
+                     onclick="ContentBlocking.openPreferences('identityPopup-CB-fastblock');">&contentBlocking.fastBlock.add.label;</label>
+            </hbox>
+            <hbox id="identity-popup-content-blocking-category-tracking-protection"
+                  class="identity-popup-content-blocking-category" align="center" role="group">
+              <image class="identity-popup-content-blocking-category-icon tracking-protection-icon"/>
+              <label flex="1" class="identity-popup-content-blocking-category-label">&contentBlocking.trackingProtection2.label;</label>
+              <label flex="1" class="identity-popup-content-blocking-category-state-label">&contentBlocking.trackingProtection.blocked.label;</label>
+              <label flex="1" class="identity-popup-content-blocking-category-add-blocking text-link"
+                     onclick="ContentBlocking.openPreferences('identityPopup-CB-tracking-protection');">&contentBlocking.trackingProtection.add.label;</label>
+            </hbox>
+            <hbox id="identity-popup-content-blocking-category-3rdpartycookies"
+                  class="identity-popup-content-blocking-category" align="center" role="group">
+              <image class="identity-popup-content-blocking-category-icon thirdpartycookies-icon"/>
+              <label flex="1" class="identity-popup-content-blocking-category-label">&contentBlocking.3rdPartyCookies.label;</label>
+              <label flex="1" class="identity-popup-content-blocking-category-state-label">&contentBlocking.3rdPartyCookies.blocked.label;</label>
+              <label flex="1" class="identity-popup-content-blocking-category-add-blocking text-link"
+                     onclick="ContentBlocking.openPreferences('identityPopup-CB-3rdpartycookies');">&contentBlocking.3rdPartyCookies.add.label;</label>
+            </hbox>
+          </vbox>
+
           <button id="tracking-action-unblock"
-                  class="tracking-protection-button subviewkeynav"
-                  label="&trackingProtection.unblock3.label;"
-                  accesskey="&trackingProtection.unblock3.accesskey;"
-                  oncommand="TrackingProtection.disableForCurrentPage();" />
+                  class="tracking-protection-button"
+                  label="&trackingProtection.unblock4.label;"
+                  accesskey="&trackingProtection.unblock4.accesskey;"
+                  oncommand="ContentBlocking.disableForCurrentPage();" />
           <button id="tracking-action-unblock-private"
-                  class="tracking-protection-button subviewkeynav"
-                  label="&trackingProtection.unblockPrivate3.label;"
-                  accesskey="&trackingProtection.unblockPrivate3.accesskey;"
-                  oncommand="TrackingProtection.disableForCurrentPage();" />
+                  class="tracking-protection-button"
+                  label="&trackingProtection.unblockPrivate4.label;"
+                  accesskey="&trackingProtection.unblockPrivate4.accesskey;"
+                  oncommand="ContentBlocking.disableForCurrentPage();" />
           <button id="tracking-action-block"
-                  class="tracking-protection-button subviewkeynav"
-                  label="&trackingProtection.block4.label;"
-                  accesskey="&trackingProtection.block4.accesskey;"
-                  oncommand="TrackingProtection.enableForCurrentPage();" />
+                  class="tracking-protection-button"
+                  label="&trackingProtection.block5.label;"
+                  accesskey="&trackingProtection.block5.accesskey;"
+                  oncommand="ContentBlocking.enableForCurrentPage();" />
+          <label id="identity-popup-content-blocking-report-breakage"
+                 onclick="ContentBlocking.showReportBreakageSubview();"
+                 class="text-link subviewkeynav"
+                 flex="1">&contentBlocking.openBreakageReportView2.label;</label>
         </vbox>
       </hbox>
 
@@ -131,8 +153,7 @@
       <vbox hidden="true"
             id="identity-popup-clear-sitedata-footer"
             class="identity-popup-footer">
-        <button class="subviewkeynav"
-                id="identity-popup-clear-sitedata-button"
+        <button id="identity-popup-clear-sitedata-button"
                 label="&identity.clearSiteData;"
                 oncommand="gIdentityHandler.clearSiteData(event);"/>
       </vbox>
@@ -167,7 +188,6 @@
 
         <!-- Remove Certificate Exception -->
         <button when-connection="secure-cert-user-overridden"
-                class="subviewkeynav"
                 label="&identity.removeCertException.label;"
                 accesskey="&identity.removeCertException.accesskey;"
                 oncommand="gIdentityHandler.removeCertException()"/>
@@ -177,7 +197,7 @@
                      and-when-loginforms="secure">&identity.description.insecure;</description>
 
         <!-- Insecure login forms -->
-        <description when-loginforms="insecure">&identity.description.insecureLoginForms; <label observes="identity-popup-insecure-login-forms-learn-more"/></description>
+        <description when-loginforms="insecure">&identity.description.insecureLoginForms; <label id="identity-popup-insecure-login-forms-learn-more" class="text-link plain" value="&identity.learnMore;"/></description>
 
         <!-- Weak Cipher -->
         <description when-ciphers="weak">&identity.description.weakCipher;</description>
@@ -186,34 +206,34 @@
 
         <!-- Active Mixed Content Blocked -->
         <description class="identity-popup-warning-gray"
-                     when-mixedcontent="active-blocked">&identity.description.activeBlocked; <label observes="identity-popup-mcb-learn-more"/></description>
+                     when-mixedcontent="active-blocked">&identity.description.activeBlocked; <label class="identity-popup-mcb-learn-more text-link plain" value="&identity.learnMore;"/></description>
 
         <!-- Passive Mixed Content Loaded -->
         <description when-mixedcontent="passive-loaded">&identity.description.passiveLoaded;</description>
         <description class="identity-popup-warning-yellow"
-                     when-mixedcontent="passive-loaded">&identity.description.passiveLoaded2; <label observes="identity-popup-mcb-learn-more"/></description>
+                     when-mixedcontent="passive-loaded">&identity.description.passiveLoaded2; <label class="identity-popup-mcb-learn-more text-link plain" value="&identity.learnMore;"/></description>
 
         <!-- Passive Mixed Content Loaded, Active Mixed Content Blocked -->
         <description when-mixedcontent="passive-loaded active-blocked">&identity.description.passiveLoaded;</description>
         <description when-mixedcontent="passive-loaded active-blocked"
-                     class="identity-popup-warning-yellow">&identity.description.passiveLoaded3; <label observes="identity-popup-mcb-learn-more"/></description>
+                     class="identity-popup-warning-yellow">&identity.description.passiveLoaded3; <label class="identity-popup-mcb-learn-more text-link plain" value="&identity.learnMore;"/></description>
 
         <!-- Active Mixed Content Blocking Disabled -->
         <description when-mixedcontent="active-loaded"
                      and-when-loginforms="secure">&identity.description.activeLoaded;</description>
         <description when-mixedcontent="active-loaded"
-                     and-when-loginforms="secure">&identity.description.activeLoaded2; <label observes="identity-popup-mcb-learn-more"/></description>
+                     and-when-loginforms="secure">&identity.description.activeLoaded2; <label class="identity-popup-mcb-learn-more text-link plain" value="&identity.learnMore;"/></description>
         <!-- Show only the first message when there are insecure login forms,
              and make sure the Learn More link is included. -->
         <description when-mixedcontent="active-loaded"
-                     and-when-loginforms="insecure">&identity.description.activeLoaded; <label observes="identity-popup-mcb-learn-more"/></description>
+                     and-when-loginforms="insecure">&identity.description.activeLoaded; <label class="identity-popup-mcb-learn-more text-link plain" value="&identity.learnMore;"/></description>
 
         <!-- Buttons to enable/disable mixed content blocking. -->
-        <button when-mixedcontent="active-blocked" class="subviewkeynav"
+        <button when-mixedcontent="active-blocked"
                 label="&identity.disableMixedContentBlocking.label;"
                 accesskey="&identity.disableMixedContentBlocking.accesskey;"
                 oncommand="gIdentityHandler.disableMixedContentProtection()"/>
-        <button when-mixedcontent="active-loaded" class="subviewkeynav"
+        <button when-mixedcontent="active-loaded"
                 label="&identity.enableMixedContentBlocking.label;"
                 accesskey="&identity.enableMixedContentBlocking.accesskey;"
                 oncommand="gIdentityHandler.enableMixedContentProtection()"/>
@@ -221,11 +241,41 @@
 
       <vbox id="identity-popup-more-info-footer" class="identity-popup-footer">
         <!-- More Security Information -->
-        <button id="identity-popup-more-info"  class="subviewkeynav"
+        <button id="identity-popup-more-info"
                 label="&identity.moreInfoLinkText2;"
                 oncommand="gIdentityHandler.handleMoreInfoClick(event);"/>
       </vbox>
 
+    </panelview>
+
+    <!-- Report Breakage SubView -->
+    <panelview id="identity-popup-breakageReportView"
+               title="&contentBlocking.breakageReportView.label;"
+               descriptionheightworkaround="true">
+        <vbox id="identity-popup-breakageReportView-heading">
+          <description>&contentBlocking.breakageReportView2.description;</description>
+          <label id="identity-popup-breakageReportView-learn-more"
+                 class="text-link">&contentBlocking.breakageReportView.learnMore;</label>
+        </vbox>
+        <vbox id="identity-popup-breakageReportView-body" class="panel-view-body-unscrollable">
+          <vbox class="identity-popup-breakageReportView-collection-section">
+            <label class="identity-popup-breakageReportView-collection-label">&contentBlocking.breakageReportView.collection.url.label;</label>
+            <label id="identity-popup-breakageReportView-collection-url"/>
+          </vbox>
+          <vbox class="identity-popup-breakageReportView-collection-section">
+            <label class="identity-popup-breakageReportView-collection-label">&contentBlocking.breakageReportView.collection.comments.label;</label>
+            <textbox multiline="true" id="identity-popup-breakageReportView-collection-comments"/>
+          </vbox>
+        </vbox>
+        <vbox id="identity-popup-breakageReportView-footer" class="identity-popup-footer">
+          <button id="identity-popup-breakageReportView-cancel"
+                  label="&contentBlocking.breakageReportView.cancel.label;"
+                  oncommand="ContentBlocking.backToMainView();"/>
+          <button id="identity-popup-breakageReportView-submit"
+                  default="true"
+                  label="&contentBlocking.breakageReportView.sendReport.label;"
+                  oncommand="ContentBlocking.submitBreakageReport();"/>
+        </vbox>
     </panelview>
   </panelmultiview>
 </panel>

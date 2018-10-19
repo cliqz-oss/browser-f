@@ -74,13 +74,19 @@ NativeObject::clearShouldConvertDoubleElements()
 }
 
 inline void
-NativeObject::setDenseElementWithType(JSContext* cx, uint32_t index, const Value& val)
+NativeObject::addDenseElementType(JSContext* cx, uint32_t index, const Value& val)
 {
     // Avoid a slow AddTypePropertyId call if the type is the same as the type
     // of the previous element.
     TypeSet::Type thisType = TypeSet::GetValueType(val);
     if (index == 0 || TypeSet::GetValueType(elements_[index - 1]) != thisType)
         AddTypePropertyId(cx, this, JSID_VOID, thisType);
+}
+
+inline void
+NativeObject::setDenseElementWithType(JSContext* cx, uint32_t index, const Value& val)
+{
+    addDenseElementType(cx, index, val);
     setDenseElementMaybeConvertDouble(index, val);
 }
 
@@ -88,10 +94,9 @@ inline void
 NativeObject::initDenseElementWithType(JSContext* cx, uint32_t index, const Value& val)
 {
     MOZ_ASSERT(!shouldConvertDoubleElements());
-    if (val.isMagic(JS_ELEMENTS_HOLE))
-        markDenseElementsNotPacked(cx);
-    else
-        AddTypePropertyId(cx, this, JSID_VOID, val);
+    MOZ_ASSERT(!val.isMagic(JS_ELEMENTS_HOLE));
+
+    addDenseElementType(cx, index, val);
     initDenseElement(index, val);
 }
 
@@ -129,12 +134,11 @@ NativeObject::elementsRangeWriteBarrierPost(uint32_t start, uint32_t count)
 {
     for (size_t i = 0; i < count; i++) {
         const Value& v = elements_[start + i];
-        if ((v.isObject() || v.isString()) && IsInsideNursery(v.toGCThing())) {
-            JSRuntime* rt = runtimeFromMainThread();
-            rt->gc.storeBuffer().putSlot(this, HeapSlot::Element,
-                                         unshiftedIndex(start + i),
-                                         count - i);
-            return;
+        if (v.isGCThing()) {
+            if (gc::StoreBuffer* sb = v.toGCThing()->storeBuffer()) {
+                sb->putSlot(this, HeapSlot::Element, unshiftedIndex(start + i), count - i);
+                return;
+            }
         }
     }
 }
@@ -197,11 +201,12 @@ NativeObject::initDenseElements(const Value* src, uint32_t count)
 inline bool
 NativeObject::tryShiftDenseElements(uint32_t count)
 {
+    MOZ_ASSERT(isExtensible());
+
     ObjectElements* header = getElementsHeader();
     if (header->initializedLength == count ||
         count > ObjectElements::MaxShiftedElements ||
         header->isCopyOnWrite() ||
-        !isExtensible() ||
         header->hasNonwritableArrayLength())
     {
         return false;
@@ -214,6 +219,8 @@ NativeObject::tryShiftDenseElements(uint32_t count)
 inline void
 NativeObject::shiftDenseElementsUnchecked(uint32_t count)
 {
+    MOZ_ASSERT(isExtensible());
+
     ObjectElements* header = getElementsHeader();
     MOZ_ASSERT(count > 0);
     MOZ_ASSERT(count < header->initializedLength);
@@ -315,6 +322,7 @@ NativeObject::ensureDenseInitializedLengthNoPackedCheck(uint32_t index, uint32_t
 {
     MOZ_ASSERT(!denseElementsAreCopyOnWrite());
     MOZ_ASSERT(!denseElementsAreFrozen());
+    MOZ_ASSERT(isExtensible() || (containsDenseElement(index) && extra == 1));
 
     /*
      * Ensure that the array's contents have been initialized up to index, and
@@ -341,6 +349,8 @@ NativeObject::ensureDenseInitializedLengthNoPackedCheck(uint32_t index, uint32_t
 inline void
 NativeObject::ensureDenseInitializedLength(JSContext* cx, uint32_t index, uint32_t extra)
 {
+    MOZ_ASSERT(isExtensible());
+
     if (writeToIndexWouldMarkNotPacked(index))
         markDenseElementsNotPacked(cx);
     ensureDenseInitializedLengthNoPackedCheck(index, extra);
@@ -380,6 +390,7 @@ inline DenseElementResult
 NativeObject::ensureDenseElements(JSContext* cx, uint32_t index, uint32_t extra)
 {
     MOZ_ASSERT(isNative());
+    MOZ_ASSERT(isExtensible() || (containsDenseElement(index) && extra == 1));
 
     if (writeToIndexWouldMarkNotPacked(index))
         markDenseElementsNotPacked(cx);
@@ -785,6 +796,7 @@ CallResolveOp(JSContext* cx, HandleNativeObject obj, HandleId id,
     *recursedp = false;
 
     bool resolved = false;
+    AutoRealm ar(cx, obj);
     if (!obj->getClass()->getResolve()(cx, obj, id, &resolved))
         return false;
 

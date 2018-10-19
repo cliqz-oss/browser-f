@@ -4,12 +4,7 @@
 
 /* import-globals-from controller.js */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-const PTV_interfaces = [Ci.nsITreeView,
-                        Ci.nsINavHistoryResultObserver,
-                        Ci.nsISupportsWeakReference];
 
 /**
  * This returns the key for any node/details object.
@@ -53,25 +48,11 @@ PlacesTreeView.prototype = {
     return this;
   },
 
-  __xulStore: null,
-  get _xulStore() {
-    if (!this.__xulStore) {
-      this.__xulStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
-    }
-    return this.__xulStore;
-  },
-
-  QueryInterface: ChromeUtils.generateQI(PTV_interfaces),
-
-  // Bug 761494:
-  // ----------
-  // Some addons use methods from nsINavHistoryResultObserver and
-  // nsINavHistoryResultTreeViewer, without QIing to these interfaces first.
-  // That's not a problem when the view is retrieved through the
-  // <tree>.view getter (which returns the wrappedJSObject of this object),
-  // it raises an issue when the view retrieved through the treeBoxObject.view
-  // getter.  Thus, to avoid breaking addons, the interfaces are prefetched.
-  classInfo: XPCOMUtils.generateCI({ interfaces: PTV_interfaces }),
+  QueryInterface: ChromeUtils.generateQI([
+    Ci.nsITreeView,
+    Ci.nsINavHistoryResultObserver,
+    Ci.nsISupportsWeakReference,
+  ]),
 
   /**
    * This is called once both the result and the tree are set.
@@ -368,7 +349,7 @@ PlacesTreeView.prototype = {
         let isopen = false;
 
         if (uri) {
-          let val = this._xulStore.getValue(document.documentURI, uri, "open");
+          let val = Services.xulStore.getValue(document.documentURI, uri, "open");
           isopen = (val == "true");
         }
 
@@ -434,7 +415,7 @@ PlacesTreeView.prototype = {
         nodesInfo.push({
           node: this._rows[i],
           oldRow: i,
-          wasVisible: i >= firstVisibleRow && i <= lastVisibleRow
+          wasVisible: i >= firstVisibleRow && i <= lastVisibleRow,
         });
       }
     }
@@ -570,7 +551,7 @@ PlacesTreeView.prototype = {
     if (!this.__dateFormatter) {
       const dtOptions = {
         dateStyle: "short",
-        timeStyle: "short"
+        timeStyle: "short",
       };
       this.__dateFormatter = new Services.intl.DateTimeFormat(undefined, dtOptions);
     }
@@ -1461,7 +1442,7 @@ PlacesTreeView.prototype = {
     return new PlacesInsertionPoint({
       parentId: PlacesUtils.getConcreteItemId(container),
       parentGuid: PlacesUtils.getConcreteItemGuid(container),
-      index, orientation, tagName, dropNearNode
+      index, orientation, tagName, dropNearNode,
     });
   },
 
@@ -1617,9 +1598,9 @@ PlacesTreeView.prototype = {
         let docURI = document.documentURI;
 
         if (node.containerOpen) {
-          this._xulStore.removeValue(docURI, uri, "open");
+          Services.xulStore.removeValue(docURI, uri, "open");
         } else {
-          this._xulStore.setValue(docURI, uri, "open", "true");
+          Services.xulStore.setValue(docURI, uri, "open", "true");
         }
       }
     }
@@ -1783,5 +1764,5 @@ PlacesTreeView.prototype = {
   isSelectable(aRow, aColumn) { return false; },
   performAction(aAction) { },
   performActionOnRow(aAction, aRow) { },
-  performActionOnCell(aAction, aRow, aColumn) { }
+  performActionOnCell(aAction, aRow, aColumn) { },
 };

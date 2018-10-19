@@ -148,7 +148,6 @@ public:
 #if defined(MOZ_GECKO_PROFILER)
   static void DoStackCapture(const nsACString& aKey);
 #endif
-  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
   struct Stat {
     uint32_t hitCount;
     uint32_t totalTime;
@@ -194,8 +193,8 @@ private:
   AutoHashtable<SlowSQLEntryType> mPrivateSQL;
   AutoHashtable<SlowSQLEntryType> mSanitizedSQL;
   Mutex mHashMutex;
-  Atomic<bool> mCanRecordBase;
-  Atomic<bool> mCanRecordExtended;
+  Atomic<bool, SequentiallyConsistent, recordreplay::Behavior::DontPreserve> mCanRecordBase;
+  Atomic<bool, SequentiallyConsistent, recordreplay::Behavior::DontPreserve> mCanRecordExtended;
 
 #if defined(MOZ_GECKO_PROFILER)
   // Stores data about stacks captured on demand.
@@ -220,10 +219,66 @@ NS_IMETHODIMP
 TelemetryImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
                               nsISupports* aData, bool aAnonymize)
 {
-  MOZ_COLLECT_REPORT(
-    "explicit/telemetry", KIND_HEAP, UNITS_BYTES,
-    SizeOfIncludingThis(TelemetryMallocSizeOf),
-    "Memory used by the telemetry system.");
+  mozilla::MallocSizeOf aMallocSizeOf = TelemetryMallocSizeOf;
+
+#define COLLECT_REPORT(name, size, desc) \
+  MOZ_COLLECT_REPORT(name, KIND_HEAP, UNITS_BYTES, size, desc)
+
+  COLLECT_REPORT("explicit/telemetry/impl", aMallocSizeOf(this),
+      "Memory used by the Telemetry core implemenation");
+
+  COLLECT_REPORT("explicit/telemetry/scalar/shallow",
+      TelemetryScalar::GetMapShallowSizesOfExcludingThis(aMallocSizeOf),
+      "Memory used by the Telemetry Scalar implemenation");
+
+  COLLECT_REPORT("explicit/telemetry/WebRTC",
+      mWebrtcTelemetry.SizeOfExcludingThis(aMallocSizeOf),
+      "Memory used by WebRTC Telemetry");
+
+  { // Scope for mHashMutex lock
+    MutexAutoLock lock(mHashMutex);
+    COLLECT_REPORT("explicit/telemetry/PrivateSQL",
+        mPrivateSQL.SizeOfExcludingThis(aMallocSizeOf),
+        "Memory used by the PrivateSQL Telemetry");
+
+    COLLECT_REPORT("explicit/telemetry/SanitizedSQL",
+        mSanitizedSQL.SizeOfExcludingThis(aMallocSizeOf),
+        "Memory used by the SanitizedSQL Telemetry");
+  }
+
+  if (sTelemetryIOObserver) {
+    COLLECT_REPORT("explicit/telemetry/IOObserver",
+        sTelemetryIOObserver->SizeOfIncludingThis(aMallocSizeOf),
+        "Memory used by the Telemetry IO Observer");
+  }
+
+#if defined(MOZ_GECKO_PROFILER)
+  COLLECT_REPORT("explicit/telemetry/StackCapturer",
+        mStackCapturer.SizeOfExcludingThis(aMallocSizeOf),
+        "Memory used by the Telemetry Stack capturer");
+#endif
+
+  COLLECT_REPORT("explicit/telemetry/LateWritesStacks",
+        mLateWritesStacks.SizeOfExcludingThis(),
+        "Memory used by the Telemetry LateWrites Stack capturer");
+
+  COLLECT_REPORT("explicit/telemetry/Callbacks",
+        mCallbacks.ShallowSizeOfExcludingThis(aMallocSizeOf),
+        "Memory used by the Telemetry Callbacks array (shallow)");
+
+  COLLECT_REPORT("explicit/telemetry/histogram/data",
+      TelemetryHistogram::GetHistogramSizesOfIncludingThis(aMallocSizeOf),
+      "Memory used by Telemetry Histogram data");
+
+  COLLECT_REPORT("explicit/telemetry/scalar/data",
+      TelemetryScalar::GetScalarSizesOfIncludingThis(aMallocSizeOf),
+      "Memory used by Telemetry Scalar data");
+
+  COLLECT_REPORT("explicit/telemetry/event/data",
+      TelemetryEvent::SizeOfIncludingThis(aMallocSizeOf),
+      "Memory used by Telemetry Event data");
+
+#undef COLLECT_REPORT
 
   return NS_OK;
 }
@@ -374,7 +429,7 @@ GetShutdownTimeFileName()
 
     mozFile->AppendNative(NS_LITERAL_CSTRING("Telemetry.ShutdownTime.txt"));
 
-    gRecordedShutdownTimeFileName = NS_strdup(mozFile->NativePath().get());
+    gRecordedShutdownTimeFileName = NS_xstrdup(mozFile->NativePath().get());
   }
 
   return gRecordedShutdownTimeFileName;
@@ -735,8 +790,8 @@ public:
       // Module Breakpad identifier.
       JS::RootedValue id(cx);
 
-      if (!info.GetBreakpadId().empty()) {
-        JS::RootedString str_id(cx, JS_NewStringCopyZ(cx, info.GetBreakpadId().c_str()));
+      if (!info.GetBreakpadId().IsEmpty()) {
+        JS::RootedString str_id(cx, JS_NewStringCopyZ(cx, info.GetBreakpadId().get()));
         if (!str_id) {
           mPromise->MaybeReject(NS_ERROR_FAILURE);
           return NS_OK;
@@ -754,8 +809,8 @@ public:
       // Module version.
       JS::RootedValue version(cx);
 
-      if (!info.GetVersion().empty()) {
-        JS::RootedString v(cx, JS_NewStringCopyZ(cx, info.GetVersion().c_str()));
+      if (!info.GetVersion().IsEmpty()) {
+        JS::RootedString v(cx, JS_NewStringCopyZ(cx, info.GetVersion().BeginReading()));
         if (!v) {
           mPromise->MaybeReject(NS_ERROR_FAILURE);
           return NS_OK;
@@ -848,7 +903,7 @@ NS_IMETHODIMP
 TelemetryImpl::GetLoadedModules(JSContext *cx, Promise** aPromise)
 {
 #if defined(MOZ_GECKO_PROFILER)
-  nsIGlobalObject* global = xpc::NativeGlobal(JS::CurrentGlobalOrNull(cx));
+  nsIGlobalObject* global = xpc::CurrentNativeGlobal(cx);
   if (NS_WARN_IF(!global)) {
     return NS_ERROR_FAILURE;
   }
@@ -931,7 +986,7 @@ ReadStack(PathCharPtr aFileName, Telemetry::ProcessedStack &aStack)
 
     Telemetry::ProcessedStack::Module module = {
       NS_ConvertUTF8toUTF16(moduleName.c_str()),
-      breakpadId
+      nsCString(breakpadId.c_str(), breakpadId.size()),
     };
     stack.AddModule(module);
   }
@@ -1055,6 +1110,9 @@ TelemetryImpl::GetCanRecordBase(bool *ret) {
 
 NS_IMETHODIMP
 TelemetryImpl::SetCanRecordBase(bool canRecord) {
+  if (recordreplay::IsRecordingOrReplaying()) {
+    return NS_OK;
+  }
   if (canRecord != mCanRecordBase) {
     TelemetryHistogram::SetCanRecordBase(canRecord);
     TelemetryScalar::SetCanRecordBase(canRecord);
@@ -1079,6 +1137,9 @@ TelemetryImpl::GetCanRecordExtended(bool *ret) {
 
 NS_IMETHODIMP
 TelemetryImpl::SetCanRecordExtended(bool canRecord) {
+  if (recordreplay::IsRecordingOrReplaying()) {
+    return NS_OK;
+  }
   if (canRecord != mCanRecordExtended) {
     TelemetryHistogram::SetCanRecordExtended(canRecord);
     TelemetryScalar::SetCanRecordExtended(canRecord);
@@ -1116,9 +1177,14 @@ TelemetryImpl::CreateTelemetryInstance()
   MOZ_ASSERT(sTelemetry == nullptr, "CreateTelemetryInstance may only be called once, via GetService()");
 
   bool useTelemetry = false;
-  if (XRE_IsParentProcess() ||
-      XRE_IsContentProcess() ||
-      XRE_IsGPUProcess())
+  if ((XRE_IsParentProcess() ||
+       XRE_IsContentProcess() ||
+       XRE_IsGPUProcess()) &&
+      // Telemetry is never accumulated when recording or replaying, both
+      // because the resulting measurements might be biased and because
+      // measurements might occur at non-deterministic points in execution
+      // (e.g. garbage collections).
+      !recordreplay::IsRecordingOrReplaying())
   {
     useTelemetry = true;
   }
@@ -1739,33 +1805,6 @@ TelemetryImpl::FlushBatchedChildTelemetry()
 {
   TelemetryIPCAccumulator::IPCTimerFired(nullptr, nullptr);
   return NS_OK;
-}
-
-size_t
-TelemetryImpl::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
-{
-  size_t n = aMallocSizeOf(this);
-
-  n += TelemetryHistogram::GetMapShallowSizesOfExcludingThis(aMallocSizeOf);
-  n += TelemetryScalar::GetMapShallowSizesOfExcludingThis(aMallocSizeOf);
-  n += mWebrtcTelemetry.SizeOfExcludingThis(aMallocSizeOf);
-  { // Scope for mHashMutex lock
-    MutexAutoLock lock(mHashMutex);
-    n += mPrivateSQL.SizeOfExcludingThis(aMallocSizeOf);
-    n += mSanitizedSQL.SizeOfExcludingThis(aMallocSizeOf);
-  }
-
-  // It's a bit gross that we measure this other stuff that lives outside of
-  // TelemetryImpl... oh well.
-  if (sTelemetryIOObserver) {
-    n += sTelemetryIOObserver->SizeOfIncludingThis(aMallocSizeOf);
-  }
-
-  n += TelemetryHistogram::GetHistogramSizesofIncludingThis(aMallocSizeOf);
-  n += TelemetryScalar::GetScalarSizesOfIncludingThis(aMallocSizeOf);
-  n += TelemetryEvent::SizeOfIncludingThis(aMallocSizeOf);
-
-  return n;
 }
 
 } // namespace

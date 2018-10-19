@@ -41,8 +41,7 @@ public:
                                       mozilla::ErrorResult& aError) override;
 
   virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+                              nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
   virtual nsresult AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
@@ -51,8 +50,7 @@ public:
                                 nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   // nsIMutationObserver
   NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED

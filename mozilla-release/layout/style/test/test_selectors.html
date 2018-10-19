@@ -16,7 +16,9 @@ SimpleTest.requestLongerTimeout(2);
 var cloneiframe;
 
 function run() {
-
+  SpecialPowers.pushPrefEnv({ set: [["layout.css.xul-tree-pseudos.content.enabled", true]] }, runTests);
+}
+function runTests() {
     var iframe = document.getElementById("iframe");
     var ifwin = iframe.contentWindow;
     var ifdoc = iframe.contentDocument;
@@ -303,6 +305,14 @@ function run() {
     // [attr] selector
     test_parseable("[attr]")
     test_parseable_via_api("[attr");
+    test_parseable("[ATTR]")
+    should_serialize_to("[attr]", "[attr]");
+    should_serialize_to("[ATTR]", "[ATTR]");
+
+    // Whether we should drop the bar is debatable. This matches Edge
+    // and Safari at the time of writing.
+    should_serialize_to("[|attr]", "[attr]");
+    should_serialize_to("[|ATTR]", "[ATTR]");
 
     // [attr= ] selector
     test_parseable("[attr=\"x\"]");
@@ -960,8 +970,10 @@ function run() {
     should_serialize_to("input::placeholder", "input::placeholder");
     should_serialize_to("input:placeholder-shown", "input:placeholder-shown");
 
-    // Test serialization of non CSS2 pseudo-element.
-    should_serialize_to("input::-moz-placeholder", "input::-moz-placeholder");
+    // Test serialization of ::-moz-placeholder.
+    should_serialize_to("input::-moz-placeholder", "input::placeholder");
+
+    should_serialize_to(':lang("foo\\"bar")', ':lang(foo\\"bar)');
 
     // Test default namespaces, including inside :not().
     var html_default_ns = "@namespace url(http://www.w3.org/1999/xhtml);";
@@ -1092,6 +1104,7 @@ function run() {
 
     test_parseable(":-moz-tree-row(selected)");
     test_parseable("::-moz-tree-row(selected)");
+    test_parseable("::-MoZ-trEE-RoW(sElEcTeD)");
     test_parseable(":-moz-tree-row(selected focus)");
     test_parseable(":-moz-tree-row(selected , focus)");
     test_parseable("::-moz-tree-row(selected ,focus)");

@@ -7,6 +7,9 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "DOM")
 
+if CONFIG['CC_TYPE'] == 'msvc':
+    CXXFLAGS += ['-bigobj']
+
 TEST_DIRS += ['test']
 
 XPIDL_SOURCES += [
@@ -93,6 +96,9 @@ LOCAL_INCLUDES += [
     '/media/webrtc/signaling/src/peerconnection',
     '/media/webrtc/trunk/',
 ]
+
+if CONFIG['MOZ_LIBPRIO']:
+    LOCAL_INCLUDES += ['/third_party/msgpack/include']
 
 DEFINES['GOOGLE_PROTOBUF_NO_RTTI'] = True
 DEFINES['GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER'] = True

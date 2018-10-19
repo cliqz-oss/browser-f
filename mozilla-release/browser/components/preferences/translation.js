@@ -70,7 +70,7 @@ Tree.prototype = {
   getCellProperties(row, column) {
     return "";
   },
-  QueryInterface: ChromeUtils.generateQI([Ci.nsITreeView])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsITreeView]),
 };
 
 function Lang(aCode, label) {
@@ -81,7 +81,7 @@ function Lang(aCode, label) {
 Lang.prototype = {
   toString() {
     return this._label;
-  }
+  },
 };
 
 var gTranslationExceptions = {
@@ -93,10 +93,7 @@ var gTranslationExceptions = {
 
     // Load site permissions into an array.
     this._sites = [];
-    let enumerator = Services.perms.enumerator;
-    while (enumerator.hasMoreElements()) {
-      let perm = enumerator.getNext().QueryInterface(Ci.nsIPermission);
-
+    for (let perm of Services.perms.enumerator) {
       if (perm.type == kPermissionType &&
           perm.capability == Services.perms.DENY_ACTION) {
         this._sites.push(perm.principal.origin);
@@ -242,5 +239,5 @@ var gTranslationExceptions = {
   uninit() {
     Services.obs.removeObserver(this, "perm-changed");
     Services.prefs.removeObserver(kLanguagesPref, this);
-  }
+  },
 };

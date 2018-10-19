@@ -28,6 +28,7 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsDOMAttributeMap.h"
 #include "nsFrameLoader.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIComponentRegistrar.h"
 #include "nsIContent.h"
 #include "nsIDOMWindowUtils.h"
@@ -149,11 +150,8 @@ WebBrowserPersistLocalDocument::GetContentDisposition(nsAString& aCD)
         aCD.SetIsVoid(true);
         return NS_OK;
     }
-    nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-    if (NS_WARN_IF(!utils)) {
-        aCD.SetIsVoid(true);
-        return NS_OK;
-    }
+    nsCOMPtr<nsIDOMWindowUtils> utils =
+        nsGlobalWindowOuter::Cast(window)->WindowUtils();
     nsresult rv = utils->GetDocumentMetadata(
         NS_LITERAL_STRING("content-disposition"), aCD);
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -182,6 +180,14 @@ WebBrowserPersistLocalDocument::GetPostData(nsIInputStream** aStream)
         return NS_OK;
     }
     return history->GetPostData(aStream);
+}
+
+NS_IMETHODIMP
+WebBrowserPersistLocalDocument::GetPrincipal(nsIPrincipal** aPrincipal)
+{
+  nsCOMPtr<nsIPrincipal> nodePrincipal = mDocument->NodePrincipal();
+  nodePrincipal.forget(aPrincipal);
+  return NS_OK;
 }
 
 already_AddRefed<nsISHEntry>
@@ -1141,9 +1147,9 @@ WebBrowserPersistLocalDocument::ReadResources(nsIWebBrowserPersistResourceVisito
     ErrorResult err;
     RefPtr<dom::TreeWalker> walker =
         mDocument->CreateTreeWalker(*mDocument,
-            dom::NodeFilterBinding::SHOW_ELEMENT |
-            dom::NodeFilterBinding::SHOW_DOCUMENT |
-            dom::NodeFilterBinding::SHOW_PROCESSING_INSTRUCTION,
+            dom::NodeFilter_Binding::SHOW_ELEMENT |
+            dom::NodeFilter_Binding::SHOW_DOCUMENT |
+            dom::NodeFilter_Binding::SHOW_PROCESSING_INSTRUCTION,
             nullptr, err);
 
     if (NS_WARN_IF(err.Failed())) {

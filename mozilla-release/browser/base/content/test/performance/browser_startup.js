@@ -31,18 +31,16 @@ const startupPhases = {
       "MainProcessSingleton.js",
 
       // Bugs to fix: The following components shouldn't be initialized that early.
-      "WebContentConverter.js", // bug 1369443
-      "nsSessionStartup.js", // bug 1369456
       "PushComponents.js", // bug 1369436
     ]),
     modules: new Set([
       "resource://gre/modules/AppConstants.jsm",
+      "resource://gre/modules/ActorManagerParent.jsm",
+      "resource://gre/modules/CustomElementsListener.jsm",
+      "resource://gre/modules/ExtensionUtils.jsm",
       "resource://gre/modules/XPCOMUtils.jsm",
       "resource://gre/modules/Services.jsm",
-
-      // Bugs to fix: Probably loaded too early, needs investigation.
-      "resource://gre/modules/RemotePageManager.jsm", // bug 1369466
-    ])
+    ]),
   }},
 
   // For the following phases of startup we have only a black list for now
@@ -50,7 +48,7 @@ const startupPhases = {
   // We are at this phase after creating the first browser window (ie. after final-ui-startup).
   "before opening first browser window": {blacklist: {
     modules: new Set([
-    ])
+    ]),
   }},
 
   // We reach this phase right after showing the first browser window.
@@ -76,7 +74,7 @@ const startupPhases = {
     ]),
     services: new Set([
       "@mozilla.org/browser/search-service;1",
-    ])
+    ]),
   }},
 
   // We are at this phase once we are ready to handle user events.
@@ -104,7 +102,7 @@ const startupPhases = {
     services: new Set([
       "@mozilla.org/browser/annotation-service;1",
       "@mozilla.org/browser/nav-bookmarks-service;1",
-    ])
+    ]),
   }},
 
   // Things that are expected to be completely out of the startup path
@@ -123,7 +121,9 @@ const startupPhases = {
   }},
 };
 
-if (Services.prefs.getBoolPref("browser.startup.blankWindow")) {
+if (Services.prefs.getBoolPref("browser.startup.blankWindow") &&
+    Services.prefs.getCharPref("lightweightThemes.selectedThemeID") ==
+      "default-theme@mozilla.org") {
   startupPhases["before profile selection"].whitelist.components.add("XULStore.js");
 }
 

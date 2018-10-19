@@ -230,10 +230,11 @@ def virtualenv_python(env_python, build_env, mozconfig, help):
     if topobjdir.endswith('/js/src'):
         topobjdir = topobjdir[:-7]
 
+    virtualenvs_root = os.path.join(topobjdir, '_virtualenvs')
     with LineIO(lambda l: log.info(l), 'replace') as out:
         manager = VirtualenvManager(
             topsrcdir, topobjdir,
-            os.path.join(topobjdir, '_virtualenvs', 'init'), out,
+            os.path.join(virtualenvs_root, 'init'), out,
             os.path.join(topsrcdir, 'build', 'virtualenv_packages.txt'))
 
     if python:
@@ -256,7 +257,7 @@ def virtualenv_python(env_python, build_env, mozconfig, help):
 
     python = normsep(manager.python_path)
 
-    if python != normsep(sys.executable):
+    if not normsep(sys.executable).startswith(normsep(virtualenvs_root)):
         log.info('Reexecuting in the virtualenv')
         if env_python:
             del os.environ['PYTHON']
@@ -871,6 +872,7 @@ add_old_configure_assignment('CPU_ARCH', target.cpu)
 set_config('INTEL_ARCHITECTURE', target_variables.INTEL_ARCHITECTURE)
 set_config('TARGET_CPU', target.raw_cpu)
 set_config('TARGET_OS', target.raw_os)
+set_config('TARGET_ENDIANNESS', target.endianness)
 
 
 @depends(host)
@@ -946,6 +948,30 @@ def target_is_linux(target):
 
 set_define('XP_LINUX', target_is_linux)
 
+
+@depends(target)
+def target_is_openbsd(target):
+    if target.kernel == 'OpenBSD':
+        return True
+
+
+set_define('XP_OPENBSD', target_is_openbsd)
+
+@depends(target)
+def target_is_netbsd(target):
+    if target.kernel == 'NetBSD':
+        return True
+
+
+set_define('XP_NETBSD', target_is_netbsd)
+
+@depends(target)
+def target_is_freebsd(target):
+    if target.kernel == 'FreeBSD':
+        return True
+
+
+set_define('XP_FREEBSD', target_is_freebsd)
 
 @depends(target)
 def target_is_solaris(target):

@@ -189,6 +189,7 @@ function transformConsoleAPICallPacket(packet) {
     userProvidedStyles: message.styles,
     prefix: message.prefix,
     private: message.private,
+    executionPoint: message.executionPoint,
   });
 }
 
@@ -249,6 +250,7 @@ function transformPageErrorPacket(packet) {
     timeStamp: pageError.timeStamp,
     notes: pageError.notes,
     private: pageError.private,
+    executionPoint: pageError.executionPoint,
   });
 }
 
@@ -268,6 +270,7 @@ function transformNetworkEventPacket(packet) {
     updates: networkEvent.updates,
     cause: networkEvent.cause,
     private: networkEvent.private,
+    securityState: networkEvent.securityState,
   });
 }
 

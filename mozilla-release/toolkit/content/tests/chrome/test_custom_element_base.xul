@@ -12,14 +12,26 @@
   <!-- test results are displayed in the html:body -->
   <body xmlns="http://www.w3.org/1999/xhtml" style="height: 300px; overflow: auto;"/>
 
+  <simpleelement id="simple"/>
+
   <!-- test code goes here -->
   <script type="application/javascript"><![CDATA[
 
   SimpleTest.waitForExplicitFinish();
 
-  function runTests() {
+  async function runTests() {
     ok(MozXULElement, "MozXULElement defined on the window");
     testParseXULToFragment();
+    testCustomInterface();
+
+    let htmlWin = await new Promise(resolve => {
+      let htmlIframe = document.createElement("iframe");
+      htmlIframe.src = "file_empty.xhtml";
+      htmlIframe.onload = () => resolve(htmlIframe.contentWindow);
+      document.documentElement.appendChild(htmlIframe);
+    });
+
+    ok(htmlWin.MozXULElement, "MozXULElement defined on a chrome HTML window");
     SimpleTest.finish();
   }
 
@@ -39,6 +51,39 @@
     deck.remove();
   }
 
+  function testCustomInterface() {
+    class SimpleElement extends MozXULElement {
+      get disabled() {
+        return false;
+      }
+
+      set disabled(val) {
+      }
+
+      get tabIndex() {
+        return 0;
+      }
+
+      set tabIndex(val) {
+      }
+    }
+
+    customElements.define("simpleelement", SimpleElement);
+    MozXULElement.implementCustomInterface(SimpleElement, [Ci.nsIDOMXULControlElement]);
+
+    is(document.documentElement.getCustomInterfaceCallback, undefined,
+       "No getCustomInterfaceCallback on non-custom element");
+    is(typeof document.getElementById("simple").getCustomInterfaceCallback, "function",
+       "getCustomInterfaceCallback available on custom element when set");
+    try {
+      document.documentElement.QueryInterface(Ci.nsIDOMXULControlElement)
+      ok(false, "Non-custom element implements custom interface");
+    } catch (ex) {
+      ok(true, "Non-custom element implements custom interface");
+    }
+    ok(document.getElementById("simple").QueryInterface(Ci.nsIDOMXULControlElement),
+       "Implements custom interface");
+  }
   ]]>
   </script>
 </window>

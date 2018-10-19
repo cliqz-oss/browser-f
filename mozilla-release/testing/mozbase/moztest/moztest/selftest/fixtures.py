@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Pytest fixtures to help set up Firefox and a tests.zip
+"""Pytest fixtures to help set up Firefox and a tests archive
 in test harness selftests.
 """
 
@@ -59,6 +59,9 @@ def setup_test_harness(request):
             if files_dir:
                 test_root = os.path.join(harness_root, 'tests', 'selftests')
                 if not os.path.exists(test_root):
+                    if os.path.lexists(test_root):
+                        os.remove(test_root)
+
                     if hasattr(os, 'symlink'):
                         os.symlink(files_dir, test_root)
                     else:

@@ -112,8 +112,7 @@
               insertPos = notifications[n];
             }
 
-            const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-            var newitem = document.createElementNS(XULNS, "notification");
+            var newitem = document.createXULElement("notification");
             // Can't use instanceof in case this was created from a different document:
             let labelIsDocFragment = aLabel && typeof aLabel == "object" && aLabel.nodeType &&
                                      aLabel.nodeType == aLabel.DOCUMENT_FRAGMENT_NODE;
@@ -133,20 +132,10 @@
 
               for (var b = 0; b < aButtons.length; b++) {
                 var button = aButtons[b];
-                var buttonElem = document.createElementNS(XULNS, "button");
+                var buttonElem = document.createXULElement("button");
                 buttonElem.setAttribute("label", button.label);
                 if (typeof button.accessKey == "string")
                   buttonElem.setAttribute("accesskey", button.accessKey);
-                if (typeof button.type == "string") {
-                  buttonElem.setAttribute("type", button.type);
-                  if ((button.type == "menu-button" || button.type == "menu") &&
-                      "popup" in button) {
-                    buttonElem.appendChild(button.popup);
-                    delete button.popup;
-                  }
-                  if (typeof button.anchor == "string")
-                    buttonElem.setAttribute("anchor", button.anchor);
-                }
                 buttonElem.classList.add("notification-button");
 
                 if (button.isDefault ||
@@ -414,9 +403,6 @@
                          tooltiptext="&closeNotification.tooltip;"
                          oncommand="document.getBindingParent(this).dismiss();"/>
     </content>
-    <resources>
-      <stylesheet src="chrome://global/skin/notification.css"/>
-    </resources>
     <implementation>
       <property name="label" onset="this.setAttribute('label', val); return val;"
                              onget="return this.getAttribute('label');"/>
@@ -502,6 +488,9 @@
 
   <binding id="popup-notification">
     <content orient="vertical">
+      <xul:hbox class="popup-notification-header-container">
+        <children includes="popupnotificationheader"/>
+      </xul:hbox>
       <xul:hbox align="start" class="popup-notification-body-container">
         <xul:image class="popup-notification-icon"
                    xbl:inherits="popupid,src=icon,class=iconclass"/>
@@ -532,6 +521,9 @@
           <xul:description class="popup-notification-warning" xbl:inherits="hidden=warninghidden,xbl:text=warninglabel"/>
         </xul:vbox>
       </xul:hbox>
+      <xul:hbox class="popup-notification-footer-container">
+        <children includes="popupnotificationfooter"/>
+      </xul:hbox>
       <xul:hbox class="popup-notification-button-container">
         <children includes="button"/>
         <xul:button anonid="secondarybutton"
@@ -556,9 +548,6 @@
                     xbl:inherits="oncommand=buttoncommand,label=buttonlabel,accesskey=buttonaccesskey,highlight=buttonhighlight,disabled=mainactiondisabled"/>
       </xul:hbox>
     </content>
-    <resources>
-      <stylesheet src="chrome://global/skin/notification.css"/>
-    </resources>
     <implementation>
       <field name="checkbox" readonly="true">
         document.getAnonymousElementByAttribute(this, "anonid", "checkbox");

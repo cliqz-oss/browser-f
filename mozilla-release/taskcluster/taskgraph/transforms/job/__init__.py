@@ -13,6 +13,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import copy
 import logging
+import json
 import os
 
 from taskgraph.transforms.base import TransformSequence
@@ -20,6 +21,7 @@ from taskgraph.util.schema import (
     validate_schema,
     Schema,
 )
+from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.util.workertypes import worker_type_implementation
 from taskgraph.transforms.task import task_description_schema
 from voluptuous import (
@@ -65,6 +67,7 @@ job_description_schema = Schema({
     Optional('always-target'): task_description_schema['always-target'],
     Exclusive('optimization', 'optimization'): task_description_schema['optimization'],
     Optional('needs-sccache'): task_description_schema['needs-sccache'],
+    Optional('release-artifacts'): task_description_schema['release-artifacts'],
 
     # The "when" section contains descriptions of the circumstances under which
     # this task should be included in the task graph.  This will be converted
@@ -76,6 +79,15 @@ job_description_schema = Schema({
         # match function (python/mozbuild/mozpack/path.py).
         Optional('files-changed'): [basestring],
     }),
+
+    # A list of artifacts to install from 'fetch' tasks.
+    Optional('fetches'): {
+        basestring: [basestring, {
+            Required('artifact'): basestring,
+            Optional('dest'): basestring,
+            Optional('extract'): bool,
+        }],
+    },
 
     # A description of how to run this job.
     'run': {
@@ -125,6 +137,97 @@ def rewrite_when_to_optimization(config, jobs):
         job['optimization'] = {'skip-unless-changed': files_changed}
 
         assert 'when' not in job
+        yield job
+
+
+def get_attribute(dict, key, attributes, attribute_name):
+    '''Get `attribute_name` from the given `attributes` dict, and if there
+    is a corresponding value, set `key` in `dict` to that value.'''
+    value = attributes.get(attribute_name)
+    if value:
+        dict[key] = value
+
+
+@transforms.add
+def use_fetches(config, jobs):
+    all_fetches = {}
+
+    for task in config.kind_dependencies_tasks:
+        if task.kind != 'fetch':
+            continue
+
+        name = task.label.replace('%s-' % task.kind, '')
+        get_attribute(all_fetches, name, task.attributes, 'fetch-artifact')
+
+    for job in jobs:
+        fetches = job.pop('fetches', None)
+        if not fetches:
+            yield job
+            continue
+
+        # Hack added for `mach artifact toolchain` to support reading toolchain
+        # kinds in isolation.
+        if 'fetch' in fetches and config.params.get('ignore_fetches'):
+            fetches['fetch'][:] = []
+
+        job_fetches = []
+        name = job.get('name', job.get('label'))
+        dependencies = job.setdefault('dependencies', {})
+        prefix = get_artifact_prefix(job)
+        for kind, artifacts in fetches.items():
+            if kind == 'fetch':
+                for fetch in artifacts:
+                    if fetch not in all_fetches:
+                        raise Exception('Missing fetch job for {kind}-{name}: {fetch}'.format(
+                            kind=config.kind, name=name, fetch=fetch))
+
+                    path = all_fetches[fetch]
+                    if not path.startswith('public/'):
+                        raise Exception('Non-public artifacts not supported for {kind}-{name}: '
+                                        '{fetch}'.format(kind=config.kind, name=name, fetch=fetch))
+
+                    dep = 'fetch-{}'.format(fetch)
+                    dependencies[dep] = dep
+                    job_fetches.append({
+                        'artifact': path,
+                        'task': '<{dep}>'.format(dep=dep),
+                        'extract': True,
+                    })
+
+            else:
+                if kind not in dependencies:
+                    raise Exception("{name} can't fetch {kind} artifacts because "
+                                    "it has no {kind} dependencies!".format(name=name, kind=kind))
+
+                for artifact in artifacts:
+                    if isinstance(artifact, basestring):
+                        path = artifact
+                        dest = None
+                        extract = True
+                    else:
+                        path = artifact['artifact']
+                        dest = artifact.get('dest')
+                        extract = artifact.get('extract', True)
+
+                    fetch = {
+                        'artifact': '{prefix}/{path}'.format(prefix=prefix, path=path),
+                        'task': '<{dep}>'.format(dep=kind),
+                        'extract': extract,
+                    }
+                    if dest is not None:
+                        fetch['dest'] = dest
+                    job_fetches.append(fetch)
+
+        env = job.setdefault('worker', {}).setdefault('env', {})
+        env['MOZ_FETCHES'] = {'task-reference': json.dumps(job_fetches, sort_keys=True)}
+
+        impl, os = worker_type_implementation(job['worker-type'])
+        if os == 'windows':
+            env.setdefault('MOZ_FETCHES_DIR', 'fetches')
+        else:
+            workdir = job['run'].get('workdir', '/builds/worker')
+            env.setdefault('MOZ_FETCHES_DIR', '{}/fetches'.format(workdir))
+
         yield job
 
 
@@ -183,8 +286,8 @@ def run_job_using(worker_implementation, run_using, schema=None, defaults={}):
     jobs with the given worker implementation and `run.using` property.  If
     `schema` is given, the job's run field will be verified to match it.
 
-    The decorated function should have the signature `using_foo(config, job,
-    taskdesc) and should modify the task description in-place.  The skeleton of
+    The decorated function should have the signature `using_foo(config, job, taskdesc)`
+    and should modify the task description in-place.  The skeleton of
     the task description is already set up, but without a payload."""
     def wrap(func):
         for_run_using = registry.setdefault(run_using, {})

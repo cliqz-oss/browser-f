@@ -176,28 +176,14 @@ async function test_storage_local_call_from_destroying_context() {
   extension.sendMessage({msg: "storage-get"});
   let res = await extension.awaitMessage("storage-get:done");
 
-  if (!ExtensionStorageIDB.isBackendEnabled) {
-    // When the JSONFile backend is enabled, the data stored from the destroying context
-    // is expected to be stored.
-    Assert.deepEqual(res, {
-      ...expectedBackgroundPageData,
-      ...expectedTabData,
-    }, "Got the expected data set in the storage.local backend");
+  Assert.deepEqual(res, {
+    ...expectedBackgroundPageData,
+    ...expectedTabData,
+  }, "Got the expected data set in the storage.local backend");
 
-    extension.sendMessage({msg: "storage-changes"});
-    equal(await extension.awaitMessage("storage-changes-count"), 2,
-          "Got the expected number of storage.onChanged event received");
-  } else {
-    // When the IndexedDb backend is enabled, the data stored from the destroying context
-    // will not be stored.
-    Assert.deepEqual(res, {
-      ...expectedBackgroundPageData,
-    }, "Got the expected data set in the storage.local backend");
-
-    extension.sendMessage({msg: "storage-changes"});
-    equal(await extension.awaitMessage("storage-changes-count"), 1,
-          "Got the expected number of storage.onChanged event received");
-  }
+  extension.sendMessage({msg: "storage-changes"});
+  equal(await extension.awaitMessage("storage-changes-count"), 2,
+        "Got the expected number of storage.onChanged event received");
 
   contentPage.close();
 
@@ -215,6 +201,8 @@ add_task(async function test_storage_local_idb_backend_destroyed_context_promise
 });
 
 add_task(async function test_storage_local_should_not_cache_idb_open_rejections() {
+  const EXTENSION_ID = "@an-already-migrated-extension";
+
   async function test_storage_local_on_idb_disk_full_rejection() {
     let extension = ExtensionTestUtils.loadExtension({
       async background() {
@@ -230,7 +218,7 @@ add_task(async function test_storage_local_should_not_cache_idb_open_rejections(
         </html>`,
 
         "tab.js"() {
-          browser.test.onMessage.addListener(async ({msg, expectErrorOnSet}) => {
+          browser.test.onMessage.addListener(async ({msg, expectErrorOnSet, errorShouldInclude}) => {
             if (msg !== "call-storage-local") {
               return;
             }
@@ -240,7 +228,7 @@ add_task(async function test_storage_local_should_not_cache_idb_open_rejections(
             try {
               await browser.storage.local.set({"newkey": expectedValue});
             } catch (err) {
-              if (expectErrorOnSet) {
+              if (expectErrorOnSet && err.message.includes(errorShouldInclude)) {
                 browser.test.sendMessage("storage-local-set-rejected");
                 return;
               }
@@ -250,7 +238,7 @@ add_task(async function test_storage_local_should_not_cache_idb_open_rejections(
             }
 
             try {
-              const res = await browser.storage.local.get("newvalue");
+              const res = await browser.storage.local.get("newkey");
               browser.test.assertEq(expectedValue, res.newkey);
               browser.test.sendMessage("storage-local-get-resolved");
             } catch (err) {
@@ -264,6 +252,11 @@ add_task(async function test_storage_local_should_not_cache_idb_open_rejections(
       },
       manifest: {
         permissions: ["storage"],
+        applications: {
+          gecko: {
+            id: EXTENSION_ID,
+          },
+        },
       },
     });
 
@@ -276,8 +269,11 @@ add_task(async function test_storage_local_should_not_cache_idb_open_rejections(
     // Turn the low disk mode on (so that opening an IndexedDB connection raises a
     // QuotaExceededError).
     setLowDiskMode(true);
-
-    extension.sendMessage({msg: "call-storage-local", expectErrorOnSet: true});
+    extension.sendMessage({
+      msg: "call-storage-local",
+      expectErrorOnSet: true,
+      errorShouldInclude: "QuotaExceededError",
+    });
     info(`Wait the storage.local.set API call to reject while the disk is full`);
     await extension.awaitMessage("storage-local-set-rejected");
     info("Got the a rejection on storage.local.set while the disk is full as expected");
@@ -288,11 +284,28 @@ add_task(async function test_storage_local_should_not_cache_idb_open_rejections(
     await extension.awaitMessage("storage-local-get-resolved");
     info("storage.local.set and storage.local.get resolve successfully once the disk is free again");
 
+    // Turn the low disk mode on again (so that we can trigger an aborted transaction in the
+    // ExtensionStorageIDB set method, now that there is an open IndexedDb connection).
+    setLowDiskMode(true);
+    extension.sendMessage({
+      msg: "call-storage-local",
+      expectErrorOnSet: true,
+      errorShouldInclude: "QuotaExceededError",
+    });
+    info(`Wait the storage.local.set transaction to be aborted while the disk is full`);
+    await extension.awaitMessage("storage-local-set-rejected");
+    info("Got the a rejection on storage.local.set while the disk is full as expected");
+
+    setLowDiskMode(false);
     contentPage.close();
     await extension.unload();
   }
 
-  return runWithPrefs([[ExtensionStorageIDB.BACKEND_ENABLED_PREF, true]],
-                      test_storage_local_on_idb_disk_full_rejection);
+  return runWithPrefs([
+    [ExtensionStorageIDB.BACKEND_ENABLED_PREF, true],
+    // Set the migrated preference for the test extension to prevent the extension
+    // from falling back to the JSONFile storage because of an QuotaExceededError
+    // raised while migrating to the IndexedDB backend.
+    [`${ExtensionStorageIDB.IDB_MIGRATED_PREF_BRANCH}.${EXTENSION_ID}`, true],
+  ], test_storage_local_on_idb_disk_full_rejection);
 });
-

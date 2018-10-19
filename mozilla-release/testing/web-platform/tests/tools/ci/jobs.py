@@ -1,9 +1,9 @@
 import argparse
 import os
 import re
-from ..wpt.testfiles import branch_point, files_changed, affected_testfiles
+from ..wpt.testfiles import branch_point, files_changed
 
-from tools import localpaths
+from tools import localpaths  # noqa: F401
 from six import iteritems
 
 wpt_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
@@ -17,12 +17,13 @@ job_path_map = {
                   "!resources/*",
                   "!conformance-checkers/",
                   "!.*/OWNERS",
+                  "!.*/META.yml",
                   "!.*/tools/",
                   "!.*/README",
                   "!css/[^/]*$"],
     "lint": [".*"],
     "manifest_upload": [".*"],
-    "resources_unittest": ["resources/"],
+    "resources_unittest": ["resources/", "tools/"],
     "tools_unittest": ["tools/"],
     "wptrunner_unittest": ["tools/wptrunner/*"],
     "build_css": ["css/"],

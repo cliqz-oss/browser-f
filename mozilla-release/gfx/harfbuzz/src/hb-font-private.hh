@@ -31,10 +31,8 @@
 
 #include "hb-private.hh"
 
-#include "hb-object-private.hh"
 #include "hb-face-private.hh"
 #include "hb-shaper-private.hh"
-
 
 
 /*
@@ -48,6 +46,8 @@
   HB_FONT_FUNC_IMPLEMENT (variation_glyph) \
   HB_FONT_FUNC_IMPLEMENT (glyph_h_advance) \
   HB_FONT_FUNC_IMPLEMENT (glyph_v_advance) \
+  HB_FONT_FUNC_IMPLEMENT (glyph_h_advances) \
+  HB_FONT_FUNC_IMPLEMENT (glyph_v_advances) \
   HB_FONT_FUNC_IMPLEMENT (glyph_h_origin) \
   HB_FONT_FUNC_IMPLEMENT (glyph_v_origin) \
   HB_FONT_FUNC_IMPLEMENT (glyph_h_kerning) \
@@ -58,7 +58,8 @@
   HB_FONT_FUNC_IMPLEMENT (glyph_from_name) \
   /* ^--- Add new callbacks here */
 
-struct hb_font_funcs_t {
+struct hb_font_funcs_t
+{
   hb_object_header_t header;
   ASSERT_POD ();
 
@@ -83,17 +84,22 @@ struct hb_font_funcs_t {
       HB_FONT_FUNCS_IMPLEMENT_CALLBACKS
 #undef HB_FONT_FUNC_IMPLEMENT
     } f;
-    void (*array[VAR]) (void);
+    void (*array[0
+#define HB_FONT_FUNC_IMPLEMENT(name) +1
+      HB_FONT_FUNCS_IMPLEMENT_CALLBACKS
+#undef HB_FONT_FUNC_IMPLEMENT
+		]) (void);
   } get;
 };
-
+DECLARE_NULL_INSTANCE (hb_font_funcs_t);
 
 
 /*
  * hb_font_t
  */
 
-struct hb_font_t {
+struct hb_font_t
+{
   hb_object_header_t header;
   ASSERT_POD ();
 
@@ -230,6 +236,32 @@ struct hb_font_t {
 					 klass->user_data.glyph_v_advance);
   }
 
+  inline void get_glyph_h_advances (unsigned int count,
+				    hb_codepoint_t *first_glyph,
+				    unsigned int glyph_stride,
+				    hb_position_t *first_advance,
+				    unsigned int advance_stride)
+  {
+    return klass->get.f.glyph_h_advances (this, user_data,
+					  count,
+					  first_glyph, glyph_stride,
+					  first_advance, advance_stride,
+					  klass->user_data.glyph_h_advances);
+  }
+
+  inline void get_glyph_v_advances (unsigned int count,
+				    hb_codepoint_t *first_glyph,
+				    unsigned int glyph_stride,
+				    hb_position_t *first_advance,
+				    unsigned int advance_stride)
+  {
+    return klass->get.f.glyph_v_advances (this, user_data,
+					  count,
+					  first_glyph, glyph_stride,
+					  first_advance, advance_stride,
+					  klass->user_data.glyph_v_advances);
+  }
+
   inline hb_bool_t get_glyph_h_origin (hb_codepoint_t glyph,
 				       hb_position_t *x, hb_position_t *y)
   {
@@ -338,13 +370,23 @@ struct hb_font_t {
 					       hb_direction_t direction,
 					       hb_position_t *x, hb_position_t *y)
   {
-    if (likely (HB_DIRECTION_IS_HORIZONTAL (direction))) {
+    *x = *y = 0;
+    if (likely (HB_DIRECTION_IS_HORIZONTAL (direction)))
       *x = get_glyph_h_advance (glyph);
-      *y = 0;
-    } else {
-      *x = 0;
+    else
       *y = get_glyph_v_advance (glyph);
-    }
+  }
+  inline void get_glyph_advances_for_direction (hb_direction_t direction,
+						unsigned count,
+						hb_codepoint_t *first_glyph,
+						unsigned glyph_stride,
+						hb_position_t *first_advance,
+						unsigned advance_stride)
+  {
+    if (likely (HB_DIRECTION_IS_HORIZONTAL (direction)))
+      get_glyph_h_advances (count, first_glyph, glyph_stride, first_advance, advance_stride);
+    else
+      get_glyph_v_advances (count, first_glyph, glyph_stride, first_advance, advance_stride);
   }
 
   inline void guess_v_origin_minus_h_origin (hb_codepoint_t glyph,
@@ -550,6 +592,7 @@ struct hb_font_t {
     return (float) v * scale / face->get_upem ();
   }
 };
+DECLARE_NULL_INSTANCE (hb_font_t);
 
 #define HB_SHAPER_DATA_CREATE_FUNC_EXTRA_ARGS
 #define HB_SHAPER_IMPLEMENT(shaper) HB_SHAPER_DATA_PROTOTYPE(shaper, font);

@@ -15,14 +15,16 @@
  * http://dvcs.w3.org/hg/speech-api/raw-file/tip/speechapi.html
  * https://w3c.github.io/webappsec-secure-contexts/#monkey-patching-global-object
  * https://w3c.github.io/requestidlecallback/
- * https://webaudio.github.io/web-audio-api/#widl-Window-audioWorklet
  * https://drafts.css-houdini.org/css-paint-api-1/#dom-window-paintworklet
+ * https://wicg.github.io/visual-viewport/#the-visualviewport-interface
  */
 
-interface ApplicationCache;
 interface IID;
 interface nsIBrowserDOMWindow;
 interface XULControllers;
+interface nsIDOMWindowUtils;
+
+typedef OfflineResourceList ApplicationCache;
 
 // http://www.whatwg.org/specs/web-apps/current-work/
 [PrimaryGlobal, LegacyUnenumerableNamedProperties, NeedResolve]
@@ -51,6 +53,7 @@ interface XULControllers;
   [Throws] void stop();
   [Throws, CrossOriginCallable] void focus();
   [Throws, CrossOriginCallable] void blur();
+  [Replaceable, Pref="dom.window.event.enabled"] readonly attribute any event;
 
   // other browsing contexts
   [Replaceable, Throws, CrossOriginReadable] readonly attribute WindowProxy frames;
@@ -253,6 +256,8 @@ partial interface Window {
 
   [ChromeOnly, Throws] readonly attribute Element? realFrameElement;
 
+  [ChromeOnly] readonly attribute nsIDocShell? docShell;
+
   [Throws, NeedsCallerType]
   readonly attribute float mozInnerScreenX;
   [Throws, NeedsCallerType]
@@ -268,10 +273,6 @@ partial interface Window {
   [Replaceable, Throws] readonly attribute long   scrollMaxY;
 
   [Throws] attribute boolean fullScreen;
-
-  [Throws, ChromeOnly] void back();
-  [Throws, ChromeOnly] void forward();
-  [Throws, ChromeOnly, NeedsSubjectPrincipal] void home();
 
   // XXX Should this be in nsIDOMChromeWindow?
   void                      updateCommands(DOMString action,
@@ -356,6 +357,12 @@ partial interface Window {
    */
   [Replaceable]
   readonly attribute InstallTriggerImpl? InstallTrigger;
+
+  /**
+   * Get the nsIDOMWindowUtils for this window.
+   */
+  [Constant, Throws, ChromeOnly]
+  readonly attribute nsIDOMWindowUtils windowUtils;
 };
 
 Window implements TouchEventHandlers;
@@ -509,12 +516,6 @@ partial interface Window {
   attribute EventHandler onvrdisplaypresentchange;
 };
 
-// https://webaudio.github.io/web-audio-api/#widl-Window-audioWorklet
-partial interface Window {
-  [Pref="dom.audioWorklet.enabled", Throws]
-  readonly attribute Worklet audioWorklet;
-};
-
 // https://drafts.css-houdini.org/css-paint-api-1/#dom-window-paintworklet
 partial interface Window {
     [Pref="dom.paintWorklet.enabled", Throws]
@@ -562,4 +563,12 @@ partial interface Window {
    */
   [Throws, Func="IsChromeOrXBL"]
   readonly attribute IntlUtils intlUtils;
+};
+
+Window implements WebGPUProvider;
+
+partial interface Window {
+  [SameObject, Pref="dom.visualviewport.enabled", Replaceable]
+  readonly attribute VisualViewport visualViewport;
+
 };

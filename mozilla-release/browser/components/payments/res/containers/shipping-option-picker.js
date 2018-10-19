@@ -2,59 +2,56 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import PaymentStateSubscriberMixin from "../mixins/PaymentStateSubscriberMixin.js";
-import RichSelect from "../components/rich-select.js";
+import RichPicker from "./rich-picker.js";
 import ShippingOption from "../components/shipping-option.js";
 
 /**
  * <shipping-option-picker></shipping-option-picker>
  * Container around <rich-select> with
- * <rich-option> listening to shippingOptions.
+ * <option> listening to shippingOptions.
  */
 
-export default class ShippingOptionPicker extends PaymentStateSubscriberMixin(HTMLElement) {
+export default class ShippingOptionPicker extends RichPicker {
   constructor() {
     super();
-    this.dropdown = new RichSelect();
-    this.dropdown.addEventListener("change", this);
-  }
-
-  connectedCallback() {
-    this.appendChild(this.dropdown);
-    super.connectedCallback();
+    this.dropdown.setAttribute("option-type", "shipping-option");
   }
 
   render(state) {
-    let {shippingOptions} = state.request.paymentDetails;
+    this.addLink.hidden = true;
+    this.editLink.hidden = true;
+
+    // If requestShipping is true but paymentDetails.shippingOptions isn't defined
+    // then use an empty array as a fallback.
+    let shippingOptions = state.request.paymentDetails.shippingOptions || [];
     let desiredOptions = [];
     for (let option of shippingOptions) {
       let optionEl = this.dropdown.getOptionByValue(option.id);
       if (!optionEl) {
-        optionEl = new ShippingOption();
+        optionEl = document.createElement("option");
         optionEl.value = option.id;
       }
-      optionEl.label = option.label;
-      optionEl.amountCurrency = option.amount.currency;
-      optionEl.amountValue = option.amount.value;
+
+      optionEl.setAttribute("label", option.label);
+      optionEl.setAttribute("amount-currency", option.amount.currency);
+      optionEl.setAttribute("amount-value", option.amount.value);
+
+      optionEl.textContent = ShippingOption.formatSingleLineLabel(option);
       desiredOptions.push(optionEl);
     }
-    let el = null;
-    while ((el = this.dropdown.popupBox.querySelector(":scope > shipping-option"))) {
-      el.remove();
-    }
+
+    this.dropdown.popupBox.textContent = "";
     for (let option of desiredOptions) {
       this.dropdown.popupBox.appendChild(option);
     }
 
     // Update selectedness after the options are updated
     let selectedShippingOption = state.selectedShippingOption;
-    let selectedOptionEl =
-      this.dropdown.getOptionByValue(selectedShippingOption);
-    this.dropdown.selectedOption = selectedOptionEl;
+    this.dropdown.value = selectedShippingOption;
 
-    if (selectedShippingOption && !selectedOptionEl) {
-      throw new Error(`Selected shipping option ${selectedShippingOption} ` +
-                      `does not exist in option elements`);
+    if (selectedShippingOption && selectedShippingOption !== this.dropdown.popupBox.value) {
+      throw new Error(`The option ${selectedShippingOption} ` +
+                      `does not exist in the shipping option picker`);
     }
   }
 
@@ -68,8 +65,7 @@ export default class ShippingOptionPicker extends PaymentStateSubscriberMixin(HT
   }
 
   onChange(event) {
-    let select = event.target;
-    let selectedOptionId = select.selectedOption && select.selectedOption.value;
+    let selectedOptionId = this.dropdown.value;
     this.requestStore.setState({
       selectedShippingOption: selectedOptionId,
     });

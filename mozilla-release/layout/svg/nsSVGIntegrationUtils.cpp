@@ -238,7 +238,7 @@ nsSVGIntegrationUtils::GetSVGBBoxForNonSVGFrame(nsIFrame* aNonSVGFrame,
                                   GetOffsetToBoundingBox(firstFrame));
 
   return nsLayoutUtils::RectToGfxRect(r,
-           aNonSVGFrame->PresContext()->AppUnitsPerCSSPixel());
+           AppUnitsPerCSSPixel());
 }
 
 // XXX Since we're called during reflow, this method is broken for frames with
@@ -300,7 +300,7 @@ nsRect
                                        aPreEffectsOverflowRect,
                                        firstFrameToBoundingBox,
                                        true),
-      aFrame->PresContext()->AppUnitsPerCSSPixel());
+      AppUnitsPerCSSPixel());
   overrideBBox.RoundOut();
 
   nsRect overflowRect =
@@ -394,7 +394,7 @@ nsSVGIntegrationUtils::HitTestFrameForEffects(nsIFrame* aFrame, const nsPoint& a
   }
   nsPoint pt = aPt + toUserSpace;
   gfxPoint userSpacePt =
-    gfxPoint(pt.x, pt.y) / aFrame->PresContext()->AppUnitsPerCSSPixel();
+    gfxPoint(pt.x, pt.y) / AppUnitsPerCSSPixel();
   return nsSVGUtils::HitTestClip(firstFrame, userSpacePt);
 }
 
@@ -579,7 +579,8 @@ CreateAndPaintMaskSurface(const PaintFramesParams& aParams,
                    aSC, aMaskFrames, maskSurfaceMatrix,
                    aOffsetToUserSpace);
 
-  if (aParams.imgParams.result != ImgDrawResult::SUCCESS) {
+  if (aParams.imgParams.result != ImgDrawResult::SUCCESS &&
+      aParams.imgParams.result != ImgDrawResult::SUCCESS_NOT_COMPLETE) {
     // Now we know the status of mask resource since we used it while painting.
     // According to the return value of PaintMaskSurface, we know whether mask
     // resource is resolvable or not.
@@ -593,7 +594,7 @@ CreateAndPaintMaskSurface(const PaintFramesParams& aParams,
     // For a SVG doc:
     //   SVG 1.1 say that if we fail to resolve a mask, we should draw the
     //   object unmasked.
-    //   Left patinResult.maskSurface empty, the caller should paint all
+    //   Left paintResult.maskSurface empty, the caller should paint all
     //   masked content as if this mask is an opaque white one(no mask).
     paintResult.transparentBlackMask =
       !(aParams.frame->GetStateBits() & NS_FRAME_SVG_LAYOUT);
@@ -760,16 +761,19 @@ private:
   gfxContext* mContext;
 };
 
-void
+bool
 nsSVGIntegrationUtils::PaintMask(const PaintFramesParams& aParams)
 {
   nsSVGUtils::MaskUsage maskUsage;
   nsSVGUtils::DetermineMaskUsage(aParams.frame, aParams.handleOpacity,
                                  maskUsage);
+  if (!maskUsage.shouldDoSomething()) {
+    return false;
+  }
 
   nsIFrame* frame = aParams.frame;
   if (!ValidateSVGFrame(frame)) {
-    return;
+    return false;
   }
 
   gfxContext& ctx = aParams.ctx;
@@ -806,20 +810,20 @@ nsSVGIntegrationUtils::PaintMask(const PaintFramesParams& aParams)
 
   // Paint clip-path-basic-shape onto ctx
   gfxContextAutoSaveRestore basicShapeSR;
-  if (maskUsage.shouldApplyBasicShape) {
+  if (maskUsage.shouldApplyBasicShapeOrPath) {
     matSR.SetContext(&ctx);
 
     MoveContextOriginToUserSpace(firstFrame, aParams);
 
     basicShapeSR.SetContext(&ctx);
-    nsCSSClipPathInstance::ApplyBasicShapeClip(ctx, frame);
+    nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(ctx, frame);
     if (!maskUsage.shouldGenerateMaskLayer) {
       // Only have basic-shape clip-path effect. Fill clipped region by
       // opaque white.
       ctx.SetColor(Color(1.0, 1.0, 1.0, 1.0));
       ctx.Fill();
 
-      return;
+      return true;
     }
   }
 
@@ -852,6 +856,8 @@ nsSVGIntegrationUtils::PaintMask(const PaintFramesParams& aParams)
                                    &clipMaskTransform, maskSurface,
                                    ctx.CurrentMatrix());
   }
+
+  return true;
 }
 
 void
@@ -992,17 +998,17 @@ nsSVGIntegrationUtils::PaintMaskAndClipPath(const PaintFramesParams& aParams)
   /* If this frame has only a trivial clipPath, set up cairo's clipping now so
    * we can just do normal painting and get it clipped appropriately.
    */
-  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShape) {
+  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShapeOrPath) {
     gfxContextMatrixAutoSaveRestore matSR(&context);
 
     MoveContextOriginToUserSpace(firstFrame, aParams);
 
     MOZ_ASSERT(!maskUsage.shouldApplyClipPath ||
-               !maskUsage.shouldApplyBasicShape);
+               !maskUsage.shouldApplyBasicShapeOrPath);
     if (maskUsage.shouldApplyClipPath) {
       clipPathFrame->ApplyClipPath(context, frame, cssPxToDevPxMatrix);
     } else {
-      nsCSSClipPathInstance::ApplyBasicShapeClip(context, frame);
+      nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(context, frame);
     }
   }
 
@@ -1031,7 +1037,7 @@ nsSVGIntegrationUtils::PaintMaskAndClipPath(const PaintFramesParams& aParams)
         maskUsage.shouldGenerateClipMaskLayer) {
       overlayColor.g = 1.0f; // green represents clip-path:<clip-source>.
     }
-    if (maskUsage.shouldApplyBasicShape) {
+    if (maskUsage.shouldApplyBasicShapeOrPath) {
       overlayColor.b = 1.0f; // blue represents
                              // clip-path:<basic-shape>||<geometry-box>.
     }
@@ -1040,7 +1046,7 @@ nsSVGIntegrationUtils::PaintMaskAndClipPath(const PaintFramesParams& aParams)
     context.Fill();
   }
 
-  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShape) {
+  if (maskUsage.shouldApplyClipPath || maskUsage.shouldApplyBasicShapeOrPath) {
     context.PopClip();
   }
 
@@ -1084,22 +1090,13 @@ nsSVGIntegrationUtils::PaintFilter(const PaintFramesParams& aParams)
   gfxContextAutoSaveRestore autoSR(&context);
   EffectOffsets offsets = MoveContextOriginToUserSpace(firstFrame, aParams);
 
-  if (opacity != 1.0f) {
-    context.PushGroupForBlendBack(gfxContentType::COLOR_ALPHA, opacity,
-                                  nullptr, Matrix());
-  }
-
   /* Paint the child and apply filters */
   RegularFramePaintCallback callback(aParams.builder, aParams.layerManager,
                                      offsets.offsetToUserSpaceInDevPx);
   nsRegion dirtyRegion = aParams.dirtyRect - offsets.offsetToBoundingBox;
 
   nsFilterInstance::PaintFilteredFrame(frame, &context, &callback,
-                                       &dirtyRegion, aParams.imgParams);
-
-  if (opacity != 1.0f) {
-    context.PopGroupAndBlend();
-  }
+                                       &dirtyRegion, aParams.imgParams, opacity);
 }
 
 class PaintFrameCallback : public gfxDrawingCallback {

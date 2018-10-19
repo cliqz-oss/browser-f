@@ -19,10 +19,10 @@
   async function * generateMessages(locales, resourceIds) {
     const mc = new MessageContext(locales);
     mc.addMessages(`
-file-menu
+file-menu =
     .label = File
     .accesskey = F
-new-tab
+new-tab =
     .label = New Tab
     .accesskey = N
 `);
@@ -33,13 +33,12 @@ new-tab
 
 
   const domLoc = new DOMLocalization(
-    window,
     [],
     generateMessages
   );
 
   async function foo() {
-    domLoc.connectRoot(document);
+    domLoc.connectRoot(document.documentElement);
     await domLoc.translateRoots();
 
     is(document.getElementById('file-menu').getAttribute('label'), 'File');

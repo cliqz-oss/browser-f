@@ -13,6 +13,7 @@
 #include "LayoutLogging.h"
 #include "SVGTextFrame.h"
 #include "nsBlockFrame.h"
+#include "nsBulletFrame.h"
 #include "nsFontMetrics.h"
 #include "nsStyleConsts.h"
 #include "nsContainerFrame.h"
@@ -62,6 +63,9 @@ nsLineLayout::nsLineLayout(nsPresContext* aPresContext,
     mForceBreakFrameOffset(-1),
     mMinLineBSize(0),
     mTextIndent(0),
+    mMaxStartBoxBSize(0),
+    mMaxEndBoxBSize(0),
+    mFinalLineBSize(0),
     mFirstLetterStyleOK(false),
     mIsTopOfPage(false),
     mImpactedByFloats(false),
@@ -77,6 +81,13 @@ nsLineLayout::nsLineLayout(nsPresContext* aPresContext,
     mLineAtStart(false),
     mHasRuby(false),
     mSuppressLineWrap(nsSVGUtils::IsInSVGTextSubtree(aOuterReflowInput->mFrame))
+#ifdef DEBUG
+    ,
+    mSpansAllocated(0),
+    mSpansFreed(0),
+    mFramesAllocated(0),
+    mFramesFreed(0)
+#endif
 {
   MOZ_ASSERT(aOuterReflowInput, "aOuterReflowInput must not be null");
   NS_ASSERTION(aFloatManager || aOuterReflowInput->mFrame->IsLetterFrame(),
@@ -254,6 +265,7 @@ nsLineLayout::EndLineReflow()
                (!mSpansAllocated && !mSpansFreed && !mSpanFreeList &&
                 !mFramesAllocated && !mFramesFreed && !mFrameFreeList),
                "Allocated frames or spans on non-base line layout?");
+  MOZ_ASSERT(mRootSpan == mCurrentSpan);
 
   UnlinkFrame(mRootSpan->mFrame);
   mCurrentSpan = mRootSpan = nullptr;
@@ -447,6 +459,12 @@ nsLineLayout::EndSpan(nsIFrame* aFrame)
   printf(": EndSpan width=%d\n", mCurrentSpan->mICoord - mCurrentSpan->mIStart);
 #endif
   PerSpanData* psd = mCurrentSpan;
+  MOZ_ASSERT(psd->mParent, "We never call this on the root");
+
+  if (psd->mNoWrap && !psd->mParent->mNoWrap) {
+    FlushNoWrapFloats();
+  }
+
   nscoord iSizeResult = psd->mLastFrame ? (psd->mICoord - psd->mIStart) : 0;
 
   mSpanDepth--;
@@ -944,27 +962,25 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
       pfd->mSkipWhenTrimmingWhitespace = true;
       nsIFrame* outOfFlowFrame = nsLayoutUtils::GetFloatFromPlaceholder(aFrame);
       if (outOfFlowFrame) {
-        // Add mTrimmableISize to the available width since if the line ends
-        // here, the width of the inline content will be reduced by
-        // mTrimmableISize.
-        nscoord availableISize = psd->mIEnd - (psd->mICoord - mTrimmableISize);
-        if (psd->mNoWrap) {
-          // If we place floats after inline content where there's
-          // no break opportunity, we don't know how much additional
-          // width is required for the non-breaking content after the float,
-          // so we can't know whether the float plus that content will fit
-          // on the line. So for now, don't place floats after inline
-          // content where there's no break opportunity. This is incorrect
-          // but hopefully rare. Fixing it will require significant
-          // restructuring of line layout.
-          // We might as well allow zero-width floats to be placed, though.
-          availableISize = 0;
+        if (psd->mNoWrap &&
+            // We can always place floats in an empty line.
+            !LineIsEmpty() &&
+            // We always place floating letter frames. This kinda sucks. They'd
+            // usually fall into the LineIsEmpty() check anyway, except when
+            // there's something like a bullet before or what not. We actually
+            // need to place them now, because they're pretty nasty and they
+            // create continuations that are in flow and not a kid of the
+            // previous continuation's parent. We don't want the deferred reflow
+            // of the letter frame to kill a continuation after we've stored it
+            // in the line layout data structures. See bug 1490281 to fix the
+            // underlying issue. When that's fixed this check should be removed.
+            !outOfFlowFrame->IsLetterFrame() &&
+            !GetOutermostLineLayout()->mBlockRI->mFlags.mCanHaveTextOverflow) {
+          // We'll do this at the next break opportunity.
+          RecordNoWrapFloat(outOfFlowFrame);
+        } else {
+          placedFloat = TryToPlaceFloat(outOfFlowFrame);
         }
-        placedFloat = GetOutermostLineLayout()->
-          AddFloat(outOfFlowFrame, availableISize);
-        NS_ASSERTION(!(outOfFlowFrame->IsLetterFrame() &&
-                       GetFirstLetterStyleOK()),
-                    "FirstLetterStyle set on line with floating first letter");
       }
     }
     else if (isText) {
@@ -1109,8 +1125,8 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
         VerticalAlignFrames(span);
       }
 
-      if (!continuingTextRun) {
-        if (!psd->mNoWrap && (!LineIsEmpty() || placedFloat)) {
+      if (!continuingTextRun && !psd->mNoWrap) {
+        if (!LineIsEmpty() || placedFloat) {
           // record soft break opportunity after this content that can't be
           // part of a text run. This is not a text frame so we know
           // that offset INT32_MAX means "after the content".
@@ -1444,7 +1460,7 @@ nsLineLayout::PlaceFrame(PerFrameData* pfd, ReflowOutput& aMetrics)
 }
 
 void
-nsLineLayout::AddBulletFrame(nsIFrame* aFrame,
+nsLineLayout::AddBulletFrame(nsBulletFrame* aFrame,
                              const ReflowOutput& aMetrics)
 {
   NS_ASSERTION(mCurrentSpan == mRootSpan, "bad linelayout user");
@@ -1460,7 +1476,14 @@ nsLineLayout::AddBulletFrame(nsIFrame* aFrame,
 
   WritingMode lineWM = mRootSpan->mWritingMode;
   PerFrameData* pfd = NewPerFrameData(aFrame);
-  mRootSpan->AppendFrame(pfd);
+  PerSpanData* psd = mRootSpan;
+
+  MOZ_ASSERT(psd->mFirstFrame, "adding bullet to an empty line?");
+  // Prepend the bullet frame to the line.
+  psd->mFirstFrame->mPrev = pfd;
+  pfd->mNext = psd->mFirstFrame;
+  psd->mFirstFrame = pfd;
+
   pfd->mIsBullet = true;
   if (aMetrics.BlockStartAscent() == ReflowOutput::ASK_FOR_BASELINE) {
     pfd->mAscent = aFrame->GetLogicalBaseline(lineWM);
@@ -1471,6 +1494,21 @@ nsLineLayout::AddBulletFrame(nsIFrame* aFrame,
   // Note: block-coord value will be updated during block-direction alignment
   pfd->mBounds = LogicalRect(lineWM, aFrame->GetRect(), ContainerSize());
   pfd->mOverflowAreas = aMetrics.mOverflowAreas;
+}
+
+void
+nsLineLayout::RemoveBulletFrame(nsBulletFrame* aFrame)
+{
+  PerSpanData* psd = mCurrentSpan;
+  MOZ_ASSERT(psd == mRootSpan, "bullet on non-root span?");
+  MOZ_ASSERT(psd->mFirstFrame->mFrame == aFrame,
+             "bullet is not the first frame?");
+  PerFrameData* pfd = psd->mFirstFrame;
+  MOZ_ASSERT(pfd != psd->mLastFrame,
+             "bullet is the only frame?");
+  pfd->mNext->mPrev = nullptr;
+  psd->mFirstFrame = pfd->mNext;
+  FreeFrame(pfd);
 }
 
 #ifdef DEBUG
@@ -1494,6 +1532,60 @@ nsLineLayout::DumpPerSpanData(PerSpanData* psd, int32_t aIndent)
   }
 }
 #endif
+
+void
+nsLineLayout::RecordNoWrapFloat(nsIFrame* aFloat)
+{
+  GetOutermostLineLayout()->mBlockRI->mNoWrapFloats.AppendElement(aFloat);
+}
+
+void
+nsLineLayout::FlushNoWrapFloats()
+{
+  auto& noWrapFloats = GetOutermostLineLayout()->mBlockRI->mNoWrapFloats;
+  for (nsIFrame* floatedFrame : noWrapFloats) {
+    TryToPlaceFloat(floatedFrame);
+  }
+  noWrapFloats.Clear();
+}
+
+bool
+nsLineLayout::TryToPlaceFloat(nsIFrame* aFloat)
+{
+  // Add mTrimmableISize to the available width since if the line ends here, the
+  // width of the inline content will be reduced by mTrimmableISize.
+  nscoord availableISize = mCurrentSpan->mIEnd - (mCurrentSpan->mICoord - mTrimmableISize);
+  NS_ASSERTION(!(aFloat->IsLetterFrame() && GetFirstLetterStyleOK()),
+              "FirstLetterStyle set on line with floating first letter");
+  return GetOutermostLineLayout()->AddFloat(aFloat, availableISize);
+}
+
+bool
+nsLineLayout::NotifyOptionalBreakPosition(nsIFrame* aFrame,
+                                          int32_t aOffset,
+                                          bool aFits,
+                                          gfxBreakPriority aPriority)
+{
+  MOZ_ASSERT(!aFits || !mNeedBackup,
+             "Shouldn't be updating the break position with a break that fits "
+             "after we've already flagged an overrun");
+  MOZ_ASSERT(mCurrentSpan, "Should be doing line layout");
+  if (mCurrentSpan->mNoWrap) {
+    FlushNoWrapFloats();
+  }
+
+  // Remember the last break position that fits; if there was no break that fit,
+  // just remember the first break
+  if ((aFits && aPriority >= mLastOptionalBreakPriority) ||
+      !mLastOptionalBreakFrame) {
+    mLastOptionalBreakFrame = aFrame;
+    mLastOptionalBreakFrameOffset = aOffset;
+    mLastOptionalBreakPriority = aPriority;
+  }
+  return aFrame && mForceBreakFrame == aFrame &&
+    mForceBreakFrameOffset == aOffset;
+}
+
 
 #define VALIGN_OTHER  0
 #define VALIGN_TOP    1
@@ -2896,14 +2988,17 @@ nsLineLayout::ApplyFrameJustification(PerSpanData* aPSD,
 
   nscoord deltaICoord = 0;
   for (PerFrameData* pfd = aPSD->mFirstFrame; pfd != nullptr; pfd = pfd->mNext) {
-    // Don't reposition bullets (and other frames that occur out of X-order?)
-    if (!pfd->mIsBullet) {
-      nscoord dw = 0;
-      WritingMode lineWM = mRootSpan->mWritingMode;
-      const auto& assign = pfd->mJustificationAssignment;
-      bool isInlineText = pfd->mIsTextFrame &&
-                          !pfd->mWritingMode.IsOrthogonalTo(lineWM);
+    nscoord dw = 0;
+    WritingMode lineWM = mRootSpan->mWritingMode;
+    const auto& assign = pfd->mJustificationAssignment;
+    bool isInlineText = pfd->mIsTextFrame &&
+                        !pfd->mWritingMode.IsOrthogonalTo(lineWM);
 
+    // Don't apply justification if the frame doesn't participate. Same
+    // as the condition used in ComputeFrameJustification. Note that,
+    // we still need to move the frame based on deltaICoord even if the
+    // frame itself doesn't expand.
+    if (pfd->ParticipatesInJustification()) {
       if (isInlineText) {
         if (aState.IsJustifiable()) {
           // Set corresponding justification gaps here, so that the
@@ -2917,30 +3012,32 @@ nsLineLayout::ApplyFrameJustification(PerSpanData* aPSD,
         if (dw) {
           pfd->mRecomputeOverflow = true;
         }
-      }
-      else {
+      } else {
         if (nullptr != pfd->mSpan) {
           dw = ApplyFrameJustification(pfd->mSpan, aState);
         }
       }
-
-      pfd->mBounds.ISize(lineWM) += dw;
-      nscoord gapsAtEnd = 0;
-      if (!isInlineText && assign.TotalGaps()) {
-        // It is possible that we assign gaps to non-text frame or an
-        // orthogonal text frame. Apply the gaps as margin for them.
-        deltaICoord += aState.Consume(assign.mGapsAtStart);
-        gapsAtEnd = aState.Consume(assign.mGapsAtEnd);
-        dw += gapsAtEnd;
-      }
-      pfd->mBounds.IStart(lineWM) += deltaICoord;
-
-      // The gaps added to the end of the frame should also be
-      // excluded from the isize added to the annotation.
-      ApplyLineJustificationToAnnotations(pfd, deltaICoord, dw - gapsAtEnd);
-      deltaICoord += dw;
-      pfd->mFrame->SetRect(lineWM, pfd->mBounds, ContainerSizeForSpan(aPSD));
+    } else {
+      MOZ_ASSERT(!assign.TotalGaps(),
+                 "Non-participants shouldn't have assigned gaps");
     }
+
+    pfd->mBounds.ISize(lineWM) += dw;
+    nscoord gapsAtEnd = 0;
+    if (!isInlineText && assign.TotalGaps()) {
+      // It is possible that we assign gaps to non-text frame or an
+      // orthogonal text frame. Apply the gaps as margin for them.
+      deltaICoord += aState.Consume(assign.mGapsAtStart);
+      gapsAtEnd = aState.Consume(assign.mGapsAtEnd);
+      dw += gapsAtEnd;
+    }
+    pfd->mBounds.IStart(lineWM) += deltaICoord;
+
+    // The gaps added to the end of the frame should also be
+    // excluded from the isize added to the annotation.
+    ApplyLineJustificationToAnnotations(pfd, deltaICoord, dw - gapsAtEnd);
+    deltaICoord += dw;
+    pfd->mFrame->SetRect(lineWM, pfd->mBounds, ContainerSizeForSpan(aPSD));
   }
   return deltaICoord;
 }
@@ -3223,7 +3320,15 @@ nsLineLayout::TextAlignLine(nsLineBox* aLine,
 
   if (mPresContext->BidiEnabled() &&
       (!mPresContext->IsVisualMode() || !lineWM.IsBidiLTR())) {
-    nsBidiPresUtils::ReorderFrames(psd->mFirstFrame->mFrame,
+    PerFrameData* startFrame = psd->mFirstFrame;
+    MOZ_ASSERT(startFrame, "empty line?");
+    if (startFrame->mIsBullet) {
+      // Bullet shouldn't participate in bidi reordering.
+      startFrame = startFrame->mNext;
+      MOZ_ASSERT(startFrame, "no frame after bullet?");
+      MOZ_ASSERT(!startFrame->mIsBullet, "multiple bullets?");
+    }
+    nsBidiPresUtils::ReorderFrames(startFrame->mFrame,
                                    aLine->GetChildCount(),
                                    lineWM, mContainerSize,
                                    psd->mIStart + mTextIndent + dx);

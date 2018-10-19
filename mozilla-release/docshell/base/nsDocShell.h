@@ -8,6 +8,7 @@
 #define nsDocShell_h__
 
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/HalScreenConfiguration.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Move.h"
@@ -15,16 +16,15 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
 
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/dom/ChildSHistory.h"
 
 #include "nsIAuthPromptProvider.h"
 #include "nsIBaseWindow.h"
-#include "nsIClipboardCommands.h"
 #include "nsIDeprecationWarner.h"
 #include "nsIDocShell.h"
-#include "nsIDocShellLoadInfo.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDOMStorageManager.h"
 #include "nsIInterfaceRequestor.h"
@@ -35,13 +35,12 @@
 #include "nsIRefreshURI.h"
 #include "nsIScrollable.h"
 #include "nsITabParent.h"
-#include "nsITextScroll.h"
 #include "nsIWebNavigation.h"
 #include "nsIWebPageDescriptor.h"
 #include "nsIWebProgressListener.h"
-#include "nsIWebShellServices.h"
 
 #include "nsAutoPtr.h"
+#include "nsCharsetSource.h"
 #include "nsCOMPtr.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
@@ -57,9 +56,9 @@
 #include "prtime.h"
 #include "Units.h"
 
-#include "timeline/ObservedDocShell.h"
-#include "timeline/TimelineConsumers.h"
-#include "timeline/TimelineMarker.h"
+#include "mozilla/ObservedDocShell.h"
+#include "mozilla/TimelineConsumers.h"
+#include "mozilla/TimelineMarker.h"
 
 // Interfaces Needed
 
@@ -71,7 +70,6 @@ namespace dom {
 class ClientInfo;
 class ClientSource;
 class EventTarget;
-typedef uint32_t ScreenOrientationInternal;
 } // namespace dom
 } // namespace mozilla
 
@@ -80,7 +78,6 @@ class nsIContentViewer;
 class nsIController;
 class nsIDocShellTreeOwner;
 class nsIDocument;
-class nsIGlobalHistory2;
 class nsIHttpChannel;
 class nsIMutableArray;
 class nsIPrompt;
@@ -123,15 +120,12 @@ class nsDocShell final
   , public nsIWebNavigation
   , public nsIBaseWindow
   , public nsIScrollable
-  , public nsITextScroll
   , public nsIRefreshURI
   , public nsIWebProgressListener
   , public nsIWebPageDescriptor
   , public nsIAuthPromptProvider
   , public nsILoadContext
-  , public nsIWebShellServices
   , public nsILinkHandler
-  , public nsIClipboardCommands
   , public nsIDOMStorageManager
   , public nsINetworkInterceptController
   , public nsIDeprecationWarner
@@ -174,14 +168,11 @@ public:
   NS_DECL_NSIWEBNAVIGATION
   NS_DECL_NSIBASEWINDOW
   NS_DECL_NSISCROLLABLE
-  NS_DECL_NSITEXTSCROLL
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIREFRESHURI
   NS_DECL_NSIWEBPAGEDESCRIPTOR
   NS_DECL_NSIAUTHPROMPTPROVIDER
-  NS_DECL_NSICLIPBOARDCOMMANDS
-  NS_DECL_NSIWEBSHELLSERVICES
   NS_DECL_NSINETWORKINTERCEPTCONTROLLER
   NS_DECL_NSIDEPRECATIONWARNER
 
@@ -267,10 +258,12 @@ public:
 
   // Notify Scroll observers when an async panning/zooming transform
   // has started being applied
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void NotifyAsyncPanZoomStarted();
 
   // Notify Scroll observers when an async panning/zooming transform
   // is no longer applied
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void NotifyAsyncPanZoomStopped();
 
   void SetInFrameSwap(bool aInSwap)
@@ -283,6 +276,11 @@ public:
 
   mozilla::HTMLEditor* GetHTMLEditorInternal();
   nsresult SetHTMLEditorInternal(mozilla::HTMLEditor* aHTMLEditor);
+
+  // Handle page navigation due to charset changes
+  nsresult CharsetChangeReloadDocument(const char* aCharset = nullptr,
+                                               int32_t aSource = kCharsetUninitialized);
+  nsresult CharsetChangeStopDocumentLoad();
 
   nsDOMNavigationTiming* GetNavigationTiming() const;
 
@@ -376,6 +374,13 @@ public:
   {
     return static_cast<nsDocShell*>(aDocShell);
   }
+
+  // Returns true if the current load is a force reload (started by holding
+  // shift while triggering reload)
+  bool IsForceReloading();
+
+  already_AddRefed<mozilla::dom::BrowsingContext>
+  GetBrowsingContext() const;
 
 private: // member functions
   friend class nsDSURIContentListener;
@@ -587,12 +592,18 @@ private: // member functions
                        nsresult aResult);
 
 
+  // Builds an error page URI (e.g. about:neterror?etc) for the given aURI
+  // and displays it via the LoadErrorPage() overload below.
   nsresult LoadErrorPage(nsIURI* aURI, const char16_t* aURL,
-                           const char* aErrorPage,
-                           const char* aErrorType,
-                           const char16_t* aDescription,
-                           const char* aCSSClass,
-                           nsIChannel* aFailedChannel);
+                         const char* aErrorPage,
+                         const char* aErrorType,
+                         const char16_t* aDescription,
+                         const char* aCSSClass,
+                         nsIChannel* aFailedChannel);
+
+  // This method directly loads aErrorURI as an error page. aFailedURI and aFailedChannel
+  // come from DisplayLoadError() or the LoadErrorPage() overload above.
+  nsresult LoadErrorPage(nsIURI* aErrorURI, nsIURI* aFailedURI, nsIChannel* aFailedChannel);
 
   bool DisplayLoadError(nsresult aError, nsIURI* aURI, const char16_t* aURL,
                         nsIChannel* aFailedChannel)
@@ -661,8 +672,7 @@ private: // member functions
                      uint32_t aChannelRedirectFlags);
 
   /**
-   * Helper function for adding a URI visit using IHistory. If IHistory is
-   * not available, the method tries nsIGlobalHistory2.
+   * Helper function for adding a URI visit using IHistory.
    *
    * The IHistory API maintains chains of visits, tracking both HTTP referrers
    * and redirects for a user session. VisitURI requires the current URI and
@@ -906,7 +916,6 @@ private: // data members
 #endif /* DEBUG */
 
   nsID mHistoryID;
-  nsString mName;
   nsString mTitle;
   nsString mCustomUserAgent;
   nsCString mOriginalUriString;
@@ -929,9 +938,9 @@ private: // data members
   nsCOMPtr<nsIContentViewer> mContentViewer;
   nsCOMPtr<nsIWidget> mParentWidget;
   RefPtr<mozilla::dom::ChildSHistory> mSessionHistory;
-  nsCOMPtr<nsIGlobalHistory2> mGlobalHistory;
   nsCOMPtr<nsIWebBrowserFind> mFind;
   nsCOMPtr<nsICommandManager> mCommandManager;
+  RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
 
   // Dimensions of the docshell
   nsIntRect mBounds;
@@ -1012,9 +1021,7 @@ private: // data members
 
   eCharsetReloadState mCharsetReloadState;
 
-  // The orientation lock as described by
-  // https://w3c.github.io/screen-orientation/
-  mozilla::dom::ScreenOrientationInternal mOrientationLock;
+  mozilla::hal::ScreenOrientation mOrientationLock;
 
   int32_t mParentCharsetSource;
   int32_t mMarginWidth;

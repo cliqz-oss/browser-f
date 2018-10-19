@@ -262,8 +262,7 @@ OnFifoEnabledChange(const char* /*unused*/, void* /*unused*/)
   LOG("%s changed", FifoWatcher::kPrefName);
   if (SetupFifo()) {
     Preferences::UnregisterCallback(OnFifoEnabledChange,
-                                    FifoWatcher::kPrefName,
-                                    nullptr);
+                                    FifoWatcher::kPrefName);
   }
 }
 
@@ -304,8 +303,7 @@ nsMemoryInfoDumper::Initialize()
     //     to attempt to initialize if the fifo watcher becomes enabled by
     //     a user pref.
     Preferences::RegisterCallback(OnFifoEnabledChange,
-                                  FifoWatcher::kPrefName,
-                                  nullptr);
+                                  FifoWatcher::kPrefName);
   }
 #endif
 }
@@ -386,8 +384,7 @@ nsMemoryInfoDumper::DumpGCAndCCLogsToFile(const nsAString& aIdentifier,
     }
   }
 
-  nsCOMPtr<nsICycleCollectorListener> logger =
-    do_CreateInstance("@mozilla.org/cycle-collector-logger;1");
+  nsCOMPtr<nsICycleCollectorListener> logger = nsCycleCollector_createLogger();
 
   if (aDumpAllTraces) {
     nsCOMPtr<nsICycleCollectorListener> allTracesLogger;
@@ -414,8 +411,7 @@ NS_IMETHODIMP
 nsMemoryInfoDumper::DumpGCAndCCLogsToSink(bool aDumpAllTraces,
                                           nsICycleCollectorLogSink* aSink)
 {
-  nsCOMPtr<nsICycleCollectorListener> logger =
-    do_CreateInstance("@mozilla.org/cycle-collector-logger;1");
+  nsCOMPtr<nsICycleCollectorListener> logger = nsCycleCollector_createLogger();
 
   if (aDumpAllTraces) {
     nsCOMPtr<nsICycleCollectorListener> allTracesLogger;

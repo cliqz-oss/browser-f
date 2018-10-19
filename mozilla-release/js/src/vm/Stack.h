@@ -23,6 +23,7 @@
 #include "jit/JSJitFrameIter.h"
 #include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
+#include "js/UniquePtr.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/JSFunction.h"
 #include "vm/JSScript.h"
@@ -69,7 +70,7 @@ class DebugFrame;
 class Instance;
 }
 
-// VM stack layout
+// [SMDOC] VM stack layout
 //
 // A JSRuntime's stack consists of a linked list of activations. Every activation
 // contains a number of scripted frames that are either running in the interpreter
@@ -102,7 +103,16 @@ class Instance;
 enum MaybeCheckAliasing { CHECK_ALIASING = true, DONT_CHECK_ALIASING = false };
 enum MaybeCheckTDZ { CheckTDZ = true, DontCheckTDZ = false };
 
+} // namespace js
+
+namespace mozilla {
+template <>
+struct IsPod<js::MaybeCheckTDZ> : TrueType {};
+} // namespace mozilla
+
 /*****************************************************************************/
+
+namespace js {
 
 namespace jit {
     class BaselineFrame;
@@ -1052,18 +1062,26 @@ FillArgumentsFromArraylike(JSContext* cx, Args& args, const Arraylike& arraylike
     return true;
 }
 
+} // namespace js
+
+namespace mozilla {
+
 template <>
-struct DefaultHasher<AbstractFramePtr> {
-    typedef AbstractFramePtr Lookup;
+struct DefaultHasher<js::AbstractFramePtr> {
+    typedef js::AbstractFramePtr Lookup;
 
     static js::HashNumber hash(const Lookup& key) {
         return mozilla::HashGeneric(key.raw());
     }
 
-    static bool match(const AbstractFramePtr& k, const Lookup& l) {
+    static bool match(const js::AbstractFramePtr& k, const Lookup& l) {
         return k == l;
     }
 };
+
+} // namespace mozilla
+
+namespace js {
 
 /*****************************************************************************/
 
@@ -1613,13 +1631,10 @@ class BailoutFrameInfo;
 // A JitActivation is used for frames running in Baseline or Ion.
 class JitActivation : public Activation
 {
-  public:
-    static const uintptr_t ExitFpWasmBit = 0x1;
-
-  private:
     // If Baseline, Ion or Wasm code is on the stack, and has called into C++,
     // this will be aligned to an ExitFrame. The last bit indicates if it's a
-    // wasm frame (bit set to ExitFpWasmBit) or not (bit set to !ExitFpWasmBit).
+    // wasm frame (bit set to wasm::ExitOrJitEntryFPTag) or not
+    // (bit set to ~wasm::ExitOrJitEntryFPTag).
     uint8_t* packedExitFP_;
 
     // When hasWasmExitFP(), encodedWasmExitReason_ holds ExitReason.
@@ -1634,7 +1649,7 @@ class JitActivation : public Activation
     // This table is lazily initialized by calling getRematerializedFrame.
     typedef GCVector<RematerializedFrame*> RematerializedFrameVector;
     typedef HashMap<uint8_t*, RematerializedFrameVector> RematerializedFrameTable;
-    RematerializedFrameTable* rematerializedFrames_;
+    js::UniquePtr<RematerializedFrameTable> rematerializedFrames_;
 
     // This vector is used to remember the outcome of the evaluation of recover
     // instructions.
@@ -1695,14 +1710,14 @@ class JitActivation : public Activation
         return !!packedExitFP_;
     }
     uint8_t* jsOrWasmExitFP() const {
-        return (uint8_t*)(uintptr_t(packedExitFP_) & ~ExitFpWasmBit);
+        return (uint8_t*)(uintptr_t(packedExitFP_) & ~wasm::ExitOrJitEntryFPTag);
     }
     static size_t offsetOfPackedExitFP() {
         return offsetof(JitActivation, packedExitFP_);
     }
 
     bool hasJSExitFP() const {
-        return !(uintptr_t(packedExitFP_) & ExitFpWasmBit);
+        return !(uintptr_t(packedExitFP_) & wasm::ExitOrJitEntryFPTag);
     }
     uint8_t* jsExitFP() const {
         MOZ_ASSERT(hasJSExitFP());
@@ -1793,16 +1808,16 @@ class JitActivation : public Activation
 
     // WebAssembly specific attributes.
     bool hasWasmExitFP() const {
-        return uintptr_t(packedExitFP_) & ExitFpWasmBit;
+        return uintptr_t(packedExitFP_) & wasm::ExitOrJitEntryFPTag;
     }
     wasm::Frame* wasmExitFP() const {
         MOZ_ASSERT(hasWasmExitFP());
-        return (wasm::Frame*)(uintptr_t(packedExitFP_) & ~ExitFpWasmBit);
+        return (wasm::Frame*)(uintptr_t(packedExitFP_) & ~wasm::ExitOrJitEntryFPTag);
     }
     void setWasmExitFP(const wasm::Frame* fp) {
         if (fp) {
-            MOZ_ASSERT(!(uintptr_t(fp) & ExitFpWasmBit));
-            packedExitFP_ = (uint8_t*)(uintptr_t(fp) | ExitFpWasmBit);
+            MOZ_ASSERT(!(uintptr_t(fp) & wasm::ExitOrJitEntryFPTag));
+            packedExitFP_ = (uint8_t*)(uintptr_t(fp) | wasm::ExitOrJitEntryFPTag);
             MOZ_ASSERT(hasWasmExitFP());
         } else {
             packedExitFP_ = nullptr;
@@ -1915,9 +1930,8 @@ class InterpreterFrameIterator
 // asJSJit() and asWasm(), but the user has to be careful not to have those be
 // used after JitFrameIter leaves the scope or the operator++ is called.
 //
-// TODO(bug 1360211) In particular, this can handle the transition from wasm to
-// ion and from ion to wasm, since these will be interleaved in the same
-// JitActivation.
+// In particular, this can handle the transition from wasm to jit and from jit
+// to wasm, since these can be interleaved in the same JitActivation.
 class JitFrameIter
 {
   protected:
@@ -2151,7 +2165,7 @@ class FrameIter
     bool ensureHasRematerializedFrame(JSContext* cx);
 
     // True when isInterp() or isBaseline(). True when isIon() if it
-    // has a rematerialized frame. False otherwise false otherwise.
+    // has a rematerialized frame. False otherwise.
     bool hasUsableAbstractFramePtr() const;
 
     // -----------------------------------------------------------
@@ -2424,4 +2438,5 @@ FrameIter::physicalJitFrame() const
 }
 
 }  /* namespace js */
+
 #endif /* vm_Stack_h */

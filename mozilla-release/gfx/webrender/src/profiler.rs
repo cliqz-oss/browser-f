@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::ColorF;
-use query::{GpuTimer, NamedTag};
+use device::query::{GpuTimer, NamedTag};
 use std::collections::vec_deque::VecDeque;
 use std::f32;
 use time::precise_time_ns;
@@ -13,7 +13,7 @@ cfg_if! {
         use api::ColorU;
         use debug_render::DebugRenderer;
         use euclid::{Point2D, Rect, Size2D, vec2};
-        use query::GpuSampler;
+        use device::query::GpuSampler;
         use internal_types::FastHashMap;
         use renderer::MAX_VERTEX_TEXTURE_WIDTH;
         use std::mem;
@@ -37,7 +37,7 @@ pub struct GpuProfileTag {
     pub label: &'static str,
     pub color: ColorF,
 }
- 
+
 impl NamedTag for GpuProfileTag {
     fn get_label(&self) -> &str {
         self.label
@@ -98,19 +98,19 @@ impl ProfileCounter for IntProfileCounter {
 }
 
 #[cfg(feature = "debug_renderer")]
-pub struct FloatProfileCounter {
+pub struct PercentageProfileCounter {
     description: &'static str,
     value: f32,
 }
 
 #[cfg(feature = "debug_renderer")]
-impl ProfileCounter for FloatProfileCounter {
+impl ProfileCounter for PercentageProfileCounter {
     fn description(&self) -> &'static str {
         self.description
     }
 
     fn value(&self) -> String {
-        format!("{:.2}", self.value)
+        format!("{:.2}%", self.value * 100.0)
     }
 }
 
@@ -457,6 +457,7 @@ pub struct RendererProfileCounters {
     pub vao_count_and_size: ResourceProfileCounter,
     pub color_targets: IntProfileCounter,
     pub alpha_targets: IntProfileCounter,
+    pub texture_data_uploaded: IntProfileCounter,
 }
 
 pub struct RendererProfileTimers {
@@ -475,6 +476,7 @@ impl RendererProfileCounters {
             vao_count_and_size: ResourceProfileCounter::new("VAO"),
             color_targets: IntProfileCounter::new("Color Targets"),
             alpha_targets: IntProfileCounter::new("Alpha Targets"),
+            texture_data_uploaded: IntProfileCounter::new("Texture data, kb"),
         }
     }
 
@@ -483,6 +485,7 @@ impl RendererProfileCounters {
         self.vertices.reset();
         self.color_targets.reset();
         self.alpha_targets.reset();
+        self.texture_data_uploaded.reset();
     }
 }
 
@@ -792,7 +795,6 @@ pub struct Profiler {
 
 #[cfg(feature = "debug_renderer")]
 impl Profiler {
-
     pub fn new() -> Self {
         Profiler {
             draw_state: DrawState {
@@ -1021,6 +1023,7 @@ impl Profiler {
                 &renderer_profile.alpha_targets,
                 &renderer_profile.draw_calls,
                 &renderer_profile.vertices,
+                &renderer_profile.texture_data_uploaded,
                 &self.backend_time,
                 &self.compositor_time,
                 &self.gpu_time,
@@ -1047,6 +1050,7 @@ impl Profiler {
                 &renderer_profile.frame_counter,
                 &renderer_profile.color_targets,
                 &renderer_profile.alpha_targets,
+                &renderer_profile.texture_data_uploaded,
             ],
             debug_renderer,
             true,
@@ -1115,21 +1119,27 @@ impl Profiler {
         );
 
         if !gpu_samplers.is_empty() {
-            let mut samplers = Vec::<FloatProfileCounter>::new();
+            let mut samplers = Vec::<PercentageProfileCounter>::new();
             // Gathering unique GPU samplers. This has O(N^2) complexity,
             // but we only have a few samplers per target.
+            let mut total = 0.0;
             for sampler in gpu_samplers {
                 let value = sampler.count as f32 * screen_fraction;
+                total += value;
                 match samplers.iter().position(|s| {
                     s.description as *const _ == sampler.tag.label as *const _
                 }) {
                     Some(pos) => samplers[pos].value += value,
-                    None => samplers.push(FloatProfileCounter {
+                    None => samplers.push(PercentageProfileCounter {
                         description: sampler.tag.label,
                         value,
                     }),
                 }
             }
+            samplers.push(PercentageProfileCounter {
+                description: "Total",
+                value: total,
+            });
             let samplers: Vec<&ProfileCounter> = samplers.iter().map(|sampler| {
                 sampler as &ProfileCounter
             }).collect();

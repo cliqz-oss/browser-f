@@ -18,10 +18,7 @@ add_task(async function init() {
 function frameScript() {
   // Make send[A]syncMessage("SessionStore:update", ...) simulate OOM.
   // Other operations are unaffected.
-  let mm = docShell.sameTypeRootTreeItem.
-    QueryInterface(Ci.nsIDocShell).
-    QueryInterface(Ci.nsIInterfaceRequestor).
-    getInterface(Ci.nsIContentFrameMessageManager);
+  let mm = docShell.messageManager;
 
   let wrap = function(original) {
     return function(name, ...args) {
@@ -32,8 +29,8 @@ function frameScript() {
     };
   };
 
-  mm.sendAsyncMessage = wrap(mm.sendAsyncMessage);
-  mm.sendSyncMessage = wrap(mm.sendSyncMessage);
+  mm.sendAsyncMessage = wrap(mm.sendAsyncMessage.bind(mm));
+  mm.sendSyncMessage = wrap(mm.sendSyncMessage.bind(mm));
 }
 
 add_task(async function() {

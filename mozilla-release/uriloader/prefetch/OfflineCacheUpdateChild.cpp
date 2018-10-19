@@ -7,6 +7,7 @@
 #include "OfflineCacheUpdateChild.h"
 #include "nsOfflineCacheUpdate.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/dom/OfflineResourceListBinding.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/net/NeckoCommon.h"
@@ -18,7 +19,6 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShellTreeOwner.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDOMOfflineResourceList.h"
 #include "nsIDocument.h"
 #include "nsIObserverService.h"
 #include "nsIURL.h"
@@ -31,6 +31,7 @@
 #include "nsProxyRelease.h"
 #include "mozilla/Logging.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
+#include "nsApplicationCache.h"
 
 using namespace mozilla::ipc;
 using namespace mozilla::net;
@@ -226,8 +227,8 @@ OfflineCacheUpdateChild::InitPartial(nsIURI *aManifestURI,
                                   nsIURI *aDocumentURI,
                                   nsIPrincipal *aLoadingPrincipal)
 {
-    NS_NOTREACHED("Not expected to do partial offline cache updates"
-                  " on the child process");
+    MOZ_ASSERT_UNREACHABLE("Not expected to do partial offline cache updates"
+                           " on the child process");
     // For now leaving this method, we may discover we need it.
     return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -237,8 +238,8 @@ OfflineCacheUpdateChild::InitForUpdateCheck(nsIURI *aManifestURI,
                                             nsIPrincipal* aLoadingPrincipal,
                                             nsIObserver *aObserver)
 {
-    NS_NOTREACHED("Not expected to do only update checks"
-                  " from the child process");
+    MOZ_ASSERT_UNREACHABLE("Not expected to do only update checks"
+                           " from the child process");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -256,13 +257,13 @@ OfflineCacheUpdateChild::GetStatus(uint16_t *aStatus)
 {
     switch (mState) {
     case STATE_CHECKING :
-        *aStatus = nsIDOMOfflineResourceList::CHECKING;
+        *aStatus = mozilla::dom::OfflineResourceList_Binding::CHECKING;
         return NS_OK;
     case STATE_DOWNLOADING :
-        *aStatus = nsIDOMOfflineResourceList::DOWNLOADING;
+        *aStatus = mozilla::dom::OfflineResourceList_Binding::DOWNLOADING;
         return NS_OK;
     default :
-        *aStatus = nsIDOMOfflineResourceList::IDLE;
+        *aStatus = mozilla::dom::OfflineResourceList_Binding::IDLE;
         return NS_OK;
     }
 
@@ -440,12 +441,7 @@ OfflineCacheUpdateChild::RecvAssociateDocuments(const nsCString &cacheGroupId,
 {
     LOG(("OfflineCacheUpdateChild::RecvAssociateDocuments [%p, cache=%s]", this, cacheClientId.get()));
 
-    nsresult rv;
-
-    nsCOMPtr<nsIApplicationCache> cache =
-        do_CreateInstance(NS_APPLICATIONCACHE_CONTRACTID, &rv);
-    if (NS_FAILED(rv))
-      return IPC_OK();
+    nsCOMPtr<nsIApplicationCache> cache = new nsApplicationCache();
 
     cache->InitAsHandle(cacheGroupId, cacheClientId);
 

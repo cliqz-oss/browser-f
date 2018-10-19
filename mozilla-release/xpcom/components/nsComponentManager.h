@@ -117,8 +117,8 @@ private:
   mozilla::Atomic<PRThread*, mozilla::Relaxed> mOwnerThread;
 };
 
-typedef mozilla::BaseAutoLock<SafeMutex> SafeMutexAutoLock;
-typedef mozilla::BaseAutoUnlock<SafeMutex> SafeMutexAutoUnlock;
+typedef mozilla::BaseAutoLock<SafeMutex&> SafeMutexAutoLock;
+typedef mozilla::BaseAutoUnlock<SafeMutex&> SafeMutexAutoUnlock;
 
 class nsComponentManagerImpl final
   : public nsIComponentManager
@@ -167,7 +167,7 @@ public:
                                   uint32_t aContractIDLen);
   nsFactoryEntry* GetFactoryEntry(const nsCID& aClass);
 
-  nsDataHashtable<nsIDHashKey, nsFactoryEntry*> mFactories;
+  nsDataHashtable<nsIDPointerHashKey, nsFactoryEntry*> mFactories;
   nsDataHashtable<nsCStringHashKey, nsFactoryEntry*> mContractIDs;
 
   SafeMutex mLock;
@@ -190,7 +190,6 @@ public:
     }
   };
 
-  static nsTArray<const mozilla::Module*>* sStaticModules;
   static nsTArray<ComponentLocation>* sModuleLocations;
 
   class KnownModule
@@ -288,8 +287,6 @@ public:
 
   void ManifestManifest(ManifestProcessingContext& aCx, int aLineNo,
                         char* const* aArgv);
-  void ManifestBinaryComponent(ManifestProcessingContext& aCx, int aLineNo,
-                               char* const* aArgv);
   void ManifestComponent(ManifestProcessingContext& aCx, int aLineNo,
                          char* const* aArgv);
   void ManifestContract(ManifestProcessingContext& aCx, int aLineNo,

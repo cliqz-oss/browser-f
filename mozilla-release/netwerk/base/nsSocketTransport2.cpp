@@ -928,18 +928,34 @@ nsSocketTransport::Init(const char **types, uint32_t typeCount,
 nsresult
 nsSocketTransport::InitWithFilename(const char *filename)
 {
-    size_t filenameLength = strlen(filename);
+    return InitWithName(filename, strlen(filename));
+}
 
-    if (filenameLength > sizeof(mNetAddr.local.path) - 1)
+nsresult
+nsSocketTransport::InitWithName(const char *name, size_t length)
+{
+    if (length > sizeof(mNetAddr.local.path) - 1) {
         return NS_ERROR_FILE_NAME_TOO_LONG;
+    }
 
-    mHost.Assign(filename);
+    if (!name[0] && length > 1) {
+        // name is abstract address name that is supported on Linux only
+#if defined(XP_LINUX)
+        mHost.Assign(name + 1, length - 1);
+#else
+        return NS_ERROR_SOCKET_ADDRESS_NOT_SUPPORTED;
+#endif
+    } else {
+        // The name isn't abstract socket address.  So this is Unix domain
+        // socket that has file path.
+        mHost.Assign(name, length);
+    }
     mPort = 0;
     mTypeCount = 0;
 
     mNetAddr.local.family = AF_LOCAL;
-    memcpy(mNetAddr.local.path, filename, filenameLength);
-    mNetAddr.local.path[filenameLength] = '\0';
+    memcpy(mNetAddr.local.path, name, length);
+    mNetAddr.local.path[length] = '\0';
     mNetAddrIsSet = true;
 
     return NS_OK;
@@ -1223,7 +1239,8 @@ nsSocketTransport::BuildSocket(PRFileDesc *&fd, bool &proxyTransparent, bool &us
                                          getter_AddRefs(secinfo));
 
                 if (NS_SUCCEEDED(rv) && !fd) {
-                    NS_NOTREACHED("NewSocket succeeded but failed to create a PRFileDesc");
+                    MOZ_ASSERT_UNREACHABLE("NewSocket succeeded but failed to "
+                                           "create a PRFileDesc");
                     rv = NS_ERROR_UNEXPECTED;
                 }
             } else {
@@ -1327,7 +1344,7 @@ nsSocketTransport::InitiateSocket()
         IsIPAddrLocal(&mNetAddr)) {
         if (SOCKET_LOG_ENABLED()) {
             nsAutoCString netAddrCString;
-            netAddrCString.SetCapacity(kIPv6CStrBufSize);
+            netAddrCString.SetLength(kIPv6CStrBufSize);
             if (!NetAddrToString(&mNetAddr,
                                  netAddrCString.BeginWriting(),
                                  kIPv6CStrBufSize))

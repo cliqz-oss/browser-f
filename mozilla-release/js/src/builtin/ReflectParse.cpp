@@ -19,6 +19,7 @@
 #include "frontend/Parser.h"
 #include "frontend/TokenStream.h"
 #include "js/CharacterEncoding.h"
+#include "js/StableStringChars.h"
 #include "vm/JSAtom.h"
 #include "vm/JSObject.h"
 #include "vm/RegExpObject.h"
@@ -29,7 +30,9 @@
 using namespace js;
 using namespace js::frontend;
 
+using JS::AutoStableStringChars;
 using JS::AutoValueArray;
+using JS::CompileOptions;
 using mozilla::DebugOnly;
 
 enum ASTType {
@@ -2702,24 +2705,25 @@ ASTSerializer::expression(ParseNode* pn, MutableHandleValue dst)
       case ParseNodeKind::Call:
       case ParseNodeKind::SuperCall:
       {
-        ParseNode* next = pn->pn_head;
-        MOZ_ASSERT(pn->pn_pos.encloses(next->pn_pos));
+        ParseNode* pn_callee = pn->pn_left;
+        ParseNode* pn_args = pn->pn_right;
+        MOZ_ASSERT(pn->pn_pos.encloses(pn_callee->pn_pos));
 
         RootedValue callee(cx);
         if (pn->isKind(ParseNodeKind::SuperCall)) {
-            MOZ_ASSERT(next->isKind(ParseNodeKind::SuperBase));
-            if (!builder.super(&next->pn_pos, &callee))
+            MOZ_ASSERT(pn_callee->isKind(ParseNodeKind::SuperBase));
+            if (!builder.super(&pn_callee->pn_pos, &callee))
                 return false;
         } else {
-            if (!expression(next, &callee))
+            if (!expression(pn_callee, &callee))
                 return false;
         }
 
         NodeVector args(cx);
-        if (!args.reserve(pn->pn_count - 1))
+        if (!args.reserve(pn_args->pn_count))
             return false;
 
-        for (next = next->pn_next; next; next = next->pn_next) {
+        for (ParseNode* next = pn_args->pn_head; next; next = next->pn_next) {
             MOZ_ASSERT(pn->pn_pos.encloses(next->pn_pos));
 
             RootedValue arg(cx);
@@ -2740,17 +2744,17 @@ ASTSerializer::expression(ParseNode* pn, MutableHandleValue dst)
 
       case ParseNodeKind::Dot:
       {
-        MOZ_ASSERT(pn->pn_pos.encloses(pn->pn_expr->pn_pos));
+        MOZ_ASSERT(pn->pn_pos.encloses(pn->pn_left->pn_pos));
 
         RootedValue expr(cx);
         RootedValue propname(cx);
-        RootedAtom pnAtom(cx, pn->pn_atom);
+        RootedAtom pnAtom(cx, pn->pn_right->pn_atom);
 
         if (pn->as<PropertyAccess>().isSuper()) {
-            if (!builder.super(&pn->pn_expr->pn_pos, &expr))
+            if (!builder.super(&pn->pn_left->pn_pos, &expr))
                 return false;
         } else {
-            if (!expression(pn->pn_expr, &expr))
+            if (!expression(pn->pn_left, &expr))
                 return false;
         }
 
@@ -3469,8 +3473,6 @@ reflect_parse(JSContext* cx, uint32_t argc, Value* vp)
     options.allowHTMLComments = target == ParseGoal::Script;
     mozilla::Range<const char16_t> chars = linearChars.twoByteRange();
     UsedNameTracker usedNames(cx);
-    if (!usedNames.init())
-        return false;
 
     RootedScriptSourceObject sourceObject(cx, frontend::CreateScriptSourceObject(cx, options,
                                                                                  mozilla::Nothing()));
@@ -3500,8 +3502,6 @@ reflect_parse(JSContext* cx, uint32_t argc, Value* vp)
             return false;
 
         ModuleBuilder builder(cx, module, parser.anyChars);
-        if (!builder.init())
-            return false;
 
         ModuleSharedContext modulesc(cx, module, &cx->global()->emptyGlobalScope(), builder);
         pn = parser.moduleBody(&modulesc);

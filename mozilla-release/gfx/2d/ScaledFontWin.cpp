@@ -109,17 +109,10 @@ UnscaledFontGDI::CreateScaledFont(Float aGlyphSize,
   }
 
   NativeFont nativeFont;
-  nativeFont.mType = NativeFontType::GDI_FONT_FACE;
+  nativeFont.mType = NativeFontType::GDI_LOGFONT;
   nativeFont.mFont = (void*)aInstanceData;
 
-  RefPtr<ScaledFont> font =
-    Factory::CreateScaledFontForNativeFont(nativeFont, this, aGlyphSize);
-
-#ifdef USE_CAIRO_SCALED_FONT
-  static_cast<ScaledFontBase*>(font.get())->PopulateCairoScaledFont();
-#endif
-
-  return font.forget();
+  return Factory::CreateScaledFontForNativeFont(nativeFont, this, aGlyphSize);
 }
 
 AntialiasMode
@@ -129,12 +122,9 @@ ScaledFontWin::GetDefaultAAMode()
 }
 
 #ifdef USE_SKIA
-SkTypeface* ScaledFontWin::GetSkTypeface()
+SkTypeface* ScaledFontWin::CreateSkTypeface()
 {
-  if (!mTypeface) {
-    mTypeface = SkCreateTypefaceFromLOGFONT(mLogFont);
-  }
-  return mTypeface;
+  return SkCreateTypefaceFromLOGFONT(mLogFont);
 }
 #endif
 

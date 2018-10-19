@@ -803,7 +803,7 @@ RespondWithHandler::CancelRequest(nsresult aStatus)
 void
 FetchEvent::RespondWith(JSContext* aCx, Promise& aArg, ErrorResult& aRv)
 {
-  if (EventPhase() == EventBinding::NONE || mWaitToRespond) {
+  if (EventPhase() == Event_Binding::NONE || mWaitToRespond) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
@@ -1067,7 +1067,7 @@ ExtractBytesFromData(const OwningArrayBufferViewOrArrayBufferOrUSVString& aDataI
   if (aDataInit.IsUSVString()) {
     return ExtractBytesFromUSVString(aDataInit.GetAsUSVString(), aBytes);
   }
-  NS_NOTREACHED("Unexpected push message data");
+  MOZ_ASSERT_UNREACHABLE("Unexpected push message data");
   return NS_ERROR_FAILURE;
 }
 }
@@ -1093,7 +1093,7 @@ NS_INTERFACE_MAP_END
 JSObject*
 PushMessageData::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::PushMessageDataBinding::Wrap(aCx, this, aGivenProto);
+  return mozilla::dom::PushMessageData_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -1209,7 +1209,7 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(PushEvent, ExtendableEvent, mData)
 JSObject*
 PushEvent::WrapObjectInternal(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::PushEventBinding::Wrap(aCx, this, aGivenProto);
+  return mozilla::dom::PushEvent_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 ExtendableMessageEvent::ExtendableMessageEvent(EventTarget* aOwner)

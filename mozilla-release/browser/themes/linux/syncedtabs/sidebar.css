@@ -6,21 +6,10 @@
 
 /* These styles are intended to mimic XUL trees and the XUL search box. */
 
-html {
-  background-color: -moz-Field;
-  color: -moz-FieldText;
-  box-sizing: border-box;
-}
-
-.item {
-  padding-inline-end: 0;
-}
-
 .item-title {
   margin: 1px 0 0;
   margin-inline-end: 6px;
 }
-
 
 .search-box {
   -moz-appearance: textfield;
@@ -49,14 +38,4 @@ html {
 
 .textbox-search-clear:not([disabled]) {
   cursor: pointer;
-}
-
-.item.client .item-twisty-container {
-  -moz-appearance: treetwistyopen;
-  margin-top: 3px;
-  margin-left: 2px;
-}
-
-.item.client.closed .item-twisty-container {
-  -moz-appearance: treetwisty;
 }

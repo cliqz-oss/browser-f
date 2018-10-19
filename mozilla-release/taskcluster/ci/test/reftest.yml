@@ -3,6 +3,10 @@ job-defaults:
         by-test-platform:
             android-em-7.0-x86/opt: geckoview-androidTest.apk
             default: null
+    tier:
+        by-test-platform:
+            android-em-7.0-x86/opt: 3
+            default: default
     mozharness:
         script:
             by-test-platform:
@@ -28,7 +32,10 @@ crashtest:
     description: "Crashtest run"
     suite: reftest/crashtest
     treeherder-symbol: R(C)
-    run-on-projects: built-projects
+    run-on-projects:
+        by-test-platform:
+            android-em-7.0-x86/opt: ['mozilla-central']
+            default: built-projects
     instance-size:
         by-test-platform:
             android-em.*: xlarge
@@ -47,17 +54,20 @@ crashtest:
         by-test-platform:
             linux32/debug: both
             default: true
-    tier:
+    max-run-time:
         by-test-platform:
-            .*-qr/.*: 1
-            default: default
+            android-em.*: 7200
+            default: 3600
 
 jsreftest:
     description: "JS Reftest run"
     suite: reftest/jsreftest
     schedules-component: jsreftest  # scheduling for this reftest is different from the others..
     treeherder-symbol: R(J)
-    run-on-projects: built-projects
+    run-on-projects:
+        by-test-platform:
+            android-em-7.0-x86/opt: ['mozilla-central']
+            default: built-projects
     instance-size:
         by-test-platform:
             android-em.*: xlarge
@@ -73,16 +83,14 @@ jsreftest:
             linux64-qr/.*: 4
             linux32/debug: 5
             macosx.*: 2
+            macosx64-ccov/debug: 5
             default: 3
     max-run-time:
         by-test-platform:
             android-em.*: 7200
             windows10-64-ccov/debug: 7200
+            macosx64-ccov/debug: 7200
             default: 3600
-    tier:
-        by-test-platform:
-            linux64-qr/.*: 1
-            default: default
 
 reftest:
     description: "Reftest run"
@@ -104,6 +112,7 @@ reftest:
             android-em.*: 28
             macosx64.*/opt: 2
             macosx64.*/debug: 3
+            macosx64-ccov/debug: 6
             windows.*/opt: 2
             windows.*/debug: 4
             windows10-64-ccov/debug: 6
@@ -116,6 +125,7 @@ reftest:
         by-test-platform:
             android-em.*: 7200
             windows10-64-ccov/debug: 5400
+            macosx64-ccov/debug: 5400
             default: 3600
     mozharness:
         chunked:
@@ -124,10 +134,6 @@ reftest:
                 macosx64/opt: false
                 windows10-64.*/opt: false
                 default: true
-    tier:
-        by-test-platform:
-            linux64-qr/.*: 1
-            default: default
 
 reftest-gpu:
     description: "Reftest GPU run"

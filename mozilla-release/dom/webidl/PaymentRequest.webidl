@@ -59,7 +59,6 @@ dictionary AddressErrors {
   DOMString city;
   DOMString country;
   DOMString dependentLocality;
-  DOMString languageCode;
   DOMString organization;
   DOMString phone;
   DOMString postalCode;
@@ -108,4 +107,5 @@ interface PaymentRequest : EventTarget {
 
            attribute EventHandler         onshippingaddresschange;
            attribute EventHandler         onshippingoptionchange;
+           attribute EventHandler         onpaymentmethodchange;
 };

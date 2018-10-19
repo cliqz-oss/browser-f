@@ -22,7 +22,6 @@
 #include "SVGImageContext.h"
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/SVGImageElement.h"
-#include "nsContentUtils.h"
 #include "nsIReflowCallback.h"
 #include "mozilla/Unused.h"
 
@@ -147,7 +146,7 @@ nsSVGImageFrame::AttributeChanged(int32_t         aNameSpaceID,
   // Currently our SMIL implementation does not modify the DOM attributes. Once
   // we implement the SVG 2 SMIL behaviour this can be removed
   // SVGImageElement::AfterSetAttr's implementation will be sufficient.
-  if (aModType == MutationEventBinding::SMIL &&
+  if (aModType == MutationEvent_Binding::SMIL &&
       aAttribute == nsGkAtoms::href &&
       (aNameSpaceID == kNameSpaceID_XLink ||
        aNameSpaceID == kNameSpaceID_None)) {
@@ -440,7 +439,7 @@ nsSVGImageFrame::ReflowSVG()
 
   if (!extent.IsEmpty()) {
     mRect = nsLayoutUtils::RoundGfxRectToAppRect(extent,
-              PresContext()->AppUnitsPerCSSPixel());
+              AppUnitsPerCSSPixel());
   } else {
     mRect.SetEmpty();
   }
@@ -502,7 +501,7 @@ nsSVGImageFrame::GetHitTestFlags()
 {
   uint16_t flags = 0;
 
-  switch (StyleUserInterface()->mPointerEvents) {
+  switch (StyleUI()->mPointerEvents) {
     case NS_STYLE_POINTER_EVENTS_NONE:
       break;
     case NS_STYLE_POINTER_EVENTS_VISIBLEPAINTED:

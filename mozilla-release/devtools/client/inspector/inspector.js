@@ -33,9 +33,12 @@ loader.lazyRequireGetter(this, "nodeConstants", "devtools/shared/dom-node-consta
 loader.lazyRequireGetter(this, "Menu", "devtools/client/framework/menu");
 loader.lazyRequireGetter(this, "MenuItem", "devtools/client/framework/menu-item");
 loader.lazyRequireGetter(this, "ExtensionSidebar", "devtools/client/inspector/extensions/extension-sidebar");
-loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
 loader.lazyRequireGetter(this, "clipboardHelper", "devtools/shared/platform/clipboard");
 loader.lazyRequireGetter(this, "openContentLink", "devtools/client/shared/link", true);
+loader.lazyRequireGetter(this, "getScreenshotFront", "devtools/shared/fronts/screenshot", true);
+loader.lazyRequireGetter(this, "saveScreenshot", "devtools/shared/screenshot/save");
+
+loader.lazyImporter(this, "DeferredTask", "resource://gre/modules/DeferredTask.jsm");
 
 const {LocalizationHelper, localizeMarkup} = require("devtools/shared/l10n");
 const INSPECTOR_L10N =
@@ -46,6 +49,9 @@ loader.lazyGetter(this, "TOOLBOX_L10N", function() {
 
 // Sidebar dimensions
 const INITIAL_SIDEBAR_SIZE = 350;
+
+// How long we wait to debounce resize events
+const LAZY_RESIZE_INTERVAL_MS = 200;
 
 // If the toolbox's width is smaller than the given amount of pixels, the sidebar
 // automatically switches from 'landscape/horizontal' to 'portrait/vertical' mode.
@@ -59,7 +65,7 @@ const THREE_PANE_FIRST_RUN_PREF = "devtools.inspector.three-pane-first-run";
 const SHOW_THREE_PANE_ONBOARDING_PREF = "devtools.inspector.show-three-pane-tooltip";
 const THREE_PANE_ENABLED_PREF = "devtools.inspector.three-pane-enabled";
 const THREE_PANE_ENABLED_SCALAR = "devtools.inspector.three_pane_enabled";
-
+const THREE_PANE_CHROME_ENABLED_PREF = "devtools.inspector.chrome.three-pane-enabled";
 const TELEMETRY_EYEDROPPER_OPENED = "devtools.toolbar.eyedropper.opened";
 
 /**
@@ -121,7 +127,6 @@ function Inspector(toolbox) {
   // telemetry counts in the Grid Inspector are not double counted on reload.
   this.previousURL = this.target.url;
 
-  this.is3PaneModeEnabled = Services.prefs.getBoolPref(THREE_PANE_ENABLED_PREF);
   this.is3PaneModeFirstRun = Services.prefs.getBoolPref(THREE_PANE_FIRST_RUN_PREF);
   this.show3PaneTooltip = Services.prefs.getBoolPref(SHOW_THREE_PANE_ONBOARDING_PREF);
 
@@ -198,6 +203,34 @@ Inspector.prototype = {
     }
 
     return this._highlighters;
+  },
+
+  get is3PaneModeEnabled() {
+    if (this.target.chrome) {
+      if (!this._is3PaneModeChromeEnabled) {
+        this._is3PaneModeChromeEnabled = Services.prefs.getBoolPref(
+          THREE_PANE_CHROME_ENABLED_PREF);
+      }
+
+      return this._is3PaneModeChromeEnabled;
+    }
+
+    if (!this._is3PaneModeEnabled) {
+      this._is3PaneModeEnabled = Services.prefs.getBoolPref(THREE_PANE_ENABLED_PREF);
+    }
+
+    return this._is3PaneModeEnabled;
+  },
+
+  set is3PaneModeEnabled(value) {
+    if (this.target.chrome) {
+      this._is3PaneModeChromeEnabled = value;
+      Services.prefs.setBoolPref(THREE_PANE_CHROME_ENABLED_PREF,
+        this._is3PaneModeChromeEnabled);
+    } else {
+      this._is3PaneModeEnabled = value;
+      Services.prefs.setBoolPref(THREE_PANE_ENABLED_PREF, this._is3PaneModeEnabled);
+    }
   },
 
   // Added in 53.
@@ -582,18 +615,40 @@ Inspector.prototype = {
     this.sidebar.off("destroy", this.onSidebarHidden);
   },
 
+  _onLazyPanelResize: async function() {
+    // We can be called on a closed window because of the deferred task.
+    if (window.closed) {
+      return;
+    }
+
+    // Use window.top because promiseDocumentFlushed() in a subframe doesn't
+    // work, see https://bugzilla.mozilla.org/show_bug.cgi?id=1441173
+    const useLandscapeMode = await window.top.promiseDocumentFlushed(() => {
+      return this.useLandscapeMode();
+    });
+
+    if (window.closed) {
+      return;
+    }
+
+    this.splitBox.setState({ vert: useLandscapeMode });
+    this.emit("inspector-resize");
+  },
+
   /**
    * If Toolbox width is less than 600 px, the splitter changes its mode
    * to `horizontal` to support portrait view.
    */
   onPanelWindowResize: function() {
-    window.cancelIdleCallback(this._resizeTimerId);
-    this._resizeTimerId = window.requestIdleCallback(() => {
-      this.splitBox.setState({
-        vert: this.useLandscapeMode(),
-      });
-      this.emit("inspector-resize");
-    });
+    if (this.toolbox.currentToolId !== "inspector") {
+      return;
+    }
+
+    if (!this._lazyResizeHandler) {
+      this._lazyResizeHandler = new DeferredTask(this._onLazyPanelResize.bind(this),
+                                                 LAZY_RESIZE_INTERVAL_MS, 0);
+    }
+    this._lazyResizeHandler.arm();
   },
 
   getSidebarSize: function() {
@@ -653,8 +708,6 @@ Inspector.prototype = {
 
   async onSidebarToggle() {
     this.is3PaneModeEnabled = !this.is3PaneModeEnabled;
-    Services.prefs.setBoolPref(THREE_PANE_ENABLED_PREF, this.is3PaneModeEnabled);
-
     await this.setupToolbar();
     await this.addRuleView({ skipQueue: true });
   },
@@ -1224,8 +1277,15 @@ Inspector.prototype = {
    * Handler for the "host-changed" event from the toolbox. Resets the inspector
    * sidebar sizes when the toolbox host type changes.
    */
-  onHostChanged: function() {
-    if (!this.is3PaneModeEnabled) {
+  async onHostChanged() {
+    // Eagerly call our resize handling code to process the fact that we
+    // switched hosts. If we don't do this, we'll wait for resize events + 200ms
+    // to have passed, which causes the old layout to noticeably show up in the
+    // new host, followed by the updated one.
+    await this._onLazyPanelResize();
+    // Note that we may have been destroyed by now, especially in tests, so we
+    // need to check if that's happened before touching anything else.
+    if (!this.target || !this.is3PaneModeEnabled) {
       return;
     }
 
@@ -1402,11 +1462,12 @@ Inspector.prototype = {
     this.reflowTracker.destroy();
     this.styleChangeTracker.destroy();
 
+    this._is3PaneModeChromeEnabled = null;
+    this._is3PaneModeEnabled = null;
     this._notificationBox = null;
     this._target = null;
     this._toolbox = null;
     this.breadcrumbs = null;
-    this.is3PaneModeEnabled = null;
     this.is3PaneModeFirstRun = null;
     this.panelDoc = null;
     this.panelWin.inspector = null;
@@ -1602,6 +1663,18 @@ Inspector.prototype = {
       click: () => this.showDOMProperties(),
     }));
 
+    if (this.selection.nodeFront.customElementLocation) {
+      menu.append(new MenuItem({
+        type: "separator",
+      }));
+
+      menu.append(new MenuItem({
+        id: "node-menu-jumptodefinition",
+        label: INSPECTOR_L10N.getStr("inspectorCustomElementDefinition.label"),
+        click: () => this.jumpToCustomElementDefinition(),
+      }));
+    }
+
     this.buildA11YMenuItem(menu);
 
     const nodeLinkMenuItems = this._getNodeLinkMenuItems();
@@ -1632,7 +1705,13 @@ Inspector.prototype = {
       click: () => this.showAccessibilityProperties(),
       disabled: true
     });
-    this._updateA11YMenuItem(showA11YPropsItem);
+    // Only attempt to determine if a11y props menu item needs to be enabled iff
+    // AccessibilityFront is enabled.
+    const accessibilityFront = this.target.getFront("accessibility");
+    if (accessibilityFront.enabled) {
+      this._updateA11YMenuItem(showA11YPropsItem);
+    }
+
     menu.append(showA11YPropsItem);
   },
 
@@ -1951,7 +2030,7 @@ Inspector.prototype = {
     this.telemetry.scalarSet(TELEMETRY_EYEDROPPER_OPENED, 1);
     this.eyeDropperButton.classList.add("checked");
     this.startEyeDropperListeners();
-    return this.inspector.pickColorFromPage(this.toolbox, {copyOnSelect: true})
+    return this.inspector.pickColorFromPage({copyOnSelect: true})
                          .catch(console.error);
   },
 
@@ -2018,6 +2097,12 @@ Inspector.prototype = {
       jsterm.execute("inspect($0)");
       jsterm.focus();
     });
+  },
+
+  jumpToCustomElementDefinition: function() {
+    const node = this.selection.nodeFront;
+    const { url, line } = node.customElementLocation;
+    this._toolbox.viewSourceInDebugger(url, line, "show_custom_element");
   },
 
   /**
@@ -2240,21 +2325,22 @@ Inspector.prototype = {
    * Initiate gcli screenshot command on selected node.
    */
   async screenshotNode() {
-    const command = Services.prefs.getBoolPref("devtools.screenshot.clipboard.enabled") ?
-      "screenshot --file --clipboard --selector" :
-      "screenshot --file --selector";
-
     // Bug 1332936 - it's possible to call `screenshotNode` while the BoxModel highlighter
     // is still visible, therefore showing it in the picture.
     // To avoid that, we have to hide it before taking the screenshot. The `hideBoxModel`
     // will do that, calling `hide` for the highlighter only if previously shown.
     await this.highlighter.hideBoxModel();
 
-    // Bug 1180314 -  CssSelector might contain white space so need to make sure it is
-    // passed to screenshot as a single parameter.  More work *might* be needed if
-    // CssSelector could contain escaped single- or double-quotes, backslashes, etc.
-    CommandUtils.executeOnTarget(this._target,
-      `${command} '${this.selectionCssSelector}'`);
+    const clipboardEnabled = Services.prefs
+      .getBoolPref("devtools.screenshot.clipboard.enabled");
+    const args = {
+      file: true,
+      selector: this.selectionCssSelector,
+      clipboard: clipboardEnabled
+    };
+    const screenshotFront = getScreenshotFront(this.target);
+    const screenshot = await screenshotFront.capture(args);
+    await saveScreenshot(this.panelWin, args, screenshot);
   },
 
   /**

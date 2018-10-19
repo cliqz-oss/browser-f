@@ -26,6 +26,7 @@
 
 class nsCycleCollectionTraversalCallback;
 class nsIPrincipal;
+class nsPIDOMWindowInner;
 
 namespace mozilla {
 class DOMEventTargetHelper;
@@ -48,8 +49,12 @@ class nsIGlobalObject : public nsISupports,
   bool mIsDying;
 
 protected:
+
+  bool mIsInnerWindow;
+
   nsIGlobalObject()
    : mIsDying(false)
+   , mIsInnerWindow(false)
   {}
 
 public:
@@ -120,11 +125,18 @@ public:
   virtual RefPtr<mozilla::dom::ServiceWorker>
   GetOrCreateServiceWorker(const mozilla::dom::ServiceWorkerDescriptor& aDescriptor);
 
+  // Get the DOM object for the given descriptor or return nullptr if it does
+  // not exist.
+  virtual RefPtr<mozilla::dom::ServiceWorkerRegistration>
+  GetServiceWorkerRegistration(const mozilla::dom::ServiceWorkerRegistrationDescriptor& aDescriptor) const;
+
   // Get the DOM object for the given descriptor or attempt to create one.
   // Creation can still fail and return nullptr during shutdown, etc.
   virtual RefPtr<mozilla::dom::ServiceWorkerRegistration>
   GetOrCreateServiceWorkerRegistration(const mozilla::dom::ServiceWorkerRegistrationDescriptor& aDescriptor);
 
+  // Returns a pointer to this object as an inner window if this is one or nullptr otherwise.
+  nsPIDOMWindowInner* AsInnerWindow();
 protected:
   virtual ~nsIGlobalObject();
 

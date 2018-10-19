@@ -30,6 +30,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Request)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mOwner)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mHeaders)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSignal)
+  tmp->Unfollow();
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
@@ -37,6 +38,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Request)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mOwner)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mHeaders)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSignal)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFollowingSignal)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(Request)
@@ -64,7 +66,7 @@ Request::Request(nsIGlobalObject* aOwner, InternalRequest* aRequest,
   if (aSignal) {
     // If we don't have a signal as argument, we will create it when required by
     // content, otherwise the Request's signal must follow what has been passed.
-    mSignal = new AbortSignal(aSignal->Aborted());
+    mSignal = new AbortSignal(aOwner, aSignal->Aborted());
     if (!mSignal->Aborted()) {
       mSignal->Follow(aSignal);
     }
@@ -117,9 +119,7 @@ GetRequestURLFromDocument(nsIDocument* aDocument, const nsAString& aInput,
   }
 
   nsCOMPtr<nsIURI> resolvedURIClone;
-  // We use CloneIgnoringRef to strip away the fragment even if the original URI
-  // is immutable.
-  aRv = resolvedURI->CloneIgnoringRef(getter_AddRefs(resolvedURIClone));
+  aRv = NS_GetURIWithoutRef(resolvedURI, getter_AddRefs(resolvedURIClone));
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
@@ -165,9 +165,7 @@ GetRequestURLFromChrome(const nsAString& aInput, nsAString& aRequestURL,
   }
 
   nsCOMPtr<nsIURI> uriClone;
-  // We use CloneIgnoringRef to strip away the fragment even if the original URI
-  // is immutable.
-  aRv = uri->CloneIgnoringRef(getter_AddRefs(uriClone));
+  aRv = NS_GetURIWithoutRef(uri, getter_AddRefs(uriClone));
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
@@ -398,7 +396,7 @@ Request::Constructor(const GlobalObject& aGlobal,
           RefPtr<ReferrerSameOriginChecker> checker =
             new ReferrerSameOriginChecker(worker, referrerURL, rv);
           IgnoredErrorResult error;
-          checker->Dispatch(Terminating, error);
+          checker->Dispatch(Canceling, error);
           if (error.Failed() || NS_FAILED(rv)) {
             referrerURL.AssignLiteral(kFETCH_CLIENT_REFERRER_STR);
           }
@@ -630,14 +628,14 @@ AbortSignal*
 Request::GetOrCreateSignal()
 {
   if (!mSignal) {
-    mSignal = new AbortSignal(false);
+    mSignal = new AbortSignal(mOwner, false);
   }
 
   return mSignal;
 }
 
-AbortSignal*
-Request::GetSignal() const
+AbortSignalImpl*
+Request::GetSignalImpl() const
 {
   return mSignal;
 }

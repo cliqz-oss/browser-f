@@ -19,7 +19,7 @@ loader.lazyRequireGetter(this, "ContentProcessTargetActor", "devtools/server/act
 
 /**
  * A class that returns memory data for a parent actor's window.
- * Using a tab-scoped actor with this instance will measure the memory footprint of its
+ * Using a target-scoped actor with this instance will measure the memory footprint of its
  * parent tab. Using a global-scoped actor instance however, will measure the memory
  * footprint of the chrome window referenced by its root actor.
  *
@@ -418,8 +418,14 @@ Memory.prototype = {
    * Accesses the docshell to return the current process time.
    */
   _getCurrentTime: function() {
-    return (this.parent.isRootActor ? this.parent.docShell :
-                                      this.parent.originalDocShell).now();
+    const docShell = this.parent.isRootActor ? this.parent.docShell :
+                     this.parent.originalDocShell;
+    if (docShell) {
+      return docShell.now();
+    }
+    // When used from the ContentProcessTargetActor, parent has no docShell,
+    // so fallback to Cu.now
+    return Cu.now();
   },
 };
 

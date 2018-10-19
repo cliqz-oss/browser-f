@@ -10,8 +10,6 @@
 
   <binding id="toolbar">
     <implementation>
-      <field name="overflowedDuringConstruction">null</field>
-
       <constructor><![CDATA[
           let scope = {};
           ChromeUtils.import("resource:///modules/CustomizableUI.jsm", scope);
@@ -32,7 +30,7 @@
           }
 
           // pass the current set of children for comparison with placements:
-          let children = Array.from(this.childNodes)
+          let children = Array.from(this.children)
                               .filter(node => node.getAttribute("skipintoolbarset") != "true" && node.id)
                               .map(node => node.id);
           CustomizableUI.registerToolbarNode(this, children);
@@ -66,10 +64,6 @@
           return this.ownerDocument.getElementById(aId);
         ]]></body>
       </method>
-
-      <property name="toolbarName"
-                onget="return this.getAttribute('toolbarname');"
-                onset="this.setAttribute('toolbarname', val); return val;"/>
 
       <property name="customizationTarget" readonly="true">
         <getter><![CDATA[
@@ -115,7 +109,7 @@
         <getter><![CDATA[
           let currentWidgets = new Set();
           for (let node of this.customizationTarget.children) {
-            let realNode = node.localName == "toolbarpaletteitem" ? node.firstChild : node;
+            let realNode = node.localName == "toolbarpaletteitem" ? node.firstElementChild : node;
             if (realNode.getAttribute("skipintoolbarset") != "true") {
               currentWidgets.add(realNode.id);
             }
@@ -124,7 +118,7 @@
             let overflowTarget = this.getAttribute("overflowtarget");
             let overflowList = this.ownerDocument.getElementById(overflowTarget);
             for (let node of overflowList.children) {
-              let realNode = node.localName == "toolbarpaletteitem" ? node.firstChild : node;
+              let realNode = node.localName == "toolbarpaletteitem" ? node.firstElementChild : node;
               if (realNode.getAttribute("skipintoolbarset") != "true") {
                 currentWidgets.add(realNode.id);
               }
@@ -261,7 +255,7 @@
               this.contextMenu = null;
               break;
           }
-        }
+        },
       })]]></field>
 
       <method name="_setInactive">
@@ -323,7 +317,7 @@
     </implementation>
   </binding>
 
-  <binding id="toolbarpaletteitem" extends="xul:button">
+  <binding id="toolbarpaletteitem">
     <content>
       <xul:hbox class="toolbarpaletteitem-box">
         <children/>

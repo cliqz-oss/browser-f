@@ -28,6 +28,7 @@
 #include "nsIWebNavigation.h"
 #include "nsIDocShell.h"
 #include "nsIContent.h"
+#include "nsIContentInlines.h"
 #include "nsIImageLoadingContent.h"
 #include "nsITextControlElement.h"
 #include "nsUnicharUtils.h"
@@ -140,6 +141,7 @@ NS_IMPL_ISUPPORTS(nsContentAreaDragDropDataProvider, nsIFlavorDataProvider)
 // into the file system
 nsresult
 nsContentAreaDragDropDataProvider::SaveURIToFile(nsIURI* inSourceURI,
+                                                 nsIPrincipal* inTriggeringPrincipal,
                                                  nsIFile* inDestFile,
                                                  bool isPrivate)
 {
@@ -161,7 +163,8 @@ nsContentAreaDragDropDataProvider::SaveURIToFile(nsIURI* inSourceURI,
   persist->SetPersistFlags(nsIWebBrowserPersist::PERSIST_FLAGS_AUTODETECT_APPLY_CONVERSION);
 
   // referrer policy can be anything since the referrer is nullptr
-  return persist->SavePrivacyAwareURI(inSourceURI, 0, nullptr,
+  return persist->SavePrivacyAwareURI(inSourceURI,
+                                      inTriggeringPrincipal, 0, nullptr,
                                       mozilla::net::RP_Unset,
                                       nullptr, nullptr,
                                       inDestFile, isPrivate);
@@ -341,7 +344,9 @@ nsContentAreaDragDropDataProvider::GetFlavorData(nsITransferable *aTransferable,
     bool isPrivate;
     aTransferable->GetIsPrivateData(&isPrivate);
 
-    rv = SaveURIToFile(sourceURI, file, isPrivate);
+    nsCOMPtr<nsIPrincipal> principal;
+    aTransferable->GetRequestingPrincipal(getter_AddRefs(principal));
+    rv = SaveURIToFile(sourceURI, principal, file, isPrivate);
     // send back an nsIFile
     if (NS_SUCCEEDED(rv)) {
       CallQueryInterface(file, aData);
@@ -743,12 +748,12 @@ DragDataProducer::Produce(DataTransfer* aDataTransfer,
           linkNode = parentLink;
           nodeToSerialize = linkNode;
         } else {
-          nodeToSerialize = do_QueryInterface(draggedNode);
+          nodeToSerialize = draggedNode;
         }
         dragNode = nodeToSerialize;
       } else if (draggedNode && draggedNode->IsHTMLElement(nsGkAtoms::a)) {
         // set linkNode. The code below will handle this
-        linkNode = do_QueryInterface(draggedNode);    // XXX test this
+        linkNode = draggedNode;    // XXX test this
         GetNodeString(draggedNode, mTitleString);
       } else if (parentLink) {
         // parentLink will always be null if there's selected content

@@ -7,7 +7,7 @@
 
 this.EXPORTED_SYMBOLS = ["ScratchpadManager"];
 
-const SCRATCHPAD_WINDOW_URL = "chrome://devtools/content/scratchpad/scratchpad.xul";
+const SCRATCHPAD_WINDOW_URL = "chrome://devtools/content/scratchpad/index.xul";
 const SCRATCHPAD_WINDOW_FEATURES = "chrome,titlebar,toolbar,centerscreen,resizable,dialog=no";
 
 const {require} = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
@@ -87,9 +87,7 @@ this.ScratchpadManager = {
     // such objects are not primitive-values-only anymore so they
     // can leak.
 
-    const enumerator = Services.wm.getEnumerator("devtools:scratchpad");
-    while (enumerator.hasMoreElements()) {
-      const win = enumerator.getNext();
+    for (const win of Services.wm.getEnumerator("devtools:scratchpad")) {
       if (!win.closed && win.Scratchpad.initialized) {
         this._scratchpads.push(clone(win.Scratchpad.getState()));
       }

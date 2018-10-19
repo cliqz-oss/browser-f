@@ -47,7 +47,7 @@ const OBSERVING = [
   "quit-application-granted", "browser-lastwindow-close-granted",
   "quit-application", "browser:purge-session-history",
   "browser:purge-domain-data",
-  "idle-daily", "clear-origin-attributes-data"
+  "idle-daily", "clear-origin-attributes-data",
 ];
 
 // XUL Window properties to (re)store
@@ -57,7 +57,7 @@ const WINDOW_ATTRIBUTES = ["width", "height", "screenX", "screenY", "sizemode"];
 // Hideable window features to (re)store
 // Restored in restoreWindowFeatures()
 const WINDOW_HIDEABLE_FEATURES = [
-  "menubar", "toolbar", "locationbar", "personalbar", "statusbar", "scrollbars"
+  "menubar", "toolbar", "locationbar", "personalbar", "statusbar", "scrollbars",
 ];
 
 // Messages that will be received via the Frame Message Manager.
@@ -129,7 +129,7 @@ const CLOSED_MESSAGES = new Set([
 // These are tab events that we listen to.
 const TAB_EVENTS = [
   "TabOpen", "TabBrowserInserted", "TabClose", "TabSelect", "TabShow", "TabHide", "TabPinned",
-  "TabUnpinned"
+  "TabUnpinned",
 ];
 
 const NS_XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
@@ -163,7 +163,6 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/osfile.jsm", this);
 
 XPCOMUtils.defineLazyServiceGetters(this, {
-  gSessionStartup: ["@mozilla.org/browser/sessionstartup;1", "nsISessionStartup"],
   gScreenManager: ["@mozilla.org/gfx/screenmanager;1", "nsIScreenManager"],
   Telemetry: ["@mozilla.org/base/telemetry;1", "nsITelemetry"],
 });
@@ -174,12 +173,14 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   DevToolsShim: "chrome://devtools-startup/content/DevToolsShim.jsm",
   GlobalState: "resource:///modules/sessionstore/GlobalState.jsm",
+  HomePage: "resource:///modules/HomePage.jsm",
   PrivacyFilter: "resource://gre/modules/sessionstore/PrivacyFilter.jsm",
   PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
   RunState: "resource:///modules/sessionstore/RunState.jsm",
   SessionCookies: "resource:///modules/sessionstore/SessionCookies.jsm",
   SessionFile: "resource:///modules/sessionstore/SessionFile.jsm",
   SessionSaver: "resource:///modules/sessionstore/SessionSaver.jsm",
+  SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
   TabAttributes: "resource:///modules/sessionstore/TabAttributes.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   TabState: "resource:///modules/sessionstore/TabState.jsm",
@@ -440,7 +441,7 @@ Object.freeze(SessionStore);
 var SessionStoreInternal = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsIObserver,
-    Ci.nsISupportsWeakReference
+    Ci.nsISupportsWeakReference,
   ]),
 
   _globalState: new GlobalState(),
@@ -596,9 +597,7 @@ var SessionStoreInternal = {
       // in one of the currently open windows that was closed after the
       // last-closed window.
       let tabTimestamps = [];
-      let windowsEnum = Services.wm.getEnumerator("navigator:browser");
-      while (windowsEnum.hasMoreElements()) {
-        let window = windowsEnum.getNext();
+      for (let window of Services.wm.getEnumerator("navigator:browser")) {
         let windowState = this._windows[window.__SSi];
         if (windowState && windowState._closedTabs[0]) {
           tabTimestamps.push(windowState._closedTabs[0].closedAt);
@@ -638,10 +637,10 @@ var SessionStoreInternal = {
   initSession() {
     TelemetryStopwatch.start("FX_SESSION_RESTORE_STARTUP_INIT_SESSION_MS");
     let state;
-    let ss = gSessionStartup;
+    let ss = SessionStartup;
 
     if (ss.doRestore() ||
-        ss.sessionType == Ci.nsISessionStartup.DEFER_SESSION) {
+        ss.sessionType == ss.DEFER_SESSION) {
       state = ss.state;
     }
 
@@ -649,7 +648,7 @@ var SessionStoreInternal = {
       try {
         // If we're doing a DEFERRED session, then we want to pull pinned tabs
         // out so they can be restored.
-        if (ss.sessionType == Ci.nsISessionStartup.DEFER_SESSION) {
+        if (ss.sessionType == ss.DEFER_SESSION) {
           let [iniState, remainingState] = this._prepDataForDeferredRestore(state);
           // If we have a iniState with windows, that means that we have windows
           // with app tabs to restore.
@@ -967,7 +966,7 @@ var SessionStoreInternal = {
 
           // Remove state we don't need any longer.
           TabStateCache.update(browser, {
-            userTypedValue: null, userTypedClear: null
+            userTypedValue: null, userTypedClear: null,
           });
         }
         break;
@@ -1056,7 +1055,7 @@ var SessionStoreInternal = {
                                     this.getCurrentEpoch(aEvent.otherBrowser));
         this.setCurrentEpoch(target, newEpoch);
         target.messageManager.sendAsyncMessage("SessionStore:becomeActiveProcess", {
-          epoch: newEpoch
+          epoch: newEpoch,
         });
         break;
       default:
@@ -1100,7 +1099,7 @@ var SessionStoreInternal = {
     });
 
     // Load the frame script after registering listeners.
-    mm.loadFrameScript("chrome://browser/content/content-sessionStore.js", true);
+    mm.loadFrameScript("chrome://browser/content/content-sessionStore.js", true, true);
 
     // and create its data object
     this._windows[aWindow.__SSi] = { tabs: [], selected: 0, _closedTabs: [], busy: false };
@@ -1158,7 +1157,7 @@ var SessionStoreInternal = {
           // We're starting with a single private window. Save the state we
           // actually wanted to restore so that we can do it later in case
           // the user opens another, non-private window.
-          this._deferredInitialState = gSessionStartup.state;
+          this._deferredInitialState = SessionStartup.state;
 
           // Nothing to restore now, notify observers things are complete.
           Services.obs.notifyObservers(null, NOTIFY_WINDOWS_RESTORED);
@@ -1309,7 +1308,7 @@ var SessionStoreInternal = {
       // We are ready for initialization as soon as the session file has been
       // read from disk and the initial window's delayed startup has finished.
       this._promiseReadyForInitialization =
-        Promise.all([promise, gSessionStartup.onceInitialized]);
+        Promise.all([promise, SessionStartup.onceInitialized]);
     }
 
     // We can't call this.onLoad since initialization
@@ -1625,7 +1624,13 @@ var SessionStoreInternal = {
 
           const observeTopic = topic => {
             let deferred = PromiseUtils.defer();
-            const cleanup = () => Services.obs.removeObserver(deferred.resolve, topic);
+            const cleanup = () => {
+              try {
+                Services.obs.removeObserver(deferred.resolve, topic);
+              } catch (ex) {
+                Cu.reportError("SessionStore: exception whilst flushing all windows: " + ex);
+              }
+            };
             Services.obs.addObserver(subject => {
               // Skip abort on ipc:content-shutdown if not abnormal/crashed
               subject.QueryInterface(Ci.nsIPropertyBag2);
@@ -1689,11 +1694,7 @@ var SessionStoreInternal = {
       // We have to wait for these messages to come up from
       // each window and each browser. In the meantime, hide
       // the windows to improve perceived shutdown speed.
-      let baseWin = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                          .getInterface(Ci.nsIDocShell)
-                          .QueryInterface(Ci.nsIDocShellTreeItem)
-                          .treeOwner
-                          .QueryInterface(Ci.nsIBaseWindow);
+      let baseWin = window.docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
       baseWin.visibility = false;
     }
 
@@ -1985,9 +1986,8 @@ var SessionStoreInternal = {
       state: tabState,
       title: tabTitle,
       image: tabbrowser.getIcon(aTab),
-      iconLoadingPrincipal: Utils.serializePrincipal(aTab.linkedBrowser.contentPrincipal),
       pos: aTab._tPos,
-      closedAt: Date.now()
+      closedAt: Date.now(),
     };
 
     let closedTabs = this._windows[aWindow.__SSi]._closedTabs;
@@ -2385,7 +2385,10 @@ var SessionStoreInternal = {
     // Note that we cannot simply replace the contents of the cache
     // as |aState| can be an incomplete state that will be completed
     // by |restoreTabs|.
-    let tabState = JSON.parse(aState);
+    let tabState = aState;
+    if (typeof tabState == "string") {
+      tabState = JSON.parse(aState);
+    }
     if (!tabState) {
       throw Components.Exception("Invalid state string: not JSON", Cr.NS_ERROR_INVALID_ARG);
     }
@@ -2431,9 +2434,12 @@ var SessionStoreInternal = {
 
     // Create a new tab.
     let userContextId = aTab.getAttribute("usercontextid");
-    let newTab = aTab == aWindow.gBrowser.selectedTab ?
-      aWindow.gBrowser.addTab(null, {relatedToCurrent: true, ownerTab: aTab, userContextId}) :
-      aWindow.gBrowser.addTab(null, {userContextId});
+
+    let tabOptions = {
+      userContextId,
+      ...(aTab == aWindow.gBrowser.selectedTab ? {relatedToCurrent: true, ownerTab: aTab} : {}),
+    };
+    let newTab = aWindow.gBrowser.addTrustedTab(null, tabOptions);
 
     // Start the throbber to pretend we're doing something while actually
     // waiting for data from the frame script.
@@ -2469,7 +2475,7 @@ var SessionStoreInternal = {
 
       // Restore the state into the new tab.
       this.restoreTab(newTab, tabState, {
-        restoreImmediately: aRestoreImmediately
+        restoreImmediately: aRestoreImmediately,
       });
     });
 
@@ -2522,7 +2528,7 @@ var SessionStoreInternal = {
     // create a new tab
     let tabbrowser = aWindow.gBrowser;
     let tab = tabbrowser.selectedTab =
-      tabbrowser.addTab(null, {
+      tabbrowser.addTrustedTab(null, {
         index: pos,
         pinned: state.pinned,
         userContextId: state.userContextId,
@@ -2720,9 +2726,7 @@ var SessionStoreInternal = {
     }
 
     // Check for a tab.
-    let windowsEnum = Services.wm.getEnumerator("navigator:browser");
-    while (windowsEnum.hasMoreElements()) {
-      let window = windowsEnum.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       let windowState = this._windows[window.__SSi];
       if (windowState) {
         for (let j = 0, l = windowState._closedTabs.length; j < l; j++) {
@@ -2776,18 +2780,14 @@ var SessionStoreInternal = {
 
     // Restore the tab icon.
     if ("image" in tabData) {
-      // Use the serialized contentPrincipal with the new icon load.
-      let loadingPrincipal = Utils.deserializePrincipal(tabData.iconLoadingPrincipal);
-      win.gBrowser.setIcon(tab, tabData.image, loadingPrincipal);
+      win.gBrowser.setIcon(tab, tabData.image, undefined, tabData.iconLoadingPrincipal);
       TabStateCache.update(browser, { image: null, iconLoadingPrincipal: null });
     }
   },
 
   // This method deletes all the closedTabs matching userContextId.
   _forgetTabsWithUserContextId(userContextId) {
-    let windowsEnum = Services.wm.getEnumerator("navigator:browser");
-    while (windowsEnum.hasMoreElements()) {
-      let window = windowsEnum.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       let windowState = this._windows[window.__SSi];
       if (windowState) {
         // In order to remove the tabs in the correct order, we store the
@@ -2896,7 +2896,7 @@ var SessionStoreInternal = {
         // Later, these windows will be restored with newly opened windows.
         this._updateWindowRestoreState(windowToUse, {
           windows: [winState],
-          options: {overwriteTabs: canOverwriteTabs}
+          options: {overwriteTabs: canOverwriteTabs},
         });
         openWindows.push(windowToUse);
       } else {
@@ -2972,9 +2972,7 @@ var SessionStoreInternal = {
    * Revive all crashed tabs and reset the crashed tabs count to 0.
    */
   reviveAllCrashedTabs() {
-    let windowsEnum = Services.wm.getEnumerator("navigator:browser");
-    while (windowsEnum.hasMoreElements()) {
-      let window = windowsEnum.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       for (let tab of window.gBrowser.tabs) {
         this.reviveCrashedTab(tab);
       }
@@ -3135,7 +3133,7 @@ var SessionStoreInternal = {
     let tabbrowser = aWindow.gBrowser;
     let startupPref = this._prefBranch.getIntPref("startup.page");
     if (startupPref == 1)
-      homePages = homePages.concat(aWindow.gHomeButton.getHomePage().split("|"));
+      homePages = homePages.concat(HomePage.get().split("|"));
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
       let tab = tabbrowser.tabs[i];
@@ -3275,7 +3273,7 @@ var SessionStoreInternal = {
     let session = {
       lastUpdate: Date.now(),
       startTime: this._sessionStartTime,
-      recentCrashes: this._recentCrashes
+      recentCrashes: this._recentCrashes,
     };
 
     let state = {
@@ -3284,7 +3282,7 @@ var SessionStoreInternal = {
       selectedWindow: ix + 1,
       _closedWindows: lastClosedWindowsCopy,
       session,
-      global: this._globalState.getState()
+      global: this._globalState.getState(),
     };
 
     // Collect and store session cookies.
@@ -3492,13 +3490,14 @@ var SessionStoreInternal = {
         // Setting noInitialLabel is a perf optimization. Rendering tab labels
         // would make resizing the tabs more expensive as we're adding them.
         // Each tab will get its initial label set in restoreTab.
-        tab = tabbrowser.addTab(url,
-                                { createLazyBrowser,
-                                  skipAnimation: true,
-                                  noInitialLabel: true,
-                                  userContextId,
-                                  skipBackgroundNotify: true,
-                                  bulkOrderedOpen: true });
+        tab = tabbrowser.addTrustedTab(url,
+                                       { createLazyBrowser,
+                                         skipAnimation: true,
+                                         allowInheritPrincipal: true,
+                                         noInitialLabel: true,
+                                         userContextId,
+                                         skipBackgroundNotify: true,
+                                         bulkOrderedOpen: true });
 
         if (select) {
           let leftoverTab = tabbrowser.selectedTab;
@@ -3891,7 +3890,7 @@ var SessionStoreInternal = {
       image: tabData.image || "",
       iconLoadingPrincipal: tabData.iconLoadingPrincipal || null,
       userTypedValue: tabData.userTypedValue || "",
-      userTypedClear: tabData.userTypedClear || 0
+      userTypedClear: tabData.userTypedClear || 0,
     });
 
     // Restore tab attributes.
@@ -3949,7 +3948,7 @@ var SessionStoreInternal = {
         url,
         title,
         userTypedValue: tabData.userTypedValue || "",
-        userTypedClear: tabData.userTypedClear || 0
+        userTypedClear: tabData.userTypedClear || 0,
       });
     }
 
@@ -4146,8 +4145,7 @@ var SessionStoreInternal = {
     var _this = this;
     function win_(aName) { return _this._getWindowDimension(win, aName); }
 
-    const dwu = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils);
+    const dwu = win.windowUtils;
     // find available space on the screen where this window is being placed
     let screen = gScreenManager.screenForRect(aLeft, aTop, aWidth, aHeight);
     if (screen) {
@@ -4312,7 +4310,7 @@ var SessionStoreInternal = {
         if (window.__SSi && !window.closed)
           yield window;
       }
-    }
+    },
   },
 
   /**
@@ -4329,11 +4327,8 @@ var SessionStoreInternal = {
    * setBrowserState to treat them as open windows.
    */
   _handleClosedWindows: function ssi_handleClosedWindows() {
-    var windowsEnum = Services.wm.getEnumerator("navigator:browser");
-
     let promises = [];
-    while (windowsEnum.hasMoreElements()) {
-      var window = windowsEnum.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       if (window.closed) {
         promises.push(this.onClose(window));
       }
@@ -4388,7 +4383,7 @@ var SessionStoreInternal = {
     }
 
     var window =
-      Services.ww.openWindow(null, this._prefBranch.getCharPref("chromeURL"),
+      Services.ww.openWindow(null, AppConstants.BROWSER_CHROME_URL,
                              "_blank", features, argString);
 
     this._updateWindowRestoreState(window, aState);
@@ -4470,7 +4465,7 @@ var SessionStoreInternal = {
         }
         // Width and height attribute report the inner size, but we want
         // to store the outer size, so add the difference.
-        let xulWin = aWindow.getInterface(Ci.nsIDocShell)
+        let xulWin = aWindow.docShell
                             .treeOwner
                             .QueryInterface(Ci.nsIInterfaceRequestor)
                             .getInterface(Ci.nsIXULWindow);
@@ -4586,7 +4581,7 @@ var SessionStoreInternal = {
 
   /**
    * This is going to take a state as provided at startup (via
-   * nsISessionStartup.state) and split it into 2 parts. The first part
+   * SessionStartup.state) and split it into 2 parts. The first part
    * (defaultState) will be a state that should still be restored at startup,
    * while the second part (state) is a state that should be saved for later.
    * defaultState will be comprised of windows with only pinned tabs, extracted
@@ -4597,12 +4592,12 @@ var SessionStoreInternal = {
    * to restore the previous session (publicly exposed as restoreLastSession).
    *
    * @param state
-   *        The state, presumably from nsISessionStartup.state
+   *        The state, presumably from SessionStartup.state
    * @returns [defaultState, state]
    */
   _prepDataForDeferredRestore: function ssi_prepDataForDeferredRestore(state) {
     // Make sure that we don't modify the global state as provided by
-    // nsSessionStartup.state.
+    // SessionStartup.state.
     state = Cu.cloneInto(state, {});
 
     let defaultState = { windows: [], selectedWindow: 1 };
@@ -5055,7 +5050,7 @@ var TabRestoreQueue = {
       const PREF = "browser.sessionstore.restore_hidden_tabs";
       Services.prefs.addObserver(PREF, updateValue);
       return updateValue();
-    }
+    },
   },
 
   // Resets the queue and removes all tabs.
@@ -5187,7 +5182,7 @@ var DyingWindowCache = {
 
   remove(window) {
     this._data.delete(window);
-  }
+  },
 };
 
 // A weak set of dirty windows. We use it to determine which windows we need to
@@ -5209,7 +5204,7 @@ var DirtyWindows = {
 
   clear(window) {
     this._data = new WeakMap();
-  }
+  },
 };
 
 // The state from the previous session (after restoring pinned tabs). This
@@ -5237,5 +5232,5 @@ var LastSession = {
       if (!silent)
         Services.obs.notifyObservers(null, NOTIFY_LAST_SESSION_CLEARED);
     }
-  }
+  },
 };

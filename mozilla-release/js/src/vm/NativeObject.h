@@ -92,6 +92,8 @@ ArraySetLength(JSContext* cx, Handle<ArrayObject*> obj, HandleId id,
                unsigned attrs, HandleValue value, ObjectOpResult& result);
 
 /*
+ * [SMDOC] NativeObject Elements layout
+ *
  * Elements header used for native objects. The elements component of such objects
  * offers an efficient representation for all or some of the indexed properties
  * of the object, using a flat array of Values rather than a shape hierarchy
@@ -158,6 +160,9 @@ ArraySetLength(JSContext* cx, Handle<ArrayObject*> obj, HandleId id,
  * Elements do not track property creation order, so enumerating the elements
  * of an object does not necessarily visit indexes in the order they were
  * created.
+ *
+ *
+ * [SMDOC] NativeObject shifted elements optimization
  *
  * Shifted elements
  * ----------------
@@ -362,7 +367,7 @@ class ObjectElements
         return int(offsetof(ObjectElements, length)) - int(sizeof(ObjectElements));
     }
 
-    static bool ConvertElementsToDoubles(JSContext* cx, uintptr_t elements);
+    static void ConvertElementsToDoubles(JSContext* cx, uintptr_t elements);
     static bool MakeElementsCopyOnWrite(JSContext* cx, NativeObject* obj);
 
     static MOZ_MUST_USE bool PreventExtensions(JSContext* cx, NativeObject* obj);
@@ -432,6 +437,8 @@ enum class ShouldUpdateTypes {
 };
 
 /*
+ * [SMDOC] NativeObject layout
+ *
  * NativeObject specifies the internal implementation of a native object.
  *
  * Native objects use ShapedObject::shape to record property information. Two
@@ -1244,12 +1251,25 @@ class NativeObject : public ShapedObject
         }
     }
 
-    void setDenseInitializedLength(uint32_t length) {
+  private:
+    void setDenseInitializedLengthInternal(uint32_t length) {
         MOZ_ASSERT(length <= getDenseCapacity());
         MOZ_ASSERT(!denseElementsAreCopyOnWrite());
         MOZ_ASSERT(!denseElementsAreFrozen());
         prepareElementRangeForOverwrite(length, getElementsHeader()->initializedLength);
         getElementsHeader()->initializedLength = length;
+    }
+
+  public:
+    void setDenseInitializedLength(uint32_t length) {
+        MOZ_ASSERT(isExtensible());
+        setDenseInitializedLengthInternal(length);
+    }
+
+    void setDenseInitializedLengthMaybeNonExtensible(JSContext* cx, uint32_t length) {
+        setDenseInitializedLengthInternal(length);
+        if (!isExtensible())
+            shrinkCapacityToInitializedLength(cx);
     }
 
     inline void ensureDenseInitializedLength(JSContext* cx,
@@ -1278,6 +1298,10 @@ class NativeObject : public ShapedObject
             setDenseElement(index, val);
     }
 
+  private:
+    inline void addDenseElementType(JSContext* cx, uint32_t index, const Value& val);
+
+  public:
     inline void setDenseElementWithType(JSContext* cx, uint32_t index,
                                         const Value& val);
     inline void initDenseElementWithType(JSContext* cx, uint32_t index,

@@ -106,7 +106,6 @@ class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
         self.test_packages_url = c.get('test_packages_url')
         self.test_manifest = c.get('test_manifest')
         self.robocop_path = os.path.join(abs_dirs['abs_work_dir'], "robocop.apk")
-        self.minidump_stackwalk_path = c.get("minidump_stackwalk_path")
         self.device_name = os.environ['DEVICE_NAME']
         self.device_serial = os.environ['DEVICE_SERIAL']
         self.device_ip = os.environ['DEVICE_IP']
@@ -399,6 +398,8 @@ class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
             # marionette options
             'address': c.get('marionette_address') % {'device_ip': self.device_ip},
             'gecko_log': os.path.join(dirs["abs_blob_upload_dir"], 'gecko.log'),
+            'marionette_extra': c.get('marionette_extra', ''),
+            'xpcshell_extra': c.get('xpcshell_extra', ''),
             'test_manifest': os.path.join(
                 dirs['abs_marionette_tests_dir'],
                 self.config.get('marionette_test_manifest', '')
@@ -417,7 +418,9 @@ class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
                 # only query package name if requested
                 cmd.extend([option % {'app': self._query_package_name()}])
             else:
-                cmd.extend([option % str_format_values])
+                option = option % str_format_values
+                if option:
+                    cmd.extend([option])
 
         if user_paths:
             cmd.extend(user_paths.split(':'))

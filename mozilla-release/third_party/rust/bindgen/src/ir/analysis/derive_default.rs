@@ -177,7 +177,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveDefault<'ctx> {
             });
             return if layout_can_derive &&
                       !(ty.is_union() &&
-                        self.ctx.options().rust_features().untagged_union()) {
+                        self.ctx.options().rust_features().untagged_union) {
                 trace!("    we can trivially derive Default for the layout");
                 ConstrainResult::Same
             } else {
@@ -204,6 +204,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveDefault<'ctx> {
             TypeKind::Function(..) |
             TypeKind::Int(..) |
             TypeKind::Float(..) |
+            TypeKind::Vector(..) |
             TypeKind::Complex(..) => {
                 trace!("    simple type that can always derive Default");
                 ConstrainResult::Same
@@ -271,7 +272,7 @@ impl<'ctx> MonotoneFramework for CannotDeriveDefault<'ctx> {
                 }
 
                 if info.kind() == CompKind::Union {
-                    if self.ctx.options().rust_features().untagged_union() {
+                    if self.ctx.options().rust_features().untagged_union {
                         trace!("    cannot derive Default for Rust unions");
                         return self.insert(id);
                     }

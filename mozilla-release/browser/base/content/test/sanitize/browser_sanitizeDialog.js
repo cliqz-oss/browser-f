@@ -59,9 +59,6 @@ add_task(async function default_state() {
   wh.onload = function() {
     // Select "Last Hour"
     this.selectDuration(Sanitizer.TIMESPAN_HOUR);
-    // Hide details
-    if (!this.getItemList().collapsed)
-      this.toggleDetails();
     this.acceptDialog();
   };
   wh.open();
@@ -87,15 +84,6 @@ add_task(async function test_cancel() {
   wh.onload = function() {
     this.selectDuration(Sanitizer.TIMESPAN_HOUR);
     this.checkPrefCheckbox("history", false);
-    this.checkDetails(false);
-
-    // Show details
-    this.toggleDetails();
-    this.checkDetails(true);
-
-    // Hide details
-    this.toggleDetails();
-    this.checkDetails(false);
     this.cancelDialog();
   };
   wh.onunload = async function() {
@@ -276,16 +264,6 @@ add_task(async function test_everything() {
        "with a predefined timespan");
     this.selectDuration(Sanitizer.TIMESPAN_EVERYTHING);
     this.checkPrefCheckbox("history", true);
-    this.checkDetails(true);
-
-    // Hide details
-    this.toggleDetails();
-    this.checkDetails(false);
-
-    // Show details
-    this.toggleDetails();
-    this.checkDetails(true);
-
     this.acceptDialog();
   };
   wh.onunload = async function() {
@@ -362,12 +340,12 @@ add_task(async function test_cannot_clear_history() {
   wh.onload = function() {
     // Check that the relevant checkboxes are enabled
     var cb = this.win.document.querySelectorAll(
-               "#itemList > [preference='privacy.cpd.formdata']");
+               "checkbox[preference='privacy.cpd.formdata']");
     ok(cb.length == 1 && !cb[0].disabled, "There is formdata, checkbox to " +
        "clear formdata should be enabled.");
 
     cb = this.win.document.querySelectorAll(
-               "#itemList > [preference='privacy.cpd.history']");
+               "checkbox[preference='privacy.cpd.history']");
     ok(cb.length == 1 && !cb[0].disabled, "There is history, checkbox to " +
        "clear history should be enabled.");
 
@@ -398,7 +376,7 @@ add_task(async function test_no_formdata_history_to_clear() {
                "formdata checkbox checked");
 
     var cb = this.win.document.querySelectorAll(
-               "#itemList > [preference='privacy.cpd.history']");
+               "checkbox[preference='privacy.cpd.history']");
     ok(cb.length == 1 && !cb[0].disabled && cb[0].checked,
        "There is no history, but history checkbox should always be enabled " +
        "and will be checked from previous preference.");
@@ -422,7 +400,7 @@ add_task(async function test_form_entries() {
                "dialog where you could not clear formdata.");
 
     var cb = this.win.document.querySelectorAll(
-               "#itemList > [preference='privacy.cpd.formdata']");
+               "checkbox[preference='privacy.cpd.formdata']");
 
     info("There exists formEntries so the checkbox should be in sync with the pref.");
     is(cb.length, 1, "There is only one checkbox for form data");
@@ -438,111 +416,6 @@ add_task(async function test_form_entries() {
   };
   wh.open();
   await wh.promiseClosed;
-});
-
-
-/**
- * Ensure that toggling details persists
- * across dialog openings.
- */
-add_task(async function test_toggling_details_persists() {
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Check all items and select "Everything"
-      this.checkAllCheckboxes();
-      this.selectDuration(Sanitizer.TIMESPAN_EVERYTHING);
-
-      // Hide details
-      this.toggleDetails();
-      this.checkDetails(false);
-      this.acceptDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Details should remain closed because all items are checked.
-      this.checkDetails(false);
-
-      // Uncheck history.
-      this.checkPrefCheckbox("history", false);
-      this.acceptDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Details should be open because not all items are checked.
-      this.checkDetails(true);
-
-      // Modify the Site Preferences item state (bug 527820)
-      this.checkAllCheckboxes();
-      this.checkPrefCheckbox("siteSettings", false);
-      this.acceptDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Details should be open because not all items are checked.
-      this.checkDetails(true);
-
-      // Hide details
-      this.toggleDetails();
-      this.checkDetails(false);
-      this.cancelDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Details should be open because not all items are checked.
-      this.checkDetails(true);
-
-      // Select another duration
-      this.selectDuration(Sanitizer.TIMESPAN_HOUR);
-      // Hide details
-      this.toggleDetails();
-      this.checkDetails(false);
-      this.acceptDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Details should not be open because "Last Hour" is selected
-      this.checkDetails(false);
-
-      this.cancelDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
-  {
-    let wh = new WindowHelper();
-    wh.onload = function() {
-      // Details should have remained closed
-      this.checkDetails(false);
-
-      // Show details
-      this.toggleDetails();
-      this.checkDetails(true);
-      this.cancelDialog();
-    };
-    wh.open();
-    await wh.promiseClosed;
-  }
 });
 
 // Test for offline cache deletion
@@ -567,8 +440,6 @@ add_task(async function test_offline_cache() {
   let wh = new WindowHelper();
   wh.onload = function() {
     this.selectDuration(Sanitizer.TIMESPAN_EVERYTHING);
-    // Show details
-    this.toggleDetails();
     // Clear only offlineApps
     this.uncheckAllCheckboxes();
     this.checkPrefCheckbox("offlineApps", true);
@@ -580,7 +451,7 @@ add_task(async function test_offline_cache() {
     var visitor = {
       onCacheStorageInfo(aEntryCount, aConsumption, aCapacity, aDiskDirectory) {
         size = aConsumption;
-      }
+      },
     };
     storage.asyncVisitStorage(visitor, false);
     // Offline cache visit happens synchronously, since it's forwarded to the old code
@@ -597,7 +468,7 @@ add_task(async function test_offline_cache() {
       stream.close();
       entry.close();
       wh.open();
-    }
+    },
   };
 
   storage.asyncOpenURI(makeURI(URL), "", Ci.nsICacheStorage.OPEN_TRUNCATE, cacheListener);
@@ -617,8 +488,6 @@ add_task(async function test_offline_apps_permissions() {
   let wh = new WindowHelper();
   wh.onload = function() {
     this.selectDuration(Sanitizer.TIMESPAN_EVERYTHING);
-    // Show details
-    this.toggleDetails();
     // Clear only offlineApps
     this.uncheckAllCheckboxes();
     this.checkPrefCheckbox("siteSettings", true);
@@ -667,36 +536,6 @@ WindowHelper.prototype = {
   },
 
   /**
-   * Ensures that the details progressive disclosure button and the item list
-   * hidden by it match up.  Also makes sure the height of the dialog is
-   * sufficient for the item list and warning panel.
-   *
-   * @param aShouldBeShown
-   *        True if you expect the details to be shown and false if hidden
-   */
-  checkDetails(aShouldBeShown) {
-    let button = this.getDetailsButton();
-    let list = this.getItemList();
-    let hidden = list.hidden || list.collapsed;
-    is(hidden, !aShouldBeShown,
-       "Details should be " + (aShouldBeShown ? "shown" : "hidden") +
-       " but were actually " + (hidden ? "hidden" : "shown"));
-    let dir = hidden ? "down" : "up";
-    is(button.className, "expander-" + dir,
-       "Details button should be " + dir + " because item list is " +
-       (hidden ? "" : "not ") + "hidden");
-    let height = 0;
-    if (!hidden) {
-      ok(list.boxObject.height > 30, "listbox has sufficient size");
-      height += list.boxObject.height;
-    }
-    if (this.isWarningPanelVisible())
-      height += this.getWarningPanel().boxObject.height;
-    ok(height < this.win.innerHeight,
-       "Window should be tall enough to fit warning panel and item list");
-  },
-
-  /**
    * (Un)checks a history scope checkbox (browser & download history,
    * form history, etc.).
    *
@@ -708,7 +547,7 @@ WindowHelper.prototype = {
   checkPrefCheckbox(aPrefName, aCheckState) {
     var pref = "privacy.cpd." + aPrefName;
     var cb = this.win.document.querySelectorAll(
-               "#itemList > [preference='" + pref + "']");
+               "checkbox[preference='" + pref + "']");
     is(cb.length, 1, "found checkbox for " + pref + " preference");
     if (cb[0].checked != aCheckState)
       cb[0].click();
@@ -718,7 +557,7 @@ WindowHelper.prototype = {
    * Makes sure all the checkboxes are checked.
    */
   _checkAllCheckboxesCustom(check) {
-    var cb = this.win.document.querySelectorAll("#itemList > [preference]");
+    var cb = this.win.document.querySelectorAll("checkbox[preference]");
     ok(cb.length > 1, "found checkboxes for preferences");
     for (var i = 0; i < cb.length; ++i) {
       var pref = this.win.Preferences.get(cb[i].getAttribute("preference"));
@@ -736,24 +575,10 @@ WindowHelper.prototype = {
   },
 
   /**
-   * @return The details progressive disclosure button
-   */
-  getDetailsButton() {
-    return this.win.document.getElementById("detailsExpander");
-  },
-
-  /**
    * @return The dialog's duration dropdown
    */
   getDurationDropdown() {
     return this.win.document.getElementById("sanitizeDurationChoice");
-  },
-
-  /**
-   * @return The item list hidden by the details progressive disclosure button
-   */
-  getItemList() {
-    return this.win.document.getElementById("itemList");
   },
 
   /**
@@ -857,13 +682,6 @@ WindowHelper.prototype = {
          "Warning panel should not be visible for non-TIMESPAN_EVERYTHING");
     }
   },
-
-  /**
-   * Toggles the details progressive disclosure button.
-   */
-  toggleDetails() {
-    this.getDetailsButton().click();
-  }
 };
 
 function promiseSanitizationComplete() {
@@ -882,7 +700,7 @@ async function addDownloadWithMinutesAgo(aExpectedPathList, aMinutesAgo) {
   let name = "fakefile-" + aMinutesAgo + "-minutes-ago";
   let download = await Downloads.createDownload({
     source: "https://bugzilla.mozilla.org/show_bug.cgi?id=480169",
-    target: name
+    target: name,
   });
   download.startTime = new Date(now_mSec - (aMinutesAgo * kMsecPerMin));
   download.canceled = true;
@@ -915,7 +733,7 @@ function promiseAddFormEntryWithMinutesAgo(aMinutesAgo) {
                          },
                          handleCompletion(reason) {
                            resolve(name);
-                         }
+                         },
                        })
    );
 }
@@ -936,7 +754,7 @@ function formNameExists(name) {
                           if (!reason) {
                             resolve(count);
                           }
-                        }
+                        },
                       });
   });
 }
@@ -962,7 +780,7 @@ async function blankSlate() {
       handleError(error) {
         reject(error);
         throw new Error("Error occurred updating form history: " + error);
-      }
+      },
     });
   });
 

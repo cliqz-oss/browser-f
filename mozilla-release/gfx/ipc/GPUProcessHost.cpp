@@ -166,6 +166,7 @@ GPUProcessHost::Shutdown()
 
     // The channel might already be closed if we got here unexpectedly.
     if (!mChannelClosed) {
+      mGPUChild->SendShutdownVR();
       mGPUChild->Close();
     }
 

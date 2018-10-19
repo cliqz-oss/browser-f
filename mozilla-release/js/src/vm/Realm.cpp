@@ -21,6 +21,7 @@
 #include "js/RootingAPI.h"
 #include "js/Wrapper.h"
 #include "proxy/DeadObjectProxy.h"
+#include "vm/DateTime.h"
 #include "vm/Debugger.h"
 #include "vm/Iteration.h"
 #include "vm/JSContext.h"
@@ -89,11 +90,6 @@ Realm::~Realm()
 bool
 ObjectRealm::init(JSContext* cx)
 {
-    if (!iteratorCache.init()) {
-        ReportOutOfMemory(cx);
-        return false;
-    }
-
     NativeIteratorSentinel sentinel(NativeIterator::allocateSentinel(cx));
     if (!sentinel)
         return false;
@@ -104,7 +100,7 @@ ObjectRealm::init(JSContext* cx)
 }
 
 bool
-Realm::init(JSContext* cx)
+Realm::init(JSContext* cx, JSPrincipals* principals)
 {
     /*
      * As a hack, we clear our timezone cache every time we create a new realm.
@@ -112,16 +108,17 @@ Realm::init(JSContext* cx)
      * interfere with benchmarks that create tons of date objects (unless they
      * also create tons of iframes, which seems unlikely).
      */
-    JS::ResetTimeZone();
+    js::ResetTimeZoneInternal(ResetTimeZoneMode::DontResetIfOffsetUnchanged);
 
     if (!objects_.init(cx))
         return false;
 
-    if (!savedStacks_.init() ||
-        !varNames_.init())
-    {
-        ReportOutOfMemory(cx);
-        return false;
+    if (principals) {
+        // Any realm with the trusted principals -- and there can be
+        // multiple -- is a system realm.
+        isSystem_ = (principals == cx->runtime()->trustedPrincipals());
+        JS_HoldPrincipals(principals);
+        principals_ = principals;
     }
 
     return true;
@@ -130,10 +127,6 @@ Realm::init(JSContext* cx)
 jit::JitRuntime*
 JSRuntime::createJitRuntime(JSContext* cx)
 {
-    // The shared stubs are created in the atoms zone, which may be
-    // accessed by other threads with an exclusive context.
-    AutoLockForExclusiveAccess atomsLock(cx);
-
     MOZ_ASSERT(!jitRuntime_);
 
     if (!CanLikelyAllocateMoreExecutableMemory()) {
@@ -151,7 +144,7 @@ JSRuntime::createJitRuntime(JSContext* cx)
     jitRuntime_ = jrt;
 
     AutoEnterOOMUnsafeRegion noOOM;
-    if (!jitRuntime_->initialize(cx, atomsLock)) {
+    if (!jitRuntime_->initialize(cx)) {
         // Handling OOM here is complicated: if we delete jitRuntime_ now, we
         // will destroy the ExecutableAllocator, even though there may still be
         // JitCode instances holding references to ExecutablePools.
@@ -199,39 +192,24 @@ struct CheckGCThingAfterMovingGCFunctor {
 #endif // JSGC_HASH_TABLE_CHECKS
 
 LexicalEnvironmentObject*
-ObjectRealm::getOrCreateNonSyntacticLexicalEnvironment(JSContext* cx, HandleObject enclosing)
+ObjectRealm::getOrCreateNonSyntacticLexicalEnvironment(JSContext* cx, HandleObject enclosing,
+                                                       HandleObject key, HandleObject thisv)
 {
     MOZ_ASSERT(&ObjectRealm::get(enclosing) == this);
 
     if (!nonSyntacticLexicalEnvironments_) {
         auto map = cx->make_unique<ObjectWeakMap>(cx);
-        if (!map || !map->init())
+        if (!map)
             return nullptr;
 
         nonSyntacticLexicalEnvironments_ = std::move(map);
     }
 
-    // If a wrapped WithEnvironmentObject was passed in, unwrap it, as we may
-    // be creating different WithEnvironmentObject wrappers each time.
-    RootedObject key(cx, enclosing);
-    if (enclosing->is<WithEnvironmentObject>()) {
-        MOZ_ASSERT(!enclosing->as<WithEnvironmentObject>().isSyntactic());
-        key = &enclosing->as<WithEnvironmentObject>().object();
-    }
     RootedObject lexicalEnv(cx, nonSyntacticLexicalEnvironments_->lookup(key));
 
     if (!lexicalEnv) {
-        // NOTE: The default global |this| value is set to key for compatibility
-        // with existing users of the lexical environment cache.
-        //  - When used by shared-global JSM loader, |this| must be the
-        //    NonSyntacticVariablesObject passed as enclosing.
-        //  - When used by SubscriptLoader, |this| must be the target object of
-        //    the WithEnvironmentObject wrapper.
-        //  - When used by XBL/DOM Events, we execute directly as a function and
-        //    do not access the |this| value.
-        // See js::GetFunctionThis / js::GetNonSyntacticGlobalThis
         MOZ_ASSERT(key->is<NonSyntacticVariablesObject>() || !key->is<EnvironmentObject>());
-        lexicalEnv = LexicalEnvironmentObject::createNonSyntactic(cx, enclosing, /*thisv = */key);
+        lexicalEnv = LexicalEnvironmentObject::createNonSyntactic(cx, enclosing, thisv);
         if (!lexicalEnv)
             return nullptr;
         if (!nonSyntacticLexicalEnvironments_->add(cx, key, lexicalEnv))
@@ -242,18 +220,40 @@ ObjectRealm::getOrCreateNonSyntacticLexicalEnvironment(JSContext* cx, HandleObje
 }
 
 LexicalEnvironmentObject*
-ObjectRealm::getNonSyntacticLexicalEnvironment(JSObject* enclosing) const
+ObjectRealm::getOrCreateNonSyntacticLexicalEnvironment(JSContext* cx, HandleObject enclosing)
 {
-    MOZ_ASSERT(&ObjectRealm::get(enclosing) == this);
+    // If a wrapped WithEnvironmentObject was passed in, unwrap it, as we may
+    // be creating different WithEnvironmentObject wrappers each time.
+    RootedObject key(cx, enclosing);
+    if (enclosing->is<WithEnvironmentObject>()) {
+        MOZ_ASSERT(!enclosing->as<WithEnvironmentObject>().isSyntactic());
+        key = &enclosing->as<WithEnvironmentObject>().object();
+    }
+
+    // NOTE: The default global |this| value is set to key for compatibility
+    // with existing users of the lexical environment cache.
+    //  - When used by shared-global JSM loader, |this| must be the
+    //    NonSyntacticVariablesObject passed as enclosing.
+    //  - When used by SubscriptLoader, |this| must be the target object of
+    //    the WithEnvironmentObject wrapper.
+    //  - When used by XBL/DOM Events, we execute directly as a function and
+    //    do not access the |this| value.
+    // See js::GetFunctionThis / js::GetNonSyntacticGlobalThis
+    return getOrCreateNonSyntacticLexicalEnvironment(cx, enclosing, key, /*thisv = */key);
+}
+
+LexicalEnvironmentObject*
+ObjectRealm::getNonSyntacticLexicalEnvironment(JSObject* key) const
+{
+    MOZ_ASSERT(&ObjectRealm::get(key) == this);
 
     if (!nonSyntacticLexicalEnvironments_)
         return nullptr;
     // If a wrapped WithEnvironmentObject was passed in, unwrap it as in
     // getOrCreateNonSyntacticLexicalEnvironment.
-    JSObject* key = enclosing;
-    if (enclosing->is<WithEnvironmentObject>()) {
-        MOZ_ASSERT(!enclosing->as<WithEnvironmentObject>().isSyntactic());
-        key = &enclosing->as<WithEnvironmentObject>().object();
+    if (key->is<WithEnvironmentObject>()) {
+        MOZ_ASSERT(!key->as<WithEnvironmentObject>().isSyntactic());
+        key = &key->as<WithEnvironmentObject>().object();
     }
     JSObject* lexicalEnv = nonSyntacticLexicalEnvironments_->lookup(key);
     if (!lexicalEnv)
@@ -593,8 +593,9 @@ Realm::purge()
     dtoaCache.purge();
     newProxyCache.purge();
     objectGroups_.purge();
-    objects_.iteratorCache.clearAndShrink();
+    objects_.iteratorCache.clearAndCompact();
     arraySpeciesLookup.purge();
+    promiseLookup.purge();
 }
 
 void
@@ -610,10 +611,8 @@ Realm::clearTables()
     MOZ_ASSERT(objects_.enumerators->next() == objects_.enumerators);
 
     objectGroups_.clearTables();
-    if (savedStacks_.initialized())
-        savedStacks_.clear();
-    if (varNames_.initialized())
-        varNames_.clear();
+    savedStacks_.clear();
+    varNames_.clear();
 }
 
 void
@@ -643,16 +642,16 @@ void
 Realm::setNewObjectMetadata(JSContext* cx, HandleObject obj)
 {
     MOZ_ASSERT(obj->maybeCCWRealm() == this);
-    assertSameCompartment(cx, compartment(), obj);
+    cx->check(compartment(), obj);
 
     AutoEnterOOMUnsafeRegion oomUnsafe;
     if (JSObject* metadata = allocationMetadataBuilder_->build(cx, obj, oomUnsafe)) {
         MOZ_ASSERT(metadata->maybeCCWRealm() == obj->maybeCCWRealm());
-        assertSameCompartment(cx, metadata);
+        cx->check(metadata);
 
         if (!objects_.objectMetadataTable) {
             auto table = cx->make_unique<ObjectWeakMap>(cx);
-            if (!table || !table->init())
+            if (!table)
                 oomUnsafe.crash("setNewObjectMetadata");
 
             objects_.objectMetadataTable = std::move(table);
@@ -706,7 +705,7 @@ AddLazyFunctionsForRealm(JSContext* cx, AutoObjectVector& lazyFunctions, AllocKi
 
         if (fun->isInterpretedLazy()) {
             LazyScript* lazy = fun->lazyScriptOrNull();
-            if (lazy && !lazy->isEnclosingScriptLazy() && !lazy->hasUncompletedEnclosingScript()) {
+            if (lazy && lazy->enclosingScriptHasEverBeenCompiled()) {
                 if (!lazyFunctions.append(fun))
                     return false;
             }
@@ -925,13 +924,13 @@ Realm::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                                     nonSyntacticLexicalEnvironmentsArg);
 
     *savedStacksSet += savedStacks_.sizeOfExcludingThis(mallocSizeOf);
-    *varNamesSet += varNames_.sizeOfExcludingThis(mallocSizeOf);
+    *varNamesSet += varNames_.shallowSizeOfExcludingThis(mallocSizeOf);
 
     if (jitRealm_)
         *jitRealm += jitRealm_->sizeOfIncludingThis(mallocSizeOf);
 
     if (scriptCountsMap) {
-        *scriptCountsMapArg += scriptCountsMap->sizeOfIncludingThis(mallocSizeOf);
+        *scriptCountsMapArg += scriptCountsMap->shallowSizeOfIncludingThis(mallocSizeOf);
         for (auto r = scriptCountsMap->all(); !r.empty(); r.popFront())
             *scriptCountsMapArg += r.front().value()->sizeOfIncludingThis(mallocSizeOf);
     }
@@ -1017,6 +1016,12 @@ JS_PUBLIC_API(JS::Realm*)
 JS::GetObjectRealmOrNull(JSObject* obj)
 {
     return IsCrossCompartmentWrapper(obj) ? nullptr : obj->nonCCWRealm();
+}
+
+JS_PUBLIC_API(JS::Realm*)
+JS::GetScriptRealm(JSScript* script)
+{
+    return script->realm();
 }
 
 JS_PUBLIC_API(void*)

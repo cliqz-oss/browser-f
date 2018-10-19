@@ -46,6 +46,7 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
     _longtext_html = 'layout/test_carets_longtext.html'
     _iframe_html = 'layout/test_carets_iframe.html'
     _display_none_html = 'layout/test_carets_display_none.html'
+    _svg_shapes_html = 'layout/test_carets_svg_shapes.html'
 
     def setUp(self):
         # Code to execute before every test is running.
@@ -131,8 +132,7 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
         target_y = rect['y'] + (y if y is not None else rect['height'] // 2)
 
         self.marionette.execute_script('''
-            let utils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIDOMWindowUtils);
+            let utils = window.windowUtils;
             utils.sendTouchEventToWindow('touchstart', [0],
                                          [arguments[0]], [arguments[1]],
                                          [1], [1], [0], [1], 1, 0);
@@ -495,33 +495,6 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
 
         self.assertEqual(self.to_unix_line_ending(sel.selected_content), 'select')
 
-    @skip_if_not_rotatable
-    def test_caret_position_after_changing_orientation_of_device(self):
-        '''Bug 1094072
-        If positions of carets are updated correctly, they should be draggable.
-        '''
-        self.open_test_html(self._longtext_html)
-        body = self.marionette.find_element(By.ID, 'bd')
-        longtext = self.marionette.find_element(By.ID, 'longtext')
-
-        # Select word in portrait mode, then change to landscape mode
-        self.marionette.set_orientation('portrait')
-        self.long_press_on_word(longtext, 12)
-        sel = SelectionManager(body)
-        (p_start_caret_x, p_start_caret_y), (p_end_caret_x, p_end_caret_y) = sel.carets_location()
-        self.marionette.set_orientation('landscape')
-        (l_start_caret_x, l_start_caret_y), (l_end_caret_x, l_end_caret_y) = sel.carets_location()
-
-        # Drag end caret to the start caret to change the selected content
-        self.actions.flick(body, l_end_caret_x, l_end_caret_y,
-                           l_start_caret_x, l_start_caret_y).perform()
-
-        # Change orientation back to portrait mode to prevent affecting
-        # other tests
-        self.marionette.set_orientation('portrait')
-
-        self.assertEqual(self.to_unix_line_ending(sel.selected_content), 'o')
-
     def test_select_word_inside_an_iframe(self):
         '''Bug 1088552
         The scroll offset in iframe should be taken into consideration properly.
@@ -619,3 +592,33 @@ class AccessibleCaretSelectionModeTestCase(MarionetteTestCase):
         # Drag the second caret down by 50px.
         self.actions.flick(el, caret2_x, caret2_y, caret2_x, caret2_y + 50).perform()
         self.assertEqual(target_content, sel.selected_content)
+
+    def test_carets_should_not_appear_when_long_pressing_svg_shapes(self):
+        self.open_test_html(self._svg_shapes_html)
+
+        rect = self.marionette.find_element(By.ID, 'rect')
+        text = self.marionette.find_element(By.ID, 'text')
+
+        sel = SelectionManager(text)
+        num_words_in_text = len(sel.content.split())
+
+        # Goal: the carets should not appear when long-pressing on the
+        # unselectable SVG rect.
+
+        # Get the position of the end of last word in text, i.e. the
+        # position of the second caret when selecting the last word.
+        self.long_press_on_word(text, num_words_in_text - 1)
+        (_, _), (x2, y2) = sel.carets_location()
+
+        # Long press to select the unselectable SVG rect.
+        self.long_press_on_location(rect)
+        (_, _), (x, y) = sel.carets_location()
+
+        # Drag the second caret to (x2, y2).
+        self.actions.flick(text, x, y, x2, y2).perform()
+
+        # If the carets should appear on the rect, the selection will be
+        # extended to cover all the words in text. Assert this should not
+        # happen.
+        self.assertNotEqual(sel.content, sel.selected_content.strip())
+

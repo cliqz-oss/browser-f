@@ -50,12 +50,14 @@ public:
   nsresult ShowPayment(PaymentRequest* aRequest);
   nsresult AbortPayment(PaymentRequest* aRequest, bool aDeferredShow);
   nsresult CompletePayment(PaymentRequest* aRequest,
-                           const PaymentComplete& aComplete);
+                           const PaymentComplete& aComplete,
+                           bool aTimedOut = false);
   nsresult UpdatePayment(JSContext* aCx,
                          PaymentRequest* aRequest,
                          const PaymentDetailsUpdate& aDetails,
                          bool aRequestShipping,
                          bool aDeferredShow);
+  nsresult ClosePayment(PaymentRequest* aRequest);
 
   nsresult RespondPayment(PaymentRequest* aRequest,
                           const IPCPaymentActionResponse& aResponse);

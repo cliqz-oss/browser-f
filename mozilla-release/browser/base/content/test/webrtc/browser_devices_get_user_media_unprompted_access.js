@@ -17,7 +17,7 @@ var gTests = [
     let indicator = promiseIndicatorWindow();
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -79,7 +79,7 @@ var gTests = [
     SitePermissions.remove(null, "screen", gBrowser.selectedBrowser);
     SitePermissions.remove(null, "camera", gBrowser.selectedBrowser);
     SitePermissions.remove(null, "microphone", gBrowser.selectedBrowser);
-  }
+  },
 },
 
 {
@@ -92,7 +92,7 @@ var gTests = [
     let indicator = promiseIndicatorWindow();
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -170,7 +170,7 @@ var gTests = [
 
     // close all streams
     await closeStream();
-  }
+  },
 },
 
 {
@@ -183,7 +183,7 @@ var gTests = [
     let indicator = promiseIndicatorWindow();
 
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
 
     await expectObserverCalled("getUserMedia:response:allow");
@@ -242,8 +242,8 @@ var gTests = [
 
     // close all streams
     await closeStream();
-  }
-}
+  },
+},
 
 ];
 

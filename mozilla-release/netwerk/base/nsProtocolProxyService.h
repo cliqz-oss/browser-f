@@ -400,6 +400,7 @@ protected:
     int32_t                      mSOCKSProxyVersion;
     bool                         mSOCKSProxyRemoteDNS;
     bool                         mProxyOverTLS;
+    bool                         mWPADOverDHCPEnabled;
 
     RefPtr<nsPACMan>           mPACMan;  // non-null if we are using PAC
     nsCOMPtr<nsISystemProxySettings> mSystemProxySettings;
@@ -415,7 +416,7 @@ private:
                                   bool isSyncOK,
                                   nsIEventTarget *mainThreadEventTarget);
     bool                          mIsShutdown;
-    nsCOMPtr<nsIThread>           mProxySettingThread;
+    nsCOMPtr<nsIEventTarget> mProxySettingTarget;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsProtocolProxyService, NS_PROTOCOL_PROXY_SERVICE_IMPL_CID)

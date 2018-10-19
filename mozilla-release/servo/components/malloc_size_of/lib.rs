@@ -63,6 +63,7 @@ extern crate smallbitvec;
 extern crate smallvec;
 #[cfg(feature = "servo")]
 extern crate string_cache;
+extern crate thin_slice;
 #[cfg(feature = "servo")]
 extern crate time;
 #[cfg(feature = "url")]
@@ -226,6 +227,24 @@ impl<T: ?Sized> MallocShallowSizeOf for Box<T> {
 }
 
 impl<T: MallocSizeOf + ?Sized> MallocSizeOf for Box<T> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.shallow_size_of(ops) + (**self).size_of(ops)
+    }
+}
+
+impl<T> MallocShallowSizeOf for thin_slice::ThinBoxedSlice<T> {
+    fn shallow_size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        let mut n = 0;
+        unsafe {
+            n += thin_slice::ThinBoxedSlice::spilled_storage(self)
+                .map_or(0, |ptr| ops.malloc_size_of(ptr));
+            n += ops.malloc_size_of(&**self);
+        }
+        n
+    }
+}
+
+impl<T: MallocSizeOf> MallocSizeOf for thin_slice::ThinBoxedSlice<T> {
     fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
         self.shallow_size_of(ops) + (**self).size_of(ops)
     }
@@ -693,6 +712,90 @@ impl MallocSizeOf for selectors::parser::AncestorHashes {
     }
 }
 
+impl<Impl: selectors::parser::SelectorImpl> MallocSizeOf
+    for selectors::parser::Selector<Impl>
+where
+    Impl::NonTSPseudoClass: MallocSizeOf,
+    Impl::PseudoElement: MallocSizeOf,
+{
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        let mut n = 0;
+
+        // It's OK to measure this ThinArc directly because it's the
+        // "primary" reference. (The secondary references are on the
+        // Stylist.)
+        n += unsafe { ops.malloc_size_of(self.thin_arc_heap_ptr()) };
+        for component in self.iter_raw_match_order() {
+            n += component.size_of(ops);
+        }
+
+        n
+    }
+}
+
+impl<Impl: selectors::parser::SelectorImpl> MallocSizeOf
+    for selectors::parser::Component<Impl>
+where
+    Impl::NonTSPseudoClass: MallocSizeOf,
+    Impl::PseudoElement: MallocSizeOf,
+{
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        use selectors::parser::Component;
+
+        match self {
+            Component::AttributeOther(ref attr_selector) => {
+                attr_selector.size_of(ops)
+            }
+            Component::Negation(ref components) => {
+                components.size_of(ops)
+            }
+            Component::NonTSPseudoClass(ref pseudo) => {
+                (*pseudo).size_of(ops)
+            }
+            Component::Slotted(ref selector) |
+            Component::Host(Some(ref selector)) => {
+                selector.size_of(ops)
+            }
+            Component::PseudoElement(ref pseudo) => {
+                (*pseudo).size_of(ops)
+            }
+            Component::Combinator(..) |
+            Component::ExplicitAnyNamespace |
+            Component::ExplicitNoNamespace |
+            Component::DefaultNamespace(..) |
+            Component::Namespace(..) |
+            Component::ExplicitUniversalType |
+            Component::LocalName(..) |
+            Component::ID(..) |
+            Component::Class(..) |
+            Component::AttributeInNoNamespaceExists { .. } |
+            Component::AttributeInNoNamespace { .. } |
+            Component::FirstChild |
+            Component::LastChild |
+            Component::OnlyChild |
+            Component::Root |
+            Component::Empty |
+            Component::Scope |
+            Component::NthChild(..) |
+            Component::NthLastChild(..) |
+            Component::NthOfType(..) |
+            Component::NthLastOfType(..) |
+            Component::FirstOfType |
+            Component::LastOfType |
+            Component::OnlyOfType |
+            Component::Host(None) => 0,
+        }
+    }
+}
+
+impl<Impl: selectors::parser::SelectorImpl> MallocSizeOf
+    for selectors::attr::AttrSelectorWithOptionalNamespace<Impl>
+{
+    fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
+        0
+    }
+}
+
 impl MallocSizeOf for Void {
     #[inline]
     fn size_of(&self, _ops: &mut MallocSizeOfOps) -> usize {
@@ -742,8 +845,8 @@ macro_rules! malloc_size_of_is_0(
 );
 
 malloc_size_of_is_0!(bool, char, str);
-malloc_size_of_is_0!(u8, u16, u32, u64, usize);
-malloc_size_of_is_0!(i8, i16, i32, i64, isize);
+malloc_size_of_is_0!(u8, u16, u32, u64, u128, usize);
+malloc_size_of_is_0!(i8, i16, i32, i64, i128, isize);
 malloc_size_of_is_0!(f32, f64);
 
 malloc_size_of_is_0!(std::sync::atomic::AtomicBool);
@@ -806,8 +909,6 @@ malloc_size_of_is_0!(webrender_api::MixBlendMode);
 malloc_size_of_is_0!(webrender_api::NormalBorder);
 #[cfg(feature = "webrender_api")]
 malloc_size_of_is_0!(webrender_api::RepeatMode);
-#[cfg(feature = "webrender_api")]
-malloc_size_of_is_0!(webrender_api::ScrollPolicy);
 #[cfg(feature = "webrender_api")]
 malloc_size_of_is_0!(webrender_api::ScrollSensitivity);
 #[cfg(feature = "webrender_api")]

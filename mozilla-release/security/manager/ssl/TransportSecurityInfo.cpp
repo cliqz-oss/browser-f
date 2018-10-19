@@ -19,6 +19,7 @@
 #include "nsNSSCertHelper.h"
 #include "nsNSSCertificate.h"
 #include "nsNSSComponent.h"
+#include "nsNSSHelper.h"
 #include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "nsXULAppAPI.h"
@@ -50,7 +51,6 @@ TransportSecurityInfo::TransportSecurityInfo()
 NS_IMPL_ISUPPORTS(TransportSecurityInfo,
                   nsITransportSecurityInfo,
                   nsIInterfaceRequestor,
-                  nsISSLStatusProvider,
                   nsIAssociatedContentSecurity,
                   nsISerializable,
                   nsIClassInfo)
@@ -348,8 +348,6 @@ NS_IMETHODIMP
 TransportSecurityInfo::GetClassID(nsCID * *aClassID)
 {
   *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
-  if (!*aClassID)
-    return NS_ERROR_OUT_OF_MEMORY;
   return GetClassIDNoAlloc(*aClassID);
 }
 
@@ -369,7 +367,7 @@ TransportSecurityInfo::GetClassIDNoAlloc(nsCID *aClassIDNoAlloc)
   return NS_OK;
 }
 
-nsresult
+NS_IMETHODIMP
 TransportSecurityInfo::GetSSLStatus(nsISSLStatus** _result)
 {
   NS_ENSURE_ARG_POINTER(_result);

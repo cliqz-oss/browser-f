@@ -6,15 +6,15 @@ Object.defineProperty(exports, "__esModule", {
 exports.getFilenameFromPath = getFilenameFromPath;
 exports.getURL = getURL;
 
-var _url = require("devtools/client/debugger/new/dist/vendors").vendored["url"];
-
-var _lodash = require("devtools/client/shared/vendor/lodash");
+var _url = require("../../utils/url");
 
 var _devtoolsModules = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-modules"];
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+const urlMap = new WeakMap();
+
 function getFilenameFromPath(pathname) {
   let filename = "";
 
@@ -30,14 +30,16 @@ function getFilenameFromPath(pathname) {
 }
 
 const NoDomain = "(no domain)";
+const def = {
+  path: "",
+  group: "",
+  filename: ""
+};
 
-function getURL(sourceUrl, debuggeeUrl = "") {
-  const url = sourceUrl;
-  const def = {
-    path: "",
-    group: "",
-    filename: ""
-  };
+function _getURL(source, defaultDomain) {
+  const {
+    url
+  } = source;
 
   if (!url) {
     return def;
@@ -46,11 +48,9 @@ function getURL(sourceUrl, debuggeeUrl = "") {
   const {
     pathname,
     protocol,
-    host,
-    path
+    host
   } = (0, _url.parse)(url);
-  const defaultDomain = (0, _url.parse)(debuggeeUrl).host;
-  const filename = getFilenameFromPath(pathname);
+  const filename = (0, _devtoolsModules.getUnicodeUrlPath)(getFilenameFromPath(pathname));
 
   switch (protocol) {
     case "javascript:":
@@ -59,66 +59,76 @@ function getURL(sourceUrl, debuggeeUrl = "") {
 
     case "moz-extension:":
     case "resource:":
-      return (0, _lodash.merge)(def, {
-        path,
-        group: `${protocol}//${host || ""}`,
-        filename
-      });
+      return { ...def,
+        path: pathname,
+        filename,
+        group: `${protocol}//${host || ""}`
+      };
 
     case "webpack:":
     case "ng:":
-      return (0, _lodash.merge)(def, {
-        path: path,
-        group: `${protocol}//`,
-        filename: filename
-      });
+      return { ...def,
+        path: pathname,
+        filename,
+        group: `${protocol}//`
+      };
 
     case "about:":
       // An about page is a special case
-      return (0, _lodash.merge)(def, {
+      return { ...def,
         path: "/",
-        group: url,
-        filename: filename
-      });
+        filename,
+        group: url
+      };
 
     case "data:":
-      return (0, _lodash.merge)(def, {
+      return { ...def,
         path: "/",
         group: NoDomain,
         filename: url
-      });
+      };
 
-    case null:
+    case "":
       if (pathname && pathname.startsWith("/")) {
         // use file protocol for a URL like "/foo/bar.js"
-        return (0, _lodash.merge)(def, {
-          path: path,
-          group: "file://",
-          filename: filename
-        });
-      } else if (host === null) {
-        // use anonymous group for weird URLs
-        return (0, _lodash.merge)(def, {
+        return { ...def,
+          path: pathname,
+          filename,
+          group: "file://"
+        };
+      } else if (!host) {
+        return { ...def,
           path: url,
-          group: defaultDomain,
-          filename: filename
-        });
+          group: defaultDomain || "",
+          filename
+        };
       }
 
       break;
 
     case "http:":
     case "https:":
-      return (0, _lodash.merge)(def, {
+      return { ...def,
         path: pathname,
-        group: (0, _devtoolsModules.getUnicodeHostname)(host),
-        filename: filename
-      });
+        filename,
+        group: (0, _devtoolsModules.getUnicodeHostname)(host)
+      };
   }
 
-  return (0, _lodash.merge)(def, {
-    path: path,
+  return { ...def,
+    path: pathname,
     group: protocol ? `${protocol}//` : "",
-    filename: filename
-  });
+    filename
+  };
+}
+
+function getURL(source, debuggeeUrl) {
+  if (urlMap.has(source)) {
+    return urlMap.get(source) || def;
+  }
+
+  const url = _getURL(source, debuggeeUrl || "");
+
+  urlMap.set(source, url);
+  return url;
 }

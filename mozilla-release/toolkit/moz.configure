@@ -94,11 +94,9 @@ set_define('MOZ_PULSEAUDIO', depends_if(pulseaudio)(lambda _: True))
 include('../js/moz.configure')
 
 
-# Rust
+# NodeJS
 # ==============================================================
-include('../build/moz.configure/rust.configure',
-        when='--enable-compile-environment')
-
+include('../build/moz.configure/node.configure')
 
 # L10N
 # ==============================================================
@@ -390,11 +388,14 @@ imply_option('--enable-fmp4', ffmpeg, '--enable-ffmpeg')
 option('--enable-av1',
         help='Enable libaom for av1 video support')
 
-@depends('--enable-av1', target, milestone)
-def av1(value, target, milestone):
+@depends('--enable-av1', target)
+def av1(value, target):
     enabled = bool(value)
-    if value.origin == 'default' and milestone.is_nightly:
-        enabled = target.os != 'Android'
+    if value.origin == 'default':
+        if target.os == 'WINNT' and target.cpu == 'x86':
+            enabled = False
+        else:
+            enabled = target.os != 'Android'
     if enabled:
         return True
 
@@ -608,212 +609,6 @@ id_and_secret_keyfile('Leanplum SDK')
 
 simple_keyfile('Pocket API')
 
-# We support setting up the appropriate options for Stylo's build-time
-# bindings generation via setting LLVM_CONFIG or by providing explicit
-# configure options.  The Windows installer of LLVM/Clang doesn't provide
-# llvm-config, so we need both methods to support all of our tier-1
-# platforms.
-@depends(host)
-@imports('which')
-@imports('os')
-@imports('subprocess')
-def llvm_config_paths(host):
-    llvm_supported_versions = ['6.0', '5.0', '4.0', '3.9']
-    llvm_config_progs = []
-    for version in llvm_supported_versions:
-        llvm_config_progs += [
-            'llvm-config-%s' % version,
-            'llvm-config-mp-%s' % version,    # MacPorts' chosen naming scheme.
-            'llvm-config%s' % version.replace('.', ''),
-        ]
-    llvm_config_progs.append('llvm-config')
-
-    # Homebrew on macOS doesn't make clang available on PATH, so we have to
-    # look for it in non-standard places.
-    if host.kernel == 'Darwin':
-        try:
-            brew = which.which('brew')
-            brew_config = subprocess.check_output([brew, 'config']).strip()
-
-            for line in brew_config.splitlines():
-                if line.startswith('HOMEBREW_PREFIX'):
-                    fields = line.split(None, 2)
-                    prefix = fields[1] if len(fields) == 2 else ''
-                    path = ['opt', 'llvm', 'bin', 'llvm-config']
-                    llvm_config_progs.append(os.path.join(prefix, *path))
-                    break
-        except which.WhichError:
-            # Homebrew not installed, which is fine.
-            pass
-
-    # Also add in the location to which `mach bootstrap` or
-    # `mach artifact toolchain` installs clang.
-    mozbuild_state_dir = os.environ.get('MOZBUILD_STATE_PATH',
-                                        os.path.expanduser(os.path.join('~', '.mozbuild')))
-    bootstrap_llvm_config = os.path.join(mozbuild_state_dir, 'clang', 'bin', 'llvm-config')
-
-    llvm_config_progs.append(bootstrap_llvm_config)
-
-    return llvm_config_progs
-
-llvm_config = check_prog('LLVM_CONFIG', llvm_config_paths,
-                         when='--enable-compile-environment',
-                         what='llvm-config', allow_missing=True)
-
-with only_when('--enable-compile-environment'):
-    option('--with-libclang-path', nargs=1,
-           help='Absolute path to a directory containing Clang/LLVM libraries for Stylo (version 3.9.x or above)')
-    option('--with-clang-path', nargs=1,
-           help='Absolute path to a Clang binary for Stylo bindgen (version 3.9.x or above)')
-
-    def invoke_llvm_config(llvm_config, *options):
-        '''Invoke llvm_config with the given options and return the first line of
-        output.'''
-        lines = check_cmd_output(llvm_config, *options).splitlines()
-        return lines[0]
-
-    @imports(_from='textwrap', _import='dedent')
-    def check_minimum_llvm_config_version(llvm_config):
-        version = Version(invoke_llvm_config(llvm_config, '--version'))
-        min_version = Version('3.9.0')
-        if version < min_version:
-            die(dedent('''\
-            llvm installation {} is incompatible with Stylo bindgen.
-
-            To compile Stylo, please install version {} or greater of
-            Clang + LLVM and ensure that the 'llvm-config' from that
-            installation is first on your path.
-
-            You can verify this by typing 'llvm-config --version'.
-            '''.format(version, min_version)))
-
-    @depends(llvm_config, '--with-libclang-path', '--with-clang-path',
-             host_library_name_info, host)
-    @imports('os.path')
-    @imports('glob')
-    @imports(_from='textwrap', _import='dedent')
-    def bindgen_config_paths(llvm_config, libclang_path, clang_path,
-                             library_name_info, host):
-        def search_for_libclang(path):
-            # Try to ensure that the clang shared library that bindgen is going
-            # to look for is actually present.  The files that we search for
-            # mirror the logic in clang-sys/build.rs.
-            libclang_choices = []
-            if host.os == 'WINNT':
-                libclang_choices.append('libclang.dll')
-            libclang_choices.append('%sclang%s' % (library_name_info.dll.prefix,
-                                                   library_name_info.dll.suffix))
-            if host.kernel == 'Linux':
-                libclang_choices.append('libclang.so.1')
-
-            if host.os == 'OpenBSD':
-                libclang_choices = glob.glob(path + '/libclang.so.*.*')
-
-            # At least one of the choices must be found.
-            for choice in libclang_choices:
-                libclang = os.path.join(path, choice)
-                if os.path.exists(libclang):
-                    return (True, None)
-            else:
-                return (False, list(set(libclang_choices)))
-
-        if not libclang_path and not clang_path:
-            # We must have LLVM_CONFIG in this case.
-            if not llvm_config:
-                die(dedent('''\
-                Could not find LLVM/Clang installation for compiling stylo build-time
-                bindgen.  Please specify the 'LLVM_CONFIG' environment variable
-                (recommended), pass the '--with-libclang-path' and '--with-clang-path'
-                options to configure, or put 'llvm-config' in your PATH.  Altering your
-                PATH may expose 'clang' as well, potentially altering your compiler,
-                which may not be what you intended.'''))
-
-            check_minimum_llvm_config_version(llvm_config)
-            libclang_arg = '--bindir' if host.os == 'WINNT' else '--libdir'
-            libclang_path = invoke_llvm_config(llvm_config, libclang_arg)
-            clang_path = os.path.join(invoke_llvm_config(llvm_config, '--bindir'),
-                                      'clang')
-            libclang_path = normsep(libclang_path)
-            clang_path = normsep(clang_path)
-
-            # Debian-based distros, at least, can have llvm-config installed
-            # but not have other packages installed.  Since the user is trying
-            # to use their system packages, we can't be more specific about what
-            # they need.
-            clang_resolved = find_program(clang_path)
-            if not clang_resolved:
-                die(dedent('''\
-                The file {} returned by `llvm-config {}` does not exist.
-                clang is required to build Firefox.  Please install the
-                necessary packages, or run `mach bootstrap`.
-                '''.format(clang_path, '--bindir')))
-
-            if not os.path.exists(libclang_path):
-                die(dedent('''\
-                The directory {} returned by `llvm-config {}` does not exist.
-                clang is required to build Firefox.  Please install the
-                necessary packages, or run `mach bootstrap`.
-                '''.format(libclang_path, libclang_arg)))
-
-            (found, searched) = search_for_libclang(libclang_path)
-            if not found:
-                die(dedent('''\
-                Could not find the clang shared library in the path {}
-                returned by `llvm-config {}` (searched for files {}).
-                clang is required to build Firefox.  Please install the
-                necessary packages, or run `mach bootstrap`.
-                '''.format(libclang_path, libclang_arg, searched)))
-
-            return namespace(
-                libclang_path=libclang_path,
-                clang_path=clang_resolved,
-            )
-
-        if (not libclang_path and clang_path) or \
-           (libclang_path and not clang_path):
-            die(dedent('''\
-            You must provide both of --with-libclang-path and --with-clang-path
-            or neither of them.'''))
-
-        libclang_path = libclang_path[0]
-        clang_path = clang_path[0]
-
-        if not os.path.exists(libclang_path) or \
-           not os.path.isdir(libclang_path):
-            die(dedent('''\
-            The argument to --with-libclang-path is not a directory: {}
-            '''.format(libclang_path)))
-
-        (found, searched) = search_for_libclang(libclang_path)
-        if not found:
-            die(dedent('''\
-            Could not find the clang shared library in the path {}
-            specified by --with-libclang-path (searched for files {}).
-            '''.format(libclang_path, searched)))
-
-        clang_resolved = find_program(clang_path)
-        if not clang_resolved:
-            die(dedent('''\
-            The argument to --with-clang-path is not a file: {}
-            '''.format(clang_path)))
-
-        return namespace(
-            libclang_path=libclang_path,
-            clang_path=clang_resolved,
-        )
-
-    set_config('MOZ_LIBCLANG_PATH', bindgen_config_paths.libclang_path)
-    set_config('MOZ_CLANG_PATH', bindgen_config_paths.clang_path)
-
-option('--with-servo', env='SERVO_TARGET_DIR', nargs=1,
-       help='Absolute path of the target directory where libgeckoservo can '
-            'be found. This is generally servo_src_dir/target/release.')
-
-@depends_if('--with-servo')
-def servo_target_dir(value):
-    return value[0]
-
-set_config('SERVO_TARGET_DIR', servo_target_dir)
 
 # WebRender integration
 option('--enable-webrender', nargs='?', choices=('build',),
@@ -852,10 +647,9 @@ option('--enable-rust-simd', env='MOZ_RUST_SIMD',
 
 @depends('--enable-rust-simd', target)
 def rust_simd(value, target):
-    # As of 2017-06-13, the simd crate only works on aarch64,
-    # x86 and x86_64. It's meant to work on 32-bit ARM, too,
-    # but currently does not.
-    if target.cpu in ('aarch64', 'x86', 'x86_64') and value:
+    # As of 2018-06-05, the simd crate only works on aarch64,
+    # armv7, x86 and x86_64.
+    if target.cpu in ('aarch64', 'arm', 'x86', 'x86_64') and value:
         return True
 
 set_config('MOZ_RUST_SIMD', rust_simd)
@@ -929,6 +723,18 @@ set_config('MOZ_IPDL_TESTS',
            depends_if('--enable-ipdl-tests')(lambda _: True))
 
 include('nss.configure')
+
+# LibSecret
+# ==============================================================
+# To access the OS key store on Linux systems we use libsecret.
+# https://developer.gnome.org/libsecret/
+
+if target.os == 'Linux':
+    libsecret = pkg_check_modules('MOZ_LIB_SECRET', 'libsecret-1',
+                                  allow_missing=True)
+
+    set_config('MOZ_LIB_SECRET', depends_if(libsecret)(lambda _: True))
+    set_define('MOZ_LIB_SECRET', depends_if(libsecret)(lambda _: True))
 
 # Graphics
 # ==============================================================
@@ -1101,9 +907,11 @@ option('--enable-geckodriver', help='Enable WebDriver implementation')
 @depends('--enable-geckodriver',
          'MOZ_AUTOMATION',
          compile_environment,
+         target,
          cross_compiling,
-         hazard_analysis)
-def geckodriver(enable, automation, compile_env, cross_compile, hazard):
+         hazard_analysis,
+         asan)
+def geckodriver(enable, automation, compile_env, target, cross_compile, hazard, asan):
     """
     geckodriver is implied on supported platforms when MOZ_AUTOMATION
     is set, but we also provide the --enable-geckodriver option for
@@ -1121,7 +929,8 @@ def geckodriver(enable, automation, compile_env, cross_compile, hazard):
         return True
 
     if enable.origin == 'default':
-        broken_platforms = cross_compile or hazard
+        # Bug 1441656 for Android.
+        broken_platforms = hazard or target.os == 'Android' or (asan and cross_compile)
 
         if automation and compile_env and not broken_platforms:
             return True
@@ -1186,16 +995,22 @@ add_old_configure_assignment('MOZ_ASAN_REPORTER', enable_asan_reporter)
 
 # Elfhack
 # ==============================================================
-@depends(host, target)
-def has_elfhack(host, target):
-    return target.kernel == 'Linux' and host.kernel == 'Linux' and \
-           target.cpu in ('arm', 'x86', 'x86_64')
+with only_when('--enable-compile-environment'):
+    @depends(host, target)
+    def has_elfhack(host, target):
+        return target.kernel == 'Linux' and host.kernel == 'Linux' and \
+               target.cpu in ('arm', 'x86', 'x86_64')
 
-with only_when(has_elfhack):
-    option('--disable-elf-hack', help='Disable elf hacks')
+    @depends('--enable-release')
+    def default_elfhack(release):
+        return bool(release)
 
-    set_config('USE_ELF_HACK',
-               depends_if('--enable-elf-hack')(lambda _: True))
+    with only_when(has_elfhack):
+        option('--disable-elf-hack', default=default_elfhack,
+               help='Disable elf hacks')
+
+        set_config('USE_ELF_HACK',
+                   depends_if('--enable-elf-hack')(lambda _: True))
 
 
 @depends(check_build_environment)
@@ -1236,3 +1051,31 @@ def unsigned_addon_scopes(scopes):
 
 set_config('MOZ_UNSIGNED_APP_SCOPE', unsigned_addon_scopes.app)
 set_config('MOZ_UNSIGNED_SYSTEM_SCOPE', unsigned_addon_scopes.system)
+
+# Launcher process (Windows only)
+# ==============================================================
+
+option('--enable-launcher-process', help='Enable launcher process by default')
+
+@depends('--enable-launcher-process', target)
+def launcher(value, target):
+    enabled = bool(value)
+    if enabled and target.os != 'WINNT':
+        die('Cannot enable launcher process on %s', target.os)
+    if enabled:
+        return True
+
+set_config('MOZ_LAUNCHER_PROCESS', launcher)
+set_define('MOZ_LAUNCHER_PROCESS', launcher)
+
+# Prio
+# ==============================================================
+@depends(c_compiler)
+def libprio(info):
+    if info:
+      if info.type in ('msvc',):
+        return None
+    return True
+
+set_config('MOZ_LIBPRIO', libprio)
+

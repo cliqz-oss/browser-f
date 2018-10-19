@@ -28,7 +28,8 @@ inDeepTreeWalker::inDeepTreeWalker()
   : mShowAnonymousContent(false),
     mShowSubDocuments(false),
     mShowDocumentsAsNodes(false),
-    mWhatToShow(mozilla::dom::NodeFilterBinding::SHOW_ALL)
+    mCurrentIndex(-1),
+    mWhatToShow(mozilla::dom::NodeFilter_Binding::SHOW_ALL)
 {
 }
 
@@ -424,6 +425,6 @@ inDeepTreeWalker::NextNode(nsINode **_retval)
     ++lastChildCallsToMake;
   }
 
-  NS_NOTREACHED("how did we get here?");
+  MOZ_ASSERT_UNREACHABLE("how did we get here?");
   return NS_OK;
 }

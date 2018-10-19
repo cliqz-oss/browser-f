@@ -59,7 +59,7 @@ add_task(async function() {
   Services.obs.notifyObservers(null, "chrome-flush-skin-caches");
   Services.obs.notifyObservers(null, "chrome-flush-caches");
 
-  let win = window.openDialog("chrome://browser/content/", "_blank",
+  let win = window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank",
                               "chrome,all,dialog=no,remote,suppressanimation",
                               "about:home");
 
@@ -93,10 +93,10 @@ add_task(async function() {
                          // The reload icon is shifted on devedition builds
                          // where there's an additional devtools toolbar icon.
                          AppConstants.MOZ_DEV_EDITION ? inRange(r.x1, 100, 120) :
-                                                        inRange(r.x1, 65, 100)
+                                                        inRange(r.x1, 65, 100),
         },
-      ]
-    }
+      ],
+    },
   };
 
   await withPerfObserver(async function() {

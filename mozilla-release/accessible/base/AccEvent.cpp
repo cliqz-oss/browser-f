@@ -187,13 +187,14 @@ AccVCChangeEvent::
                    int32_t aOldStart, int32_t aOldEnd,
                    Accessible* aNewAccessible,
                    int32_t aNewStart, int32_t aNewEnd,
-                   int16_t aReason, EIsFromUserInput aIsFromUserInput) :
+                   int16_t aReason, int16_t aBoundaryType,
+                   EIsFromUserInput aIsFromUserInput) :
     AccEvent(::nsIAccessibleEvent::EVENT_VIRTUALCURSOR_CHANGED, aAccessible,
              aIsFromUserInput),
     mOldAccessible(aOldAccessible), mNewAccessible(aNewAccessible),
     mOldStart(aOldStart), mNewStart(aNewStart),
     mOldEnd(aOldEnd),  mNewEnd(aNewEnd),
-    mReason(aReason)
+    mReason(aReason), mBoundaryType(aBoundaryType)
 {
 }
 
@@ -258,7 +259,8 @@ a11y::MakeXPCEvent(AccEvent* aEvent)
                                                  ToXPC(vcc->NewAccessible()),
                                                  vcc->NewStartOffset(),
                                                  vcc->NewEndOffset(),
-                                                 vcc->Reason());
+                                                 vcc->Reason(),
+                                                 vcc->BoundaryType());
     return xpEvent.forget();
   }
 
@@ -272,6 +274,13 @@ a11y::MakeXPCEvent(AccEvent* aEvent)
                                                     fromUser,
                                                     attribute);
     return xpEvent.forget();
+  }
+
+  if (eventGroup & (1 << AccEvent::eScrollingEvent)) {
+    AccScrollingEvent* sa = downcast_accEvent(aEvent);
+    xpEvent = new xpcAccScrollingEvent(type, ToXPC(acc), ToXPCDocument(doc), node,
+                                       fromUser, sa->ScrollX(), sa->ScrollY(),
+                                       sa->MaxScrollX(), sa->MaxScrollY());
   }
 
   xpEvent = new xpcAccEvent(type, ToXPC(acc), ToXPCDocument(doc), node, fromUser);

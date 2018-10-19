@@ -53,7 +53,7 @@ function toggleDisplay(node) {
   const toggle = {
     "": "block",
     "none": "block",
-    "block": "none"
+    "block": "none",
   };
   return (node.style.display = toggle[node.style.display]);
 }
@@ -82,8 +82,10 @@ function setupAdvancedButton() {
   }
 
   // Register click handler for the weakCryptoAdvancedPanel
-  document.getElementById("advancedButton")
-          .addEventListener("click", function togglePanelVisibility() {
+  document.getElementById("advancedButton").addEventListener("click", togglePanelVisibility);
+  document.getElementById("moreInformationButton").addEventListener("click", togglePanelVisibility);
+
+  function togglePanelVisibility() {
     toggleDisplay(panel);
     if (gIsCertError) {
       // Toggling the advanced panel must ensure that the debugging
@@ -98,7 +100,7 @@ function setupAdvancedButton() {
       var event = new CustomEvent("AboutNetErrorUIExpanded", {bubbles: true});
       document.dispatchEvent(event);
     }
-  });
+  }
 
   if (!gIsCertError) {
     return;
@@ -182,6 +184,7 @@ function initPage() {
   }
   if (gIsCertError) {
     initPageCertError();
+    updateContainerPosition();
     return;
   }
   addAutofocus("errorTryAgain");
@@ -267,7 +270,7 @@ function initPage() {
         "SSL_ERROR_PROTOCOL_VERSION_ALERT",
         "SSL_ERROR_UNSUPPORTED_VERSION",
         "SSL_ERROR_NO_CYPHER_OVERLAP",
-        "SSL_ERROR_NO_CIPHERS_SUPPORTED"
+        "SSL_ERROR_NO_CIPHERS_SUPPORTED",
       ].some((substring) => shortDesc.includes(substring));
       // If it looks like an error that is user config based
       if (getErrorCode() == "nssFailure2" && hasPrefStyleError && options && options.changedCertPrefs) {
@@ -293,6 +296,11 @@ function initPage() {
       span.textContent = document.location.hostname;
     }
   }
+}
+
+function updateContainerPosition() {
+  let textContainer = document.getElementById("text-container");
+  textContainer.style.marginTop = `calc(50vh - ${textContainer.clientHeight / 2}px)`;
 }
 
 function initPageCaptivePortal() {
@@ -328,7 +336,7 @@ function initPageCertError() {
   checkbox.addEventListener("change", function({target: {checked}}) {
     document.dispatchEvent(new CustomEvent("AboutNetErrorSetAutomatic", {
       detail: checked,
-      bubbles: true
+      bubbles: true,
     }));
   });
 
@@ -368,6 +376,11 @@ function addAutofocus(buttonId, position = "afterbegin") {
 
 let errorTryAgain = document.getElementById("errorTryAgain");
 errorTryAgain.addEventListener("click", function() {
+  retryThis(this);
+});
+
+let advancedPanelErrorTryAgain = document.getElementById("advancedPanelErrorTryAgain");
+advancedPanelErrorTryAgain.addEventListener("click", function() {
   retryThis(this);
 });
 

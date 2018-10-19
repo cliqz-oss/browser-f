@@ -8,6 +8,8 @@ const nsIAccessibleStateChangeEvent =
   Ci.nsIAccessibleStateChangeEvent;
 const nsIAccessibleCaretMoveEvent =
   Ci.nsIAccessibleCaretMoveEvent;
+const nsIAccessibleScrollingEvent =
+  Ci.nsIAccessibleScrollingEvent;
 const nsIAccessibleTextChangeEvent =
   Ci.nsIAccessibleTextChangeEvent;
 const nsIAccessibleVirtualCursorChangeEvent =
@@ -712,9 +714,7 @@ function relationTypeToString(aRelationType) {
 }
 
 function getLoadContext() {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIWebNavigation)
-               .QueryInterface(Ci.nsILoadContext);
+  return window.docShell.QueryInterface(Ci.nsILoadContext);
 }
 
 /**
@@ -857,12 +857,7 @@ function shortenString(aString, aMaxLength) {
  * Return main chrome window (crosses chrome boundary)
  */
 function getMainChromeWindow(aWindow) {
-  return aWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                .getInterface(Ci.nsIWebNavigation)
-                .QueryInterface(Ci.nsIDocShellTreeItem)
-                .rootTreeItem
-                .QueryInterface(Ci.nsIInterfaceRequestor)
-                .getInterface(Ci.nsIDOMWindow);
+  return aWindow.docShell.rootTreeItem.domWindow;
 }
 
 /** Sets the test plugin(s) initially expected enabled state.

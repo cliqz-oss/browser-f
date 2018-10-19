@@ -15,6 +15,22 @@
   --bezier-grid-color: rgba(0, 0, 0, 0.2);
   --onboarding-link-color: var(--theme-highlight-blue);
   --onboarding-link-active-color: var(--blue-40);
+
+  /* Tooltips */
+  --theme-tooltip-border: #434850;
+  --theme-tooltip-background: rgba(19, 28, 38, .9);
+  --theme-tooltip-shadow: rgba(25, 25, 25, 0.76);
+
+  /* Doorhangers */
+  /* These colors are based on the colors used for doorhangers elsewhere in
+   * Firefox. */
+  --theme-arrowpanel-background: var(--theme-popup-background);
+  --theme-arrowpanel-color: var(--theme-popup-color);
+  --theme-arrowpanel-border-color: var(--theme-popup-border-color);
+  --theme-arrowpanel-separator: rgba(249,249,250,.1);
+  --theme-arrowpanel-dimmed: var(--theme-popup-dimmed);
+  --theme-arrowpanel-dimmed-further: rgba(249,249,250,.15);
+  --theme-arrowpanel-disabled-color: rgba(249,249,250,.5);
 }
 
 .theme-light {
@@ -22,46 +38,33 @@
   --bezier-grid-color: rgba(0, 0, 0, 0.05);
   --onboarding-link-color: var(--blue-60);
   --onboarding-link-active-color: var(--blue-70);
+
+  /* Tooltips */
+  --theme-tooltip-border: #d9e1e8;
+  --theme-tooltip-background: rgba(255, 255, 255, .9);
+  --theme-tooltip-shadow: rgba(155, 155, 155, 0.26);
+
+  /* Doorhangers */
+  /* These colors are based on the colors used for doorhangers elsewhere in
+   * Firefox. */
+  --theme-arrowpanel-background: var(--theme-popup-background);
+  --theme-arrowpanel-color: var(--theme-popup-color);
+  --theme-arrowpanel-border-color: var(--theme-popup-border-color);
+  --theme-arrowpanel-separator: ThreeDShadow;
+  --theme-arrowpanel-dimmed: var(--theme-popup-dimmed);
+  --theme-arrowpanel-dimmed-further: hsla(0,0%,80%,.45);
+  --theme-arrowpanel-disabled-color: GrayText;
 }
 
-/* Tooltip widget (see devtools/client/shared/widgets/tooltip/Tooltip.js) */
-
-.devtools-tooltip .panel-arrowcontent {
-  padding: 4px;
+:root {
+  --theme-arrowpanel-border-radius: 0px;
+}
+:root[platform="mac"] {
+  --theme-arrowpanel-border-radius: 3.5px;
 }
 
-.devtools-tooltip .panel-arrowcontainer {
-  /* Reseting the transition used when panels are shown */
-  transition: none;
-  /* Panels slide up/down/left/right when they appear using a transform.
-  Since we want to remove the transition, we don't need to transform anymore
-  plus it can interfeer by causing mouseleave events on the underlying nodes */
-  transform: none;
-}
-
-.devtools-tooltip[clamped-dimensions] {
-  min-height: 100px;
-  max-height: 400px;
-  min-width: 100px;
-  max-width: 400px;
-}
-.devtools-tooltip[clamped-dimensions-no-min-height] {
-  min-height: 0;
-  max-height: 400px;
-  min-width: 100px;
-  max-width: 400px;
-}
-.devtools-tooltip[clamped-dimensions-no-max-or-min-height] {
-  min-width: 400px;
-  max-width: 400px;
-}
-.devtools-tooltip[clamped-dimensions] .panel-arrowcontent,
-.devtools-tooltip[clamped-dimensions-no-min-height] .panel-arrowcontent,
-.devtools-tooltip[clamped-dimensions-no-max-or-min-height] .panel-arrowcontent {
-  overflow: hidden;
-}
-.devtools-tooltip[wide] {
-  max-width: 600px;
+:root[platform="mac"].theme-light {
+  --theme-arrowpanel-separator: hsla(210,4%,10%,.14);
 }
 
 /* Tooltip: CSS variables tooltip */
@@ -69,33 +72,6 @@
 .devtools-tooltip-css-variable {
   color: var(--theme-body-color);
   padding: 2px;
-}
-
-/* Tooltip: Simple Text */
-
-.devtools-tooltip-simple-text {
-  max-width: 400px;
-  margin: 0 -4px; /* Compensate for the .panel-arrowcontent padding. */
-  padding: 8px 12px;
-  white-space: pre-wrap;
-}
-
-.devtools-tooltip-simple-text:first-child {
-  margin-top: -4px;
-}
-
-.devtools-tooltip-simple-text:last-child {
-  margin-bottom: -4px;
-}
-
-/* Tooltip: Variables View */
-
-.devtools-tooltip-variables-view-box {
-  margin: -4px; /* Compensate for the .panel-arrowcontent padding. */
-}
-
-.devtools-tooltip-variables-view-box .variable-or-property > .title {
-  padding-inline-end: 6px;
 }
 
 /* Tooltip: Tiles */
@@ -106,11 +82,6 @@
     linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc);
   background-size: 20px 20px;
   background-position: 0 0, 10px 10px;
-}
-
-.devtools-tooltip-iframe {
-  border: none;
-  background: transparent;
 }
 
 .tooltip-container {
@@ -172,7 +143,7 @@
 
 /* type="arrow" overrides: remove arrow decorations for the xul <panel> wrapper */
 
-.tooltip-xul-wrapper[type="arrow"] {
+.tooltip-xul-wrapper[type="arrow"][side] {
   margin: 0;
 }
 
@@ -260,6 +231,224 @@
 .tooltip-top .tooltip-arrow:before {
   margin-top: -12px;
   transform: rotate(45deg);
+}
+
+/* Tooltip : doorhanger style */
+
+.tooltip-container[type="doorhanger"] > .tooltip-panel {
+  padding: 2px 0;
+  color: var(--theme-arrowpanel-color);
+  margin: 4px;
+  max-width: 320px;
+}
+
+.tooltip-container[type="doorhanger"] > .tooltip-panel,
+.tooltip-container[type="doorhanger"] > .tooltip-arrow::before {
+  background: var(--theme-arrowpanel-background);
+  border: 1px solid var(--theme-arrowpanel-border-color);
+  border-radius: var(--theme-arrowpanel-border-radius);
+  box-shadow: 0 0 4px hsla(210,4%,10%,.2);
+}
+
+:root[platform="mac"] .tooltip-container[type="doorhanger"] > .tooltip-panel,
+:root[platform="mac"] .tooltip-container[type="doorhanger"] > .tooltip-arrow::before {
+  box-shadow: none;
+  /*
+   * The above should be:
+   *
+   *   box-shadow: 0 0 0 1px var(--theme-arrowpanel-border-color);
+   *
+   * but although that gives the right emphasis to the border it makes the
+   * platform shadow much too dark.
+   */
+}
+
+:root[platform="mac"].theme-light .tooltip-container[type="doorhanger"] > .tooltip-panel,
+:root[platform="mac"].theme-light .tooltip-container[type="doorhanger"] > .tooltip-arrow::before {
+  border: none;
+}
+
+.tooltip-container[type="doorhanger"] > .tooltip-arrow {
+  /* Desired width of the arrow */
+  --arrow-width: 20px;
+
+  /* Amount of room to allow for the shadow. Should be about half the radius. */
+  --shadow-radius: 4px;
+  --shadow-margin: calc(var(--shadow-radius) / 2);
+
+  /*
+   * Crop the arrow region to show half the arrow plus allow room for margins.
+   *
+   * The ARROW_WIDTH in HTMLTooltip.js needs to match the following value.
+   */
+  width: calc(var(--arrow-width) + 2 * var(--shadow-margin));
+  height: calc(var(--arrow-width) / 2 + var(--shadow-margin));
+}
+
+.tooltip-container[type="doorhanger"] > .tooltip-arrow::before {
+  /* Make sure the border is included in the size */
+  box-sizing: border-box;
+
+  /* Don't inherit any rounded corners. */
+  border-radius: 0;
+
+  /*
+   * When the box is rotated, it should have width <arrow-width>.
+   * That makes the length of one side of the box equal to:
+   *
+   *    (<arrow-width> / 2) / sin 45
+   */
+  --sin-45: 0.707106781;
+  --square-side: calc(var(--arrow-width) / 2 / var(--sin-45));
+  width: var(--square-side);
+  height: var(--square-side);
+
+  /*
+   * The rotated square will overshoot the left side
+   * and need to be shifted in by:
+   *
+   *   (<arrow-width> - square side) / 2
+   *
+   * But we also want to shift it in so that the box-shadow
+   * is not clipped when we clip the parent so we add
+   * a suitable margin for that.
+   */
+  --overhang: calc((var(--arrow-width) - var(--square-side)) / 2);
+  margin-left: calc(var(--overhang) + var(--shadow-margin));
+}
+
+.tooltip-container[type="doorhanger"].tooltip-top > .tooltip-panel {
+  /*
+   * Drop the margin between the doorhanger and the arrow and add extra
+   * padding.
+   */
+  margin-bottom: 0;
+  padding-bottom: 6px;
+}
+
+.tooltip-container[type="doorhanger"].tooltip-bottom > .tooltip-panel {
+  /*
+   * Drop the margin between the doorhanger and the arrow and add extra
+   * padding.
+   */
+  margin-top: 0;
+  padding-top: 6px;
+}
+
+.tooltip-container[type="doorhanger"].tooltip-top > .tooltip-arrow {
+  /* Overlap the arrow with the 1px border of the doorhanger */
+  margin-top: -1px;
+}
+
+.tooltip-container[type="doorhanger"].tooltip-bottom > .tooltip-arrow {
+  /* Overlap the arrow with the 1px border of the doorhanger */
+  margin-bottom: -1px;
+}
+
+.tooltip-container[type="doorhanger"].tooltip-top > .tooltip-arrow::before {
+  /* Show only the bottom half of the box */
+  margin-top: calc(var(--square-side) / -2);
+}
+
+.tooltip-container[type="doorhanger"].tooltip-bottom > .tooltip-arrow::before {
+  /* Shift the rotated box in so that it is not clipped */
+  margin-top: calc(var(--overhang) + var(--shadow-margin));
+}
+
+.tooltip-container[type="doorhanger"] .tooltip-panel ul {
+  /* Override the display: -moz-box declaration in minimal-xul.css
+   * or else menu items won't stack. */
+  display: block;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command {
+  display: flex;
+  align-items: baseline;
+  margin: 0;
+  padding: 4px 12px;
+  outline: none;
+  /*
+   * It doesn't really make sense, since if this is just about making the items
+   * easier to click we should be using min-width instead.
+   */
+  margin-inline-end: 15px;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > button.command:-moz-any([role="menuitem"],[role="menuitemcheckbox"]) {
+  -moz-appearance: none;
+  border: none;
+  color: var(--theme-arrowpanel-color);
+  background-color: transparent;
+  text-align: start;
+  width: 100%;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command:not(:-moz-any([disabled],[open],:active)):-moz-any(:hover,:focus) {
+  background-color: var(--theme-arrowpanel-dimmed);
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command:-moz-focusring::-moz-focus-inner {
+  border-color: transparent;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command:not([disabled]):-moz-any([open],:hover:active) {
+  background-color: var(--theme-arrowpanel-dimmed-further);
+  box-shadow: 0 1px 0 hsla(210,4%,10%,.03) inset;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command[aria-checked="true"] {
+  list-style-image: none;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  background: url(chrome://browser/skin/check.svg) no-repeat transparent;
+  background-size: 11px 11px;
+  background-position: center left 7px;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command[aria-checked="true"]:-moz-locale-dir(rtl) {
+  background-position: center right 7px;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command > .label {
+  flex: 1;
+  font: menu;
+  white-space: nowrap;
+}
+
+.tooltip-container[type="doorhanger"] .checkbox-container .menuitem > .command > .label {
+  padding-inline-start: 16px;
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command.iconic > .label::before {
+  content: " ";
+  display: inline-block;
+  margin-inline-end: 8px;
+  width: 16px;
+  height: 16px;
+  vertical-align: top;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  background-image: var(--menuitem-icon-image);
+  background-size: contain;
+  /*
+   * The icons in the sidebar menu have opacity: 0.8 here, but those in the
+   * hamburger menu don't. For now we match the hamburger menu styling,
+   * especially because the 80% opacity makes the icons look dull in dark mode.
+   */
+}
+
+.tooltip-container[type="doorhanger"] .menuitem > .command > .accelerator {
+  margin-inline-start: 10px;
+  color: var(--theme-arrowpanel-disabled-color);
+  font: message-box;
+}
+
+.tooltip-container[type="doorhanger"] hr {
+  display: block;
+  border: none;
+  border-top: 1px solid var(--theme-arrowpanel-separator);
+  margin: 6px 0;
+  padding: 0;
 }
 
 /* Tooltip: Events */
@@ -389,72 +578,6 @@
   padding-top: 2px;
 }
 
-/*
- * Tooltip: JS stack traces
- */
-
-.stack-trace-tooltip {
-  direction: ltr;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.stack-trace-tooltip > .stack-frame {
-  margin-left: 5px;
-  margin-right: 5px;
-}
-
-.stack-trace-tooltip > .stack-frame:first-child {
-  margin-top: 5px;
-}
-
-.stack-trace-tooltip > .stack-frame:last-child {
-  margin-bottom: 5px;
-}
-
-.stack-frame-call {
-  color: var(--theme-body-color-alt);
-  cursor: pointer;
-  display: flex;
-}
-
-.stack-frame-call:hover {
-  background-color: var(--theme-selection-background-hover);
-}
-
-.stack-frame-async {
-  color: var(--theme-body-color-inactive);
-}
-
-.stack-frame-function-name {
-  color: var(--theme-highlight-blue);
-  max-width: 50%;
-  margin-inline-end: 1em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.stack-frame-source-name {
-  flex: 1 1;
-  /* Makes the file name truncated (and ellipsis shown) on the left side */
-  direction: rtl;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Enforce LTR direction for the file name - fixes bug 1290056 */
-.stack-frame-source-name-inner {
-  direction: ltr;
-  unicode-bidi: embed;
-}
-
-.stack-frame-line {
-  color: var(--theme-highlight-orange);
-}
-
 /* Tooltip: HTML Search */
 
 #searchbox-panel-listbox {
@@ -468,15 +591,6 @@
   overflow-x: hidden;
 }
 
-#searchbox-panel-listbox .autocomplete-item > .initial-value {
-  max-width: 130px;
-  margin-left: 15px;
-}
-
-#searchbox-panel-listbox .autocomplete-item > .autocomplete-value {
-  max-width: 150px;
-}
-
 /* Tooltip: Image tooltip */
 
 .devtools-tooltip-image-broken {
@@ -485,9 +599,9 @@
   padding: 7px;
 }
 
-/* Tooltip: 3 Pane Inspecot Onboarding Tooltip */
+/* Tooltip: Onboarding Tooltip */
 
-.three-pane-onboarding-container {
+.onboarding-container {
   align-items: center;
   background-color: var(--theme-toolbar-background);
   box-sizing: border-box;
@@ -499,7 +613,7 @@
   -moz-user-select: none;
 }
 
-.three-pane-onboarding-icon {
+.onboarding-icon {
   display: inline-block;
   background-size: 21px;
   width: 21px;
@@ -508,29 +622,29 @@
   background-image: url("chrome://devtools/skin/images/fox-smiling.svg");
 }
 
-.three-pane-onboarding-content {
+.onboarding-content {
   flex: 1;
   padding-inline-start: 5px;
 }
 
-.three-pane-onboarding-link {
+.onboarding-link {
   color: var(--onboarding-link-color);
   cursor: pointer;
 }
 
-.three-pane-onboarding-link:hover {
+.onboarding-link:hover {
   text-decoration: underline;
 }
 
-.three-pane-onboarding-link:active {
+.onboarding-link:active {
   color: var(--onboarding-link-active-color);
 }
 
-.three-pane-onboarding-close-button {
+.onboarding-close-button {
   align-self: flex-start;
 }
 
-.three-pane-onboarding-close-button::before {
+.onboarding-close-button::before {
   background-image: url("chrome://devtools/skin/images/close.svg");
   margin: -6px 0 0 -6px;
 }

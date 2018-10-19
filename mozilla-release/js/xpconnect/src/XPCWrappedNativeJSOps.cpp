@@ -10,6 +10,7 @@
 #include "xpc_make_class.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/Preferences.h"
+#include "js/AutoByteString.h"
 #include "js/Class.h"
 #include "js/Printf.h"
 
@@ -157,7 +158,7 @@ GetDoubleWrappedJSObject(XPCCallContext& ccx, XPCWrappedNative* wrapper)
             RootedId id(ccx, ccx.GetContext()->
                             GetStringID(XPCJSContext::IDX_WRAPPED_JSOBJECT));
 
-            JSAutoRealm ar(ccx, mainObj);
+            JSAutoRealm ar(ccx, underware->GetJSObjectGlobal());
 
             RootedValue val(ccx);
             if (JS_GetPropertyById(ccx, mainObj, id, &val) &&

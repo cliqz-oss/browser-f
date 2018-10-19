@@ -268,7 +268,8 @@ BackgroundHangManager::BackgroundHangManager()
 
   mHangMonitorThread = PR_CreateThread(
     PR_USER_THREAD, MonitorThread, this,
-    PR_PRIORITY_LOW, PR_GLOBAL_THREAD, PR_JOINABLE_THREAD, 0);
+    PR_PRIORITY_LOW, PR_GLOBAL_THREAD, PR_JOINABLE_THREAD,
+    nsIThreadManager::DEFAULT_STACK_SIZE);
 
   MOZ_ASSERT(mHangMonitorThread, "Failed to create BHR monitor thread");
 
@@ -707,7 +708,7 @@ BackgroundHangMonitor::BackgroundHangMonitor(const char* aName,
   }
 # endif
 
-  if (!BackgroundHangManager::sDisabled && !mThread) {
+  if (!BackgroundHangManager::sDisabled && !mThread && !recordreplay::IsMiddleman()) {
     mThread = new BackgroundHangThread(aName, aTimeoutMs, aMaxTimeoutMs,
                                        aThreadType);
   }

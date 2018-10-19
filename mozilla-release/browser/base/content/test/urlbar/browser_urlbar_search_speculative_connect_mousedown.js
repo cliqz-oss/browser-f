@@ -49,7 +49,7 @@ add_task(async function popup_mousedown_tests() {
   const test = {
     // To not trigger autofill, search keyword starts from the second character.
     search: gHost.substr(1, 4),
-    completeValue: `${gScheme}://${gHost}:${gPort}/`
+    completeValue: `${gScheme}://${gHost}:${gPort}/`,
   };
   info(`Searching for '${test.search}'`);
   await promiseAutocompleteResultPopup(test.search, window, true);
@@ -61,11 +61,11 @@ add_task(async function popup_mousedown_tests() {
   is(value, test.completeValue, "The second item has the url we visited.");
 
   await BrowserTestUtils.waitForCondition(() => {
-    return !!gURLBar.popup.richlistbox.childNodes[1] &&
-           BrowserTestUtils.is_visible(gURLBar.popup.richlistbox.childNodes[1]);
+    return !!gURLBar.popup.richlistbox.children[1] &&
+           BrowserTestUtils.is_visible(gURLBar.popup.richlistbox.children[1]);
   }, "the node is there.");
 
-  let listitem = gURLBar.popup.richlistbox.childNodes[1];
+  let listitem = gURLBar.popup.richlistbox.children[1];
   EventUtils.synthesizeMouse(listitem, 10, 10, {type: "mousedown"}, window);
   is(gURLBar.popup.richlistbox.selectedIndex, 1, "The second item is selected");
   await promiseSpeculativeConnection(gHttpServer);

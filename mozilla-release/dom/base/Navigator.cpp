@@ -11,6 +11,7 @@
 #include "nsIXULAppInfo.h"
 #include "nsPluginArray.h"
 #include "nsMimeTypeArray.h"
+#include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/BodyExtractor.h"
 #include "mozilla/dom/FetchBinding.h"
@@ -30,10 +31,13 @@
 #include "nsContentUtils.h"
 #include "nsUnicharUtils.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
 #include "BatteryManager.h"
 #include "mozilla/dom/CredentialsContainer.h"
+#include "mozilla/dom/Clipboard.h"
 #include "mozilla/dom/GamepadServiceTest.h"
+#include "mozilla/dom/MediaCapabilities.h"
 #include "mozilla/dom/WakeLock.h"
 #include "mozilla/dom/power/PowerManagerService.h"
 #include "mozilla/dom/MIDIAccessManager.h"
@@ -54,13 +58,13 @@
 #include "Connection.h"
 #include "mozilla/dom/Event.h" // for Event
 #include "nsGlobalWindow.h"
-#include "nsIIdleObserver.h"
 #include "nsIPermissionManager.h"
 #include "nsMimeTypes.h"
 #include "nsNetUtil.h"
 #include "nsRFPService.h"
 #include "nsStringStream.h"
 #include "nsComponentManagerUtils.h"
+#include "nsICookieService.h"
 #include "nsIStringStream.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
@@ -152,6 +156,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCredentials)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaDevices)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mServiceWorkerContainer)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaCapabilities)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaKeySystemAccessManager)
@@ -222,6 +227,8 @@ Navigator::Invalidate()
     mVRServiceTest->Shutdown();
     mVRServiceTest = nullptr;
   }
+
+  mMediaCapabilities = nullptr;
 }
 
 void
@@ -508,16 +515,11 @@ Navigator::Storage()
   return mStorageManager;
 }
 
-// Values for the network.cookie.cookieBehavior pref are documented in
-// nsCookieService.cpp.
-#define COOKIE_BEHAVIOR_REJECT 2
-
 bool
 Navigator::CookieEnabled()
 {
-  bool cookieEnabled =
-    (Preferences::GetInt("network.cookie.cookieBehavior",
-                         COOKIE_BEHAVIOR_REJECT) != COOKIE_BEHAVIOR_REJECT);
+  bool cookieEnabled = (StaticPrefs::network_cookie_cookieBehavior() !=
+                        nsICookieService::BEHAVIOR_REJECT);
 
   // Check whether an exception overrides the global cookie behavior
   // Note that the code for getting the URI here matches that in
@@ -540,20 +542,17 @@ Navigator::CookieEnabled()
     return cookieEnabled;
   }
 
-  nsCOMPtr<nsICookiePermission> permMgr =
-    do_GetService(NS_COOKIEPERMISSION_CONTRACTID);
-  NS_ENSURE_TRUE(permMgr, cookieEnabled);
-
-  // Pass null for the channel, just like the cookie service does.
-  nsCookieAccess access;
-  nsresult rv = permMgr->CanAccess(doc->NodePrincipal(), &access);
-  NS_ENSURE_SUCCESS(rv, cookieEnabled);
-
-  if (access != nsICookiePermission::ACCESS_DEFAULT) {
-    cookieEnabled = access != nsICookiePermission::ACCESS_DENY;
+  uint32_t rejectedReason = 0;
+  if (AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(mWindow,
+                                                              codebaseURI,
+                                                              &rejectedReason)) {
+    return true;
   }
 
-  return cookieEnabled;
+  if (rejectedReason) {
+    AntiTrackingCommon::NotifyRejection(mWindow, rejectedReason);
+  }
+  return false;
 }
 
 bool
@@ -718,9 +717,7 @@ Navigator::AddIdleObserver(MozIdleObserver& aIdleObserver, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return;
   }
-  CallbackObjectHolder<MozIdleObserver, nsIIdleObserver> holder(&aIdleObserver);
-  nsCOMPtr<nsIIdleObserver> obs = holder.ToXPCOMCallback();
-  if (NS_FAILED(mWindow->RegisterIdleObserver(obs))) {
+  if (NS_FAILED(mWindow->RegisterIdleObserver(aIdleObserver))) {
     NS_WARNING("Failed to add idle observer.");
   }
 }
@@ -732,9 +729,7 @@ Navigator::RemoveIdleObserver(MozIdleObserver& aIdleObserver, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return;
   }
-  CallbackObjectHolder<MozIdleObserver, nsIIdleObserver> holder(&aIdleObserver);
-  nsCOMPtr<nsIIdleObserver> obs = holder.ToXPCOMCallback();
-  if (NS_FAILED(mWindow->UnregisterIdleObserver(obs))) {
+  if (NS_FAILED(mWindow->UnregisterIdleObserver(aIdleObserver))) {
     NS_WARNING("Failed to remove idle observer.");
   }
 }
@@ -879,18 +874,6 @@ Navigator::RegisterContentHandler(const nsAString& aMIMEType,
                                   const nsAString& aTitle,
                                   ErrorResult& aRv)
 {
-  if (!mWindow || !mWindow->GetOuterWindow() || !mWindow->GetDocShell()) {
-    return;
-  }
-
-  nsCOMPtr<nsIWebContentHandlerRegistrar> registrar =
-    do_GetService(NS_WEBCONTENTHANDLERREGISTRAR_CONTRACTID);
-  if (!registrar) {
-    return;
-  }
-
-  aRv = registrar->RegisterContentHandler(aMIMEType, aURI, aTitle,
-                                          mWindow->GetOuterWindow());
 }
 
 void
@@ -1191,24 +1174,18 @@ Navigator::MozGetUserMedia(const MediaStreamConstraints& aConstraints,
                            CallerType aCallerType,
                            ErrorResult& aRv)
 {
-  CallbackObjectHolder<NavigatorUserMediaSuccessCallback,
-                       nsIDOMGetUserMediaSuccessCallback> holder1(&aOnSuccess);
-  nsCOMPtr<nsIDOMGetUserMediaSuccessCallback> onsuccess =
-    holder1.ToXPCOMCallback();
-
-  CallbackObjectHolder<NavigatorUserMediaErrorCallback,
-                       nsIDOMGetUserMediaErrorCallback> holder2(&aOnError);
-  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onerror = holder2.ToXPCOMCallback();
-
   if (!mWindow || !mWindow->GetOuterWindow() ||
       mWindow->GetOuterWindow()->GetCurrentInnerWindow() != mWindow) {
     aRv.Throw(NS_ERROR_NOT_AVAILABLE);
     return;
   }
 
+  MediaManager::GetUserMediaSuccessCallback onsuccess(&aOnSuccess);
+  MediaManager::GetUserMediaErrorCallback onerror(&aOnError);
+
   MediaManager* manager = MediaManager::Get();
-  aRv = manager->GetUserMedia(mWindow, aConstraints, onsuccess, onerror,
-                              aCallerType);
+  aRv = manager->GetUserMedia(mWindow, aConstraints, std::move(onsuccess),
+                              std::move(onerror), aCallerType);
 }
 
 void
@@ -1219,15 +1196,6 @@ Navigator::MozGetUserMediaDevices(const MediaStreamConstraints& aConstraints,
                                   const nsAString& aCallID,
                                   ErrorResult& aRv)
 {
-  CallbackObjectHolder<MozGetUserMediaDevicesSuccessCallback,
-                       nsIGetUserMediaDevicesSuccessCallback> holder1(&aOnSuccess);
-  nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> onsuccess =
-    holder1.ToXPCOMCallback();
-
-  CallbackObjectHolder<NavigatorUserMediaErrorCallback,
-                       nsIDOMGetUserMediaErrorCallback> holder2(&aOnError);
-  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onerror = holder2.ToXPCOMCallback();
-
   if (!mWindow || !mWindow->GetOuterWindow() ||
       mWindow->GetOuterWindow()->GetCurrentInnerWindow() != mWindow) {
     aRv.Throw(NS_ERROR_NOT_AVAILABLE);
@@ -1235,7 +1203,8 @@ Navigator::MozGetUserMediaDevices(const MediaStreamConstraints& aConstraints,
   }
 
   MediaManager* manager = MediaManager::Get();
-  aRv = manager->GetUserMediaDevices(mWindow, aConstraints, onsuccess, onerror,
+  // XXXbz aOnError seems to be unused?
+  aRv = manager->GetUserMediaDevices(mWindow, aConstraints, aOnSuccess,
                                      aInnerWindowID, aCallID);
 }
 
@@ -1379,7 +1348,7 @@ Navigator::NotifyVRDisplaysUpdated()
 void
 Navigator::NotifyActiveVRDisplaysChanged()
 {
-  NavigatorBinding::ClearCachedActiveVRDisplaysValue(this);
+  Navigator_Binding::ClearCachedActiveVRDisplaysValue(this);
 }
 
 VRServiceTest*
@@ -1497,7 +1466,7 @@ Navigator::OnNavigation()
 JSObject*
 Navigator::WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return NavigatorBinding::Wrap(cx, this, aGivenProto);
+  return Navigator_Binding::Wrap(cx, this, aGivenProto);
 }
 
 /* static */
@@ -1514,8 +1483,7 @@ Navigator::HasUserMediaSupport(JSContext* /* unused */,
 already_AddRefed<nsPIDOMWindowInner>
 Navigator::GetWindowFromGlobal(JSObject* aGlobal)
 {
-  nsCOMPtr<nsPIDOMWindowInner> win =
-    do_QueryInterface(nsJSUtils::GetStaticScriptGlobal(aGlobal));
+  nsCOMPtr<nsPIDOMWindowInner> win = xpc::WindowOrNull(aGlobal);
   return win.forget();
 }
 
@@ -1549,9 +1517,7 @@ Navigator::GetPlatform(nsAString& aPlatform, bool aUsePrefOverriddenValue)
 
   // Sorry for the #if platform ugliness, but Communicator is likewise
   // hardcoded and we are seeking backward compatibility here (bug 47080).
-#if defined(_WIN64)
-  aPlatform.AssignLiteral("Win64");
-#elif defined(WIN32)
+#if defined(WIN32)
   aPlatform.AssignLiteral("Win32");
 #elif defined(XP_MACOSX) && defined(__ppc__)
   aPlatform.AssignLiteral("MacPPC");
@@ -1644,7 +1610,7 @@ Navigator::AppName(nsAString& aAppName, bool aUsePrefOverriddenValue)
 void
 Navigator::ClearUserAgentCache()
 {
-  NavigatorBinding::ClearCachedUserAgentValue(this);
+  Navigator_Binding::ClearCachedUserAgentValue(this);
 }
 
 nsresult
@@ -1793,6 +1759,25 @@ Navigator::Credentials()
     mCredentials = new CredentialsContainer(GetWindow());
   }
   return mCredentials;
+}
+
+dom::MediaCapabilities*
+Navigator::MediaCapabilities()
+{
+  if (!mMediaCapabilities) {
+    mMediaCapabilities =
+      new dom::MediaCapabilities(GetWindow()->AsGlobal());
+  }
+  return mMediaCapabilities;
+}
+
+Clipboard*
+Navigator::Clipboard()
+{
+  if (!mClipboard) {
+    mClipboard = new dom::Clipboard(GetWindow());
+  }
+  return mClipboard;
 }
 
 /* static */

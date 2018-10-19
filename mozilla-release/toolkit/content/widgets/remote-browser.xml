@@ -10,8 +10,7 @@
 
   <binding id="remote-browser" extends="chrome://global/content/bindings/browser.xml#browser">
 
-    <implementation type="application/javascript"
-                    implements="nsIObserver, nsIRemoteBrowser">
+    <implementation type="application/javascript">
 
       <field name="_securityUI">null</field>
 
@@ -63,9 +62,9 @@
             if (!this.messageManager)
               return null;
 
-            let jsm = "resource://gre/modules/RemoteFinder.jsm";
-            let { RemoteFinder } = ChromeUtils.import(jsm, {});
-            this._remoteFinder = new RemoteFinder(this);
+            let jsm = "resource://gre/modules/FinderParent.jsm";
+            let { FinderParent } = ChromeUtils.import(jsm, {});
+            this._remoteFinder = new FinderParent(this);
           }
           return this._remoteFinder;
         ]]></getter>
@@ -164,12 +163,12 @@
         <setter><![CDATA[
           let changed = val.toFixed(2) != this._fullZoom.toFixed(2);
 
-          this._fullZoom = val;
-          try {
-            this.messageManager.sendAsyncMessage("FullZoom", {value: val});
-          } catch (ex) {}
-
           if (changed) {
+            this._fullZoom = val;
+            try {
+              this.messageManager.sendAsyncMessage("FullZoom", {value: val});
+            } catch (ex) {}
+
             let event = new Event("FullZoomChange", {bubbles: true});
             this.dispatchEvent(event);
           }
@@ -184,12 +183,12 @@
         <setter><![CDATA[
           let changed = val.toFixed(2) != this._textZoom.toFixed(2);
 
-          this._textZoom = val;
-          try {
-            this.messageManager.sendAsyncMessage("TextZoom", {value: val});
-          } catch (ex) {}
-
           if (changed) {
+            this._textZoom = val;
+            try {
+              this.messageManager.sendAsyncMessage("TextZoom", {value: val});
+            } catch (ex) {}
+
             let event = new Event("TextZoomChange", {bubbles: true});
             this.dispatchEvent(event);
           }
@@ -401,8 +400,6 @@
           this.messageManager.addMessageListener("FullZoomChange", this);
           this.messageManager.addMessageListener("TextZoomChange", this);
           this.messageManager.addMessageListener("ZoomChangeUsingMouseWheel", this);
-          this.messageManager.addMessageListener("DOMFullscreen:RequestExit", this);
-          this.messageManager.addMessageListener("DOMFullscreen:RequestRollback", this);
           this.messageManager.addMessageListener("MozApplicationManifest", this);
 
           // browser-child messages, such as Content:LocationChange, are handled in
@@ -486,7 +483,7 @@
             case "ImageDocumentLoaded":
               this._imageDocument = {
                 width: data.width,
-                height: data.height
+                height: data.height,
               };
               break;
 
@@ -532,20 +529,6 @@
               break;
             }
 
-            case "DOMFullscreen:RequestExit": {
-              let windowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                                      .getInterface(Ci.nsIDOMWindowUtils);
-              windowUtils.exitFullscreen();
-              break;
-            }
-
-            case "DOMFullscreen:RequestRollback": {
-              let windowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                                      .getInterface(Ci.nsIDOMWindowUtils);
-              windowUtils.remoteFrameFullscreenReverted();
-              break;
-            }
-
             case "MozApplicationManifest":
               this._manifestURI = aMessage.data.manifest;
               break;
@@ -558,7 +541,7 @@
         ]]></body>
       </method>
 
-      <method name="enableDisableCommands">
+      <method name="enableDisableCommandsRemoteOnly">
         <parameter name="aAction"/>
         <parameter name="aEnabledLength"/>
         <parameter name="aEnabledCommands"/>

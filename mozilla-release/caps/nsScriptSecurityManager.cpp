@@ -23,7 +23,6 @@
 #include "mozilla/BasePrincipal.h"
 #include "ExpandedPrincipal.h"
 #include "SystemPrincipal.h"
-#include "NullPrincipal.h"
 #include "DomainPolicy.h"
 #include "nsString.h"
 #include "nsCRT.h"
@@ -46,7 +45,6 @@
 #include "nsIPrompt.h"
 #include "nsIWindowWatcher.h"
 #include "nsIConsoleService.h"
-#include "nsIObserverService.h"
 #include "nsIOService.h"
 #include "nsIContent.h"
 #include "nsDOMJSUtils.h"
@@ -60,6 +58,7 @@
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/NullPrincipal.h"
 #include <stdint.h>
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -461,8 +460,7 @@ nsScriptSecurityManager::IsSystemPrincipal(nsIPrincipal* aPrincipal,
 // Methods implementing ISupports //
 ////////////////////////////////////
 NS_IMPL_ISUPPORTS(nsScriptSecurityManager,
-                  nsIScriptSecurityManager,
-                  nsIObserver)
+                  nsIScriptSecurityManager)
 
 ///////////////////////////////////////////////////
 // Methods implementing nsIScriptSecurityManager //
@@ -471,7 +469,8 @@ NS_IMPL_ISUPPORTS(nsScriptSecurityManager,
 ///////////////// Security Checks /////////////////
 
 bool
-nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(JSContext *cx)
+nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(JSContext *cx,
+                                                              JS::HandleValue aValue)
 {
     MOZ_ASSERT(cx == nsContentUtils::GetCurrentJSContext());
     nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::SubjectPrincipal();
@@ -494,12 +493,24 @@ nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(JSContext *cx)
     }
 
     if (reportViolation) {
-        nsAutoString fileName;
-        unsigned lineNum = 0;
-        NS_NAMED_LITERAL_STRING(scriptSample, "call to eval() or related function blocked by CSP");
+        JS::Rooted<JSString*> jsString(cx, JS::ToString(cx, aValue));
+        if (NS_WARN_IF(!jsString)) {
+          JS_ClearPendingException(cx);
+          return false;
+        }
+
+        nsAutoJSString scriptSample;
+        if (NS_WARN_IF(!scriptSample.init(cx, jsString))) {
+          JS_ClearPendingException(cx);
+          return false;
+        }
 
         JS::AutoFilename scriptFilename;
-        if (JS::DescribeScriptedCaller(cx, &scriptFilename, &lineNum)) {
+        nsAutoString fileName;
+        unsigned lineNum = 0;
+        unsigned columnNum = 0;
+        if (JS::DescribeScriptedCaller(cx, &scriptFilename, &lineNum,
+                                       &columnNum)) {
             if (const char *file = scriptFilename.get()) {
                 CopyUTF8toUTF16(nsDependentCString(file), fileName);
             }
@@ -507,9 +518,11 @@ nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(JSContext *cx)
             MOZ_ASSERT(!JS_IsExceptionPending(cx));
         }
         csp->LogViolationDetails(nsIContentSecurityPolicy::VIOLATION_TYPE_EVAL,
+                                 nullptr, // triggering element
                                  fileName,
                                  scriptSample,
                                  lineNum,
+                                 columnNum,
                                  EmptyString(),
                                  EmptyString());
     }
@@ -1347,9 +1360,6 @@ nsScriptSecurityManager::CanGetService(JSContext *cx,
     return NS_ERROR_DOM_XPCONNECT_ACCESS_DENIED;
 }
 
-/////////////////////////////////////
-// Method implementing nsIObserver //
-/////////////////////////////////////
 const char sJSEnabledPrefName[] = "javascript.enabled";
 const char sFileOriginPolicyPrefName[] =
     "security.fileuri.strict_origin_policy";
@@ -1361,14 +1371,6 @@ static const char* kObservedPrefs[] = {
   nullptr
 };
 
-
-NS_IMETHODIMP
-nsScriptSecurityManager::Observe(nsISupports* aObject, const char* aTopic,
-                                 const char16_t* aMessage)
-{
-    ScriptSecurityPrefChanged();
-    return NS_OK;
-}
 
 /////////////////////////////////////////////
 // Constructor, Destructor, Initialization //
@@ -1416,7 +1418,10 @@ static StaticRefPtr<nsScriptSecurityManager> gScriptSecMan;
 
 nsScriptSecurityManager::~nsScriptSecurityManager(void)
 {
-    Preferences::RemoveObservers(this, kObservedPrefs);
+    Preferences::UnregisterPrefixCallbacks(
+       PREF_CHANGE_METHOD(nsScriptSecurityManager::ScriptSecurityPrefChanged),
+       kObservedPrefs,
+       this);
     if (mDomainPolicy) {
         mDomainPolicy->Deactivate();
     }
@@ -1496,7 +1501,7 @@ uint32_t SkipUntil(const nsCString& str, uint32_t base)
 }
 
 inline void
-nsScriptSecurityManager::ScriptSecurityPrefChanged()
+nsScriptSecurityManager::ScriptSecurityPrefChanged(const char* aPref)
 {
     MOZ_ASSERT(mPrefInitialized);
     mIsJavaScriptEnabled =
@@ -1553,7 +1558,10 @@ nsScriptSecurityManager::InitPrefs()
     ScriptSecurityPrefChanged();
 
     // set observer callbacks in case the value of the prefs change
-    Preferences::AddStrongObservers(this, kObservedPrefs);
+    Preferences::RegisterPrefixCallbacks(
+       PREF_CHANGE_METHOD(nsScriptSecurityManager::ScriptSecurityPrefChanged),
+       kObservedPrefs,
+       this);
 
     OriginAttributes::InitPrefs();
 

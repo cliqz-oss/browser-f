@@ -156,7 +156,7 @@ SpeechRecognition::SetState(FSMState state)
 JSObject*
 SpeechRecognition::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SpeechRecognitionBinding::Wrap(aCx, this, aGivenProto);
+  return SpeechRecognition_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 bool
@@ -755,10 +755,14 @@ SpeechRecognition::Start(const Optional<NonNull<DOMMediaStream>>& aStream,
   } else {
     AutoNoJSAPI();
     MediaManager* manager = MediaManager::Get();
+    MediaManager::GetUserMediaSuccessCallback onsuccess(
+      new GetUserMediaSuccessCallback(this));
+    MediaManager::GetUserMediaErrorCallback onerror(
+      new GetUserMediaErrorCallback(this));
     manager->GetUserMedia(GetOwner(),
                           constraints,
-                          new GetUserMediaSuccessCallback(this),
-                          new GetUserMediaErrorCallback(this),
+                          std::move(onsuccess),
+                          std::move(onerror),
                           aCallerType);
   }
 

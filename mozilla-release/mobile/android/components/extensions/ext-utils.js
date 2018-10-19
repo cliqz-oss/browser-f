@@ -5,17 +5,20 @@
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                                "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
-/* globals TabBase, WindowBase, TabTrackerBase, WindowTrackerBase, TabManagerBase, WindowManagerBase */
 /* globals EventDispatcher */
 ChromeUtils.import("resource://gre/modules/Messaging.jsm");
 
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   DefaultWeakMap,
   ExtensionError,
-  defineLazyGetter,
 } = ExtensionUtils;
+
+var {
+  defineLazyGetter,
+} = ExtensionCommon;
 
 global.GlobalEventDispatcher = EventDispatcher.instance;
 
@@ -166,6 +169,11 @@ class WindowTracker extends WindowTrackerBase {
     super(...args);
 
     this.progressListeners = new DefaultWeakMap(() => new WeakMap());
+  }
+
+  get topWindow() {
+    return Services.wm.getMostRecentWindow("navigator:browser") ||
+      Services.wm.getMostRecentWindow("navigator:geckoview");
   }
 
   addProgressListener(window, listener) {
@@ -459,6 +467,10 @@ class Tab extends TabBase {
     return undefined;
   }
 
+  get attention() {
+    return false;
+  }
+
   get audible() {
     return this.nativeTab.playingAudio;
   }
@@ -518,6 +530,10 @@ class Tab extends TabBase {
       }
     }
     return this.nativeTab.getActive();
+  }
+
+  get highlighted() {
+    return this.active;
   }
 
   get selected() {
@@ -661,6 +677,10 @@ class Window extends WindowBase {
     for (let nativeTab of this.window.BrowserApp.tabs) {
       yield tabManager.getWrapper(nativeTab);
     }
+  }
+
+  * getHighlightedTabs() {
+    yield this.activeTab;
   }
 
   get activeTab() {

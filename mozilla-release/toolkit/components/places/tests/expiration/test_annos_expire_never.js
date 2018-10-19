@@ -30,13 +30,15 @@ add_task(async function test_annos_expire_never() {
   for (let i = 0; i < 5; i++) {
     let pageURI = uri("http://page_anno." + i + ".mozilla.org/");
     await PlacesTestUtils.addVisits({ uri: pageURI, visitDate: now++ });
-    as.setPageAnnotation(pageURI, "page_expire1", "test", 0, as.EXPIRE_NEVER);
-    as.setPageAnnotation(pageURI, "page_expire2", "test", 0, as.EXPIRE_NEVER);
+    await PlacesUtils.history.update({
+      url: pageURI,
+      annotations: new Map([["page_expire1", "test"], ["page_expire2", "test"]]),
+    });
   }
 
-  let pages = as.getPagesWithAnnotation("page_expire1");
+  let pages = await getPagesWithAnnotation("page_expire1");
   Assert.equal(pages.length, 5);
-  pages = as.getPagesWithAnnotation("page_expire2");
+  pages = await getPagesWithAnnotation("page_expire2");
   Assert.equal(pages.length, 5);
 
   // Add some bookmarked page and a couple expire never annotations for each.
@@ -47,16 +49,16 @@ add_task(async function test_annos_expire_never() {
     let bm = await PlacesUtils.bookmarks.insert({
       parentGuid: PlacesUtils.bookmarks.unfiledGuid,
       url: pageURI,
-      title: null
+      title: null,
     });
     let id = await PlacesUtils.promiseItemId(bm.guid);
     as.setItemAnnotation(id, "item_persist1", "test", 0, as.EXPIRE_NEVER);
     as.setItemAnnotation(id, "item_persist2", "test", 0, as.EXPIRE_NEVER);
   }
 
-  let items = as.getItemsWithAnnotation("item_persist1");
+  let items = await getItemsWithAnnotation("item_persist1");
   Assert.equal(items.length, 5);
-  items = as.getItemsWithAnnotation("item_persist2");
+  items = await getItemsWithAnnotation("item_persist2");
   Assert.equal(items.length, 5);
 
   // Add other visited page and a couple expire never annotations for each.
@@ -64,28 +66,30 @@ add_task(async function test_annos_expire_never() {
   for (let i = 0; i < 5; i++) {
     let pageURI = uri("http://persist_page_anno." + i + ".mozilla.org/");
     await PlacesTestUtils.addVisits({ uri: pageURI, visitDate: now++ });
-    as.setPageAnnotation(pageURI, "page_persist1", "test", 0, as.EXPIRE_NEVER);
-    as.setPageAnnotation(pageURI, "page_persist2", "test", 0, as.EXPIRE_NEVER);
+    await PlacesUtils.history.update({
+      url: pageURI,
+      annotations: new Map([["page_persist1", "test"], ["page_persist2", "test"]]),
+    });
   }
 
-  pages = as.getPagesWithAnnotation("page_persist1");
+  pages = await getPagesWithAnnotation("page_persist1");
   Assert.equal(pages.length, 5);
-  pages = as.getPagesWithAnnotation("page_persist2");
+  pages = await getPagesWithAnnotation("page_persist2");
   Assert.equal(pages.length, 5);
 
   // Expire all visits for the first 5 pages and the bookmarks.
   await promiseForceExpirationStep(10);
 
-  pages = as.getPagesWithAnnotation("page_expire1");
+  pages = await getPagesWithAnnotation("page_expire1");
   Assert.equal(pages.length, 0);
-  pages = as.getPagesWithAnnotation("page_expire2");
+  pages = await getPagesWithAnnotation("page_expire2");
   Assert.equal(pages.length, 0);
-  items = as.getItemsWithAnnotation("item_persist1");
+  items = await getItemsWithAnnotation("item_persist1");
   Assert.equal(items.length, 5);
-  items = as.getItemsWithAnnotation("item_persist2");
+  items = await getItemsWithAnnotation("item_persist2");
   Assert.equal(items.length, 5);
-  pages = as.getPagesWithAnnotation("page_persist1");
+  pages = await getPagesWithAnnotation("page_persist1");
   Assert.equal(pages.length, 5);
-  pages = as.getPagesWithAnnotation("page_persist2");
+  pages = await getPagesWithAnnotation("page_persist2");
   Assert.equal(pages.length, 5);
 });

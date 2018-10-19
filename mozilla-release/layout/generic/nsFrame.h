@@ -685,7 +685,7 @@ protected:
                                     mozilla::TableSelection* aTarget);
 
   // Fills aCursor with the appropriate information from ui
-  static void FillCursorInformationFromStyle(const nsStyleUserInterface* ui,
+  static void FillCursorInformationFromStyle(const nsStyleUI* ui,
                                              nsIFrame::Cursor& aCursor);
   NS_IMETHOD DoXULLayout(nsBoxLayoutState& aBoxLayoutState) override;
 
@@ -750,6 +750,12 @@ public:
   static void PrintDisplayList(nsDisplayListBuilder* aBuilder,
                                const nsDisplayList& aList,
                                std::stringstream& aStream,
+                               bool aDumpHtml = false);
+  static void PrintDisplayItem(nsDisplayListBuilder* aBuilder,
+                               nsDisplayItem* aItem,
+                               std::stringstream& aStream,
+                               uint32_t aIndent = 0,
+                               bool aDumpSublist = false,
                                bool aDumpHtml = false);
   static void PrintDisplayListSet(nsDisplayListBuilder* aBuilder,
                                   const nsDisplayListSet& aList,
@@ -848,6 +854,8 @@ public:
   dr_cookie.Change();
 #define DISPLAY_LAYOUT(dr_frame) \
   DR_layout_cookie dr_cookie(dr_frame);
+// FIXME DISPLAY_*_WIDTH should go through a renaming refactoring to reflect the
+// fact that it's displaying a minimum inline size, not a minimum width.
 #define DISPLAY_MIN_WIDTH(dr_frame, dr_result) \
   DR_intrinsic_width_cookie dr_cookie(dr_frame, "Min", dr_result)
 #define DISPLAY_PREF_WIDTH(dr_frame, dr_result) \
@@ -890,12 +898,4 @@ public:
 #endif
 // End Display Reflow Debugging
 
-// similar to NS_ENSURE_TRUE but with no return value
-#define ENSURE_TRUE(x)                                        \
-  PR_BEGIN_MACRO                                              \
-    if (!(x)) {                                               \
-       NS_WARNING("ENSURE_TRUE(" #x ") failed");              \
-       return;                                                \
-    }                                                         \
-  PR_END_MACRO
 #endif /* nsFrame_h___ */

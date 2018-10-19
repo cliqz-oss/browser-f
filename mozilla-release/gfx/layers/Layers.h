@@ -90,7 +90,6 @@ class ColorLayer;
 class CompositorAnimations;
 class CompositorBridgeChild;
 class CanvasLayer;
-class BorderLayer;
 class ReadbackLayer;
 class ReadbackProcessor;
 class RefLayer;
@@ -424,11 +423,6 @@ public:
   virtual already_AddRefed<ColorLayer> CreateColorLayer() = 0;
   /**
    * CONSTRUCTION PHASE ONLY
-   * Create a BorderLayer for this manager's layer tree.
-   */
-  virtual already_AddRefed<BorderLayer> CreateBorderLayer() = 0;
-  /**
-   * CONSTRUCTION PHASE ONLY
    * Create a CanvasLayer for this manager's layer tree.
    */
   virtual already_AddRefed<CanvasLayer> CreateCanvasLayer() = 0;
@@ -692,7 +686,7 @@ public:
     return count;
   }
 
-  virtual void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch) {}
+  virtual void SetLayersObserverEpoch(LayersObserverEpoch aEpoch) {}
 
   virtual void DidComposite(TransactionId aTransactionId,
                             const mozilla::TimeStamp& aCompositeStart,
@@ -791,7 +785,6 @@ public:
     TYPE_CONTAINER,
     TYPE_DISPLAYITEM,
     TYPE_IMAGE,
-    TYPE_BORDER,
     TYPE_READBACK,
     TYPE_REF,
     TYPE_SHADOW,
@@ -1292,6 +1285,7 @@ public:
   uint32_t GetScrollMetadataCount() const { return mScrollMetadata.Length(); }
   const nsTArray<ScrollMetadata>& GetAllScrollMetadata() { return mScrollMetadata; }
   bool HasScrollableFrameMetrics() const;
+  bool HasRootScrollableFrameMetrics() const;
   bool IsScrollableWithoutContent() const;
   const EventRegions& GetEventRegions() const { return mEventRegions; }
   ContainerLayer* GetParent() { return mParent; }
@@ -1385,7 +1379,6 @@ public:
   uint64_t GetAnimationGeneration() { return mAnimationInfo.GetAnimationGeneration(); }
 
   bool HasTransformAnimation() const;
-  bool HasOpacityAnimation() const;
 
   RawServoAnimationValue* GetBaseAnimationStyle() const
   {
@@ -1511,12 +1504,6 @@ public:
     * ColorLayer.
     */
   virtual ColorLayer* AsColorLayer() { return nullptr; }
-
-  /**
-    * Dynamic cast to a Border. Returns null if this is not a
-    * ColorLayer.
-    */
-  virtual BorderLayer* AsBorderLayer() { return nullptr; }
 
   /**
     * Dynamic cast to a Canvas. Returns null if this is not a
@@ -2236,11 +2223,7 @@ public:
    * NOTE: Since this layer has an intermediate surface it follows
    *       that LayerPixel == RenderTargetPixel
    */
-  RenderTargetIntRect GetIntermediateSurfaceRect()
-  {
-    NS_ASSERTION(mUseIntermediateSurface, "Must have intermediate surface");
-    return RenderTargetIntRect::FromUnknownRect(GetLocalVisibleRegion().ToUnknownRegion().GetBounds());
-  }
+  RenderTargetIntRect GetIntermediateSurfaceRect();
 
   /**
    * Returns true if this container has more than one non-empty child
@@ -2413,86 +2396,6 @@ protected:
 
   gfx::IntRect mBounds;
   gfx::Color mColor;
-};
-
-/**
- * A Layer which renders a rounded rect.
- */
-class BorderLayer : public Layer {
-public:
-  virtual BorderLayer* AsBorderLayer() override { return this; }
-
-  /**
-   * CONSTRUCTION PHASE ONLY
-   * Set the color of the layer.
-   */
-
-  // Colors of each side as in css::Side
-  virtual void SetColors(const BorderColors& aColors)
-  {
-    MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) Colors", this));
-    PodCopy(&mColors[0], &aColors[0], 4);
-    Mutated();
-  }
-
-  virtual void SetRect(const LayerRect& aRect)
-  {
-    MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) Rect", this));
-    mRect = aRect;
-    Mutated();
-  }
-
-  // Size of each rounded corner as in css::Corner, 0.0 means a
-  // rectangular corner.
-  virtual void SetCornerRadii(const BorderCorners& aCorners)
-  {
-    MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) Corners", this));
-    PodCopy(&mCorners[0], &aCorners[0], 4);
-    Mutated();
-  }
-
-  virtual void SetWidths(const BorderWidths& aWidths)
-  {
-    MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) Widths", this));
-    PodCopy(&mWidths[0], &aWidths[0], 4);
-    Mutated();
-  }
-
-  virtual void SetStyles(const BorderStyles& aBorderStyles)
-  {
-    MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) Widths", this));
-    PodCopy(&mBorderStyles[0], &aBorderStyles[0], 4);
-    Mutated();
-  }
-
-  MOZ_LAYER_DECL_NAME("BorderLayer", TYPE_BORDER)
-
-  virtual void ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface) override
-  {
-    gfx::Matrix4x4 idealTransform = GetLocalTransform() * aTransformToSurface;
-    mEffectiveTransform = SnapTransformTranslation(idealTransform, nullptr);
-    ComputeEffectiveTransformForMaskLayers(aTransformToSurface);
-  }
-
-  const BorderColors& GetColors() { return mColors; }
-  const LayerRect& GetRect() { return mRect; }
-  const BorderCorners& GetCorners() { return mCorners; }
-  const BorderWidths& GetWidths() { return mWidths; }
-
-protected:
-  BorderLayer(LayerManager* aManager, void* aImplData)
-    : Layer(aManager, aImplData)
-  {}
-
-  virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix) override;
-
-  virtual void DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent) override;
-
-  BorderColors mColors;
-  LayerRect mRect;
-  BorderCorners mCorners;
-  BorderWidths mWidths;
-  BorderStyles mBorderStyles;
 };
 
 /**

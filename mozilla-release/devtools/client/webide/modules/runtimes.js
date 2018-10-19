@@ -4,12 +4,12 @@
 
 "use strict";
 
-const {Ci} = require("chrome");
 const Services = require("Services");
 const {Devices} = require("resource://devtools/shared/apps/Devices.jsm");
 const {DebuggerServer} = require("devtools/server/main");
 const discovery = require("devtools/shared/discovery/discovery");
 const EventEmitter = require("devtools/shared/event-emitter");
+const {RuntimeTypes} = require("devtools/client/webide/modules/runtime-types");
 const promise = require("promise");
 loader.lazyRequireGetter(this, "AuthenticationResult",
   "devtools/shared/security/auth", true);
@@ -313,17 +313,7 @@ var StaticScanner = {
 EventEmitter.decorate(StaticScanner);
 RuntimeScanners.add(StaticScanner);
 
-/* RUNTIMES */
-
-// These type strings are used for logging events to Telemetry.
-// You must update Histograms.json if new types are added.
-var RuntimeTypes = exports.RuntimeTypes = {
-  USB: "USB",
-  WIFI: "WIFI",
-  REMOTE: "REMOTE",
-  LOCAL: "LOCAL",
-  OTHER: "OTHER"
-};
+exports.RuntimeTypes = RuntimeTypes;
 
 function WiFiRuntime(deviceName) {
   this.deviceName = deviceName;
@@ -391,8 +381,7 @@ WiFiRuntime.prototype = {
     let promptWindow;
     const windowListener = {
       onOpenWindow(xulWindow) {
-        const win = xulWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindow);
+        const win = xulWindow.docShell.domWindow;
         win.addEventListener("load", function() {
           if (win.document.documentElement.getAttribute("id") != WINDOW_ID) {
             return;

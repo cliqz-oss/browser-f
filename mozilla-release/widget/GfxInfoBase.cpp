@@ -1097,31 +1097,17 @@ NS_IMETHODIMP GfxInfoBase::GetFailures(uint32_t* failureCount,
 
   if (*failureCount != 0) {
     *failures = (char**)moz_xmalloc(*failureCount * sizeof(char*));
-    if (!(*failures)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
     if (indices) {
       *indices = (int32_t*)moz_xmalloc(*failureCount * sizeof(int32_t));
-      if (!(*indices)) {
-        free(*failures);
-        *failures = nullptr;
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
     }
 
     /* copy over the failure messages into the array we just allocated */
     LoggingRecord::const_iterator it;
     uint32_t i=0;
     for(it = loggedStrings.begin() ; it != loggedStrings.end(); ++it, i++) {
-      (*failures)[i] = (char*)nsMemory::Clone(Get<1>(*it).c_str(), Get<1>(*it).size() + 1);
+      (*failures)[i] =
+        (char*) moz_xmemdup(Get<1>(*it).c_str(), Get<1>(*it).size() + 1);
       if (indices) (*indices)[i] = Get<0>(*it);
-
-      if (!(*failures)[i]) {
-        /* <sarcasm> I'm too afraid to use an inline function... </sarcasm> */
-        NS_FREE_XPCOM_ALLOCATED_POINTER_ARRAY(i, (*failures));
-        *failureCount = i;
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
     }
   }
 
@@ -1399,13 +1385,18 @@ GfxInfoBase::DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> aObj)
   JS::Rooted<JSObject*> obj(aCx);
 
   gfx::FeatureStatus gpuProcess = gfxConfig::GetValue(Feature::GPU_PROCESS);
-  InitFeatureObject(aCx, aObj, "gpuProcess", FEATURE_GPU_PROCESS, Some(gpuProcess), &obj);
+  InitFeatureObject(aCx, aObj, "gpuProcess", gpuProcess, &obj);
+
+  gfx::FeatureStatus wrQualified = gfxConfig::GetValue(Feature::WEBRENDER_QUALIFIED);
+  InitFeatureObject(aCx, aObj, "wrQualified", wrQualified, &obj);
+
+  gfx::FeatureStatus webrender = gfxConfig::GetValue(Feature::WEBRENDER);
+  InitFeatureObject(aCx, aObj, "webrender", webrender, &obj);
 
   // Only include AL if the platform attempted to use it.
   gfx::FeatureStatus advancedLayers = gfxConfig::GetValue(Feature::ADVANCED_LAYERS);
   if (advancedLayers != FeatureStatus::Unused) {
-    InitFeatureObject(aCx, aObj, "advancedLayers", FEATURE_ADVANCED_LAYERS,
-                      Some(advancedLayers), &obj);
+    InitFeatureObject(aCx, aObj, "advancedLayers", advancedLayers, &obj);
 
     if (gfxConfig::UseFallback(Fallback::NO_CONSTANT_BUFFER_OFFSETTING)) {
       JS::Rooted<JS::Value> trueVal(aCx, JS::BooleanValue(true));
@@ -1418,8 +1409,7 @@ bool
 GfxInfoBase::InitFeatureObject(JSContext* aCx,
                                JS::Handle<JSObject*> aContainer,
                                const char* aName,
-                               int32_t aFeature,
-                               const Maybe<mozilla::gfx::FeatureStatus>& aFeatureStatus,
+                               mozilla::gfx::FeatureStatus& aFeatureStatus,
                                JS::MutableHandle<JSObject*> aOutObj)
 {
   JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
@@ -1427,20 +1417,12 @@ GfxInfoBase::InitFeatureObject(JSContext* aCx,
     return false;
   }
 
-  nsCString failureId = NS_LITERAL_CSTRING("OK");
-  int32_t unused;
-  if (!NS_SUCCEEDED(GetFeatureStatus(aFeature, failureId, &unused))) {
-    return false;
-  }
-
   // Set "status".
-  if (aFeatureStatus) {
-    const char* status = FeatureStatusToString(aFeatureStatus.value());
+  const char* status = FeatureStatusToString(aFeatureStatus);
 
-    JS::Rooted<JSString*> str(aCx, JS_NewStringCopyZ(aCx, status));
-    JS::Rooted<JS::Value> val(aCx, JS::StringValue(str));
-    JS_SetProperty(aCx, obj, "status", val);
-  }
+  JS::Rooted<JSString*> str(aCx, JS_NewStringCopyZ(aCx, status));
+  JS::Rooted<JS::Value> val(aCx, JS::StringValue(str));
+  JS_SetProperty(aCx, obj, "status", val);
 
   // Add the feature object to the container.
   {

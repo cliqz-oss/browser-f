@@ -1806,7 +1806,7 @@ CodeGenerator::visitCompareExchangeTypedArrayElement(LCompareExchangeTypedArrayE
     Register newval = ToRegister(lir->newval());
 
     Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    size_t width = Scalar::byteSize(arrayType);
 
     if (lir->index()->isConstant()) {
         Address dest(elements, ToInt32(lir->index()) * width);
@@ -1827,7 +1827,7 @@ CodeGenerator::visitAtomicExchangeTypedArrayElement(LAtomicExchangeTypedArrayEle
     Register value = ToRegister(lir->value());
 
     Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    size_t width = Scalar::byteSize(arrayType);
 
     if (lir->index()->isConstant()) {
         Address dest(elements, ToInt32(lir->index()) * width);
@@ -1850,7 +1850,7 @@ CodeGenerator::visitAtomicTypedArrayElementBinop(LAtomicTypedArrayElementBinop* 
     Register value = ToRegister(lir->value());
 
     Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    size_t width = Scalar::byteSize(arrayType);
 
     if (lir->index()->isConstant()) {
         Address mem(elements, ToInt32(lir->index()) * width);
@@ -1872,7 +1872,7 @@ CodeGenerator::visitAtomicTypedArrayElementBinopForEffect(LAtomicTypedArrayEleme
     Register flagTemp = ToRegister(lir->flagTemp());
     Register value = ToRegister(lir->value());
     Scalar::Type arrayType = lir->mir()->arrayType();
-    int width = Scalar::byteSize(arrayType);
+    size_t width = Scalar::byteSize(arrayType);
 
     if (lir->index()->isConstant()) {
         Address mem(elements, ToInt32(lir->index()) * width);
@@ -2241,7 +2241,6 @@ CodeGenerator::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
 {
     MWasmCompareExchangeHeap* mir = ins->mir();
 
-    Scalar::Type vt = mir->access().type();
     const LAllocation* ptr = ins->ptr();
     Register ptrReg = ToRegister(ptr);
     BaseIndex srcAddr(HeapReg, ptrReg, TimesOne, mir->access().offset());
@@ -2252,7 +2251,7 @@ CodeGenerator::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
     Register newval = ToRegister(ins->newValue());
     Register out = ToRegister(ins->output());
 
-    masm.compareExchange(vt, Synchronization::Full(), srcAddr, oldval, newval, out);
+    masm.wasmCompareExchange(mir->access(), srcAddr, oldval, newval, out);
 }
 
 void
@@ -2260,14 +2259,13 @@ CodeGenerator::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* ins)
 {
     MWasmAtomicExchangeHeap* mir = ins->mir();
 
-    Scalar::Type vt = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register value = ToRegister(ins->value());
     Register output = ToRegister(ins->output());
     BaseIndex srcAddr(HeapReg, ptrReg, TimesOne, mir->access().offset());
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
 
-    masm.atomicExchange(vt, Synchronization::Full(), srcAddr, value, output);
+    masm.wasmAtomicExchange(mir->access(), srcAddr, value, output);
 }
 
 void
@@ -2276,7 +2274,6 @@ CodeGenerator::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
     MWasmAtomicBinopHeap* mir = ins->mir();
     MOZ_ASSERT(mir->hasUses());
 
-    Scalar::Type vt = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register flagTemp = ToRegister(ins->flagTemp());
     Register output = ToRegister(ins->output());
@@ -2285,8 +2282,7 @@ CodeGenerator::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
 
     BaseIndex srcAddr(HeapReg, ptrReg, TimesOne, mir->access().offset());
-    masm.atomicFetchOp(vt, Synchronization::Full(), op, ToRegister(value), srcAddr, flagTemp,
-                       output);
+    masm.wasmAtomicFetchOp(mir->access(), op, ToRegister(value), srcAddr, flagTemp, output);
 }
 
 void
@@ -2295,7 +2291,6 @@ CodeGenerator::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* 
     MWasmAtomicBinopHeap* mir = ins->mir();
     MOZ_ASSERT(!mir->hasUses());
 
-    Scalar::Type vt = mir->access().type();
     Register ptrReg = ToRegister(ins->ptr());
     Register flagTemp = ToRegister(ins->flagTemp());
     const LAllocation* value = ins->value();
@@ -2303,7 +2298,7 @@ CodeGenerator::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* 
     MOZ_ASSERT(ins->addrTemp()->isBogusTemp());
 
     BaseIndex srcAddr(HeapReg, ptrReg, TimesOne, mir->access().offset());
-    masm.atomicEffectOp(vt, Synchronization::Full(), op, ToRegister(value), srcAddr, flagTemp);
+    masm.wasmAtomicEffectOp(mir->access(), op, ToRegister(value), srcAddr, flagTemp);
 }
 
 void
@@ -3107,7 +3102,7 @@ CodeGenerator::visitWasmAtomicLoadI64(LWasmAtomicLoadI64* lir)
     Register64 tmp(InvalidReg, InvalidReg);
 
     BaseIndex addr(HeapReg, ptr, TimesOne, lir->mir()->access().offset());
-    masm.atomicLoad64(Synchronization::Full(), addr, tmp, output);
+    masm.wasmAtomicLoad64(lir->mir()->access(), addr, tmp, output);
 }
 
 void
@@ -3118,7 +3113,7 @@ CodeGenerator::visitWasmAtomicStoreI64(LWasmAtomicStoreI64* lir)
     Register64 tmp(ToRegister(lir->tmpHigh()), ToRegister(lir->tmpLow()));
 
     BaseIndex addr(HeapReg, ptr, TimesOne, lir->mir()->access().offset());
-    masm.atomicExchange64(Synchronization::Full(), addr, value, tmp);
+    masm.wasmAtomicExchange64(lir->mir()->access(), addr, value, tmp);
 }
 
 void
@@ -3130,7 +3125,7 @@ CodeGenerator::visitWasmCompareExchangeI64(LWasmCompareExchangeI64* lir)
     Register64 out = ToOutRegister64(lir);
 
     BaseIndex addr(HeapReg, ptr, TimesOne, lir->mir()->access().offset());
-    masm.compareExchange64(Synchronization::Full(), addr, expected, replacement, out);
+    masm.wasmCompareExchange64(lir->mir()->access(), addr, expected, replacement, out);
 }
 
 void
@@ -3142,7 +3137,7 @@ CodeGenerator::visitWasmAtomicBinopI64(LWasmAtomicBinopI64* lir)
 
     BaseIndex addr(HeapReg, ptr, TimesOne, lir->access().offset());
     Register64 tmp(ToRegister(lir->tmpHigh()), ToRegister(lir->tmpLow()));
-    masm.atomicFetchOp64(Synchronization::Full(), lir->operation(), value, addr, tmp, out);
+    masm.wasmAtomicFetchOp64(lir->access(), lir->operation(), value, addr, tmp, out);
 }
 
 void
@@ -3153,67 +3148,7 @@ CodeGenerator::visitWasmAtomicExchangeI64(LWasmAtomicExchangeI64* lir)
     Register64 out = ToOutRegister64(lir);
 
     BaseIndex addr(HeapReg, ptr, TimesOne, lir->access().offset());
-    masm.atomicExchange64(Synchronization::Full(), addr, value, out);
-}
-
-void
-CodeGenerator::visitSimdSplatX4(LSimdSplatX4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimd128Int(LSimd128Int* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimd128Float(LSimd128Float* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementI(LSimdExtractElementI* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementF(LSimdExtractElementF* ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompIx4(LSimdBinaryCompIx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompFx4(LSimdBinaryCompFx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithIx4(LSimdBinaryArithIx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithFx4(LSimdBinaryArithFx4* lir)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryBitwise(LSimdBinaryBitwise* lir)
-{
-    MOZ_CRASH("NYI");
+    masm.wasmAtomicExchange64(lir->access(), addr, value, out);
 }
 
 void
@@ -3223,181 +3158,7 @@ CodeGenerator::visitNearbyInt(LNearbyInt*)
 }
 
 void
-CodeGenerator::visitSimdShift(LSimdShift*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 CodeGenerator::visitNearbyIntF(LNearbyIntF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSelect(LSimdSelect*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdAllTrue(LSimdAllTrue*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdAnyTrue(LSimdAnyTrue*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdShuffle(LSimdShuffle*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSplatX8(LSimdSplatX8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSplatX16(LSimdSplatX16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSwizzleF(LSimdSwizzleF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdSwizzleI(LSimdSwizzleI*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdShuffleX4(LSimdShuffleX4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompIx8(LSimdBinaryCompIx8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithFx4(LSimdUnaryArithFx4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithIx4(LSimdUnaryArithIx4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithIx8(LSimdUnaryArithIx8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitFloat32x4ToInt32x4(LFloat32x4ToInt32x4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitInt32x4ToFloat32x4(LInt32x4ToFloat32x4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithIx8(LSimdBinaryArithIx8*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryCompIx16(LSimdBinaryCompIx16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdInsertElementF(LSimdInsertElementF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdInsertElementI(LSimdInsertElementI*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdUnaryArithIx16(LSimdUnaryArithIx16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitFloat32x4ToUint32x4(LFloat32x4ToUint32x4*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinaryArithIx16(LSimdBinaryArithIx16*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementB(LSimdExtractElementB*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdGeneralShuffleF(LSimdGeneralShuffleF*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdGeneralShuffleI(LSimdGeneralShuffleI*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdReinterpretCast(LSimdReinterpretCast*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdBinarySaturating(LSimdBinarySaturating*)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
-CodeGenerator::visitSimdExtractElementU2D(LSimdExtractElementU2D*)
 {
     MOZ_CRASH("NYI");
 }

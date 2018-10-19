@@ -17,6 +17,8 @@ namespace mozilla {
 namespace dom {
 
 class ClientInfoAndState;
+class ClientState;
+class ServiceWorkerCloneData;
 class ServiceWorkerPrivate;
 
 /*
@@ -27,16 +29,6 @@ class ServiceWorkerPrivate;
  */
 class ServiceWorkerInfo final : public nsIServiceWorkerInfo
 {
-public:
-  class Listener
-  {
-  public:
-    virtual void
-    SetState(ServiceWorkerState aState) = 0;
-
-    NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
-  };
-
 private:
   nsCOMPtr<nsIPrincipal> mPrincipal;
   ServiceWorkerDescriptor mDescriptor;
@@ -63,13 +55,6 @@ private:
   PRTime mActivatedTime;
   PRTime mRedundantTime;
 
-  // We hold rawptrs since the ServiceWorker constructor and destructor ensure
-  // addition and removal.
-  //
-  // There is a high chance of there being at least one ServiceWorker
-  // associated with this all the time.
-  AutoTArray<Listener*, 1> mInstances;
-
   RefPtr<ServiceWorkerPrivate> mServiceWorkerPrivate;
   bool mSkipWaitingFlag;
 
@@ -91,13 +76,7 @@ public:
   NS_DECL_NSISERVICEWORKERINFO
 
   void
-  AddListener(Listener* aListener);
-
-  void
-  RemoveListener(Listener* aListener);
-
-  void
-  PostMessage(ipc::StructuredCloneData&& aData,
+  PostMessage(RefPtr<ServiceWorkerCloneData>&& aData,
               const ClientInfo& aClientInfo,
               const ClientState& aClientState);
 
@@ -140,6 +119,8 @@ public:
 
   ServiceWorkerInfo(nsIPrincipal* aPrincipal,
                     const nsACString& aScope,
+                    uint64_t aRegistrationId,
+                    uint64_t aRegistrationVersion,
                     const nsACString& aScriptSpec,
                     const nsAString& aCacheName,
                     nsLoadFlags aLoadFlags);
@@ -198,6 +179,9 @@ public:
     MOZ_DIAGNOSTIC_ASSERT(mHandlesFetch == Unknown);
     mHandlesFetch = aHandlesFetch ? Enabled : Disabled;
   }
+
+  void
+  SetRegistrationVersion(uint64_t aVersion);
 
   bool
   HandlesFetch() const

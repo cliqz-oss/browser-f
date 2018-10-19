@@ -99,21 +99,14 @@ public:
   virtual void SetNodeValueInternal(const nsAString& aNodeValue,
                                     ErrorResult& aError) override;
 
-  // nsINode methods
-  virtual uint32_t GetChildCount() const override;
-  virtual nsIContent *GetChildAt_Deprecated(uint32_t aIndex) const override;
-  virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const override;
-  virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
-                                     bool aNotify) override;
-  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
-  virtual void GetTextContentInternal(nsAString& aTextContent,
-                                      OOMReporter& aError) override
+  void GetTextContentInternal(nsAString& aTextContent, OOMReporter&) final
   {
     GetNodeValue(aTextContent);
   }
-  virtual void SetTextContentInternal(const nsAString& aTextContent,
-                                      nsIPrincipal* aSubjectPrincipal,
-                                      ErrorResult& aError) override
+
+  void SetTextContentInternal(const nsAString& aTextContent,
+                              nsIPrincipal* aSubjectPrincipal,
+                              ErrorResult& aError) final
   {
     // Batch possible DOMSubtreeModified events.
     mozAutoSubtreeModified subtree(OwnerDoc(), nullptr);
@@ -121,22 +114,38 @@ public:
   }
 
   // Implementation for nsIContent
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
-  virtual void UnbindFromTree(bool aDeep = true,
-                              bool aNullParent = true) override;
+  nsresult BindToTree(nsIDocument* aDocument,
+                      nsIContent* aParent,
+                      nsIContent* aBindingParent) override;
 
-  virtual already_AddRefed<nsINodeList> GetChildren(uint32_t aFilter) override;
+  void UnbindFromTree(bool aDeep = true, bool aNullParent = true) override;
 
-  virtual const nsTextFragment *GetText() override;
-  virtual uint32_t TextLength() const override;
+  already_AddRefed<nsINodeList> GetChildren(uint32_t aFilter) final
+  {
+    return nullptr;
+  }
+
+  const nsTextFragment* GetText() override
+  {
+    return &mText;
+  }
+
+  const nsTextFragment& TextFragment() const
+  {
+    return mText;
+  }
+
+  uint32_t TextLength() const final
+  {
+    return TextDataLength();
+  }
 
   /**
    * Set the text to the given value. If aNotify is true then
    * the document is notified of the content change.
    */
-  nsresult SetText(const char16_t* aBuffer, uint32_t aLength,
+  nsresult SetText(const char16_t* aBuffer,
+                   uint32_t aLength,
                    bool aNotify);
   /**
    * Append the given value to the current text. If aNotify is true then
@@ -151,35 +160,61 @@ public:
    * Append the given value to the current text. If aNotify is true then
    * the document is notified of the content change.
    */
-  nsresult AppendText(const char16_t* aBuffer, uint32_t aLength,
+  nsresult AppendText(const char16_t* aBuffer,
+                      uint32_t aLength,
                       bool aNotify);
 
-  virtual bool TextIsOnlyWhitespace() override;
+  bool TextIsOnlyWhitespace() final;
   bool ThreadSafeTextIsOnlyWhitespace() const final;
 
   /**
    * Append the text content to aResult.
    */
-  void AppendTextTo(nsAString& aResult);
+  void AppendTextTo(nsAString& aResult) const
+  {
+    mText.AppendTo(aResult);
+  }
+
   /**
    * Append the text content to aResult.
    */
   MOZ_MUST_USE
-  bool AppendTextTo(nsAString& aResult, const fallible_t&);
+  bool AppendTextTo(nsAString& aResult, const fallible_t& aFallible) const
+  {
+    return mText.AppendTo(aResult, aFallible);
+  }
 
-  virtual void SaveSubtreeState() override;
+  void SaveSubtreeState() final
+  {
+  }
 
 #ifdef DEBUG
-  virtual void List(FILE* out, int32_t aIndent) const override;
-  virtual void DumpContent(FILE* out, int32_t aIndent, bool aDumpAll) const override;
+  void List(FILE* out, int32_t aIndent) const override
+  {
+  }
+
+  void DumpContent(FILE* out, int32_t aIndent, bool aDumpAll) const override
+  {
+  }
 #endif
 
-  virtual nsXBLBinding* DoGetXBLBinding() const override;
-  virtual bool IsNodeOfType(uint32_t aFlags) const override;
-  virtual bool IsLink(nsIURI** aURI) const override;
+  nsXBLBinding* DoGetXBLBinding() const final
+  {
+    return nullptr;
+  }
 
-  virtual nsresult Clone(dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override
+  bool IsNodeOfType(uint32_t aFlags) const override
+  {
+    return false;
+  }
+
+  bool IsLink(nsIURI** aURI) const final
+  {
+    *aURI = nullptr;
+    return false;
+  }
+
+  nsresult Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const override
   {
     RefPtr<CharacterData> result = CloneDataNode(aNodeInfo, true);
     result.forget(aResult);
@@ -220,7 +255,7 @@ public:
 protected:
   virtual ~CharacterData();
 
-  virtual Element* GetNameSpaceElement() override
+  Element* GetNameSpaceElement() final
   {
     return Element::FromNodeOrNull(GetParentNode());
   }
@@ -239,7 +274,7 @@ protected:
    * @return the clone
    */
   virtual already_AddRefed<CharacterData>
-    CloneDataNode(dom::NodeInfo *aNodeInfo, bool aCloneText) const = 0;
+    CloneDataNode(dom::NodeInfo* aNodeInfo, bool aCloneText) const = 0;
 
   nsTextFragment mText;
 

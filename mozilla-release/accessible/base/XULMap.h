@@ -4,17 +4,14 @@
 
 XULMAP_TYPE(browser, OuterDocAccessible)
 XULMAP_TYPE(button, XULButtonAccessible)
-XULMAP_TYPE(checkbox, XULCheckboxAccessible)
+XULMAP_TYPE(checkbox, CheckboxAccessible)
 XULMAP_TYPE(description, XULLabelAccessible)
 XULMAP_TYPE(dropMarker, XULDropmarkerAccessible)
 XULMAP_TYPE(editor, OuterDocAccessible)
 XULMAP_TYPE(findbar, XULToolbarAccessible)
 XULMAP_TYPE(groupbox, XULGroupboxAccessible)
 XULMAP_TYPE(iframe, OuterDocAccessible)
-XULMAP_TYPE(listbox, XULListboxAccessibleWrap)
-XULMAP_TYPE(listhead, XULColumAccessible)
-XULMAP_TYPE(listheader, XULColumnItemAccessible)
-XULMAP_TYPE(listitem, XULListitemAccessible)
+XULMAP_TYPE(listheader, XULColumAccessible)
 XULMAP_TYPE(menu, XULMenuitemAccessibleWrap)
 XULMAP_TYPE(menubar, XULMenubarAccessible)
 XULMAP_TYPE(menucaption, XULMenuitemAccessibleWrap)
@@ -27,7 +24,6 @@ XULMAP_TYPE(radio, XULRadioButtonAccessible)
 XULMAP_TYPE(radiogroup, XULRadioGroupAccessible)
 XULMAP_TYPE(richlistbox, XULListboxAccessibleWrap)
 XULMAP_TYPE(richlistitem, XULListitemAccessible)
-XULMAP_TYPE(scale, XULSliderAccessible)
 XULMAP_TYPE(statusbar, XULStatusBarAccessible)
 XULMAP_TYPE(tab, XULTabAccessible)
 XULMAP_TYPE(tabpanels, XULTabpanelsAccessible)
@@ -84,26 +80,6 @@ XULMAP(
 )
 
 XULMAP(
-  listcell,
-  [](Element* aElement, Accessible* aContext) -> Accessible* {
-    // Only create cells if there's more than one per row.
-    nsIContent* listItem = aElement->GetParent();
-    if (!listItem) {
-      return nullptr;
-    }
-
-    for (nsIContent* child = listItem->GetFirstChild(); child;
-         child = child->GetNextSibling()) {
-      if (child->IsXULElement(nsGkAtoms::listcell) && child != aElement) {
-        return new XULListCellAccessibleWrap(aElement, aContext->Document());
-      }
-    }
-
-    return nullptr;
-  }
-)
-
-XULMAP(
   menupopup,
   [](Element* aElement, Accessible* aContext) {
     return CreateMenupopupAccessible(aElement, aContext);
@@ -146,16 +122,6 @@ XULMAP(
     }
 
     return new EnumRoleAccessible<roles::SECTION>(aElement, aContext->Document());
-  }
-)
-
-XULMAP(
-  thumb,
-  [](Element* aElement, Accessible* aContext) -> Accessible* {
-    if (aElement->ClassList()->Contains(NS_LITERAL_STRING("scale-thumb"))) {
-      return new XULThumbAccessible(aElement, aContext->Document());
-    }
-    return nullptr;
   }
 )
 

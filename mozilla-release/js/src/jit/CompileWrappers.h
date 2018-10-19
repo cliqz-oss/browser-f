@@ -28,7 +28,7 @@ class CompileRuntime
     static CompileRuntime* get(JSRuntime* rt);
 
 #ifdef JS_GC_ZEAL
-    const void* addressOfGCZealModeBits();
+    const uint32_t* addressOfGCZealModeBits();
 #endif
 
     const JitRuntime* jitRuntime();
@@ -48,6 +48,7 @@ class CompileRuntime
     const WellKnownSymbols& wellKnownSymbols();
 
     const void* mainContextPtr();
+    uint32_t* addressOfTenuredAllocCount();
     const void* addressOfJitStackLimit();
     const void* addressOfInterruptBits();
 
@@ -75,12 +76,14 @@ class CompileZone
     const void* addressOfIonBailAfter();
 #endif
 
-    const void* addressOfNeedsIncrementalBarrier();
-    const void* addressOfFreeList(gc::AllocKind allocKind);
-    const void* addressOfNurseryPosition();
-    const void* addressOfStringNurseryPosition();
+    const uint32_t* addressOfNeedsIncrementalBarrier();
+    gc::FreeSpan** addressOfFreeList(gc::AllocKind allocKind);
+    void* addressOfNurseryPosition();
+    void* addressOfStringNurseryPosition();
     const void* addressOfNurseryCurrentEnd();
     const void* addressOfStringNurseryCurrentEnd();
+
+    uint32_t* addressOfNurseryAllocCount();
 
     bool nurseryExists();
     bool canNurseryAllocateStrings();
@@ -99,7 +102,12 @@ class CompileRealm
     CompileZone* zone();
     CompileRuntime* runtime();
 
-    const void* addressOfRandomNumberGenerator();
+    const void* realmPtr() {
+        return realm();
+    }
+
+    const mozilla::non_crypto::XorShift128PlusRNG*
+    addressOfRandomNumberGenerator();
 
     const JitRealm* jitRealm();
 
@@ -130,10 +138,19 @@ class JitCompileOptions
         return offThreadCompilationAvailable_;
     }
 
+#ifdef ENABLE_WASM_GC
+    bool wasmGcEnabled() const {
+        return wasmGcEnabled_;
+    }
+#endif
+
   private:
     bool cloneSingletons_;
     bool profilerSlowAssertionsEnabled_;
     bool offThreadCompilationAvailable_;
+#ifdef ENABLE_WASM_GC
+    bool wasmGcEnabled_;
+#endif
 };
 
 } // namespace jit

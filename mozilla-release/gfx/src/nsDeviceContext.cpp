@@ -18,7 +18,7 @@
 #include "mozilla/Services.h"           // for GetObserverService
 #include "mozilla/mozalloc.h"           // for operator new
 #include "nsCRT.h"                      // for nsCRT
-#include "nsDebug.h"                    // for NS_NOTREACHED, NS_ASSERTION, etc
+#include "nsDebug.h"                    // for NS_ASSERTION, etc
 #include "nsFont.h"                     // for nsFont
 #include "nsFontMetrics.h"              // for nsFontMetrics
 #include "nsAtom.h"                    // for nsAtom, NS_Atomize
@@ -47,7 +47,7 @@ using mozilla::widget::ScreenManager;
 class nsFontCache final : public nsIObserver
 {
 public:
-    nsFontCache() {}
+    nsFontCache(): mContext(nullptr) {}
 
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
@@ -271,7 +271,7 @@ nsDeviceContext::IsPrinterContext()
 void
 nsDeviceContext::SetDPI(double* aScale)
 {
-    float dpi = -1.0f;
+    float dpi;
 
     // Use the printing DC to determine DPI values, if we have one.
     if (mDeviceContextSpec) {
@@ -546,11 +546,9 @@ nsDeviceContext::EndDocument(void)
     MOZ_ASSERT(mIsCurrentlyPrintingDoc,
                "Mismatched BeginDocument/EndDocument calls");
 
-    nsresult rv = NS_OK;
-
     mIsCurrentlyPrintingDoc = false;
 
-    rv = mPrintTarget->EndPrinting();
+    nsresult rv = mPrintTarget->EndPrinting();
     if (NS_SUCCEEDED(rv)) {
         mPrintTarget->Finish();
     }
@@ -702,7 +700,7 @@ bool
 nsDeviceContext::SetFullZoom(float aScale)
 {
     if (aScale <= 0) {
-        NS_NOTREACHED("Invalid full zoom value");
+        MOZ_ASSERT_UNREACHABLE("Invalid full zoom value");
         return false;
     }
     int32_t oldAppUnitsPerDevPixel = mAppUnitsPerDevPixel;

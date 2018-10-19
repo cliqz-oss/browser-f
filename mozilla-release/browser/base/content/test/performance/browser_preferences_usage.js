@@ -50,6 +50,13 @@ function checkPrefGetters(stats, max, whitelist = {}) {
     }
   }
 
+  // This pref will be accessed by mozJSComponentLoader when loading modules,
+  // which fails TV runs since they run the test multiple times without restarting.
+  // We just ignore this pref, since it's for testing only anyway.
+  if (whitelist["browser.startup.record"]) {
+    delete whitelist["browser.startup.record"];
+  }
+
   let remainingWhitelist = Object.keys(whitelist);
   is(remainingWhitelist.length, 0, `Should have checked all whitelist items. Remaining: ${remainingWhitelist}`);
 }
@@ -79,14 +86,17 @@ add_task(async function startup() {
     },
     "layout.css.prefixes.webkit": {
       min: 135,
-      max: 150,
+      max: 170,
     },
     "layout.css.dpi": {
       min: 45,
       max: 75,
     },
+    "network.loadinfo.skip_type_assertion": {
+      // This is accessed in debug only.
+    },
     "extensions.getAddons.cache.enabled": {
-      min: 8,
+      min: 7,
       max: 55,
     },
   };
@@ -112,20 +122,20 @@ add_task(async function open_10_tabs() {
       max: 25,
     },
     "security.insecure_connection_icon.pbmode.enabled": {
-      min: 17,
-      max: 25,
+      min: 10,
+      max: 18,
     },
     "security.insecure_connection_icon.enabled": {
-      min: 17,
-      max: 25,
+      min: 10,
+      max: 18,
     },
     "security.insecure_connection_text.enabled": {
-      min: 17,
-      max: 25,
+      min: 10,
+      max: 18,
     },
     "security.insecure_connection_text.pbmode.enabled": {
-      min: 17,
-      max: 25,
+      min: 10,
+      max: 18,
     },
     "dom.ipc.processCount": {
       min: 10,
@@ -134,8 +144,11 @@ add_task(async function open_10_tabs() {
     "browser.startup.record": {
       max: 20,
     },
-    "dom.max_chrome_script_run_time": {
-      max: 20,
+    "browser.tabs.remote.logSwitchTiming": {
+      max: 25,
+    },
+    "network.loadinfo.skip_type_assertion": {
+      // This is accessed in debug only.
     },
     "toolkit.cosmeticAnimations.enabled": {
       min: 5,
@@ -166,29 +179,24 @@ add_task(async function navigate_around() {
       min: 100,
       max: 110,
     },
+    "network.loadinfo.skip_type_assertion": {
+      // This is accessed in debug only.
+    },
     "security.insecure_connection_icon.pbmode.enabled": {
-      min: 50,
-      max: 55,
+      min: 20,
+      max: 30,
     },
     "security.insecure_connection_icon.enabled": {
-      min: 50,
-      max: 55,
+      min: 20,
+      max: 30,
     },
     "security.insecure_connection_text.enabled": {
-      min: 50,
-      max: 55,
+      min: 20,
+      max: 30,
     },
     "security.insecure_connection_text.pbmode.enabled": {
-      min: 50,
-      max: 55,
-    },
-    "browser.chrome.favicons": {
-      min: 50,
-      max: 55,
-    },
-    "browser.chrome.site_icons": {
-      min: 50,
-      max: 55,
+      min: 20,
+      max: 30,
     },
     "toolkit.cosmeticAnimations.enabled": {
       min: 45,

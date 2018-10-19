@@ -6,7 +6,7 @@
 //! changes.
 
 use {Atom, WeakAtom};
-use context::{QuirksMode, SharedStyleContext};
+use context::SharedStyleContext;
 use data::ElementData;
 use dom::TElement;
 use element_state::ElementState;
@@ -18,19 +18,11 @@ use invalidation::element::restyle_hints::RestyleHint;
 use selector_map::SelectorMap;
 use selector_parser::Snapshot;
 use selectors::NthIndexCache;
-use selectors::OpaqueElement;
 use selectors::attr::CaseSensitivity;
 use selectors::matching::{MatchingContext, MatchingMode, VisitedHandlingMode};
 use selectors::matching::matches_selector;
 use smallvec::SmallVec;
 use stylesheets::origin::{Origin, OriginSet};
-use stylist::CascadeData;
-
-#[derive(Debug, PartialEq)]
-enum VisitedDependent {
-    Yes,
-    No,
-}
 
 /// The collector implementation.
 struct Collector<'a, 'b: 'a, 'selectors: 'a, E>
@@ -56,19 +48,15 @@ where
 /// changes.
 pub struct StateAndAttrInvalidationProcessor<'a, 'b: 'a, E: TElement> {
     shared_context: &'a SharedStyleContext<'b>,
-    shadow_rule_datas: &'a [(&'b CascadeData, QuirksMode, Option<OpaqueElement>)],
-    matches_document_author_rules: bool,
     element: E,
     data: &'a mut ElementData,
     matching_context: MatchingContext<'a, E::Impl>,
 }
 
-impl<'a, 'b: 'a, E: TElement> StateAndAttrInvalidationProcessor<'a, 'b, E> {
+impl<'a, 'b: 'a, E: TElement + 'b> StateAndAttrInvalidationProcessor<'a, 'b, E> {
     /// Creates a new StateAndAttrInvalidationProcessor.
     pub fn new(
         shared_context: &'a SharedStyleContext<'b>,
-        shadow_rule_datas: &'a [(&'b CascadeData, QuirksMode, Option<OpaqueElement>)],
-        matches_document_author_rules: bool,
         element: E,
         data: &'a mut ElementData,
         nth_index_cache: &'a mut NthIndexCache,
@@ -83,8 +71,6 @@ impl<'a, 'b: 'a, E: TElement> StateAndAttrInvalidationProcessor<'a, 'b, E> {
 
         Self {
             shared_context,
-            shadow_rule_datas,
-            matches_document_author_rules,
             element,
             data,
             matching_context,
@@ -157,6 +143,7 @@ where
         descendant_invalidations: &mut DescendantInvalidationLists<'a>,
         sibling_invalidations: &mut InvalidationVector<'a>,
     ) -> bool {
+        debug_assert_eq!(element, self.element);
         debug_assert!(element.has_snapshot(), "Why bothering?");
 
         let wrapper = ElementWrapper::new(element, &*self.shared_context.snapshot_map);
@@ -168,14 +155,13 @@ where
             return false;
         }
 
-        // If we are sensitive to visitedness and the visited state changed, we
-        // force a restyle here. Matching doesn't depend on the actual visited
-        // state at all, so we can't look at matching results to decide what to
-        // do for this case.
+        // If we the visited state changed, we force a restyle here. Matching
+        // doesn't depend on the actual visited state at all, so we can't look
+        // at matching results to decide what to do for this case.
         if state_changes.intersects(ElementState::IN_VISITED_OR_UNVISITED_STATE) {
             trace!(" > visitedness change, force subtree restyle");
             // We can't just return here because there may also be attribute
-            // changes as well that imply additional hints.
+            // changes as well that imply additional hints for siblings.
             self.data.hint.insert(RestyleHint::restyle_subtree());
         }
 
@@ -208,26 +194,45 @@ where
             }
         }
 
-        debug!("Collecting changes for: {:?}", element);
-        debug!(" > state: {:?}", state_changes);
-        debug!(
-            " > id changed: {:?} -> +{:?} -{:?}",
-            snapshot.id_changed(),
-            id_added,
-            id_removed
-        );
-        debug!(
-            " > class changed: {:?} -> +{:?} -{:?}",
-            snapshot.class_changed(),
-            classes_added,
-            classes_removed
-        );
+        if log_enabled!(::log::Level::Debug) {
+            debug!("Collecting changes for: {:?}", element);
+            if !state_changes.is_empty() {
+                debug!(" > state: {:?}", state_changes);
+            }
+            if snapshot.id_changed() {
+                debug!(
+                    " > id changed: +{:?} -{:?}",
+                    id_added,
+                    id_removed
+                );
+            }
+            if snapshot.class_changed() {
+                debug!(
+                    " > class changed: +{:?} -{:?}",
+                    classes_added,
+                    classes_removed
+                );
+            }
+            if snapshot.other_attr_changed() {
+                debug!(
+                    " > attributes changed, old: {}",
+                    snapshot.debug_list_attributes()
+                )
+            }
+        }
 
         let lookup_element = if element.implemented_pseudo_element().is_some() {
             element.pseudo_element_originating_element().unwrap()
         } else {
             element
         };
+
+        let mut shadow_rule_datas = SmallVec::<[_; 3]>::new();
+        let matches_document_author_rules =
+            element.each_applicable_non_document_style_rule_data(|data, quirks_mode, host| {
+                shadow_rule_datas.push((data, quirks_mode, host.map(|h| h.opaque())))
+            });
+
 
         let invalidated_self = {
             let mut collector = Collector {
@@ -246,7 +251,7 @@ where
                 invalidates_self: false,
             };
 
-            let document_origins = if !self.matches_document_author_rules {
+            let document_origins = if !matches_document_author_rules {
                 Origin::UserAgent.into()
             } else {
                 OriginSet::all()
@@ -259,7 +264,7 @@ where
                 }
             }
 
-            for &(ref data, quirks_mode, ref host) in self.shadow_rule_datas {
+            for &(ref data, quirks_mode, ref host) in &shadow_rule_datas {
                 // FIXME(emilio): Replace with assert / remove when we figure
                 // out what to do with the quirks mode mismatches
                 // (that is, when bug 1406875 is properly fixed).
@@ -335,7 +340,7 @@ where
         if let Some(ref id) = removed_id {
             if let Some(deps) = map.id_to_selector.get(id, quirks_mode) {
                 for dep in deps {
-                    self.scan_dependency(dep, VisitedDependent::No);
+                    self.scan_dependency(dep);
                 }
             }
         }
@@ -344,7 +349,7 @@ where
         if let Some(ref id) = added_id {
             if let Some(deps) = map.id_to_selector.get(id, quirks_mode) {
                 for dep in deps {
-                    self.scan_dependency(dep, VisitedDependent::No);
+                    self.scan_dependency(dep);
                 }
             }
         }
@@ -352,7 +357,7 @@ where
         for class in self.classes_added.iter().chain(self.classes_removed.iter()) {
             if let Some(deps) = map.class_to_selector.get(class, quirks_mode) {
                 for dep in deps {
-                    self.scan_dependency(dep, VisitedDependent::No);
+                    self.scan_dependency(dep);
                 }
             }
         }
@@ -378,7 +383,7 @@ where
             self.removed_id,
             self.classes_removed,
             |dependency| {
-                self.scan_dependency(dependency, VisitedDependent::No);
+                self.scan_dependency(dependency);
                 true
             },
         );
@@ -398,97 +403,52 @@ where
                 if !dependency.state.intersects(state_changes) {
                     return true;
                 }
-                let visited_dependent = if dependency
-                    .state
-                    .intersects(ElementState::IN_VISITED_OR_UNVISITED_STATE)
-                {
-                    VisitedDependent::Yes
-                } else {
-                    VisitedDependent::No
-                };
-                self.scan_dependency(&dependency.dep, visited_dependent);
+                self.scan_dependency(&dependency.dep);
                 true
             },
         );
     }
 
-    /// Check whether a dependency should be taken into account, using a given
-    /// visited handling mode.
+    /// Check whether a dependency should be taken into account.
     fn check_dependency(
         &mut self,
-        visited_handling_mode: VisitedHandlingMode,
         dependency: &Dependency,
     ) -> bool {
         let element = &self.element;
         let wrapper = &self.wrapper;
-        self.matching_context
-            .with_visited_handling_mode(visited_handling_mode, |mut context| {
-                let matches_now = matches_selector(
-                    &dependency.selector,
-                    dependency.selector_offset,
-                    None,
-                    element,
-                    &mut context,
-                    &mut |_, _| {},
-                );
+        let matches_now = matches_selector(
+            &dependency.selector,
+            dependency.selector_offset,
+            None,
+            element,
+            &mut self.matching_context,
+            &mut |_, _| {},
+        );
 
-                let matched_then = matches_selector(
-                    &dependency.selector,
-                    dependency.selector_offset,
-                    None,
-                    wrapper,
-                    &mut context,
-                    &mut |_, _| {},
-                );
+        let matched_then = matches_selector(
+            &dependency.selector,
+            dependency.selector_offset,
+            None,
+            wrapper,
+            &mut self.matching_context,
+            &mut |_, _| {},
+        );
 
-                matched_then != matches_now
-            })
+        matched_then != matches_now
     }
 
-    fn scan_dependency(
-        &mut self,
-        dependency: &'selectors Dependency,
-        is_visited_dependent: VisitedDependent,
-    ) {
+    fn scan_dependency(&mut self, dependency: &'selectors Dependency) {
         debug!(
-            "TreeStyleInvalidator::scan_dependency({:?}, {:?}, {:?})",
-            self.element, dependency, is_visited_dependent,
+            "TreeStyleInvalidator::scan_dependency({:?}, {:?})",
+            self.element, dependency
         );
 
         if !self.dependency_may_be_relevant(dependency) {
             return;
         }
 
-        let should_account_for_dependency =
-            self.check_dependency(VisitedHandlingMode::AllLinksVisitedAndUnvisited, dependency);
-
-        if should_account_for_dependency {
+        if self.check_dependency(dependency) {
             return self.note_dependency(dependency);
-        }
-
-        // If there is a relevant link, then we also matched in visited
-        // mode.
-        //
-        // Match again in this mode to ensure this also matches.
-        //
-        // Note that we never actually match directly against the element's true
-        // visited state at all, since that would expose us to timing attacks.
-        //
-        // The matching process only considers the relevant link state and
-        // visited handling mode when deciding if visited matches.  Instead, we
-        // are rematching here in case there is some :visited selector whose
-        // matching result changed for some other state or attribute change of
-        // this element (for example, for things like [foo]:visited).
-        //
-        // NOTE: This thing is actually untested because testing it is flaky,
-        // see the tests that were added and then backed out in bug 1328509.
-        if is_visited_dependent == VisitedDependent::Yes && self.element.is_link() {
-            let should_account_for_dependency =
-                self.check_dependency(VisitedHandlingMode::RelevantLinkVisited, dependency);
-
-            if should_account_for_dependency {
-                return self.note_dependency(dependency);
-            }
         }
     }
 

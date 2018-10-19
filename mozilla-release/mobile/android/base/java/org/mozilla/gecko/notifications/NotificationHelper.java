@@ -5,11 +5,22 @@
 
 package org.mozilla.gecko.notifications;
 
-import java.io.File;
-import java.io.UnsupportedEncodingException;
-import java.net.URLConnection;
-import java.net.URLDecoder;
-import java.util.List;
+import android.annotation.TargetApi;
+import android.app.Activity;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.net.Uri;
+import android.os.StrictMode;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.util.SimpleArrayMap;
+import android.util.Log;
 
 import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.EventDispatcher;
@@ -23,19 +34,14 @@ import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.ThreadUtils;
 
-import android.app.Activity;
-import android.app.PendingIntent;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
-import android.graphics.Bitmap;
-import android.net.Uri;
-import android.os.StrictMode;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.util.SimpleArrayMap;
-import android.util.Log;
+import java.io.File;
+import java.io.UnsupportedEncodingException;
+import java.net.URLConnection;
+import java.net.URLDecoder;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public final class NotificationHelper implements BundleEventListener {
     public static final String HELPER_BROADCAST_ACTION = AppConstants.ANDROID_PACKAGE_NAME + ".helperBroadcastAction";
@@ -78,6 +84,73 @@ public final class NotificationHelper implements BundleEventListener {
 
     private final Context mContext;
 
+
+    public enum Channel {
+        /**
+         * Default notification channel.
+         */
+        DEFAULT,
+        /**
+         * Mozilla Location Services notification channel.
+         */
+        MLS,
+        /**
+         * Mozilla Location Services notification channel.
+         */
+        DOWNLOAD,
+        /**
+         *  Media notification channel
+         */
+        MEDIA,
+        /**
+         * Built-in updater - use only when <code>AppConstants.MOZ_UPDATER</code> is true.
+         */
+        UPDATER,
+        /**
+         * Synced tabs notification channel
+         */
+        SYNCED_TABS,
+        /**
+         * Leanplum notification channel - use only when <code>AppConstants.MOZ_ANDROID_MMA</code> is true.
+         */
+        LP_DEFAULT,
+    }
+
+    // Holds the mapping between the Channel enum used by the rest of our codebase and the
+    // channel ID used for communication with the system NotificationManager.
+    private final Map<Channel, String> mDefinedNotificationChannels = new HashMap<Channel, String>(7) {{
+        final String DEFAULT_CHANNEL_TAG = "default2-notification-channel";
+        put(Channel.DEFAULT, DEFAULT_CHANNEL_TAG);
+
+        final String MLS_CHANNEL_TAG = "mls-notification-channel";
+        put(Channel.MLS, MLS_CHANNEL_TAG);
+
+        final String DOWNLOAD_NOTIFICATION_TAG = "download-notification-channel";
+        put(Channel.DOWNLOAD, DOWNLOAD_NOTIFICATION_TAG);
+
+        final String MEDIA_CHANNEL_TAG = "media-notification-channel";
+        put(Channel.MEDIA, MEDIA_CHANNEL_TAG);
+
+        if (AppConstants.MOZ_ANDROID_MMA) {
+            final String LP_DEFAULT_CHANNEL_TAG = "lp-default-notification-channel";
+            put(Channel.LP_DEFAULT, LP_DEFAULT_CHANNEL_TAG);
+        }
+
+        if (AppConstants.MOZ_UPDATER) {
+            final String UPDATER_CHANNEL_TAG = "updater-notification-channel";
+            put(Channel.UPDATER, UPDATER_CHANNEL_TAG);
+        }
+
+        final String SYNCED_TABS_CHANNEL_TAG = "synced-tabs-notification-channel";
+        put(Channel.SYNCED_TABS, SYNCED_TABS_CHANNEL_TAG);
+    }};
+
+    // These are channels we no longer require and want to retire from Android's settings UI.
+    private final List<String> mDeprecatedNotificationChannels = Arrays.asList(
+            "default-notification-channel",
+            null
+    );
+
     // Holds a list of notifications that should be cleared if the Fennec Activity is shut down.
     // Will not include ongoing or persistent notifications that are tied to Gecko's lifecycle.
     private SimpleArrayMap<String, GeckoBundle> mClearableNotifications;
@@ -98,6 +171,11 @@ public final class NotificationHelper implements BundleEventListener {
         EventDispatcher.getInstance().registerUiThreadListener(this,
             "Notification:Show",
             "Notification:Hide");
+
+        if (!AppConstants.Versions.preO) {
+            initNotificationChannels();
+        }
+
         mInitialized = true;
     }
 
@@ -111,6 +189,95 @@ public final class NotificationHelper implements BundleEventListener {
             sInstance = new NotificationHelper(context.getApplicationContext());
         }
         return sInstance;
+    }
+
+    private void initNotificationChannels() {
+        final NotificationManager notificationManager =
+                (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        for (String channelId : mDeprecatedNotificationChannels) {
+            removeChannel(notificationManager, channelId);
+        }
+
+        for (Channel mozChannel : mDefinedNotificationChannels.keySet()) {
+            createChannel(notificationManager, mozChannel);
+        }
+    }
+
+    @SuppressWarnings("fallthrough")
+    @TargetApi(26)
+    private void createChannel(final NotificationManager manager, Channel definedChannel) {
+        NotificationChannel channel =
+                manager.getNotificationChannel(mDefinedNotificationChannels.get(definedChannel));
+
+        if (channel == null) {
+            switch (definedChannel) {
+                case MLS: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.mls_notification_channel),
+                            NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+
+                case DOWNLOAD: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.download_notification_channel),
+                            NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+
+                case MEDIA: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.media_notification_channel),
+                            NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+
+                case UPDATER: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.updater_notification_channel),
+                            NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+
+                case SYNCED_TABS: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.synced_tabs_notification_channel),
+                            NotificationManager.IMPORTANCE_HIGH);
+                }
+                break;
+
+                case LP_DEFAULT: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.leanplum_default_notifications_channel),
+                            NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+
+                case DEFAULT:
+                default: {
+                    channel = new NotificationChannel(mDefinedNotificationChannels.get(definedChannel),
+                            mContext.getString(R.string.default_notification_channel),
+                            NotificationManager.IMPORTANCE_LOW);
+                }
+                break;
+            }
+
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    @TargetApi(26)
+    private void removeChannel(final NotificationManager manager, final String channelId) {
+        if (manager.getNotificationChannel(channelId) != null) {
+            manager.deleteNotificationChannel(channelId);
+        }
+    }
+
+    @TargetApi(26)
+    public NotificationChannel getNotificationChannel(Channel definedChannel) {
+        final NotificationManager notificationManager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+        return notificationManager.getNotificationChannel(mDefinedNotificationChannels.get(definedChannel));
     }
 
     @Override // BundleEventListener
@@ -183,6 +350,7 @@ public final class NotificationHelper implements BundleEventListener {
 
     private Intent buildNotificationIntent(final GeckoBundle message, final Uri.Builder builder) {
         final Intent notificationIntent = new Intent(HELPER_BROADCAST_ACTION);
+        notificationIntent.setClass(mContext, NotificationReceiver.class);
         final boolean ongoing = message.getBoolean(ONGOING_ATTR);
         notificationIntent.putExtra(ONGOING_ATTR, ongoing);
 
@@ -231,6 +399,7 @@ public final class NotificationHelper implements BundleEventListener {
         return res;
     }
 
+    @SuppressWarnings("NewApi")
     private void showNotification(final GeckoBundle message) {
         ThreadUtils.assertOnUiThread();
 
@@ -266,6 +435,15 @@ public final class NotificationHelper implements BundleEventListener {
             final Bitmap b = BitmapUtils.getBitmapFromDataURI(
                     message.getString(LARGE_ICON_ATTR, ""));
             builder.setLargeIcon(b);
+        }
+
+        if (!AppConstants.Versions.preO) {
+            if ("downloads".equals(message.getString(HANDLER_ATTR))) {
+                builder.setChannelId(getNotificationChannel(Channel.DOWNLOAD).getId());
+                builder.setOnlyAlertOnce(true);
+            } else {
+                builder.setChannelId(getNotificationChannel(Channel.DEFAULT).getId());
+            }
         }
 
         if (message.containsKey(PROGRESS_VALUE_ATTR) &&

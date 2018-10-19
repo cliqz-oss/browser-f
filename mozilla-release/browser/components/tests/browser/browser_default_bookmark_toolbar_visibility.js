@@ -8,8 +8,8 @@
  * in NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE may need to be adjusted there.
  */
 add_task(async function test_default_bookmark_toolbar_visibility() {
-  const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
-  let xulStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
+  const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
+  let xulStore = Services.xulStore;
 
   is(xulStore.getValue(BROWSER_DOCURL, "PersonalToolbar", "collapsed"), "",
      "Check that @collapsed isn't persisted");

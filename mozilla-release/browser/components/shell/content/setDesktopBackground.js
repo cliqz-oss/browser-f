@@ -74,7 +74,7 @@ var gSetBackground = {
 
   setDesktopBackground() {
     if (AppConstants.platform != "macosx") {
-      document.persist("menuPosition", "value");
+      Services.xulStore.persist(document.getElementById("menuPosition"), "value");
       this._shell.desktopBackgroundColor = this._hexStringToLong(this._backgroundColor);
     } else {
       Services.obs.addObserver(this, "shell:desktop-background-changed");
@@ -149,7 +149,7 @@ var gSetBackground = {
         break;
       }
     }
-  }
+  },
 };
 
 if (AppConstants.platform != "macosx") {

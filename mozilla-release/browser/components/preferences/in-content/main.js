@@ -14,14 +14,14 @@ ChromeUtils.import("resource:///modules/ShellService.jsm");
 ChromeUtils.import("resource:///modules/TransientPrefs.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
+ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm");
+ChromeUtils.import("resource://gre/modules/Localization.jsm");
 ChromeUtils.defineModuleGetter(this, "CloudStorage",
   "resource://gre/modules/CloudStorage.jsm");
 
 XPCOMUtils.defineLazyServiceGetters(this, {
-  gCategoryManager: ["@mozilla.org/categorymanager;1", "nsICategoryManager"],
   gHandlerService: ["@mozilla.org/uriloader/handler-service;1", "nsIHandlerService"],
   gMIMEService: ["@mozilla.org/mime;1", "nsIMIMEService"],
-  gWebContentContentConverterService: ["@mozilla.org/embeddor.implemented/web-content-handler-registrar;1", "nsIWebContentConverterService"],
 });
 
 // Constants & Enumeration Values
@@ -56,31 +56,25 @@ const CONTAINERS_KEY = "privacy.containers";
  *   set browser.feeds.handler.default to "bookmarks";
  *
  * browser.feeds.handler.default
- * - "bookmarks", "client" or "web" -- indicates the chosen feed reader used
+ * - "bookmarks" or "client" -- indicates the chosen feed reader used
  *   to display feeds, either transiently (i.e., when the "use as default"
  *   checkbox is unchecked, corresponds to when browser.feeds.handler=="ask")
  *   or more permanently (i.e., the item displayed in the dropdown in Feeds
  *   preferences)
- *
- * browser.feeds.handler.webservice
- * - the URL of the currently selected web service used to read feeds
  *
  * browser.feeds.handlers.application
  * - nsIFile, stores the current client-side feed reading app if one has
  *   been chosen
  */
 const PREF_FEED_SELECTED_APP = "browser.feeds.handlers.application";
-const PREF_FEED_SELECTED_WEB = "browser.feeds.handlers.webservice";
 const PREF_FEED_SELECTED_ACTION = "browser.feeds.handler";
 const PREF_FEED_SELECTED_READER = "browser.feeds.handler.default";
 
 const PREF_VIDEO_FEED_SELECTED_APP = "browser.videoFeeds.handlers.application";
-const PREF_VIDEO_FEED_SELECTED_WEB = "browser.videoFeeds.handlers.webservice";
 const PREF_VIDEO_FEED_SELECTED_ACTION = "browser.videoFeeds.handler";
 const PREF_VIDEO_FEED_SELECTED_READER = "browser.videoFeeds.handler.default";
 
 const PREF_AUDIO_FEED_SELECTED_APP = "browser.audioFeeds.handlers.application";
-const PREF_AUDIO_FEED_SELECTED_WEB = "browser.audioFeeds.handlers.webservice";
 const PREF_AUDIO_FEED_SELECTED_ACTION = "browser.audioFeeds.handler";
 const PREF_AUDIO_FEED_SELECTED_READER = "browser.audioFeeds.handler.default";
 
@@ -143,7 +137,7 @@ Preferences.addAll([
   { id: "browser.tabs.warnOnClose", type: "bool" },
   { id: "browser.tabs.warnOnOpen", type: "bool" },
   { id: "browser.sessionstore.restore_on_demand", type: "bool" },
-  { id: "browser.ctrlTab.previews", type: "bool" },
+  { id: "browser.ctrlTab.recentlyUsedOrder", type: "bool" },
 
   // Fonts
   { id: "font.language.group", type: "wstring" },
@@ -188,17 +182,14 @@ Preferences.addAll([
   { id: "browser.feeds.handler", type: "string" },
   { id: "browser.feeds.handler.default", type: "string" },
   { id: "browser.feeds.handlers.application", type: "file" },
-  { id: "browser.feeds.handlers.webservice", type: "string" },
 
   { id: "browser.videoFeeds.handler", type: "string" },
   { id: "browser.videoFeeds.handler.default", type: "string" },
   { id: "browser.videoFeeds.handlers.application", type: "file" },
-  { id: "browser.videoFeeds.handlers.webservice", type: "string" },
 
   { id: "browser.audioFeeds.handler", type: "string" },
   { id: "browser.audioFeeds.handler.default", type: "string" },
   { id: "browser.audioFeeds.handlers.application", type: "file" },
-  { id: "browser.audioFeeds.handlers.webservice", type: "string" },
 
   { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
 
@@ -228,7 +219,6 @@ if (AppConstants.platform === "win") {
 
 if (AppConstants.MOZ_UPDATER) {
   Preferences.addAll([
-    { id: "app.update.enabled", type: "bool" },
     { id: "app.update.auto", type: "bool" },
     { id: "app.update.disable_button.showUpdateHistory", type: "bool" },
   ]);
@@ -243,6 +233,22 @@ if (AppConstants.MOZ_UPDATER) {
 // A promise that resolves when the list of application handlers is loaded.
 // We store this in a global so tests can await it.
 var promiseLoadHandlersList;
+
+// Load the preferences string bundle for other locales with fallbacks.
+function getBundleForLocales(newLocales) {
+  let locales = Array.from(new Set([
+    ...newLocales,
+    ...Services.locale.getRequestedLocales(),
+    Services.locale.lastFallbackLocale,
+  ]));
+  function generateContexts(resourceIds) {
+    return L10nRegistry.generateContexts(locales, resourceIds);
+  }
+  return new Localization([
+    "browser/preferences/preferences.ftl",
+    "branding/brand.ftl",
+  ], generateContexts);
+}
 
 var gNodeToObjectMap = new WeakMap();
 
@@ -349,6 +355,10 @@ var gMainPane = {
     this.updateProxySettingsUI();
     initializeProxyUI(gMainPane);
 
+    if (Services.prefs.getBoolPref("intl.multilingual.enabled")) {
+      gMainPane.initBrowserLocale();
+    }
+
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
       try {
@@ -418,7 +428,7 @@ var gMainPane = {
       row.removeAttribute("hidden");
       // Showing attribution only for Bing Translator.
       ChromeUtils.import("resource:///modules/translation/Translation.jsm");
-      if (Translation.translationEngine == "bing") {
+      if (Translation.translationEngine == "Bing") {
         document.getElementById("bingAttribution").removeAttribute("hidden");
       }
     }
@@ -502,17 +512,35 @@ var gMainPane = {
 
     if (AppConstants.MOZ_UPDATER) {
       gAppUpdater = new appUpdater();
-      let onUnload = () => {
-        window.removeEventListener("unload", onUnload);
-        Services.prefs.removeObserver("app.update.", this);
-      };
-      window.addEventListener("unload", onUnload);
-      Services.prefs.addObserver("app.update.", this);
-      this.updateReadPrefs();
-      setEventListener("updateRadioGroup", "command",
-        gMainPane.updateWritePrefs);
       setEventListener("showUpdateHistory", "command",
         gMainPane.showUpdates);
+
+      if (Services.policies && !Services.policies.isAllowed("appUpdate")) {
+        document.getElementById("updateAllowDescription").hidden = true;
+        document.getElementById("updateRadioGroup").hidden = true;
+        if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
+          document.getElementById("useService").hidden = true;
+        }
+      }
+
+      if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
+        // Check to see if the maintenance service is installed.
+        // If it isn't installed, don't show the preference at all.
+        let installed;
+        try {
+          let wrk = Cc["@mozilla.org/windows-registry-key;1"]
+                    .createInstance(Ci.nsIWindowsRegKey);
+          wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
+                   "SOFTWARE\\Mozilla\\MaintenanceService",
+                   wrk.ACCESS_READ | wrk.WOW64_64);
+          installed = wrk.readIntValue("Installed");
+          wrk.close();
+        } catch (e) {
+        }
+        if (installed != 1) {
+          document.getElementById("useService").hidden = true;
+        }
+      }
     }
 
     // Initilize Application section.
@@ -522,17 +550,14 @@ var gMainPane = {
     Services.prefs.addObserver(PREF_SHOW_PLUGINS_IN_LIST, this);
     Services.prefs.addObserver(PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS, this);
     Services.prefs.addObserver(PREF_FEED_SELECTED_APP, this);
-    Services.prefs.addObserver(PREF_FEED_SELECTED_WEB, this);
     Services.prefs.addObserver(PREF_FEED_SELECTED_ACTION, this);
     Services.prefs.addObserver(PREF_FEED_SELECTED_READER, this);
 
     Services.prefs.addObserver(PREF_VIDEO_FEED_SELECTED_APP, this);
-    Services.prefs.addObserver(PREF_VIDEO_FEED_SELECTED_WEB, this);
     Services.prefs.addObserver(PREF_VIDEO_FEED_SELECTED_ACTION, this);
     Services.prefs.addObserver(PREF_VIDEO_FEED_SELECTED_READER, this);
 
     Services.prefs.addObserver(PREF_AUDIO_FEED_SELECTED_APP, this);
-    Services.prefs.addObserver(PREF_AUDIO_FEED_SELECTED_WEB, this);
     Services.prefs.addObserver(PREF_AUDIO_FEED_SELECTED_ACTION, this);
     Services.prefs.addObserver(PREF_AUDIO_FEED_SELECTED_READER, this);
 
@@ -705,7 +730,7 @@ var gMainPane = {
       return;
     }
     let url = await FxAccounts.config.promiseSignInURI("dev-edition-setup");
-    let accountsTab = win.gBrowser.addTab(url);
+    let accountsTab = win.gBrowser.addWebTab(url);
     win.gBrowser.selectedTab = accountsTab;
   },
 
@@ -757,6 +782,82 @@ var gMainPane = {
     if (checkbox.checked !== newValue) {
       checkbox.checked = newValue;
     }
+  },
+
+  initBrowserLocale() {
+    let localeCodes = Services.locale.getAvailableLocales();
+    let localeNames = Services.intl.getLocaleDisplayNames(undefined, localeCodes);
+    let locales = localeCodes.map((code, i) => ({code, name: localeNames[i]}));
+    locales.sort((a, b) => a.name > b.name);
+
+    let fragment = document.createDocumentFragment();
+    for (let {code, name} of locales) {
+      let menuitem = document.createXULElement("menuitem");
+      menuitem.setAttribute("value", code);
+      menuitem.setAttribute("label", name);
+      fragment.appendChild(menuitem);
+    }
+    let menulist = document.getElementById("defaultBrowserLanguage");
+    let menupopup = menulist.querySelector("menupopup");
+    menupopup.appendChild(fragment);
+    menulist.value = Services.locale.getRequestedLocale();
+
+    document.getElementById("browserLanguagesBox").hidden = false;
+  },
+
+  /* Show the confirmation message bar to allow a restart into the new locales. */
+  async showConfirmLanguageChangeMessageBar(locales) {
+    let messageBar = document.getElementById("confirmBrowserLanguage");
+    // Set the text in the message bar for the new locale.
+    let newBundle = getBundleForLocales(locales);
+    let description = messageBar.querySelector(".message-bar-description");
+    description.textContent = await newBundle.formatValue(
+      "confirm-browser-language-change-description");
+    let button = messageBar.querySelector(".message-bar-button");
+    button.setAttribute(
+      "label", await newBundle.formatValue(
+        "confirm-browser-language-change-button"));
+    button.setAttribute("locales", locales.join(","));
+    messageBar.hidden = false;
+    gMainPane.requestingLocales = locales;
+  },
+
+  hideConfirmLanguageChangeMessageBar() {
+    let messageBar = document.getElementById("confirmBrowserLanguage");
+    messageBar.hidden = true;
+    messageBar.querySelector(".message-bar-button").removeAttribute("locales");
+    gMainPane.requestingLocales = null;
+  },
+
+  /* Confirm the locale change and restart the browser in the new locale. */
+  confirmBrowserLanguageChange() {
+    let localesString = (event.target.getAttribute("locales") || "").trim();
+    if (!localesString || localesString.length == 0) {
+      return;
+    }
+    let locales = localesString.split(",");
+    Services.locale.setRequestedLocales(locales);
+
+    // Restart with the new locale.
+    let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
+    Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+    if (!cancelQuit.data) {
+      Services.startup.quit(Services.startup.eAttemptQuit | Services.startup.eRestart);
+    }
+  },
+
+  /* Show or hide the confirm change message bar based on the new locale. */
+  onBrowserLanguageChange(event) {
+    let locale = event.target.value;
+    if (locale == Services.locale.getRequestedLocale()) {
+      this.hideConfirmLanguageChangeMessageBar();
+      return;
+    }
+    let locales = Array.from(new Set([
+      locale,
+      ...Services.locale.getRequestedLocales(),
+    ]).values());
+    this.showConfirmLanguageChangeMessageBar(locales);
   },
 
   onBrowserRestoreSessionChange(event) {
@@ -883,6 +984,26 @@ var gMainPane = {
     gSubDialog.open("chrome://browser/content/preferences/languages.xul");
   },
 
+  showBrowserLanguages() {
+    gSubDialog.open(
+      "chrome://browser/content/preferences/browserLanguages.xul",
+      null, gMainPane.requestingLocales, this.browserLanguagesClosed);
+  },
+
+  /* Show or hide the confirm change message bar based on the updated ordering. */
+  browserLanguagesClosed() {
+    let requesting = this.gBrowserLanguagesDialog.requestedLocales;
+    let requested = Services.locale.getRequestedLocales();
+    let defaultBrowserLanguage = document.getElementById("defaultBrowserLanguage");
+    if (requesting && requesting.join(",") != requested.join(",")) {
+      gMainPane.showConfirmLanguageChangeMessageBar(requesting);
+      defaultBrowserLanguage.value = requesting[0];
+      return;
+    }
+    defaultBrowserLanguage.value = Services.locale.getRequestedLocale();
+    gMainPane.hideConfirmLanguageChangeMessageBar();
+  },
+
   /**
    * Displays the translation exceptions dialog where specific site and language
    * translation preferences can be set.
@@ -948,12 +1069,12 @@ var gMainPane = {
     }
 
     let [
-      title, message, okButton, cancelButton
+      title, message, okButton, cancelButton,
     ] = await document.l10n.formatValues([
       {id: "containers-disable-alert-title"},
       {id: "containers-disable-alert-desc", args: { tabCount: count }},
       {id: "containers-disable-alert-ok-button", args: { tabCount: count }},
-      {id: "containers-disable-alert-cancel-button"}
+      {id: "containers-disable-alert-cancel-button"},
     ]);
 
     let buttonFlags = (Ci.nsIPrompt.BUTTON_TITLE_IS_STRING * Ci.nsIPrompt.BUTTON_POS_0) +
@@ -1044,19 +1165,19 @@ var gMainPane = {
         format: aIsSerif ? kFontNameFmtSerif : kFontNameFmtSansSerif,
         type: "fontname",
         element: "defaultFont",
-        fonttype: aIsSerif ? "serif" : "sans-serif"
+        fonttype: aIsSerif ? "serif" : "sans-serif",
       },
       {
         format: aIsSerif ? kFontNameListFmtSerif : kFontNameListFmtSansSerif,
         type: "unichar",
         element: null,
-        fonttype: aIsSerif ? "serif" : "sans-serif"
+        fonttype: aIsSerif ? "serif" : "sans-serif",
       },
       {
         format: kFontSizeFmtVariable,
         type: "int",
         element: "defaultFontSize",
-        fonttype: null
+        fonttype: null,
       }];
       for (var i = 0; i < prefs.length; ++i) {
         var preference = Preferences.get(prefs[i].format.replace(/%LANG%/, aLanguageGroup));
@@ -1175,111 +1296,6 @@ var gMainPane = {
     }
   },
 
-  /*
-   * Preferences:
-   *
-   * app.update.enabled
-   * - true if updates to the application are enabled, false otherwise
-   * app.update.auto
-   * - true if updates should be automatically downloaded and installed and
-   * false if the user should be asked what he wants to do when an update is
-   * available
-   * extensions.update.enabled
-   * - true if updates to extensions and themes are enabled, false otherwise
-   * browser.search.update
-   * - true if updates to search engines are enabled, false otherwise
-   */
-
-  /**
-   * Selects the item of the radiogroup based on the pref values and locked
-   * states.
-   *
-   * UI state matrix for update preference conditions
-   *
-   * UI Components:                              Preferences
-   * Radiogroup                                  i   = app.update.enabled
-   *                                             ii  = app.update.auto
-   *
-   * Disabled states:
-   * Element           pref  value  locked  disabled
-   * radiogroup        i     t/f    f       false
-   *                   i     t/f    *t*     *true*
-   *                   ii    t/f    f       false
-   *                   ii    t/f    *t*     *true*
-   */
-  updateReadPrefs() {
-    if (AppConstants.MOZ_UPDATER) {
-      var enabledPref = Preferences.get("app.update.enabled");
-      var autoPref = Preferences.get("app.update.auto");
-      let disabledByPolicy = Services.policies &&
-                             !Services.policies.isAllowed("appUpdate");
-      var radiogroup = document.getElementById("updateRadioGroup");
-
-      if (!enabledPref.value || disabledByPolicy) // Don't care for autoPref.value in this case.
-        radiogroup.value = "manual"; // 3. Never check for updates.
-      else if (autoPref.value) // enabledPref.value && autoPref.value
-        radiogroup.value = "auto"; // 1. Automatically install updates
-      else // enabledPref.value && !autoPref.value
-        radiogroup.value = "checkOnly"; // 2. Check, but let me choose
-
-      var canCheck = Cc["@mozilla.org/updates/update-service;1"].
-        getService(Ci.nsIApplicationUpdateService).
-        canCheckForUpdates;
-      // canCheck is false if the enabledPref is false and locked,
-      // or the binary platform or OS version is not known.
-      // A locked pref is sufficient to disable the radiogroup.
-      radiogroup.disabled = !canCheck ||
-                            enabledPref.locked ||
-                            autoPref.locked ||
-                            disabledByPolicy;
-
-      if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
-        // Check to see if the maintenance service is installed.
-        // If it is don't show the preference at all.
-        var installed;
-        try {
-          var wrk = Cc["@mozilla.org/windows-registry-key;1"]
-            .createInstance(Ci.nsIWindowsRegKey);
-          wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-            "SOFTWARE\\Mozilla\\MaintenanceService",
-            wrk.ACCESS_READ | wrk.WOW64_64);
-          installed = wrk.readIntValue("Installed");
-          wrk.close();
-        } catch (e) {
-        }
-        if (installed != 1) {
-          document.getElementById("useService").hidden = true;
-        }
-      }
-    }
-  },
-
-  /**
-   * Sets the pref values based on the selected item of the radiogroup.
-   */
-  updateWritePrefs() {
-    let disabledByPolicy = Services.policies &&
-                           !Services.policies.isAllowed("appUpdate");
-    if (AppConstants.MOZ_UPDATER && !disabledByPolicy) {
-      var enabledPref = Preferences.get("app.update.enabled");
-      var autoPref = Preferences.get("app.update.auto");
-      var radiogroup = document.getElementById("updateRadioGroup");
-      switch (radiogroup.value) {
-        case "auto": // 1. Automatically install updates for Desktop only
-          enabledPref.value = true;
-          autoPref.value = true;
-          break;
-        case "checkOnly": // 2. Check, but let me choose
-          enabledPref.value = true;
-          autoPref.value = false;
-          break;
-        case "manual": // 3. Never check for updates.
-          enabledPref.value = false;
-          autoPref.value = false;
-      }
-    }
-  },
-
   /**
    * Displays the history of installed updates.
    */
@@ -1292,17 +1308,14 @@ var gMainPane = {
     Services.prefs.removeObserver(PREF_SHOW_PLUGINS_IN_LIST, this);
     Services.prefs.removeObserver(PREF_HIDE_PLUGINS_WITHOUT_EXTENSIONS, this);
     Services.prefs.removeObserver(PREF_FEED_SELECTED_APP, this);
-    Services.prefs.removeObserver(PREF_FEED_SELECTED_WEB, this);
     Services.prefs.removeObserver(PREF_FEED_SELECTED_ACTION, this);
     Services.prefs.removeObserver(PREF_FEED_SELECTED_READER, this);
 
     Services.prefs.removeObserver(PREF_VIDEO_FEED_SELECTED_APP, this);
-    Services.prefs.removeObserver(PREF_VIDEO_FEED_SELECTED_WEB, this);
     Services.prefs.removeObserver(PREF_VIDEO_FEED_SELECTED_ACTION, this);
     Services.prefs.removeObserver(PREF_VIDEO_FEED_SELECTED_READER, this);
 
     Services.prefs.removeObserver(PREF_AUDIO_FEED_SELECTED_APP, this);
-    Services.prefs.removeObserver(PREF_AUDIO_FEED_SELECTED_WEB, this);
     Services.prefs.removeObserver(PREF_AUDIO_FEED_SELECTED_ACTION, this);
     Services.prefs.removeObserver(PREF_AUDIO_FEED_SELECTED_READER, this);
 
@@ -1336,9 +1349,6 @@ var gMainPane = {
         // All the prefs we observe can affect what we display, so we rebuild
         // the view when any of them changes.
         this._rebuildView();
-      }
-      if (AppConstants.MOZ_UPDATER) {
-        this.updateReadPrefs();
       }
     }
   },
@@ -1428,10 +1438,7 @@ var gMainPane = {
    * Load the set of handlers defined by the application datastore.
    */
   _loadApplicationHandlers() {
-    var wrappedHandlerInfos = gHandlerService.enumerate();
-    while (wrappedHandlerInfos.hasMoreElements()) {
-      let wrappedHandlerInfo =
-        wrappedHandlerInfos.getNext().QueryInterface(Ci.nsIHandlerInfo);
+    for (let wrappedHandlerInfo of gHandlerService.enumerate()) {
       let type = wrappedHandlerInfo.type;
 
       let handlerInfoWrapper;
@@ -1546,13 +1553,22 @@ var gMainPane = {
     if (this._filter.value)
       visibleTypes = visibleTypes.filter(this._matchesFilter, this);
 
-    for (let visibleType of visibleTypes) {
-      let item = new HandlerListItem(visibleType);
-      item.connectAndAppendToList(this._list);
-
-      if (visibleType.type === lastSelectedType) {
-        this._list.selectedItem = item.node;
+    let items = visibleTypes.map(visibleType => new HandlerListItem(visibleType));
+    let itemsFragment = document.createDocumentFragment();
+    let lastSelectedItem;
+    for (let item of items) {
+      item.createNode(itemsFragment);
+      if (item.handlerInfoWrapper.type == lastSelectedType) {
+        lastSelectedItem = item;
       }
+    }
+    this._list.appendChild(itemsFragment);
+    for (let item of items) {
+      item.setupNode();
+    }
+
+    if (lastSelectedItem) {
+      this._list.selectedItem = lastSelectedItem.node;
     }
   },
 
@@ -1578,9 +1594,6 @@ var gMainPane = {
 
     if (aHandlerApp instanceof Ci.nsIWebHandlerApp)
       return aHandlerApp.uriTemplate;
-
-    if (aHandlerApp instanceof Ci.nsIWebContentHandlerInfo)
-      return aHandlerApp.uri;
 
     if (aHandlerApp instanceof Ci.nsIGIOMimeApp)
       return aHandlerApp.command;
@@ -1623,7 +1636,7 @@ var gMainPane = {
     let internalMenuItem;
     // Add the "Preview in Firefox" option for optional internal handlers.
     if (handlerInfo instanceof InternalHandlerInfoWrapper) {
-      internalMenuItem = document.createElement("menuitem");
+      internalMenuItem = document.createXULElement("menuitem");
       internalMenuItem.setAttribute("action", Ci.nsIHandlerInfo.handleInternally);
       let label = gMainPane._prefsBundle.getFormattedString("previewInApp",
         [this._brandShortName]);
@@ -1634,7 +1647,7 @@ var gMainPane = {
     }
 
     {
-      var askMenuItem = document.createElement("menuitem");
+      var askMenuItem = document.createXULElement("menuitem");
       askMenuItem.setAttribute("action", Ci.nsIHandlerInfo.alwaysAsk);
       let label;
       if (isFeedType(handlerInfo.type))
@@ -1654,7 +1667,7 @@ var gMainPane = {
     // available to feeds, since the feed code doesn't implement the capability.
     if ((handlerInfo.wrappedHandlerInfo instanceof Ci.nsIMIMEInfo) &&
       !isFeedType(handlerInfo.type)) {
-      var saveMenuItem = document.createElement("menuitem");
+      var saveMenuItem = document.createXULElement("menuitem");
       saveMenuItem.setAttribute("action", Ci.nsIHandlerInfo.saveToDisk);
       let label = gMainPane._prefsBundle.getString("saveFile");
       saveMenuItem.setAttribute("label", label);
@@ -1665,7 +1678,7 @@ var gMainPane = {
 
     // If this is the feed type, add a Live Bookmarks item.
     if (isFeedType(handlerInfo.type)) {
-      internalMenuItem = document.createElement("menuitem");
+      internalMenuItem = document.createXULElement("menuitem");
       internalMenuItem.setAttribute("action", Ci.nsIHandlerInfo.handleInternally);
       let label = gMainPane._prefsBundle.getFormattedString("addLiveBookmarksInApp",
         [this._brandShortName]);
@@ -1677,12 +1690,12 @@ var gMainPane = {
 
     // Add a separator to distinguish these items from the helper app items
     // that follow them.
-    let menuseparator = document.createElement("menuseparator");
+    let menuseparator = document.createXULElement("menuseparator");
     menuPopup.appendChild(menuseparator);
 
     // Create a menu item for the OS default application, if any.
     if (handlerInfo.hasDefaultHandler) {
-      var defaultMenuItem = document.createElement("menuitem");
+      var defaultMenuItem = document.createXULElement("menuitem");
       defaultMenuItem.setAttribute("action", Ci.nsIHandlerInfo.useSystemDefault);
       let label = gMainPane._prefsBundle.getFormattedString("useDefault",
         [handlerInfo.defaultDescription]);
@@ -1695,14 +1708,12 @@ var gMainPane = {
 
     // Create menu items for possible handlers.
     let preferredApp = handlerInfo.preferredApplicationHandler;
-    let possibleApps = handlerInfo.possibleApplicationHandlers.enumerate();
     var possibleAppMenuItems = [];
-    while (possibleApps.hasMoreElements()) {
-      let possibleApp = possibleApps.getNext();
+    for (let possibleApp of handlerInfo.possibleApplicationHandlers.enumerate()) {
       if (!this.isValidHandlerApp(possibleApp))
         continue;
 
-      let menuItem = document.createElement("menuitem");
+      let menuItem = document.createXULElement("menuitem");
       menuItem.setAttribute("action", Ci.nsIHandlerInfo.useHelperApp);
       let label;
       if (possibleApp instanceof Ci.nsILocalHandlerApp)
@@ -1726,10 +1737,8 @@ var gMainPane = {
       let gIOSvc = Cc["@mozilla.org/gio-service;1"].
                    getService(Ci.nsIGIOService);
       var gioApps = gIOSvc.getAppsForURIScheme(handlerInfo.type);
-      let enumerator = gioApps.enumerate();
       let possibleHandlers = handlerInfo.possibleApplicationHandlers;
-      while (enumerator.hasMoreElements()) {
-        let handler = enumerator.getNext().QueryInterface(Ci.nsIHandlerApp);
+      for (let handler of gioApps.enumerate(Ci.nsIHandlerApp)) {
         // OS handler share the same name, it's most likely the same app, skipping...
         if (handler.name == handlerInfo.defaultDescription) {
           continue;
@@ -1745,7 +1754,7 @@ var gMainPane = {
           }
         }
         if (!appAlreadyInHandlers) {
-          let menuItem = document.createElement("menuitem");
+          let menuItem = document.createXULElement("menuitem");
           menuItem.setAttribute("action", Ci.nsIHandlerInfo.useHelperApp);
           let label = gMainPane._prefsBundle.getFormattedString("useApp", [handler.name]);
           menuItem.setAttribute("label", label);
@@ -1764,7 +1773,7 @@ var gMainPane = {
 
     // Create a menu item for the plugin.
     if (handlerInfo.pluginName) {
-      var pluginMenuItem = document.createElement("menuitem");
+      var pluginMenuItem = document.createXULElement("menuitem");
       pluginMenuItem.setAttribute("action", kActionUsePlugin);
       let label = gMainPane._prefsBundle.getFormattedString("usePluginIn",
         [handlerInfo.pluginName,
@@ -1785,7 +1794,7 @@ var gMainPane = {
       canOpenWithOtherApp = handlerInfo.type != executableType;
     }
     if (canOpenWithOtherApp) {
-      let menuItem = document.createElement("menuitem");
+      let menuItem = document.createXULElement("menuitem");
       menuItem.className = "choose-app-item";
       menuItem.addEventListener("command", function(e) {
         gMainPane.chooseApp(e);
@@ -1798,9 +1807,9 @@ var gMainPane = {
 
     // Create a menu item for managing applications.
     if (possibleAppMenuItems.length) {
-      let menuItem = document.createElement("menuseparator");
+      let menuItem = document.createXULElement("menuseparator");
       menuPopup.appendChild(menuItem);
-      menuItem = document.createElement("menuitem");
+      menuItem = document.createXULElement("menuitem");
       menuItem.className = "manage-app-item";
       menuItem.addEventListener("command", function(e) {
         gMainPane.manageApp(e);
@@ -2083,9 +2092,6 @@ var gMainPane = {
     if (aHandlerApp instanceof Ci.nsIWebHandlerApp)
       return this._getIconURLForWebApp(aHandlerApp.uriTemplate);
 
-    if (aHandlerApp instanceof Ci.nsIWebContentHandlerInfo)
-      return this._getIconURLForWebApp(aHandlerApp.uri);
-
     // We know nothing about other kinds of handler apps.
     return "";
   },
@@ -2108,7 +2114,7 @@ var gMainPane = {
     // they'll only visit URLs derived from that template (i.e. with %s
     // in the template replaced by the URL of the content being handled).
 
-    if (/^https?$/.test(uri.scheme) && Services.prefs.getBoolPref("browser.chrome.favicons"))
+    if (/^https?$/.test(uri.scheme) && Services.prefs.getBoolPref("browser.chrome.site_icons"))
       return uri.prePath + "/favicon.ico";
 
     return "";
@@ -2390,7 +2396,7 @@ var gMainPane = {
     }
     var currentDirPref = Preferences.get("browser.download.dir");
     return currentDirPref.value;
-  }
+  },
 };
 
 // Utilities
@@ -2437,13 +2443,17 @@ function ArrayEnumerator(aItems) {
 ArrayEnumerator.prototype = {
   _index: 0,
 
+  [Symbol.iterator]() {
+    return this._contents.values();
+  },
+
   hasMoreElements() {
     return this._index < this._contents.length;
   },
 
   getNext() {
     return this._contents[this._index++];
-  }
+  },
 };
 
 function isFeedType(t) {
@@ -2495,11 +2505,13 @@ class HandlerListItem {
     }
   }
 
-  connectAndAppendToList(list) {
+  createNode(list) {
     list.appendChild(document.importNode(gHandlerListItemFragment, true));
     this.node = list.lastChild;
     gNodeToObjectMap.set(this.node, this);
+  }
 
+  setupNode() {
     this.node.querySelector(".actionsMenu").addEventListener("command",
       event => gMainPane.onSelectAction(event.originalTarget));
 
@@ -2747,9 +2759,8 @@ class HandlerInfoWrapper {
   }
 
   addPossibleApplicationHandler(aNewHandler) {
-    var possibleApps = this.possibleApplicationHandlers.enumerate();
-    while (possibleApps.hasMoreElements()) {
-      if (possibleApps.getNext().equals(aNewHandler))
+    for (let app of this.possibleApplicationHandlers.enumerate()) {
+      if (app.equals(aNewHandler))
         return;
     }
     this.possibleApplicationHandlers.appendElement(aNewHandler);
@@ -2891,7 +2902,7 @@ class HandlerInfoWrapper {
       disabledPluginTypes.join(","));
 
     // Update the category manager so existing browser windows update.
-    gCategoryManager.deleteCategoryEntry("Gecko-Content-Viewers",
+    Services.catMan.deleteCategoryEntry("Gecko-Content-Viewers",
       this.type,
       false);
   }
@@ -2906,7 +2917,7 @@ class HandlerInfoWrapper {
       disabledPluginTypes.join(","));
 
     // Update the category manager so existing browser windows update.
-    gCategoryManager.addCategoryEntry(
+    Services.catMan.addCategoryEntry(
       "Gecko-Content-Viewers",
       this.type,
       "@mozilla.org/content/plugin/document-loader-factory;1",
@@ -2962,12 +2973,6 @@ class FeedHandlerInfo extends HandlerInfoWrapper {
 
         return null;
 
-      case "web":
-        var uri = Preferences.get(this._prefSelectedWeb).value;
-        if (!uri)
-          return null;
-        return gWebContentContentConverterService.getWebContentHandlerByURI(this.type, uri);
-
       case "bookmarks":
       default:
         // When the pref is set to bookmarks, we handle feeds internally,
@@ -2981,16 +2986,6 @@ class FeedHandlerInfo extends HandlerInfoWrapper {
     if (aNewValue instanceof Ci.nsILocalHandlerApp) {
       Preferences.get(this._prefSelectedApp).value = aNewValue.executable;
       Preferences.get(this._prefSelectedReader).value = "client";
-    } else if (aNewValue instanceof Ci.nsIWebContentHandlerInfo) {
-      Preferences.get(this._prefSelectedWeb).value = aNewValue.uri;
-      Preferences.get(this._prefSelectedReader).value = "web";
-      // Make the web handler be the new "auto handler" for feeds.
-      // Note: we don't have to unregister the auto handler when the user picks
-      // a non-web handler (local app, Live Bookmarks, etc.) because the service
-      // only uses the "auto handler" when the selected reader is a web handler.
-      // We also don't have to unregister it when the user turns on "always ask"
-      // (i.e. preview in browser), since that also overrides the auto handler.
-      gWebContentContentConverterService.setAutoHandler(this.type, aNewValue);
     }
   }
 
@@ -3025,7 +3020,7 @@ class FeedHandlerInfo extends HandlerInfoWrapper {
 
       queryElementAt(aIndex, aInterface) {
         return this._inner[aIndex].QueryInterface(aInterface);
-      }
+      },
     };
 
     // Add the selected local app if it's different from the OS default handler.
@@ -3041,11 +3036,6 @@ class FeedHandlerInfo extends HandlerInfoWrapper {
       if (!defaultApp || !defaultApp.equals(preferredApp))
         this._possibleApplicationHandlers.appendElement(preferredApp);
     }
-
-    // Add the registered web handlers.  There can be any number of these.
-    var webHandlers = gWebContentContentConverterService.getContentHandlers(this.type);
-    for (let webHandler of webHandlers)
-      this._possibleApplicationHandlers.appendElement(webHandler);
 
     return this._possibleApplicationHandlers;
   }
@@ -3185,10 +3175,6 @@ class FeedHandlerInfo extends HandlerInfoWrapper {
           if (app.equals(preferredApp))
             pref.reset();
         }
-      } else {
-        app.QueryInterface(Ci.nsIWebContentHandlerInfo);
-        gWebContentContentConverterService.removeContentHandler(app.contentType,
-                                                                app.uri);
       }
     }
     this._possibleApplicationHandlers._removed = [];
@@ -3201,29 +3187,26 @@ class FeedHandlerInfo extends HandlerInfoWrapper {
 
 var feedHandlerInfo = new FeedHandlerInfo(TYPE_MAYBE_FEED, {
   _prefSelectedApp: PREF_FEED_SELECTED_APP,
-  _prefSelectedWeb: PREF_FEED_SELECTED_WEB,
   _prefSelectedAction: PREF_FEED_SELECTED_ACTION,
   _prefSelectedReader: PREF_FEED_SELECTED_READER,
   _smallIcon: "chrome://browser/skin/feeds/feedIcon16.png",
-  _appPrefLabel: "webFeed"
+  _appPrefLabel: "webFeed",
 });
 
 var videoFeedHandlerInfo = new FeedHandlerInfo(TYPE_MAYBE_VIDEO_FEED, {
   _prefSelectedApp: PREF_VIDEO_FEED_SELECTED_APP,
-  _prefSelectedWeb: PREF_VIDEO_FEED_SELECTED_WEB,
   _prefSelectedAction: PREF_VIDEO_FEED_SELECTED_ACTION,
   _prefSelectedReader: PREF_VIDEO_FEED_SELECTED_READER,
   _smallIcon: "chrome://browser/skin/feeds/videoFeedIcon16.png",
-  _appPrefLabel: "videoPodcastFeed"
+  _appPrefLabel: "videoPodcastFeed",
 });
 
 var audioFeedHandlerInfo = new FeedHandlerInfo(TYPE_MAYBE_AUDIO_FEED, {
   _prefSelectedApp: PREF_AUDIO_FEED_SELECTED_APP,
-  _prefSelectedWeb: PREF_AUDIO_FEED_SELECTED_WEB,
   _prefSelectedAction: PREF_AUDIO_FEED_SELECTED_ACTION,
   _prefSelectedReader: PREF_AUDIO_FEED_SELECTED_READER,
   _smallIcon: "chrome://browser/skin/feeds/audioFeedIcon16.png",
-  _appPrefLabel: "audioPodcastFeed"
+  _appPrefLabel: "audioPodcastFeed",
 });
 
 /**
@@ -3266,7 +3249,6 @@ class PDFHandlerInfoWrapper extends InternalHandlerInfoWrapper {
   }
 
   get enabled() {
-    return !Services.prefs.getBoolPref(PREF_PDFJS_DISABLED) &&
-           Services.policies.isAllowed("PDF.js");
+    return !Services.prefs.getBoolPref(PREF_PDFJS_DISABLED);
   }
 }

@@ -306,7 +306,6 @@ public:
   virtual already_AddRefed<ContainerLayer> CreateContainerLayer() override;
   virtual already_AddRefed<ImageLayer> CreateImageLayer() override;
   virtual already_AddRefed<ColorLayer> CreateColorLayer() override;
-  virtual already_AddRefed<BorderLayer> CreateBorderLayer() override;
   virtual already_AddRefed<CanvasLayer> CreateCanvasLayer() override;
   virtual already_AddRefed<RefLayer> CreateRefLayer() override;
 
@@ -755,7 +754,7 @@ RenderWithAllMasks(Layer* aLayer, Compositor* aCompositor,
   // into. The final mask gets rendered into the original render target.
 
   // Calculate the size of the intermediate surfaces.
-  gfx::Rect visibleRect(aLayer->GetLocalVisibleRegion().ToUnknownRegion().GetBounds());
+  gfx::Rect visibleRect(aLayer->GetLocalVisibleRegion().GetBounds().ToUnknownRect());
   gfx::Matrix4x4 transform = aLayer->GetEffectiveTransform();
   // TODO: Use RenderTargetIntRect and TransformBy here
   gfx::IntRect surfaceRect =

@@ -13,7 +13,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
   ExtensionData: "resource://gre/modules/Extension.jsm",
-  Services: "resource://gre/modules/Services.jsm"
+  Services: "resource://gre/modules/Services.jsm",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
@@ -27,8 +27,8 @@ const BRAND_PROPERTIES = "chrome://branding/locale/brand.properties";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 function getTabBrowser(browser) {
-  while (browser.ownerDocument.docShell.itemType !== Ci.nsIDocShell.typeChrome) {
-    browser = browser.ownerDocument.docShell.chromeEventHandler;
+  while (browser.ownerGlobal.docShell.itemType !== Ci.nsIDocShell.typeChrome) {
+    browser = browser.ownerGlobal.docShell.chromeEventHandler;
   }
   return {browser, window: browser.ownerGlobal};
 }
@@ -106,7 +106,7 @@ var ExtensionsUI = {
   showAddonsManager(browser, strings, icon, histkey) {
     let global = browser.selectedBrowser.ownerGlobal;
     return global.BrowserOpenAddonsMgr("addons://list/extension").then(aomWin => {
-      let aomBrowser = aomWin.document.docShell.chromeEventHandler;
+      let aomBrowser = aomWin.docShell.chromeEventHandler;
       return this.showPermissionsPrompt(aomBrowser, strings, icon, histkey);
     });
   },
@@ -409,7 +409,7 @@ var ExtensionsUI = {
       };
 
       let icon = addon.isWebExtension ?
-                 addon.iconURL || DEFAULT_EXTENSION_ICON :
+                 AddonManager.getPreferredIconURL(addon, 32, window) || DEFAULT_EXTENSION_ICON :
                  "chrome://browser/skin/addons/addon-install-installed.svg";
       let options = {
         hideClose: true,

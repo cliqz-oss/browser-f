@@ -98,7 +98,7 @@ class HeaderChanger {
     });
   }
 
-  applyChanges(headers) {
+  applyChanges(headers, opts = {}) {
     if (!this.validateHeaders(headers)) {
       /* globals uneval */
       Cu.reportError(`Invalid header array: ${uneval(headers)}`);
@@ -136,7 +136,7 @@ class HeaderChanger {
 
       if (!original || value !== original.value) {
         let shouldMerge = headersAlreadySet.has(lowerCaseName);
-        this.setHeader(name, value, shouldMerge);
+        this.setHeader(name, value, shouldMerge, opts, lowerCaseName);
       }
 
       headersAlreadySet.add(lowerCaseName);
@@ -144,9 +144,25 @@ class HeaderChanger {
   }
 }
 
+const checkRestrictedHeaderValue = (value, opts = {}) => {
+  let uri = Services.io.newURI(`https://${value}/`);
+  let {extension} = opts;
+
+  if (extension && !extension.allowedOrigins.matches(uri)) {
+    throw new Error(`Unable to set host header, url missing from permissions.`);
+  }
+
+  if (WebExtensionPolicy.isRestrictedURI(uri)) {
+    throw new Error(`Unable to set host header to restricted url.`);
+  }
+};
+
 class RequestHeaderChanger extends HeaderChanger {
-  setHeader(name, value, merge) {
+  setHeader(name, value, merge, opts, lowerCaseName) {
     try {
+      if (value && lowerCaseName === "host") {
+        checkRestrictedHeaderValue(value, opts);
+      }
       this.channel.setRequestHeader(name, value, merge);
     } catch (e) {
       Cu.reportError(new Error(`Error setting request header ${name}: ${e}`));
@@ -159,7 +175,7 @@ class RequestHeaderChanger extends HeaderChanger {
 }
 
 class ResponseHeaderChanger extends HeaderChanger {
-  setHeader(name, value, merge) {
+  setHeader(name, value, merge, opts, lowerCaseName) {
     try {
       this.channel.setResponseHeader(name, value, merge);
     } catch (e) {
@@ -212,7 +228,6 @@ var nextFakeRequestId = 1;
 
 var ContentPolicyManager = {
   policyData: new Map(),
-  policies: new Map(),
   idMap: new Map(),
   nextId: 0,
 
@@ -224,39 +239,13 @@ var ContentPolicyManager = {
   },
 
   receiveMessage(msg) {
-    let browser = ChromeUtils.getClassName(msg.target) == "XULElement" ? msg.target : null;
+    let browser = ChromeUtils.getClassName(msg.target) == "XULFrameElement" ? msg.target : null;
 
     let requestId = `fakeRequest-${++nextFakeRequestId}`;
-    for (let id of msg.data.ids) {
-      let callback = this.policies.get(id);
-      if (!callback) {
-        // It's possible that this listener has been removed and the
-        // child hasn't learned yet.
-        continue;
-      }
-      let response = null;
-      let listenerKind = "onStop";
-      let data = Object.assign({requestId, browser, serialize: serializeRequestData}, msg.data);
+    let data = Object.assign({requestId, browser, serialize: serializeRequestData}, msg.data);
 
-      delete data.ids;
-      try {
-        response = callback(data);
-        if (response) {
-          if (response.cancel) {
-            listenerKind = "onError";
-            data.error = "NS_ERROR_ABORT";
-            return {cancel: true};
-          }
-          // FIXME: Need to handle redirection here (for non-HTTP URIs only)
-        }
-      } catch (e) {
-        Cu.reportError(e);
-      } finally {
-        runLater(() => this.runChannelListener(listenerKind, data));
-      }
-    }
-
-    return {};
+    this.runChannelListener("opening", data);
+    runLater(() => this.runChannelListener("onStop", data));
   },
 
   shouldRunListener(policyType, url, opts) {
@@ -282,7 +271,11 @@ var ContentPolicyManager = {
     let listeners = HttpObserverManager.listeners[kind];
     for (let [callback, opts] of listeners.entries()) {
       if (this.shouldRunListener(data.type, data.url, opts)) {
-        callback(data);
+        try {
+          callback(data);
+        } catch (e) {
+          Cu.reportError(e);
+        }
       }
     }
   },
@@ -300,7 +293,6 @@ var ContentPolicyManager = {
 
     this.policyData.set(id, opts);
 
-    this.policies.set(id, callback);
     this.idMap.set(callback, id);
   },
 
@@ -310,7 +302,6 @@ var ContentPolicyManager = {
 
     this.policyData.delete(id);
     this.idMap.delete(callback);
-    this.policies.delete(id);
   },
 };
 ContentPolicyManager.init();
@@ -329,13 +320,13 @@ var ChannelEventSink = {
   },
 
   register() {
-    let catMan = Cc["@mozilla.org/categorymanager;1"].getService(Ci.nsICategoryManager);
-    catMan.addCategoryEntry("net-channel-event-sinks", this._contractID, this._contractID, false, true);
+    Services.catMan.addCategoryEntry("net-channel-event-sinks",
+                                     this._contractID,
+                                     this._contractID, false, true);
   },
 
   unregister() {
-    let catMan = Cc["@mozilla.org/categorymanager;1"].getService(Ci.nsICategoryManager);
-    catMan.deleteCategoryEntry("net-channel-event-sinks", this._contractID, false);
+    Services.catMan.deleteCategoryEntry("net-channel-event-sinks", this._contractID, false);
   },
 
   // nsIChannelEventSink implementation
@@ -747,7 +738,15 @@ HttpObserverManager = {
 
         if (registerFilter && opts.blocking && opts.extension) {
           data.registerTraceableChannel = (extension, tabParent) => {
-            channel.registerTraceableChannel(extension, tabParent);
+            // `channel` is a ChannelWrapper, which contains the actual
+            // underlying nsIChannel in `channel.channel`.  For startup events
+            // that are held until the extension background page is started,
+            // it is possible that the underlying channel can be closed and
+            // cleaned up between the time the event occurred and the time
+            // we reach this code.
+            if (channel.channel) {
+              channel.registerTraceableChannel(extension, tabParent);
+            }
           };
         }
 
@@ -857,11 +856,11 @@ HttpObserverManager = {
         }
 
         if (opts.requestHeaders && result.requestHeaders && requestHeaders) {
-          requestHeaders.applyChanges(result.requestHeaders);
+          requestHeaders.applyChanges(result.requestHeaders, opts);
         }
 
         if (opts.responseHeaders && result.responseHeaders && responseHeaders) {
-          responseHeaders.applyChanges(result.responseHeaders);
+          responseHeaders.applyChanges(result.responseHeaders, opts);
         }
       }
 

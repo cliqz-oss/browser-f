@@ -28,6 +28,7 @@ static const uint32_t ACTIVITY_STREAM_FLAGS =
   nsIAboutModule::ALLOW_SCRIPT |
   nsIAboutModule::ENABLE_INDEXED_DB |
   nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+  nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGED_CHILD |
   nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT;
 
 struct RedirEntry {
@@ -63,6 +64,8 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  { "policies", "chrome://browser/content/policies/aboutPolicies.xhtml",
+    nsIAboutModule::ALLOW_SCRIPT },
   { "privatebrowsing", "chrome://browser/content/aboutPrivateBrowsing.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
@@ -89,6 +92,7 @@ static const RedirEntry kRedirMap[] = {
   { "newtab", "about:blank", ACTIVITY_STREAM_FLAGS },
   { "welcome", "about:blank",
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
+    nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGED_CHILD |
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT },
   { "library", "chrome://browser/content/aboutLibrary.xhtml",
@@ -162,12 +166,19 @@ AboutRedirector::NewChannel(nsIURI* aURI,
       // Let the aboutNewTabService decide where to redirect for about:home and
       // enabled about:newtab. Disabledx about:newtab page uses fallback.
       if (path.EqualsLiteral("home") ||
-          (sNewTabPageEnabled && path.EqualsLiteral("newtab")) ||
-          path.EqualsLiteral("welcome")) {
+          (sNewTabPageEnabled && path.EqualsLiteral("newtab"))) {
         nsCOMPtr<nsIAboutNewTabService> aboutNewTabService =
           do_GetService("@mozilla.org/browser/aboutnewtab-service;1", &rv);
         NS_ENSURE_SUCCESS(rv, rv);
         rv = aboutNewTabService->GetDefaultURL(url);
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      if (path.EqualsLiteral("welcome")) {
+        nsCOMPtr<nsIAboutNewTabService> aboutNewTabService =
+          do_GetService("@mozilla.org/browser/aboutnewtab-service;1", &rv);
+        NS_ENSURE_SUCCESS(rv, rv);
+        rv = aboutNewTabService->GetWelcomeURL(url);
         NS_ENSURE_SUCCESS(rv, rv);
       }
 

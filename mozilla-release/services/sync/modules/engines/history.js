@@ -27,7 +27,7 @@ function HistoryRec(collection, id) {
 HistoryRec.prototype = {
   __proto__: CryptoWrapper.prototype,
   _logName: "Sync.Record.History",
-  ttl: HISTORY_TTL
+  ttl: HISTORY_TTL,
 };
 
 Utils.deferGetSet(HistoryRec, "cleartext", ["histUri", "title", "visits"]);
@@ -471,7 +471,7 @@ HistoryStore.prototype = {
 
   async wipe() {
     return PlacesSyncUtils.history.wipe();
-  }
+  },
 };
 
 function HistoryTracker(name, engine) {
@@ -483,16 +483,22 @@ HistoryTracker.prototype = {
   onStart() {
     this._log.info("Adding Places observer.");
     PlacesUtils.history.addObserver(this, true);
+    this._placesObserver =
+      new PlacesWeakCallbackWrapper(this.handlePlacesEvents.bind(this));
+    PlacesObservers.addListener(["page-visited"], this._placesObserver);
   },
 
   onStop() {
     this._log.info("Removing Places observer.");
     PlacesUtils.history.removeObserver(this);
+    if (this._placesObserver) {
+      PlacesObservers.removeListener(["page-visited"], this._placesObserver);
+    }
   },
 
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryObserver,
-    Ci.nsISupportsWeakReference
+    Ci.nsISupportsWeakReference,
   ]),
 
   async onDeleteAffectsGUID(uri, guid, reason, source, increment) {
@@ -506,7 +512,7 @@ HistoryTracker.prototype = {
     }
   },
 
-  onDeleteVisits(uri, visitTime, guid, reason) {
+  onDeleteVisits(uri, partialRemoval, guid, reason) {
     this.asyncObserver.enqueueCall(() =>
       this.onDeleteAffectsGUID(uri, guid, reason, "onDeleteVisits", SCORE_INCREMENT_SMALL)
     );
@@ -518,19 +524,20 @@ HistoryTracker.prototype = {
     );
   },
 
-  onVisits(aVisits) {
-    this.asyncObserver.enqueueCall(() => this._onVisits(aVisits));
+  handlePlacesEvents(aEvents) {
+    this.asyncObserver.enqueueCall(() => this._handlePlacesEvents(aEvents));
   },
 
-  async _onVisits(aVisits) {
+  async _handlePlacesEvents(aEvents) {
     if (this.ignoreAll) {
       this._log.trace("ignoreAll: ignoring visits [" +
-                      aVisits.map(v => v.guid).join(",") + "]");
+                      aEvents.map(v => v.guid).join(",") + "]");
       return;
     }
-    for (let {uri, guid} of aVisits) {
-      this._log.trace("onVisits: " + uri.spec);
-      if (this.engine.shouldSyncURL(uri.spec) && (await this.addChangedID(guid))) {
+    for (let event of aEvents) {
+      this._log.trace("'page-visited': " + event.url);
+      if (this.engine.shouldSyncURL(event.url) &&
+          await this.addChangedID(event.pageGuid)) {
         this.score += SCORE_INCREMENT_SMALL;
       }
     }

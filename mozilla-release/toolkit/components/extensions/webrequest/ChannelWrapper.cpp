@@ -10,7 +10,7 @@
 #include "xpcpublic.h"
 
 #include "mozilla/BasePrincipal.h"
-#include "SystemPrincipal.h"
+#include "mozilla/SystemPrincipal.h"
 
 #include "NSSErrorsService.h"
 #include "nsITransportSecurityInfo.h"
@@ -102,20 +102,20 @@ ChannelWrapper::SetChannel(nsIChannel* aChannel)
 {
   detail::ChannelHolder::SetChannel(aChannel);
   ClearCachedAttributes();
-  ChannelWrapperBinding::ClearCachedFinalURIValue(this);
-  ChannelWrapperBinding::ClearCachedFinalURLValue(this);
+  ChannelWrapper_Binding::ClearCachedFinalURIValue(this);
+  ChannelWrapper_Binding::ClearCachedFinalURLValue(this);
   mFinalURLInfo.reset();
-  ChannelWrapperBinding::ClearCachedProxyInfoValue(this);
+  ChannelWrapper_Binding::ClearCachedProxyInfoValue(this);
 }
 
 void
 ChannelWrapper::ClearCachedAttributes()
 {
-  ChannelWrapperBinding::ClearCachedRemoteAddressValue(this);
-  ChannelWrapperBinding::ClearCachedStatusCodeValue(this);
-  ChannelWrapperBinding::ClearCachedStatusLineValue(this);
+  ChannelWrapper_Binding::ClearCachedRemoteAddressValue(this);
+  ChannelWrapper_Binding::ClearCachedStatusCodeValue(this);
+  ChannelWrapper_Binding::ClearCachedStatusLineValue(this);
   if (!mFiredErrorEvent) {
-    ChannelWrapperBinding::ClearCachedErrorStringValue(this);
+    ChannelWrapper_Binding::ClearCachedErrorStringValue(this);
   }
 }
 
@@ -916,7 +916,7 @@ ChannelWrapper::ErrorCheck()
     if (error.Length()) {
       mChannelEntry = nullptr;
       mFiredErrorEvent = true;
-      ChannelWrapperBinding::ClearCachedErrorStringValue(this);
+      ChannelWrapper_Binding::ClearCachedErrorStringValue(this);
       FireEvent(NS_LITERAL_STRING("error"));
     }
   }
@@ -1043,7 +1043,7 @@ ChannelWrapper::EventListenerRemoved(nsAtom* aType)
 JSObject*
 ChannelWrapper::WrapObject(JSContext* aCx, HandleObject aGivenProto)
 {
-  return ChannelWrapperBinding::Wrap(aCx, this, aGivenProto);
+  return ChannelWrapper_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(ChannelWrapper)

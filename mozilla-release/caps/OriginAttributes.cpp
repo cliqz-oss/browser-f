@@ -6,11 +6,12 @@
 
 #include "mozilla/OriginAttributes.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/URLSearchParams.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "nsIEffectiveTLDService.h"
 #include "nsIURI.h"
-#include "nsIURIWithPrincipal.h"
+#include "nsURLHelper.h"
 
 namespace mozilla {
 
@@ -58,23 +59,42 @@ OriginAttributes::SetFirstPartyDomain(const bool aIsTopLevelDocument,
     return;
   }
 
+  if (rv == NS_ERROR_HOST_IS_IP_ADDRESS) {
+    // If the host is an IPv4/IPv6 address, we still accept it as a
+    // valid firstPartyDomain.
+    nsAutoCString ipAddr;
+    rv = aURI->GetHost(ipAddr);
+    NS_ENSURE_SUCCESS_VOID(rv);
+
+    if (net_IsValidIPv6Addr(ipAddr.BeginReading(), ipAddr.Length())) {
+      // According to RFC2732, the host of an IPv6 address should be an
+      // IPv6reference. The GetHost() of nsIURI will only return the IPv6
+      // address. So, we need to convert it back to IPv6reference here.
+      mFirstPartyDomain.Truncate();
+      mFirstPartyDomain.AssignLiteral("[");
+      mFirstPartyDomain.Append(NS_ConvertUTF8toUTF16(ipAddr));
+      mFirstPartyDomain.AppendLiteral("]");
+    } else {
+      mFirstPartyDomain = NS_ConvertUTF8toUTF16(ipAddr);
+    }
+
+    return;
+  }
+
   nsAutoCString scheme;
   rv = aURI->GetScheme(scheme);
   NS_ENSURE_SUCCESS_VOID(rv);
   if (scheme.EqualsLiteral("about")) {
     mFirstPartyDomain.AssignLiteral(ABOUT_URI_FIRST_PARTY_DOMAIN);
-  } else if (scheme.EqualsLiteral("blob")) {
-    nsCOMPtr<nsIURIWithPrincipal> uriPrinc = do_QueryInterface(aURI);
-    if (uriPrinc) {
-      nsCOMPtr<nsIPrincipal> principal;
-      rv = uriPrinc->GetPrincipal(getter_AddRefs(principal));
-      NS_ENSURE_SUCCESS_VOID(rv);
+    return;
+  }
 
-      MOZ_ASSERT(principal, "blob URI but no principal.");
-      if (principal) {
-        mFirstPartyDomain = principal->OriginAttributesRef().mFirstPartyDomain;
-      }
-    }
+  nsCOMPtr<nsIPrincipal> blobPrincipal;
+  if (dom::BlobURLProtocolHandler::GetBlobURLPrincipal(aURI,
+                                                       getter_AddRefs(blobPrincipal))) {
+    MOZ_ASSERT(blobPrincipal);
+    mFirstPartyDomain = blobPrincipal->OriginAttributesRef().mFirstPartyDomain;
+    return;
   }
 }
 
@@ -128,8 +148,10 @@ OriginAttributes::CreateSuffix(nsACString& aStr) const
   }
 
   if (!mFirstPartyDomain.IsEmpty()) {
-    MOZ_RELEASE_ASSERT(mFirstPartyDomain.FindCharInSet(dom::quota::QuotaManager::kReplaceChars) == kNotFound);
-    params.Set(NS_LITERAL_STRING("firstPartyDomain"), mFirstPartyDomain);
+    nsAutoString sanitizedFirstPartyDomain(mFirstPartyDomain);
+    sanitizedFirstPartyDomain.ReplaceChar(dom::quota::QuotaManager::kReplaceChars, '+');
+
+    params.Set(NS_LITERAL_STRING("firstPartyDomain"), sanitizedFirstPartyDomain);
   }
 
   aStr.Truncate();

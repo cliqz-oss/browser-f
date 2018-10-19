@@ -143,7 +143,7 @@ var gIdentityHandler = {
   get _identityPopupMixedContentLearnMore() {
     delete this._identityPopupMixedContentLearnMore;
     return this._identityPopupMixedContentLearnMore =
-      document.getElementById("identity-popup-mcb-learn-more");
+      [...document.querySelectorAll(".identity-popup-mcb-learn-more")];
   },
   get _identityPopupInsecureLoginFormsLearnMore() {
     delete this._identityPopupInsecureLoginFormsLearnMore;
@@ -347,12 +347,8 @@ var gIdentityHandler = {
     // Firstly, populate the state properties required to display the UI. See
     // the documentation of the individual properties for details.
     this.setURI(uri);
-    this._sslStatus = gBrowser.securityUI
-                              .QueryInterface(Ci.nsISSLStatusProvider)
-                              .SSLStatus;
-    if (this._sslStatus) {
-      this._sslStatus.QueryInterface(Ci.nsISSLStatus);
-    }
+    this._sslStatus = gBrowser.securityUI.secInfo &&
+                      gBrowser.securityUI.secInfo.SSLStatus;
 
     // Then, update the user interface with the available data.
     this.refreshIdentityBlock();
@@ -630,8 +626,8 @@ var gIdentityHandler = {
 
     // Update "Learn More" for Mixed Content Blocking and Insecure Login Forms.
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-    this._identityPopupMixedContentLearnMore
-        .setAttribute("href", baseURL + "mixed-content");
+    this._identityPopupMixedContentLearnMore.forEach(
+      e => e.setAttribute("href", baseURL + "mixed-content"));
     this._identityPopupInsecureLoginFormsLearnMore
         .setAttribute("href", baseURL + "insecure-password");
 
@@ -980,12 +976,12 @@ var gIdentityHandler = {
   },
 
   _createPermissionItem(aPermission) {
-    let container = document.createElement("hbox");
+    let container = document.createXULElement("hbox");
     container.setAttribute("class", "identity-popup-permission-item");
     container.setAttribute("align", "center");
     container.setAttribute("role", "group");
 
-    let img = document.createElement("image");
+    let img = document.createXULElement("image");
     img.classList.add("identity-popup-permission-icon");
     if (aPermission.id == "plugin:flash") {
       img.classList.add("plugin-icon");
@@ -1012,26 +1008,28 @@ var gIdentityHandler = {
       });
     }
 
-    let nameLabel = document.createElement("label");
+    let nameLabel = document.createXULElement("label");
     nameLabel.setAttribute("flex", "1");
     nameLabel.setAttribute("class", "identity-popup-permission-label");
     nameLabel.textContent = SitePermissions.getPermissionLabel(aPermission.id);
     let nameLabelId = "identity-popup-permission-label-" + aPermission.id;
     nameLabel.setAttribute("id", nameLabelId);
 
-    let isPolicyPermission = aPermission.scope == SitePermissions.SCOPE_POLICY;
+    let isPolicyPermission = [
+      SitePermissions.SCOPE_POLICY, SitePermissions.SCOPE_GLOBAL,
+    ].includes(aPermission.scope);
 
     if (aPermission.id == "popup" && !isPolicyPermission) {
-      let menulist = document.createElement("menulist");
-      let menupopup = document.createElement("menupopup");
-      let block = document.createElement("vbox");
+      let menulist = document.createXULElement("menulist");
+      let menupopup = document.createXULElement("menupopup");
+      let block = document.createXULElement("vbox");
       block.setAttribute("id", "identity-popup-popup-container");
       menulist.setAttribute("sizetopopup", "none");
-      menulist.setAttribute("class", "identity-popup-popup-menulist subviewkeynav");
+      menulist.setAttribute("class", "identity-popup-popup-menulist");
       menulist.setAttribute("id", "identity-popup-popup-menulist");
 
       for (let state of SitePermissions.getAvailableStates(aPermission.id)) {
-        let menuitem = document.createElement("menuitem");
+        let menuitem = document.createXULElement("menuitem");
         // We need to correctly display the default/unknown state, which has its
         // own integer value (0) but represents one of the other states.
         if (state == SitePermissions.getDefault(aPermission.id)) {
@@ -1067,7 +1065,7 @@ var gIdentityHandler = {
       return block;
     }
 
-    let stateLabel = document.createElement("label");
+    let stateLabel = document.createXULElement("label");
     stateLabel.setAttribute("flex", "1");
     stateLabel.setAttribute("class", "identity-popup-permission-state-label");
     let stateLabelId = "identity-popup-permission-state-label-" + aPermission.id;
@@ -1087,14 +1085,14 @@ var gIdentityHandler = {
     container.setAttribute("aria-labelledby", nameLabelId + " " + stateLabelId);
 
     /* We return the permission item here without a remove button if the permission is a
-       SCOPE_POLICY permission. Policy permissions cannot be removed/changed for the duration
-       of the browser session. */
+       SCOPE_POLICY or SCOPE_GLOBAL permission. Policy permissions cannot be
+       removed/changed for the duration of the browser session. */
     if (isPolicyPermission) {
       return container;
     }
 
-    let button = document.createElement("button");
-    button.setAttribute("class", "identity-popup-permission-remove-button subviewkeynav");
+    let button = document.createXULElement("button");
+    button.setAttribute("class", "identity-popup-permission-remove-button");
     let tooltiptext = gNavigatorBundle.getString("permissions.remove.tooltip");
     button.setAttribute("tooltiptext", tooltiptext);
     button.addEventListener("command", () => {
@@ -1140,17 +1138,17 @@ var gIdentityHandler = {
   },
 
   _createBlockedPopupIndicator() {
-    let indicator = document.createElement("hbox");
+    let indicator = document.createXULElement("hbox");
     indicator.setAttribute("class", "identity-popup-permission-item");
     indicator.setAttribute("align", "center");
     indicator.setAttribute("id", "blocked-popup-indicator-item");
 
-    let icon = document.createElement("image");
+    let icon = document.createXULElement("image");
     icon.setAttribute("class", "popup-subitem identity-popup-permission-icon");
 
-    let text = document.createElement("label");
+    let text = document.createXULElement("label");
     text.setAttribute("flex", "1");
-    text.setAttribute("class", "identity-popup-permission-label text-link subviewkeynav");
+    text.setAttribute("class", "identity-popup-permission-label text-link");
 
     let popupCount = gBrowser.selectedBrowser.blockedPopups.length;
     let messageBase = gNavigatorBundle.getString("popupShowBlockedPopupsIndicatorText");

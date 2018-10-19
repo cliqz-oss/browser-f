@@ -113,10 +113,8 @@ locales = [
 [build]
 exclude-multi-locale = [
     "ach",
-    "en-CA",
     "ia",
     "km",
-    "lij",
     "ltg",
     "meh",
     "mix",
@@ -202,6 +200,10 @@ exclude-multi-locale = [
 [[paths]]
     reference = "toolkit/locales/en-US/chrome/global/aboutSupport.properties"
     l10n = "{l}toolkit/chrome/global/aboutSupport.properties"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/crashreporter/*.ftl"
+    l10n = "{l}toolkit/crashreporter/*.ftl"
 
 [[paths]]
     reference = "toolkit/locales/en-US/crashreporter/crashes.dtd"

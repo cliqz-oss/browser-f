@@ -47,7 +47,7 @@
 #include "nsIPrivateBrowsingChannel.h"
 #include "nsIPropertyBag2.h"
 #include "nsIProtocolProxyService.h"
-#include "nsIRedirectChannelRegistrar.h"
+#include "mozilla/net/RedirectChannelRegistrar.h"
 #include "nsIRequestObserverProxy.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsISensitiveInfoHiddenURI.h"
@@ -61,7 +61,7 @@
 #include "nsStringStream.h"
 #include "nsISyncStreamListener.h"
 #include "nsITransport.h"
-#include "nsIURIWithPrincipal.h"
+#include "nsIURIWithSpecialOrigin.h"
 #include "nsIURLParser.h"
 #include "nsIUUIDGenerator.h"
 #include "nsIViewSourceChannel.h"
@@ -69,6 +69,7 @@
 #include "plstr.h"
 #include "nsINestedURI.h"
 #include "mozilla/dom/nsCSPUtils.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/net/HttpBaseChannel.h"
 #include "nsIScriptError.h"
 #include "nsISiteSecurityService.h"
@@ -79,11 +80,13 @@
 #include "nsICertOverrideService.h"
 #include "nsQueryObject.h"
 #include "mozIThirdPartyUtil.h"
+#include "../mime/nsMIMEHeaderParamImpl.h"
 
 #include <limits>
 
 using namespace mozilla;
 using namespace mozilla::net;
+using mozilla::dom::BlobURLProtocolHandler;
 using mozilla::dom::ClientInfo;
 using mozilla::dom::PerformanceStorage;
 using mozilla::dom::ServiceWorkerDescriptor;
@@ -161,6 +164,47 @@ NS_NewFileURI(nsIURI **result,
     if (ioService)
         rv = ioService->NewFileURI(spec, result);
     return rv;
+}
+
+nsresult
+NS_GetURIWithNewRef(nsIURI* aInput,
+                    const nsACString& aRef,
+                    nsIURI** aOutput)
+{
+  if (NS_WARN_IF(!aInput || !aOutput)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  bool hasRef;
+  nsresult rv = aInput->GetHasRef(&hasRef);
+
+  nsAutoCString ref;
+  if (NS_SUCCEEDED(rv)) {
+    rv = aInput->GetRef(ref);
+  }
+
+  // If the ref is already equal to the new ref, we do not need to do anything.
+  // Also, if the GetRef failed (it could return NS_ERROR_NOT_IMPLEMENTED)
+  // we can assume SetRef would fail as well, so returning the original
+  // URI is OK.
+  if (NS_FAILED(rv) ||
+      (!hasRef && aRef.IsEmpty()) ||
+      (!aRef.IsEmpty() && aRef == ref)) {
+    nsCOMPtr<nsIURI> uri = aInput;
+    uri.forget(aOutput);
+    return NS_OK;
+  }
+
+  return NS_MutateURI(aInput)
+           .SetRef(aRef)
+           .Finalize(aOutput);
+}
+
+nsresult
+NS_GetURIWithoutRef(nsIURI* aInput,
+                    nsIURI** aOutput)
+{
+  return NS_GetURIWithNewRef(aInput, EmptyCString(), aOutput);
 }
 
 nsresult
@@ -2421,6 +2465,8 @@ NS_SecurityCompareURIs(nsIURI *aSourceURI,
                        nsIURI *aTargetURI,
                        bool    aStrictFileOriginPolicy)
 {
+    nsresult rv;
+
     // Note that this is not an Equals() test on purpose -- for URIs that don't
     // support host/port, we want equality to basically be object identity, for
     // security purposes.  Otherwise, for example, two javascript: URIs that
@@ -2440,15 +2486,47 @@ NS_SecurityCompareURIs(nsIURI *aSourceURI,
     nsCOMPtr<nsIURI> sourceBaseURI = NS_GetInnermostURI(aSourceURI);
     nsCOMPtr<nsIURI> targetBaseURI = NS_GetInnermostURI(aTargetURI);
 
-    // If either uri is an nsIURIWithPrincipal
-    nsCOMPtr<nsIURIWithPrincipal> uriPrinc = do_QueryInterface(sourceBaseURI);
-    if (uriPrinc) {
-        uriPrinc->GetPrincipalUri(getter_AddRefs(sourceBaseURI));
+#if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
+    // Check if either URI has a special origin.
+    nsCOMPtr<nsIURI> origin;
+    nsCOMPtr<nsIURIWithSpecialOrigin> uriWithSpecialOrigin = do_QueryInterface(sourceBaseURI);
+    if (uriWithSpecialOrigin) {
+      rv = uriWithSpecialOrigin->GetOrigin(getter_AddRefs(origin));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+      }
+      MOZ_ASSERT(origin);
+      sourceBaseURI = origin;
+    }
+    uriWithSpecialOrigin = do_QueryInterface(targetBaseURI);
+    if (uriWithSpecialOrigin) {
+      rv = uriWithSpecialOrigin->GetOrigin(getter_AddRefs(origin));
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+      }
+      MOZ_ASSERT(origin);
+      targetBaseURI = origin;
+    }
+#endif
+
+    nsCOMPtr<nsIPrincipal> sourceBlobPrincipal;
+    if (BlobURLProtocolHandler::GetBlobURLPrincipal(sourceBaseURI,
+                                                    getter_AddRefs(sourceBlobPrincipal))) {
+      nsCOMPtr<nsIURI> sourceBlobOwnerURI;
+      rv = sourceBlobPrincipal->GetURI(getter_AddRefs(sourceBlobOwnerURI));
+      if (NS_SUCCEEDED(rv)) {
+        sourceBaseURI = sourceBlobOwnerURI;
+      }
     }
 
-    uriPrinc = do_QueryInterface(targetBaseURI);
-    if (uriPrinc) {
-        uriPrinc->GetPrincipalUri(getter_AddRefs(targetBaseURI));
+    nsCOMPtr<nsIPrincipal> targetBlobPrincipal;
+    if (BlobURLProtocolHandler::GetBlobURLPrincipal(targetBaseURI,
+                                                    getter_AddRefs(targetBlobPrincipal))) {
+      nsCOMPtr<nsIURI> targetBlobOwnerURI;
+      rv = targetBlobPrincipal->GetURI(getter_AddRefs(targetBlobOwnerURI));
+      if (NS_SUCCEEDED(rv)) {
+        targetBaseURI = targetBlobOwnerURI;
+      }
     }
 
     if (!sourceBaseURI || !targetBaseURI)
@@ -2489,7 +2567,7 @@ NS_SecurityCompareURIs(nsIURI *aSourceURI,
 
         // Otherwise they had better match
         bool filesAreEqual = false;
-        nsresult rv = sourceFile->Equals(targetFile, &filesAreEqual);
+        rv = sourceFile->Equals(targetFile, &filesAreEqual);
         return NS_SUCCEEDED(rv) && filesAreEqual;
     }
 
@@ -2552,7 +2630,7 @@ NS_RelaxStrictFileOriginPolicy(nsIURI *aTargetURI,
 {
   if (!NS_URIIsLocalFile(aTargetURI)) {
     // This is probably not what the caller intended
-    NS_NOTREACHED("NS_RelaxStrictFileOriginPolicy called with non-file URI");
+    MOZ_ASSERT_UNREACHABLE("NS_RelaxStrictFileOriginPolicy called with non-file URI");
     return false;
   }
 
@@ -2679,11 +2757,9 @@ NS_LinkRedirectChannels(uint32_t channelId,
                         nsIParentChannel *parentChannel,
                         nsIChannel **_result)
 {
-  nsresult rv;
-
   nsCOMPtr<nsIRedirectChannelRegistrar> registrar =
-      do_GetService("@mozilla.org/redirectchannelregistrar;1", &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
+      RedirectChannelRegistrar::GetOrCreate();
+  MOZ_ASSERT(registrar);
 
   return registrar->LinkChannels(channelId,
                                  parentChannel,
@@ -3180,6 +3256,15 @@ bool
 InScriptableRange(uint64_t val)
 {
     return val <= kJS_MAX_SAFE_UINTEGER;
+}
+
+nsresult
+GetParameterHTTP(const nsACString& aHeaderVal,
+                 const char* aParamName,
+                 nsAString& aResult)
+{
+  return nsMIMEHeaderParamImpl::GetParameterHTTP(
+    aHeaderVal, aParamName, aResult);
 }
 
 } // namespace net

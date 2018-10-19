@@ -23,7 +23,7 @@ var ScrollPosition = Object.freeze({
 
   restoreTree(root, data) {
     ScrollPositionInternal.restoreTree(root, data);
-  }
+  },
 });
 
 /**
@@ -40,8 +40,7 @@ var ScrollPositionInternal = {
    *         given |frame|.
    */
   collect(frame) {
-    let ifreq = frame.QueryInterface(Ci.nsIInterfaceRequestor);
-    let utils = ifreq.getInterface(Ci.nsIDOMWindowUtils);
+    let utils = frame.windowUtils;
     let scrollX = {}, scrollY = {};
     utils.getScrollXY(false /* no layout flush */, scrollX, scrollY);
 
@@ -101,5 +100,5 @@ var ScrollPositionInternal = {
         this.restoreTree(frames[index], child);
       }
     });
-  }
+  },
 };

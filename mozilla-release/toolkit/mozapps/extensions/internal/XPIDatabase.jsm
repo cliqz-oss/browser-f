@@ -116,7 +116,7 @@ const PROP_JSON_FIELDS = ["id", "syncGUID", "version", "type",
                           "seen", "dependencies", "hasEmbeddedWebExtension",
                           "userPermissions", "icons", "iconURL", "icon64URL",
                           "blocklistState", "blocklistURL", "startupData",
-                          "previewImage"];
+                          "previewImage", "hidden"];
 
 const LEGACY_TYPES = new Set([
   "extension",
@@ -288,6 +288,7 @@ class AddonInternal {
     this.seen = true;
     this.skinnable = false;
     this.startupData = null;
+    this._hidden = false;
 
     this.inDatabase = false;
 
@@ -416,7 +417,12 @@ class AddonInternal {
   }
 
   get hidden() {
-    return this.location.isSystem;
+    return this.location.isSystem ||
+           (this._hidden && this.signedState == AddonManager.SIGNEDSTATE_PRIVILEGED);
+  }
+
+  set hidden(val) {
+    this._hidden = val;
   }
 
   get disabled() {
@@ -486,8 +492,11 @@ class AddonInternal {
 
     // Only extensions and dictionaries can be compatible by default; themes
     // and language packs always use strict compatibility checking.
+    // Dictionaries are compatible by default unless requested by the dictinary.
     if (this.type in COMPATIBLE_BY_DEFAULT_TYPES &&
-        !AddonManager.strictCompatibility && !this.strictCompatibility) {
+        !this.strictCompatibility &&
+        (!AddonManager.strictCompatibility ||
+         this.type == "webextension-dictionary")) {
 
       // The repository can specify compatibility overrides.
       // Note: For now, only blacklisting is supported by overrides.
@@ -574,10 +583,10 @@ class AddonInternal {
     }
 
     if (this.inDatabase) {
-      // hidden and system add-ons should not be user disabled,
-      // as there is no UI to re-enable them.
-      if (this.hidden) {
-        throw new Error(`Cannot disable hidden add-on ${this.id}`);
+      // System add-ons should not be user disabled, as there is no UI to
+      // re-enable them.
+      if (this.location.isSystem) {
+        throw new Error(`Cannot disable system add-on ${this.id}`);
       }
       await XPIDatabase.updateAddonDisabledState(this, val);
     } else {
@@ -845,7 +854,7 @@ AddonWrapper = class {
       return val;
 
     XPIDatabase.setAddonProperties(addon, {
-      applyBackgroundUpdates: val
+      applyBackgroundUpdates: val,
     });
     AddonManagerPrivate.callAddonListeners("onPropertyChanged", this, ["applyBackgroundUpdates"]);
 
@@ -1554,7 +1563,7 @@ this.XPIDatabase = {
 
       let changes = {
         enabled: [],
-        disabled: []
+        disabled: [],
       };
 
       for (let addon of addons) {
@@ -2181,7 +2190,7 @@ this.XPIDatabase = {
     this.setAddonProperties(aAddon, {
       userDisabled: aUserDisabled,
       appDisabled,
-      softDisabled: aSoftDisabled
+      softDisabled: aSoftDisabled,
     });
 
     let wrapper = aAddon.wrapper;

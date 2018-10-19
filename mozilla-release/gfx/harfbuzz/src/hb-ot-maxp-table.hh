@@ -34,7 +34,8 @@ namespace OT {
 
 
 /*
- * maxp -- The Maximum Profile Table
+ * maxp -- Maximum Profile
+ * https://docs.microsoft.com/en-us/typography/opentype/spec/maxp
  */
 
 #define HB_OT_TAG_maxp HB_TAG('m','a','x','p')
@@ -99,25 +100,25 @@ struct maxp
 
   inline bool subset (hb_subset_plan_t *plan) const
   {
-    hb_blob_t *maxp_blob = OT::Sanitizer<OT::maxp>().sanitize (hb_face_reference_table (plan->source, HB_OT_TAG_maxp));
+    hb_blob_t *maxp_blob = hb_sanitize_context_t().reference_table<maxp> (plan->source);
     hb_blob_t *maxp_prime_blob = hb_blob_copy_writable_or_fail (maxp_blob);
     hb_blob_destroy (maxp_blob);
 
     if (unlikely (!maxp_prime_blob)) {
       return false;
     }
-    OT::maxp *maxp_prime = (OT::maxp *) hb_blob_get_data (maxp_prime_blob, nullptr);
+    maxp *maxp_prime = (maxp *) hb_blob_get_data (maxp_prime_blob, nullptr);
 
-    maxp_prime->set_num_glyphs (plan->gids_to_retain_sorted.len);
+    maxp_prime->set_num_glyphs (plan->glyphs.len);
     if (plan->drop_hints)
       drop_hint_fields (plan, maxp_prime);
 
-    bool result = hb_subset_plan_add_table(plan, HB_OT_TAG_maxp, maxp_prime_blob);
+    bool result = plan->add_table (HB_OT_TAG_maxp, maxp_prime_blob);
     hb_blob_destroy (maxp_prime_blob);
     return result;
   }
 
-  static inline void drop_hint_fields (hb_subset_plan_t *plan, OT::maxp *maxp_prime)
+  static inline void drop_hint_fields (hb_subset_plan_t *plan, maxp *maxp_prime)
   {
     if (maxp_prime->version.major == 1)
     {

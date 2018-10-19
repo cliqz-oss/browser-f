@@ -171,8 +171,8 @@ gfxUserFontEntry::Matches(const nsTArray<gfxFontFaceSrc>& aFontFaceSrcList,
 gfxFont*
 gfxUserFontEntry::CreateFontInstance(const gfxFontStyle* aFontStyle)
 {
-    NS_NOTREACHED("should only be creating a gfxFont"
-                  " with an actual platform font entry");
+    MOZ_ASSERT_UNREACHABLE("should only be creating a gfxFont"
+                           " with an actual platform font entry");
 
     // userfont entry is a container, can't create font from the container
     return nullptr;
@@ -704,6 +704,7 @@ MOZ_DEFINE_MALLOC_SIZE_OF_ON_ALLOC(UserFontMallocSizeOfOnAlloc)
 bool
 gfxUserFontEntry::LoadPlatformFont(const uint8_t* aFontData, uint32_t& aLength)
 {
+    AUTO_PROFILER_LABEL("gfxUserFontEntry::LoadPlatformFont", OTHER);
     NS_ASSERTION((mUserFontLoadState == STATUS_NOT_LOADED ||
                   mUserFontLoadState == STATUS_LOAD_PENDING ||
                   mUserFontLoadState == STATUS_LOADING) &&
@@ -920,6 +921,7 @@ gfxUserFontEntry::GetUserFontSets(nsTArray<gfxUserFontSet*>& aResult)
 
 gfxUserFontSet::gfxUserFontSet()
     : mFontFamilies(4),
+      mRebuildGeneration(0),
       mLocalRulesUsed(false),
       mRebuildLocalRules(false),
       mDownloadCount(0),
@@ -1147,7 +1149,7 @@ gfxUserFontSet::UserFontCache::Flusher::Observe(nsISupports* aSubject,
             i.Get()->GetFontEntry()->DisconnectSVG();
         }
     } else {
-        NS_NOTREACHED("unexpected topic");
+        MOZ_ASSERT_UNREACHABLE("unexpected topic");
     }
 
     return NS_OK;

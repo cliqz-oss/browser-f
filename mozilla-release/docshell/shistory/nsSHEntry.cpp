@@ -10,7 +10,7 @@
 
 #include "nsDocShellEditorData.h"
 #include "nsIContentViewer.h"
-#include "nsIDocShellLoadInfo.h"
+#include "nsDocShellLoadInfo.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIInputStream.h"
 #include "nsILayoutHistoryState.h"
@@ -76,7 +76,7 @@ nsSHEntry::~nsSHEntry()
   }
 }
 
-NS_IMPL_ISUPPORTS(nsSHEntry, nsISHContainer, nsISHEntry, nsISHEntryInternal)
+NS_IMPL_ISUPPORTS(nsSHEntry, nsISHEntry)
 
 NS_IMETHODIMP
 nsSHEntry::SetScrollPosition(int32_t aX, int32_t aY)
@@ -453,7 +453,7 @@ nsSHEntry::Create(nsIURI* aURI, const nsAString& aTitle,
   mPostData = aInputStream;
 
   // Set the LoadType by default to loadHistory during creation
-  mLoadType = (uint32_t)nsIDocShellLoadInfo::loadHistory;
+  mLoadType = LOAD_HISTORY;
 
   mShared->mCacheKey = aCacheKey;
   mShared->mContentType = aContentType;
@@ -589,10 +589,7 @@ nsSHEntry::HasBFCacheEntry(nsIBFCacheEntry* aEntry)
 NS_IMETHODIMP
 nsSHEntry::AdoptBFCacheEntry(nsISHEntry* aEntry)
 {
-  nsCOMPtr<nsISHEntryInternal> shEntry = do_QueryInterface(aEntry);
-  NS_ENSURE_STATE(shEntry);
-
-  nsSHEntryShared* shared = shEntry->GetSharedState();
+  nsSHEntryShared* shared = aEntry->GetSharedState();
   NS_ENSURE_STATE(shared);
 
   mShared = shared;
@@ -604,10 +601,7 @@ nsSHEntry::SharesDocumentWith(nsISHEntry* aEntry, bool* aOut)
 {
   NS_ENSURE_ARG_POINTER(aOut);
 
-  nsCOMPtr<nsISHEntryInternal> internal = do_QueryInterface(aEntry);
-  NS_ENSURE_STATE(internal);
-
-  *aOut = mShared == internal->GetSharedState();
+  *aOut = mShared == aEntry->GetSharedState();
   return NS_OK;
 }
 
@@ -887,18 +881,6 @@ nsSHEntry::SyncPresentationState()
   return mShared->SyncPresentationState();
 }
 
-void
-nsSHEntry::RemoveFromBFCacheSync()
-{
-  mShared->RemoveFromBFCacheSync();
-}
-
-void
-nsSHEntry::RemoveFromBFCacheAsync()
-{
-  mShared->RemoveFromBFCacheAsync();
-}
-
 nsDocShellEditorData*
 nsSHEntry::ForgetEditorData()
 {
@@ -1009,5 +991,13 @@ nsSHEntry::SetSHistory(nsISHistory* aSHistory)
   // mSHistory can not be changed once it's set
   MOZ_ASSERT(!mShared->mSHistory || (mShared->mSHistory == shistory));
   mShared->mSHistory = shistory;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSHEntry::SetAsHistoryLoad()
+{
+  // Set the LoadType by default to loadHistory during creation
+  mLoadType = LOAD_HISTORY;
   return NS_OK;
 }

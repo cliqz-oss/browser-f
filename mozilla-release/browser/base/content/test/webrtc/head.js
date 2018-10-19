@@ -52,7 +52,6 @@ function promiseWindow(url) {
   info("expecting a " + url + " window");
   return new Promise(resolve => {
     Services.obs.addObserver(function obs(win) {
-      win.QueryInterface(Ci.nsIDOMWindow);
       win.addEventListener("load", function() {
         if (win.location.href !== url) {
           info("ignoring a window with this url: " + win.location.href);
@@ -111,9 +110,7 @@ async function assertWebRTCIndicatorStatus(expected) {
   is(ui.showMicrophoneIndicator, expectAudio, "microphone global indicator as expected");
   is(ui.showScreenSharingIndicator, expectScreen, "screen global indicator as expected");
 
-  let windows = Services.wm.getEnumerator("navigator:browser");
-  while (windows.hasMoreElements()) {
-    let win = windows.getNext();
+  for (let win of Services.wm.getEnumerator("navigator:browser")) {
     let menu = win.document.getElementById("tabSharingMenu");
     is(!!menu && !menu.hidden, !!expected, "WebRTC menu should be " + expectedState);
   }
@@ -432,7 +429,7 @@ async function reloadAndAssertClosedStreams() {
   info("reloading the web page");
   let promises = [
     promiseObserverCalled("recording-device-events"),
-    promiseObserverCalled("recording-window-ended")
+    promiseObserverCalled("recording-window-ended"),
   ];
   await ContentTask.spawn(gBrowser.selectedBrowser, null,
                           "() => content.location.reload()");
@@ -576,7 +573,7 @@ async function runTests(tests, options = {}) {
     [PREF_AUDIO_LOOPBACK, ""],
     [PREF_VIDEO_LOOPBACK, ""],
     [PREF_FAKE_STREAMS, true],
-    [PREF_FOCUS_SOURCE, false]
+    [PREF_FOCUS_SOURCE, false],
   ];
   await SpecialPowers.pushPrefEnv({"set": prefs});
 

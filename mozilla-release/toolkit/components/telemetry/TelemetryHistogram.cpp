@@ -25,6 +25,7 @@
 
 #include "TelemetryCommon.h"
 #include "TelemetryHistogram.h"
+#include "TelemetryHistogramNameMap.h"
 #include "TelemetryScalar.h"
 #include "ipc/TelemetryIPCAccumulator.h"
 
@@ -38,13 +39,14 @@ using base::CountHistogram;
 using base::FlagHistogram;
 using base::LinearHistogram;
 using mozilla::MakeTuple;
-using mozilla::StaticMutex;
+using mozilla::StaticMutexNotRecorded;
 using mozilla::StaticMutexAutoLock;
 using mozilla::Telemetry::HistogramAccumulation;
 using mozilla::Telemetry::KeyedHistogramAccumulation;
 using mozilla::Telemetry::HistogramID;
 using mozilla::Telemetry::ProcessID;
 using mozilla::Telemetry::HistogramCount;
+using mozilla::Telemetry::HistogramIDByNameLookup;
 using mozilla::Telemetry::Common::LogToBrowserConsole;
 using mozilla::Telemetry::Common::RecordedProcessType;
 using mozilla::Telemetry::Common::AutoHashtable;
@@ -115,7 +117,7 @@ namespace TelemetryIPCAccumulator = mozilla::TelemetryIPCAccumulator;
 // a normal Mutex would show up as a leak in BloatView.  StaticMutex
 // also has the "OffTheBooks" property, so it won't show as a leak
 // in BloatView.
-static StaticMutex gTelemetryHistogramMutex;
+static StaticMutexNotRecorded gTelemetryHistogramMutex;
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -184,7 +186,7 @@ public:
   nsresult GetHistogram(const nsCString& name, Histogram** histogram);
   Histogram* GetHistogram(const nsCString& name);
   uint32_t GetHistogramType() const { return mHistogramInfo.histogramType; }
-  nsresult GetJSKeys(JSContext* cx, JS::CallArgs& args);
+  nsresult GetKeys(const StaticMutexAutoLock& aLock, nsTArray<nsCString>& aKeys);
   // Note: unlike other methods, GetJSSnapshot is thread safe.
   nsresult GetJSSnapshot(JSContext* cx, JS::Handle<JSObject*> obj,
                          bool clearSubsession);
@@ -199,6 +201,8 @@ public:
   bool IsEmpty() const { return mHistogramMap.IsEmpty(); }
 
   bool IsExpired() const { return mIsExpired; }
+
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf);
 
 private:
   typedef nsBaseHashtableET<nsCStringHashKey, Histogram*> KeyedHistogramEntry;
@@ -234,9 +238,6 @@ Histogram** gHistogramStorage;
 // Keyed histograms internally map string keys to individual Histogram instances.
 KeyedHistogram** gKeyedHistogramStorage;
 
-// Cache of histogram name to a histogram id.
-StringToHistogramIdMap gNameToHistogramIDMap(HistogramCount);
-
 // To simplify logic below we use a single histogram instance for all expired histograms.
 Histogram* gExpiredHistogram = nullptr;
 
@@ -251,7 +252,6 @@ bool gHistogramRecordingDisabled[HistogramCount] = {};
 #include "TelemetryHistogramData.inc"
 
 } // namespace
-
 
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
@@ -416,12 +416,18 @@ internal_GetHistogramIdByName(const StaticMutexAutoLock& aLock,
                               const nsACString& name,
                               HistogramID* id)
 {
-  const bool found = gNameToHistogramIDMap.Get(name, id);
-  if (!found) {
-    return NS_ERROR_ILLEGAL_VALUE;
+  const uint32_t idx = HistogramIDByNameLookup(name);
+  MOZ_ASSERT(idx < HistogramCount, "Intermediate lookup should always give a valid index.");
+
+  // The lookup hashes the input and uses it as an index into the value array.
+  // Hash collisions can still happen for unknown values,
+  // therefore we check that the name matches.
+  if (name.Equals(gHistogramInfos[idx].name())) {
+    *id = HistogramID(idx);
+    return NS_OK;
   }
 
-  return NS_OK;
+  return NS_ERROR_ILLEGAL_VALUE;
 }
 
 // Clear a histogram from storage.
@@ -1038,28 +1044,28 @@ KeyedHistogram::Clear()
   mHistogramMap.Clear();
 }
 
-nsresult
-KeyedHistogram::GetJSKeys(JSContext* cx, JS::CallArgs& args)
+size_t
+KeyedHistogram::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
 {
-  JS::AutoValueVector keys(cx);
-  if (!keys.reserve(mHistogramMap.Count())) {
+  size_t n = 0;
+  n += aMallocSizeOf(this);
+  n += mHistogramMap.SizeOfIncludingThis(aMallocSizeOf);
+  return n;
+}
+
+nsresult
+KeyedHistogram::GetKeys(const StaticMutexAutoLock& aLock, nsTArray<nsCString>& aKeys)
+{
+  if (!aKeys.SetCapacity(mHistogramMap.Count(), mozilla::fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
   for (auto iter = mHistogramMap.Iter(); !iter.Done(); iter.Next()) {
-    JS::RootedValue jsKey(cx);
-    jsKey.setString(ToJSString(cx, iter.Get()->GetKey()));
-    if (!keys.append(jsKey)) {
+    if (!aKeys.AppendElement(iter.Get()->GetKey(), mozilla::fallible)) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
   }
 
-  JS::RootedObject jsKeys(cx, JS_NewArrayObject(cx, keys));
-  if (!jsKeys) {
-    return NS_ERROR_FAILURE;
-  }
-
-  args.rval().setObject(*jsKeys);
   return NS_OK;
 }
 
@@ -1828,7 +1834,7 @@ internal_JSKeyedHistogram_Keys(JSContext *cx, unsigned argc, JS::Value *vp)
   MOZ_ASSERT(data);
   HistogramID id = data->histogramId;
 
-  KeyedHistogram* keyed = nullptr;
+  nsTArray<nsCString> keys;
   {
     StaticMutexAutoLock locker(gTelemetryHistogramMutex);
     MOZ_ASSERT(internal_IsHistogramEnumId(id));
@@ -1836,15 +1842,39 @@ internal_JSKeyedHistogram_Keys(JSContext *cx, unsigned argc, JS::Value *vp)
     // This is not good standard behavior given that we have histogram instances
     // covering multiple processes.
     // However, changing this requires some broader changes to callers.
-    keyed = internal_GetKeyedHistogramById(id, ProcessID::Parent);
+    KeyedHistogram* keyed = internal_GetKeyedHistogramById(id, ProcessID::Parent);
+
+    MOZ_ASSERT(keyed);
+    if (!keyed) {
+      return false;
+    }
+
+    if (NS_FAILED(keyed->GetKeys(locker, keys))) {
+      return false;
+    }
   }
 
-  MOZ_ASSERT(keyed);
-  if (!keyed) {
+  // Convert keys from nsTArray<nsCString> to JS array.
+  JS::AutoValueVector autoKeys(cx);
+  if (!autoKeys.reserve(keys.Length())) {
     return false;
   }
 
-  return NS_SUCCEEDED(keyed->GetJSKeys(cx, args));
+  for (const auto& key : keys) {
+    JS::RootedValue jsKey(cx);
+    jsKey.setString(ToJSString(cx, key));
+    if (!autoKeys.append(jsKey)) {
+      return false;
+    }
+  }
+
+  JS::RootedObject jsKeys(cx, JS_NewArrayObject(cx, autoKeys));
+  if (!jsKeys) {
+    return false;
+  }
+
+  args.rval().setObject(*jsKeys);
+  return true;
 }
 
 bool
@@ -1968,29 +1998,6 @@ void TelemetryHistogram::InitializeGlobalState(bool canRecordBase,
       new KeyedHistogram*[HistogramCount * size_t(ProcessID::Count)] {};
   }
 
-  // gNameToHistogramIDMap should have been pre-sized correctly at the
-  // declaration point further up in this file.
-
-  // Populate the static histogram name->id cache.
-  // Note that the histogram names come from a static table so we can wrap them
-  // in a literal string to avoid allocations when it gets copied.
-  for (uint32_t i = 0; i < HistogramCount; i++) {
-    auto name = gHistogramInfos[i].name();
-
-    // Make sure the name pointer is in a valid region. See bug 1428612.
-    MOZ_DIAGNOSTIC_ASSERT(name >= gHistogramStringTable);
-    MOZ_DIAGNOSTIC_ASSERT(
-        uintptr_t(name) < (uintptr_t(gHistogramStringTable) + sizeof(gHistogramStringTable)));
-
-    nsCString wrappedName;
-    wrappedName.AssignLiteral(name, strlen(name));
-    gNameToHistogramIDMap.Put(wrappedName, HistogramID(i));
-  }
-
-#ifdef DEBUG
-  gNameToHistogramIDMap.MarkImmutable();
-#endif
-
     // Some Telemetry histograms depend on the value of C++ constants and hardcode
     // their values in Histograms.json.
     // We add static asserts here for those values to match so that future changes
@@ -2020,7 +2027,6 @@ void TelemetryHistogram::DeInitializeGlobalState()
   StaticMutexAutoLock locker(gTelemetryHistogramMutex);
   gCanRecordBase = false;
   gCanRecordExtended = false;
-  gNameToHistogramIDMap.Clear();
   gInitDone = false;
 
   // FactoryGet `new`s Histograms for us, but requires us to manually delete.
@@ -2552,20 +2558,44 @@ TelemetryHistogram::GetKeyedHistogramSnapshots(JSContext* aCx,
 }
 
 size_t
-TelemetryHistogram::GetMapShallowSizesOfExcludingThis(mozilla::MallocSizeOf
-                                                      aMallocSizeOf)
-{
-  StaticMutexAutoLock locker(gTelemetryHistogramMutex);
-  return gNameToHistogramIDMap.ShallowSizeOfExcludingThis(aMallocSizeOf);
-}
-
-size_t
-TelemetryHistogram::GetHistogramSizesofIncludingThis(mozilla::MallocSizeOf
+TelemetryHistogram::GetHistogramSizesOfIncludingThis(mozilla::MallocSizeOf
                                                      aMallocSizeOf)
 {
   StaticMutexAutoLock locker(gTelemetryHistogramMutex);
-  // TODO
-  return 0;
+
+  size_t n = 0;
+
+  // If we allocated the array, let's count the number of pointers in there and
+  // each entry's size.
+  if (gKeyedHistogramStorage) {
+    n += HistogramCount * size_t(ProcessID::Count) * sizeof(KeyedHistogram*);
+    for (size_t i = 0; i < HistogramCount * size_t(ProcessID::Count); ++i) {
+      if (gKeyedHistogramStorage[i] && gKeyedHistogramStorage[i] != gExpiredKeyedHistogram) {
+        n += gKeyedHistogramStorage[i]->SizeOfIncludingThis(aMallocSizeOf);
+      }
+    }
+  }
+
+  // If we allocated the array, let's count the number of pointers in there.
+  if (gHistogramStorage) {
+    n += HistogramCount * size_t(ProcessID::Count) * sizeof(Histogram*);
+    for (size_t i = 0; i < HistogramCount * size_t(ProcessID::Count); ++i) {
+      if (gHistogramStorage[i] && gHistogramStorage[i] != gExpiredHistogram) {
+        n += gHistogramStorage[i]->SizeOfIncludingThis(aMallocSizeOf);
+      }
+    }
+  }
+
+  // We only allocate the expired (keyed) histogram once.
+  if (gExpiredKeyedHistogram) {
+    n += gExpiredKeyedHistogram->SizeOfIncludingThis(aMallocSizeOf);
+  }
+
+  if (gExpiredHistogram) {
+    n += gExpiredHistogram->SizeOfIncludingThis(aMallocSizeOf);
+  }
+
+  return n;
 }
 
 ////////////////////////////////////////////////////////////////////////

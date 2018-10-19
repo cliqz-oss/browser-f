@@ -13,6 +13,7 @@
 
 #include "jsexn.h"
 
+#include "js/AutoByteString.h"
 #include "js/CallArgs.h"
 #include "js/CharacterEncoding.h"
 #include "vm/GlobalObject.h"
@@ -45,7 +46,7 @@ js::ErrorObject::init(JSContext* cx, Handle<ErrorObject*> obj, JSExnType type,
                       HandleString message)
 {
     AssertObjectIsSavedFrameOrWrapper(cx, stack);
-    assertSameCompartment(cx, obj, stack);
+    cx->check(obj, stack);
 
     // Null out early in case of error, for exn_finalize's sake.
     obj->initReservedSlot(ERROR_REPORT_SLOT, PrivateValue(nullptr));
@@ -83,6 +84,16 @@ js::ErrorObject::init(JSContext* cx, Handle<ErrorObject*> obj, JSExnType type,
     obj->initReservedSlot(COLUMNNUMBER_SLOT, Int32Value(columnNumber));
     if (message)
         obj->setSlotWithType(cx, messageShape, StringValue(message));
+
+    // When recording/replaying and running on the main thread, get a counter
+    // which the devtools can use to warp to this point in the future.
+    if (mozilla::recordreplay::IsRecordingOrReplaying() && !cx->runtime()->parentRuntime) {
+        uint64_t timeWarpTarget = mozilla::recordreplay::NewTimeWarpTarget();
+
+        // Make sure we don't truncate the time warp target by storing it as a double.
+        MOZ_RELEASE_ASSERT(timeWarpTarget < uint64_t(DOUBLE_INTEGRAL_PRECISION_LIMIT));
+        obj->initReservedSlot(TIME_WARP_SLOT, DoubleValue(timeWarpTarget));
+    }
 
     return true;
 }
@@ -236,9 +247,13 @@ js::ErrorObject::getStack_impl(JSContext* cx, const CallArgs& args)
         return true;
     }
 
+    // Do frame filtering based on the ErrorObject's principals. This ensures we
+    // don't see chrome frames when chrome code accesses .stack over Xrays.
+    JSPrincipals* principals = obj->as<ErrorObject>().realm()->principals();
+
     RootedObject savedFrameObj(cx, obj->as<ErrorObject>().stack());
     RootedString stackString(cx);
-    if (!BuildStackString(cx, savedFrameObj, &stackString))
+    if (!BuildStackString(cx, principals, savedFrameObj, &stackString))
         return false;
 
     if (cx->runtime()->stackFormat() == js::StackFormat::V8) {

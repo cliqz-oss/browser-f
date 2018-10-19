@@ -8,7 +8,6 @@
 var EXPORTED_SYMBOLS = [ "ContentClick" ];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "PlacesUIUtils",
                                "resource:///modules/PlacesUIUtils.jsm");
@@ -45,22 +44,12 @@ var ContentClick = {
       return;
     }
 
-    if (json.bookmark) {
-      // This is the Opera convention for a special link that, when clicked,
-      // allows to add a sidebar panel.  The link's title attribute contains
-      // the title that should be used for the sidebar panel.
-      PlacesUIUtils.showBookmarkDialog({ action: "add",
-                                         type: "bookmark",
-                                         uri: Services.io.newURI(json.href),
-                                         title: json.title,
-                                         loadBookmarkInSidebar: true,
-                                         hiddenRows: [ "location",
-                                                       "keyword" ]
-                                       }, window);
+    // If the browser is not in a place where we can open links, bail out.
+    // This can happen in osx sheets, dialogs, etc. that are not browser
+    // windows.  Specifically the payments UI is in an osx sheet.
+    if (window.openLinkIn === undefined) {
       return;
     }
-
-    // Note: We don't need the sidebar code here.
 
     // Mark the page as a user followed link.  This is done so that history can
     // distinguish automatic embed visits from user activated ones.  For example
@@ -95,6 +84,8 @@ var ContentClick = {
       params.userContextId = json.originAttributes.userContextId;
     }
 
+    params.allowInheritPrincipal = true;
+
     window.openLinkIn(json.href, where, params);
-  }
+  },
 };

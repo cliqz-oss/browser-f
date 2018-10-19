@@ -72,6 +72,8 @@ function testKeys(browser) {
 
 function testOpen_worker(browser) {
   return ContentTask.spawn(browser, {}, function() {
+    Cu.importGlobalProperties(["Blob"]);
+
     let workerFunctionString = function () {
       caches.open("pb-worker-cache").then(function(cacheObject) {
         postMessage(cacheObject.toString());
@@ -103,7 +105,7 @@ function test() {
     return BrowserTestUtils.openNewBrowserWindow({private: true});
   }).then(pw => {
     privateWin = pw;
-    privateTab = pw.gBrowser.addTab("http://example.com/");
+    privateTab = BrowserTestUtils.addTab(pw.gBrowser, "http://example.com/");
     return BrowserTestUtils.browserLoaded(privateTab.linkedBrowser);
   }).then(tab => {
     return Promise.all([

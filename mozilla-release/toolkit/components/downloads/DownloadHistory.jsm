@@ -18,15 +18,15 @@ var EXPORTED_SYMBOLS = [
 ];
 
 ChromeUtils.import("resource://gre/modules/DownloadList.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-ChromeUtils.defineModuleGetter(this, "Downloads",
-                               "resource://gre/modules/Downloads.jsm");
-ChromeUtils.defineModuleGetter(this, "OS",
-                               "resource://gre/modules/osfile.jsm");
-ChromeUtils.defineModuleGetter(this, "PlacesUtils",
-                               "resource://gre/modules/PlacesUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  Downloads: "resource://gre/modules/Downloads.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+});
 
 // Places query used to retrieve all history downloads for the related list.
 const HISTORY_PLACES_QUERY =
@@ -64,7 +64,9 @@ var DownloadHistory = {
    * @resolves The requested DownloadHistoryList object.
    * @rejects JavaScript exception.
    */
-  getList({type = Downloads.PUBLIC, maxHistoryResults} = {}) {
+  async getList({type = Downloads.PUBLIC, maxHistoryResults} = {}) {
+    await DownloadCache.ensureInitialized();
+
     let key = `${type}|${maxHistoryResults ? maxHistoryResults : -1}`;
     if (!this._listPromises[key]) {
       this._listPromises[key] = Downloads.getList(type).then(list => {
@@ -86,6 +88,17 @@ var DownloadHistory = {
    */
   _listPromises: {},
 
+  async addDownloadToHistory(download) {
+    if (download.source.isPrivate ||
+        !PlacesUtils.history.canAddURI(PlacesUtils.toURI(download.source.url))) {
+      return;
+    }
+
+    await DownloadCache.addDownload(download);
+
+    await this._updateHistoryListData(download.source.url);
+  },
+
   /**
    * Stores new detailed metadata for the given download in history. This is
    * normally called after a download finishes, fails, or is canceled.
@@ -97,7 +110,7 @@ var DownloadHistory = {
    *        Download object whose metadata should be updated. If the object
    *        represents a private download, the call has no effect.
    */
-  updateMetaData(download) {
+  async updateMetaData(download) {
     if (download.source.isPrivate || !download.stopped) {
       return;
     }
@@ -126,20 +139,88 @@ var DownloadHistory = {
         download.error.reputationCheckVerdict;
     }
 
-    try {
-      PlacesUtils.annotations.setPageAnnotation(
-                                 Services.io.newURI(download.source.url),
-                                 METADATA_ANNO,
-                                 JSON.stringify(metaData), 0,
-                                 PlacesUtils.annotations.EXPIRE_WITH_HISTORY);
-    } catch (ex) {
-      Cu.reportError(ex);
+    // This should be executed before any async parts, to ensure the cache is
+    // updated before any notifications are activated.
+    await DownloadCache.setMetadata(download.source.url, metaData);
+
+    await this._updateHistoryListData(download.source.url);
+  },
+
+  async _updateHistoryListData(sourceUrl) {
+    for (let key of Object.getOwnPropertyNames(this._listPromises)) {
+      let downloadHistoryList = await this._listPromises[key];
+      downloadHistoryList.updateForMetaDataChange(sourceUrl,
+        DownloadCache.get(sourceUrl));
     }
+  },
+};
+
+/**
+ * This cache exists:
+ * - in order to optimize the load of DownloadsHistoryList, when Places
+ *   annotations for history downloads must be read. In fact, annotations are
+ *   stored in a single table, and reading all of them at once is much more
+ *   efficient than an individual query.
+ * - to avoid needing to do asynchronous reading of the database during download
+ *   list updates, which are designed to be synchronous (to improve UI
+ *   responsiveness).
+ *
+ * The cache is initialized the first time DownloadHistory.getList is called, or
+ * when data is added.
+ */
+var DownloadCache = {
+  _data: new Map(),
+  _initializePromise: null,
+
+  /**
+   * Initializes the cache, loading the data from the places database.
+   *
+   * @return {Promise} Returns a promise that is resolved once the
+   *                   initialization is complete.
+   */
+  ensureInitialized() {
+    if (this._initializePromise) {
+      return this._initializePromise;
+    }
+    this._initializePromise = (async () => {
+      PlacesUtils.history.addObserver(this, true);
+
+      let pageAnnos = await PlacesUtils.history.fetchAnnotatedPages([
+        METADATA_ANNO,
+        DESTINATIONFILEURI_ANNO,
+      ]);
+
+      let metaDataPages = pageAnnos.get(METADATA_ANNO);
+      if (metaDataPages) {
+        for (let {uri, content} of metaDataPages) {
+          try {
+            this._data.set(uri.href, JSON.parse(content));
+          } catch (ex) {
+            // Do nothing - JSON.parse could throw.
+          }
+        }
+      }
+
+      let destinationFilePages = pageAnnos.get(DESTINATIONFILEURI_ANNO);
+      if (destinationFilePages) {
+        for (let {uri, content} of destinationFilePages) {
+          let newData = this.get(uri.href);
+          newData.targetFileSpec = content;
+          this._data.set(uri.href, newData);
+        }
+      }
+    })();
+
+    return this._initializePromise;
   },
 
   /**
-   * Reads current metadata from Places annotations for the specified URI, and
-   * returns an object with the format:
+   * This returns an object containing the meta data for the supplied URL.
+   *
+   * @param {String} url The url to get the meta data for.
+   * @return {Object|null} Returns an empty object if there is no meta data found, or
+   *                       an object containing the meta data. The meta data
+   *                       will look like:
    *
    * { targetFileSpec, state, endTime, fileSize, ... }
    *
@@ -147,71 +228,103 @@ var DownloadHistory = {
    * while the other properties are taken from "downloads/metaData". Any of the
    * properties may be missing from the object.
    */
-  getPlacesMetaDataFor(spec) {
-    let metaData = {};
-
-    try {
-      let uri = Services.io.newURI(spec);
-      try {
-        metaData = JSON.parse(PlacesUtils.annotations.getPageAnnotation(
-                                          uri, METADATA_ANNO));
-      } catch (ex) {}
-      metaData.targetFileSpec = PlacesUtils.annotations.getPageAnnotation(
-                                            uri, DESTINATIONFILEURI_ANNO);
-    } catch (ex) {}
-
-    return metaData;
+  get(url) {
+    return this._data.get(url) || {};
   },
-};
 
-/**
- * This cache exists in order to optimize the load of DownloadsHistoryList, when
- * Places annotations for history downloads must be read. In fact, annotations
- * are stored in a single table, and reading all of them at once is much more
- * efficient than an individual query.
- *
- * When this property is first requested, it reads the annotations for all the
- * history downloads and stores them indefinitely.
- *
- * The historical annotations are not expected to change for the duration of the
- * session, except in the case where a session download is running for the same
- * URI as a history download. To avoid using stale data, consumers should
- * permanently remove from the cache any URI corresponding to a session
- * download. This is a very small mumber compared to history downloads.
- *
- * This property returns a Map from each download source URI found in Places
- * annotations to an object with the format:
- *
- * { targetFileSpec, state, endTime, fileSize, ... }
- *
- * The targetFileSpec property is the value of "downloads/destinationFileURI",
- * while the other properties are taken from "downloads/metaData". Any of the
- * properties may be missing from the object.
- */
-XPCOMUtils.defineLazyGetter(this, "gCachedPlacesMetaData", function() {
-  let placesMetaData = new Map();
+  /**
+   * Adds a download to the cache and the places database.
+   *
+   * @param {Download} download The download to add to the database and cache.
+   */
+  async addDownload(download) {
+    await this.ensureInitialized();
 
-  // Read the metadata annotations first, but ignore invalid JSON.
-  for (let result of PlacesUtils.annotations.getAnnotationsWithName(
-                                             METADATA_ANNO)) {
-    try {
-      placesMetaData.set(result.uri.spec, JSON.parse(result.annotationValue));
-    } catch (ex) {}
-  }
+    let targetFile = new FileUtils.File(download.target.path);
+    let targetUri = Services.io.newFileURI(targetFile);
 
-  // Add the target file annotations to the metadata.
-  for (let result of PlacesUtils.annotations.getAnnotationsWithName(
-                                             DESTINATIONFILEURI_ANNO)) {
-    let metaData = placesMetaData.get(result.uri.spec);
-    if (!metaData) {
-      metaData = {};
-      placesMetaData.set(result.uri.spec, metaData);
+    // This should be executed before any async parts, to ensure the cache is
+    // updated before any notifications are activated.
+    // Note: this intentionally overwrites any metadata as this is
+    // the start of a new download.
+    this._data.set(download.source.url, { targetFileSpec: targetUri.spec });
+
+    let originalPageInfo = await PlacesUtils.history.fetch(download.source.url);
+
+    let pageInfo = await PlacesUtils.history.insert({
+      url: download.source.url,
+      // In case we are downloading a file that does not correspond to a web
+      // page for which the title is present, we populate the otherwise empty
+      // history title with the name of the destination file, to allow it to be
+      // visible and searchable in history results.
+      title: (originalPageInfo && originalPageInfo.title) || targetFile.leafName,
+      visits: [{
+        // The start time is always available when we reach this point.
+        date: download.startTime,
+        transition: PlacesUtils.history.TRANSITIONS.DOWNLOAD,
+        referrer: download.source.referrer,
+      }],
+    });
+
+    await PlacesUtils.history.update({
+      annotations: new Map([["downloads/destinationFileURI", targetUri.spec]]),
+      // XXX Bug 1479445: We shouldn't have to supply both guid and url here,
+      // but currently we do.
+      guid: pageInfo.guid,
+      url: pageInfo.url,
+    });
+  },
+
+  /**
+   * Sets the metadata for a given url. If the cache already contains meta data
+   * for the given url, it will be overwritten (note: the targetFileSpec will be
+   * maintained).
+   *
+   * @param {String} url The url to set the meta data for.
+   * @param {Object} metadata The new metaData to save in the cache.
+   */
+  async setMetadata(url, metadata) {
+    await this.ensureInitialized();
+
+    // This should be executed before any async parts, to ensure the cache is
+    // updated before any notifications are activated.
+    let existingData = this.get(url);
+    let newData = { ...metadata };
+    if ("targetFileSpec" in existingData) {
+      newData.targetFileSpec = existingData.targetFileSpec;
     }
-    metaData.targetFileSpec = result.annotationValue;
-  }
+    this._data.set(url, newData);
 
-  return placesMetaData;
-});
+    try {
+      await PlacesUtils.history.update({
+        annotations: new Map([[METADATA_ANNO, JSON.stringify(metadata)]]),
+        url,
+      });
+    } catch (ex) {
+      Cu.reportError(ex);
+    }
+  },
+
+  QueryInterface: ChromeUtils.generateQI([
+    Ci.nsINavHistoryObserver,
+    Ci.nsISupportsWeakReference,
+  ]),
+
+  // nsINavHistoryObserver
+  onDeleteURI(uri) {
+    this._data.delete(uri.spec);
+  },
+  onClearHistory() {
+    this._data.clear();
+  },
+  onBeginUpdateBatch() {},
+  onEndUpdateBatch() {},
+  onTitleChanged() {},
+  onFrecencyChanged() {},
+  onManyFrecenciesChanged() {},
+  onPageChanged() {},
+  onDeleteVisits() {},
+};
 
 /**
  * Represents a download from the browser history. This object implements part
@@ -448,7 +561,6 @@ this.DownloadHistoryList.prototype = {
     }
 
     if (this._result) {
-      PlacesUtils.annotations.removeObserver(this);
       this._result.removeObserver(this);
       this._result.root.containerOpen = false;
     }
@@ -457,10 +569,32 @@ this.DownloadHistoryList.prototype = {
 
     if (this._result) {
       this._result.root.containerOpen = true;
-      PlacesUtils.annotations.addObserver(this);
     }
   },
   _result: null,
+
+  /**
+   * Updates the download history item when the meta data or destination file
+   * changes.
+   *
+   * @param {String} sourceUrl The sourceUrl which was updated.
+   * @param {Object} metaData The new meta data for the sourceUrl.
+   */
+  updateForMetaDataChange(sourceUrl, metaData) {
+    let slotsForUrl = this._slotsForUrl.get(sourceUrl);
+    if (!slotsForUrl) {
+      return;
+    }
+
+    for (let slot of slotsForUrl) {
+      if (slot.sessionDownload) {
+        // The visible data doesn't change, so we don't have to notify views.
+        return;
+      }
+      slot.historyDownload.updateFromMetaData(metaData);
+      this._notifyAllViews("onDownloadChanged", slot.download);
+    }
+  },
 
   /**
    * Index of the first slot that contains a session download. This is equal to
@@ -536,9 +670,7 @@ this.DownloadHistoryList.prototype = {
     // Since the history download is visible in the slot, we also have to update
     // the object using the Places metadata.
     let historyDownload = new HistoryDownload(placesNode);
-    historyDownload.updateFromMetaData(
-      gCachedPlacesMetaData.get(placesNode.uri) ||
-      DownloadHistory.getPlacesMetaDataFor(placesNode.uri));
+    historyDownload.updateFromMetaData(DownloadCache.get(placesNode.uri));
     let slot = new DownloadSlot(this);
     slot.historyDownload = historyDownload;
     this._insertSlot({ slot, slotsForUrl, index: this._firstSessionSlotIndex });
@@ -609,49 +741,10 @@ this.DownloadHistoryList.prototype = {
   nodeURIChanged() {},
   batching() {},
 
-  // nsIAnnotationObserver
-  onPageAnnotationSet(page, name) {
-    // Annotations can only be added after a history node has been added, so we
-    // have to listen for changes to nodes we already added to the list.
-    if (name != DESTINATIONFILEURI_ANNO && name != METADATA_ANNO) {
-      return;
-    }
-
-    let slotsForUrl = this._slotsForUrl.get(page.spec);
-    if (!slotsForUrl) {
-      return;
-    }
-
-    for (let slot of slotsForUrl) {
-      if (slot.sessionDownload) {
-        // The visible data doesn't change, so we don't have to notify views.
-        return;
-      }
-      slot.historyDownload.updateFromMetaData(
-        DownloadHistory.getPlacesMetaDataFor(page.spec));
-      this._notifyAllViews("onDownloadChanged", slot.download);
-    }
-  },
-
-  // nsIAnnotationObserver
-  onItemAnnotationSet() {},
-  onPageAnnotationRemoved() {},
-  onItemAnnotationRemoved() {},
-
   // DownloadList callback
   onDownloadAdded(download) {
     let url = download.source.url;
     let slotsForUrl = this._slotsForUrl.get(url) || new Set();
-
-    // When a session download is attached to a slot, we ensure not to keep
-    // stale metadata around for the corresponding history download. This
-    // prevents stale state from being used if the view is rebuilt.
-    //
-    // Note that we will eagerly load the data in the cache at this point, even
-    // if we have seen no history download. The case where no history download
-    // will appear at all is rare enough in normal usage, so we can apply this
-    // simpler solution rather than keeping a list of cache items to ignore.
-    gCachedPlacesMetaData.delete(url);
 
     // For every source URL, there can be at most one slot containing a history
     // download without an associated session download. If we find one, then we
@@ -682,6 +775,8 @@ this.DownloadHistoryList.prototype = {
     let slot = this._slotForDownload.get(download);
     this._removeSlot({ slot, slotsForUrl });
 
+    this._slotForDownload.delete(download);
+
     // If there was only one slot for this source URL and it also contained a
     // history download, we should resurrect it in the correct area of the list.
     if (slotsForUrl.size == 0 && slot.historyDownload) {
@@ -691,14 +786,12 @@ this.DownloadHistoryList.prototype = {
       // by the session download. Since this is no longer the case, we have to
       // read the latest metadata before resurrecting the history download.
       slot.historyDownload.updateFromMetaData(
-        DownloadHistory.getPlacesMetaDataFor(url));
+        DownloadCache.get(url));
       slot.sessionDownload = null;
       // Place the resurrected history slot after all the session slots.
       this._insertSlot({ slot, slotsForUrl,
                          index: this._firstSessionSlotIndex });
     }
-
-    this._slotForDownload.delete(download);
   },
 
   // DownloadList

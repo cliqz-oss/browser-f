@@ -398,7 +398,14 @@ function attachTestTabAndResume(client, title, callback = () => {}) {
  * Initialize the testing debugger server.
  */
 function initTestDebuggerServer(server = DebuggerServer) {
-  server.registerModule("xpcshell-test/testactors");
+  if (server === WorkerDebuggerServer) {
+    const { createRootActor } = worker.require("xpcshell-test/testactors");
+    server.setRootActor(createRootActor);
+  } else {
+    const { createRootActor } = require("xpcshell-test/testactors");
+    server.setRootActor(createRootActor);
+  }
+
   // Allow incoming connections.
   server.init(function() {
     return true;
@@ -411,7 +418,7 @@ function initTestDebuggerServer(server = DebuggerServer) {
 function startTestDebuggerServer(title, server = DebuggerServer) {
   initTestDebuggerServer(server);
   addTestGlobal(title);
-  DebuggerServer.registerActors({ tab: true });
+  DebuggerServer.registerActors({ target: true });
 
   const transport = DebuggerServer.connectPipe();
   const client = new DebuggerClient(transport);

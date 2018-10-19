@@ -14,6 +14,7 @@ EXPORTS += [
     'DisplayListClipState.h',
     'FrameLayerBuilder.h',
     'LayerState.h',
+    'MatrixStack.h',
     'nsCSSRenderingBorders.h',
     'nsCSSRenderingGradients.h',
     'nsDisplayItemTypes.h',
@@ -23,6 +24,7 @@ EXPORTS += [
     'nsImageRenderer.h',
     'RetainedDisplayListBuilder.h',
     'RetainedDisplayListHelpers.h',
+    'TransformClipNode.h',
 ]
 
 EXPORTS.mozilla += [
@@ -73,3 +75,6 @@ if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

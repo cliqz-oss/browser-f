@@ -329,9 +329,6 @@ CloneArray(uint16_t aInType, const nsIID* aInIID,
 
   allocSize = aInCount * elementSize;
   *aOutValue = moz_xmalloc(allocSize);
-  if (!*aOutValue) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
 
   // Clone the elements.
 
@@ -404,7 +401,7 @@ CloneArray(uint16_t aInType, const nsIID* aInIID,
       for (i = aInCount; i > 0; i--) {
         char16_t* str = *(inp++);
         if (str) {
-          *(outp++) = NS_strdup(str);
+          *(outp++) = NS_xstrdup(str);
         } else {
           *(outp++) = nullptr;
         }
@@ -829,7 +826,7 @@ nsDiscriminatedUnion::ConvertToAString(nsAString& aResult) const
       CopyUTF8toUTF16(*u.mUTF8StringValue, aResult);
       return NS_OK;
     case nsIDataType::VTYPE_CHAR_STR:
-      CopyASCIItoUTF16(u.str.mStringValue, aResult);
+      CopyASCIItoUTF16(mozilla::MakeStringSpan(u.str.mStringValue), aResult);
       return NS_OK;
     case nsIDataType::VTYPE_WCHAR_STR:
       aResult.Assign(u.wstr.mWStringValue);
@@ -924,7 +921,7 @@ nsDiscriminatedUnion::ConvertToAUTF8String(nsAUTF8String& aResult) const
                       aResult);
       return NS_OK;
     case nsIDataType::VTYPE_WCHAR_STR:
-      CopyUTF16toUTF8(u.wstr.mWStringValue, aResult);
+      CopyUTF16toUTF8(mozilla::MakeStringSpan(u.wstr.mWStringValue), aResult);
       return NS_OK;
     case nsIDataType::VTYPE_STRING_SIZE_IS:
       // XXX Extra copy, can be removed if we're sure CHAR_STR can
@@ -1496,10 +1493,7 @@ nsDiscriminatedUnion::SetFromStringWithSize(uint32_t aSize,
   if (!aValue) {
     return NS_ERROR_NULL_POINTER;
   }
-  if (!(u.str.mStringValue =
-        (char*)nsMemory::Clone(aValue, (aSize + 1) * sizeof(char)))) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
+  u.str.mStringValue = (char*) moz_xmemdup(aValue, (aSize + 1) * sizeof(char));
   u.str.mStringLength = aSize;
   DATA_SETTER_EPILOGUE(VTYPE_STRING_SIZE_IS);
   return NS_OK;
@@ -1512,10 +1506,8 @@ nsDiscriminatedUnion::SetFromWStringWithSize(uint32_t aSize,
   if (!aValue) {
     return NS_ERROR_NULL_POINTER;
   }
-  if (!(u.wstr.mWStringValue =
-        (char16_t*)nsMemory::Clone(aValue, (aSize + 1) * sizeof(char16_t)))) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
+  u.wstr.mWStringValue =
+    (char16_t*) moz_xmemdup(aValue, (aSize + 1) * sizeof(char16_t));
   u.wstr.mWStringLength = aSize;
   DATA_SETTER_EPILOGUE(VTYPE_WSTRING_SIZE_IS);
   return NS_OK;
@@ -1642,53 +1634,6 @@ nsDiscriminatedUnion::Traverse(nsCycleCollectionTraversalCallback& aCb) const
 nsVariantBase::nsVariantBase()
   : mWritable(true)
 {
-#ifdef DEBUG
-  {
-    // Assert that the nsIDataType consts match the values #defined in
-    // xptinfo.h. Bad things happen somewhere if they don't.
-    struct THE_TYPES
-    {
-      uint16_t a;
-      uint16_t b;
-    };
-    static const THE_TYPES array[] = {
-      {nsIDataType::VTYPE_INT8              , TD_INT8             },
-      {nsIDataType::VTYPE_INT16             , TD_INT16            },
-      {nsIDataType::VTYPE_INT32             , TD_INT32            },
-      {nsIDataType::VTYPE_INT64             , TD_INT64            },
-      {nsIDataType::VTYPE_UINT8             , TD_UINT8            },
-      {nsIDataType::VTYPE_UINT16            , TD_UINT16           },
-      {nsIDataType::VTYPE_UINT32            , TD_UINT32           },
-      {nsIDataType::VTYPE_UINT64            , TD_UINT64           },
-      {nsIDataType::VTYPE_FLOAT             , TD_FLOAT            },
-      {nsIDataType::VTYPE_DOUBLE            , TD_DOUBLE           },
-      {nsIDataType::VTYPE_BOOL              , TD_BOOL             },
-      {nsIDataType::VTYPE_CHAR              , TD_CHAR             },
-      {nsIDataType::VTYPE_WCHAR             , TD_WCHAR            },
-      {nsIDataType::VTYPE_VOID              , TD_VOID             },
-      {nsIDataType::VTYPE_ID                , TD_PNSIID           },
-      {nsIDataType::VTYPE_DOMSTRING         , TD_DOMSTRING        },
-      {nsIDataType::VTYPE_CHAR_STR          , TD_PSTRING          },
-      {nsIDataType::VTYPE_WCHAR_STR         , TD_PWSTRING         },
-      {nsIDataType::VTYPE_INTERFACE         , TD_INTERFACE_TYPE   },
-      {nsIDataType::VTYPE_INTERFACE_IS      , TD_INTERFACE_IS_TYPE},
-      {nsIDataType::VTYPE_ARRAY             , TD_ARRAY            },
-      {nsIDataType::VTYPE_STRING_SIZE_IS    , TD_PSTRING_SIZE_IS  },
-      {nsIDataType::VTYPE_WSTRING_SIZE_IS   , TD_PWSTRING_SIZE_IS },
-      {nsIDataType::VTYPE_UTF8STRING        , TD_UTF8STRING       },
-      {nsIDataType::VTYPE_CSTRING           , TD_CSTRING          },
-      {nsIDataType::VTYPE_ASTRING           , TD_ASTRING          }
-    };
-    static const int length = sizeof(array) / sizeof(array[0]);
-    static bool inited = false;
-    if (!inited) {
-      for (int i = 0; i < length; ++i) {
-        NS_ASSERTION(array[i].a == array[i].b, "bad const declaration");
-      }
-      inited = true;
-    }
-  }
-#endif
 }
 
 // For all the data getters we just forward to the static (and sharable)

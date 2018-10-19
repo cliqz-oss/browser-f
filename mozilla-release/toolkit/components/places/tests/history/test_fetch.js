@@ -26,7 +26,7 @@ add_task(async function test_fetch_existent() {
       uri,
       title,
       transition: transitions[i],
-      visitDate: dates[i]
+      visitDate: dates[i],
     });
   }
   await PlacesTestUtils.addVisits(visits);
@@ -39,12 +39,12 @@ add_task(async function test_fetch_existent() {
 
   // Initialize the objects to compare against.
   let idealPageInfo = {
-    url: new URL(uriString), guid, title
+    url: new URL(uriString), guid, title,
   };
   let idealVisits = visits.map(v => {
     return {
       date: v.visitDate,
-      transition: v.transition
+      transition: v.transition,
     };
   });
 
@@ -106,6 +106,49 @@ add_task(async function test_fetch_page_meta_info() {
   Assert.ok(!("previewImageURL" in pageInfo), "fetch should not return a previewImageURL if includeMeta is false");
 });
 
+add_task(async function test_fetch_annotations() {
+  await PlacesUtils.history.clear();
+
+  const TEST_URI = "http://mozilla.com/test_fetch_page_meta_info";
+  await PlacesTestUtils.addVisits(TEST_URI);
+  Assert.ok(page_in_database(TEST_URI));
+
+  let includeAnnotations = true;
+  let pageInfo = await PlacesUtils.history.fetch(TEST_URI, {includeAnnotations});
+  Assert.equal(pageInfo.annotations.size, 0,
+    "fetch should return an empty annotation map");
+
+  await PlacesUtils.history.update({
+    url: TEST_URI,
+    annotations: new Map([["test/annotation", "testContent"]]),
+  });
+
+  pageInfo = await PlacesUtils.history.fetch(TEST_URI, {includeAnnotations});
+  Assert.equal(pageInfo.annotations.size, 1,
+    "fetch should have only one annotation");
+
+  Assert.equal(pageInfo.annotations.get("test/annotation"), "testContent",
+    "fetch should return the expected annotation");
+
+  await PlacesUtils.history.update({
+    url: TEST_URI,
+    annotations: new Map([["test/annotation2", 123]]),
+  });
+
+  pageInfo = await PlacesUtils.history.fetch(TEST_URI, {includeAnnotations});
+  Assert.equal(pageInfo.annotations.size, 2,
+    "fetch should have returned two annotations");
+  Assert.equal(pageInfo.annotations.get("test/annotation"), "testContent",
+    "fetch should still have the first annotation");
+  Assert.equal(pageInfo.annotations.get("test/annotation2"), 123,
+    "fetch should have the second annotation");
+
+  includeAnnotations = false;
+  pageInfo = await PlacesUtils.history.fetch(TEST_URI, {includeAnnotations});
+  Assert.ok(!("annotations" in pageInfo),
+    "fetch should not return annotations if includeAnnotations is false");
+});
+
 add_task(async function test_fetch_nonexistent() {
   await PlacesUtils.history.clear();
   await PlacesUtils.bookmarks.eraseEverything();
@@ -139,5 +182,9 @@ add_task(async function test_error_cases() {
   Assert.throws(
     () => PlacesUtils.history.fetch("http://valid.uri.come", {includeMeta: "not a boolean"}),
       /TypeError: includeMeta should be a/
+  );
+  Assert.throws(
+    () => PlacesUtils.history.fetch("http://valid.url.com", {includeAnnotations: "not a boolean"}),
+      /TypeError: includeAnnotations should be a/
   );
 });

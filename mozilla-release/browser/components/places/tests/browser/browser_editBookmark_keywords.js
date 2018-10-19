@@ -16,7 +16,7 @@ add_task(async function() {
           PlacesUtils.bookmarks.removeObserver(this);
           resolve({ property, value });
         },
-        QueryInterface: ChromeUtils.generateQI([Ci.nsINavBookmarkObserver])
+        QueryInterface: ChromeUtils.generateQI([Ci.nsINavBookmarkObserver]),
       });
     });
   }
@@ -24,7 +24,7 @@ add_task(async function() {
   let tab = await BrowserTestUtils.openNewForegroundTab({
     gBrowser,
     opening: TEST_URL,
-    waitForStateStop: true
+    waitForStateStop: true,
   });
 
   let library = await promiseLibrary("UnfiledBookmarks");
@@ -47,11 +47,6 @@ add_task(async function() {
     // Select the bookmark.
     library.ContentTree.view.selectNode(node);
     synthesizeClickOnSelectedTreeCell(library.ContentTree.view);
-
-    // Expand the additional info for the first bookmark.
-    if (i === 0) {
-      library.document.getElementById("infoBoxExpander").click();
-    }
 
     is(library.document.getElementById("editBMPanel_keywordField").value, "",
       "The keyword field should be empty");

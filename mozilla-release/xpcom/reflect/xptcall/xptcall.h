@@ -45,8 +45,6 @@ static_assert(offsetof(nsXPTCMiniVariant, val) == 0,
 
 struct nsXPTCVariant
 {
-// No ctors or dtors so that we can use arrays of these on the stack with no
-// penalty.
     union ExtendedVal
     {
     // ExtendedVal is an extension on nsXPTCMiniVariant. It contains types
@@ -60,6 +58,7 @@ struct nsXPTCVariant
         nsCString  nscstr;
         nsString   nsstr;
         JS::Value  jsval;
+        xpt::detail::UntypedTArray array;
 
         // This type contains non-standard-layout types, so needs an explicit
         // Ctor/Dtor - we'll just delete them.
@@ -76,9 +75,14 @@ struct nsXPTCVariant
         ExtendedVal ext;
     };
 
-    void*     ptr;
     nsXPTType type;
     uint8_t   flags;
+
+    // Clear to a valid, null state.
+    nsXPTCVariant() {
+        memset(this, 0, sizeof(nsXPTCVariant));
+        type = nsXPTType::T_VOID;
+    }
 
     enum
     {
@@ -86,40 +90,15 @@ struct nsXPTCVariant
         // Bitflag definitions
         //
 
-        // Indicates that ptr (above, and distinct from val.p) is the value that
-        // should be passed on the stack.
-        //
-        // In theory, ptr could point anywhere. But in practice it always points
-        // to &val. So this flag is used to pass 'val' by reference, letting us
-        // avoid the extra allocation we would incur if we were to use val.p.
-        //
-        // Various parts of XPConnect assume that ptr==&val, so we enforce it
-        // explicitly with SetIndirect() and IsIndirect().
-        //
-        // Since ptr always points to &val, the semantics of this flag are kind of
-        // dumb, since the ptr field is unnecessary. But changing them would
-        // require changing dozens of assembly files, so they're likely to stay
-        // the way they are.
-        PTR_IS_DATA    = 0x1,
-
-        // Indicates that the value we hold requires some sort of cleanup (memory
-        // deallocation, interface release, JS::Value unrooting, etc). The precise
-        // cleanup that is performed depends on the 'type' field above.
-        // If the value is an array, this flag specifies whether the elements
-        // within the array require cleanup (we always clean up the array itself,
-        // so this flag would be redundant for that purpose).
-        VAL_NEEDS_CLEANUP = 0x2
+        // Indicates that we &val.p should be passed n the stack, i.e. that
+        // val should be passed by reference.
+        IS_INDIRECT    = 0x1,
     };
 
     void ClearFlags()         {flags = 0;}
-    void SetIndirect()        {ptr = &val; flags |= PTR_IS_DATA;}
-    void SetValNeedsCleanup() {flags |= VAL_NEEDS_CLEANUP;}
+    void SetIndirect()        {flags |= IS_INDIRECT;}
 
-    bool IsIndirect()         const  {return 0 != (flags & PTR_IS_DATA);}
-    bool DoesValNeedCleanup() const  {return 0 != (flags & VAL_NEEDS_CLEANUP);}
-
-    // Internal use only. Use IsIndirect() instead.
-    bool IsPtrData()       const  {return 0 != (flags & PTR_IS_DATA);}
+    bool IsIndirect()         const  {return 0 != (flags & IS_INDIRECT);}
 
     // Implicitly convert to nsXPTCMiniVariant.
     operator nsXPTCMiniVariant&() {
@@ -129,14 +108,23 @@ struct nsXPTCVariant
         return *(const nsXPTCMiniVariant*) &val;
     }
 
-    // As this type contains an anonymous union, we need to provide explicit
-    // constructors & destructors.
-    nsXPTCVariant() { }
+    // As this type contains an anonymous union, we need to provide an explicit
+    // destructor.
     ~nsXPTCVariant() { }
 };
 
 static_assert(offsetof(nsXPTCVariant, val) == offsetof(nsXPTCVariant, ext),
               "nsXPTCVariant::{ext,val} must have matching offsets");
+
+// static_assert that nsXPTCVariant::ExtendedVal is large enough and
+// well-aligned enough for every XPT-supported type.
+#define XPT_CHECK_SIZEOF(xpt, type) \
+    static_assert(sizeof(nsXPTCVariant::ExtendedVal) >= sizeof(type), \
+                  "nsXPTCVariant::ext not big enough for " #xpt " (" #type ")"); \
+    static_assert(MOZ_ALIGNOF(nsXPTCVariant::ExtendedVal) >= MOZ_ALIGNOF(type), \
+                  "nsXPTCVariant::ext not aligned enough for " #xpt " (" #type ")");
+XPT_FOR_EACH_TYPE(XPT_CHECK_SIZEOF)
+#undef XPT_CHECK_SIZEOF
 
 class nsIXPTCProxy : public nsISupports
 {

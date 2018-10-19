@@ -90,7 +90,7 @@ LegacyMozTCPSocket::WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto,
                                JS::MutableHandle<JSObject*> aReflector)
 {
-  return LegacyMozTCPSocketBinding::Wrap(aCx, this, aGivenProto, aReflector);
+  return LegacyMozTCPSocket_Binding::Wrap(aCx, this, aGivenProto, aReflector);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(TCPSocket)
@@ -568,7 +568,7 @@ TCPSocket::FireDataEvent(JSContext* aCx, const nsAString& aType, JS::Handle<JS::
 JSObject*
 TCPSocket::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return TCPSocketBinding::Wrap(aCx, this, aGivenProto);
+  return TCPSocket_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -858,12 +858,10 @@ TCPSocket::Send(JSContext* aCx,
       return false;
     }
   } else {
-    JS::Rooted<JSObject*> obj(aCx, aData.Obj());
-    JSAutoRealm ar(aCx, obj);
-    JS::Rooted<JS::Value> value(aCx, JS::ObjectValue(*obj));
+    JS::Rooted<JS::Value> value(aCx, JS::ObjectValue(*aData.Obj()));
 
     stream = do_CreateInstance("@mozilla.org/io/arraybuffer-input-stream;1");
-    nsresult rv = stream->SetData(value, aByteOffset, byteLength, aCx);
+    nsresult rv = stream->SetData(value, aByteOffset, byteLength);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       aRv.Throw(rv);
       return false;

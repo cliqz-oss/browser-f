@@ -12,9 +12,8 @@
       "https://{{host}}:{{ports[https][0]}}/referrer-policy/generic/subresource/image.py",
       t.step_func_done(img => {
         assert_header_equals(decodeImageData(extractImageData(img)).headers["sec-metadata"], {
-          "cause": "forced",
+          "cause": undefined,
           "destination": "image",
-          "target": "subresource",
           "site": "same-origin"
         });
       }),
@@ -27,9 +26,8 @@
       "https://{{hosts[][www]}}:{{ports[https][0]}}/referrer-policy/generic/subresource/image.py",
       t.step_func_done(img => {
         assert_header_equals(decodeImageData(extractImageData(img)).headers["sec-metadata"], {
-          "cause": "forced",
+          "cause": undefined,
           "destination": "image",
-          "target": "subresource",
           "site": "same-site"
         });
       }),
@@ -42,9 +40,8 @@
       "https://{{hosts[alt][www]}}:{{ports[https][0]}}/referrer-policy/generic/subresource/image.py",
       t.step_func_done(img => {
         assert_header_equals(decodeImageData(extractImageData(img)).headers["sec-metadata"], {
-          "cause": "forced",
+          "cause": undefined,
           "destination": "image",
-          "target": "subresource",
           "site": "cross-site"
         });
       }),

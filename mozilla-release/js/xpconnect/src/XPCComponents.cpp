@@ -15,6 +15,8 @@
 #include "nsContentUtils.h"
 #include "nsCycleCollector.h"
 #include "jsfriendapi.h"
+#include "js/AutoByteString.h"
+#include "js/SavedFrameAPI.h"
 #include "js/StructuredClone.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
@@ -31,6 +33,7 @@
 #include "mozilla/Scheduler.h"
 #include "nsZipArchive.h"
 #include "nsWindowMemoryReporter.h"
+#include "nsICycleCollectorListener.h"
 #include "nsIException.h"
 #include "nsIScriptError.h"
 #include "nsISimpleEnumerator.h"
@@ -2038,10 +2041,11 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack, JSConte
     nsCOMPtr<nsIScriptError> scripterr;
 
     if (errorObj) {
-        JS::RootedObject stackVal(cx,
-          FindExceptionStackForConsoleReport(win, error));
+        JS::RootedObject stackVal(cx);
+        JS::RootedObject stackGlobal(cx);
+        FindExceptionStackForConsoleReport(win, error, &stackVal, &stackGlobal);
         if (stackVal) {
-            scripterr = new nsScriptErrorWithStack(stackVal);
+            scripterr = new nsScriptErrorWithStack(stackVal, stackGlobal);
         }
     }
 
@@ -2050,20 +2054,27 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack, JSConte
 
     if (!scripterr) {
         RootedObject stackObj(cx);
+        RootedObject stackGlobal(cx);
         if (stack.isObject()) {
-            if (!JS::IsSavedFrame(&stack.toObject())) {
+            if (!JS::IsMaybeWrappedSavedFrame(&stack.toObject())) {
                 return NS_ERROR_INVALID_ARG;
             }
 
+            // |stack| might be a wrapper, but it must be same-compartment with
+            // the current global.
             stackObj = &stack.toObject();
+            stackGlobal = JS::CurrentGlobalOrNull(cx);
+            js::AssertSameCompartment(stackObj, stackGlobal);
 
-            if (GetSavedFrameLine(cx, stackObj, &lineNo) != SavedFrameResult::Ok) {
+            JSPrincipals* principals = JS::GetRealmPrincipals(js::GetContextRealm(cx));
+
+            if (GetSavedFrameLine(cx, principals, stackObj, &lineNo) != SavedFrameResult::Ok) {
                 JS_ClearPendingException(cx);
             }
 
             RootedString source(cx);
             nsAutoJSString str;
-            if (GetSavedFrameSource(cx, stackObj, &source) == SavedFrameResult::Ok &&
+            if (GetSavedFrameSource(cx, principals, stackObj, &source) == SavedFrameResult::Ok &&
                 str.init(cx, source)) {
                 fileName = str;
             } else {
@@ -2078,12 +2089,14 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack, JSConte
                 nsresult rv = frame->GetNativeSavedFrame(&stack);
                 if (NS_SUCCEEDED(rv) && stack.isObject()) {
                   stackObj = &stack.toObject();
+                  MOZ_ASSERT(JS::IsUnwrappedSavedFrame(stackObj));
+                  stackGlobal = JS::GetNonCCWObjectGlobal(stackObj);
                 }
             }
         }
 
         if (stackObj) {
-            scripterr = new nsScriptErrorWithStack(stackObj);
+            scripterr = new nsScriptErrorWithStack(stackObj, stackGlobal);
         }
     }
 
@@ -2094,7 +2107,7 @@ nsXPCComponents_Utils::ReportError(HandleValue error, HandleValue stack, JSConte
     if (err) {
         // It's a proper JS Error
         nsAutoString fileUni;
-        CopyUTF8toUTF16(err->filename, fileUni);
+        CopyUTF8toUTF16(mozilla::MakeStringSpan(err->filename), fileUni);
 
         uint32_t column = err->tokenOffset();
 
@@ -2164,6 +2177,20 @@ nsXPCComponents_Utils::EvalInSandbox(const nsAString& source,
     }
 
     return xpc::EvalInSandbox(cx, sandbox, source, filename, lineNo, retval);
+}
+
+NS_IMETHODIMP
+nsXPCComponents_Utils::GetUAWidgetScope(nsIPrincipal* principal,
+                                        JSContext* cx,
+                                        MutableHandleValue rval)
+{
+    rval.set(UndefinedValue());
+
+    JSObject* scope = xpc::GetUAWidgetScope(cx, principal);
+
+    rval.set(JS::ObjectValue(*scope));
+
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -2290,6 +2317,16 @@ NS_IMETHODIMP
 nsXPCComponents_Utils::ForceCC(nsICycleCollectorListener* listener)
 {
     nsJSContext::CycleCollectNow(listener);
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXPCComponents_Utils::CreateCCLogger(nsICycleCollectorListener** aListener)
+{
+    NS_ENSURE_ARG_POINTER(aListener);
+    nsCOMPtr<nsICycleCollectorListener> logger =
+      nsCycleCollector_createLogger();
+    logger.forget(aListener);
     return NS_OK;
 }
 
@@ -2447,17 +2484,11 @@ nsXPCComponents_Utils::GetGlobalForObject(HandleValue object,
     if (object.isPrimitive())
         return NS_ERROR_XPC_BAD_CONVERT_JS;
 
-    // Wrappers are parented to their the global in their home compartment. But
-    // when getting the global for a cross-compartment wrapper, we really want
+    // When getting the global for a cross-compartment wrapper, we really want
     // a wrapper for the foreign global. So we need to unwrap before getting the
-    // parent, enter the compartment for the duration of the call, and wrap the
-    // result.
+    // global and then wrap the result.
     Rooted<JSObject*> obj(cx, &object.toObject());
-    obj = js::UncheckedUnwrap(obj);
-    {
-        JSAutoRealm ar(cx, obj);
-        obj = JS_GetGlobalForObject(cx, obj);
-    }
+    obj = JS::GetNonCCWObjectGlobal(js::UncheckedUnwrap(obj));
 
     if (!JS_WrapObject(cx, &obj))
         return NS_ERROR_FAILURE;
@@ -2814,8 +2845,7 @@ nsXPCComponents_Utils::GetClassName(HandleValue aObj, bool aUnwrap, JSContext* a
     RootedObject obj(aCx, &aObj.toObject());
     if (aUnwrap)
         obj = js::UncheckedUnwrap(obj, /* stopAtWindowProxy = */ false);
-    *aRv = NS_strdup(js::GetObjectClass(obj)->name);
-    NS_ENSURE_TRUE(*aRv, NS_ERROR_OUT_OF_MEMORY);
+    *aRv = NS_xstrdup(js::GetObjectClass(obj)->name);
     return NS_OK;
 }
 
@@ -2901,7 +2931,7 @@ nsXPCComponents_Utils::GenerateXPCWrappedJS(HandleValue aObj, HandleValue aScope
         return NS_ERROR_FAILURE;
 
     RefPtr<WrappedJSHolder> holder = new WrappedJSHolder();
-    nsresult rv = nsXPCWrappedJS::GetNewOrUsed(obj, NS_GET_IID(nsISupports),
+    nsresult rv = nsXPCWrappedJS::GetNewOrUsed(aCx, obj, NS_GET_IID(nsISupports),
                                                getter_AddRefs(holder->mWrappedJS));
     holder.forget(aOut);
     return rv;
@@ -2963,10 +2993,13 @@ xpc::CloneInto(JSContext* aCx, HandleValue aValue, HandleValue aScope,
     if (aOptions.isObject() && !options.Parse())
         return false;
 
+    js::AssertSameCompartment(aCx, aValue);
+    RootedObject sourceScope(aCx, JS::CurrentGlobalOrNull(aCx));
+
     {
         JSAutoRealm ar(aCx, scope);
         aCloned.set(aValue);
-        if (!StackScopedClone(aCx, options, aCloned))
+        if (!StackScopedClone(aCx, options, sourceScope, aCloned))
             return false;
     }
 
@@ -3062,6 +3095,13 @@ NS_IMETHODIMP
 nsXPCComponents_Utils::UnblockThreadedExecution()
 {
     Scheduler::UnblockThreadedExecution();
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXPCComponents_Utils::RecordReplayDirective(int aDirective)
+{
+    recordreplay::RecordReplayDirective(aDirective);
     return NS_OK;
 }
 

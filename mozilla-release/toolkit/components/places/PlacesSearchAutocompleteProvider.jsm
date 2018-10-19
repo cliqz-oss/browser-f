@@ -11,7 +11,6 @@
 var EXPORTED_SYMBOLS = [ "PlacesSearchAutocompleteProvider" ];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "SearchSuggestionController",
   "resource://gre/modules/SearchSuggestionController.jsm");
@@ -184,7 +183,7 @@ SearchSuggestionControllerWrapper.prototype = {
     let { suggestion, historical } = this._suggestions.shift();
     return { match: SearchAutocompleteProviderInternal.defaultMatch,
              suggestion,
-             historical
+             historical,
            };
   },
 

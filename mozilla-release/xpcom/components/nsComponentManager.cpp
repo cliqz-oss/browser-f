@@ -57,6 +57,10 @@
 #include "mozilla/Logging.h"
 #include "LogModulePrefWatcher.h"
 
+#ifdef MOZ_MEMORY
+#include "mozmemory.h"
+#endif
+
 using namespace mozilla;
 
 static LazyLogModule nsComponentManagerLog("nsComponentManager");
@@ -98,12 +102,6 @@ nsGetServiceFromCategory::operator()(const nsIID& aIID,
     goto error;
   }
 
-  if (!mCategory || !mEntry) {
-    // when categories have defaults, use that for null mEntry
-    rv = NS_ERROR_NULL_POINTER;
-    goto error;
-  }
-
   rv = compMgr->nsComponentManagerImpl::GetService(kCategoryManagerCID,
                                                    NS_GET_IID(nsICategoryManager),
                                                    getter_AddRefs(catman));
@@ -112,8 +110,7 @@ nsGetServiceFromCategory::operator()(const nsIID& aIID,
   }
 
   /* find the contractID for category.entry */
-  rv = catman->GetCategoryEntry(mCategory, mEntry,
-                                getter_Copies(value));
+  rv = catman->GetCategoryEntry(mCategory, mEntry, value);
   if (NS_FAILED(rv)) {
     goto error;
   }
@@ -245,31 +242,92 @@ nsComponentManagerImpl::nsComponentManagerImpl()
 {
 }
 
-nsTArray<const mozilla::Module*>* nsComponentManagerImpl::sStaticModules;
+static nsTArray<const mozilla::Module*>* sExtraStaticModules;
 
-NSMODULE_DEFN(start_kPStaticModules);
-NSMODULE_DEFN(end_kPStaticModules);
+/* NSMODULE_DEFN places NSModules in specific sections, as per Module.h.
+ * The linker will group them all together, and we use tricks below to
+ * find the start and end of the grouped list of NSModules.
+ *
+ * On Windows, all the symbols in the .kPStaticModules* sections are
+ * grouped together, by lexical order of the section names. The NSModules
+ * themselves are in .kPStaticModules$M. We use the section name
+ * .kPStaticModules$A to add an empty entry that will be the first,
+ * and the section name .kPStaticModules$Z for another empty entry that
+ * will be the last. We make both null pointers, and skip them in the
+ * AllStaticModules range-iterator.
+ *
+ * On ELF (Linux, BSDs, ...), as well as Mingw builds, the linker itself
+ * provides symbols for the beginning and end of the consolidated section,
+ * but it only does so for sections that can be represented as C identifiers,
+ * so the section is named `kPStaticModules` rather than `.kPStaticModules`.
+ *
+ * We also use a linker script with BFD ld so that the sections end up
+ * folded into the .data.rel.ro section, but that actually breaks the above
+ * described behavior, so the linker script contains an additional trick
+ * to still provide the __start and __stop symbols (the linker script
+ * doesn't work with gold or lld).
+ *
+ * On Darwin, a similar setup is available through the use of some
+ * synthesized symbols (section$...).
+ *
+ * On all platforms, the __stop_kPStaticModules symbol is past all NSModule
+ * pointers.
+ * On Windows, the __start_kPStaticModules symbol points to an empty pointer
+ * preceding the first NSModule pointer. On other platforms, it points to the
+ * first NSModule pointer.
+ */
 
-/* The content between start_kPStaticModules and end_kPStaticModules is gathered
- * by the linker from various objects containing symbols in a specific section.
- * ASAN considers (rightfully) the use of this content as a global buffer
- * overflow. But this is a deliberate and well-considered choice, with no proper
- * way to make ASAN happy. */
-MOZ_ASAN_BLACKLIST
+// Dummy class to define a range-iterator for the static modules.
+class AllStaticModules {};
+
+#if defined(_MSC_VER)
+
+#  pragma section(".kPStaticModules$A", read)
+NSMODULE_ASAN_BLACKLIST __declspec(allocate(".kPStaticModules$A"), dllexport)
+extern mozilla::Module const* const __start_kPStaticModules = nullptr;
+
+mozilla::Module const* const* begin(AllStaticModules& _) {
+    return &__start_kPStaticModules + 1;
+}
+
+#  pragma section(".kPStaticModules$Z", read)
+NSMODULE_ASAN_BLACKLIST __declspec(allocate(".kPStaticModules$Z"), dllexport)
+extern mozilla::Module const* const __stop_kPStaticModules = nullptr;
+
+#else
+
+#  if defined(__ELF__) || (defined(_WIN32) && defined(__GNUC__))
+
+extern "C" mozilla::Module const* const __start_kPStaticModules;
+extern "C" mozilla::Module const* const __stop_kPStaticModules;
+
+#  elif defined(__MACH__)
+
+extern mozilla::Module const *const __start_kPStaticModules __asm("section$start$__DATA$.kPStaticModules");
+extern mozilla::Module const* const __stop_kPStaticModules __asm("section$end$__DATA$.kPStaticModules");
+
+#  else
+#    error Do not know how to find NSModules.
+#  endif
+
+mozilla::Module const* const* begin(AllStaticModules& _) {
+    return &__start_kPStaticModules;
+}
+
+#endif
+
+mozilla::Module const* const* end(AllStaticModules& _) {
+    return &__stop_kPStaticModules;
+}
+
 /* static */ void
 nsComponentManagerImpl::InitializeStaticModules()
 {
-  if (sStaticModules) {
+  if (sExtraStaticModules) {
     return;
   }
 
-  sStaticModules = new nsTArray<const mozilla::Module*>;
-  for (const mozilla::Module * const* staticModules =
-         &NSMODULE_NAME(start_kPStaticModules) + 1;
-       staticModules < &NSMODULE_NAME(end_kPStaticModules); ++staticModules)
-    if (*staticModules) { // ASAN adds padding
-      sStaticModules->AppendElement(*staticModules);
-    }
+  sExtraStaticModules = new nsTArray<const mozilla::Module*>;
 }
 
 nsTArray<nsComponentManagerImpl::ComponentLocation>*
@@ -301,8 +359,15 @@ nsComponentManagerImpl::Init()
 
   RegisterModule(&kXPCOMModule, nullptr);
 
-  for (uint32_t i = 0; i < sStaticModules->Length(); ++i) {
-    RegisterModule((*sStaticModules)[i], nullptr);
+  for (auto module : AllStaticModules()) {
+    if (module) { // On local Windows builds, the list may contain null
+                  // pointers from padding.
+      RegisterModule(module, nullptr);
+    }
+  }
+
+  for (uint32_t i = 0; i < sExtraStaticModules->Length(); ++i) {
+    RegisterModule((*sExtraStaticModules)[i], nullptr);
   }
 
   bool loadChromeManifests = (XRE_GetProcessType() != GeckoProcessType_GPU);
@@ -400,6 +465,61 @@ ProcessSelectorMatches(Module::ProcessSelector aSelector)
 
 static const int kModuleVersionWithSelector = 51;
 
+template<typename T>
+static void
+AssertNotMallocAllocated(T* aPtr)
+{
+#if defined(DEBUG) && defined(MOZ_MEMORY)
+  jemalloc_ptr_info_t info;
+  jemalloc_ptr_info((void*)aPtr, &info);
+  MOZ_ASSERT(info.tag == TagUnknown);
+#endif
+}
+
+template<typename T>
+static void
+AssertNotStackAllocated(T* aPtr)
+{
+  // On all of our supported platforms, the stack grows down. Any address
+  // located below the address of our argument is therefore guaranteed not to be
+  // stack-allocated by the caller.
+  //
+  // For addresses above our argument, things get trickier. The main thread
+  // stack is traditionally placed at the top of the program's address space,
+  // but that is becoming less reliable as more and more systems adopt address
+  // space layout randomization strategies, so we have to guess how much space
+  // above our argument pointer we need to care about.
+  //
+  // On most systems, we're guaranteed at least several KiB at the top of each
+  // stack for TLS. We'd probably be safe assuming at least 4KiB in the stack
+  // segment above our argument address, but safer is... well, safer.
+  //
+  // For threads with huge stacks, it's theoretically possible that we could
+  // wind up being passed a stack-allocated string from farther up the stack,
+  // but this is a best-effort thing, so we'll assume we only care about the
+  // immediate caller. For that case, max 2KiB per stack frame is probably a
+  // reasonable guess most of the time, and is less than the ~4KiB that we
+  // expect for TLS, so go with that to avoid the risk of bumping into heap
+  // data just above the stack.
+#ifdef DEBUG
+  static constexpr size_t kFuzz = 2048;
+
+  MOZ_ASSERT(uintptr_t(aPtr) < uintptr_t(&aPtr) ||
+             uintptr_t(aPtr) > uintptr_t(&aPtr) + kFuzz);
+#endif
+}
+
+static inline nsCString
+AsLiteralCString(const char* aStr)
+{
+  AssertNotMallocAllocated(aStr);
+  AssertNotStackAllocated(aStr);
+
+  nsCString str;
+  str.AssignLiteral(aStr, strlen(aStr));
+  return str;
+}
+
 void
 nsComponentManagerImpl::RegisterModule(const mozilla::Module* aModule,
                                        FileLocation* aFile)
@@ -450,9 +570,10 @@ nsComponentManagerImpl::RegisterModule(const mozilla::Module* aModule,
   if (aModule->mCategoryEntries) {
     const mozilla::Module::CategoryEntry* entry;
     for (entry = aModule->mCategoryEntries; entry->category; ++entry)
-      nsCategoryManager::GetSingleton()->AddCategoryEntry(entry->category,
-                                                          entry->entry,
-                                                          entry->value);
+      nsCategoryManager::GetSingleton()->AddCategoryEntry(
+          AsLiteralCString(entry->category),
+          AsLiteralCString(entry->entry),
+          AsLiteralCString(entry->value));
   }
 }
 
@@ -467,7 +588,7 @@ nsComponentManagerImpl::RegisterCIDEntryLocked(
     return;
   }
 
-  if (auto entry = mFactories.LookupForAdd(*aEntry->cid)) {
+  if (auto entry = mFactories.LookupForAdd(aEntry->cid)) {
     nsFactoryEntry* f = entry.Data();
     NS_WARNING("Re-registering a CID?");
 
@@ -500,7 +621,7 @@ nsComponentManagerImpl::RegisterContractIDLocked(
     return;
   }
 
-  nsFactoryEntry* f = mFactories.Get(*aEntry->cid);
+  nsFactoryEntry* f = mFactories.Get(aEntry->cid);
   if (!f) {
     NS_WARNING("No CID found when attempting to map contract ID");
 
@@ -515,7 +636,7 @@ nsComponentManagerImpl::RegisterContractIDLocked(
     return;
   }
 
-  mContractIDs.Put(nsDependentCString(aEntry->contractid), f);
+  mContractIDs.Put(AsLiteralCString(aEntry->contractid), f);
 }
 
 static void
@@ -564,15 +685,6 @@ nsComponentManagerImpl::ManifestManifest(ManifestProcessingContext& aCx,
 }
 
 void
-nsComponentManagerImpl::ManifestBinaryComponent(ManifestProcessingContext& aCx,
-                                                int aLineNo,
-                                                char* const* aArgv)
-{
-  LogMessageWithContext(aCx.mFile, aLineNo,
-                        "Binary XPCOM components are no longer supported.");
-}
-
-void
 nsComponentManagerImpl::ManifestComponent(ManifestProcessingContext& aCx,
                                           int aLineNo, char* const* aArgv)
 {
@@ -594,9 +706,8 @@ nsComponentManagerImpl::ManifestComponent(ManifestProcessingContext& aCx,
   fl.GetURIString(hash);
 
   MutexLock lock(mLock);
-  auto entry = mFactories.LookupForAdd(cid);
-  if (entry) {
-    nsFactoryEntry* f = entry.Data();
+  nsFactoryEntry* f = mFactories.Get(&cid);
+  if (f) {
     char idstr[NSID_LENGTH];
     cid.ToProvidedString(idstr);
 
@@ -632,7 +743,7 @@ nsComponentManagerImpl::ManifestComponent(ManifestProcessingContext& aCx,
   auto* e = new (KnownNotNull, place) mozilla::Module::CIDEntry();
   e->cid = permanentCID;
 
-  entry.OrInsert([e, km] () { return new nsFactoryEntry(e, km); });
+  mFactories.Put(permanentCID, new nsFactoryEntry(e, km));
 }
 
 void
@@ -652,7 +763,7 @@ nsComponentManagerImpl::ManifestContract(ManifestProcessingContext& aCx,
   }
 
   MutexLock lock(mLock);
-  nsFactoryEntry* f = mFactories.Get(cid);
+  nsFactoryEntry* f = mFactories.Get(&cid);
   if (!f) {
     lock.Unlock();
     LogMessageWithContext(aCx.mFile, aLineNo,
@@ -673,7 +784,8 @@ nsComponentManagerImpl::ManifestCategory(ManifestProcessingContext& aCx,
   char* value = aArgv[2];
 
   nsCategoryManager::GetSingleton()->
-  AddCategoryEntry(category, key, value);
+  AddCategoryEntry(nsDependentCString(category), nsDependentCString(key),
+                   nsDependentCString(value));
 }
 
 void
@@ -765,7 +877,7 @@ nsresult nsComponentManagerImpl::Shutdown(void)
   mKnownModules.Clear();
   mKnownStaticModules.Clear();
 
-  delete sStaticModules;
+  delete sExtraStaticModules;
   delete sModuleLocations;
 
   mStatus = SHUTDOWN_COMPLETE;
@@ -819,7 +931,7 @@ nsFactoryEntry*
 nsComponentManagerImpl::GetFactoryEntry(const nsCID& aClass)
 {
   SafeMutexAutoLock lock(mLock);
-  return mFactories.Get(aClass);
+  return mFactories.Get(&aClass);
 }
 
 already_AddRefed<nsIFactory>
@@ -1148,7 +1260,7 @@ nsComponentManagerImpl::GetService(const nsCID& aClass,
   nsCOMPtr<nsISupports> service;
   MutexLock lock(mLock);
 
-  nsFactoryEntry* entry = mFactories.Get(aClass);
+  nsFactoryEntry* entry = mFactories.Get(&aClass);
   if (!entry) {
     return NS_ERROR_FACTORY_NOT_REGISTERED;
   }
@@ -1264,7 +1376,7 @@ nsComponentManagerImpl::IsServiceInstantiated(const nsCID& aClass,
 
   {
     SafeMutexAutoLock lock(mLock);
-    entry = mFactories.Get(aClass);
+    entry = mFactories.Get(&aClass);
   }
 
   if (entry && entry->mServiceObject) {
@@ -1443,8 +1555,8 @@ nsComponentManagerImpl::LoaderForExtension(const nsACString& aExt)
 {
   nsCOMPtr<mozilla::ModuleLoader> loader = mLoaderMap.Get(aExt);
   if (!loader) {
-    loader = do_GetServiceFromCategory("module-loader",
-                                       PromiseFlatCString(aExt).get());
+    loader = do_GetServiceFromCategory(NS_LITERAL_CSTRING("module-loader"),
+                                       aExt);
     if (!loader) {
       return nullptr;
     }
@@ -1469,7 +1581,7 @@ nsComponentManagerImpl::RegisterFactory(const nsCID& aClass,
     }
 
     SafeMutexAutoLock lock(mLock);
-    nsFactoryEntry* oldf = mFactories.Get(aClass);
+    nsFactoryEntry* oldf = mFactories.Get(&aClass);
     if (!oldf) {
       return NS_ERROR_FACTORY_NOT_REGISTERED;
     }
@@ -1481,7 +1593,7 @@ nsComponentManagerImpl::RegisterFactory(const nsCID& aClass,
   nsAutoPtr<nsFactoryEntry> f(new nsFactoryEntry(aClass, aFactory));
 
   SafeMutexAutoLock lock(mLock);
-  if (auto entry = mFactories.LookupForAdd(aClass)) {
+  if (auto entry = mFactories.LookupForAdd(f->mCIDEntry->cid)) {
     return NS_ERROR_FACTORY_EXISTS;
   } else {
     if (aContractID) {
@@ -1504,7 +1616,7 @@ nsComponentManagerImpl::UnregisterFactory(const nsCID& aClass,
 
   {
     SafeMutexAutoLock lock(mLock);
-    auto entry = mFactories.Lookup(aClass);
+    auto entry = mFactories.Lookup(&aClass);
     nsFactoryEntry* f = entry ? entry.Data() : nullptr;
     if (!f || f->mFactory != aFactory) {
       return NS_ERROR_FACTORY_NOT_REGISTERED;
@@ -1592,9 +1704,9 @@ nsComponentManagerImpl::EnumerateCIDs(nsISimpleEnumerator** aEnumerator)
 {
   nsCOMArray<nsISupports> array;
   for (auto iter = mFactories.Iter(); !iter.Done(); iter.Next()) {
-    const nsID& id = iter.Key();
+    const nsID* id = iter.Key();
     nsCOMPtr<nsISupportsID> wrapper = new nsSupportsID();
-    wrapper->SetData(&id);
+    wrapper->SetData(id);
     array.AppendObject(wrapper);
   }
   return NS_NewArrayEnumerator(aEnumerator, array);
@@ -1677,7 +1789,7 @@ nsComponentManagerImpl::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
     n += iter.Key().SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   }
 
-  n += sStaticModules->ShallowSizeOfIncludingThis(aMallocSizeOf);
+  n += sExtraStaticModules->ShallowSizeOfIncludingThis(aMallocSizeOf);
   if (sModuleLocations) {
     n += sModuleLocations->ShallowSizeOfIncludingThis(aMallocSizeOf);
   }
@@ -1693,7 +1805,6 @@ nsComponentManagerImpl::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
   // worthwhile:
   // - mLoaderMap's keys and values
   // - mMon
-  // - sStaticModules' entries
   // - sModuleLocations' entries
   // - mKnownStaticModules' entries?
   // - mKnownModules' keys and values?
@@ -1832,7 +1943,7 @@ EXPORT_XPCOM_API(nsresult)
 XRE_AddStaticComponent(const mozilla::Module* aComponent)
 {
   nsComponentManagerImpl::InitializeStaticModules();
-  nsComponentManagerImpl::sStaticModules->AppendElement(aComponent);
+  sExtraStaticModules->AppendElement(aComponent);
 
   if (nsComponentManagerImpl::gComponentManager &&
       nsComponentManagerImpl::NORMAL ==

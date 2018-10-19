@@ -7,6 +7,11 @@ flake8:
         - build/
         - config/
         - configure.py
+        - gfx/gl/
+        - gfx/layers/
+        - intl/
+        - ipc/pull-chromium.py
+        - ipc/ipdl/
         - js/
         - memory/
         - mobile/
@@ -19,6 +24,7 @@ flake8:
         - python/mozlint
         - python/mozterm
         - python/mozversioncontrol
+        - python/safety
         - security/
         - security/manager
         - taskcluster

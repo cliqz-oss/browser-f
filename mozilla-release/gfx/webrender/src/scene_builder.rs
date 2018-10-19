@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use api::{AsyncBlobImageRasterizer, BlobImageRequest, BlobImageParams, BlobImageResult};
 use api::{DocumentId, PipelineId, ApiMsg, FrameMsg, ResourceUpdate};
 use api::channel::MsgSender;
 use display_list_flattener::build_scene;
@@ -13,18 +14,22 @@ use render_backend::DocumentView;
 use renderer::{PipelineInfo, SceneBuilderHooks};
 use scene::Scene;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use time::precise_time_ns;
 
 // Message from render backend to scene builder.
 pub enum SceneBuilderRequest {
     Transaction {
         document_id: DocumentId,
         scene: Option<SceneRequest>,
+        blob_requests: Vec<BlobImageParams>,
+        blob_rasterizer: Option<Box<AsyncBlobImageRasterizer>>,
         resource_updates: Vec<ResourceUpdate>,
         frame_ops: Vec<FrameMsg>,
         render: bool,
     },
     WakeUp,
     Flush(MsgSender<()>),
+    SetFrameBuilderConfig(FrameBuilderConfig),
     Stop
 }
 
@@ -34,6 +39,8 @@ pub enum SceneBuilderResult {
         document_id: DocumentId,
         built_scene: Option<BuiltScene>,
         resource_updates: Vec<ResourceUpdate>,
+        rasterized_blobs: Vec<(BlobImageRequest, BlobImageResult)>,
+        blob_rasterizer: Option<Box<AsyncBlobImageRasterizer>>,
         frame_ops: Vec<FrameMsg>,
         render: bool,
         result_tx: Option<Sender<SceneSwapResult>>,
@@ -133,15 +140,21 @@ impl SceneBuilder {
             SceneBuilderRequest::Transaction {
                 document_id,
                 scene,
+                blob_requests,
+                mut blob_rasterizer,
                 resource_updates,
                 frame_ops,
                 render,
             } => {
+                let scenebuild_start_time = precise_time_ns();
                 let built_scene = scene.map(|request|{
                     build_scene(&self.config, request)
                 });
 
-                // TODO: pre-rasterization.
+                let rasterized_blobs = blob_rasterizer.as_mut().map_or(
+                    Vec::new(),
+                    |rasterizer| rasterizer.rasterize(&blob_requests),
+                );
 
                 // We only need the pipeline info and the result channel if we
                 // have a hook callback *and* if this transaction actually built
@@ -156,18 +169,22 @@ impl SceneBuilder {
                         };
                         let (tx, rx) = channel();
 
-                        hooks.pre_scene_swap();
+                        let scenebuild_time = precise_time_ns() - scenebuild_start_time;
+                        hooks.pre_scene_swap(scenebuild_time);
 
                         (Some(info), Some(tx), Some(rx))
                     }
                     _ => (None, None, None),
                 };
 
+                let sceneswap_start_time = precise_time_ns();
                 let has_resources_updates = !resource_updates.is_empty();
                 self.tx.send(SceneBuilderResult::Transaction {
                     document_id,
                     built_scene,
                     resource_updates,
+                    rasterized_blobs,
+                    blob_rasterizer,
                     frame_ops,
                     render,
                     result_tx,
@@ -178,7 +195,8 @@ impl SceneBuilder {
                 if let Some(pipeline_info) = pipeline_info {
                     // Block until the swap is done, then invoke the hook.
                     let swap_result = result_rx.unwrap().recv();
-                    self.hooks.as_ref().unwrap().post_scene_swap(pipeline_info);
+                    let sceneswap_time = precise_time_ns() - sceneswap_start_time;
+                    self.hooks.as_ref().unwrap().post_scene_swap(pipeline_info, sceneswap_time);
                     // Once the hook is done, allow the RB thread to resume
                     match swap_result {
                         Ok(SceneSwapResult::Complete(resume_tx)) => {
@@ -197,6 +215,9 @@ impl SceneBuilder {
                 // We don't need to send a WakeUp to api_tx because we only
                 // get the Stop when the RenderBackend loop is exiting.
                 return false;
+            }
+            SceneBuilderRequest::SetFrameBuilderConfig(cfg) => {
+                self.config = cfg;
             }
         }
 

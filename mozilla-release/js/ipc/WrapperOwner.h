@@ -24,7 +24,6 @@ class WrapperOwner : public virtual JavaScriptShared
            ActorDestroyReason;
 
     WrapperOwner();
-    bool init();
 
     // Standard internal methods.
     // (The traps should be in the same order like js/Proxy.h)
@@ -47,8 +46,6 @@ class WrapperOwner : public virtual JavaScriptShared
                          bool construct);
 
     // SpiderMonkey extensions.
-    bool getPropertyDescriptor(JSContext* cx, JS::HandleObject proxy, JS::HandleId id,
-                               JS::MutableHandle<JS::PropertyDescriptor> desc);
     bool hasOwn(JSContext* cx, JS::HandleObject proxy, JS::HandleId id, bool* bp);
     bool getOwnEnumerablePropertyKeys(JSContext* cx, JS::HandleObject proxy,
                                       JS::AutoIdVector& props);
@@ -112,9 +109,6 @@ class WrapperOwner : public virtual JavaScriptShared
   public:
     virtual bool SendDropObject(const ObjectId& objId) = 0;
     virtual bool SendPreventExtensions(const ObjectId& objId, ReturnStatus* rs) = 0;
-    virtual bool SendGetPropertyDescriptor(const ObjectId& objId, const JSIDVariant& id,
-                                           ReturnStatus* rs,
-                                           PPropertyDescriptor* out) = 0;
     virtual bool SendGetOwnPropertyDescriptor(const ObjectId& objId,
                                               const JSIDVariant& id,
                                               ReturnStatus* rs,

@@ -25,7 +25,7 @@
 #include "nsIWebProgress.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeOwner.h"
-#include "nsIDocShellLoadInfo.h"
+#include "nsDocShellLoadInfo.h"
 #include "nsIBaseWindow.h"
 #include "nsIBrowser.h"
 #include "nsContentUtils.h"
@@ -40,11 +40,9 @@
 #include "nsSubDocumentFrame.h"
 #include "nsError.h"
 #include "nsISHistory.h"
-#include "nsISHistoryInternal.h"
 #include "nsIXULWindow.h"
 #include "nsIMozBrowserFrame.h"
 #include "nsISHistory.h"
-#include "NullPrincipal.h"
 #include "nsIScriptError.h"
 #include "nsGlobalWindow.h"
 #include "nsHTMLDocument.h"
@@ -65,7 +63,7 @@
 #include "nsThreadUtils.h"
 
 #include "nsIDOMChromeWindow.h"
-#include "nsInProcessTabChildGlobal.h"
+#include "InProcessTabChildMessageManager.h"
 
 #include "Layers.h"
 #include "ClientLayerManager.h"
@@ -76,6 +74,7 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/GuardObjects.h"
 #include "mozilla/HTMLEditor.h"
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ChromeMessageSender.h"
@@ -102,7 +101,7 @@
 
 #include "mozilla/dom/HTMLBodyElement.h"
 
-#include "ContentPrincipal.h"
+#include "mozilla/ContentPrincipal.h"
 
 #ifdef XP_WIN
 #include "mozilla/plugins/PPluginWidgetParent.h"
@@ -301,10 +300,11 @@ nsFrameLoader::FireErrorEvent()
   if (!mOwnerContent) {
     return;
   }
-  RefPtr<AsyncEventDispatcher > loadBlockingAsyncDispatcher =
+  RefPtr<AsyncEventDispatcher> loadBlockingAsyncDispatcher =
     new LoadBlockingAsyncEventDispatcher(mOwnerContent,
                                          NS_LITERAL_STRING("error"),
-                                         false, false);
+                                         CanBubble::eNo,
+                                         ChromeOnlyDispatch::eNo);
   loadBlockingAsyncDispatcher->PostDOMEvent();
 }
 
@@ -471,9 +471,7 @@ nsFrameLoader::ReallyStartLoadingInternal()
   rv = CheckURILoad(mURIToLoad, mTriggeringPrincipal);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIDocShellLoadInfo> loadInfo;
-  mDocShell->CreateLoadInfo(getter_AddRefs(loadInfo));
-  NS_ENSURE_TRUE(loadInfo, NS_ERROR_FAILURE);
+  RefPtr<nsDocShellLoadInfo> loadInfo = new nsDocShellLoadInfo();
 
   loadInfo->SetOriginalFrameSrc(mLoadingOriginalSrc);
   mLoadingOriginalSrc = false;
@@ -690,6 +688,8 @@ nsFrameLoader::AddTreeItemToTreeOwner(nsIDocShellTreeItem* aItem,
   // Now that we have our type set, add ourselves to the parent, as needed.
   if (aParentNode) {
     aParentNode->AddChild(aItem);
+  } else if (nsCOMPtr<nsIDocShell> childAsDocShell = do_QueryInterface(aItem)) {
+    childAsDocShell->AttachBrowsingContext(aParentNode);
   }
 
   bool retval = false;
@@ -1451,10 +1451,8 @@ nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
   nsCOMPtr<Element> otherFrameElement =
     otherWindow->GetFrameElementInternal();
 
-  nsCOMPtr<EventTarget> ourChromeEventHandler =
-    do_QueryInterface(ourWindow->GetChromeEventHandler());
-  nsCOMPtr<EventTarget> otherChromeEventHandler =
-    do_QueryInterface(otherWindow->GetChromeEventHandler());
+  nsCOMPtr<EventTarget> ourChromeEventHandler = ourWindow->GetChromeEventHandler();
+  nsCOMPtr<EventTarget> otherChromeEventHandler = otherWindow->GetChromeEventHandler();
 
   nsCOMPtr<EventTarget> ourEventTarget = ourWindow->GetParentTarget();
   nsCOMPtr<EventTarget> otherEventTarget = otherWindow->GetParentTarget();
@@ -1600,12 +1598,12 @@ nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
   RefPtr<nsFrameMessageManager> otherMessageManager = aOther->mMessageManager;
   // Swap pointers in child message managers.
   if (mChildMessageManager) {
-    nsInProcessTabChildGlobal* tabChild = mChildMessageManager;
+    InProcessTabChildMessageManager* tabChild = mChildMessageManager;
     tabChild->SetOwner(otherContent);
     tabChild->SetChromeMessageManager(otherMessageManager);
   }
   if (aOther->mChildMessageManager) {
-    nsInProcessTabChildGlobal* otherTabChild = aOther->mChildMessageManager;
+    InProcessTabChildMessageManager* otherTabChild = aOther->mChildMessageManager;
     otherTabChild->SetOwner(ourContent);
     otherTabChild->SetChromeMessageManager(ourMessageManager);
   }
@@ -2561,6 +2559,10 @@ nsFrameLoader::TryRemoteBrowser()
 {
   NS_ASSERTION(!mRemoteBrowser, "TryRemoteBrowser called with a remote browser already?");
 
+  if (!mOwnerContent) {
+    return false;
+  }
+
   //XXXsmaug Per spec (2014/08/21) frameloader should not work in case the
   //         element isn't in document, only in shadow dom, but that will change
   //         https://www.w3.org/Bugs/Public/show_bug.cgi?id=26365#c0
@@ -2819,8 +2821,7 @@ nsFrameLoader::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlob
   if (tabParent) {
     return tabParent->SendLoadRemoteScript(nsString(aURL), aRunInGlobalScope);
   }
-  RefPtr<nsInProcessTabChildGlobal> tabChild =
-    static_cast<nsInProcessTabChildGlobal*>(GetTabChildGlobalAsEventTarget());
+  RefPtr<InProcessTabChildMessageManager> tabChild = GetTabChildMessageManager();
   if (tabChild) {
     tabChild->LoadFrameScript(aURL, aRunInGlobalScope);
   }
@@ -2842,7 +2843,7 @@ public:
 
   NS_IMETHOD Run() override
   {
-    nsInProcessTabChildGlobal* tabChild = mFrameLoader->mChildMessageManager;
+    InProcessTabChildMessageManager* tabChild = mFrameLoader->mChildMessageManager;
     // Since bug 1126089, messages can arrive even when the docShell is destroyed.
     // Here we make sure that those messages are not delivered.
     if (tabChild && tabChild->GetInnerManager() && mFrameLoader->GetExistingDocShell()) {
@@ -2959,7 +2960,7 @@ nsFrameLoader::EnsureMessageManager()
       return NS_ERROR_FAILURE;
     }
     mChildMessageManager =
-      nsInProcessTabChildGlobal::Create(mDocShell, mOwnerContent, mMessageManager);
+      InProcessTabChildMessageManager::Create(mDocShell, mOwnerContent, mMessageManager);
     NS_ENSURE_TRUE(mChildMessageManager, NS_ERROR_UNEXPECTED);
   }
   return NS_OK;
@@ -2976,12 +2977,6 @@ nsFrameLoader::ReallyLoadFrameScripts()
     mMessageManager->InitWithCallback(this);
   }
   return NS_OK;
-}
-
-EventTarget*
-nsFrameLoader::GetTabChildGlobalAsEventTarget()
-{
-  return mChildMessageManager.get();
 }
 
 already_AddRefed<Element>
@@ -3345,6 +3340,8 @@ nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
 
   UIStateChangeType showAccelerators = UIStateChangeType_NoChange;
   UIStateChangeType showFocusRings = UIStateChangeType_NoChange;
+  uint64_t chromeOuterWindowID = 0;
+
   nsIDocument* doc = mOwnerContent->OwnerDoc();
   if (doc) {
     nsCOMPtr<nsPIWindowRoot> root = nsContentUtils::GetWindowRoot(doc);
@@ -3353,11 +3350,17 @@ nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
         root->ShowAccelerators() ? UIStateChangeType_Set : UIStateChangeType_Clear;
       showFocusRings =
         root->ShowFocusRings() ? UIStateChangeType_Set : UIStateChangeType_Clear;
+
+      nsPIDOMWindowOuter* outerWin = root->GetWindow();
+      if (outerWin) {
+        chromeOuterWindowID = outerWin->WindowID();
+      }
     }
   }
 
   bool tabContextUpdated =
     aTabContext->SetTabContext(OwnerIsMozBrowserFrame(),
+                               chromeOuterWindowID,
                                showAccelerators,
                                showFocusRings,
                                attrs,
@@ -3399,6 +3402,6 @@ JSObject*
 nsFrameLoader::WrapObject(JSContext* cx, JS::Handle<JSObject*> aGivenProto)
 {
   JS::RootedObject result(cx);
-  FrameLoaderBinding::Wrap(cx, this, this, aGivenProto, &result);
+  FrameLoader_Binding::Wrap(cx, this, this, aGivenProto, &result);
   return result;
 }

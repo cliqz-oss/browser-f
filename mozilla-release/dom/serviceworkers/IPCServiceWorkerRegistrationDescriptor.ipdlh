@@ -6,6 +6,7 @@ include PBackgroundSharedTypes;
 include IPCServiceWorkerDescriptor;
 
 using ServiceWorkerUpdateViaCache from "mozilla/dom/ServiceWorkerIPCUtils.h";
+using mozilla::CopyableErrorResult from "ipc/ErrorIPCUtils.h";
 
 namespace mozilla {
 namespace dom {
@@ -16,6 +17,7 @@ namespace dom {
 struct IPCServiceWorkerRegistrationDescriptor
 {
   uint64_t id;
+  uint64_t version;
 
   // These values should match the principal and scope in each
   // associated worker.  It may be possible to optimize in the future,
@@ -30,6 +32,23 @@ struct IPCServiceWorkerRegistrationDescriptor
   OptionalIPCServiceWorkerDescriptor installing;
   OptionalIPCServiceWorkerDescriptor waiting;
   OptionalIPCServiceWorkerDescriptor active;
+};
+
+union IPCServiceWorkerRegistrationDescriptorOrCopyableErrorResult
+{
+  IPCServiceWorkerRegistrationDescriptor;
+  CopyableErrorResult;
+};
+
+struct IPCServiceWorkerRegistrationDescriptorList
+{
+  IPCServiceWorkerRegistrationDescriptor[] values;
+};
+
+union IPCServiceWorkerRegistrationDescriptorListOrCopyableErrorResult
+{
+  IPCServiceWorkerRegistrationDescriptorList;
+  CopyableErrorResult;
 };
 
 } // namespace dom

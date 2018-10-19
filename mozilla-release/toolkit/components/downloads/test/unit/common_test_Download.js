@@ -18,6 +18,9 @@
 
 const kDeleteTempFileOnExit = "browser.helperApps.deleteTempFileOnExit";
 
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
+
 /**
  * Creates and starts a new download, using either DownloadCopySaver or
  * DownloadLegacySaver based on the current test run.
@@ -2186,7 +2189,7 @@ add_task(async function test_showContainingDirectory() {
 
   let download = await Downloads.createDownload({
     source: { url: httpUrl("source.txt") },
-    target: ""
+    target: "",
   });
 
   let promiseDirectoryShown = waitForDirectoryShown();
@@ -2208,7 +2211,7 @@ add_task(async function test_showContainingDirectory() {
 
   download = await Downloads.createDownload({
     source: { url: httpUrl("source.txt") },
-    target: targetPath
+    target: targetPath,
   });
 
   promiseDirectoryShown = waitForDirectoryShown();
@@ -2232,7 +2235,7 @@ add_task(async function test_launch() {
         source: httpUrl("source.txt"),
         target: getTempFile(TEST_TARGET_FILE_NAME).path,
         launcherPath,
-        launchWhenSucceeded: true
+        launchWhenSucceeded: true,
       });
 
       try {
@@ -2281,7 +2284,7 @@ add_task(async function test_launcherPath_invalid() {
   let download = await Downloads.createDownload({
     source: { url: httpUrl("source.txt") },
     target: { path: getTempFile(TEST_TARGET_FILE_NAME).path },
-    launcherPath: " "
+    launcherPath: " ",
   });
 
   let promiseDownloadLaunched = new Promise(resolve => {
@@ -2391,17 +2394,30 @@ add_task(async function test_toSerializable_startTime() {
 add_task(async function test_history() {
   mustInterruptResponses();
 
+  let sourceUrl = httpUrl("interruptible.txt");
+
   // We will wait for the visit to be notified during the download.
   await PlacesUtils.history.clear();
-  let promiseVisit = promiseWaitForVisit(httpUrl("interruptible.txt"));
+  let promiseVisit = promiseWaitForVisit(sourceUrl);
+  let promiseAnnotation = waitForAnnotation(sourceUrl, "downloads/destinationFileURI");
 
   // Start a download that is not allowed to finish yet.
-  let download = await promiseStartDownload(httpUrl("interruptible.txt"));
+  let download = await promiseStartDownload(sourceUrl);
 
-  // The history notifications should be received before the download completes.
-  let [time, transitionType] = await promiseVisit;
-  Assert.equal(time, download.startTime.getTime() * 1000);
+  // The history and annotation notifications should be received before the download completes.
+  let [time, transitionType, lastKnownTitle] = await promiseVisit;
+  await promiseAnnotation;
+
+  let expectedFile = new FileUtils.File(download.target.path);
+
+  Assert.equal(time, download.startTime.getTime());
   Assert.equal(transitionType, Ci.nsINavHistoryService.TRANSITION_DOWNLOAD);
+  Assert.equal(lastKnownTitle, expectedFile.leafName);
+
+  let expectedFileURI = Services.io.newFileURI(expectedFile);
+  let pageInfo = await PlacesUtils.history.fetch(sourceUrl, {includeAnnotations: true});
+  Assert.equal(pageInfo.annotations.get("downloads/destinationFileURI"), expectedFileURI.spec,
+    "Should have saved the correct download target annotation.");
 
   // Restart and complete the download after clearing history.
   await PlacesUtils.history.clear();
@@ -2410,7 +2426,7 @@ add_task(async function test_history() {
   await download.start();
 
   // The restart should not have added a new history visit.
-  Assert.equal(false, await PlacesUtils.history.hasVisits(httpUrl("interruptible.txt")));
+  Assert.equal(false, await PlacesUtils.history.hasVisits(sourceUrl));
 });
 
 /**
@@ -2434,7 +2450,7 @@ add_task(async function test_history_tryToKeepPartialData() {
   // The time set by nsIHelperAppService may be different than the start time in
   // the download object, thus we only check that it is a meaningful time.  Note
   // that we subtract one second from the earliest time to account for rounding.
-  Assert.ok(time >= beforeStartTimeMs * 1000 - 1000000);
+  Assert.ok(time >= beforeStartTimeMs - 1000);
 
   // Complete the download before finishing the test.
   continueResponses();

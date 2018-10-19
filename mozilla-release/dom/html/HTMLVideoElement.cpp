@@ -101,10 +101,10 @@ HTMLVideoElement::ParseAttribute(int32_t aNamespaceID,
 
 void
 HTMLVideoElement::MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
-                                        GenericSpecifiedValues* aData)
+                                        MappedDeclarations& aDecls)
 {
-  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aData);
-  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aData);
+  nsGenericHTMLElement::MapImageSizeAttributesInto(aAttributes, aDecls);
+  nsGenericHTMLElement::MapCommonAttributesInto(aAttributes, aDecls);
 }
 
 NS_IMETHODIMP_(bool)
@@ -234,7 +234,7 @@ bool HTMLVideoElement::MozHasAudio() const
 JSObject*
 HTMLVideoElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLVideoElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLVideoElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 FrameStatistics*

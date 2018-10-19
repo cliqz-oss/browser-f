@@ -9,17 +9,12 @@
 
 #ifdef USE_CAIRO
 #include "DrawTargetCairo.h"
-#include "ScaledFontCairo.h"
 #include "SourceSurfaceCairo.h"
 #endif
 
 #ifdef USE_SKIA
 #include "DrawTargetSkia.h"
 #include "ScaledFontBase.h"
-#ifdef MOZ_ENABLE_FREETYPE
-#define USE_SKIA_FREETYPE
-#include "ScaledFontCairo.h"
-#endif
 #endif
 
 #if defined(WIN32)
@@ -35,8 +30,13 @@
 
 #ifdef MOZ_WIDGET_GTK
 #include "ScaledFontFontconfig.h"
-#include "NativeFontResourceFontconfig.h"
+#include "NativeFontResourceFreeType.h"
 #include "UnscaledFontFreeType.h"
+#endif
+
+#ifdef MOZ_WIDGET_ANDROID
+#include "ScaledFontFreeType.h"
+#include "NativeFontResourceFreeType.h"
 #endif
 
 #ifdef WIN32
@@ -52,6 +52,7 @@
 #include "DrawTargetCapture.h"
 #include "DrawTargetDual.h"
 #include "DrawTargetTiled.h"
+#include "DrawTargetOffset.h"
 #include "DrawTargetWrapAndRecord.h"
 #include "DrawTargetRecording.h"
 
@@ -187,6 +188,12 @@ void
 mozilla_ReleaseFTFace(FT_Face aFace)
 {
   mozilla::gfx::Factory::ReleaseFTFace(aFace);
+}
+
+FT_Error
+mozilla_LoadFTGlyph(FT_Face aFace, uint32_t aGlyphIndex, int32_t aFlags)
+{
+  return mozilla::gfx::Factory::LoadFTGlyph(aFace, aGlyphIndex, aFlags);
 }
 
 void
@@ -446,6 +453,12 @@ Factory::CreateRecordingDrawTarget(DrawEventRecorder *aRecorder, DrawTarget *aDT
 }
 
 already_AddRefed<DrawTargetCapture>
+Factory::CreateCaptureDrawTargetForTarget(gfx::DrawTarget* aTarget, size_t aFlushBytes)
+{
+  return MakeAndAddRef<DrawTargetCaptureImpl>(aTarget, aFlushBytes);
+}
+
+already_AddRefed<DrawTargetCapture>
 Factory::CreateCaptureDrawTarget(BackendType aBackend, const IntSize& aSize, SurfaceFormat aFormat)
 {
   return MakeAndAddRef<DrawTargetCaptureImpl>(aBackend, aSize, aFormat);
@@ -537,6 +550,19 @@ Factory::CreateTiledDrawTarget(const TileSet& aTileSet)
   return dt.forget();
 }
 
+already_AddRefed<DrawTarget>
+Factory::CreateOffsetDrawTarget(DrawTarget *aDrawTarget, IntPoint aTileOrigin)
+{
+  RefPtr<DrawTargetOffset> dt = new DrawTargetOffset();
+
+  if (!dt->Init(aDrawTarget, aTileOrigin)) {
+    return nullptr;
+  }
+
+  return dt.forget();
+}
+
+
 bool
 Factory::DoesBackendSupportDataDrawtarget(BackendType aType)
 {
@@ -578,32 +604,29 @@ Factory::GetMaxSurfaceSize(BackendType aType)
 already_AddRefed<ScaledFont>
 Factory::CreateScaledFontForNativeFont(const NativeFont &aNativeFont,
                                        const RefPtr<UnscaledFont>& aUnscaledFont,
-                                       Float aSize)
+                                       Float aSize,
+                                       cairo_scaled_font_t* aScaledFont)
 {
   switch (aNativeFont.mType) {
 #ifdef WIN32
-  case NativeFontType::DWRITE_FONT_FACE:
+  case NativeFontType::GDI_LOGFONT:
     {
-      return MakeAndAddRef<ScaledFontDWrite>(static_cast<IDWriteFontFace*>(aNativeFont.mFont), aUnscaledFont, aSize);
-    }
-#if defined(USE_CAIRO) || defined(USE_SKIA)
-  case NativeFontType::GDI_FONT_FACE:
-    {
-      return MakeAndAddRef<ScaledFontWin>(static_cast<LOGFONT*>(aNativeFont.mFont), aUnscaledFont, aSize);
-    }
+      RefPtr<ScaledFontWin> font = MakeAndAddRef<ScaledFontWin>(static_cast<LOGFONT*>(aNativeFont.mFont), aUnscaledFont, aSize);
+#ifdef USE_CAIRO
+      if (aScaledFont) {
+        font->SetCairoScaledFont(aScaledFont);
+      } else {
+        font->PopulateCairoScaledFont();
+      }
 #endif
-#endif
-#ifdef XP_DARWIN
-  case NativeFontType::MAC_FONT_FACE:
-    {
-      return MakeAndAddRef<ScaledFontMac>(static_cast<CGFontRef>(aNativeFont.mFont), aUnscaledFont, aSize);
+      return font.forget();
     }
-#endif
-#if defined(USE_CAIRO) || defined(USE_SKIA_FREETYPE)
-  case NativeFontType::CAIRO_FONT_FACE:
-    {
-      return MakeAndAddRef<ScaledFontCairo>(static_cast<cairo_scaled_font_t*>(aNativeFont.mFont), aUnscaledFont, aSize);
-    }
+#elif defined(MOZ_WIDGET_GTK)
+  case NativeFontType::FONTCONFIG_PATTERN:
+    return MakeAndAddRef<ScaledFontFontconfig>(aScaledFont, static_cast<FcPattern*>(aNativeFont.mFont), aUnscaledFont, aSize);
+#elif defined(MOZ_WIDGET_ANDROID)
+  case NativeFontType::FREETYPE_FACE:
+    return MakeAndAddRef<ScaledFontFreeType>(aScaledFont, static_cast<FT_Face>(aNativeFont.mFont), aUnscaledFont, aSize);
 #endif
   default:
     gfxWarning() << "Invalid native font type specified.";
@@ -618,19 +641,25 @@ Factory::CreateNativeFontResource(uint8_t *aData, uint32_t aSize, BackendType aB
 #ifdef WIN32
   case FontType::DWRITE:
     {
-      bool needsCairo = aBackendType == BackendType::CAIRO ||
-                        aBackendType == BackendType::SKIA;
+      bool needsCairo = aBackendType == BackendType::CAIRO;
       return NativeFontResourceDWrite::Create(aData, aSize, needsCairo);
     }
   case FontType::GDI:
     return NativeFontResourceGDI::Create(aData, aSize);
 #elif defined(XP_DARWIN)
   case FontType::MAC:
-    return NativeFontResourceMac::Create(aData, aSize);
+    {
+      bool needsCairo = aBackendType == BackendType::CAIRO;
+      return NativeFontResourceMac::Create(aData, aSize, needsCairo);
+    }
 #elif defined(MOZ_WIDGET_GTK)
   case FontType::FONTCONFIG:
     return NativeFontResourceFontconfig::Create(aData, aSize,
                                                 static_cast<FT_Library>(aFontContext));
+#elif defined(MOZ_WIDGET_ANDROID)
+  case FontType::FREETYPE:
+    return NativeFontResourceFreeType::Create(aData, aSize,
+                                              static_cast<FT_Library>(aFontContext));
 #endif
   default:
     gfxWarning() << "Unable to create requested font resource from truetype data";
@@ -655,34 +684,6 @@ Factory::CreateUnscaledFontFromFontDescriptor(FontType aType, const uint8_t* aDa
     return nullptr;
   }
 }
-
-already_AddRefed<ScaledFont>
-Factory::CreateScaledFontWithCairo(const NativeFont& aNativeFont,
-                                   const RefPtr<UnscaledFont>& aUnscaledFont,
-                                   Float aSize,
-                                   cairo_scaled_font_t* aScaledFont)
-{
-#ifdef USE_CAIRO
-  // In theory, we could pull the NativeFont out of the cairo_scaled_font_t*,
-  // but that would require a lot of code that would be otherwise repeated in
-  // various backends.
-  // Therefore, we just reuse CreateScaledFontForNativeFont's implementation.
-  RefPtr<ScaledFont> font = CreateScaledFontForNativeFont(aNativeFont, aUnscaledFont, aSize);
-  static_cast<ScaledFontBase*>(font.get())->SetCairoScaledFont(aScaledFont);
-  return font.forget();
-#else
-  return nullptr;
-#endif
-}
-
-#ifdef MOZ_WIDGET_GTK
-already_AddRefed<ScaledFont>
-Factory::CreateScaledFontForFontconfigFont(cairo_scaled_font_t* aScaledFont, FcPattern* aPattern,
-                                           const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize)
-{
-  return MakeAndAddRef<ScaledFontFontconfig>(aScaledFont, aPattern, aUnscaledFont, aSize);
-}
-#endif
 
 #ifdef XP_DARWIN
 already_AddRefed<ScaledFont>
@@ -715,6 +716,17 @@ Factory::CreateDualDrawTarget(DrawTarget *targetA, DrawTarget *targetB)
   }
 
   return retVal.forget();
+}
+
+already_AddRefed<SourceSurface>
+Factory::CreateDualSourceSurface(SourceSurface *sourceA, SourceSurface *sourceB)
+{
+  MOZ_ASSERT(sourceA && sourceB);
+
+  RefPtr<SourceSurface> newSource =
+    new SourceSurfaceDual(sourceA, sourceB);
+
+  return newSource.forget();
 }
 
 
@@ -805,6 +817,14 @@ Factory::ReleaseFTFace(FT_Face aFace)
   if (mFTLock) {
     mFTLock->Unlock();
   }
+}
+
+FT_Error
+Factory::LoadFTGlyph(FT_Face aFace, uint32_t aGlyphIndex, int32_t aFlags)
+{
+  MOZ_ASSERT(mFTLock);
+  MutexAutoLock lock(*mFTLock);
+  return FT_Load_Glyph(aFace, aGlyphIndex, aFlags);
 }
 #endif
 

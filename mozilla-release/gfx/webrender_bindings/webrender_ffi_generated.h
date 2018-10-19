@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Generated with cbindgen:0.6.0 */
+/* Generated with cbindgen:0.6.2 */
 
 /* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
  * To generate this file:
@@ -93,6 +93,7 @@ enum class ImageFormat : uint32_t {
   BGRA8 = 3,
   RGBAF32 = 4,
   RG8 = 5,
+  RGBAI32 = 6,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -147,6 +148,14 @@ enum class RepeatMode : uint32_t {
   Repeat,
   Round,
   Space,
+
+  Sentinel /* this must be last for serialization purposes. */
+};
+
+enum class TelemetryProbe {
+  SceneBuildTime = 0,
+  SceneSwapTime = 1,
+  RenderTime = 2,
 
   Sentinel /* this must be last for serialization purposes. */
 };
@@ -218,6 +227,9 @@ struct DocumentHandle;
 // Geometry in a stacking context's local coordinate space (logical pixels).
 struct LayoutPixel;
 
+// Coordinates in normalized space (between zero and one).
+struct NormalizedCoordinates;
+
 // The renderer is responsible for submitting to the GPU the work prepared by the
 // RenderBackend.
 struct Renderer;
@@ -228,9 +240,9 @@ struct Tiles;
 // A Transaction is a group of commands to apply atomically to a document.
 //
 // This mechanism ensures that:
-//  - no other message can be interleaved between two commands that need to be applied together.
-//  - no redundant work is performed if two commands in the same transaction cause the scene or
-//    the frame to be rebuilt.
+// - no other message can be interleaved between two commands that need to be applied together.
+// - no redundant work is performed if two commands in the same transaction cause the scene or
+// the frame to be rebuilt.
 struct Transaction;
 
 // The default unit.
@@ -392,14 +404,17 @@ struct BuiltDisplayListDescriptor {
   uint64_t builder_finish_time;
   // The third IPC time stamp: just before sending
   uint64_t send_start_time;
-  // The amount of clips ids assigned while building this display list.
-  uintptr_t total_clip_ids;
+  // The amount of clipping nodes created while building this display list.
+  uintptr_t total_clip_nodes;
+  // The amount of spatial nodes created while building this display list.
+  uintptr_t total_spatial_nodes;
 
   bool operator==(const BuiltDisplayListDescriptor& aOther) const {
     return builder_start_time == aOther.builder_start_time &&
            builder_finish_time == aOther.builder_finish_time &&
            send_start_time == aOther.send_start_time &&
-           total_clip_ids == aOther.total_clip_ids;
+           total_clip_nodes == aOther.total_clip_nodes &&
+           total_spatial_nodes == aOther.total_spatial_nodes;
   }
 };
 
@@ -574,18 +589,6 @@ struct BorderSide {
   }
 };
 
-using LayoutPoint = TypedPoint2D<float, LayoutPixel>;
-
-struct GradientStop {
-  float offset;
-  ColorF color;
-
-  bool operator==(const GradientStop& aOther) const {
-    return offset == aOther.offset &&
-           color == aOther.color;
-  }
-};
-
 template<typename T, typename U>
 struct TypedSideOffsets2D {
   T top;
@@ -604,6 +607,18 @@ struct TypedSideOffsets2D {
 // The default side offset type with no unit.
 template<typename T>
 using SideOffsets2D = TypedSideOffsets2D<T, UnknownUnit>;
+
+using LayoutPoint = TypedPoint2D<float, LayoutPixel>;
+
+struct GradientStop {
+  float offset;
+  ColorF color;
+
+  bool operator==(const GradientStop& aOther) const {
+    return offset == aOther.offset &&
+           color == aOther.color;
+  }
+};
 
 struct Shadow {
   LayoutVector2D offset;
@@ -700,8 +715,7 @@ union GlyphRasterSpace {
     float _0;
 
     bool operator==(const Local_Body& aOther) const {
-      return tag == aOther.tag &&
-             _0 == aOther._0;
+      return _0 == aOther._0;
     }
   };
 
@@ -729,6 +743,16 @@ union GlyphRasterSpace {
 
   bool IsScreen() const {
     return tag == Tag::Screen;
+  }
+
+  bool operator==(const GlyphRasterSpace& aOther) const {
+    if (tag != aOther.tag) {
+      return false;
+    }
+    switch (tag) {
+      case Tag::Local: return local == aOther.local;
+      default: return true;
+    }
   }
 };
 
@@ -879,6 +903,14 @@ struct ColorU {
   }
 };
 
+struct SyntheticItalics {
+  int16_t angle;
+
+  bool operator==(const SyntheticItalics& aOther) const {
+    return angle == aOther.angle;
+  }
+};
+
 struct FontInstanceOptions {
   FontRenderMode render_mode;
   FontInstanceFlags flags;
@@ -886,20 +918,24 @@ struct FontInstanceOptions {
   // the text will be rendered with bg_color.r/g/b as an opaque estimated
   // background color.
   ColorU bg_color;
+  SyntheticItalics synthetic_italics;
 
   bool operator==(const FontInstanceOptions& aOther) const {
     return render_mode == aOther.render_mode &&
            flags == aOther.flags &&
-           bg_color == aOther.bg_color;
+           bg_color == aOther.bg_color &&
+           synthetic_italics == aOther.synthetic_italics;
   }
 };
 
 #if defined(XP_WIN)
 struct FontInstancePlatformOptions {
-  uint32_t unused;
+  uint16_t gamma;
+  uint16_t contrast;
 
   bool operator==(const FontInstancePlatformOptions& aOther) const {
-    return unused == aOther.unused;
+    return gamma == aOther.gamma &&
+           contrast == aOther.contrast;
   }
 };
 #endif
@@ -926,6 +962,8 @@ struct FontInstancePlatformOptions {
 };
 #endif
 
+using NormalizedRect = TypedRect<float, NormalizedCoordinates>;
+
 struct WrTransformProperty {
   uint64_t id;
   LayoutTransform transform;
@@ -942,13 +980,6 @@ struct WrOpacityProperty {
 };
 
 extern "C" {
-
-/* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
- * To generate this file:
- *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
- *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --lockfile Cargo.lock --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
- */
 
 extern void AddFontData(WrFontKey aKey,
                         const uint8_t *aData,
@@ -1004,6 +1035,9 @@ extern bool is_in_main_thread();
 
 extern bool is_in_render_thread();
 
+extern void record_telemetry_time(TelemetryProbe aProbe,
+                                  uint64_t aTimeNs);
+
 WR_INLINE
 bool remove_program_binary_disk_cache(const nsAString *aProfPath)
 WR_FUNC;
@@ -1017,6 +1051,10 @@ void wr_api_capture(DocumentHandle *aDh,
                     const char *aPath,
                     uint32_t aBitsRaw)
 WR_FUNC;
+
+WR_INLINE
+void wr_api_clear_all_caches(DocumentHandle *aDh)
+WR_DESTRUCTOR_SAFE_FUNC;
 
 WR_INLINE
 void wr_api_clone(DocumentHandle *aDh,
@@ -1059,6 +1097,10 @@ bool wr_api_hit_test(DocumentHandle *aDh,
                      WrPipelineId *aOutPipelineId,
                      uint64_t *aOutScrollId,
                      uint16_t *aOutHitInfo)
+WR_FUNC;
+
+WR_INLINE
+void wr_api_notify_memory_pressure(DocumentHandle *aDh)
 WR_FUNC;
 
 WR_INLINE
@@ -1168,6 +1210,9 @@ void wr_dp_push_border_gradient(WrState *aState,
                                 LayoutRect aClip,
                                 bool aIsBackfaceVisible,
                                 BorderWidths aWidths,
+                                uint32_t aWidth,
+                                uint32_t aHeight,
+                                SideOffsets2D<uint32_t> aSlice,
                                 LayoutPoint aStartPoint,
                                 LayoutPoint aEndPoint,
                                 const GradientStop *aStops,
@@ -1252,7 +1297,8 @@ void wr_dp_push_image(WrState *aState,
                       LayoutSize aTileSpacing,
                       ImageRendering aImageRendering,
                       WrImageKey aKey,
-                      bool aPremultipliedAlpha)
+                      bool aPremultipliedAlpha,
+                      ColorF aColor)
 WR_FUNC;
 
 WR_INLINE
@@ -1390,7 +1436,10 @@ void wr_dp_save(WrState *aState)
 WR_FUNC;
 
 WR_INLINE
-void wr_dump_display_list(WrState *aState)
+uintptr_t wr_dump_display_list(WrState *aState,
+                               uintptr_t aIndent,
+                               const uintptr_t *aStart,
+                               const uintptr_t *aEnd)
 WR_FUNC;
 
 extern bool wr_moz2d_render_cb(ByteSlice aBlob,
@@ -1542,6 +1591,12 @@ void wr_resource_updates_delete_image(Transaction *aTxn,
 WR_FUNC;
 
 WR_INLINE
+void wr_resource_updates_set_image_visible_area(Transaction *aTxn,
+                                                WrImageKey aKey,
+                                                const NormalizedRect *aArea)
+WR_FUNC;
+
+WR_INLINE
 void wr_resource_updates_update_blob_image(Transaction *aTxn,
                                            WrImageKey aImageKey,
                                            const WrImageDescriptor *aDescriptor,
@@ -1556,6 +1611,16 @@ void wr_resource_updates_update_external_image(Transaction *aTxn,
                                                WrExternalImageId aExternalImageId,
                                                WrExternalImageBufferType aImageType,
                                                uint8_t aChannelIndex)
+WR_FUNC;
+
+WR_INLINE
+void wr_resource_updates_update_external_image_with_dirty_rect(Transaction *aTxn,
+                                                               WrImageKey aKey,
+                                                               const WrImageDescriptor *aDescriptor,
+                                                               WrExternalImageId aExternalImageId,
+                                                               WrExternalImageBufferType aImageType,
+                                                               uint8_t aChannelIndex,
+                                                               DeviceUintRect aDirtyRect)
 WR_FUNC;
 
 WR_INLINE
@@ -1700,10 +1765,3 @@ WR_FUNC;
 
 } // namespace wr
 } // namespace mozilla
-
-/* DO NOT MODIFY THIS MANUALLY! This file was generated using cbindgen.
- * To generate this file:
- *   1. Get the latest cbindgen using `cargo install --force cbindgen`
- *      a. Alternatively, you can clone `https://github.com/eqrion/cbindgen` and use a tagged release
- *   2. Run `rustup run nightly cbindgen toolkit/library/rust/ --lockfile Cargo.lock --crate webrender_bindings -o gfx/webrender_bindings/webrender_ffi_generated.h`
- */

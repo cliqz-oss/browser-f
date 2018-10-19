@@ -28,24 +28,11 @@
  *    _xpcom_factory: { ... },
  *
  *    // QueryInterface implementation, e.g. using the generateQI helper
- *    QueryInterface: XPCOMUtils.generateQI(
+ *    QueryInterface: ChromeUtils.generateQI(
  *      [Components.interfaces.nsIObserver,
  *       Components.interfaces.nsIMyInterface,
  *       "nsIFoo",
  *       "nsIBar" ]),
- *
- *    // [optional] classInfo implementation, e.g. using the generateCI helper.
- *    // Will be automatically returned from QueryInterface if that was
- *    // generated with the generateQI helper.
- *    classInfo: XPCOMUtils.generateCI(
- *      {classID: Components.ID("{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}"),
- *       contractID: "@example.com/xxx;1",
- *       classDescription: "unique text description",
- *       interfaces: [Components.interfaces.nsIObserver,
- *                    Components.interfaces.nsIMyInterface,
- *                    "nsIFoo",
- *                    "nsIBar"],
- *       flags: Ci.nsIClassInfo.SINGLETON}),
  *
  *    // The following properties were used prior to Mozilla 2, but are no
  *    // longer supported. They may still be included for compatibility with
@@ -53,28 +40,6 @@
  *    // included in the .manifest file which registers this JS component.
  *    classDescription: "unique text description",
  *    contractID:       "@example.com/xxx;1",
- *
- *    // [optional] an array of categories to register this component in.
- *    _xpcom_categories: [{
- *      // Each object in the array specifies the parameters to pass to
- *      // nsICategoryManager.addCategoryEntry(). 'true' is passed for
- *      // both aPersist and aReplace params.
- *      category: "some-category",
- *      // optional, defaults to the object's classDescription
- *      entry: "entry name",
- *      // optional, defaults to the object's contractID (unless
- *      // 'service' is specified)
- *      value: "...",
- *      // optional, defaults to false. When set to true, and only if 'value'
- *      // is not specified, the concatenation of the string "service," and the
- *      // object's contractID is passed as aValue parameter of addCategoryEntry.
- *      service: true,
- *      // optional, it can be an array of applications' IDs in the form:
- *      // [ "{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}", ... ]
- *      // If defined the component will be registered in this category only for
- *      // the provided applications.
- *      apps: [...]
- *    }],
  *
  *    // ...component implementation...
  *  };
@@ -92,6 +57,19 @@ var EXPORTED_SYMBOLS = [ "XPCOMUtils" ];
 
 let global = Cu.getGlobalForObject({});
 
+const nsIFactoryQI = ChromeUtils.generateQI([Ci.nsIFactory]);
+
+// Some global imports expose additional symbols; for example,
+// `Cu.importGlobalProperties(["MessageChannel"])` imports `MessageChannel`
+// and `MessagePort`. This table maps those extra symbols to the main
+// import name.
+const EXTRA_GLOBAL_NAME_TO_IMPORT_NAME = {
+  Headers: "fetch",
+  MessagePort: "MessageChannel",
+  Request: "fetch",
+  Response: "fetch",
+};
+
 /**
  * Redefines the given property on the given object with the given
  * value. This can be used to redefine getter properties which do not
@@ -108,55 +86,6 @@ function redefine(object, prop, value) {
 }
 
 var XPCOMUtils = {
-  /**
-   * Generate a QueryInterface implementation. The returned function must be
-   * assigned to the 'QueryInterface' property of a JS object. When invoked on
-   * that object, it checks if the given iid is listed in the |interfaces|
-   * param, and if it is, returns |this| (the object it was called on).
-   * If the JS object has a classInfo property it'll be returned for the
-   * nsIClassInfo IID, generateCI can be used to generate the classInfo
-   * property.
-   */
-  generateQI: function XPCU_generateQI(interfaces) {
-    return ChromeUtils.generateQI(interfaces);
-  },
-
-  /**
-   * Generate a ClassInfo implementation for a component. The returned object
-   * must be assigned to the 'classInfo' property of a JS object. The first and
-   * only argument should be an object that contains a number of optional
-   * properties: "interfaces", "contractID", "classDescription", "classID" and
-   * "flags". The values of the properties will be returned as the values of the
-   * various properties of the nsIClassInfo implementation.
-   */
-  generateCI: function XPCU_generateCI(classInfo)
-  {
-    if (QueryInterface in classInfo)
-      throw Error("In generateCI, don't use a component for generating classInfo");
-    /* Note that Ci[Ci.x] == Ci.x for all x */
-    let _interfaces = [];
-    for (let i = 0; i < classInfo.interfaces.length; i++) {
-      let iface = classInfo.interfaces[i];
-      if (Ci[iface]) {
-        _interfaces.push(Ci[iface]);
-      }
-    }
-    return {
-      getInterfaces: function XPCU_getInterfaces(countRef) {
-        countRef.value = _interfaces.length;
-        return _interfaces;
-      },
-      getScriptableHelper: function XPCU_getScriptableHelper() {
-        return null;
-      },
-      contractID: classInfo.contractID,
-      classDescription: classInfo.classDescription,
-      classID: classInfo.classID,
-      flags: classInfo.flags,
-      QueryInterface: this.generateQI([Ci.nsIClassInfo])
-    };
-  },
-
   /**
    * Generate a NSGetFactory function given an array of components.
    */
@@ -256,7 +185,8 @@ var XPCOMUtils = {
     for (let name of aNames) {
       this.defineLazyGetter(aObject, name, () => {
         if (!(name in global)) {
-          Cu.importGlobalProperties([name]);
+          let importName = EXTRA_GLOBAL_NAME_TO_IMPORT_NAME[name] || name;
+          Cu.importGlobalProperties([importName]);
         }
         return global[name];
       });
@@ -491,17 +421,6 @@ var XPCOMUtils = {
   },
 
   /**
-   * Helper which iterates over a nsISimpleEnumerator.
-   * @param e The nsISimpleEnumerator to iterate over.
-   * @param i The expected interface for each element.
-   */
-  IterSimpleEnumerator: function* XPCU_IterSimpleEnumerator(e, i)
-  {
-    while (e.hasMoreElements())
-      yield e.getNext().QueryInterface(i);
-  },
-
-  /**
    * Helper which iterates over a string enumerator.
    * @param e The string enumerator (nsIUTF8StringEnumerator or
    *          nsIStringEnumerator) over which to iterate.
@@ -510,18 +429,6 @@ var XPCOMUtils = {
   {
     while (e.hasMore())
       yield e.getNext();
-  },
-
-  /**
-   * Helper which iterates over the entries in a category.
-   * @param aCategory The name of the category over which to iterate.
-   */
-  enumerateCategoryEntries: function* XPCOMUtils_enumerateCategoryEntries(aCategory)
-  {
-    let category = this.categoryManager.enumerateCategory(aCategory);
-    for (let entry of this.IterSimpleEnumerator(category, Ci.nsISupportsCString)) {
-      yield [entry.data, this.categoryManager.getCategoryEntry(aCategory, entry.data)];
-    }
   },
 
   /**
@@ -536,23 +443,10 @@ var XPCOMUtils = {
             throw Cr.NS_ERROR_NO_AGGREGATION;
           return (new component()).QueryInterface(iid);
         },
-        QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory])
+        QueryInterface: nsIFactoryQI
       }
     }
     return factory;
-  },
-
-  /**
-   * Allows you to fake a relative import. Expects the global object from the
-   * module that's calling us, and the relative filename that we wish to import.
-   */
-  importRelative: function XPCOMUtils__importRelative(that, path, scope) {
-    if (!("__URI__" in that))
-      throw Error("importRelative may only be used from a JSM, and its first argument "+
-                  "must be that JSM's global object (hint: use this)");
-
-    Cu.importGlobalProperties(["URL"]);
-    ChromeUtils.import(new URL(path, that.__URI__).href, scope || that);
   },
 
   /**
@@ -574,10 +468,7 @@ var XPCOMUtils = {
         }
         return this._instance.QueryInterface(aIID);
       },
-      lockFactory: function XPCU_SF_lockFactory(aDoLock) {
-        throw Cr.NS_ERROR_NOT_IMPLEMENTED;
-      },
-      QueryInterface: ChromeUtils.generateQI([Ci.nsIFactory])
+      QueryInterface: nsIFactoryQI
     };
   },
 
@@ -777,7 +668,3 @@ var XPCU_lazyPreferenceObserverQI = ChromeUtils.generateQI([Ci.nsIObserver, Ci.n
 
 ChromeUtils.defineModuleGetter(this, "Services",
                                "resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyServiceGetter(XPCOMUtils, "categoryManager",
-                                   "@mozilla.org/categorymanager;1",
-                                   "nsICategoryManager");

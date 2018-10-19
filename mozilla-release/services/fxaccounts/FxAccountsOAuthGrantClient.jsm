@@ -10,7 +10,6 @@
 
 var EXPORTED_SYMBOLS = ["FxAccountsOAuthGrantClient", "FxAccountsOAuthGrantClientError"];
 
-ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 ChromeUtils.import("resource://services-common/rest.js");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
@@ -76,7 +75,7 @@ this.FxAccountsOAuthGrantClient.prototype = {
       scope,
       client_id: this.parameters.client_id,
       assertion,
-      response_type: "token"
+      response_type: "token",
     };
 
     return this._createRequest(AUTH_ENDPOINT, "POST", params);

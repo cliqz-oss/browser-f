@@ -91,6 +91,9 @@ interface nsIXPConnectWrappedJS : nsIXPConnectJSObjectHolder
     readonly attribute InterfaceInfoPtr InterfaceInfo;
     readonly attribute nsIIDPtr         InterfaceIID;
 
+    // Match the GetJSObject() signature.
+    [notxpcom, nostdcall] JSObjectPtr GetJSObjectGlobal();
+
     void debugDump(in short depth);
 
     void aggregatedQueryInterface(in nsIIDRef uuid,
@@ -327,11 +330,6 @@ interface nsIXPConnect : nsISupports
                              [iid_is(aIID),retval] out nsQIResult result);
 
     // Methods added since mozilla 0.6....
-
-    JSObjectPtr
-    getWrappedNativePrototype(in JSContextPtr aJSContext,
-                              in JSObjectPtr  aScope,
-                              in nsIClassInfo aClassInfo);
 
     jsval variantToJS(in JSContextPtr ctx, in JSObjectPtr scope, in nsIVariant value);
     nsIVariant JSToVariant(in JSContextPtr ctx, in jsval value);

@@ -181,21 +181,6 @@
         ]]></setter>
       </property>
 
-      <field name="_docShell">null</field>
-
-      <property name="docShell" readonly="true">
-        <getter><![CDATA[
-          if (this._docShell)
-            return this._docShell;
-
-          let {frameLoader} = this;
-          if (!frameLoader)
-            return null;
-          this._docShell = frameLoader.docShell;
-          return this._docShell;
-        ]]></getter>
-      </property>
-
       <field name="_loadContext">null</field>
 
       <property name="loadContext" readonly="true">
@@ -314,23 +299,6 @@
 
       </property>
 
-      <field name="_webNavigation">null</field>
-
-      <property name="webNavigation"
-                readonly="true">
-        <getter>
-        <![CDATA[
-          if (!this._webNavigation) {
-            if (!this.docShell) {
-              return null;
-            }
-            this._webNavigation = this.docShell.QueryInterface(Ci.nsIWebNavigation);
-          }
-          return this._webNavigation;
-        ]]>
-        </getter>
-      </property>
-
       <field name="_webBrowserFind">null</field>
 
       <property name="webBrowserFind"
@@ -396,20 +364,14 @@
 
       <property name="outerWindowID" readonly="true">
         <getter><![CDATA[
-          return this.contentWindow
-                     .QueryInterface(Ci.nsIInterfaceRequestor)
-                     .getInterface(Ci.nsIDOMWindowUtils)
-                     .outerWindowID;
+          return this.contentWindow.windowUtils.outerWindowID;
         ]]></getter>
       </property>
 
       <property name="innerWindowID" readonly="true">
         <getter><![CDATA[
           try {
-            return this.contentWindow
-                       .QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils)
-                       .currentInnerWindowID;
+            return this.contentWindow.windowUtils.currentInnerWindowID;
           } catch (e) {
             if (e.result != Cr.NS_ERROR_NOT_AVAILABLE) {
               throw e;
@@ -425,12 +387,6 @@
                 readonly="true"
                 onget="return this.docShell.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsIWebProgress);"/>
 
-      <field name="_contentWindow">null</field>
-
-      <property name="contentWindow"
-                readonly="true"
-                onget="return this._contentWindow || (this._contentWindow = this.docShell.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsIDOMWindow));"/>
-
       <property name="contentWindowAsCPOW"
                 readonly="true"
                 onget="return this.contentWindow;"/>
@@ -441,10 +397,6 @@
 
       <property name="markupDocumentViewer"
                 onget="return this.docShell.contentViewer;"
-                readonly="true"/>
-
-      <property name="contentDocument"
-                onget="return this.webNavigation.document;"
                 readonly="true"/>
 
       <property name="contentDocumentAsCPOW"
@@ -634,6 +586,16 @@
           <![CDATA[
             let event = document.createEvent("Events");
             event.initEvent("DOMAudioPlaybackStopped", true, false);
+            this.dispatchEvent(event);
+          ]]>
+        </body>
+      </method>
+
+      <method name="notifyAudibleAutoplayMediaOccurred">
+        <body>
+          <![CDATA[
+            let event = document.createEvent("Events");
+            event.initEvent("AudibleAutoplayMediaOccurred", true, false);
             this.dispatchEvent(event);
           ]]>
         </body>
@@ -892,6 +854,7 @@
             this.messageManager.addMessageListener("AudioPlayback:ActiveMediaBlockStart", this);
             this.messageManager.addMessageListener("AudioPlayback:ActiveMediaBlockStop", this);
             this.messageManager.addMessageListener("UnselectedTabHover:Toggle", this);
+            this.messageManager.addMessageListener("AudibleAutoplayMediaOccurred", this);
 
             if (this.hasAttribute("selectmenulist")) {
               this.messageManager.addMessageListener("Forms:ShowDropDown", this);
@@ -1020,6 +983,9 @@
                 ++this._unselectedTabHoverMessageListenerCount > 0 :
                 --this._unselectedTabHoverMessageListenerCount == 0;
               break;
+            case "AudibleAutoplayMediaOccurred":
+              this.notifyAudibleAutoplayMediaOccurred();
+              break;
             case "Forms:ShowDropDown": {
               if (!this._selectParentHelper) {
                 this._selectParentHelper =
@@ -1147,8 +1113,7 @@
       <method name="_createAutoScrollPopup">
         <body>
           <![CDATA[
-            const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-            var popup = document.createElementNS(XUL_NS, "panel");
+            var popup = document.createXULElement("panel");
             popup.className = "autoscroller";
             // We set this attribute on the element so that mousemove
             // events can be handled by browser-content.js.
@@ -1373,10 +1338,7 @@
           // because these notifications are dispatched again once the docshells
           // are swapped.
           var fieldsToSwap = [
-            "_docShell",
             "_webBrowserFind",
-            "_contentWindow",
-            "_webNavigation"
           ];
 
           if (this.isRemoteBrowser) {

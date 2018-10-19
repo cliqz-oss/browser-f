@@ -11,24 +11,30 @@
 const TEST_URI = "data:text/html;charset=utf8,<p>test JSTerm Helpers autocomplete";
 
 add_task(async function() {
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
+});
+
+async function performTests() {
   const {jsterm} = await openNewTabAndConsole(TEST_URI);
   await testInspectAutoCompletion(jsterm, "i", true);
   await testInspectAutoCompletion(jsterm, "window.", false);
   await testInspectAutoCompletion(jsterm, "dump(i", true);
   await testInspectAutoCompletion(jsterm, "window.dump(i", true);
-});
-
-async function testInspectAutoCompletion(jsterm, inputValue, expectInspect) {
-  jsterm.setInputValue(inputValue);
-  await complete(jsterm);
-  is(getPopupItemsLabel(jsterm.autocompletePopup).includes("inspect"), expectInspect,
-    `autocomplete results${expectInspect ? "" : " does not"} contain helper 'inspect'`);
 }
 
-function complete(jsterm) {
+async function testInspectAutoCompletion(jsterm, inputValue, expectInspect) {
+  jsterm.setInputValue("");
+  jsterm.focus();
   const updated = jsterm.once("autocomplete-updated");
-  jsterm.complete(jsterm.COMPLETE_HINT_ONLY);
-  return updated;
+  EventUtils.sendString(inputValue);
+  await updated;
+  is(getPopupItemsLabel(jsterm.autocompletePopup).includes("inspect"), expectInspect,
+    `autocomplete results${expectInspect ? "" : " does not"} contain helper 'inspect'`);
 }
 
 function getPopupItemsLabel(popup) {

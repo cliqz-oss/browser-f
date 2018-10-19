@@ -14,6 +14,7 @@ const {
   UPDATE_CUSTOM_INSTANCE,
   UPDATE_EDITOR_STATE,
   UPDATE_PROPERTY_VALUE,
+  UPDATE_WARNING_MESSAGE,
 } = require("../actions/index");
 
 const INITIAL_STATE = {
@@ -21,15 +22,7 @@ const INITIAL_STATE = {
   axes: {},
   // Copy of the most recent axes values. Used to revert from a named instance.
   customInstanceValues: [],
-  // Font families declared on the selected element
-  families: {
-    // Names of font families used
-    used: [],
-    // Names of font families declared but not used
-    notUsed: []
-  },
-  // Fonts whose family names are declared in CSS font-family and used
-  // on the selected element.
+  // Fonts used on the selected element.
   fonts: [],
   // Current selected font variation instance.
   instance: {
@@ -38,6 +31,10 @@ const INITIAL_STATE = {
   },
   // CSS font properties defined on the selected rule.
   properties: {},
+  // Unique identifier for the selected element.
+  id: "",
+  // Warning message with the reason why the font editor cannot be shown.
+  warning: getStr("fontinspector.noFontsUsedOnCurrentElement"),
 };
 
 const reducers = {
@@ -78,7 +75,7 @@ const reducers = {
     return newState;
   },
 
-  [UPDATE_EDITOR_STATE](state, { fonts, families, properties }) {
+  [UPDATE_EDITOR_STATE](state, { fonts, properties, id }) {
     const axes = parseFontVariationAxes(properties["font-variation-settings"]);
 
     // If not defined in font-variation-settings, setup "wght" axis with the value of
@@ -98,14 +95,18 @@ const reducers = {
       axes.wdth = match[1];
     }
 
-    return { ...state, axes, fonts, families, properties };
+    return { ...state, axes, fonts, properties, id };
   },
 
   [UPDATE_PROPERTY_VALUE](state, { property, value }) {
     const newState = { ...state };
     newState.properties[property] = value;
     return newState;
-  }
+  },
+
+  [UPDATE_WARNING_MESSAGE](state, { warning }) {
+    return { ...state, warning };
+  },
 
 };
 

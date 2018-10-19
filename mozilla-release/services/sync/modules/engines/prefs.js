@@ -48,8 +48,9 @@ PrefsEngine.prototype = {
   async getChangedIDs() {
     // No need for a proper timestamp (no conflict resolution needed).
     let changedIDs = {};
-    if (this._tracker.modified)
+    if (this._tracker.modified) {
       changedIDs[PREFS_GUID] = 0;
+    }
     return changedIDs;
   },
 
@@ -65,7 +66,7 @@ PrefsEngine.prototype = {
       return true;
     }
     return SyncEngine.prototype._reconcile.call(this, item);
-  }
+  },
 };
 
 // We don't use services.sync.engine.tabs.filteredUrls since it includes
@@ -217,8 +218,9 @@ PrefStore.prototype = {
 
   async update(record) {
     // Silently ignore pref updates that are for other apps.
-    if (record.id != PREFS_GUID)
+    if (record.id != PREFS_GUID) {
       return;
+    }
 
     this._log.trace("Received pref updates, applying...");
     this._setAllPrefs(record.value);
@@ -226,7 +228,7 @@ PrefStore.prototype = {
 
   async wipe() {
     this._log.trace("Ignoring wipe request");
-  }
+  },
 };
 
 function PrefTracker(name, engine) {
@@ -283,5 +285,5 @@ PrefTracker.prototype = {
         }
         break;
     }
-  }
+  },
 };

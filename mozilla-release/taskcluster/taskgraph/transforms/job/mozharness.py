@@ -149,6 +149,7 @@ def mozharness_on_docker_worker_setup(config, job, taskdesc):
 
     env = worker.setdefault('env', {})
     env.update({
+        'GECKO_PATH': '{workdir}/workspace/build/src'.format(**run),
         'MOZHARNESS_CONFIG': ' '.join(run['config']),
         'MOZHARNESS_SCRIPT': run['script'],
         'MH_BRANCH': config.params['project'],
@@ -157,6 +158,7 @@ def mozharness_on_docker_worker_setup(config, job, taskdesc):
         'MOZ_BUILD_DATE': config.params['moz_build_date'],
         'MOZ_SCM_LEVEL': config.params['level'],
         'MOZ_AUTOMATION': '1',
+        'PYTHONUNBUFFERED': '1',
     })
 
     if 'actions' in run:
@@ -203,7 +205,7 @@ def mozharness_on_docker_worker_setup(config, job, taskdesc):
 
     command = [
         '{workdir}/bin/run-task'.format(**run),
-        '--vcs-checkout', '{workdir}/workspace/build/src'.format(**run),
+        '--vcs-checkout', env['GECKO_PATH'],
         '--tools-checkout', '{workdir}/workspace/build/tools'.format(**run),
     ]
     if run['comm-checkout']:
@@ -241,7 +243,8 @@ def mozharness_on_generic_worker(config, job, taskdesc):
 
     worker = taskdesc['worker']
 
-    generic_worker_add_artifacts(config, job, taskdesc)
+    if not worker.get('skip-artifacts', False):
+        generic_worker_add_artifacts(config, job, taskdesc)
     support_vcs_checkout(config, job, taskdesc)
 
     env = worker['env']
@@ -309,6 +312,16 @@ def mozharness_on_generic_worker(config, job, taskdesc):
                 head_rev=env['COMM_HEAD_REV'],
                 path=r'.\build\src\comm'))
 
+    fetch_commands = []
+    if 'MOZ_FETCHES' in env:
+        # When Bug 1436037 is fixed, run-task can be used for this task,
+        # and this call can go away
+        fetch_commands.append(' '.join([
+            r'c:\mozilla-build\python3\python3.exe',
+            r'build\src\taskcluster\scripts\misc\fetch-content',
+            'task-artifacts',
+        ]))
+
     worker['command'] = []
     if taskdesc.get('needs-sccache'):
         worker['command'].extend([
@@ -326,6 +339,7 @@ def mozharness_on_generic_worker(config, job, taskdesc):
         ])
 
     worker['command'].extend(hg_commands)
+    worker['command'].extend(fetch_commands)
     worker['command'].extend([
         ' '.join(mh_command)
     ])

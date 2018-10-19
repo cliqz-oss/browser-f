@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "WebMDecoder.h"
+#include "mozilla/Move.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs.h"
 #ifdef MOZ_AV1
@@ -16,69 +17,107 @@
 
 namespace mozilla {
 
-/* static */
-bool
-WebMDecoder::IsSupportedType(const MediaContainerType& aContainerType)
+/* static */ nsTArray<UniquePtr<TrackInfo>>
+WebMDecoder::GetTracksInfo(const MediaContainerType& aType, MediaResult& aError)
 {
-  if (!Preferences::GetBool("media.webm.enabled")) {
-    return false;
+  nsTArray<UniquePtr<TrackInfo>> tracks;
+  const bool isVideo = aType.Type() == MEDIAMIMETYPE("video/webm");
+
+  if (aType.Type() != MEDIAMIMETYPE("audio/webm") && !isVideo) {
+    aError = MediaResult(
+      NS_ERROR_DOM_MEDIA_FATAL_ERR,
+      RESULT_DETAIL("Invalid type:%s", aType.Type().AsString().get()));
+    return tracks;
   }
 
-  bool isVideo = aContainerType.Type() == MEDIAMIMETYPE("video/webm");
-  if (aContainerType.Type() != MEDIAMIMETYPE("audio/webm") && !isVideo) {
-    return false;
-  }
+  aError = NS_OK;
 
-  const MediaCodecs& codecs = aContainerType.ExtendedType().Codecs();
+  const MediaCodecs& codecs = aType.ExtendedType().Codecs();
   if (codecs.IsEmpty()) {
-    // WebM guarantees that the only codecs it contained are vp8, vp9, opus or vorbis.
-    return true;
+    return tracks;
   }
-  // Verify that all the codecs specified are ones that we expect that
-  // we can play.
+
   for (const auto& codec : codecs.Range()) {
     if (codec.EqualsLiteral("opus") || codec.EqualsLiteral("vorbis")) {
+      tracks.AppendElement(
+        CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
+          NS_LITERAL_CSTRING("audio/") + NS_ConvertUTF16toUTF8(codec), aType));
       continue;
     }
-    // Note: Only accept VP8/VP9 in a video container type, not in an audio
-    // container type.
-
     if (isVideo) {
       UniquePtr<TrackInfo> trackInfo;
-      if (IsVP9CodecString(codec))  {
+      if (IsVP9CodecString(codec)) {
         trackInfo = CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
-          NS_LITERAL_CSTRING("video/vp9"), aContainerType);
+          NS_LITERAL_CSTRING("video/vp9"), aType);
       } else if (IsVP8CodecString(codec)) {
         trackInfo = CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
-          NS_LITERAL_CSTRING("video/vp8"), aContainerType);
+          NS_LITERAL_CSTRING("video/vp8"), aType);
       }
-      // If it is vp8 or vp9, check the bit depth.
       if (trackInfo) {
         uint8_t profile = 0;
         uint8_t level = 0;
         uint8_t bitDepth = 0;
         if (ExtractVPXCodecDetails(codec, profile, level, bitDepth)) {
           trackInfo->GetAsVideoInfo()->mBitDepth = bitDepth;
-
-          // Verify that we have a PDM that supports this bit depth.
-          RefPtr<PDMFactory> platform = new PDMFactory();
-          if (!platform->Supports(*trackInfo, nullptr)) {
-            return false;
-          }
         }
+        tracks.AppendElement(std::move(trackInfo));
         continue;
       }
     }
 #ifdef MOZ_AV1
-    if (isVideo && StaticPrefs::MediaAv1Enabled() &&
-        AOMDecoder::IsSupportedCodec(codec)) {
+    if (StaticPrefs::MediaAv1Enabled() && IsAV1CodecString(codec)) {
+      tracks.AppendElement(
+        CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
+          NS_LITERAL_CSTRING("video/av1"), aType));
       continue;
     }
 #endif
-    // Some unsupported codec.
+    // Unknown codec
+    aError =
+      MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                  RESULT_DETAIL("Unknown codec:%s",
+                                NS_ConvertUTF16toUTF8(codec).get()));
+  }
+  return tracks;
+}
+
+/* static */
+bool
+WebMDecoder::IsSupportedType(const MediaContainerType& aContainerType)
+{
+  if (!StaticPrefs::MediaWebMEnabled()) {
     return false;
   }
+
+  MediaResult rv = NS_OK;
+  auto tracks = GetTracksInfo(aContainerType, rv);
+
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  if (tracks.IsEmpty()) {
+    // WebM guarantees that the only codecs it contained are vp8, vp9, opus or vorbis.
+    return true;
+  }
+
+  // Verify that we have a PDM that supports the whitelisted types, include
+  // bitdepth
+  RefPtr<PDMFactory> platform = new PDMFactory();
+  for (const auto& track : tracks) {
+    if (!track || !platform->Supports(*track, nullptr /* diagnostic */)) {
+      return false;
+    }
+  }
+
   return true;
+}
+
+/* static */ nsTArray<UniquePtr<TrackInfo>>
+WebMDecoder::GetTracksInfo(const MediaContainerType& aType)
+{
+  MediaResult rv = NS_OK;
+  return GetTracksInfo(aType, rv);
 }
 
 } // namespace mozilla

@@ -25,6 +25,7 @@
 #include "nsIObserverService.h"
 #include "nsIDebug2.h"
 #include "nsIDocShell.h"
+#include "nsIDocument.h"
 #include "nsIRunnable.h"
 #include "nsPIDOMWindow.h"
 #include "nsPrintfCString.h"
@@ -41,6 +42,8 @@
 #include "nsCycleCollector.h"
 #include "jsapi.h"
 #include "js/MemoryMetrics.h"
+#include "js/UbiNode.h"
+#include "js/UbiNodeUtils.h"
 #include "mozilla/dom/GeneratedAtomList.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Element.h"
@@ -57,6 +60,7 @@
 #include "nsAboutProtocolUtils.h"
 
 #include "GeckoProfiler.h"
+#include "NodeUbiReporting.h"
 #include "nsIInputStream.h"
 #include "nsIXULRuntime.h"
 #include "nsJSPrincipals.h"
@@ -124,9 +128,12 @@ public:
   NS_IMETHOD Run() override
   {
       AUTO_PROFILER_LABEL("AsyncFreeSnowWhite::Run", GCCC);
-      
+
       TimeStamp start = TimeStamp::Now();
-      bool hadSnowWhiteObjects = nsCycleCollector_doDeferredDeletion();
+      // 2 ms budget, given that kICCSliceBudget is only 3 ms
+      js::SliceBudget budget = js::SliceBudget(js::TimeBudget(2));
+      bool hadSnowWhiteObjects =
+        nsCycleCollector_doDeferredDeletionWithBudget(budget);
       Telemetry::Accumulate(Telemetry::CYCLE_COLLECTOR_ASYNC_SNOW_WHITE_FREEING,
                             uint32_t((TimeStamp::Now() - start).ToMilliseconds()));
       if (hadSnowWhiteObjects && !mContinuation) {
@@ -143,7 +150,7 @@ public:
   nsresult Dispatch()
   {
       nsCOMPtr<nsIRunnable> self(this);
-      return NS_IdleDispatchToCurrentThread(self.forget(), 2500);
+      return NS_IdleDispatchToCurrentThread(self.forget(), 500);
   }
 
   void Start(bool aContinuation = false, bool aPurge = false)
@@ -161,7 +168,8 @@ public:
     : Runnable("AsyncFreeSnowWhite")
     , mContinuation(false)
     , mActive(false)
-    , mPurge(false) {}
+    , mPurge(false)
+  {}
 
 public:
   bool mContinuation;
@@ -177,6 +185,8 @@ CompartmentPrivate::CompartmentPrivate(JS::Compartment* c)
     , isWebExtensionContentScript(false)
     , allowCPOWs(false)
     , isContentXBLCompartment(false)
+    , isUAWidgetCompartment(false)
+    , isSandboxCompartment(false)
     , isAddonCompartment(false)
     , universalXPConnectEnabled(false)
     , forcePermissiveCOWs(false)
@@ -434,6 +444,13 @@ Scriptability::Get(JSObject* aScope)
     return RealmPrivate::Get(aScope)->scriptability;
 }
 
+/* static */
+Scriptability&
+Scriptability::Get(JSScript* aScript)
+{
+    return RealmPrivate::Get(aScript)->scriptability;
+}
+
 bool
 IsContentXBLCompartment(JS::Compartment* compartment)
 {
@@ -452,6 +469,36 @@ bool
 IsInContentXBLScope(JSObject* obj)
 {
     return IsContentXBLCompartment(js::GetObjectCompartment(obj));
+}
+
+bool
+IsUAWidgetCompartment(JS::Compartment* compartment)
+{
+    // We always eagerly create compartment privates for UA Widget compartments.
+    CompartmentPrivate* priv = CompartmentPrivate::Get(compartment);
+    return priv && priv->isUAWidgetCompartment;
+}
+
+bool
+IsUAWidgetScope(JS::Realm* realm)
+{
+    return IsUAWidgetCompartment(JS::GetCompartmentForRealm(realm));
+}
+
+bool
+IsInUAWidgetScope(JSObject* obj)
+{
+    return IsUAWidgetCompartment(js::GetObjectCompartment(obj));
+}
+
+bool
+IsInSandboxCompartment(JSObject* obj)
+{
+    JS::Compartment* comp = js::GetObjectCompartment(obj);
+
+    // We always eagerly create compartment privates for sandbox compartments.
+    CompartmentPrivate* priv = CompartmentPrivate::Get(comp);
+    return priv && priv->isSandboxCompartment;
 }
 
 bool
@@ -515,13 +562,13 @@ UnprivilegedJunkScope()
 JSObject*
 PrivilegedJunkScope()
 {
-    return XPCJSRuntime::Get()->PrivilegedJunkScope();
+    return XPCJSRuntime::Get()->LoaderGlobal();
 }
 
 JSObject*
 CompilationScope()
 {
-    return XPCJSRuntime::Get()->CompilationScope();
+    return XPCJSRuntime::Get()->LoaderGlobal();
 }
 
 nsGlobalWindowInner*
@@ -539,7 +586,7 @@ nsGlobalWindowInner*
 WindowGlobalOrNull(JSObject* aObj)
 {
     MOZ_ASSERT(aObj);
-    JSObject* glob = js::GetGlobalForObjectCrossCompartment(aObj);
+    JSObject* glob = JS::GetNonCCWObjectGlobal(aObj);
 
     return WindowOrNull(glob);
 }
@@ -874,6 +921,7 @@ XPCJSRuntime::WeakPointerZonesCallback(JSContext* cx, void* data)
     XPCJSRuntime* self = static_cast<XPCJSRuntime*>(data);
 
     self->mWrappedJSMap->UpdateWeakPointersAfterGC();
+    self->mUAWidgetScopeMap.sweep();
 
     XPCWrappedNativeScope::UpdateWeakPointersInAllScopesAfterGC();
 }
@@ -1887,10 +1935,6 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats& rtStats,
         KIND_HEAP, rtStats.runtime.interpreterStack,
         "JS interpreter frames.");
 
-    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/math-cache"),
-        KIND_HEAP, rtStats.runtime.mathCache,
-        "The math cache.");
-
     RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/shared-immutable-strings-cache"),
         KIND_HEAP, rtStats.runtime.sharedImmutableStringsCache,
         "Immutable strings (such as JS scripts' source text) shared across all JSRuntimes.");
@@ -2098,39 +2142,33 @@ class OrphanReporter : public JS::ObjectPrivateVisitor
 
     virtual size_t sizeOfIncludingThis(nsISupports* aSupports) override
     {
-        size_t n = 0;
         nsCOMPtr<nsINode> node = do_QueryInterface(aSupports);
-        // https://bugzilla.mozilla.org/show_bug.cgi?id=773533#c11 explains
-        // that we have to skip XBL elements because they violate certain
-        // assumptions.  Yuk.
-        if (node && !node->IsInUncomposedDoc() &&
-            !(node->IsElement() && node->AsElement()->IsInNamespace(kNameSpaceID_XBL)))
-        {
-            // This is an orphan node.  If we haven't already handled the
-            // sub-tree that this node belongs to, measure the sub-tree's size
-            // and then record its root so we don't measure it again.
-            nsCOMPtr<nsINode> orphanTree = node->SubtreeRoot();
-            if (orphanTree && !mState.HaveSeenPtr(orphanTree.get())) {
-                n += SizeOfTreeIncludingThis(orphanTree);
-            }
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=773533#c11 explains that we have to skip
+        // XBL elements because they violate certain assumptions.  Yuk.
+        if (!node || node->IsInComposedDoc() ||
+            (node->IsElement() && node->AsElement()->IsInNamespace(kNameSpaceID_XBL))) {
+            return 0;
         }
-        return n;
-    }
 
-    size_t SizeOfTreeIncludingThis(nsINode* tree)
-    {
-        size_t nodeSize = 0;
+        // This is an orphan node.  If we haven't already handled the sub-tree that this node
+        // belongs to, measure the sub-tree's size and then record its root so we don't measure it
+        // again.
+        nsCOMPtr<nsINode> orphanTree = node->SubtreeRoot();
+        if (!orphanTree || mState.HaveSeenPtr(orphanTree.get())) {
+            return 0;
+        }
+
         nsWindowSizes sizes(mState);
-        tree->AddSizeOfIncludingThis(sizes, &nodeSize);
-        for (nsIContent* child = tree->GetFirstChild(); child; child = child->GetNextNode(tree))
-            child->AddSizeOfIncludingThis(sizes, &nodeSize);
+        nsIDocument::AddSizeOfNodeTree(*orphanTree, sizes);
 
-        // We combine the node size with nsStyleSizes here. It's not ideal, but
-        // it's hard to get the style structs measurements out to
-        // nsWindowMemoryReporter. Also, we drop mServoData in
-        // UnbindFromTree(), so in theory any non-in-tree element won't have
-        // any style data to measure.
-        return nodeSize + sizes.getTotalSize();
+        // We combine the node size with nsStyleSizes here. It's not ideal, but it's hard to get
+        // the style structs measurements out to nsWindowMemoryReporter. Also, we drop mServoData
+        // in UnbindFromTree(), so in theory any non-in-tree element won't have any style data to
+        // measure.
+        //
+        // FIXME(emilio): We should ideally not do this, since ShadowRoots keep their StyleSheets
+        // alive even when detached from a document, and those could be significant in theory.
+        return sizes.getTotalSize();
     }
 
   private:
@@ -2817,12 +2855,72 @@ XPCJSRuntime::Get()
     return nsXPConnect::GetRuntimeInstance();
 }
 
+// Subclass of JS::ubi::Base for DOM reflector objects for the JS::ubi::Node memory
+// analysis framework; see js/public/UbiNode.h.
+// In XPCJSRuntime::Initialize, we register the ConstructUbiNode function as a
+// hook with the SpiderMonkey runtime for it to use to construct ubi::Nodes
+// of this class for JSObjects whose class has the JSCLASS_IS_DOMJSCLASS flag set.
+// ReflectorNode specializes Concrete<JSObject> for DOM reflector nodes, reporting
+// the edge from the JSObject to the nsINode it represents, in addition to the
+// usual edges departing any normal JSObject.
+namespace JS {
+namespace ubi {
+class ReflectorNode : public Concrete<JSObject>
+{
+protected:
+  explicit ReflectorNode(JSObject *ptr) : Concrete<JSObject>(ptr) { }
+
+public:
+  static void construct(void *storage, JSObject *ptr)
+  {
+      new (storage) ReflectorNode(ptr);
+  }
+  js::UniquePtr<JS::ubi::EdgeRange> edges(JSContext* cx, bool wantNames) const override;
+};
+
+js::UniquePtr<EdgeRange>
+ReflectorNode::edges(JSContext* cx, bool wantNames) const
+{
+    js::UniquePtr<SimpleEdgeRange> range(
+        static_cast<SimpleEdgeRange*>(Concrete<JSObject>::edges(cx, wantNames).release()));
+    if (!range) {
+        return nullptr;
+    }
+    // UNWRAP_OBJECT assumes the object is completely initialized, but ours
+    // may not be.  Luckily, UnwrapDOMObjectToISupports checks for the
+    // uninitialized case (and returns null if uninitialized), so we can use
+    // that to guard against uninitialized objects.
+    nsISupports* supp = UnwrapDOMObjectToISupports(&get());
+    if (supp) {
+        nsCOMPtr<nsINode> node;
+        UNWRAP_OBJECT(Node, &get(), node);
+        if (node) {
+            char16_t* edgeName = nullptr;
+            if (wantNames) {
+                edgeName = NS_xstrdup(u"Reflected Node");
+            }
+            if (!range->addEdge(Edge(edgeName, node.get()))){
+                return nullptr;
+            }
+        }
+    }
+    return js::UniquePtr<EdgeRange>(range.release());
+}
+
+} // Namespace ubi
+} // Namespace JS
+
+void
+ConstructUbiNode(void* storage, JSObject* ptr)
+{
+  JS::ubi::ReflectorNode::construct(storage, ptr);
+}
+
 void
 XPCJSRuntime::Initialize(JSContext* cx)
 {
     mUnprivilegedJunkScope.init(cx, nullptr);
-    mPrivilegedJunkScope.init(cx, nullptr);
-    mCompilationScope.init(cx, nullptr);
+    mLoaderGlobal.init(cx, nullptr);
 
     // these jsids filled in later when we have a JSContext to work with.
     mStrIDs[0] = JSID_VOID;
@@ -2881,6 +2979,9 @@ XPCJSRuntime::Initialize(JSContext* cx)
     RegisterJSMainRuntimeRealmsSystemDistinguishedAmount(JSMainRuntimeRealmsSystemDistinguishedAmount);
     RegisterJSMainRuntimeRealmsUserDistinguishedAmount(JSMainRuntimeRealmsUserDistinguishedAmount);
     mozilla::RegisterJSSizeOfTab(JSSizeOfTab);
+
+    // Set the callback for reporting memory to ubi::Node.
+    JS::ubi::SetConstructUbiNodeForDOMObjectCallback(cx, &ConstructUbiNode);
 
     xpc_LocalizeRuntime(JS_GetRuntime(cx));
 }
@@ -3056,6 +3157,46 @@ XPCJSRuntime::RemoveGCCallback(xpcGCCallback cb)
     }
 }
 
+JSObject*
+XPCJSRuntime::GetUAWidgetScope(JSContext* cx, nsIPrincipal* principal)
+{
+    MOZ_ASSERT(!nsContentUtils::IsSystemPrincipal(principal),
+        "Running UA Widget in chrome");
+
+    RefPtr<BasePrincipal> key = BasePrincipal::Cast(principal);
+    if (Principal2JSObjectMap::Ptr p = mUAWidgetScopeMap.lookup(key)) {
+        return p->value();
+    }
+
+    SandboxOptions options;
+    options.sandboxName.AssignLiteral("UA Widget Scope");
+    options.wantXrays = false;
+    options.wantComponents = false;
+    options.isUAWidgetScope = true;
+
+    // Use an ExpandedPrincipal to create asymmetric security.
+    MOZ_ASSERT(!nsContentUtils::IsExpandedPrincipal(principal));
+    nsTArray<nsCOMPtr<nsIPrincipal>> principalAsArray(1);
+    principalAsArray.AppendElement(principal);
+    RefPtr<ExpandedPrincipal> ep =
+        ExpandedPrincipal::Create(principalAsArray,
+                                  principal->OriginAttributesRef());
+
+    // Create the sandbox.
+    RootedValue v(cx);
+    nsresult rv = CreateSandboxObject(cx, &v,
+                                      static_cast<nsIExpandedPrincipal*>(ep),
+                                      options);
+    NS_ENSURE_SUCCESS(rv, nullptr);
+    JSObject* scope = &v.toObject();
+
+    MOZ_ASSERT(xpc::IsInUAWidgetScope(js::UncheckedUnwrap(scope)));
+
+    MOZ_ALWAYS_TRUE(mUAWidgetScopeMap.putNew(key, scope));
+
+    return scope;
+}
+
 void
 XPCJSRuntime::InitSingletonScopes()
 {
@@ -3072,24 +3213,6 @@ XPCJSRuntime::InitSingletonScopes()
     rv = CreateSandboxObject(cx, &v, nullptr, unprivilegedJunkScopeOptions);
     MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
     mUnprivilegedJunkScope = js::UncheckedUnwrap(&v.toObject());
-
-    // Create the Privileged Junk Scope.
-    SandboxOptions privilegedJunkScopeOptions;
-    privilegedJunkScopeOptions.sandboxName.AssignLiteral("XPConnect Privileged Junk Compartment");
-    privilegedJunkScopeOptions.invisibleToDebugger = true;
-    privilegedJunkScopeOptions.wantComponents = false;
-    rv = CreateSandboxObject(cx, &v, nsXPConnect::SystemPrincipal(), privilegedJunkScopeOptions);
-    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
-    mPrivilegedJunkScope = js::UncheckedUnwrap(&v.toObject());
-
-    // Create the Compilation Scope.
-    SandboxOptions compilationScopeOptions;
-    compilationScopeOptions.sandboxName.AssignLiteral("XPConnect Compilation Compartment");
-    compilationScopeOptions.invisibleToDebugger = true;
-    compilationScopeOptions.discardSource = ShouldDiscardSystemSource();
-    rv = CreateSandboxObject(cx, &v, /* principal = */ nullptr, compilationScopeOptions);
-    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
-    mCompilationScope = js::UncheckedUnwrap(&v.toObject());
 }
 
 void
@@ -3100,10 +3223,20 @@ XPCJSRuntime::DeleteSingletonScopes()
     RefPtr<SandboxPrivate> sandbox = SandboxPrivate::GetPrivate(mUnprivilegedJunkScope);
     sandbox->ReleaseWrapper(sandbox);
     mUnprivilegedJunkScope = nullptr;
-    sandbox = SandboxPrivate::GetPrivate(mPrivilegedJunkScope);
-    sandbox->ReleaseWrapper(sandbox);
-    mPrivilegedJunkScope = nullptr;
-    sandbox = SandboxPrivate::GetPrivate(mCompilationScope);
-    sandbox->ReleaseWrapper(sandbox);
-    mCompilationScope = nullptr;
+    mLoaderGlobal = nullptr;
+}
+
+JSObject*
+XPCJSRuntime::LoaderGlobal()
+{
+    if (!mLoaderGlobal) {
+        RefPtr<mozJSComponentLoader> loader = mozJSComponentLoader::GetOrCreate();
+
+        dom::AutoJSAPI jsapi;
+        jsapi.Init();
+
+        mLoaderGlobal = loader->GetSharedGlobal(jsapi.cx());
+        MOZ_RELEASE_ASSERT(!JS_IsExceptionPending(jsapi.cx()));
+    }
+    return mLoaderGlobal;
 }

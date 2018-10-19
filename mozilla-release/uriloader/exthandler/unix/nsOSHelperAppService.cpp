@@ -31,6 +31,7 @@
 #include "prenv.h"      // for PR_GetEnv()
 #include "nsAutoPtr.h"
 #include "mozilla/Preferences.h"
+#include "nsMimeTypes.h"
 
 using namespace mozilla;
 
@@ -222,13 +223,12 @@ nsOSHelperAppService::LookUpTypeAndDescription(const nsAString& aFileExtension,
                                                bool aUserData) {
   LOG(("-- LookUpTypeAndDescription for extension '%s'\n",
        NS_LossyConvertUTF16toASCII(aFileExtension).get()));
-  nsresult rv = NS_OK;
   nsAutoString mimeFileName;
 
   const char* filenamePref = aUserData ?
     "helpers.private_mime_types_file" : "helpers.global_mime_types_file";
 
-  rv = GetFileLocation(filenamePref, nullptr, mimeFileName);
+  nsresult rv = GetFileLocation(filenamePref, nullptr, mimeFileName);
   if (NS_SUCCEEDED(rv) && !mimeFileName.IsEmpty()) {
     rv = GetTypeAndDescriptionFromMimetypesFile(mimeFileName,
                                                 aFileExtension,
@@ -315,15 +315,15 @@ nsOSHelperAppService::GetTypeAndDescriptionFromMimetypesFile(const nsAString& aF
        NS_LossyConvertUTF16toASCII(aFilename).get()));
   LOG(("Using extension '%s'\n",
        NS_LossyConvertUTF16toASCII(aFileExtension).get()));
-  nsresult rv = NS_OK;
   nsCOMPtr<nsIFileInputStream> mimeFile;
   nsCOMPtr<nsILineInputStream> mimeTypes;
   bool netscapeFormat;
   nsAutoString buf;
   nsAutoCString cBuf;
   bool more = false;
-  rv = CreateInputStream(aFilename, getter_AddRefs(mimeFile), getter_AddRefs(mimeTypes),
-                         cBuf, &netscapeFormat, &more);
+  nsresult rv = CreateInputStream(aFilename, getter_AddRefs(mimeFile),
+                                  getter_AddRefs(mimeTypes),
+                                  cBuf, &netscapeFormat, &more);
 
   if (NS_FAILED(rv)) {
     return rv;
@@ -438,10 +438,10 @@ nsOSHelperAppService::LookUpExtensionsAndDescription(const nsAString& aMajorType
   LOG(("-- LookUpExtensionsAndDescription for type '%s/%s'\n",
        NS_LossyConvertUTF16toASCII(aMajorType).get(),
        NS_LossyConvertUTF16toASCII(aMinorType).get()));
-  nsresult rv = NS_OK;
   nsAutoString mimeFileName;
 
-  rv = GetFileLocation("helpers.private_mime_types_file", nullptr, mimeFileName);
+  nsresult rv = GetFileLocation("helpers.private_mime_types_file",
+                                nullptr, mimeFileName);
   if (NS_SUCCEEDED(rv) && !mimeFileName.IsEmpty()) {
     rv = GetExtensionsAndDescriptionFromMimetypesFile(mimeFileName,
                                                       aMajorType,
@@ -482,17 +482,15 @@ nsOSHelperAppService::GetExtensionsAndDescriptionFromMimetypesFile(const nsAStri
   LOG(("Using type '%s/%s'\n",
        NS_LossyConvertUTF16toASCII(aMajorType).get(),
        NS_LossyConvertUTF16toASCII(aMinorType).get()));
-
-  nsresult rv = NS_OK;
   nsCOMPtr<nsIFileInputStream> mimeFile;
   nsCOMPtr<nsILineInputStream> mimeTypes;
   bool netscapeFormat;
   nsAutoCString cBuf;
   nsAutoString buf;
   bool more = false;
-  rv = CreateInputStream(aFilename, getter_AddRefs(mimeFile), getter_AddRefs(mimeTypes),
-                         cBuf, &netscapeFormat, &more);
-
+  nsresult rv = CreateInputStream(aFilename, getter_AddRefs(mimeFile),
+                                  getter_AddRefs(mimeTypes),
+                                  cBuf, &netscapeFormat, &more);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -887,7 +885,6 @@ nsOSHelperAppService::DoLookUpHandlerAndDescription(const nsAString& aMajorType,
   LOG(("-- LookUpHandlerAndDescription for type '%s/%s'\n",
        NS_LossyConvertUTF16toASCII(aMajorType).get(),
        NS_LossyConvertUTF16toASCII(aMinorType).get()));
-  nsresult rv = NS_OK;
   nsAutoString mailcapFileName;
 
   const char * filenamePref = aUserData ?
@@ -895,7 +892,7 @@ nsOSHelperAppService::DoLookUpHandlerAndDescription(const nsAString& aMajorType,
   const char * filenameEnvVar = aUserData ?
     "PERSONAL_MAILCAP" : "MAILCAP";
 
-  rv = GetFileLocation(filenamePref, filenameEnvVar, mailcapFileName);
+  nsresult rv = GetFileLocation(filenamePref, filenameEnvVar, mailcapFileName);
   if (NS_SUCCEEDED(rv) && !mailcapFileName.IsEmpty()) {
     rv = GetHandlerAndDescriptionFromMailcapFile(mailcapFileName,
                                                  aMajorType,
@@ -1454,7 +1451,12 @@ nsOSHelperAppService::GetMIMEInfoFromOS(const nsACString& aType,
                                         const nsACString& aFileExt,
                                         bool       *aFound) {
   *aFound = true;
-  RefPtr<nsMIMEInfoBase> retval = GetFromType(PromiseFlatCString(aType));
+  RefPtr<nsMIMEInfoBase> retval;
+  // Fallback to lookup by extension when generic 'application/octet-stream'
+  // content type is received.
+  if (!aType.EqualsLiteral(APPLICATION_OCTET_STREAM)) {
+    retval = GetFromType(PromiseFlatCString(aType));
+  }
   bool hasDefault = false;
   if (retval)
     retval->GetHasDefaultHandler(&hasDefault);

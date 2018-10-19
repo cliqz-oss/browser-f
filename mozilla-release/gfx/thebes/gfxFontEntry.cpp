@@ -77,6 +77,7 @@ gfxFontEntry::gfxFontEntry() :
     mHasGraphiteSpaceContextuals(false),
     mSpaceGlyphIsInvisible(false),
     mSpaceGlyphIsInvisibleInitialized(false),
+    mHasGraphiteTables(false),
     mCheckedForGraphiteTables(false),
     mHasCmapTable(false),
     mGrFaceInitialized(false),
@@ -107,6 +108,7 @@ gfxFontEntry::gfxFontEntry(const nsAString& aName, bool aIsStandardFace) :
     mHasGraphiteSpaceContextuals(false),
     mSpaceGlyphIsInvisible(false),
     mSpaceGlyphIsInvisibleInitialized(false),
+    mHasGraphiteTables(false),
     mCheckedForGraphiteTables(false),
     mHasCmapTable(false),
     mGrFaceInitialized(false),
@@ -1709,7 +1711,7 @@ gfxFontFamily::FindAllFontsForStyle(const gfxFontStyle& aFontStyle,
         }
 
         // this can't happen unless we have totally broken the font-list manager!
-        NS_NOTREACHED("no face found in simple font family!");
+        MOZ_ASSERT_UNREACHABLE("no face found in simple font family!");
     }
 
     // Pick the font(s) that are closest to the desired weight, style, and

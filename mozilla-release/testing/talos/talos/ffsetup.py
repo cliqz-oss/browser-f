@@ -174,7 +174,10 @@ class FFSetup(object):
                 'appname',
                 'firefox'),
             mozrunner.Runner)
-        args = [self.browser_config["extra_args"], self.browser_config["init_url"]]
+
+        args = list(self.browser_config["extra_args"])
+        args.append(self.browser_config["init_url"])
+
         runner = runner_cls(profile=self.profile_dir,
                             binary=self.browser_config["browser_path"],
                             cmdargs=args,
@@ -201,7 +204,8 @@ class FFSetup(object):
         if upload_dir and self.test_config.get('gecko_profile'):
             self.gecko_profile = GeckoProfile(upload_dir,
                                               self.browser_config,
-                                              self.test_config)
+                                              self.test_config,
+                                              str(os.getenv('MOZ_WEBRENDER')) == '1')
             self.gecko_profile.update_env(self.env)
 
     def clean(self):

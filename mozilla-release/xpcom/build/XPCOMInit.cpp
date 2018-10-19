@@ -103,6 +103,7 @@ extern nsresult nsStringInputStreamConstructor(nsISupports*, REFNSIID, void**);
 #include "nsSecurityConsoleMessage.h"
 #include "nsMessageLoop.h"
 #include "nss.h"
+#include "ssl.h"
 
 #include <locale.h>
 #include "mozilla/Services.h"
@@ -367,7 +368,7 @@ private:
 
 NS_IMPL_ISUPPORTS(ICUReporter, nsIMemoryReporter)
 
-/* static */ template<> Atomic<size_t>
+/* static */ template<> CountingAllocatorBase<ICUReporter>::AmountType
 CountingAllocatorBase<ICUReporter>::sAmount(0);
 
 class OggReporter final
@@ -395,7 +396,7 @@ private:
 
 NS_IMPL_ISUPPORTS(OggReporter, nsIMemoryReporter)
 
-/* static */ template<> Atomic<size_t>
+/* static */ template<> CountingAllocatorBase<OggReporter>::AmountType
 CountingAllocatorBase<OggReporter>::sAmount(0);
 
 #ifdef MOZ_VPX
@@ -503,10 +504,6 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
 
   // We are not shutting down
   gXPCOMShuttingDown = false;
-
-  // Initialize the available memory tracker before other threads have had a
-  // chance to start up, because the initialization is not thread-safe.
-  mozilla::AvailableMemoryTracker::Init();
 
 #ifdef XP_UNIX
   // Discover the current value of the umask, and save it where
@@ -719,7 +716,7 @@ NS_InitXPCOM2(nsIServiceManager** aResult,
 
   mozilla::ScriptPreloader::GetSingleton();
   mozilla::scache::StartupCache::GetSingleton();
-  mozilla::AvailableMemoryTracker::Activate();
+  mozilla::AvailableMemoryTracker::Init();
 
   // Notify observers of xpcom autoregistration start
   NS_CreateServicesFromCategory(NS_XPCOM_STARTUP_CATEGORY,
@@ -1041,6 +1038,7 @@ ShutdownXPCOM(nsIServiceManager* aServMgr)
   // down, any remaining objects that could be holding NSS resources (should)
   // have been released, so we can safely shut down NSS.
   if (NSS_IsInitialized()) {
+    SSL_ClearSessionCache();
     if (NSS_Shutdown() != SECSuccess) {
       // If you're seeing this crash and/or warning, some NSS resources are
       // still in use (see bugs 1417680 and 1230312).

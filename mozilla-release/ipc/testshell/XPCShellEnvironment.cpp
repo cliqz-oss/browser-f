@@ -16,6 +16,9 @@
 #include "base/basictypes.h"
 
 #include "jsapi.h"
+#include "js/AutoByteString.h"
+#include "js/CompilationAndEvaluation.h"
+#include "js/SourceBufferHolder.h"
 
 #include "xpcpublic.h"
 
@@ -487,8 +490,9 @@ XPCShellEnvironment::EvaluateString(const nsString& aString,
   JS::CompileOptions options(cx);
   options.setFileAndLine("typein", 0);
   JS::Rooted<JSScript*> script(cx);
-  if (!JS_CompileUCScript(cx, aString.get(), aString.Length(), options,
-                          &script))
+  JS::SourceBufferHolder srcBuf(aString.get(), aString.Length(),
+                                JS::SourceBufferHolder::NoOwnership);
+  if (!JS_CompileUCScript(cx, srcBuf, options, &script))
   {
      return false;
   }

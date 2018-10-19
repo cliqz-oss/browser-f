@@ -124,7 +124,7 @@ JSObject*
 VRFieldOfView::WrapObject(JSContext* aCx,
                           JS::Handle<JSObject*> aGivenProto)
 {
-  return VRFieldOfViewBinding::Wrap(aCx, this, aGivenProto);
+  return VRFieldOfView_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(VREyeParameters)
@@ -187,7 +187,7 @@ VREyeParameters::GetOffset(JSContext* aCx, JS::MutableHandle<JSObject*> aRetval,
 JSObject*
 VREyeParameters::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return VREyeParametersBinding::Wrap(aCx, this, aGivenProto);
+  return VREyeParameters_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 VRStageParameters::VRStageParameters(nsISupports* aParent,
@@ -209,7 +209,7 @@ VRStageParameters::~VRStageParameters()
 JSObject*
 VRStageParameters::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return VRStageParametersBinding::Wrap(aCx, this, aGivenProto);
+  return VRStageParameters_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(VRStageParameters)
@@ -256,7 +256,7 @@ NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(VRDisplayCapabilities, Release)
 JSObject*
 VRDisplayCapabilities::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return VRDisplayCapabilitiesBinding::Wrap(aCx, this, aGivenProto);
+  return VRDisplayCapabilities_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 VRPose::VRPose(nsISupports* aParent, const gfx::VRHMDSensorState& aState)
@@ -285,7 +285,7 @@ VRPose::GetPosition(JSContext* aCx,
                     JS::MutableHandle<JSObject*> aRetval,
                     ErrorResult& aRv)
 {
-  SetFloat32Array(aCx, aRetval, mPosition, mVRState.position, 3,
+  SetFloat32Array(aCx, aRetval, mPosition, mVRState.pose.position, 3,
     !mPosition && bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Position),
     aRv);
 }
@@ -295,7 +295,7 @@ VRPose::GetLinearVelocity(JSContext* aCx,
                           JS::MutableHandle<JSObject*> aRetval,
                           ErrorResult& aRv)
 {
-  SetFloat32Array(aCx, aRetval, mLinearVelocity, mVRState.linearVelocity, 3,
+  SetFloat32Array(aCx, aRetval, mLinearVelocity, mVRState.pose.linearVelocity, 3,
     !mLinearVelocity && bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Position),
     aRv);
 }
@@ -305,7 +305,7 @@ VRPose::GetLinearAcceleration(JSContext* aCx,
                               JS::MutableHandle<JSObject*> aRetval,
                               ErrorResult& aRv)
 {
-  SetFloat32Array(aCx, aRetval, mLinearAcceleration, mVRState.linearAcceleration, 3,
+  SetFloat32Array(aCx, aRetval, mLinearAcceleration, mVRState.pose.linearAcceleration, 3,
     !mLinearAcceleration && bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_LinearAcceleration),
     aRv);
 
@@ -316,7 +316,7 @@ VRPose::GetOrientation(JSContext* aCx,
                        JS::MutableHandle<JSObject*> aRetval,
                        ErrorResult& aRv)
 {
-  SetFloat32Array(aCx, aRetval, mOrientation, mVRState.orientation, 4,
+  SetFloat32Array(aCx, aRetval, mOrientation, mVRState.pose.orientation, 4,
     !mOrientation && bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Orientation),
     aRv);
 }
@@ -326,7 +326,7 @@ VRPose::GetAngularVelocity(JSContext* aCx,
                            JS::MutableHandle<JSObject*> aRetval,
                            ErrorResult& aRv)
 {
-  SetFloat32Array(aCx, aRetval, mAngularVelocity, mVRState.angularVelocity, 3,
+  SetFloat32Array(aCx, aRetval, mAngularVelocity, mVRState.pose.angularVelocity, 3,
     !mAngularVelocity && bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Orientation),
     aRv);
 }
@@ -336,7 +336,7 @@ VRPose::GetAngularAcceleration(JSContext* aCx,
                                JS::MutableHandle<JSObject*> aRetval,
                                ErrorResult& aRv)
 {
-  SetFloat32Array(aCx, aRetval, mAngularAcceleration, mVRState.angularAcceleration, 3,
+  SetFloat32Array(aCx, aRetval, mAngularAcceleration, mVRState.pose.angularAcceleration, 3,
     !mAngularAcceleration && bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_AngularAcceleration),
     aRv);
 }
@@ -344,13 +344,13 @@ VRPose::GetAngularAcceleration(JSContext* aCx,
 JSObject*
 VRPose::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return VRPoseBinding::Wrap(aCx, this, aGivenProto);
+  return VRPose_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 /* virtual */ JSObject*
 VRDisplay::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return VRDisplayBinding::Wrap(aCx, this, aGivenProto);
+  return VRDisplay_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 VRDisplay::VRDisplay(nsPIDOMWindowInner* aWindow, gfx::VRDisplayClient* aClient)
@@ -499,10 +499,23 @@ VRDisplay::ResetPose()
 }
 
 void
+VRDisplay::StartVRNavigation()
+{
+  mClient->StartVRNavigation();
+}
+
+void
 VRDisplay::StartHandlingVRNavigationEvent()
 {
   mHandlingVRNavigationEventStart = TimeStamp::Now();
   ++mVRNavigationEventDepth;
+  TimeDuration timeout = TimeDuration::FromMilliseconds(gfxPrefs::VRNavigationTimeout());
+  // A 0 or negative TimeDuration indicates that content may take
+  // as long as it wishes to respond to the event, as long as
+  // it happens before the event exits.
+  if (timeout.ToMilliseconds() > 0) {
+    mClient->StopVRNavigation(timeout);
+  }
 }
 
 void
@@ -510,6 +523,9 @@ VRDisplay::StopHandlingVRNavigationEvent()
 {
   MOZ_ASSERT(mVRNavigationEventDepth > 0);
   --mVRNavigationEventDepth;
+  if (mVRNavigationEventDepth == 0) {
+    mClient->StopVRNavigation(TimeDuration::FromMilliseconds(0));
+  }
 }
 
 bool
@@ -522,8 +538,13 @@ VRDisplay::IsHandlingVRNavigationEvent()
     return false;
   }
   TimeDuration timeout = TimeDuration::FromMilliseconds(gfxPrefs::VRNavigationTimeout());
-  return timeout <= TimeDuration(0) ||
+  return timeout.ToMilliseconds() <= 0 ||
     (TimeStamp::Now() - mHandlingVRNavigationEventStart) <= timeout;
+}
+
+void
+VRDisplay::OnPresentationGenerationChanged() {
+  ExitPresentInternal();
 }
 
 already_AddRefed<Promise>
@@ -803,7 +824,7 @@ JSObject*
 VRFrameData::WrapObject(JSContext* aCx,
                         JS::Handle<JSObject*> aGivenProto)
 {
-  return VRFrameDataBinding::Wrap(aCx, this, aGivenProto);
+  return VRFrameData_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 VRPose*
@@ -970,7 +991,7 @@ JSObject*
 VRSubmitFrameResult::WrapObject(JSContext* aCx,
                                 JS::Handle<JSObject*> aGivenProto)
 {
-  return VRSubmitFrameResultBinding::Wrap(aCx, this, aGivenProto);
+  return VRSubmitFrameResult_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

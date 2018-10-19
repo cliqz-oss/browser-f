@@ -8,10 +8,9 @@ xul|tab[visuallyselected] {
   /* Override styles for tab[selected] from
      toolkit/themes/linux/global/tabbox.css */
   margin-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
 }
 
+*|button.primary:focus,
 xul|button:-moz-focusring {
   outline: 1px dotted;
   outline-offset: -2px;
@@ -38,7 +37,7 @@ xul|menulist {
   font-size: inherit;
 }
 
-xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker {
+xul|*.menulist-dropmarker {
   display: -moz-box;
   margin-top: 6px;
   margin-bottom: 6px;
@@ -72,22 +71,6 @@ xul|*.numberbox-input-box {
 xul|menulist:-moz-focusring > xul|*.menulist-label-box,
 html|input[type="checkbox"]:-moz-focusring + html|label:before {
   outline: 1px dotted;
-}
-
-xul|treechildren::-moz-tree-row(multicol, odd) {
-  background-color: var(--in-content-box-background-odd);
-}
-
-/* These rules are duplicated from common.inc.css
- * because above -moz-tree-row(multicol, odd) rule
- * overrides also hover/selected states.
- */
-xul|treechildren::-moz-tree-row(hover) {
-  background-color: var(--in-content-item-hover);
-}
-
-xul|treechildren::-moz-tree-row(selected) {
-  background-color: var(--in-content-item-selected);
 }
 
 html|button {

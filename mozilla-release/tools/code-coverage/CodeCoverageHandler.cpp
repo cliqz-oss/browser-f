@@ -4,7 +4,10 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <stdio.h>
-#ifndef XP_WIN
+#ifdef XP_WIN
+#include <process.h>
+#define getpid _getpid
+#else
 #include <signal.h>
 #include <unistd.h>
 #endif
@@ -44,22 +47,34 @@ void counters_reset() {
 
 StaticAutoPtr<CodeCoverageHandler> CodeCoverageHandler::instance;
 
-void CodeCoverageHandler::DumpCounters(int)
+void CodeCoverageHandler::DumpCounters()
 {
+  printf_stderr("[CodeCoverage] Requested dump for %d.\n", getpid());
+
   CrossProcessMutexAutoLock lock(*CodeCoverageHandler::Get()->GetMutex());
 
-  printf_stderr("[CodeCoverage] Requested dump.\n");
   counters_dump();
   printf_stderr("[CodeCoverage] Dump completed.\n");
 }
 
-void CodeCoverageHandler::ResetCounters(int)
+void CodeCoverageHandler::DumpCountersSignalHandler(int)
 {
+  DumpCounters();
+}
+
+void CodeCoverageHandler::ResetCounters()
+{
+  printf_stderr("[CodeCoverage] Requested reset for %d.\n", getpid());
+
   CrossProcessMutexAutoLock lock(*CodeCoverageHandler::Get()->GetMutex());
 
-  printf_stderr("[CodeCoverage] Requested reset.\n");
   counters_reset();
   printf_stderr("[CodeCoverage] Reset completed.\n");
+}
+
+void CodeCoverageHandler::ResetCountersSignalHandler(int)
+{
+  ResetCounters();
 }
 
 void CodeCoverageHandler::SetSignalHandlers()
@@ -68,14 +83,14 @@ void CodeCoverageHandler::SetSignalHandlers()
   printf_stderr("[CodeCoverage] Setting handlers for process %d.\n", getpid());
 
   struct sigaction dump_sa;
-  dump_sa.sa_handler = CodeCoverageHandler::DumpCounters;
+  dump_sa.sa_handler = CodeCoverageHandler::DumpCountersSignalHandler;
   dump_sa.sa_flags = SA_RESTART;
   sigemptyset(&dump_sa.sa_mask);
   DebugOnly<int> r1 = sigaction(SIGUSR1, &dump_sa, nullptr);
   MOZ_ASSERT(r1 == 0, "Failed to install GCOV SIGUSR1 handler");
 
   struct sigaction reset_sa;
-  reset_sa.sa_handler = CodeCoverageHandler::ResetCounters;
+  reset_sa.sa_handler = CodeCoverageHandler::ResetCountersSignalHandler;
   reset_sa.sa_flags = SA_RESTART;
   sigemptyset(&reset_sa.sa_mask);
   DebugOnly<int> r2 = sigaction(SIGUSR2, &reset_sa, nullptr);

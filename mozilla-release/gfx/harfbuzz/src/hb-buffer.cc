@@ -111,11 +111,11 @@ hb_segment_properties_hash (const hb_segment_properties_t *p)
 bool
 hb_buffer_t::enlarge (unsigned int size)
 {
-  if (unlikely (in_error))
+  if (unlikely (!successful))
     return false;
   if (unlikely (size > max_len))
   {
-    in_error = true;
+    successful = false;
     return false;
   }
 
@@ -124,14 +124,14 @@ hb_buffer_t::enlarge (unsigned int size)
   hb_glyph_info_t *new_info = nullptr;
   bool separate_out = out_info != info;
 
-  if (unlikely (_hb_unsigned_int_mul_overflows (size, sizeof (info[0]))))
+  if (unlikely (hb_unsigned_mul_overflows (size, sizeof (info[0]))))
     goto done;
 
   while (size >= new_allocated)
     new_allocated += (new_allocated >> 1) + 32;
 
   static_assert ((sizeof (info[0]) == sizeof (pos[0])), "");
-  if (unlikely (_hb_unsigned_int_mul_overflows (new_allocated, sizeof (info[0]))))
+  if (unlikely (hb_unsigned_mul_overflows (new_allocated, sizeof (info[0]))))
     goto done;
 
   new_pos = (hb_glyph_position_t *) realloc (pos, new_allocated * sizeof (pos[0]));
@@ -139,7 +139,7 @@ hb_buffer_t::enlarge (unsigned int size)
 
 done:
   if (unlikely (!new_pos || !new_info))
-    in_error = true;
+    successful = false;
 
   if (likely (new_pos))
     pos = new_pos;
@@ -148,10 +148,10 @@ done:
     info = new_info;
 
   out_info = separate_out ? (hb_glyph_info_t *) pos : info;
-  if (likely (!in_error))
+  if (likely (successful))
     allocated = new_allocated;
 
-  return likely (!in_error);
+  return likely (successful);
 }
 
 bool
@@ -216,7 +216,7 @@ hb_buffer_t::reset (void)
     return;
 
   hb_unicode_funcs_destroy (unicode);
-  unicode = hb_unicode_funcs_get_default ();
+  unicode = hb_unicode_funcs_reference (hb_unicode_funcs_get_default ());
   flags = HB_BUFFER_FLAG_DEFAULT;
   replacement = HB_BUFFER_REPLACEMENT_CODEPOINT_DEFAULT;
 
@@ -234,7 +234,7 @@ hb_buffer_t::clear (void)
   scratch_flags = HB_BUFFER_SCRATCH_FLAG_DEFAULT;
 
   content_type = HB_BUFFER_CONTENT_TYPE_INVALID;
-  in_error = false;
+  successful = true;
   have_output = false;
   have_positions = false;
 
@@ -324,7 +324,7 @@ hb_buffer_t::clear_positions (void)
 void
 hb_buffer_t::swap_buffers (void)
 {
-  if (unlikely (in_error)) return;
+  if (unlikely (!successful)) return;
 
   assert (have_output);
   have_output = false;
@@ -409,7 +409,7 @@ hb_buffer_t::move_to (unsigned int i)
     idx = i;
     return true;
   }
-  if (unlikely (in_error))
+  if (unlikely (!successful))
     return false;
 
   assert (i <= out_len + (len - idx));
@@ -687,6 +687,8 @@ hb_buffer_t::guess_segment_properties (void)
   /* If direction is set to INVALID, guess from script */
   if (props.direction == HB_DIRECTION_INVALID) {
     props.direction = hb_script_get_horizontal_direction (props.script);
+    if (props.direction == HB_DIRECTION_INVALID)
+      props.direction = HB_DIRECTION_LTR;
   }
 
   /* If language is not set, use default language from locale */
@@ -698,6 +700,28 @@ hb_buffer_t::guess_segment_properties (void)
 
 
 /* Public API */
+
+DEFINE_NULL_INSTANCE (hb_buffer_t) =
+{
+  HB_OBJECT_HEADER_STATIC,
+
+  const_cast<hb_unicode_funcs_t *> (&_hb_Null_hb_unicode_funcs_t),
+  HB_BUFFER_FLAG_DEFAULT,
+  HB_BUFFER_CLUSTER_LEVEL_DEFAULT,
+  HB_BUFFER_REPLACEMENT_CODEPOINT_DEFAULT,
+  HB_BUFFER_SCRATCH_FLAG_DEFAULT,
+  HB_BUFFER_MAX_LEN_DEFAULT,
+  HB_BUFFER_MAX_OPS_DEFAULT,
+
+  HB_BUFFER_CONTENT_TYPE_INVALID,
+  HB_SEGMENT_PROPERTIES_DEFAULT,
+  false, /* successful */
+  true, /* have_output */
+  true  /* have_positions */
+
+  /* Zero is good enough for everything else. */
+};
+
 
 /**
  * hb_buffer_create: (Xconstructor)
@@ -741,27 +765,7 @@ hb_buffer_create (void)
 hb_buffer_t *
 hb_buffer_get_empty (void)
 {
-  static const hb_buffer_t _hb_buffer_nil = {
-    HB_OBJECT_HEADER_STATIC,
-
-    const_cast<hb_unicode_funcs_t *> (&_hb_unicode_funcs_nil),
-    HB_BUFFER_FLAG_DEFAULT,
-    HB_BUFFER_CLUSTER_LEVEL_DEFAULT,
-    HB_BUFFER_REPLACEMENT_CODEPOINT_DEFAULT,
-    HB_BUFFER_SCRATCH_FLAG_DEFAULT,
-    HB_BUFFER_MAX_LEN_DEFAULT,
-    HB_BUFFER_MAX_OPS_DEFAULT,
-
-    HB_BUFFER_CONTENT_TYPE_INVALID,
-    HB_SEGMENT_PROPERTIES_DEFAULT,
-    true, /* in_error */
-    true, /* have_output */
-    true  /* have_positions */
-
-    /* Zero is good enough for everything else. */
-  };
-
-  return const_cast<hb_buffer_t *> (&_hb_buffer_nil);
+  return const_cast<hb_buffer_t *> (&Null(hb_buffer_t));
 }
 
 /**
@@ -903,7 +907,6 @@ hb_buffer_set_unicode_funcs (hb_buffer_t        *buffer,
 
   if (!unicode_funcs)
     unicode_funcs = hb_unicode_funcs_get_default ();
-
 
   hb_unicode_funcs_reference (unicode_funcs);
   hb_unicode_funcs_destroy (buffer->unicode);
@@ -1269,7 +1272,7 @@ hb_buffer_pre_allocate (hb_buffer_t *buffer, unsigned int size)
 hb_bool_t
 hb_buffer_allocation_successful (hb_buffer_t  *buffer)
 {
-  return !buffer->in_error;
+  return buffer->successful;
 }
 
 /**
@@ -1489,6 +1492,8 @@ hb_buffer_reverse_clusters (hb_buffer_t *buffer)
  * Next, if buffer direction is not set (ie. is %HB_DIRECTION_INVALID),
  * it will be set to the natural horizontal direction of the
  * buffer script as returned by hb_script_get_horizontal_direction().
+ * If hb_script_get_horizontal_direction() returns %HB_DIRECTION_INVALID,
+ * then %HB_DIRECTION_LTR is used.
  *
  * Finally, if buffer language is not set (ie. is %HB_LANGUAGE_INVALID),
  * it will be set to the process's default language as returned by
@@ -1750,13 +1755,13 @@ hb_buffer_append (hb_buffer_t *buffer,
 
   if (buffer->len + (end - start) < buffer->len) /* Overflows. */
   {
-    buffer->in_error = true;
+    buffer->successful = false;
     return;
   }
 
   unsigned int orig_len = buffer->len;
   hb_buffer_set_length (buffer, buffer->len + (end - start));
-  if (buffer->in_error)
+  if (unlikely (!buffer->successful))
     return;
 
   memcpy (buffer->info + orig_len, source->info + start, (end - start) * sizeof (buffer->info[0]));

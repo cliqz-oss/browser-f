@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 :root.theme-dark {
+  --table-text-color: var(--grey-40);
   --table-splitter-color: rgba(255,255,255,0.15);
   --table-zebra-background: rgba(255,255,255,0.05);
 
@@ -21,6 +22,7 @@
 :root.theme-light {
   --theme-body-color: var(--grey-70);
 
+  --table-text-color: var(--grey-70);
   --table-splitter-color: rgba(0,0,0,0.15);
   --table-zebra-background: rgba(0,0,0,0.05);
 
@@ -42,7 +44,6 @@
   /* Icons */
   --play-icon-url: url("chrome://devtools/content/netmonitor/src/assets/icons/play.svg");
   --pause-icon-url: url("chrome://devtools/skin/images/pause.svg");
-  --drop-down-icon-url: url("chrome://devtools/content/netmonitor/src/assets/icons/drop-down.svg");
 
   /* HTTP status codes */
   --status-code-color-1xx: var(--theme-highlight-blue);

@@ -78,7 +78,7 @@ add_task(async function test_bad_hmac() {
     },
     onCollectionDeleted(username, coll) {
       deletedCollections.push(coll);
-    }
+    },
   };
   let server = await serverForFoo(engine, callback);
   let user   = server.user("foo");
@@ -369,6 +369,37 @@ add_task(async function test_client_name_change() {
   await cleanup();
 });
 
+add_task(async function test_fxa_device_id_change() {
+  _("Ensure an FxA device ID change incurs a client record update.");
+
+  let tracker = engine._tracker;
+
+  engine.localID; // Needed to increase the tracker changedIDs count.
+
+  tracker.start();
+
+  // Tracker already has data, so clear it.
+  await tracker.clearChangedIDs();
+
+  let initialScore = tracker.score;
+
+  let changedIDs = await tracker.getChangedIDs();
+  equal(Object.keys(changedIDs).length, 0);
+
+  Services.obs.notifyObservers(null, "fxaccounts:new_device_id");
+  await tracker.asyncObserver.promiseObserversComplete();
+
+  changedIDs = await tracker.getChangedIDs();
+  equal(Object.keys(changedIDs).length, 1);
+  ok(engine.localID in changedIDs);
+  ok(tracker.score > initialScore);
+  ok(tracker.score >= SINGLE_USER_THRESHOLD);
+
+  await tracker.stop();
+
+  await cleanup();
+});
+
 add_task(async function test_last_modified() {
   _("Ensure that remote records have a sane serverLastModified attribute.");
 
@@ -487,7 +518,7 @@ add_task(async function test_command_validation() {
     ["wipeEngine",  [],       false],
     ["logout",      [],       true ],
     ["logout",      ["foo"],  false],
-    ["__UNKNOWN__", [],       false]
+    ["__UNKNOWN__", [],       false],
   ];
 
   for (let [action, args, expectedResult] of testCommands) {
@@ -867,7 +898,7 @@ add_task(async function test_clients_not_in_fxa_list() {
   engine.fxAccounts = {
     notifyDevices() { return Promise.resolve(true); },
     getDeviceId() { return fxAccounts.getDeviceId(); },
-    getDeviceList() { return Promise.resolve([{ id: remoteId }]); }
+    getDeviceList() { return Promise.resolve([{ id: remoteId }]); },
   };
 
   try {
@@ -929,7 +960,7 @@ add_task(async function test_dupe_device_ids() {
   engine.fxAccounts = {
     notifyDevices() { return Promise.resolve(true); },
     getDeviceId() { return fxAccounts.getDeviceId(); },
-    getDeviceList() { return Promise.resolve([{ id: remoteDeviceId }]); }
+    getDeviceList() { return Promise.resolve([{ id: remoteDeviceId }]); },
   };
 
   try {
@@ -1252,7 +1283,7 @@ add_task(async function test_upload_after_reboot() {
 
     let deviceBPayload = collection.cleartext(deviceBID);
     compareCommands(deviceBPayload.commands, [{
-      command: "displayURI", args: ["https://deviceclink.com", deviceCID, "Device C link"]
+      command: "displayURI", args: ["https://deviceclink.com", deviceCID, "Device C link"],
     }], "Should be the same because the upload failed");
 
     _("Simulate the client B consuming the command and syncing to the server");
@@ -1351,10 +1382,10 @@ add_task(async function test_keep_cleared_commands_after_reboot() {
 
     let localRemoteRecord = collection.cleartext(engine.localID);
     compareCommands(localRemoteRecord.commands, [{
-      command: "displayURI", args: ["https://deviceblink.com", deviceBID, "Device B link"]
+      command: "displayURI", args: ["https://deviceblink.com", deviceBID, "Device B link"],
     },
     {
-      command: "displayURI", args: ["https://deviceclink.com", deviceCID, "Device C link"]
+      command: "displayURI", args: ["https://deviceclink.com", deviceCID, "Device C link"],
     }], "Should be the same because the upload failed");
 
     // Another client sends another link
@@ -1544,7 +1575,7 @@ add_task(async function test_command_sync() {
     type: "desktop",
     commands: [],
     version: "48",
-    protocols: ["1.5"]
+    protocols: ["1.5"],
   });
 
   _("Create remote client record 2");
@@ -1554,7 +1585,7 @@ add_task(async function test_command_sync() {
     type: "mobile",
     commands: [],
     version: "48",
-    protocols: ["1.5"]
+    protocols: ["1.5"],
   });
 
   try {
@@ -1610,7 +1641,7 @@ add_task(async function ensureSameFlowIDs() {
       type: "desktop",
       commands: [],
       version: "48",
-      protocols: ["1.5"]
+      protocols: ["1.5"],
     });
 
     _("Create remote client record 2");
@@ -1620,7 +1651,7 @@ add_task(async function ensureSameFlowIDs() {
       type: "mobile",
       commands: [],
       version: "48",
-      protocols: ["1.5"]
+      protocols: ["1.5"],
     });
 
     await syncClientsEngine(server);
@@ -1703,7 +1734,7 @@ add_task(async function test_duplicate_commands_telemetry() {
       type: "desktop",
       commands: [],
       version: "48",
-      protocols: ["1.5"]
+      protocols: ["1.5"],
     });
 
     _("Create remote client record 2");
@@ -1713,7 +1744,7 @@ add_task(async function test_duplicate_commands_telemetry() {
       type: "mobile",
       commands: [],
       version: "48",
-      protocols: ["1.5"]
+      protocols: ["1.5"],
     });
 
     await syncClientsEngine(server);
@@ -1752,7 +1783,7 @@ add_task(async function test_other_clients_notified_on_first_sync() {
     notifyDevices() {
       calls++;
       return Promise.resolve(true);
-    }
+    },
   };
 
   try {

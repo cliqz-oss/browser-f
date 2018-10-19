@@ -10,8 +10,21 @@ use ellipse::Ellipse;
 use display_list_flattener::DisplayListFlattener;
 use gpu_types::{BorderInstance, BorderSegment, BrushFlags};
 use prim_store::{BrushKind, BrushPrimitive, BrushSegment};
-use prim_store::{BorderSource, EdgeAaSegmentMask, PrimitiveContainer, ScrollNodeAndClipChain};
+use prim_store::{EdgeAaSegmentMask, PrimitiveContainer, ScrollNodeAndClipChain};
 use util::{lerp, RectHelpers};
+
+// Using 2048 as the maximum radius in device space before which we
+// start stretching is up for debate.
+// the value must be chosen so that the corners will not use an
+// unreasonable amount of memory but should allow crisp corners in the
+// common cases.
+
+/// Maximum resolution in device pixels at which borders are rasterized.
+pub const MAX_BORDER_RESOLUTION: u32 = 2048;
+/// Maximum number of dots or dashes per segment to avoid freezing and filling up
+/// memory with unreasonable inputs. It would be better to address this by not building
+/// a list of per-dot information in the first place.
+pub const MAX_DASH_COUNT: usize = 2048;
 
 trait AuSizeConverter {
     fn to_au(&self) -> LayoutSizeAu;
@@ -103,6 +116,20 @@ pub struct BorderCacheKey {
     pub scale: Au,
 }
 
+impl BorderCacheKey {
+    pub fn new(border: &NormalBorder, widths: &BorderWidths) -> Self {
+        BorderCacheKey {
+            left: border.left.into(),
+            top: border.top.into(),
+            right: border.right.into(),
+            bottom: border.bottom.into(),
+            widths: (*widths).into(),
+            radius: border.radius.into(),
+            scale: Au::from_f32_px(0.0),
+        }
+    }
+}
+
 pub fn ensure_no_corner_overlap(
     radius: &mut BorderRadius,
     rect: &LayoutRect,
@@ -160,23 +187,7 @@ impl<'a> DisplayListFlattener<'a> {
         ensure_no_corner_overlap(&mut border.radius, &info.rect);
 
         let prim = BrushPrimitive::new(
-            BrushKind::Border {
-                source: BorderSource::Border {
-                    border,
-                    widths: *widths,
-                    cache_key: BorderCacheKey {
-                        left: border.left.into(),
-                        top: border.top.into(),
-                        right: border.right.into(),
-                        bottom: border.bottom.into(),
-                        widths: (*widths).into(),
-                        radius: border.radius.into(),
-                        scale: Au::from_f32_px(0.0),
-                    },
-                    task_info: None,
-                    handle: None,
-                },
-            },
+            BrushKind::new_border(border, *widths),
             None,
         );
 
@@ -345,18 +356,21 @@ impl BorderCornerClipSource {
             1.0 - 2.0 * outer_scale.y,
         );
 
+        let max_clip_count = self.max_clip_count.min(MAX_DASH_COUNT);
+
         match self.kind {
             BorderCornerClipKind::Dash => {
                 // Get the correct dash arc length.
                 let dash_arc_length =
-                    0.5 * self.ellipse.total_arc_length / self.max_clip_count as f32;
+                    0.5 * self.ellipse.total_arc_length / max_clip_count as f32;
                 // Start the first dash at one quarter the length of a single dash
                 // along the arc line. This is arbitrary but looks reasonable in
                 // most cases. We need to spend some time working on a more
                 // sophisticated dash placement algorithm that takes into account
                 // the offset of the dashes along edge segments.
                 let mut current_arc_length = 0.25 * dash_arc_length;
-                for _ in 0 .. self.max_clip_count {
+                dot_dash_data.reserve(max_clip_count);
+                for _ in 0 .. max_clip_count {
                     let arc_length0 = current_arc_length;
                     current_arc_length += dash_arc_length;
 
@@ -401,7 +415,7 @@ impl BorderCornerClipSource {
                     ]);
                 }
             }
-            BorderCornerClipKind::Dot if self.max_clip_count == 1 => {
+            BorderCornerClipKind::Dot if max_clip_count == 1 => {
                 let dot_diameter = lerp(self.widths.width, self.widths.height, 0.5);
                 dot_dash_data.push([
                     self.widths.width / 2.0, self.widths.height / 2.0, 0.5 * dot_diameter, 0.,
@@ -409,8 +423,8 @@ impl BorderCornerClipSource {
                 ]);
             }
             BorderCornerClipKind::Dot => {
-                let mut forward_dots = Vec::new();
-                let mut back_dots = Vec::new();
+                let mut forward_dots = Vec::with_capacity(max_clip_count / 2 + 1);
+                let mut back_dots = Vec::with_capacity(max_clip_count / 2 + 1);
                 let mut leftover_arc_length = 0.0;
 
                 // Alternate between adding dots at the start and end of the
@@ -422,7 +436,7 @@ impl BorderCornerClipSource {
                     self.widths.height,
                 ));
 
-                for dot_index in 0 .. self.max_clip_count {
+                for dot_index in 0 .. max_clip_count {
                     let prev_forward_pos = *forward_dots.last().unwrap();
                     let prev_back_pos = *back_dots.last().unwrap();
 
@@ -484,6 +498,8 @@ impl BorderCornerClipSource {
 
                     [center.x, center.y, radius, 0.0, 0.0, 0.0, 0.0, 0.0]
                 };
+
+                dot_dash_data.reserve(forward_dots.len() + back_dots.len());
 
                 for (i, dot) in forward_dots.iter().enumerate() {
                     let extra_dist = i as f32 * extra_space_per_dot;
@@ -926,6 +942,30 @@ impl BorderRenderTaskInfo {
         }
 
         instances
+    }
+
+    /// Computes the maximum scale that we allow for this set of border parameters.
+    /// capping the scale will result in rendering very large corners at a lower
+    /// resolution and stretching them, so they will have the right shape, but
+    /// blurrier.
+    pub fn get_max_scale(
+        radii: &BorderRadius,
+        widths: &BorderWidths
+    ) -> LayoutToDeviceScale {
+        let r = radii.top_left.width
+            .max(radii.top_left.height)
+            .max(radii.top_right.width)
+            .max(radii.top_right.height)
+            .max(radii.bottom_left.width)
+            .max(radii.bottom_left.height)
+            .max(radii.bottom_right.width)
+            .max(radii.bottom_right.height)
+            .max(widths.top)
+            .max(widths.bottom)
+            .max(widths.left)
+            .max(widths.right);
+
+        LayoutToDeviceScale::new(MAX_BORDER_RESOLUTION as f32 / r)
     }
 }
 

@@ -187,7 +187,7 @@ fn new_ct_font_with_variations(cg_font: &CGFont, size: f64, variations: &[FontVa
             }
             let tag_val = match axis.find(kCTFontVariationAxisIdentifierKey as *const _) {
                 Some(tag_ptr) => {
-                    let tag: CFNumber = TCFType::wrap_under_get_rule(tag_ptr as CFNumberRef);
+                    let tag: CFNumber = TCFType::wrap_under_get_rule(*tag_ptr as CFNumberRef);
                     if !tag.instance_of::<CFNumber>() {
                         return ct_font;
                     }
@@ -204,7 +204,7 @@ fn new_ct_font_with_variations(cg_font: &CGFont, size: f64, variations: &[FontVa
             };
 
             let name: CFString = match axis.find(kCTFontVariationAxisNameKey as *const _) {
-                Some(name_ptr) => TCFType::wrap_under_get_rule(name_ptr as CFStringRef),
+                Some(name_ptr) => TCFType::wrap_under_get_rule(*name_ptr as CFStringRef),
                 None => return ct_font,
             };
             if !name.instance_of::<CFString>() {
@@ -213,7 +213,7 @@ fn new_ct_font_with_variations(cg_font: &CGFont, size: f64, variations: &[FontVa
 
             let min_val = match axis.find(kCTFontVariationAxisMinimumValueKey as *const _) {
                 Some(min_ptr) => {
-                    let min: CFNumber = TCFType::wrap_under_get_rule(min_ptr as CFNumberRef);
+                    let min: CFNumber = TCFType::wrap_under_get_rule(*min_ptr as CFNumberRef);
                     if !min.instance_of::<CFNumber>() {
                         return ct_font;
                     }
@@ -226,7 +226,7 @@ fn new_ct_font_with_variations(cg_font: &CGFont, size: f64, variations: &[FontVa
             };
             let max_val = match axis.find(kCTFontVariationAxisMaximumValueKey as *const _) {
                 Some(max_ptr) => {
-                    let max: CFNumber = TCFType::wrap_under_get_rule(max_ptr as CFNumberRef);
+                    let max: CFNumber = TCFType::wrap_under_get_rule(*max_ptr as CFNumberRef);
                     if !max.instance_of::<CFNumber>() {
                         return ct_font;
                     }
@@ -239,7 +239,7 @@ fn new_ct_font_with_variations(cg_font: &CGFont, size: f64, variations: &[FontVa
             };
             let def_val = match axis.find(kCTFontVariationAxisDefaultValueKey as *const _) {
                 Some(def_ptr) => {
-                    let def: CFNumber = TCFType::wrap_under_get_rule(def_ptr as CFNumberRef);
+                    let def: CFNumber = TCFType::wrap_under_get_rule(*def_ptr as CFNumberRef);
                     if !def.instance_of::<CFNumber>() {
                         return ct_font;
                     }
@@ -269,9 +269,6 @@ fn is_bitmap_font(ct_font: &CTFont) -> bool {
     let traits = ct_font.symbolic_traits();
     (traits & kCTFontColorGlyphsTrait) != 0
 }
-
-// Skew factor matching Gecko/CG.
-const OBLIQUE_SKEW_FACTOR: f32 = 0.25;
 
 impl FontContext {
     pub fn new() -> Result<FontContext, ResourceCacheError> {
@@ -364,11 +361,11 @@ impl FontContext {
     ) -> Option<GlyphDimensions> {
         self.get_ct_font(font.font_key, font.size, &font.variations)
             .and_then(|ref ct_font| {
-                let glyph = key.index as CGGlyph;
+                let glyph = key.index() as CGGlyph;
                 let bitmap = is_bitmap_font(ct_font);
                 let (x_offset, y_offset) = if bitmap { (0.0, 0.0) } else { font.get_subpx_offset(key) };
-                let transform = if font.flags.intersects(FontInstanceFlags::SYNTHETIC_ITALICS |
-                                                         FontInstanceFlags::TRANSPOSE |
+                let transform = if font.synthetic_italics.is_enabled() ||
+                                   font.flags.intersects(FontInstanceFlags::TRANSPOSE |
                                                          FontInstanceFlags::FLIP_X |
                                                          FontInstanceFlags::FLIP_Y) {
                     let mut shape = FontTransform::identity();
@@ -381,8 +378,8 @@ impl FontContext {
                     if font.flags.contains(FontInstanceFlags::TRANSPOSE) {
                         shape = shape.swap_xy();
                     }
-                    if font.flags.contains(FontInstanceFlags::SYNTHETIC_ITALICS) {
-                        shape = shape.synthesize_italics(OBLIQUE_SKEW_FACTOR);
+                    if font.synthetic_italics.is_enabled() {
+                        shape = shape.synthesize_italics(font.synthetic_italics);
                     }
                     Some(CGAffineTransform {
                         a: shape.scale_x as f64,
@@ -512,8 +509,8 @@ impl FontContext {
         if font.flags.contains(FontInstanceFlags::TRANSPOSE) {
             shape = shape.swap_xy();
         }
-        if font.flags.contains(FontInstanceFlags::SYNTHETIC_ITALICS) {
-            shape = shape.synthesize_italics(OBLIQUE_SKEW_FACTOR);
+        if font.synthetic_italics.is_enabled() {
+            shape = shape.synthesize_italics(font.synthetic_italics);
         }
         let transform = if !shape.is_identity() {
             Some(CGAffineTransform {
@@ -528,7 +525,7 @@ impl FontContext {
             None
         };
 
-        let glyph = key.index as CGGlyph;
+        let glyph = key.index() as CGGlyph;
         let (strike_scale, pixel_step) = if bitmap { (y_scale, 1.0) } else { (x_scale, y_scale / x_scale) };
         let extra_strikes = font.get_extra_strikes(strike_scale / scale);
         let metrics = get_glyph_metrics(

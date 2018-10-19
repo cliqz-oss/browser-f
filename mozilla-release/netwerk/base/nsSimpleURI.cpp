@@ -72,7 +72,7 @@ NS_INTERFACE_MAP_END
 NS_IMETHODIMP
 nsSimpleURI::Read(nsIObjectInputStream *aStream)
 {
-    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    MOZ_ASSERT_UNREACHABLE("Use nsIURIMutator.read() instead");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -633,18 +633,6 @@ nsSimpleURI::Clone(nsIURI** result)
     return CloneInternal(eHonorRef, EmptyCString(), result);
 }
 
-NS_IMETHODIMP
-nsSimpleURI::CloneIgnoringRef(nsIURI** result)
-{
-    return CloneInternal(eIgnoreRef, EmptyCString(), result);
-}
-
-NS_IMETHODIMP
-nsSimpleURI::CloneWithNewRef(const nsACString &newRef, nsIURI** result)
-{
-    return CloneInternal(eReplaceRef, newRef, result);
-}
-
 nsresult
 nsSimpleURI::CloneInternal(nsSimpleURI::RefHandlingEnum refHandlingMode,
                            const nsACString &newRef,
@@ -737,8 +725,6 @@ nsSimpleURI::GetClassID(nsCID * *aClassID)
     // Make sure to modify any subclasses as needed if this ever
     // changes to not call the virtual GetClassIDNoAlloc.
     *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
-    if (!*aClassID)
-        return NS_ERROR_OUT_OF_MEMORY;
     return GetClassIDNoAlloc(*aClassID);
 }
 

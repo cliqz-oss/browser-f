@@ -83,13 +83,12 @@ add_task(async function testActions() {
   let windowMock = {
     top: {
       PlacesCommandHook: {
-        bookmarkLink() { return Promise.resolve(); }
+        bookmarkLink() { return Promise.resolve(); },
       },
-      PlacesUtils: { bookmarksMenuFolderId: "id" }
+      PlacesUtils: { bookmarksMenuFolderId: "id" },
     },
-    getBrowserURL() {},
     openDialog() {},
-    openTrustedLinkIn() {}
+    openTrustedLinkIn() {},
   };
   let component = new TabListComponent({
     window: windowMock, store, View: null, SyncedTabs,
@@ -130,8 +129,8 @@ add_task(async function testActions() {
 
   sinon.spy(windowMock.top.PlacesCommandHook, "bookmarkLink");
   component.onBookmarkTab("uri", "title");
-  Assert.equal(windowMock.top.PlacesCommandHook.bookmarkLink.args[0][1], "uri");
-  Assert.equal(windowMock.top.PlacesCommandHook.bookmarkLink.args[0][2], "title");
+  Assert.equal(windowMock.top.PlacesCommandHook.bookmarkLink.args[0][0], "uri");
+  Assert.equal(windowMock.top.PlacesCommandHook.bookmarkLink.args[0][1], "title");
 
   sinon.spy(windowMock, "openTrustedLinkIn");
   component.onOpenTab("uri", "where", "params");

@@ -102,16 +102,12 @@ function xpcEnumerateContentWindows(callback) {
   var Ci = SpecialPowers.Ci;
   var ww = SpecialPowers.Cc["@mozilla.org/embedcomp/window-watcher;1"]
                         .getService(Ci.nsIWindowWatcher);
-  var enumerator = ww.getWindowEnumerator();
 
   var contentWindows = [];
 
-  while (enumerator.hasMoreElements()) {
-    var win = enumerator.getNext();
+  for (let win of ww.getWindowEnumerator()) {
     if (win.isChromeWindow) {
-      var docshellTreeNode = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                                .getInterface(Ci.nsIWebNavigation)
-                                .QueryInterface(Ci.nsIDocShellTreeItem);
+      var docshellTreeNode = win.docShell;
       var childCount = docshellTreeNode.childCount;
       for (var i = 0; i < childCount; ++i) {
         var childTreeNode = docshellTreeNode.getChildAt(i);
@@ -188,9 +184,7 @@ function xpcWaitForFinishedFrames(callback, numFrames) {
          win.document.body.textContent.trim() == popup_body) && 
         win.document.readyState == "complete") {
 
-      var util = win.QueryInterface(SpecialPowers.Ci.nsIInterfaceRequestor)
-                    .getInterface(SpecialPowers.Ci.nsIDOMWindowUtils);
-      var windowId = util.outerWindowID;
+      var windowId = win.windowUtils.outerWindowID;
       if (!contains(windowId, finishedWindows)) {
         finishedWindows.push(windowId);
         frameFinished();

@@ -68,13 +68,13 @@ add_task(async function test_check_success() {
     last_modified: 1100,
     host: "localhost",
     bucket: "some-other-bucket",
-    collection: "test-collection"
+    collection: "test-collection",
   }, {
     id: "254cbb9e-6888-4d9f-8e60-58b74faa8778",
     last_modified: 1000,
     host: "localhost",
     bucket: "test-bucket",
-    collection: "test-collection"
+    collection: "test-collection",
   }]));
 
   // add a test kinto client that will respond to lastModified information
@@ -91,7 +91,7 @@ add_task(async function test_check_success() {
     observe(aSubject, aTopic, aData) {
       Services.obs.removeObserver(this, "remote-settings-changes-polled");
       notificationObserved = true;
-    }
+    },
   };
   Services.obs.addObserver(observer, "remote-settings-changes-polled");
 
@@ -112,6 +112,38 @@ add_task(async function test_check_success() {
     [UptakeTelemetry.STATUS.SUCCESS]: 1,
   };
   checkUptakeTelemetry(startHistogram, endHistogram, expectedIncrements);
+});
+add_task(clear_state);
+
+
+add_task(async function test_update_timer_interface() {
+  const remoteSettings = Cc["@mozilla.org/services/settings;1"]
+    .getService(Ci.nsITimerCallback);
+
+  const serverTime = 8000;
+  server.registerPathHandler(CHANGES_PATH, serveChangesEntries(serverTime, [{
+    id: "028261ad-16d4-40c2-a96a-66f72914d125",
+    last_modified: 42,
+    host: "localhost",
+    bucket: "main",
+    collection: "whatever-collection",
+  }]));
+
+  await new Promise((resolve) => {
+    const e = "remote-settings-changes-polled";
+    const changesPolledObserver = {
+      observe(aSubject, aTopic, aData) {
+        Services.obs.removeObserver(this, e);
+        resolve();
+      },
+    };
+    Services.obs.addObserver(changesPolledObserver, e);
+    remoteSettings.notify(null);
+  });
+
+  // Everything went fine.
+  Assert.equal(Services.prefs.getCharPref(PREF_LAST_ETAG), "\"42\"");
+  Assert.equal(Services.prefs.getIntPref(PREF_LAST_UPDATE), serverTime / 1000);
 });
 add_task(clear_state);
 
@@ -137,7 +169,7 @@ add_task(async function test_check_up_to_date() {
     observe(aSubject, aTopic, aData) {
       Services.obs.removeObserver(this, "remote-settings-changes-polled");
       notificationObserved = true;
-    }
+    },
   };
   Services.obs.addObserver(observer, "remote-settings-changes-polled");
 
@@ -172,22 +204,22 @@ add_task(async function test_success_with_partial_list() {
       last_modified: 43,
       host: "localhost",
       bucket: "main",
-      collection: "cid-1"
+      collection: "cid-1",
     }, {
       id: "98a34576-bcd6-423f-abc2-1d290b776ed8",
       last_modified: 42,
       host: "localhost",
       bucket: "main",
-      collection: "test-collection"
+      collection: "test-collection",
     }];
     if (request.queryString == `_since=${encodeURIComponent('"42"')}`) {
       response.write(JSON.stringify({
-        data: entries.slice(0, 1)
+        data: entries.slice(0, 1),
       }));
       response.setHeader("ETag", '"43"');
     } else {
       response.write(JSON.stringify({
-        data: entries
+        data: entries,
       }));
       response.setHeader("ETag", '"42"');
     }
@@ -208,6 +240,26 @@ add_task(async function test_success_with_partial_list() {
   Assert.equal(maybeSyncCount, 1, "maybeSync should not be called twice");
 });
 add_task(clear_state);
+
+
+add_task(async function test_server_bad_json() {
+  function simulateBadJSON(request, response) {
+    response.setHeader("Content-Type", "application/json; charset=UTF-8");
+    response.write("<html></html>");
+    response.setStatusLine(null, 200, "OK");
+  }
+  server.registerPathHandler(CHANGES_PATH, simulateBadJSON);
+
+  let error;
+  try {
+    await RemoteSettings.pollChanges();
+  } catch (e) {
+    error = e;
+  }
+  Assert.ok(/JSON.parse: unexpected character/.test(error.message));
+});
+add_task(clear_state);
+
 
 add_task(async function test_server_error() {
   const startHistogram = getUptakeTelemetrySnapshot(TELEMETRY_HISTOGRAM_KEY);
@@ -230,7 +282,7 @@ add_task(async function test_server_error() {
     observe(aSubject, aTopic, aData) {
       Services.obs.removeObserver(this, "remote-settings-changes-polled");
       notificationObserved = true;
-    }
+    },
   };
   Services.obs.addObserver(observer, "remote-settings-changes-polled");
   Services.prefs.setIntPref(PREF_LAST_UPDATE, 42);
@@ -343,7 +395,7 @@ add_task(async function test_backoff() {
     last_modified: 1300,
     host: "localhost",
     bucket: "some-bucket",
-    collection: "some-collection"
+    collection: "some-collection",
   }]));
   Services.prefs.setCharPref(PREF_SETTINGS_SERVER_BACKOFF, `${Date.now() - 1000}`);
 
@@ -389,19 +441,19 @@ add_task(async function test_syncs_clients_with_local_database() {
     last_modified: 10000,
     host: "localhost",
     bucket: "main",
-    collection: "some-unknown"
+    collection: "some-unknown",
   }, {
     id: "39f57e4e-6023-11e8-8b74-77c8dedfb389",
     last_modified: 9000,
     host: "localhost",
     bucket: "blocklists",
-    collection: "addons"
+    collection: "addons",
   }, {
     id: "9a594c1a-601f-11e8-9c8a-33b2239d9113",
     last_modified: 8000,
     host: "localhost",
     bucket: "main",
-    collection: "recipes"
+    collection: "recipes",
   }]));
 
   // This simulates what remote-settings would do when initializing a local database.
@@ -437,19 +489,19 @@ add_task(async function test_syncs_clients_with_local_dump() {
     last_modified: 10000,
     host: "localhost",
     bucket: "main",
-    collection: "some-unknown"
+    collection: "some-unknown",
   }, {
     id: "39f57e4e-6023-11e8-8b74-77c8dedfb389",
     last_modified: 9000,
     host: "localhost",
     bucket: "blocklists",
-    collection: "addons"
+    collection: "addons",
   }, {
     id: "9a594c1a-601f-11e8-9c8a-33b2239d9113",
     last_modified: 8000,
     host: "localhost",
     bucket: "main",
-    collection: "example"
+    collection: "example",
   }]));
 
   let error;
@@ -467,3 +519,45 @@ add_task(async function test_syncs_clients_with_local_dump() {
   Assert.equal(error.details.collection, "example");
 });
 add_task(clear_state);
+
+
+add_task(async function test_adding_client_resets_last_etag() {
+  function serve200or304(request, response) {
+    const entries = [{
+      id: "aa71e6cc-9f37-447a-b6e0-c025e8eabd03",
+      last_modified: 42,
+      host: "localhost",
+      bucket: "main",
+      collection: "a-collection",
+    }];
+    if (request.queryString == `_since=${encodeURIComponent('"42"')}`) {
+      response.write(JSON.stringify({
+        data: entries.slice(0, 1),
+      }));
+      response.setHeader("ETag", '"42"');
+      response.setStatusLine(null, 304, "Not Modified");
+    } else {
+      response.write(JSON.stringify({
+        data: entries,
+      }));
+      response.setHeader("ETag", '"42"');
+      response.setStatusLine(null, 200, "OK");
+    }
+    response.setHeader("Date", (new Date()).toUTCString());
+  }
+  server.registerPathHandler(CHANGES_PATH, serve200or304);
+
+  // Poll once, without any client for "a-collection"
+  await RemoteSettings.pollChanges();
+
+  // Register a new client.
+  let maybeSyncCalled = false;
+  const c = RemoteSettings("a-collection");
+  c.maybeSync = () => { maybeSyncCalled = true; };
+
+  // Poll again.
+  await RemoteSettings.pollChanges();
+
+  // The new client was called, even if the server data didn't change.
+  Assert.ok(maybeSyncCalled);
+});

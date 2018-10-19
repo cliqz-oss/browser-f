@@ -24,6 +24,7 @@ EXPORTS.mozilla.gfx += [
     'CriticalSection.h',
     'DataSurfaceHelpers.h',
     'DrawEventRecorder.h',
+    'DrawTargetOffset.h',
     'DrawTargetRecording.h',
     'DrawTargetTiled.h',
     'DrawTargetWrapAndRecord.h',
@@ -106,13 +107,18 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk3'):
         'UnscaledFontFreeType.h',
     ]
     SOURCES += [
+        'NativeFontResourceFreeType.cpp',
         'UnscaledFontFreeType.cpp',
     ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
     SOURCES += [
-        'NativeFontResourceFontconfig.cpp',
         'ScaledFontFontconfig.cpp',
+    ]
+
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+    SOURCES += [
+        'ScaledFontFreeType.cpp',
     ]
 
 if CONFIG['MOZ_ENABLE_SKIA']:
@@ -157,6 +163,8 @@ elif CONFIG['CPU_ARCH'].startswith('mips'):
 UNIFIED_SOURCES += [
     'BezierUtils.cpp',
     'Blur.cpp',
+    'BufferEdgePad.cpp',
+    'BufferUnrotate.cpp',
     'CaptureCommandList.cpp',
     'DataSourceSurface.cpp',
     'DataSurfaceHelpers.cpp',
@@ -166,6 +174,7 @@ UNIFIED_SOURCES += [
     'DrawTargetCairo.cpp',
     'DrawTargetCapture.cpp',
     'DrawTargetDual.cpp',
+    'DrawTargetOffset.cpp',
     'DrawTargetRecording.cpp',
     'DrawTargetTiled.cpp',
     'DrawTargetWrapAndRecord.cpp',
@@ -184,7 +193,6 @@ UNIFIED_SOURCES += [
     'RecordedEvent.cpp',
     'Scale.cpp',
     'ScaledFontBase.cpp',
-    'ScaledFontCairo.cpp',
     'SFNTData.cpp',
     'SFNTNameTable.cpp',
     'SourceSurfaceCairo.cpp',
@@ -251,3 +259,5 @@ if CONFIG['MOZ_ENABLE_SKIA_GPU']:
         '/gfx/skia/skia/src/gpu',
     ]
 
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

@@ -22,12 +22,14 @@ add_task(async function() {
   let bm = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url,
-    title: unescaped
+    title: unescaped,
   });
   await PlacesUtils.keywords.insert({ url, keyword: unescaped, postData: unescaped });
-  let uri = Services.io.newURI(url);
-  PlacesUtils.tagging.tagURI(uri, [unescaped]);
-  await PlacesUtils.setCharsetForURI(uri, unescaped);
+  PlacesUtils.tagging.tagURI(Services.io.newURI(url), [unescaped]);
+  await PlacesUtils.history.update({
+    url,
+    annotations: new Map([[PlacesUtils.CHARSET_ANNO, unescaped]]),
+  });
   PlacesUtils.annotations.setItemAnnotation(
     await PlacesUtils.promiseItemId(bm.guid),
     DESCRIPTION_ANNO, unescaped, 0, PlacesUtils.annotations.EXPIRE_NEVER);

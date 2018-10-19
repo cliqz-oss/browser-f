@@ -74,9 +74,6 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-/* Define Class IDs */
-static NS_DEFINE_CID(kWindowCID,           NS_WINDOW_CID);
-
 #define SIZE_PERSISTENCE_TIMEOUT 500 // msec
 
 nsWebShellWindow::nsWebShellWindow(uint32_t aChromeFlags)
@@ -145,14 +142,11 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
   // Create top level window
   if (gfxPlatform::IsHeadless()) {
     mWindow = nsIWidget::CreateHeadlessWidget();
-    if (!mWindow) {
-      return NS_ERROR_FAILURE;
-    }
   } else {
-    mWindow = do_CreateInstance(kWindowCID, &rv);
-    if (NS_OK != rv) {
-      return rv;
-    }
+    mWindow = nsIWidget::CreateTopLevelWindow();
+  }
+  if (!mWindow) {
+    return NS_ERROR_FAILURE;
   }
 
   /* This next bit is troublesome. We carry two different versions of a pointer
@@ -198,6 +192,8 @@ nsresult nsWebShellWindow::Initialize(nsIXULWindow* aParent,
 
   docShellAsItem->SetTreeOwner(mChromeTreeOwner);
   docShellAsItem->SetItemType(nsIDocShellTreeItem::typeChrome);
+
+  mDocShell->AttachBrowsingContext(nullptr);
 
   r.MoveTo(0, 0);
   nsCOMPtr<nsIBaseWindow> docShellAsWin(do_QueryInterface(mDocShell));
@@ -283,7 +279,7 @@ nsWebShellWindow::WindowMoved(nsIWidget* aWidget, int32_t x, int32_t y)
     nsContentUtils::DispatchChromeEvent(mDocShell->GetDocument(),
                                         eventTarget,
                                         NS_LITERAL_STRING("MozUpdateWindowPos"),
-                                        false, false, nullptr);
+                                        CanBubble::eNo, Cancelable::eNo, nullptr);
   }
 
   // Persist position, but not immediately, in case this OS is firing
@@ -476,7 +472,7 @@ nsWebShellWindow::WindowActivated()
 
   // focusing the window could cause it to close, so keep a reference to it
   nsCOMPtr<nsPIDOMWindowOuter> window = mDocShell ? mDocShell->GetWindow() : nullptr;
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   if (fm && window)
     fm->WindowRaised(window);
 
@@ -493,8 +489,8 @@ nsWebShellWindow::WindowDeactivated()
 
   nsCOMPtr<nsPIDOMWindowOuter> window =
     mDocShell ? mDocShell->GetWindow() : nullptr;
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
-  if (fm && window)
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
+  if (fm && window && !fm->IsTestMode())
     fm->WindowLowered(window);
 }
 
@@ -606,7 +602,7 @@ nsWebShellWindow::OnProgressChange(nsIWebProgress *aProgress,
                                    int32_t aCurTotalProgress,
                                    int32_t aMaxTotalProgress)
 {
-  NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+  MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;
 }
 
@@ -663,7 +659,7 @@ nsWebShellWindow::OnLocationChange(nsIWebProgress *aProgress,
                                    nsIURI *aURI,
                                    uint32_t aFlags)
 {
-  NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+  MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;
 }
 
@@ -673,7 +669,7 @@ nsWebShellWindow::OnStatusChange(nsIWebProgress* aWebProgress,
                                  nsresult aStatus,
                                  const char16_t* aMessage)
 {
-  NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+  MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;
 }
 
@@ -682,7 +678,7 @@ nsWebShellWindow::OnSecurityChange(nsIWebProgress *aWebProgress,
                                    nsIRequest *aRequest,
                                    uint32_t state)
 {
-  NS_NOTREACHED("notification excluded in AddProgressListener(...)");
+  MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;
 }
 

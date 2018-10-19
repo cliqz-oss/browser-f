@@ -14,7 +14,7 @@ ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
-  ShellService: "resource:///modules/ShellService.jsm"
+  ShellService: "resource:///modules/ShellService.jsm",
 });
 
 XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
@@ -48,10 +48,6 @@ function isBlankPageURL(aURL) {
          aURL == BROWSER_NEW_TAB_URL;
 }
 
-function getBrowserURL() {
-  return "chrome://browser/content/browser.xul";
-}
-
 function getTopWin(skipPopups) {
   // If this is called in a browser window, use that window regardless of
   // whether it's the frontmost window, since commands can be executed in
@@ -62,7 +58,7 @@ function getTopWin(skipPopups) {
 
   return BrowserWindowTracker.getTopWindow({
     private: PrivateBrowsingUtils.isWindowPrivate(window),
-    allowPopups: !skipPopups
+    allowPopups: !skipPopups,
   });
 }
 
@@ -216,6 +212,9 @@ function openWebLinkIn(url, where, params) {
   if (!params.triggeringPrincipal) {
     params.triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
   }
+  if (Services.scriptSecurityManager.isSystemPrincipal(params.triggeringPrincipal)) {
+    throw new Error("System principal should never be passed into openWebLinkIn()");
+  }
 
   openUILinkIn(url, where, params);
 }
@@ -260,7 +259,8 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {
     params = aAllowThirdPartyFixup;
-  } else {
+  }
+  if (!params || !params.triggeringPrincipal) {
     throw new Error("Required argument triggeringPrincipal missing within openUILinkIn");
   }
 
@@ -282,10 +282,10 @@ function openLinkIn(url, where, params) {
   var aReferrerPolicy       = ("referrerPolicy" in params ?
       params.referrerPolicy : Ci.nsIHttpChannel.REFERRER_POLICY_UNSET);
   var aRelatedToCurrent     = params.relatedToCurrent;
+  var aAllowInheritPrincipal = !!params.allowInheritPrincipal;
   var aAllowMixedContent    = params.allowMixedContent;
   var aForceAllowDataURI    = params.forceAllowDataURI;
   var aInBackground         = params.inBackground;
-  var aDisallowInheritPrincipal = params.disallowInheritPrincipal;
   var aInitiatingDoc        = params.initiatingDoc;
   var aIsPrivate            = params.private;
   var aSkipTabAnimation     = params.skipTabAnimation;
@@ -300,12 +300,17 @@ function openLinkIn(url, where, params) {
       params.forceAboutBlankViewerInCurrent;
   var aResolveOnNewTabCreated = params.resolveOnNewTabCreated;
 
+  if (!aTriggeringPrincipal) {
+    throw new Error("Must load with a triggering Principal");
+  }
+
   if (where == "save") {
     // TODO(1073187): propagate referrerPolicy.
 
     // ContentClick.jsm passes isContentWindowPrivate for saveURL instead of passing a CPOW initiatingDoc
     if ("isContentWindowPrivate" in params) {
-      saveURL(url, null, null, true, true, aNoReferrer ? null : aReferrerURI, null, params.isContentWindowPrivate);
+      saveURL(url, null, null, true, true, aNoReferrer ? null : aReferrerURI,
+              null, params.isContentWindowPrivate, aPrincipal);
     } else {
       if (!aInitiatingDoc) {
         Cu.reportError("openUILink/openLinkIn was called with " +
@@ -426,7 +431,7 @@ function openLinkIn(url, where, params) {
       };
       Services.obs.addObserver(delayedStartupObserver, "browser-delayed-startup-finished");
     }
-    win = Services.ww.openWindow(sourceWindow, getBrowserURL(), null, features, sa);
+    win = Services.ww.openWindow(sourceWindow, AppConstants.BROWSER_CHROME_URL, null, features, sa);
     return;
   }
 
@@ -481,12 +486,10 @@ function openLinkIn(url, where, params) {
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
     }
-
     // LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL isn't supported for javascript URIs,
     // i.e. it causes them not to load at all. Callers should strip
-    // "javascript:" from pasted strings to protect users from malicious URIs
-    // (see stripUnsafeProtocolOnPaste).
-    if (aDisallowInheritPrincipal && !(uriObj && uriObj.schemeIs("javascript"))) {
+    // "javascript:" from pasted strings to prevent blank tabs
+    if (!aAllowInheritPrincipal) {
       flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
     }
 
@@ -515,7 +518,7 @@ function openLinkIn(url, where, params) {
       referrerURI: aNoReferrer ? null : aReferrerURI,
       referrerPolicy: aReferrerPolicy,
       postData: aPostData,
-      userContextId: aUserContextId
+      userContextId: aUserContextId,
     });
 
     // Don't focus the content area if focus is in the address bar and we're
@@ -544,6 +547,7 @@ function openLinkIn(url, where, params) {
       userContextId: aUserContextId,
       originPrincipal: aPrincipal,
       triggeringPrincipal: aTriggeringPrincipal,
+      allowInheritPrincipal: aAllowInheritPrincipal,
       focusUrlBar,
     });
     targetBrowser = tabUsedForLoad.linkedBrowser;
@@ -606,7 +610,7 @@ function createUserContextMenu(event, {
                                         isContextMenu = false,
                                         excludeUserContextId = 0,
                                         showDefaultTab = false,
-                                        useAccessKeys = true
+                                        useAccessKeys = true,
                                       } = {}) {
   while (event.target.hasChildNodes()) {
     event.target.firstChild.remove();
@@ -617,7 +621,7 @@ function createUserContextMenu(event, {
 
   // If we are excluding a userContextId, we want to add a 'no-container' item.
   if (excludeUserContextId || showDefaultTab) {
-    let menuitem = document.createElement("menuitem");
+    let menuitem = document.createXULElement("menuitem");
     menuitem.setAttribute("data-usercontextid", "0");
     menuitem.setAttribute("label", bundle.GetStringFromName("userContextNone.label"));
     menuitem.setAttribute("accesskey", bundle.GetStringFromName("userContextNone.accesskey"));
@@ -628,7 +632,7 @@ function createUserContextMenu(event, {
 
     docfrag.appendChild(menuitem);
 
-    let menuseparator = document.createElement("menuseparator");
+    let menuseparator = document.createXULElement("menuseparator");
     docfrag.appendChild(menuseparator);
   }
 
@@ -637,7 +641,7 @@ function createUserContextMenu(event, {
       return;
     }
 
-    let menuitem = document.createElement("menuitem");
+    let menuitem = document.createXULElement("menuitem");
     menuitem.setAttribute("data-usercontextid", identity.userContextId);
     menuitem.setAttribute("label", ContextualIdentityService.getUserContextLabel(identity.userContextId));
 
@@ -658,9 +662,9 @@ function createUserContextMenu(event, {
   });
 
   if (!isContextMenu) {
-    docfrag.appendChild(document.createElement("menuseparator"));
+    docfrag.appendChild(document.createXULElement("menuseparator"));
 
-    let menuitem = document.createElement("menuitem");
+    let menuitem = document.createXULElement("menuitem");
     menuitem.setAttribute("label",
                           bundle.GetStringFromName("userContext.aboutPage.label"));
     if (useAccessKeys) {
@@ -786,10 +790,8 @@ function isBidiEnabled() {
 }
 
 function openAboutDialog() {
-  var enumerator = Services.wm.getEnumerator("Browser:About");
-  while (enumerator.hasMoreElements()) {
+  for (let win of Services.wm.getEnumerator("Browser:About")) {
     // Only open one about window (Bug 599573)
-    let win = enumerator.getNext();
     if (win.closed) {
       continue;
     }
@@ -846,7 +848,7 @@ function openPreferences(paneID, extraArgs) {
     supportsStringPrefURL.data = preferencesURL;
     windowArguments.appendElement(supportsStringPrefURL);
 
-    win = Services.ww.openWindow(null, Services.prefs.getCharPref("browser.chromeURL"),
+    win = Services.ww.openWindow(null, AppConstants.BROWSER_CHROME_URL,
       "_blank", "chrome,dialog=no,all", windowArguments);
   } else {
     let shouldReplaceFragment = friendlyCategoryName ? "whenComparingAndReplace" : "whenComparing";

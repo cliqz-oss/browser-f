@@ -230,21 +230,16 @@ var BrowserPageActions = {
 
   _makePanelButtonNodeForAction(action) {
     if (action.__isSeparator) {
-      let node = document.createElement("toolbarseparator");
+      let node = document.createXULElement("toolbarseparator");
       return node;
     }
-    let buttonNode = document.createElement("toolbarbutton");
+    let buttonNode = document.createXULElement("toolbarbutton");
     buttonNode.classList.add(
       "subviewbutton",
       "subviewbutton-iconic",
       "pageAction-panel-button"
     );
     buttonNode.setAttribute("actionid", action.id);
-    if (action.nodeAttributes) {
-      for (let name in action.nodeAttributes) {
-        buttonNode.setAttribute(name, action.nodeAttributes[name]);
-      }
-    }
     buttonNode.addEventListener("command", event => {
       this.doCommandForAction(action, event, buttonNode);
     });
@@ -252,10 +247,10 @@ var BrowserPageActions = {
   },
 
   _makePanelViewNodeForAction(action, forUrlbar) {
-    let panelViewNode = document.createElement("panelview");
+    let panelViewNode = document.createXULElement("panelview");
     panelViewNode.id = this._panelViewNodeIDForActionID(action.id, forUrlbar);
     panelViewNode.classList.add("PanelUI-subView");
-    let bodyNode = document.createElement("vbox");
+    let bodyNode = document.createXULElement("vbox");
     bodyNode.id = panelViewNode.id + "-body";
     bodyNode.classList.add("panel-subview-body");
     panelViewNode.appendChild(bodyNode);
@@ -308,7 +303,7 @@ var BrowserPageActions = {
   },
 
   _makeActivatedActionPanelForAction(action) {
-    let panelNode = document.createElement("panel");
+    let panelNode = document.createXULElement("panel");
     panelNode.id = this._activatedActionPanelID;
     panelNode.classList.add("cui-widget-panel");
     panelNode.setAttribute("actionID", action.id);
@@ -323,13 +318,13 @@ var BrowserPageActions = {
     let iframeNode = null;
 
     if (action.getWantsSubview(window)) {
-      let multiViewNode = document.createElement("panelmultiview");
+      let multiViewNode = document.createXULElement("panelmultiview");
       panelViewNode = this._makePanelViewNodeForAction(action, true);
       multiViewNode.setAttribute("mainViewId", panelViewNode.id);
       multiViewNode.appendChild(panelViewNode);
       panelNode.appendChild(multiViewNode);
     } else if (action.wantsIframe) {
-      iframeNode = document.createElement("iframe");
+      iframeNode = document.createXULElement("iframe");
       iframeNode.setAttribute("type", "content");
       panelNode.appendChild(iframeNode);
     }
@@ -386,13 +381,11 @@ var BrowserPageActions = {
       this.mainButtonNode.id,
       "identity-icon",
     ];
-    let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindowUtils);
     for (let id of potentialAnchorNodeIDs) {
       if (id) {
         let node = document.getElementById(id);
         if (node && !node.hidden) {
-          let bounds = dwu.getBoundsWithoutFlushing(node);
+          let bounds = window.windowUtils.getBoundsWithoutFlushing(node);
           if (bounds.height > 0 && bounds.width > 0) {
             return node;
           }
@@ -463,15 +456,10 @@ var BrowserPageActions = {
   },
 
   _makeUrlbarButtonNode(action) {
-    let buttonNode = document.createElement("image");
+    let buttonNode = document.createXULElement("image");
     buttonNode.classList.add("urlbar-icon", "urlbar-page-action");
     buttonNode.setAttribute("actionid", action.id);
     buttonNode.setAttribute("role", "button");
-    if (action.nodeAttributes) {
-      for (let name in action.nodeAttributes) {
-        buttonNode.setAttribute(name, action.nodeAttributes[name]);
-      }
-    }
     buttonNode.addEventListener("click", event => {
       this.doCommandForAction(action, event, buttonNode);
     });
@@ -587,7 +575,14 @@ var BrowserPageActions = {
       panelNode.setAttribute("label", title);
     }
     if (urlbarNode) {
-      urlbarNode.setAttribute("aria-label", title);
+      // Some actions (e.g. Save Page to Pocket) have a wrapper node with the
+      // actual controls inside that wrapper. The wrapper is semantically
+      // meaningless, so it doesn't get reflected in the accessibility tree.
+      // In these cases, we don't want to set aria-label because that will
+      // force the element to be exposed to accessibility.
+      if (urlbarNode.nodeName != "hbox") {
+        urlbarNode.setAttribute("aria-label", title);
+      }
       // tooltiptext falls back to the title, so update it too if necessary.
       let tooltip = action.getTooltip(window);
       if (!tooltip && title) {
@@ -1005,7 +1000,7 @@ BrowserPageActions.sendToDevice = {
 
   onSubviewPlaced(panelViewNode) {
     let bodyNode = panelViewNode.querySelector(".panel-subview-body");
-    let notReady = document.createElement("toolbarbutton");
+    let notReady = document.createXULElement("toolbarbutton");
     notReady.classList.add(
       "subviewbutton",
       "subviewbutton-iconic",
@@ -1014,7 +1009,7 @@ BrowserPageActions.sendToDevice = {
     notReady.setAttribute("label", "sendToDevice-notReadyTitle");
     notReady.setAttribute("disabled", "true");
     bodyNode.appendChild(notReady);
-    for (let node of bodyNode.childNodes) {
+    for (let node of bodyNode.children) {
       BrowserPageActions.takeNodeAttributeFromPanel(node, "title");
       BrowserPageActions.takeNodeAttributeFromPanel(node, "shortcut");
     }
@@ -1039,9 +1034,9 @@ BrowserPageActions.sendToDevice = {
     // changes.
     gSync.populateSendTabToDevicesMenu(bodyNode, url, title, (clientId, name, clientType, lastModified) => {
       if (!name) {
-        return document.createElement("toolbarseparator");
+        return document.createXULElement("toolbarseparator");
       }
-      let item = document.createElement("toolbarbutton");
+      let item = document.createXULElement("toolbarbutton");
       item.classList.add("pageAction-sendToDevice-device", "subviewbutton");
       if (clientId) {
         item.classList.add("subviewbutton-iconic");
@@ -1132,7 +1127,7 @@ BrowserPageActions.addSearchEngine = {
       body.firstChild.remove();
     }
     for (let engine of this.engines) {
-      let button = document.createElement("toolbarbutton");
+      let button = document.createXULElement("toolbarbutton");
       button.classList.add("subviewbutton", "subviewbutton-iconic");
       button.setAttribute("label", engine.title);
       button.setAttribute("image", engine.icon);
@@ -1209,7 +1204,7 @@ BrowserPageActions.shareURL = {
 
     // We cache the providers + the UI if the user selects the share
     // panel multiple times while the panel is open.
-    if (this._cached && bodyNode.childNodes.length > 0) {
+    if (this._cached && bodyNode.children.length > 0) {
       return;
     }
 
@@ -1219,32 +1214,40 @@ BrowserPageActions.shareURL = {
     let shareProviders = sharingService.getSharingProviders(currentURI);
     let fragment = document.createDocumentFragment();
 
+    let onCommand = event => {
+      let shareName = event.target.getAttribute("share-name");
+      if (shareName) {
+        sharingService.shareUrl(shareName,
+                                currentURI,
+                                gBrowser.selectedBrowser.contentTitle);
+      } else if (event.target.classList.contains("share-more-button")) {
+        sharingService.openSharingPreferences();
+      }
+      PanelMultiView.hidePopup(BrowserPageActions.panelNode);
+    };
+
     shareProviders.forEach(function(share) {
-      let item = document.createElement("toolbarbutton");
+      let item = document.createXULElement("toolbarbutton");
       item.setAttribute("label", share.menuItemTitle);
       item.setAttribute("share-name", share.name);
       item.setAttribute("image", share.image);
       item.classList.add("subviewbutton", "subviewbutton-iconic");
-
-      item.addEventListener("command", event => {
-        let shareName = event.target.getAttribute("share-name");
-        if (shareName) {
-          sharingService.shareUrl(shareName,
-                                  currentURI,
-                                  gBrowser.selectedBrowser.contentTitle);
-        }
-        PanelMultiView.hidePopup(BrowserPageActions.panelNode);
-      });
-
+      item.addEventListener("command", onCommand);
       fragment.appendChild(item);
     });
+
+    let item = document.createXULElement("toolbarbutton");
+    item.setAttribute("label", BrowserPageActions.panelNode.getAttribute("shareMore-label"));
+    item.classList.add("subviewbutton", "subviewbutton-iconic", "share-more-button");
+    item.addEventListener("command", onCommand);
+    fragment.appendChild(item);
 
     while (bodyNode.firstChild) {
       bodyNode.firstChild.remove();
     }
     bodyNode.appendChild(fragment);
     this._cached = true;
-  }
+  },
 };
 
 // Attach sharingService here so tests can override the implementation

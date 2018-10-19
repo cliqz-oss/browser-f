@@ -9,10 +9,10 @@
 #ifndef vm_JSScript_h
 #define vm_JSScript_h
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/PodOperations.h"
 #include "mozilla/Variant.h"
 
 #include "jstypes.h"
@@ -21,6 +21,7 @@
 #include "gc/Barrier.h"
 #include "gc/Rooting.h"
 #include "jit/IonCode.h"
+#include "js/CompileOptions.h"
 #include "js/UbiNode.h"
 #include "js/UniquePtr.h"
 #include "vm/BytecodeUtil.h"
@@ -29,6 +30,7 @@
 #include "vm/Scope.h"
 #include "vm/Shape.h"
 #include "vm/SharedImmutableStringsCache.h"
+#include "vm/Time.h"
 
 namespace JS {
 struct ScriptSourceInfo;
@@ -393,7 +395,8 @@ class ScriptSource
     };
 
   private:
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> refs;
+    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire,
+                    mozilla::recordreplay::Behavior::DontPreserve> refs;
 
     // Note: while ScriptSources may be compressed off thread, they are only
     // modified by the main thread, and all members are always safe to access
@@ -542,7 +545,7 @@ class ScriptSource
             js_delete(this);
     }
     MOZ_MUST_USE bool initFromOptions(JSContext* cx,
-                                      const ReadOnlyCompileOptions& options,
+                                      const JS::ReadOnlyCompileOptions& options,
                                       const mozilla::Maybe<uint32_t>& parameterListEnd = mozilla::Nothing());
     MOZ_MUST_USE bool setSourceCopy(JSContext* cx, JS::SourceBufferHolder& srcBuf);
     void setSourceRetrievable() { sourceRetrievable_ = true; }
@@ -681,7 +684,7 @@ class ScriptSource
     // Inform `this` source that it has been fully parsed.
     void recordParseEnded() {
         MOZ_ASSERT(parseEnded_.IsNull());
-        parseEnded_ = mozilla::TimeStamp::Now();
+        parseEnded_ = ReallyNow();
     }
 };
 
@@ -729,7 +732,7 @@ class ScriptSourceObject : public NativeObject
     // Initialize those properties of this ScriptSourceObject whose values
     // are provided by |options|, re-wrapping as necessary.
     static bool initFromOptions(JSContext* cx, HandleScriptSourceObject source,
-                                const ReadOnlyCompileOptions& options);
+                                const JS::ReadOnlyCompileOptions& options);
 
     static bool initElementProperties(JSContext* cx, HandleScriptSourceObject source,
                                       HandleObject element, HandleString elementAttrName);
@@ -794,7 +797,8 @@ class SharedScriptData
     // This class is reference counted as follows: each pointer from a JSScript
     // counts as one reference plus there may be one reference from the shared
     // script data table.
-    mozilla::Atomic<uint32_t> refCount_;
+    mozilla::Atomic<uint32_t, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> refCount_;
 
     uint32_t natoms_;
     uint32_t codeLength_;
@@ -883,7 +887,7 @@ struct ScriptBytecodeHasher
             return false;
         if (entry->numNotes() != data->numNotes())
             return false;
-        return mozilla::PodEqual<uint8_t>(entry->data(), data->data(), data->dataLength());
+        return mozilla::ArrayEqual<uint8_t>(entry->data(), data->data(), data->dataLength());
     }
 };
 
@@ -1001,14 +1005,13 @@ class JSScript : public js::gc::TenuredCell
     // Unique Method ID passed to the VTune profiler, or 0 if unset.
     // Allows attribution of different jitcode to the same source script.
     uint32_t vtuneMethodId_ = 0;
-    // Extra padding to maintain JSScript as a multiple of gc::CellAlignBytes.
-    uint32_t __vtune_unused_padding_;
 #endif
 
     // Number of times the script has been called or has had backedges taken.
     // When running in ion, also increased for any inlined scripts. Reset if
     // the script's JIT code is forcibly discarded.
-    mozilla::Atomic<uint32_t, mozilla::Relaxed> warmUpCount = {};
+    mozilla::Atomic<uint32_t, mozilla::Relaxed,
+                    mozilla::recordreplay::Behavior::DontPreserve> warmUpCount = {};
 
     // 16-bit fields.
 
@@ -1180,13 +1183,6 @@ class JSScript : public js::gc::TenuredCell
         bool hideScriptFromDebugger_ : 1;
     } bitFields_;
 
-    // Add padding so JSScript is gc::Cell aligned. Make padding protected
-    // instead of private to suppress -Wunused-private-field compiler warnings.
-  protected:
-#if JS_BITS_PER_WORD == 32
-    uint32_t padding_;
-#endif
-
     //
     // End of fields.  Start methods.
     //
@@ -1226,8 +1222,7 @@ class JSScript : public js::gc::TenuredCell
     // fullyInitFromEmitter() do not need to do this.
     static bool partiallyInit(JSContext* cx, JS::Handle<JSScript*> script,
                               uint32_t nscopes, uint32_t nconsts, uint32_t nobjects,
-                              uint32_t ntrynotes, uint32_t nscopenotes, uint32_t nyieldoffsets,
-                              uint32_t nTypeSets);
+                              uint32_t ntrynotes, uint32_t nscopenotes, uint32_t nyieldoffsets);
 
   private:
     static void initFromFunctionBox(js::HandleScript script, js::frontend::FunctionBox* funbox);
@@ -1264,6 +1259,12 @@ class JSScript : public js::gc::TenuredCell
             return nullptr;
         return scriptData_->code();
     }
+    bool isUncompleted() const {
+        // code() becomes non-null only if this script is complete.
+        // See the comment in JSScript::fullyInitFromEmitter.
+        return !code();
+    }
+
     size_t length() const {
         MOZ_ASSERT(scriptData_);
         return scriptData_->codeLength();
@@ -1362,6 +1363,10 @@ class JSScript : public js::gc::TenuredCell
 
     uint32_t sourceEnd() const {
         return sourceEnd_;
+    }
+
+    uint32_t sourceLength() const {
+        return sourceEnd_ - sourceStart_;
     }
 
     uint32_t toStringStart() const {
@@ -1721,7 +1726,8 @@ class JSScript : public js::gc::TenuredCell
     js::ScriptSource* scriptSource() const;
     js::ScriptSource* maybeForwardedScriptSource() const;
 
-    void setDefaultClassConstructorSpan(JSObject* sourceObject, uint32_t start, uint32_t end);
+    void setDefaultClassConstructorSpan(JSObject* sourceObject, uint32_t start, uint32_t end,
+                                        unsigned line, unsigned column);
 
     bool mutedErrors() const { return scriptSource()->mutedErrors(); }
     const char* filename() const { return scriptSource()->filename(); }
@@ -1755,8 +1761,13 @@ class JSScript : public js::gc::TenuredCell
      *
      * If this script has a function associated to it, then it is not the
      * top-level of a file.
+     *
+     * Note that this can returns true for eval scripts as well as global
+     * scripts and modules.
      */
-    bool isTopLevel() { return code() && !functionNonDelazifying(); }
+    bool isTopLevel() const {
+        return code() && !functionNonDelazifying();
+    }
 
     /* Ensure the script has a TypeScript. */
     inline bool ensureHasTypes(JSContext* cx, js::AutoKeepTypeScripts&);
@@ -2079,6 +2090,12 @@ class JSScript : public js::gc::TenuredCell
     uint32_t stepModeCount() { return bitFields_.hasDebugScript_ ? debugScript()->stepMode : 0; }
 #endif
 
+    // Set/get a embedding pointer that can be associated with top-level (global
+    // or module) scripts. Note that although isTopLevel() can return true for
+    // eval scripts, these are not supported.
+    void setTopLevelPrivate(void* value);
+    void* maybeTopLevelPrivate() const;
+
     void finalize(js::FreeOp* fop);
 
     static const JS::TraceKind TraceKind = JS::TraceKind::Script;
@@ -2122,6 +2139,10 @@ class JSScript : public js::gc::TenuredCell
         void holdScript(JS::HandleFunction fun);
         void dropScript();
     };
+
+    // Return whether the record/replay execution progress counter
+    // (see RecordReplay.h) should be updated as this script runs.
+    inline bool trackRecordReplayProgress() const;
 };
 
 /* If this fails, add/remove padding within JSScript. */
@@ -2143,8 +2164,82 @@ class LazyScript : public gc::TenuredCell
     // Original function with which the lazy script is associated.
     GCPtrFunction function_;
 
-    // Scope in which the script is nested.
-    GCPtrScope enclosingScope_;
+    // This field holds one of:
+    //   * LazyScript in which the script is nested.  This case happens if the
+    //     enclosing script is lazily parsed and have never been compiled.
+    //
+    //     This is used by the debugger to delazify the enclosing scripts
+    //     recursively.  The all ancestor LazyScripts in this linked-list are
+    //     kept alive as long as this LazyScript is alive, which doesn't result
+    //     in keeping them unnecessarily alive outside of the debugger for the
+    //     following reasons:
+    //
+    //       * Outside of the debugger, a LazyScript is visible to user (which
+    //         means the LazyScript can be pointed from somewhere else than the
+    //         enclosing script) only if the enclosing script is compiled and
+    //         executed.  While compiling the enclosing script, this field is
+    //         changed to point the enclosing scope.  So the enclosing
+    //         LazyScript is no more in the list.
+    //       * Before the enclosing script gets compiled, this LazyScript is
+    //         kept alive only if the outermost LazyScript in the list is kept
+    //         alive.
+    //       * Once this field is changed to point the enclosing scope, this
+    //         field will never point the enclosing LazyScript again, since
+    //         relazification is not performed on non-leaf scripts.
+    //
+    //   * Scope in which the script is nested.  This case happens if the
+    //     enclosing script has ever been compiled.
+    //
+    //   * nullptr for incomplete (initial or failure) state
+    //
+    // This field should be accessed via accessors:
+    //   * enclosingScope
+    //   * setEnclosingScope (cannot be called twice)
+    //   * enclosingLazyScript
+    //   * setEnclosingLazyScript (cannot be called twice)
+    // after checking:
+    //   * hasEnclosingLazyScript
+    //   * hasEnclosingScope
+    //
+    // The transition of fields are following:
+    //
+    //  o                               o
+    //  | when function is lazily       | when decoded from XDR,
+    //  | parsed inside a function      | and enclosing script is lazy
+    //  | which is lazily parsed        | (CreateForXDR without enclosingScope)
+    //  | (Create)                      |
+    //  v                               v
+    // +---------+                     +---------+
+    // | nullptr |                     | nullptr |
+    // +---------+                     +---------+
+    //  |                               |
+    //  | when enclosing function is    | when enclosing script is decoded
+    //  | lazily parsed and this        | and this script's function is put
+    //  | script's function is put      | into innerFunctions()
+    //  | into innerFunctions()         | (setEnclosingLazyScript)
+    //  | (setEnclosingLazyScript)      |
+    //  |                               |
+    //  |                               |     o
+    //  |                               |     | when function is lazily
+    //  |                               |     | parsed inside a function
+    //  |                               |     | which is eagerly parsed
+    //  |                               |     | (Create)
+    //  v                               |     v
+    // +----------------------+         |    +---------+
+    // | enclosing LazyScript |<--------+    | nullptr |
+    // +----------------------+              +---------+
+    //  |                                     |
+    //  v                                     |
+    //  +<------------------------------------+
+    //  |
+    //  | when the enclosing script     o
+    //  | is successfully compiled      | when decoded from XDR,
+    //  | (setEnclosingScope)           | and enclosing script is not lazy
+    //  v                               | (CreateForXDR with enclosingScope)
+    // +-----------------+              |
+    // | enclosing Scope |<-------------+
+    // +-----------------+
+    GCPtr<TenuredCell*> enclosingLazyScriptOrScope_;
 
     // ScriptSourceObject. We leave this set to nullptr until we generate
     // bytecode for our immediate parent. This is never a CCW; we don't clone
@@ -2153,13 +2248,6 @@ class LazyScript : public gc::TenuredCell
 
     // Heap allocated table with any free variables or inner functions.
     void* table_;
-
-    // Add padding so LazyScript is gc::Cell aligned. Make padding protected
-    // instead of private to suppress -Wunused-private-field compiler warnings.
-  protected:
-#if JS_BITS_PER_WORD == 32
-    uint32_t padding;
-#endif
 
   private:
     static const uint32_t NumClosedOverBindingsBits = 20;
@@ -2245,11 +2333,11 @@ class LazyScript : public gc::TenuredCell
     //
     // The sourceObject and enclosingScope arguments may be null if the
     // enclosing function is also lazy.
-    static LazyScript* Create(JSContext* cx, HandleFunction fun,
-                              HandleScript script, HandleScope enclosingScope,
-                              HandleScriptSourceObject sourceObject,
-                              uint64_t packedData, uint32_t begin, uint32_t end,
-                              uint32_t toStringStart, uint32_t lineno, uint32_t column);
+    static LazyScript* CreateForXDR(JSContext* cx, HandleFunction fun,
+                                    HandleScript script, HandleScope enclosingScope,
+                                    HandleScriptSourceObject sourceObject,
+                                    uint64_t packedData, uint32_t begin, uint32_t end,
+                                    uint32_t toStringStart, uint32_t lineno, uint32_t column);
 
     void initRuntimeFields(uint64_t packedFields);
 
@@ -2258,8 +2346,11 @@ class LazyScript : public gc::TenuredCell
         return function_;
     }
 
+    JS::Compartment* compartment() const;
+    JS::Compartment* maybeCompartment() const { return compartment(); }
+    Realm* realm() const;
+
     void initScript(JSScript* script);
-    void resetScript();
 
     JSScript* maybeScript() {
         return script_;
@@ -2271,8 +2362,29 @@ class LazyScript : public gc::TenuredCell
         return bool(script_);
     }
 
+    bool hasEnclosingScope() const {
+        return enclosingLazyScriptOrScope_ &&
+               enclosingLazyScriptOrScope_->is<Scope>();
+    }
+    bool hasEnclosingLazyScript() const {
+        return enclosingLazyScriptOrScope_ &&
+               enclosingLazyScriptOrScope_->is<LazyScript>();
+    }
+
+    LazyScript* enclosingLazyScript() const {
+        MOZ_ASSERT(hasEnclosingLazyScript());
+        return enclosingLazyScriptOrScope_->as<LazyScript>();
+    }
+    void setEnclosingLazyScript(LazyScript* enclosingLazyScript);
+
     Scope* enclosingScope() const {
-        return enclosingScope_;
+        MOZ_ASSERT(hasEnclosingScope());
+        return enclosingLazyScriptOrScope_->as<Scope>();
+    }
+    void setEnclosingScope(Scope* enclosingScope);
+
+    bool hasNonSyntacticScope() const {
+        return enclosingScope()->hasOnChain(ScopeKind::NonSyntactic);
     }
 
     ScriptSourceObject& sourceObject() const;
@@ -2283,8 +2395,6 @@ class LazyScript : public gc::TenuredCell
     bool mutedErrors() const {
         return scriptSource()->mutedErrors();
     }
-
-    void setEnclosingScope(Scope* enclosingScope);
 
     uint32_t numClosedOverBindings() const {
         return p_.numClosedOverBindings;
@@ -2421,6 +2531,9 @@ class LazyScript : public gc::TenuredCell
     uint32_t sourceEnd() const {
         return sourceEnd_;
     }
+    uint32_t sourceLength() const {
+        return sourceEnd_ - sourceStart_;
+    }
     uint32_t toStringStart() const {
         return toStringStart_;
     }
@@ -2440,13 +2553,14 @@ class LazyScript : public gc::TenuredCell
         toStringEnd_ = toStringEnd;
     }
 
-    // Returns true if the enclosing script failed to compile.
-    // See the comment in the definition for more details.
-    bool hasUncompletedEnclosingScript() const;
-
-    // Returns true if the enclosing script is also lazy.
-    bool isEnclosingScriptLazy() const {
-        return !enclosingScope_;
+    // Returns true if the enclosing script has ever been compiled.
+    // Once the enclosing script is compiled, the scope chain is created.
+    // This LazyScript is delazify-able as long as it has the enclosing scope,
+    // even if the enclosing JSScript is GCed.
+    // The enclosing JSScript can be GCed later if the enclosing scope is not
+    // FunctionScope or ModuleScope.
+    bool enclosingScriptHasEverBeenCompiled() const {
+        return hasEnclosingScope();
     }
 
     friend class GCMarker;

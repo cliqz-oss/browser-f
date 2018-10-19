@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 uk{
-    Version{"2.1.39.20"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"за всесвітнім координованим часом"}
+        }
+        "Europe:Dublin"{
+            ld{"за літнім часом в Ірландії"}
+        }
+        "Europe:London"{
+            ld{"за літнім часом у Великій Британії"}
+        }
         "meta:Acre"{
             ld{"час: Акрі, літній"}
             lg{"час: Акрі"}

@@ -12,7 +12,7 @@ const ROOT = getRootDirectory(gTestPath);
 const HTTPROOT = ROOT.replace("chrome://mochitests/content/", "http://example.com/");
 const FRAME_SCRIPTS = [
   ROOT + "content.js",
-  ROOT + "content-forms.js"
+  ROOT + "content-forms.js",
 ];
 
 for (let script of FRAME_SCRIPTS) {
@@ -57,7 +57,7 @@ function provideWindow(aCallback, aURL, aFeatures) {
     });
   }
 
-  let win = openDialog(getBrowserURL(), "", aFeatures || "chrome,all,dialog=no", aURL || "about:blank");
+  let win = openDialog(AppConstants.BROWSER_CHROME_URL, "", aFeatures || "chrome,all,dialog=no", aURL || "about:blank");
   whenWindowLoaded(win, function onWindowLoaded(aWin) {
     if (!aURL) {
       info("Loaded a blank window.");
@@ -318,9 +318,7 @@ function r() {
 }
 
 function* BrowserWindowIterator() {
-  let windowsEnum = Services.wm.getEnumerator("navigator:browser");
-  while (windowsEnum.hasMoreElements()) {
-    let currentWindow = windowsEnum.getNext();
+  for (let currentWindow of Services.wm.getEnumerator("navigator:browser")) {
     if (!currentWindow.closed) {
       yield currentWindow;
     }
@@ -351,7 +349,7 @@ var gWebProgressListener = {
         aStateFlags & Ci.nsIWebProgressListener.STATE_IS_WINDOW) {
       this._callback(aBrowser);
     }
-  }
+  },
 };
 
 registerCleanupFunction(function() {
@@ -400,7 +398,7 @@ var gProgressListener = {
       }
     }
     return [needsRestore, isRestoring, wasRestored];
-  }
+  },
 };
 
 registerCleanupFunction(function() {
@@ -443,7 +441,7 @@ function whenNewWindowLoaded(aOptions, aCallback) {
     url = "about:privatebrowsing";
   }
 
-  let win = openDialog(getBrowserURL(), "", "chrome,all,dialog=no" + features, url);
+  let win = openDialog(AppConstants.BROWSER_CHROME_URL, "", "chrome,all,dialog=no" + features, url);
   let delayedStartup = promiseDelayedStartupFinished(win);
 
   let browserLoaded = new Promise(resolve => {
@@ -532,6 +530,7 @@ function modifySessionStorage(browser, storageData, storageOptions = {}) {
     }
 
     let keys = new Set(Object.keys(data));
+    let isClearing = !keys.size;
     let storage = frame.sessionStorage;
 
     return new Promise(resolve => {
@@ -546,8 +545,12 @@ function modifySessionStorage(browser, storageData, storageOptions = {}) {
         }
       }, true);
 
-      for (let key of keys) {
-        frame.sessionStorage[key] = data[key];
+      if (isClearing) {
+        storage.clear();
+      } else {
+        for (let key of keys) {
+          frame.sessionStorage[key] = data[key];
+        }
       }
     });
   });

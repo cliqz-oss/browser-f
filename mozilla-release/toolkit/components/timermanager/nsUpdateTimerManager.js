@@ -151,12 +151,7 @@ TimerManager.prototype = {
       }
     }
 
-    var catMan = Cc["@mozilla.org/categorymanager;1"].
-                 getService(Ci.nsICategoryManager);
-    var entries = catMan.enumerateCategory(CATEGORY_UPDATE_TIMER);
-    while (entries.hasMoreElements()) {
-      let entry = entries.getNext().QueryInterface(Ci.nsISupportsCString).data;
-      let value = catMan.getCategoryEntry(CATEGORY_UPDATE_TIMER, entry);
+    for (let {value} of Services.catMan.enumerateCategory(CATEGORY_UPDATE_TIMER)) {
       let [cid, method, timerID, prefInterval, defaultInterval, maxInterval] = value.split(",");
 
       defaultInterval = parseInt(defaultInterval);
@@ -219,13 +214,15 @@ TimerManager.prototype = {
       }
       tryFire(function() {
         if (timerData.callback && timerData.callback.notify) {
-          try {
-            timerData.callback.notify(timer);
-            LOG("TimerManager:notify - notified timerID: " + timerID);
-          } catch (e) {
-            LOG("TimerManager:notify - error notifying timerID: " + timerID +
-                ", error: " + e);
-          }
+          ChromeUtils.idleDispatch(() => {
+            try {
+              timerData.callback.notify(timer);
+              LOG("TimerManager:notify - notified timerID: " + timerID);
+            } catch (e) {
+              LOG("TimerManager:notify - error notifying timerID: " + timerID +
+                  ", error: " + e);
+            }
+          });
         } else {
           LOG("TimerManager:notify - timerID: " + timerID + " doesn't " +
               "implement nsITimerCallback - skipping");
@@ -330,7 +327,7 @@ TimerManager.prototype = {
   classID: Components.ID("{B322A5C0-A419-484E-96BA-D7182163899F}"),
   QueryInterface: ChromeUtils.generateQI([Ci.nsIUpdateTimerManager,
                                           Ci.nsITimerCallback,
-                                          Ci.nsIObserver])
+                                          Ci.nsIObserver]),
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([TimerManager]);

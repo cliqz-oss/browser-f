@@ -26,6 +26,7 @@ using mozilla::wr::PipelineId from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::gfx::MaybeIntSize from "mozilla/gfx/Point.h";
 using mozilla::LayoutDeviceRect from "Units.h";
 using mozilla::ImageIntRect from "Units.h";
+using mozilla::gfx::Rect from "mozilla/gfx/Rect.h";
 using class mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 
@@ -51,6 +52,13 @@ struct OpAddExternalImage {
   ImageKey key;
 };
 
+struct OpPushExternalImageForTexture {
+  ExternalImageId externalImageId;
+  ImageKey key;
+  PTexture texture;
+  bool isUpdate;
+};
+
 struct OpAddCompositorAnimations {
   CompositorAnimations data;
 };
@@ -65,13 +73,12 @@ struct OpRemovePipelineIdForCompositable {
   PipelineId pipelineId;
 };
 
-struct OpAddExternalImageIdForCompositable {
-  ExternalImageId externalImageId;
-  CompositableHandle handle;
-};
-
 struct OpRemoveExternalImageId {
   ExternalImageId externalImageId;
+};
+
+struct OpReleaseTextureOfImage {
+  ImageKey key;
 };
 
 struct OpUpdateAsyncImagePipeline {
@@ -83,12 +90,17 @@ struct OpUpdateAsyncImagePipeline {
   MixBlendMode mixBlendMode;
 };
 
+struct OpUpdatedAsyncImagePipeline {
+  PipelineId pipelineId;
+};
+
 union WebRenderParentCommand {
   OpAddPipelineIdForCompositable;
   OpRemovePipelineIdForCompositable;
-  OpAddExternalImageIdForCompositable;
   OpRemoveExternalImageId;
+  OpReleaseTextureOfImage;
   OpUpdateAsyncImagePipeline;
+  OpUpdatedAsyncImagePipeline;
   CompositableOperation;
   OpAddCompositorAnimations;
 };
@@ -122,6 +134,17 @@ struct OpUpdateImage {
 struct OpUpdateBlobImage {
   ImageDescriptor descriptor;
   OffsetRange bytes;
+  ImageKey key;
+  ImageIntRect dirtyRect;
+};
+
+struct OpSetImageVisibleArea {
+  Rect area;
+  ImageKey key;
+};
+
+struct OpUpdateExternalImage {
+  ExternalImageId externalImageId;
   ImageKey key;
   ImageIntRect dirtyRect;
 };
@@ -164,6 +187,7 @@ union OpUpdateResource {
   OpAddBlobImage;
   OpUpdateImage;
   OpUpdateBlobImage;
+  OpSetImageVisibleArea;
   OpDeleteImage;
   OpAddRawFont;
   OpAddFontDescriptor;
@@ -171,6 +195,8 @@ union OpUpdateResource {
   OpAddFontInstance;
   OpDeleteFontInstance;
   OpAddExternalImage;
+  OpPushExternalImageForTexture;
+  OpUpdateExternalImage;
 };
 
 } // namespace

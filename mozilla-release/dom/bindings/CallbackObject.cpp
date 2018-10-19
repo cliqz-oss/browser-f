@@ -81,6 +81,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(CallbackObject)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(CallbackObject)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mCallback)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mCallbackGlobal)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mCreationStack)
   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mIncumbentJSGlobal)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
@@ -89,6 +90,7 @@ void
 CallbackObject::Trace(JSTracer* aTracer)
 {
   JS::TraceEdge(aTracer, &mCallback, "CallbackObject.mCallback");
+  JS::TraceEdge(aTracer, &mCallbackGlobal, "CallbackObject.mCallbackGlobal");
   JS::TraceEdge(aTracer, &mCreationStack, "CallbackObject.mCreationStack");
   JS::TraceEdge(aTracer, &mIncumbentJSGlobal,
                 "CallbackObject.mIncumbentJSGlobal");
@@ -196,15 +198,12 @@ CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
       globalObject = win;
     } else {
       // No DOM Window. Store the global.
-      JSObject* global = js::GetGlobalForObjectCrossCompartment(realCallback);
-      globalObject = xpc::NativeGlobal(global);
+      globalObject = xpc::NativeGlobal(realCallback);
       MOZ_ASSERT(globalObject);
     }
   }
 
-  // Bail out if there's no useful global. This seems to happen intermittently
-  // on gaia-ui tests, probably because nsInProcessTabChildGlobal is returning
-  // null in some kind of teardown state.
+  // Bail out if there's no useful global.
   if (!globalObject->GetGlobalJSObject()) {
     aRv.ThrowDOMException(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
       NS_LITERAL_CSTRING("Refusing to execute function from global which is "
@@ -240,6 +239,7 @@ CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
   // with the cx from mAutoEntryScript, avoiding the cost of finding another
   // JSContext. (Rooted<> does not care about requests or compartments.)
   mRootedCallable.emplace(cx, aCallback->CallbackOrNull());
+  mRootedCallableGlobal.emplace(cx, aCallback->CallbackGlobalOrNull());
 
   mAsyncStack.emplace(cx, aCallback->GetCreationStack());
   if (*mAsyncStack) {
@@ -251,7 +251,7 @@ CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
   // Note that if the callback is a wrapper, this will not be the same
   // realm that we ended up in with mAutoEntryScript above, because the
   // entry point is based off of the unwrapped callback (realCallback).
-  mAr.emplace(cx, *mRootedCallable);
+  mAr.emplace(cx, *mRootedCallableGlobal);
 
   // And now we're ready to go.
   mCx = cx;
@@ -376,10 +376,11 @@ CallbackObjectHolderBase::ToXPCOMCallback(CallbackObject* aCallback,
     return nullptr;
   }
 
-  JSAutoRealm ar(cx, callback);
+  JSAutoRealm ar(cx, aCallback->CallbackGlobalOrNull());
+
   RefPtr<nsXPCWrappedJS> wrappedJS;
   nsresult rv =
-    nsXPCWrappedJS::GetNewOrUsed(callback, aIID, getter_AddRefs(wrappedJS));
+    nsXPCWrappedJS::GetNewOrUsed(cx, callback, aIID, getter_AddRefs(wrappedJS));
   if (NS_FAILED(rv) || !wrappedJS) {
     return nullptr;
   }

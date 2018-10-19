@@ -33,7 +33,6 @@
                   command="Browser:Stop"/>
         <menuitem id="context-bookmarkpage"
                   class="menuitem-iconic"
-                  observes="bookmarkThisPageBroadcaster"
                   aria-label="&bookmarkPageCmd2.label;"
                   accesskey="&bookmarkPageCmd2.accesskey;"
                   oncommand="gContextMenu.bookmarkThisPage();"/>
@@ -268,7 +267,7 @@
             accesskey="&sendPageToDevice.accesskey;"
             hidden="true">
         <menupopup id="context-sendpagetodevice-popup"
-                   onpopupshowing="(() => { let browser = gBrowser || getPanelBrowser(); gSync.populateSendTabToDevicesMenu(event.target, browser.currentURI.spec, browser.contentTitle); })()"/>
+                   onpopupshowing="(() => { gSync.populateSendTabToDevicesMenu(event.target, gBrowser.currentURI.spec, gBrowser.contentTitle); })()"/>
       </menu>
       <menuseparator id="context-sep-viewbgimage"/>
       <menuitem id="context-viewbgimage"
@@ -308,7 +307,7 @@
                 accesskey="&keywordfield.accesskey;"
                 oncommand="AddKeywordForSearchField();"/>
       <menuitem id="context-searchselect"
-                oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms);"/>
+                oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, this.principal);"/>
       <menuseparator id="context-sep-sendlinktodevice" class="sync-ui-item"
                      hidden="true"/>
       <menu id="context-sendlinktodevice"
@@ -368,12 +367,7 @@
       <menuitem id="context-viewpartialsource-selection"
                 label="&viewPartialSourceForSelectionCmd.label;"
                 accesskey="&viewPartialSourceCmd.accesskey;"
-                oncommand="gContextMenu.viewPartialSource('selection');"
-                observes="isImage"/>
-      <menuitem id="context-viewpartialsource-mathml"
-                label="&viewPartialSourceForMathMLCmd.label;"
-                accesskey="&viewPartialSourceCmd.accesskey;"
-                oncommand="gContextMenu.viewPartialSource('mathml');"
+                oncommand="gContextMenu.viewPartialSource();"
                 observes="isImage"/>
       <menuseparator id="context-sep-viewsource"/>
       <menuitem id="context-viewsource"

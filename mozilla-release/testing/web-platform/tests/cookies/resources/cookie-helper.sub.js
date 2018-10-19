@@ -48,19 +48,19 @@ function assert_cookie(origin, obj, name, value, present) {
 }
 
 // Remove the cookie named |name| from |origin|, then set it on |origin| anew.
-// If |origin| matches `document.origin`, also assert (via `document.cookie`) that
+// If |origin| matches `self.origin`, also assert (via `document.cookie`) that
 // the cookie was correctly removed and reset.
 function create_cookie(origin, name, value, extras) {
   alert("Create_cookie: " + origin + "/cookies/resources/drop.py?name=" + name);
   return credFetch(origin + "/cookies/resources/drop.py?name=" + name)
     .then(_ => {
-      if (origin == document.origin)
+      if (origin == self.origin)
         assert_dom_cookie(name, value, false);
     })
     .then(_ => {
       return credFetch(origin + "/cookies/resources/set.py?" + name + "=" + value + ";path=/;" + extras)
         .then(_ => {
-          if (origin == document.origin)
+          if (origin == self.origin)
             assert_dom_cookie(name, value, true);
         });
     });
@@ -96,7 +96,7 @@ function set_prefixed_cookie_via_http_test(options) {
 
     var name = options.prefix + "prefixtestcookie";
     if (!options.origin) {
-      options.origin = document.origin;
+      options.origin = self.origin;
       erase_cookie_from_js(name);
       return postDelete;
     } else {
@@ -116,12 +116,12 @@ window.SameSiteStatus = {
   STRICT: "strict"
 };
 
-// Reset SameSite test cookies on |origin|. If |origin| matches `document.origin`, assert
+// Reset SameSite test cookies on |origin|. If |origin| matches `self.origin`, assert
 // (via `document.cookie`) that they were properly removed and reset.
 function resetSameSiteCookies(origin, value) {
   return credFetch(origin + "/cookies/resources/dropSameSite.py")
     .then(_ => {
-      if (origin == document.origin) {
+      if (origin == self.origin) {
         assert_dom_cookie("samesite_strict", value, false);
         assert_dom_cookie("samesite_lax", value, false);
         assert_dom_cookie("samesite_none", value, false);
@@ -130,7 +130,7 @@ function resetSameSiteCookies(origin, value) {
     .then(_ => {
       return credFetch(origin + "/cookies/resources/setSameSite.py?" + value)
         .then(_ => {
-          if (origin == document.origin) {
+          if (origin == self.origin) {
             assert_dom_cookie("samesite_strict", value, true);
             assert_dom_cookie("samesite_lax", value, true);
             assert_dom_cookie("samesite_none", value, true);
@@ -164,12 +164,12 @@ window.SecureStatus = {
   BOTH_COOKIES: "2",
 };
 
-//Reset SameSite test cookies on |origin|. If |origin| matches `document.origin`, assert
+//Reset SameSite test cookies on |origin|. If |origin| matches `self.origin`, assert
 //(via `document.cookie`) that they were properly removed and reset.
 function resetSecureCookies(origin, value) {
 return credFetch(origin + "/cookies/resources/dropSecure.py")
  .then(_ => {
-   if (origin == document.origin) {
+   if (origin == self.origin) {
      assert_dom_cookie("alone_secure", value, false);
      assert_dom_cookie("alone_insecure", value, false);
    }
@@ -180,27 +180,13 @@ return credFetch(origin + "/cookies/resources/dropSecure.py")
 }
 
 //
-// DOM based cookie manipulation API's
+// DOM based cookie manipulation APIs
 //
-
-// borrowed from http://www.quirksmode.org/js/cookies.html
-function create_cookie_from_js(name, value, days, secure_flag) {
-  if (days) {
-    var date = new Date();
-    date.setTime(date.getTime()+(days*24*60*60*1000));
-    var expires = "; expires="+date.toGMTString();
-  }
-  else var expires = "";
-
-  var secure = "";
-  if (secure_flag == true) {
-    secure = "secure; ";
-  }
-  document.cookie = name+"="+value+expires+"; "+secure+"path=/";
-}
 
 // erase cookie value and set for expiration
 function erase_cookie_from_js(name) {
-  create_cookie_from_js(name,"",-1);
-  assert_dom_cookie(name, "", false);
+  let secure = self.location.protocol == "https:" ? "Secure" : "";
+  document.cookie = `${name}=0; path=/; expires=${new Date(0).toUTCString()}; ${secure}`;
+  var re = new RegExp("(?:^|; )" + name);
+  assert_equals(re.test(document.cookie), false, "Sanity check: " + name + " has been deleted.");
 }

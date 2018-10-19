@@ -34,6 +34,8 @@
 
 #include "mozilla/DebugOnly.h"
 
+#include "nsRegionFwd.h"
+
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
   #ifndef MOZ_ENABLE_FREETYPE
   #define MOZ_ENABLE_FREETYPE
@@ -46,14 +48,13 @@ typedef _cairo_surface cairo_surface_t;
 struct _cairo_scaled_font;
 typedef _cairo_scaled_font cairo_scaled_font_t;
 
-struct _FcPattern;
-typedef _FcPattern FcPattern;
-
 struct FT_LibraryRec_;
 typedef FT_LibraryRec_* FT_Library;
 
 struct FT_FaceRec_;
 typedef FT_FaceRec_* FT_Face;
+
+typedef int FT_Error;
 
 struct ID3D11Texture2D;
 struct ID3D11Device;
@@ -600,16 +601,16 @@ public:
   }
 
   /**
-   * Indicates how many times the surface has been invalidated.
+   * Yields a dirty rect of what has changed since it was last called.
    */
-  virtual int32_t Invalidations() const {
-    return -1;
+  virtual Maybe<IntRect> TakeDirtyRect() {
+    return Nothing();
   }
 
   /**
-   * Increment the invalidation counter.
+   * Indicate a region which has changed in the surface.
    */
-  virtual void Invalidate() { }
+  virtual void Invalidate(const IntRect& aDirtyRect) { }
 
 protected:
   bool mIsMapped;
@@ -899,13 +900,18 @@ public:
   virtual cairo_scaled_font_t* GetCairoScaledFont() { return nullptr; }
   virtual void SetCairoScaledFont(cairo_scaled_font_t* font) {}
 
+  Float GetSyntheticObliqueAngle() const { return mSyntheticObliqueAngle; }
+  void SetSyntheticObliqueAngle(Float aAngle) { mSyntheticObliqueAngle = aAngle; }
+
 protected:
   explicit ScaledFont(const RefPtr<UnscaledFont>& aUnscaledFont)
     : mUnscaledFont(aUnscaledFont)
+    , mSyntheticObliqueAngle(0.0f)
   {}
 
   UserData mUserData;
   RefPtr<UnscaledFont> mUnscaledFont;
+  Float mSyntheticObliqueAngle;
 
 private:
   static Atomic<uint32_t> sDeletionCounter;
@@ -947,7 +953,11 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget>
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawTarget)
-  DrawTarget() : mTransformDirty(false), mPermitSubpixelAA(false) {}
+  DrawTarget()
+    : mTransformDirty(false)
+    , mPermitSubpixelAA(false)
+    , mFormat(SurfaceFormat::UNKNOWN)
+  {}
   virtual ~DrawTarget() {}
 
   virtual bool IsValid() const { return true; };
@@ -1289,6 +1299,17 @@ public:
   virtual void Blur(const AlphaBoxBlur& aBlur);
 
   /**
+   * Performs an in-place edge padding operation.
+   * aRegion is specified in device space.
+   */
+  virtual void PadEdges(const IntRegion& aRegion);
+
+  /**
+   * Performs an in-place buffer unrotation operation.
+   */
+  virtual bool Unrotate(IntPoint aRotation);
+
+  /**
    * Create a SourceSurface optimized for use with this DrawTarget from
    * existing bitmap data in memory.
    *
@@ -1527,16 +1548,8 @@ class DrawTargetCapture : public DrawTarget
 public:
   virtual bool IsCaptureDT() const override { return true; }
 
+  virtual bool IsEmpty() const = 0;
   virtual void Dump() = 0;
-
-  /**
-   * Returns true if the recording only contains FillGlyph calls with
-   * a single font and color. Returns the list of Glyphs along with
-   * the font and color as outparams if so.
-   */
-  virtual bool ContainsOnlyColoredGlyphs(RefPtr<ScaledFont>& aScaledFont,
-                                         Color& aColor,
-                                         std::vector<Glyph>& aGlyphs) = 0;
 };
 
 class DrawEventRecorder : public RefCounted<DrawEventRecorder>
@@ -1622,6 +1635,18 @@ public:
     CreateDrawTarget(BackendType aBackend, const IntSize &aSize, SurfaceFormat aFormat);
 
   /**
+   * Create a DrawTarget that captures the drawing commands to eventually be replayed
+   * onto the DrawTarget provided. An optional byte size can be provided as a limit
+   * for the CaptureCommandList. When the limit is reached, the CaptureCommandList
+   * will be replayed to the target and then cleared.
+   *
+   * @param aSize Size of the area this DT will capture.
+   * @param aFlushBytes The byte limit at which to flush the CaptureCommandList
+   */
+  static already_AddRefed<DrawTargetCapture>
+    CreateCaptureDrawTargetForTarget(gfx::DrawTarget* aTarget, size_t aFlushBytes = 0);
+
+  /**
    * Create a DrawTarget that captures the drawing commands and can be replayed
    * onto a compatible DrawTarget afterwards.
    *
@@ -1642,17 +1667,6 @@ public:
 
   static already_AddRefed<DrawTarget>
     CreateDrawTargetForData(BackendType aBackend, unsigned char* aData, const IntSize &aSize, int32_t aStride, SurfaceFormat aFormat, bool aUninitialized = false);
-
-  static already_AddRefed<ScaledFont>
-    CreateScaledFontForNativeFont(const NativeFont &aNativeFont,
-                                  const RefPtr<UnscaledFont>& aUnscaledFont,
-                                  Float aSize);
-
-#ifdef MOZ_WIDGET_GTK
-  static already_AddRefed<ScaledFont>
-    CreateScaledFontForFontconfigFont(cairo_scaled_font_t* aScaledFont, FcPattern* aPattern,
-                                      const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize);
-#endif
 
 #ifdef XP_DARWIN
   static already_AddRefed<ScaledFont>
@@ -1682,15 +1696,17 @@ public:
     CreateUnscaledFontFromFontDescriptor(FontType aType, const uint8_t* aData, uint32_t aDataLength, uint32_t aIndex);
 
   /**
-   * This creates a scaled font with an associated cairo_scaled_font_t, and
-   * must be used when using the Cairo backend. The NativeFont and
-   * cairo_scaled_font_t* parameters must correspond to the same font.
+   * Creates a ScaledFont from the supplied NativeFont.
+   *
+   * If aScaledFont is supplied, this creates a scaled font with an associated
+   * cairo_scaled_font_t. The NativeFont and cairo_scaled_font_t* parameters must
+   * correspond to the same font.
    */
   static already_AddRefed<ScaledFont>
-    CreateScaledFontWithCairo(const NativeFont &aNativeFont,
-                              const RefPtr<UnscaledFont>& aUnscaledFont,
-                              Float aSize,
-                              cairo_scaled_font_t* aScaledFont);
+    CreateScaledFontForNativeFont(const NativeFont &aNativeFont,
+                                  const RefPtr<UnscaledFont>& aUnscaledFont,
+                                  Float aSize,
+                                  cairo_scaled_font_t* aScaledFont = nullptr);
 
   /**
    * This creates a simple data source surface for a certain size. It allocates
@@ -1764,6 +1780,9 @@ public:
   static already_AddRefed<DrawTarget>
     CreateDualDrawTarget(DrawTarget *targetA, DrawTarget *targetB);
 
+  static already_AddRefed<SourceSurface>
+    CreateDualSourceSurface(SourceSurface *sourceA, SourceSurface *sourceB);
+
   /*
    * This creates a new tiled DrawTarget. When a tiled drawtarget is used the
    * drawing is distributed over number of tiles which may each hold an
@@ -1771,6 +1790,7 @@ public:
    * and format.
    */
   static already_AddRefed<DrawTarget> CreateTiledDrawTarget(const TileSet& aTileSet);
+  static already_AddRefed<DrawTarget> CreateOffsetDrawTarget(DrawTarget *aDrawTarget, IntPoint aTileOrigin);
 
   static bool DoesBackendSupportDataDrawtarget(BackendType aType);
 
@@ -1790,6 +1810,7 @@ public:
   static FT_Face NewFTFace(FT_Library aFTLibrary, const char* aFileName, int aFaceIndex);
   static FT_Face NewFTFaceFromData(FT_Library aFTLibrary, const uint8_t* aData, size_t aDataSize, int aFaceIndex);
   static void ReleaseFTFace(FT_Face aFace);
+  static FT_Error LoadFTGlyph(FT_Face aFace, uint32_t aGlyphIndex, int32_t aFlags);
 
 private:
   static FT_Library mFTLibrary;

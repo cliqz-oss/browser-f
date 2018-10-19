@@ -9,7 +9,6 @@ import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -39,8 +38,6 @@ import org.mozilla.gecko.DoorHangerPopup;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.FormAssistPopup;
 import org.mozilla.gecko.GeckoApplication;
-import org.mozilla.gecko.GeckoSharedPrefs;
-import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.SnackbarBuilder;
 import org.mozilla.gecko.Telemetry;
@@ -59,9 +56,7 @@ import org.mozilla.gecko.util.PackageUtil;
 import org.mozilla.gecko.webapps.WebApps;
 import org.mozilla.gecko.widget.ActionModePresenter;
 import org.mozilla.gecko.widget.GeckoPopupMenu;
-import org.mozilla.geckoview.GeckoResponse;
 import org.mozilla.geckoview.GeckoResult;
-import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
@@ -156,18 +151,6 @@ public class CustomTabsActivity extends AppCompatActivity
     }
 
     @Override
-    public void onResume() {
-        mGeckoSession.setActive(true);
-        super.onResume();
-    }
-
-    @Override
-    public void onPause() {
-        mGeckoSession.setActive(false);
-        super.onPause();
-    }
-
-    @Override
     public void onDestroy() {
         mGeckoSession.close();
         mTextSelection.destroy();
@@ -189,15 +172,6 @@ public class CustomTabsActivity extends AppCompatActivity
     public void onRequestPermissionsResult(final int requestCode, final String[] permissions,
                                            final int[] grantResults) {
         Permissions.onRequestPermissionsResult(this, permissions, grantResults);
-    }
-
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-
-        if (mPromptService != null) {
-            mPromptService.changePromptOrientation(newConfig.orientation);
-        }
     }
 
     private void sendTelemetry() {
@@ -652,6 +626,12 @@ public class CustomTabsActivity extends AppCompatActivity
     public GeckoResult<GeckoSession> onNewSession(final GeckoSession session, final String uri) {
         // We should never get here because we abort loads that need a new session in onLoadRequest()
         throw new IllegalStateException("Unexpected new session");
+    }
+
+    @Override
+    public GeckoResult<String> onLoadError(final GeckoSession session, final String urlStr,
+                                           final int category, final int error) {
+        return null;
     }
 
     /* GeckoSession.ProgressDelegate */

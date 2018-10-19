@@ -12,6 +12,7 @@
 #include <stdarg.h>
 
 #include "jsapi.h" // for JSErrorNotes, JSErrorReport
+#include "jsfriendapi.h" // for ScriptEnvironmentPreparer
 
 #include "js/UniquePtr.h" // for UniquePtr
 #include "js/Utility.h" // for UniqueTwoByteChars
@@ -68,6 +69,18 @@ class CompileError : public JSErrorReport
     void throwError(JSContext* cx);
 };
 
+class MOZ_STACK_CLASS ReportExceptionClosure final
+  : public ScriptEnvironmentPreparer::Closure
+{
+    JS::HandleValue exn_;
+
+  public:
+    explicit ReportExceptionClosure(JS::HandleValue exn)
+      : exn_(exn) { }
+
+    bool operator()(JSContext* cx) override;
+};
+
 /** Send a JSErrorReport to the warningReporter callback. */
 extern void
 CallWarningReporter(JSContext* cx, JSErrorReport* report);
@@ -92,13 +105,15 @@ extern MOZ_MUST_USE bool
 ReportCompileWarning(JSContext* cx, ErrorMetadata&& metadata, UniquePtr<JSErrorNotes> notes,
                      unsigned flags, unsigned errorNumber, va_list args);
 
+class GlobalObject;
+
 /**
  * Report the given error Value to the given global.  The JSContext is not
- * assumed to be in any particular compartment, but the global and error are
+ * assumed to be in any particular realm, but the global and error are
  * expected to be same-compartment.
  */
 extern void
-ReportErrorToGlobal(JSContext* cx, JS::HandleObject global, JS::HandleValue error);
+ReportErrorToGlobal(JSContext* cx, JS::Handle<js::GlobalObject*> global, JS::HandleValue error);
 
 } // namespace js
 

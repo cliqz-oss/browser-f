@@ -7,13 +7,15 @@ const PRINCIPAL = Services.scriptSecurityManager
   .createCodebasePrincipal(Services.io.newURI(URL), {});
 
 const PERMISSIONS_URL = "chrome://browser/content/preferences/permissions.xul";
-const AUTOPLAY_ENABLED_KEY = "media.autoplay.enabled";
+const AUTOPLAY_ENABLED_KEY = "media.autoplay.default";
 const GESTURES_NEEDED_KEY = "media.autoplay.enabled.user-gestures-needed";
+const ASK_PERMISSIONS_KEY = "media.autoplay.enabled.ask-permissions";
 
 var exceptionsDialog;
 
-Services.prefs.setBoolPref(AUTOPLAY_ENABLED_KEY, true);
+Services.prefs.setIntPref(AUTOPLAY_ENABLED_KEY, Ci.nsIAutoplay.ALLOWED);
 Services.prefs.setBoolPref(GESTURES_NEEDED_KEY, false);
+Services.prefs.setBoolPref(ASK_PERMISSIONS_KEY, true);
 
 async function openExceptionsDialog() {
   let dialogOpened = promiseLoadSubDialog(PERMISSIONS_URL);
@@ -29,6 +31,7 @@ add_task(async function ensureCheckboxHidden() {
   registerCleanupFunction(async function() {
     Services.prefs.clearUserPref(AUTOPLAY_ENABLED_KEY);
     Services.prefs.clearUserPref(GESTURES_NEEDED_KEY);
+    Services.prefs.clearUserPref(ASK_PERMISSIONS_KEY);
     gBrowser.removeCurrentTab();
   });
 
@@ -44,11 +47,12 @@ add_task(async function enableBlockingAutoplay() {
 
   await ContentTask.spawn(gBrowser.selectedBrowser, null, function() {
     let doc = content.document;
-    let autoplayCheckBox = doc.getElementById("autoplayMediaPolicy");
+    let autoplayCheckBox = doc.getElementById("autoplayMediaCheckbox");
     autoplayCheckBox.click();
   });
 
-  Assert.equal(Services.prefs.getBoolPref(AUTOPLAY_ENABLED_KEY), false,
+  Assert.equal(Services.prefs.getIntPref(AUTOPLAY_ENABLED_KEY),
+               Ci.nsIAutoplay.BLOCKED,
                "Ensure we have set autoplay to false");
 });
 
@@ -56,8 +60,8 @@ add_task(async function addException() {
   await openExceptionsDialog();
   let doc = exceptionsDialog.document;
 
-  let tree = doc.getElementById("permissionsTree");
-  Assert.equal(tree.view.rowCount, 0, "Row count should initially be 0");
+  let richlistbox = doc.getElementById("permissionsBox");
+  Assert.equal(richlistbox.itemCount, 0, "Row count should initially be 0");
 
   let inputBox = doc.getElementById("url");
   inputBox.focus();
@@ -67,9 +71,8 @@ add_task(async function addException() {
   let btnAllow = doc.getElementById("btnAllow");
   btnAllow.click();
 
-  await TestUtils.waitForCondition(() => tree.view.rowCount == 1);
-  Assert.equal(tree.view.getCellText(0, tree.treeBoxObject.columns.getColumnAt(0)),
-               URL);
+  await TestUtils.waitForCondition(() => richlistbox.itemCount == 1);
+  Assert.equal(richlistbox.getItemAtIndex(0).getAttribute("origin"), URL);
 
   let permChanged = TestUtils.topicObserved("perm-changed");
   let btnApplyChanges = doc.getElementById("btnApplyChanges");
@@ -84,10 +87,10 @@ add_task(async function deleteException() {
   await openExceptionsDialog();
   let doc = exceptionsDialog.document;
 
-  let tree = doc.getElementById("permissionsTree");
-  Assert.equal(tree.view.rowCount, 1, "Row count should initially be 1");
-  tree.focus();
-  tree.view.selection.select(0);
+  let richlistbox = doc.getElementById("permissionsBox");
+  Assert.equal(richlistbox.itemCount, 1, "Row count should initially be 1");
+  richlistbox.focus();
+  richlistbox.selectedIndex = 0;
 
   if (AppConstants.platform == "macosx") {
     EventUtils.synthesizeKey("KEY_Backspace");
@@ -95,7 +98,7 @@ add_task(async function deleteException() {
     EventUtils.synthesizeKey("KEY_Delete");
   }
 
-  await TestUtils.waitForCondition(() => tree.view.rowCount == 0);
+  await TestUtils.waitForCondition(() => richlistbox.itemCount == 0);
   is_element_visible(content.gSubDialog._dialogs[0]._box,
     "Subdialog is visible after deleting an element");
 

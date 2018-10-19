@@ -12,6 +12,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/MediaFeatureChange.h"
 #include "mozilla/NotNull.h"
+#include "mozilla/ScrollStyles.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
 #include "nsColor.h"
@@ -41,7 +42,6 @@
 #include "mozilla/AppUnits.h"
 #include "prclist.h"
 #include "nsThreadUtils.h"
-#include "ScrollbarStyles.h"
 #include "nsIMessageManager.h"
 #include "Units.h"
 #include "prenv.h"
@@ -133,11 +133,11 @@ public:
   using Encoding = mozilla::Encoding;
   template <typename T> using NotNull = mozilla::NotNull<T>;
   typedef mozilla::LangGroupFontPrefs LangGroupFontPrefs;
-  typedef mozilla::ScrollbarStyles ScrollbarStyles;
+  typedef mozilla::ScrollStyles ScrollStyles;
   typedef mozilla::StaticPresData StaticPresData;
   using TransactionId = mozilla::layers::TransactionId;
 
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL
   NS_DECL_CYCLE_COLLECTION_CLASS(nsPresContext)
   MOZ_DECLARE_WEAKREFERENCE_TYPENAME(nsPresContext)
 
@@ -658,29 +658,27 @@ public:
    */
   gfxSize ScreenSizeInchesForFontInflation(bool* aChanged = nullptr);
 
-  static int32_t AppUnitsPerCSSPixel() { return mozilla::AppUnitsPerCSSPixel(); }
   int32_t AppUnitsPerDevPixel() const;
-  static int32_t AppUnitsPerCSSInch() { return mozilla::AppUnitsPerCSSInch(); }
 
   static nscoord CSSPixelsToAppUnits(int32_t aPixels)
   { return NSToCoordRoundWithClamp(float(aPixels) *
-             float(AppUnitsPerCSSPixel())); }
+             float(mozilla::AppUnitsPerCSSPixel())); }
 
   static nscoord CSSPixelsToAppUnits(float aPixels)
   { return NSToCoordRoundWithClamp(aPixels *
-             float(AppUnitsPerCSSPixel())); }
+             float(mozilla::AppUnitsPerCSSPixel())); }
 
   static int32_t AppUnitsToIntCSSPixels(nscoord aAppUnits)
   { return NSAppUnitsToIntPixels(aAppUnits,
-             float(AppUnitsPerCSSPixel())); }
+             float(mozilla::AppUnitsPerCSSPixel())); }
 
   static float AppUnitsToFloatCSSPixels(nscoord aAppUnits)
   { return NSAppUnitsToFloatPixels(aAppUnits,
-             float(AppUnitsPerCSSPixel())); }
+             float(mozilla::AppUnitsPerCSSPixel())); }
 
   static double AppUnitsToDoubleCSSPixels(nscoord aAppUnits)
   { return NSAppUnitsToDoublePixels(aAppUnits,
-             double(AppUnitsPerCSSPixel())); }
+             double(mozilla::AppUnitsPerCSSPixel())); }
 
   nscoord DevPixelsToAppUnits(int32_t aPixels) const
   { return NSIntPixelsToAppUnits(aPixels, AppUnitsPerDevPixel()); }
@@ -710,7 +708,7 @@ public:
   mozilla::CSSToLayoutDeviceScale CSSToDevPixelScale() const
   {
     return mozilla::CSSToLayoutDeviceScale(
-        float(AppUnitsPerCSSPixel()) / float(AppUnitsPerDevPixel()));
+        float(mozilla::AppUnitsPerCSSPixel()) / float(AppUnitsPerDevPixel()));
   }
 
   // If there is a remainder, it is rounded to nearest app units.
@@ -754,28 +752,28 @@ public:
    * @return if scroll was propagated from some content node, the content node
    *         it was propagated from.
    */
-  mozilla::dom::Element* UpdateViewportScrollbarStylesOverride();
+  mozilla::dom::Element* UpdateViewportScrollStylesOverride();
 
   /**
    * Returns the cached result from the last call to
-   * UpdateViewportScrollbarStylesOverride() -- i.e. return the node
+   * UpdateViewportScrollStylesOverride() -- i.e. return the node
    * whose scrollbar styles we have propagated to the viewport (or nullptr if
    * there is no such node).
    */
-  mozilla::dom::Element* GetViewportScrollbarStylesOverrideElement() const {
-    return mViewportScrollbarOverrideElement;
+  mozilla::dom::Element* GetViewportScrollStylesOverrideElement() const {
+    return mViewportScrollOverrideElement;
   }
 
-  const ScrollbarStyles& GetViewportScrollbarStylesOverride() const
+  const ScrollStyles& GetViewportScrollStylesOverride() const
   {
-    return mViewportStyleScrollbar;
+    return mViewportScrollStyles;
   }
 
   /**
    * Check whether the given element would propagate its scrollbar styles to the
    * viewport in non-paginated mode.  Must only be called if IsPaginated().
    */
-  bool ElementWouldPropagateScrollbarStyles(mozilla::dom::Element* aElement);
+  bool ElementWouldPropagateScrollStyles(const mozilla::dom::Element&);
 
   /**
    * Set and get methods for controlling the background drawing
@@ -934,29 +932,6 @@ public:
   }
   uint64_t FramesReflowedCount() {
     return mFramesReflowed;
-  }
-
-  /*
-   * Helper functions for a telemetry scroll probe
-   * for more information see bug 1340904
-   */
-  void SetTelemetryScrollY(nscoord aScrollY)
-  {
-    nscoord delta = abs(aScrollY - mTelemetryScrollLastY);
-    mTelemetryScrollLastY = aScrollY;
-
-    mTelemetryScrollTotalY += delta;
-    if (aScrollY > mTelemetryScrollMaxY) {
-      mTelemetryScrollMaxY = aScrollY;
-    }
-  }
-  nscoord TelemetryScrollMaxY() const
-  {
-    return mTelemetryScrollMaxY;
-  }
-  nscoord TelemetryScrollTotalY() const
-  {
-    return mTelemetryScrollTotalY;
   }
 
   static nscoord GetBorderWidthForKeyword(unsigned int aBorderWidthKeyword)
@@ -1221,7 +1196,6 @@ protected:
   void GetDocumentColorPreferences();
 
   void PreferenceChanged(const char* aPrefName);
-  static void PrefChangedCallback(const char*, void*);
 
   void UpdateAfterPreferencesChanged();
   void DispatchPrefChangedRunnableIfNeeded();
@@ -1377,13 +1351,13 @@ protected:
 
   // This is a non-owning pointer. May be null. If non-null, it's guaranteed to
   // be pointing to an element that's still alive, because we'll reset it in
-  // UpdateViewportScrollbarStylesOverride() as part of the cleanup code when
+  // UpdateViewportScrollStylesOverride() as part of the cleanup code when
   // this element is removed from the document. (For <body> and the root
   // element, this call happens in nsCSSFrameConstructor::ContentRemoved(). For
   // fullscreen elements, it happens in the fullscreen-specific cleanup invoked
   // by Element::UnbindFromTree().)
-  mozilla::dom::Element* MOZ_NON_OWNING_REF mViewportScrollbarOverrideElement;
-  ScrollbarStyles       mViewportStyleScrollbar;
+  mozilla::dom::Element* MOZ_NON_OWNING_REF mViewportScrollOverrideElement;
+  ScrollStyles          mViewportScrollStyles;
 
   uint8_t               mFocusRingWidth;
 
@@ -1425,10 +1399,6 @@ protected:
 
   // last time we did a full style flush
   mozilla::TimeStamp    mLastStyleUpdateForAllAnimations;
-
-  nscoord mTelemetryScrollLastY;
-  nscoord mTelemetryScrollMaxY;
-  nscoord mTelemetryScrollTotalY;
 
   unsigned              mHasPendingInterrupt : 1;
   unsigned              mPendingInterruptFromTest : 1;

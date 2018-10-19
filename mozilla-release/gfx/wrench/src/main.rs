@@ -79,14 +79,13 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use webrender::DebugFlags;
 use webrender::api::*;
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::VirtualKeyCode;
 use wrench::{Wrench, WrenchThing};
 use yaml_frame_reader::YamlFrameReader;
 
 lazy_static! {
     static ref PLATFORM_DEFAULT_FACE_NAME: String = String::from("Arial");
-    static ref WHITE_COLOR: ColorF = ColorF::new(1.0, 1.0, 1.0, 1.0);
-    static ref BLACK_COLOR: ColorF = ColorF::new(0.0, 0.0, 0.0, 1.0);
 }
 
 pub static mut CURRENT_FRAME_NUMBER: u32 = 0;
@@ -181,37 +180,36 @@ impl WindowWrapper {
     }
 
     fn get_inner_size(&self) -> DeviceUintSize {
-        //HACK: `winit` needs to figure out its hidpi story...
-        #[cfg(target_os = "macos")]
-        fn inner_size(window: &winit::Window) -> (u32, u32) {
-            let (w, h) = window.get_inner_size().unwrap();
-            let factor = window.hidpi_factor();
-            ((w as f32 * factor) as _, (h as f32 * factor) as _)
+        fn inner_size(window: &winit::Window) -> DeviceUintSize {
+            let size = window
+                .get_inner_size()
+                .unwrap()
+                .to_physical(window.get_hidpi_factor());
+            DeviceUintSize::new(size.width as u32, size.height as u32)
         }
-        #[cfg(not(target_os = "macos"))]
-        fn inner_size(window: &winit::Window) -> (u32, u32) {
-            window.get_inner_size().unwrap()
-        }
-        let (w, h) = match *self {
+        match *self {
             WindowWrapper::Window(ref window, _) => inner_size(window.window()),
             WindowWrapper::Angle(ref window, ..) => inner_size(window),
-            WindowWrapper::Headless(ref context, _) => (context.width, context.height),
-        };
-        DeviceUintSize::new(w, h)
+            WindowWrapper::Headless(ref context, _) => DeviceUintSize::new(context.width, context.height),
+        }
     }
 
     fn hidpi_factor(&self) -> f32 {
         match *self {
-            WindowWrapper::Window(ref window, _) => window.hidpi_factor(),
-            WindowWrapper::Angle(ref window, ..) => window.hidpi_factor(),
+            WindowWrapper::Window(ref window, _) => window.get_hidpi_factor() as f32,
+            WindowWrapper::Angle(ref window, ..) => window.get_hidpi_factor() as f32,
             WindowWrapper::Headless(_, _) => 1.0,
         }
     }
 
     fn resize(&mut self, size: DeviceUintSize) {
         match *self {
-            WindowWrapper::Window(ref mut window, _) => window.set_inner_size(size.width, size.height),
-            WindowWrapper::Angle(ref mut window, ..) => window.set_inner_size(size.width, size.height),
+            WindowWrapper::Window(ref mut window, _) => {
+                window.set_inner_size(LogicalSize::new(size.width as f64, size.height as f64))
+            },
+            WindowWrapper::Angle(ref mut window, ..) => {
+                window.set_inner_size(LogicalSize::new(size.width as f64, size.height as f64))
+            },
             WindowWrapper::Headless(_, _) => unimplemented!(), // requites Glutin update
         }
     }
@@ -257,9 +255,9 @@ fn make_window(
                 })
                 .with_vsync(vsync);
             let window_builder = winit::WindowBuilder::new()
-                .with_title("WRech")
+                .with_title("WRench")
                 .with_multitouch()
-                .with_dimensions(size.width, size.height);
+                .with_dimensions(LogicalSize::new(size.width as f64, size.height as f64));
 
             let init = |context: &glutin::GlContext| {
                 unsafe {
@@ -351,7 +349,11 @@ impl RenderNotifier for Notifier {
         self.tx.send(NotifierEvent::ShutDown).unwrap();
     }
 
-    fn new_frame_ready(&self, _: DocumentId, _scrolled: bool, composite_needed: bool) {
+    fn new_frame_ready(&self,
+                       _: DocumentId,
+                       _scrolled: bool,
+                       composite_needed: bool,
+                       _render_time: Option<u64>) {
         if composite_needed {
             self.wake_up();
         }
@@ -424,6 +426,20 @@ fn main() {
         })
         .unwrap_or(DeviceUintSize::new(1920, 1080));
     let zoom_factor = args.value_of("zoom").map(|z| z.parse::<f32>().unwrap());
+    let chase_primitive = match args.value_of("chase") {
+        Some(s) => {
+            let mut items = s
+                .split(',')
+                .map(|s| s.parse::<f32>().unwrap())
+                .collect::<Vec<_>>();
+            let rect = LayoutRect::new(
+                LayoutPoint::new(items[0], items[1]),
+                LayoutSize::new(items[2], items[3]),
+            );
+            webrender::ChasePrimitive::LocalRect(rect)
+        },
+        None => webrender::ChasePrimitive::Nothing,
+    };
 
     let mut events_loop = if args.is_present("headless") {
         None
@@ -462,8 +478,15 @@ fn main() {
         args.is_present("precache"),
         args.is_present("slow_subpixel"),
         zoom_factor.unwrap_or(1.0),
+        chase_primitive,
         notifier,
     );
+
+    if let Some(window_title) = wrench.take_title() {
+        if !cfg!(windows) {
+            window.set_title(&window_title);
+        }
+    }
 
     if let Some(subargs) = args.subcommand_matches("show") {
         render(&mut wrench, &mut window, size, &mut events_loop, subargs);
@@ -543,12 +566,6 @@ fn render<'a>(
     thing.do_frame(wrench);
 
     let mut body = |wrench: &mut Wrench, global_event: winit::Event| {
-        if let Some(window_title) = wrench.take_title() {
-            if !cfg!(windows) { //TODO: calling `set_title` from inside the `run_forever` loop is illegal...
-                window.set_title(&window_title);
-            }
-        }
-
         let mut do_frame = false;
         let mut do_render = false;
 
@@ -564,7 +581,7 @@ fn render<'a>(
                 winit::WindowEvent::Focused(..) => {
                     do_render = true;
                 }
-                winit::WindowEvent::CursorMoved { position: (x, y), .. } => {
+                winit::WindowEvent::CursorMoved { position: LogicalPosition { x, y }, .. } => {
                     cursor_position = WorldPoint::new(x as f32, y as f32);
                     do_render = true;
                 }
@@ -601,6 +618,10 @@ fn render<'a>(
                         );
                         do_render = true;
                     }
+                    VirtualKeyCode::V => {
+                        wrench.renderer.toggle_debug_flags(DebugFlags::SHOW_OVERDRAW);
+                        do_render = true;
+                    }
                     VirtualKeyCode::R => {
                         wrench.set_page_zoom(ZoomFactor::new(1.0));
                         do_frame = true;
@@ -634,17 +655,30 @@ fn render<'a>(
                         let path = PathBuf::from("../captures/wrench");
                         wrench.api.save_capture(path, CaptureBits::all());
                     }
-                    VirtualKeyCode::Up => {
+                    VirtualKeyCode::Up | VirtualKeyCode::Down => {
+                        let mut txn = Transaction::new();
+
+                        let offset = match vk {
+                            winit::VirtualKeyCode::Up => LayoutVector2D::new(0.0, 10.0),
+                            winit::VirtualKeyCode::Down => LayoutVector2D::new(0.0, -10.0),
+                            _ => unreachable!("Should not see non directional keys here.")
+                        };
+
+                        txn.scroll(ScrollLocation::Delta(offset), cursor_position);
+                        txn.generate_frame();
+                        wrench.api.send_transaction(wrench.document_id, txn);
+
+                        do_frame = true;
+                    }
+                    VirtualKeyCode::Add => {
                         let current_zoom = wrench.get_page_zoom();
                         let new_zoom_factor = ZoomFactor::new(current_zoom.get() + 0.1);
-
                         wrench.set_page_zoom(new_zoom_factor);
                         do_frame = true;
                     }
-                    VirtualKeyCode::Down => {
+                    VirtualKeyCode::Subtract => {
                         let current_zoom = wrench.get_page_zoom();
                         let new_zoom_factor = ZoomFactor::new((current_zoom.get() - 0.1).max(0.1));
-
                         wrench.set_page_zoom(new_zoom_factor);
                         do_frame = true;
                     }

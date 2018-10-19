@@ -29,10 +29,15 @@ async function reloadTopContext(contentPage) {
 async function assertContextReleased(contentPage, description) {
   await contentPage.spawn(description, async assertionDescription => {
     // Force GC, see https://searchfox.org/mozilla-central/rev/b0275bc977ad7fda615ef34b822bba938f2b16fd/testing/talos/talos/tests/devtools/addon/content/damp.js#84-98
+    // and https://searchfox.org/mozilla-central/rev/33c21c060b7f3a52477a73d06ebcb2bf313c4431/xpcom/base/nsMemoryReporterManager.cpp#2574-2585,2591-2594
     let gcCount = 0;
     while (gcCount < 30 && this.contextWeakRef.get() !== null) {
       ++gcCount;
-      Cu.forceGC();
+      // The JS engine will sometimes hold IC stubs for function
+      // environments alive across multiple CCs, which can keep
+      // closed-over JS objects alive. A shrinking GC will throw those
+      // stubs away, and therefore side-step the problem.
+      Cu.forceShrinkingGC();
       Cu.forceCC();
       Cu.forceGC();
       await new Promise(resolve => this.content.setTimeout(resolve, 0));
@@ -122,6 +127,103 @@ add_task(async function test_ContentScriptContextChild_in_toplevel() {
   await reloadTopContext(contentPage);
   await extension.awaitMessage("contentScriptLoaded");
   await assertContextReleased(contentPage, "ContentScriptContextChild should have been released");
+
+  await contentPage.close();
+  await extension.unload();
+});
+
+add_task(async function test_ExtensionPageContextChild_in_child_frame() {
+  let extensionData = {
+    files: {
+      "iframe.html": `
+        <!DOCTYPE html><meta charset="utf8">
+        <script src="script.js"></script>
+      `,
+      "toplevel.html": `
+        <!DOCTYPE html><meta charset="utf8">
+        <iframe src="iframe.html"></iframe>
+      `,
+      "script.js": "browser.test.sendMessage('extensionPageLoaded');",
+    },
+  };
+
+  let extension = ExtensionTestUtils.loadExtension(extensionData);
+  await extension.startup();
+
+  let contentPage = await ExtensionTestUtils.loadContentPage(`moz-extension://${extension.uuid}/toplevel.html`, {
+    extension,
+    remote: extension.extension.remote,
+  });
+  await extension.awaitMessage("extensionPageLoaded");
+
+  await contentPage.spawn(extension.id, async extensionId => {
+    let {ExtensionPageChild} = ChromeUtils.import("resource://gre/modules/ExtensionPageChild.jsm", {});
+
+    let frame = this.content.document.querySelector("iframe[src*='iframe.html']");
+    let innerWindowID = frame.contentWindow.windowUtils.currentInnerWindowID;
+    let context = ExtensionPageChild.extensionContexts.get(innerWindowID);
+
+    Assert.ok(context, "Got extension page context for child frame");
+
+    this.contextWeakRef = Cu.getWeakReference(context);
+    frame.remove();
+  });
+
+  await assertContextReleased(contentPage, "ExtensionPageContextChild should have been released");
+
+  await contentPage.close();
+  await extension.unload();
+});
+
+add_task(async function test_ExtensionPageContextChild_in_toplevel() {
+  let extensionData = {
+    files: {
+      "toplevel.html": `
+        <!DOCTYPE html><meta charset="utf8">
+        <script src="script.js"></script>
+      `,
+      "script.js": "browser.test.sendMessage('extensionPageLoaded');",
+    },
+  };
+
+  let extension = ExtensionTestUtils.loadExtension(extensionData);
+  await extension.startup();
+
+  let contentPage = await ExtensionTestUtils.loadContentPage(`moz-extension://${extension.uuid}/toplevel.html`, {
+    extension,
+    remote: extension.extension.remote,
+  });
+  await extension.awaitMessage("extensionPageLoaded");
+
+  await contentPage.spawn(extension.id, async extensionId => {
+    let {ExtensionPageChild} = ChromeUtils.import("resource://gre/modules/ExtensionPageChild.jsm", {});
+
+    let innerWindowID = this.content.windowUtils.currentInnerWindowID;
+    let context = ExtensionPageChild.extensionContexts.get(innerWindowID);
+
+    Assert.ok(context, "Got extension page context for top-level document");
+
+    this.contextWeakRef = Cu.getWeakReference(context);
+  });
+
+  await reloadTopContext(contentPage);
+  await extension.awaitMessage("extensionPageLoaded");
+  // For some unknown reason, the context cannot forcidbly be released by the
+  // garbage collector unless we wait for a short while.
+  await contentPage.spawn(null, async () => {
+    let start = Date.now();
+    // The treshold was found after running this subtest only, 300 times
+    // in a release build (100 of xpcshell, xpcshell-e10s and xpcshell-remote).
+    // With treshold 8, almost half of the tests complete after a 17-18 ms delay.
+    // With treshold 7, over half of the tests complete after a 13-14 ms delay,
+    //  with 12 failures in 300 tests runs.
+    // Let's double that number to have a safety margin.
+    for (let i = 0; i < 15; ++i) {
+      await new Promise(resolve => this.content.setTimeout(resolve, 0));
+    }
+    info(`Going to GC after waiting for ${Date.now() - start} ms.`);
+  });
+  await assertContextReleased(contentPage, "ExtensionPageContextChild should have been released");
 
   await contentPage.close();
   await extension.unload();

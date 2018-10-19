@@ -28,7 +28,6 @@
 #define HB_OT_OS2_UNICODE_RANGES_HH
 
 #include "hb-private.hh"
-#include "hb-dsalgs.hh"
 
 namespace OT {
 
@@ -237,7 +236,7 @@ hb_get_unicode_range_bit (hb_codepoint_t cp)
                                         sizeof (os2UnicodeRangesSorted) / sizeof(Range),
                                         sizeof(Range),
                                         _compare_range, nullptr);
-  if (range != NULL)
+  if (range != nullptr)
     return range->bit;
   return -1;
 }

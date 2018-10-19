@@ -158,15 +158,6 @@ var gEditItemOverlay = {
     }
   },
 
-  _initLoadInSidebar() {
-    if (!this._paneInfo.isBookmark)
-      throw new Error("_initLoadInSidebar called unexpectedly");
-
-    this._loadInSidebarCheckbox.checked =
-      PlacesUtils.annotations.itemHasAnnotation(
-        this._paneInfo.itemId, PlacesUIUtils.LOAD_IN_SIDEBAR_ANNO);
-  },
-
   /**
    * Initialize the panel.
    *
@@ -182,8 +173,7 @@ var gEditItemOverlay = {
    *        2. any of the following optional properties:
    *          - hiddenRows (Strings array): list of rows to be hidden regardless
    *            of the item edited. Possible values: "title", "location",
-   *            "keyword", "loadInSidebar", "feedLocation",
-   *            "siteLocation", folderPicker"
+   *            "keyword", "feedLocation", "siteLocation", folderPicker"
    */
   initPanel(aInfo) {
     if (typeof(aInfo) != "object" || aInfo === null)
@@ -243,12 +233,7 @@ var gEditItemOverlay = {
     if (showOrCollapse("tagsRow", isURI || bulkTagging, "tags"))
       this._initTagsField();
     else if (!this._element("tagsSelectorRow").collapsed)
-      this.toggleTagsSelector();
-
-    // Load in sidebar.
-    if (showOrCollapse("loadInSidebarCheckbox", isBookmark, "loadInSidebar")) {
-      this._initLoadInSidebar();
-    }
+      this.toggleTagsSelector().catch(Cu.reportError);
 
     // Folder picker.
     // Technically we should check that the item is not moveable, but that's
@@ -364,7 +349,7 @@ var gEditItemOverlay = {
     // First make sure the folders-separator is visible
     this._element("foldersSeparator").hidden = false;
 
-    var folderMenuItem = document.createElement("menuitem");
+    var folderMenuItem = document.createXULElement("menuitem");
     folderMenuItem.folderGuid = aFolderGuid;
     folderMenuItem.setAttribute("label", aTitle);
     folderMenuItem.className = "menuitem-iconic folder-icon";
@@ -375,8 +360,8 @@ var gEditItemOverlay = {
   async _initFolderMenuList(aSelectedFolderGuid) {
     // clean up first
     var menupopup = this._folderMenuList.menupopup;
-    while (menupopup.childNodes.length > 6)
-      menupopup.removeChild(menupopup.lastChild);
+    while (menupopup.children.length > 6)
+      menupopup.removeChild(menupopup.lastElementChild);
 
     // Build the static list
     if (!this._staticFoldersListBuilt) {
@@ -429,7 +414,7 @@ var gEditItemOverlay = {
                                       this._folderMenuList.selectedIndex);
 
     // Hide the folders-separator if no folder is annotated as recently-used
-    this._element("foldersSeparator").hidden = (menupopup.childNodes.length <= 6);
+    this._element("foldersSeparator").hidden = (menupopup.children.length <= 6);
     this._folderMenuList.disabled = this.readOnly;
   },
 
@@ -450,7 +435,7 @@ var gEditItemOverlay = {
       // Hide the tag selector if it was previously visible.
       var tagsSelectorRow = this._element("tagsSelectorRow");
       if (!tagsSelectorRow.collapsed)
-        this.toggleTagsSelector();
+        this.toggleTagsSelector().catch(Cu.reportError);
     }
 
     if (this._observersAdded) {
@@ -634,19 +619,6 @@ var gEditItemOverlay = {
                       .transact().catch(Cu.reportError);
   },
 
-  onLoadInSidebarCheckboxCommand() {
-    if (!this.initialized || !this._paneInfo.isBookmark)
-      return;
-
-    let annotation = { name: PlacesUIUtils.LOAD_IN_SIDEBAR_ANNO };
-    if (this._loadInSidebarCheckbox.checked)
-      annotation.value = true;
-
-    let guid = this._paneInfo.itemGuid;
-    PlacesTransactions.Annotate({ guid, annotation })
-                      .transact().catch(Cu.reportError);
-  },
-
   toggleFolderTreeVisibility() {
     var expander = this._element("foldersExpander");
     var folderTreeRow = this._element("folderTreeRow");
@@ -692,13 +664,13 @@ var gEditItemOverlay = {
   _getFolderMenuItem(aFolderGuid, aTitle) {
     let menupopup = this._folderMenuList.menupopup;
     let menuItem = Array.prototype.find.call(
-      menupopup.childNodes, item => item.folderGuid === aFolderGuid);
+      menupopup.children, item => item.folderGuid === aFolderGuid);
     if (menuItem !== undefined)
       return menuItem;
 
     // 3 special folders + separator + folder-items-count limit
-    if (menupopup.childNodes.length == 4 + MAX_FOLDER_ITEM_IN_MENU_LIST)
-      menupopup.removeChild(menupopup.lastChild);
+    if (menupopup.children.length == 4 + MAX_FOLDER_ITEM_IN_MENU_LIST)
+      menupopup.removeChild(menupopup.lastElementChild);
 
     return this._appendFolderItemToMenupopup(menupopup, aFolderGuid, aTitle);
   },
@@ -731,7 +703,7 @@ var gEditItemOverlay = {
         this._paneInfo.itemGuid != containerGuid) {
       await PlacesTransactions.Move({
         guid: this._paneInfo.itemGuid,
-        newParentGuid: containerGuid
+        newParentGuid: containerGuid,
       }).transact();
 
       // Auto-show the bookmarks toolbar when adding / moving an item there.
@@ -769,50 +741,48 @@ var gEditItemOverlay = {
     folderItem.doCommand();
   },
 
-  _rebuildTagsSelectorList() {
+  async _rebuildTagsSelectorList() {
     let tagsSelector = this._element("tagsSelector");
     let tagsSelectorRow = this._element("tagsSelectorRow");
     if (tagsSelectorRow.collapsed)
       return;
 
-    // Save the current scroll position and restore it after the rebuild.
-    let firstIndex = tagsSelector.getIndexOfFirstVisibleRow();
     let selectedIndex = tagsSelector.selectedIndex;
     let selectedTag = selectedIndex >= 0 ? tagsSelector.selectedItem.label
                                          : null;
 
     while (tagsSelector.hasChildNodes()) {
-      tagsSelector.removeChild(tagsSelector.lastChild);
+      tagsSelector.removeChild(tagsSelector.lastElementChild);
     }
 
     let tagsInField = this._getTagsArrayFromTagsInputField();
-    let allTags = PlacesUtils.tagging.allTags;
-    for (let tag of allTags) {
-      let elt = document.createElement("listitem");
-      elt.setAttribute("type", "checkbox");
-      elt.setAttribute("label", tag);
+    let allTags = await PlacesUtils.bookmarks.fetchTags();
+    let fragment = document.createDocumentFragment();
+    for (let i = 0; i < allTags.length; i++) {
+      let tag = allTags[i].name;
+      let elt = document.createXULElement("richlistitem");
+      elt.appendChild(document.createXULElement("image"));
+      let label = document.createXULElement("label");
+      label.setAttribute("value", tag);
+      elt.appendChild(label);
       if (tagsInField.includes(tag))
         elt.setAttribute("checked", "true");
-      tagsSelector.appendChild(elt);
+      fragment.appendChild(elt);
       if (selectedTag === tag)
-        selectedIndex = tagsSelector.getIndexOfItem(elt);
+        selectedIndex = i;
     }
+    tagsSelector.appendChild(fragment);
 
-    // Restore position.
-    // The listbox allows to scroll only if the required offset doesn't
-    // overflow its capacity, thus need to adjust the index for removals.
-    firstIndex =
-      Math.min(firstIndex,
-               tagsSelector.itemCount - tagsSelector.getNumberOfVisibleRows());
-    tagsSelector.scrollToIndex(firstIndex);
     if (selectedIndex >= 0 && tagsSelector.itemCount > 0) {
       selectedIndex = Math.min(selectedIndex, tagsSelector.itemCount - 1);
       tagsSelector.selectedIndex = selectedIndex;
       tagsSelector.ensureIndexIsVisible(selectedIndex);
     }
+    let event = new CustomEvent("BookmarkTagsSelectorUpdated", { bubbles: true });
+    tagsSelector.dispatchEvent(event);
   },
 
-  toggleTagsSelector() {
+  async toggleTagsSelector() {
     var tagsSelector = this._element("tagsSelector");
     var tagsSelectorRow = this._element("tagsSelectorRow");
     var expander = this._element("tagsSelectorExpander");
@@ -821,15 +791,20 @@ var gEditItemOverlay = {
       expander.setAttribute("tooltiptext",
                             expander.getAttribute("tooltiptextup"));
       tagsSelectorRow.collapsed = false;
-      this._rebuildTagsSelectorList();
+      await this._rebuildTagsSelectorList();
 
       // This is a no-op if we've added the listener.
-      tagsSelector.addEventListener("CheckboxStateChange", this);
+      tagsSelector.addEventListener("mousedown", this);
+      tagsSelector.addEventListener("keypress", this);
     } else {
       expander.className = "expander-down";
       expander.setAttribute("tooltiptext",
                             expander.getAttribute("tooltiptextdown"));
       tagsSelectorRow.collapsed = true;
+
+      // This is a no-op if we've removed the listener.
+      tagsSelector.removeEventListener("mousedown", this);
+      tagsSelector.removeEventListener("keypress", this);
     }
   },
 
@@ -852,7 +827,7 @@ var gEditItemOverlay = {
     if (!ip) {
       ip = new PlacesInsertionPoint({
         parentId: PlacesUtils.bookmarksMenuFolderId,
-        parentGuid: PlacesUtils.bookmarks.menuGuid
+        parentGuid: PlacesUtils.bookmarks.menuGuid,
       });
     }
 
@@ -861,7 +836,7 @@ var gEditItemOverlay = {
     let guid = await PlacesTransactions.NewFolder({
       parentGuid: ip.guid,
       title,
-      index: await ip.getIndex()
+      index: await ip.getIndex(),
     }).transact().catch(Cu.reportError);
 
     this._folderTree.focus();
@@ -873,30 +848,50 @@ var gEditItemOverlay = {
   },
 
   // EventListener
-  handleEvent(aEvent) {
-    switch (aEvent.type) {
-    case "CheckboxStateChange":
-      // Update the tags field when items are checked/unchecked in the listbox
-      let tags = this._getTagsArrayFromTagsInputField();
-      let tagCheckbox = aEvent.target;
-
-      let curTagIndex = tags.indexOf(tagCheckbox.label);
-      let tagsSelector = this._element("tagsSelector");
-      tagsSelector.selectedItem = tagCheckbox;
-
-      if (tagCheckbox.checked) {
-        if (curTagIndex == -1)
-          tags.push(tagCheckbox.label);
-      } else if (curTagIndex != -1) {
-        tags.splice(curTagIndex, 1);
+  handleEvent(event) {
+    switch (event.type) {
+    case "mousedown":
+      if (event.button == 0) {
+        // Make sure the event is triggered on an item and not the empty space.
+        let item = event.target.closest("richlistbox,richlistitem");
+        if (item.localName == "richlistitem") {
+          this.toggleItemCheckbox(item);
+        }
       }
-      this._element("tagsField").value = tags.join(", ");
-      this._updateTags();
+      break;
+    case "keypress":
+      if (event.key == " ") {
+        let item = event.target.currentItem;
+        if (item) {
+          this.toggleItemCheckbox(item);
+        }
+      }
       break;
     case "unload":
       this.uninitPanel(false);
       break;
     }
+  },
+
+  toggleItemCheckbox(item) {
+    // Update the tags field when items are checked/unchecked in the listbox
+    let tags = this._getTagsArrayFromTagsInputField();
+
+    let curTagIndex = tags.indexOf(item.label);
+    let tagsSelector = this._element("tagsSelector");
+    tagsSelector.selectedItem = item;
+
+    if (!item.hasAttribute("checked")) {
+      item.setAttribute("checked", "true");
+      if (curTagIndex == -1)
+        tags.push(item.label);
+    } else {
+      item.removeAttribute("checked");
+      if (curTagIndex != -1)
+        tags.splice(curTagIndex, 1);
+    }
+    this._element("tagsField").value = tags.join(", ");
+    this._updateTags();
   },
 
   _initTagsField() {
@@ -941,7 +936,7 @@ var gEditItemOverlay = {
       this._initTagsField();
       // Any tags change should be reflected in the tags selector.
       if (this._element("tagsSelector")) {
-        this._rebuildTagsSelectorList();
+        await this._rebuildTagsSelectorList();
       }
     }
   },
@@ -955,7 +950,7 @@ var gEditItemOverlay = {
       // menulist has been changed, we need to update the label of its
       // representing element.
       let menupopup = this._folderMenuList.menupopup;
-      for (let menuitem of menupopup.childNodes) {
+      for (let menuitem of menupopup.children) {
         if ("folderGuid" in menuitem && menuitem.folderGuid == aGuid) {
           menuitem.label = aNewTitle;
           break;
@@ -1008,10 +1003,6 @@ var gEditItemOverlay = {
       if (this._paneInfo.visibleRows.has("keywordRow"))
         this._initKeywordField(aValue).catch(Cu.reportError);
       break;
-    case PlacesUIUtils.LOAD_IN_SIDEBAR_ANNO:
-      if (this._paneInfo.visibleRows.has("loadInSidebarCheckbox"))
-        this._initLoadInSidebar();
-      break;
     }
   },
 
@@ -1045,7 +1036,7 @@ var gEditItemOverlay = {
 
 for (let elt of ["folderMenuList", "folderTree", "namePicker",
                  "locationField", "keywordField",
-                 "tagsField", "loadInSidebarCheckbox"]) {
+                 "tagsField" ]) {
   let eltScoped = elt;
   XPCOMUtils.defineLazyGetter(gEditItemOverlay, `_${eltScoped}`,
                               () => gEditItemOverlay._element(eltScoped));

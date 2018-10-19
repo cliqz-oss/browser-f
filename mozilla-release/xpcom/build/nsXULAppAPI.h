@@ -375,6 +375,7 @@ enum GeckoProcessType
 
   GeckoProcessType_GPU,      // GPU and compositor process
   GeckoProcessType_PDFium,   // Gecko PDFium process
+  GeckoProcessType_VR,       // VR process
   GeckoProcessType_End,
   GeckoProcessType_Invalid = GeckoProcessType_End
 };
@@ -386,7 +387,8 @@ static const char* const kGeckoProcessTypeString[] = {
   "ipdlunittest",
   "geckomediaplugin",
   "gpu",
-  "pdfium"
+  "pdfium",
+  "vr"
 };
 
 static_assert(MOZ_ARRAY_LENGTH(kGeckoProcessTypeString) ==
@@ -397,8 +399,17 @@ XRE_API(const char*,
         XRE_ChildProcessTypeToString, (GeckoProcessType aProcessType))
 
 #if defined(MOZ_WIDGET_ANDROID)
+struct XRE_AndroidChildFds
+{
+  int mPrefsFd;
+  int mPrefMapFd;
+  int mIpcFd;
+  int mCrashFd;
+  int mCrashAnnotationFd;
+};
+
 XRE_API(void,
-        XRE_SetAndroidChildFds, (JNIEnv* env, int prefsFd, int ipcFd, int crashFd, int crashAnnotationFd))
+        XRE_SetAndroidChildFds, (JNIEnv* env, const XRE_AndroidChildFds& fds))
 #endif // defined(MOZ_WIDGET_ANDROID)
 
 XRE_API(void,
@@ -456,6 +467,9 @@ XRE_API(bool,
         XRE_IsGPUProcess, ())
 
 XRE_API(bool,
+        XRE_IsVRProcess, ())
+
+XRE_API(bool,
         XRE_IsPluginProcess, ())
 
 /**
@@ -497,7 +511,7 @@ XRE_API(MessageLoop*,
 XRE_API(bool,
         XRE_SendTestShellCommand, (JSContext* aCx,
                                    JSString* aCommand,
-                                   void* aCallback))
+                                   JS::Value* aCallback))
 XRE_API(bool,
         XRE_ShutdownTestShell, ())
 

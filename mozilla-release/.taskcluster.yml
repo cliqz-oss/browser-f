@@ -109,22 +109,7 @@ tasks:
         dependencies: []
         requires: all-completed
 
-        priority:
-          # Most times, there is plenty of worker capacity so everything runs
-          # quickly, but sometimes a storm of action tasks lands.  Then we
-          # want, from highest to lowest:
-          # - cron tasks (time-sensitive) (low)
-          # - decision tasks (minimize user-visible delay) (very-low)
-          # - action tasks (avoid interfering with the other two) (lowest)
-          # SCM levels all use different workerTypes, so there is no need for priority
-          # between levels; "low" is the highest priority available at all levels, and
-          # nothing runs at any higher priority on these workerTypes.
-          $if: "tasks_for == 'cron'"
-          then: low
-          else:
-            $if: "tasks_for == 'hg-push'"
-            then: very-low
-            else: lowest  # tasks_for == 'action'
+        priority: lowest
         retries: 5
 
         payload:
@@ -141,7 +126,7 @@ tasks:
                 TASKCLUSTER_CACHES: /builds/worker/checkouts
               - $if: 'tasks_for == "action"'
                 then:
-                  ACTION_TASK_GROUP_ID: '${action.taskGroupId}'     # taskGroupId of the target task
+                  ACTION_TASK_GROUP_ID: '${taskGroupId}'     # taskGroupId of the target task
                   ACTION_TASK_ID: {$json: {$eval: 'taskId'}} # taskId of the target task (JSON-encoded)
                   ACTION_INPUT: {$json: {$eval: 'input'}}
                   ACTION_CALLBACK: '${action.cb_name}'

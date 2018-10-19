@@ -34,8 +34,14 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.ProgressBar;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.LinkedList;
 import java.util.Locale;
 
@@ -62,6 +68,8 @@ public class GeckoViewActivity extends AppCompatActivity {
     private boolean mCanGoBack;
     private boolean mCanGoForward;
     private boolean mFullScreen;
+
+    private ProgressBar mProgressView;
 
     private LinkedList<GeckoSession.WebResponseInfo> mPendingDownloads = new LinkedList<>();
 
@@ -95,6 +103,7 @@ public class GeckoViewActivity extends AppCompatActivity {
         getSupportActionBar().setDisplayOptions(ActionBar.DISPLAY_SHOW_CUSTOM);
 
         mUseMultiprocess = getIntent().getBooleanExtra(USE_MULTIPROCESS_EXTRA, true);
+        mProgressView = (ProgressBar) findViewById(R.id.page_progress);
 
         if (sGeckoRuntime == null) {
             final GeckoRuntimeSettings.Builder runtimeSettingsBuilder =
@@ -115,6 +124,8 @@ public class GeckoViewActivity extends AppCompatActivity {
                     .remoteDebuggingEnabled(true)
                     .nativeCrashReportingEnabled(true)
                     .javaCrashReportingEnabled(true)
+                    .crashReportingJobId(1024)
+                    .consoleOutput(true)
                     .trackingProtectionCategories(TrackingProtectionDelegate.CATEGORY_ALL);
 
             sGeckoRuntime = GeckoRuntime.create(this, runtimeSettingsBuilder.build());
@@ -184,18 +195,6 @@ public class GeckoViewActivity extends AppCompatActivity {
     private void updateTrackingProtection(GeckoSession session) {
         session.getSettings().setBoolean(
             GeckoSessionSettings.USE_TRACKING_PROTECTION, mUseTrackingProtection);
-    }
-
-    @Override
-    protected void onPause() {
-        mGeckoSession.setActive(false);
-        super.onPause();
-    }
-
-    @Override
-    protected void onResume() {
-        mGeckoSession.setActive(true);
-        super.onResume();
     }
 
     @Override
@@ -350,6 +349,48 @@ public class GeckoViewActivity extends AppCompatActivity {
         manager.enqueue(req);
     }
 
+    private String mErrorTemplate;
+    private String createErrorPage(final String error) {
+        if (mErrorTemplate == null) {
+            InputStream stream = null;
+            BufferedReader reader = null;
+            StringBuilder builder = new StringBuilder();
+            try {
+                stream = getResources().getAssets().open("error.html");
+                reader = new BufferedReader(new InputStreamReader(stream));
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    builder.append(line);
+                    builder.append("\n");
+                }
+
+                mErrorTemplate = builder.toString();
+            } catch (IOException e) {
+                Log.d(LOGTAG, "Failed to open error page template", e);
+                return null;
+            } finally {
+                if (stream != null) {
+                    try {
+                        stream.close();
+                    } catch (IOException e) {
+                        Log.e(LOGTAG, "Failed to close error page template stream", e);
+                    }
+                }
+
+                if (reader != null) {
+                    try {
+                        reader.close();
+                    } catch (IOException e) {
+                        Log.e(LOGTAG, "Failed to close error page template reader", e);
+                    }
+                }
+            }
+        }
+
+        return mErrorTemplate.replace("$ERROR", error);
+    }
+
     private class ExampleContentDelegate implements GeckoSession.ContentDelegate {
         @Override
         public void onTitleChange(GeckoSession session, String title) {
@@ -434,6 +475,14 @@ public class GeckoViewActivity extends AppCompatActivity {
         @Override
         public void onProgressChange(GeckoSession session, int progress) {
             Log.i(LOGTAG, "onProgressChange " + progress);
+
+            mProgressView.setProgress(progress);
+
+            if (progress > 0 && progress < 100) {
+                mProgressView.setVisibility(View.VISIBLE);
+            } else {
+                mProgressView.setVisibility(View.GONE);
+            }
         }
 
         @Override
@@ -586,6 +635,137 @@ public class GeckoViewActivity extends AppCompatActivity {
             startActivity(intent);
 
             return GeckoResult.fromValue(newSession);
+        }
+
+        private String categoryToString(final int category) {
+            switch (category) {
+                case ERROR_CATEGORY_UNKNOWN:
+                    return "ERROR_CATEGORY_UNKNOWN";
+                case ERROR_CATEGORY_SECURITY:
+                    return "ERROR_CATEGORY_SECURITY";
+                case ERROR_CATEGORY_NETWORK:
+                    return "ERROR_CATEGORY_NETWORK";
+                case ERROR_CATEGORY_CONTENT:
+                    return "ERROR_CATEGORY_CONTENT";
+                case ERROR_CATEGORY_URI:
+                    return "ERROR_CATEGORY_URI";
+                case ERROR_CATEGORY_PROXY:
+                    return "ERROR_CATEGORY_PROXY";
+                case ERROR_CATEGORY_SAFEBROWSING:
+                    return "ERROR_CATEGORY_SAFEBROWSING";
+                default:
+                    return "UNKNOWN";
+            }
+        }
+
+        private String errorToString(final int error) {
+            switch (error) {
+                case ERROR_UNKNOWN:
+                    return "ERROR_UNKNOWN";
+                case ERROR_SECURITY_SSL:
+                    return "ERROR_SECURITY_SSL";
+                case ERROR_SECURITY_BAD_CERT:
+                    return "ERROR_SECURITY_BAD_CERT";
+                case ERROR_NET_RESET:
+                    return "ERROR_NET_RESET";
+                case ERROR_NET_INTERRUPT:
+                    return "ERROR_NET_INTERRUPT";
+                case ERROR_NET_TIMEOUT:
+                    return "ERROR_NET_TIMEOUT";
+                case ERROR_CONNECTION_REFUSED:
+                    return "ERROR_CONNECTION_REFUSED";
+                case ERROR_UNKNOWN_PROTOCOL:
+                    return "ERROR_UNKNOWN_PROTOCOL";
+                case ERROR_UNKNOWN_HOST:
+                    return "ERROR_UNKNOWN_HOST";
+                case ERROR_UNKNOWN_SOCKET_TYPE:
+                    return "ERROR_UNKNOWN_SOCKET_TYPE";
+                case ERROR_UNKNOWN_PROXY_HOST:
+                    return "ERROR_UNKNOWN_PROXY_HOST";
+                case ERROR_MALFORMED_URI:
+                    return "ERROR_MALFORMED_URI";
+                case ERROR_REDIRECT_LOOP:
+                    return "ERROR_REDIRECT_LOOP";
+                case ERROR_SAFEBROWSING_PHISHING_URI:
+                    return "ERROR_SAFEBROWSING_PHISHING_URI";
+                case ERROR_SAFEBROWSING_MALWARE_URI:
+                    return "ERROR_SAFEBROWSING_MALWARE_URI";
+                case ERROR_SAFEBROWSING_UNWANTED_URI:
+                    return "ERROR_SAFEBROWSING_UNWANTED_URI";
+                case ERROR_SAFEBROWSING_HARMFUL_URI:
+                    return "ERROR_SAFEBROWSING_HARMFUL_URI";
+                case ERROR_CONTENT_CRASHED:
+                    return "ERROR_CONTENT_CRASHED";
+                case ERROR_OFFLINE:
+                    return "ERROR_OFFLINE";
+                case ERROR_PORT_BLOCKED:
+                    return "ERROR_PORT_BLOCKED";
+                case ERROR_PROXY_CONNECTION_REFUSED:
+                    return "ERROR_PROXY_CONNECTION_REFUSED";
+                case ERROR_FILE_NOT_FOUND:
+                    return "ERROR_FILE_NOT_FOUND";
+                case ERROR_FILE_ACCESS_DENIED:
+                    return "ERROR_FILE_ACCESS_DENIED";
+                case ERROR_INVALID_CONTENT_ENCODING:
+                    return "ERROR_INVALID_CONTENT_ENCODING";
+                case ERROR_UNSAFE_CONTENT_TYPE:
+                    return "ERROR_UNSAFE_CONTENT_TYPE";
+                case ERROR_CORRUPTED_CONTENT:
+                    return "ERROR_CORRUPTED_CONTENT";
+                default:
+                    return "UNKNOWN";
+            }
+        }
+
+        private String createErrorPage(final int category, final int error) {
+            if (mErrorTemplate == null) {
+                InputStream stream = null;
+                BufferedReader reader = null;
+                StringBuilder builder = new StringBuilder();
+                try {
+                    stream = getResources().getAssets().open("error.html");
+                    reader = new BufferedReader(new InputStreamReader(stream));
+
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        builder.append(line);
+                        builder.append("\n");
+                    }
+
+                    mErrorTemplate = builder.toString();
+                } catch (IOException e) {
+                    Log.d(LOGTAG, "Failed to open error page template", e);
+                    return null;
+                } finally {
+                    if (stream != null) {
+                        try {
+                            stream.close();
+                        } catch (IOException e) {
+                            Log.e(LOGTAG, "Failed to close error page template stream", e);
+                        }
+                    }
+
+                    if (reader != null) {
+                        try {
+                            reader.close();
+                        } catch (IOException e) {
+                            Log.e(LOGTAG, "Failed to close error page template reader", e);
+                        }
+                    }
+                }
+            }
+
+            return GeckoViewActivity.this.createErrorPage(categoryToString(category) + " : " + errorToString(error));
+        }
+
+        @Override
+        public GeckoResult<String> onLoadError(final GeckoSession session, final String uri,
+                                               final int category, final int error) {
+            Log.d(LOGTAG, "onLoadError=" + uri +
+                  " error category=" + category +
+                  " error=" + error);
+
+            return GeckoResult.fromValue("data:text/html," + createErrorPage(category, error));
         }
     }
 

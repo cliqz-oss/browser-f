@@ -88,8 +88,7 @@ reftest.Runner = class {
     let found = this.driver.findWindow([reftestWin], () => true);
     await this.driver.setWindowHandle(found, true);
 
-    this.windowUtils = reftestWin.QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsIDOMWindowUtils);
+    this.windowUtils = reftestWin.windowUtils;
     this.reftestWin = reftestWin;
     return reftestWin;
   }
@@ -260,7 +259,7 @@ min-width: 600px; min-height: 600px; max-width: 600px; max-height: 600px`;
         if (references.length) {
           for (let i = references.length - 1; i >= 0; i--) {
             let item = references[i];
-            stack.push([testUrl, item[0], item[1], item[2]]);
+            stack.push([rhsUrl, item[0], item[1], item[2]]);
           }
         } else {
           // Reached a leaf node so all of one reference chain passed

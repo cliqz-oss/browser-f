@@ -25,7 +25,6 @@
 
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
 
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 ChromeUtils.import("resource://testing-common/MockRegistrar.jsm");
 
 // Allow insecure updates
@@ -267,8 +266,8 @@ var softblock1_1 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock1_2 = {
@@ -280,8 +279,8 @@ var softblock1_2 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock1_3 = {
@@ -293,8 +292,8 @@ var softblock1_3 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock2_1 = {
@@ -306,8 +305,8 @@ var softblock2_1 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock2_2 = {
@@ -319,8 +318,8 @@ var softblock2_2 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock2_3 = {
@@ -332,8 +331,8 @@ var softblock2_3 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock3_1 = {
@@ -345,8 +344,8 @@ var softblock3_1 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock3_2 = {
@@ -358,8 +357,8 @@ var softblock3_2 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock3_3 = {
@@ -371,8 +370,8 @@ var softblock3_3 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock4_1 = {
@@ -384,8 +383,8 @@ var softblock4_1 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock4_2 = {
@@ -397,8 +396,8 @@ var softblock4_2 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var softblock4_3 = {
@@ -410,8 +409,8 @@ var softblock4_3 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var hardblock_1 = {
@@ -423,8 +422,8 @@ var hardblock_1 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var hardblock_2 = {
@@ -436,8 +435,8 @@ var hardblock_2 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var hardblock_3 = {
@@ -449,8 +448,8 @@ var hardblock_3 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var regexpblock_1 = {
@@ -462,8 +461,8 @@ var regexpblock_1 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var regexpblock_2 = {
@@ -475,8 +474,8 @@ var regexpblock_2 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 var regexpblock_3 = {
@@ -488,8 +487,8 @@ var regexpblock_3 = {
   targetApplications: [{
     id: "xpcshell@tests.mozilla.org",
     minVersion: "1",
-    maxVersion: "3"
-  }]
+    maxVersion: "3",
+  }],
 };
 
 const ADDON_IDS = ["softblock1@tests.mozilla.org",
@@ -518,7 +517,7 @@ var WindowWatcher = {
 
   },
 
-  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"])
+  QueryInterface: ChromeUtils.generateQI(["nsIWindowWatcher"]),
 };
 
 MockRegistrar.register("@mozilla.org/embedcomp/window-watcher;1", WindowWatcher);
@@ -530,7 +529,7 @@ var InstallConfirm = {
     });
   },
 
-  QueryInterface: ChromeUtils.generateQI(["amIWebInstallPrompt"])
+  QueryInterface: ChromeUtils.generateQI(["amIWebInstallPrompt"]),
 };
 
 var InstallConfirmFactory = {
@@ -538,7 +537,7 @@ var InstallConfirmFactory = {
     if (outer != null)
       throw Cr.NS_ERROR_NO_AGGREGATION;
     return InstallConfirm.QueryInterface(iid);
-  }
+  },
 };
 
 var registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
@@ -591,7 +590,7 @@ function Pbackground_update() {
           return;
 
         resolve();
-      }
+      },
     });
 
     Services.obs.addObserver(function observer() {
@@ -626,7 +625,7 @@ function Pmanual_update(aVersion) {
       completePromises.push(new Promise(resolve => {
         install.addListener({
           onDownloadCancelled: resolve,
-          onInstallEnded: resolve
+          onInstallEnded: resolve,
         });
       }));
 
@@ -699,7 +698,7 @@ add_task(async function init() {
   await promiseWriteInstallRDFForExtension(regexpblock_1, profileDir);
   await promiseStartupManager();
 
-  let [/* s1 */, /* s2 */, /* s3 */, s4, /* h, r */] = await promiseAddonsByIDs(ADDON_IDS);
+  let [/* s1 */, /* s2 */, /* s3 */, s4 /* h, r */] = await promiseAddonsByIDs(ADDON_IDS);
   await s4.disable();
 });
 
@@ -791,6 +790,8 @@ add_task(async function update_schema_2() {
 
   await changeXPIDBVersion(100);
   gAppInfo.version = "2";
+  let bsPassBlocklist = ChromeUtils.import("resource://gre/modules/Blocklist.jsm", {});
+  Object.defineProperty(bsPassBlocklist, "gAppVersion", {value: "2"});
   await promiseStartupManager();
 
   let [s1, s2, s3, s4, h, r] = await promiseAddonsByIDs(ADDON_IDS);
@@ -815,6 +816,8 @@ add_task(async function update_schema_3() {
   await promiseShutdownManager();
   await changeXPIDBVersion(100);
   gAppInfo.version = "2.5";
+  let bsPassBlocklist = ChromeUtils.import("resource://gre/modules/Blocklist.jsm", {});
+  Object.defineProperty(bsPassBlocklist, "gAppVersion", {value: "2.5"});
   await promiseStartupManager();
 
   let [s1, s2, s3, s4, h, r] = await promiseAddonsByIDs(ADDON_IDS);
@@ -848,6 +851,8 @@ add_task(async function update_schema_5() {
 
   await changeXPIDBVersion(100);
   gAppInfo.version = "1";
+  let bsPassBlocklist = ChromeUtils.import("resource://gre/modules/Blocklist.jsm", {});
+  Object.defineProperty(bsPassBlocklist, "gAppVersion", {value: "1"});
   await promiseStartupManager();
 
   let [s1, s2, s3, s4, h, r] = await promiseAddonsByIDs(ADDON_IDS);

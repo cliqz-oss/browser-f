@@ -7,7 +7,6 @@
 var EXPORTED_SYMBOLS = ["HeadlessShell"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 // Refrences to the progress listeners to keep them from being gc'ed
@@ -31,8 +30,7 @@ function loadContentWindow(webNavigation, uri) {
         if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
           return;
         }
-        let contentWindow = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                                    .getInterface(Ci.nsIDOMWindow);
+        let contentWindow = docShell.domWindow;
         progressListeners.delete(progressListener);
         webProgress.removeProgressListener(progressListener);
         contentWindow.addEventListener("load", (event) => {
@@ -40,7 +38,7 @@ function loadContentWindow(webNavigation, uri) {
         }, { once: true });
       },
       QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener",
-                                              "nsISupportsWeakReference"])
+                                              "nsISupportsWeakReference"]),
     };
     progressListeners.set(progressListener, progressListener);
     webProgress.addProgressListener(progressListener,
@@ -50,9 +48,9 @@ function loadContentWindow(webNavigation, uri) {
 
 async function takeScreenshot(fullWidth, fullHeight, contentWidth, contentHeight, path, url) {
   try {
-    let windowlessBrowser = Services.appShell.createWindowlessBrowser(false);
-    var webNavigation = windowlessBrowser.QueryInterface(Ci.nsIWebNavigation);
-    let contentWindow = await loadContentWindow(webNavigation, url);
+    var windowlessBrowser = Services.appShell.createWindowlessBrowser(false);
+    // nsIWindowlessBrowser inherits from nsIWebNavigation.
+    let contentWindow = await loadContentWindow(windowlessBrowser, url);
     contentWindow.resizeTo(contentWidth, contentHeight);
 
     let canvas = contentWindow.document.createElementNS("http://www.w3.org/1999/xhtml", "html:canvas");
@@ -84,8 +82,8 @@ async function takeScreenshot(fullWidth, fullHeight, contentWidth, contentHeight
   } catch (e) {
     dump("Failure taking screenshot: " + e + "\n");
   } finally {
-    if (webNavigation) {
-      webNavigation.close();
+    if (windowlessBrowser) {
+      windowlessBrowser.close();
     }
   }
 }
@@ -162,5 +160,5 @@ let HeadlessShell = {
       Services.startup.exitLastWindowClosingSurvivalArea();
       Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
     }
-  }
+  },
 };

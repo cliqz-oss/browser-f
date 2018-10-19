@@ -8,6 +8,7 @@
  * input stream provided by GVFS/GIO.
 */
 #include "mozilla/ModuleUtils.h"
+#include "mozilla/NullPrincipal.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
 #include "nsIObserver.h"
@@ -25,7 +26,6 @@
 #include "nsIChannel.h"
 #include "nsIInputStream.h"
 #include "nsIProtocolHandler.h"
-#include "NullPrincipal.h"
 #include "mozilla/Monitor.h"
 #include "plstr.h"
 #include "prtime.h"
@@ -683,7 +683,7 @@ nsGIOInputStream::ReadSegments(nsWriteSegmentFun aWriter,
   // There is no way to implement this using GnomeVFS, but fortunately
   // that doesn't matter.  Because we are a blocking input stream, Necko
   // isn't going to call our ReadSegments method.
-  NS_NOTREACHED("nsGIOInputStream::ReadSegments");
+  MOZ_ASSERT_UNREACHABLE("nsGIOInputStream::ReadSegments");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

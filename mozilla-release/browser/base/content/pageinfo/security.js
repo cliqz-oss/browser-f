@@ -27,7 +27,6 @@ var security = {
   },
 
   _getSecurityInfo() {
-    const nsISSLStatusProvider = Ci.nsISSLStatusProvider;
     const nsISSLStatus = Ci.nsISSLStatus;
 
     // We don't have separate info for a frame, return null until further notice
@@ -50,11 +49,9 @@ var security = {
       (ui.state & Ci.nsIWebProgressListener.STATE_IS_INSECURE);
     var isEV =
       (ui.state & Ci.nsIWebProgressListener.STATE_IDENTITY_EV_TOPLEVEL);
-    ui.QueryInterface(nsISSLStatusProvider);
-    var status = ui.SSLStatus;
+    var status = ui.secInfo && ui.secInfo.SSLStatus;
 
     if (!isInsecure && status) {
-      status.QueryInterface(nsISSLStatus);
       var cert = status.serverCert;
       var issuerName = cert.issuerOrganization || cert.issuerName;
 
@@ -68,7 +65,7 @@ var security = {
         isMixed,
         isEV,
         cert,
-        certificateTransparency: undefined
+        certificateTransparency: undefined,
       };
 
       var version;
@@ -124,7 +121,7 @@ var security = {
       isMixed,
       isEV,
       cert: null,
-      certificateTransparency: null
+      certificateTransparency: null,
     };
   },
 
@@ -189,7 +186,7 @@ var security = {
     LoginHelper.openPasswordManager(window, this._getSecurityInfo().hostName);
   },
 
-  _cert: null
+  _cert: null,
 };
 
 function securityOnLoad(uri, windowInfo) {
@@ -334,8 +331,8 @@ function viewCertHelper(parent, cert) {
   if (!cert)
     return;
 
-  var cd = Cc[CERTIFICATEDIALOGS_CONTRACTID].getService(nsICertificateDialogs);
-  cd.viewCert(parent, cert);
+  Services.ww.openWindow(parent, "chrome://pippki/content/certViewer.xul",
+                         "_blank", "centerscreen,chrome", cert);
 }
 
 /**

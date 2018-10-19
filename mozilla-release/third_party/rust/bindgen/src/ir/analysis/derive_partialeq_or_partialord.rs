@@ -119,7 +119,7 @@ impl<'ctx> CannotDerivePartialEqOrPartialOrd<'ctx> {
         trace!("ty: {:?}", ty);
         if item.is_opaque(self.ctx, &()) {
             if ty.is_union()
-                && self.ctx.options().rust_features().untagged_union()
+                && self.ctx.options().rust_features().untagged_union
             {
                 trace!(
                     "    cannot derive `PartialEq`/`PartialOrd` for Rust unions"
@@ -148,7 +148,7 @@ impl<'ctx> CannotDerivePartialEqOrPartialOrd<'ctx> {
         }
 
         match *ty.kind() {
-            // Handle the simple cases. These can derive partialeq without further
+            // Handle the simple cases. These can derive partialeq/partialord without further
             // information.
             TypeKind::Void |
             TypeKind::NullPtr |
@@ -199,6 +199,13 @@ impl<'ctx> CannotDerivePartialEqOrPartialOrd<'ctx> {
                     return CanDerive::ArrayTooLarge;
                 }
             }
+            TypeKind::Vector(..) => {
+                // FIXME: vectors always can derive PartialEq, but they should
+                // not derive PartialOrd:
+                // https://github.com/rust-lang-nursery/packed_simd/issues/48
+                trace!("    vectors cannot derive `PartialEq`/`PartialOrd`");
+                return CanDerive::No;
+            }
 
             TypeKind::Pointer(inner) => {
                 let inner_type =
@@ -242,7 +249,7 @@ impl<'ctx> CannotDerivePartialEqOrPartialOrd<'ctx> {
                 }
 
                 if info.kind() == CompKind::Union {
-                    if self.ctx.options().rust_features().untagged_union() {
+                    if self.ctx.options().rust_features().untagged_union {
                         trace!(
                             "    cannot derive `PartialEq`/`PartialOrd` for Rust unions"
                         );

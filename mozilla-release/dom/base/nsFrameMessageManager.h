@@ -37,6 +37,11 @@
 class nsFrameLoader;
 
 namespace mozilla {
+
+namespace ipc {
+  class FileDescriptor;
+}
+
 namespace dom {
 
 class nsIContentParent;
@@ -53,6 +58,8 @@ class ParentProcessMessageManager;
 class ProcessMessageManager;
 
 namespace ipc {
+
+class WritableSharedMap;
 
 // Note: we round the time we spend to the nearest millisecond. So a min value
 // of 1 ms actually captures from 500us and above.
@@ -154,7 +161,7 @@ private:
   JS::Rooted<JSObject*> mObj;
 };
 
-class nsFrameMessageManager : public nsIContentFrameMessageManager
+class nsFrameMessageManager : public nsIMessageSender
 {
   friend class mozilla::dom::MessageManagerReporter;
   typedef mozilla::dom::ipc::StructuredCloneData StructuredCloneData;
@@ -173,8 +180,7 @@ public:
   {}
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsFrameMessageManager,
-                                                         nsIContentFrameMessageManager)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(nsFrameMessageManager)
 
   void MarkForCC();
 
@@ -233,8 +239,9 @@ public:
                              JS::MutableHandle<JS::Value> aInitialProcessData,
                              mozilla::ErrorResult& aError);
 
+  mozilla::dom::ipc::WritableSharedMap* SharedData();
+
   NS_DECL_NSIMESSAGESENDER
-  NS_DECL_NSICONTENTFRAMEMESSAGEMANAGER
 
   static mozilla::dom::ProcessMessageManager* NewProcessMessageManager(bool aIsRemote);
 
@@ -340,6 +347,7 @@ protected:
   nsTArray<nsString> mPendingScripts;
   nsTArray<bool> mPendingScriptsGlobalStates;
   JS::Heap<JS::Value> mInitialProcessData;
+  RefPtr<mozilla::dom::ipc::WritableSharedMap> mSharedData;
 
   void LoadPendingScripts(nsFrameMessageManager* aManager,
                           nsFrameMessageManager* aChildMM);
@@ -399,18 +407,14 @@ class nsScriptCacheCleaner;
 struct nsMessageManagerScriptHolder
 {
   nsMessageManagerScriptHolder(JSContext* aCx,
-                               JSScript* aScript,
-                               bool aRunInGlobalScope)
-   : mScript(aCx, aScript), mRunInGlobalScope(aRunInGlobalScope)
+                               JSScript* aScript)
+   : mScript(aCx, aScript)
   { MOZ_COUNT_CTOR(nsMessageManagerScriptHolder); }
 
   ~nsMessageManagerScriptHolder()
   { MOZ_COUNT_DTOR(nsMessageManagerScriptHolder); }
 
-  bool WillRunInGlobalScope() { return mRunInGlobalScope; }
-
   JS::PersistentRooted<JSScript*> mScript;
-  bool mRunInGlobalScope;
 };
 
 class nsMessageManagerScriptExecutor
@@ -425,23 +429,27 @@ protected:
   nsMessageManagerScriptExecutor() { MOZ_COUNT_CTOR(nsMessageManagerScriptExecutor); }
   ~nsMessageManagerScriptExecutor() { MOZ_COUNT_DTOR(nsMessageManagerScriptExecutor); }
 
-  void DidCreateGlobal();
-  void LoadScriptInternal(JS::Handle<JSObject*> aGlobal, const nsAString& aURL,
-                          bool aRunInGlobalScope);
+  void DidCreateScriptLoader();
+  void LoadScriptInternal(JS::Handle<JSObject*> aMessageManager, const nsAString& aURL,
+                          bool aRunInUniqueScope);
   void TryCacheLoadAndCompileScript(const nsAString& aURL,
-                                    bool aRunInGlobalScope,
+                                    bool aRunInUniqueScope,
                                     bool aShouldCache,
+                                    JS::Handle<JSObject*> aMessageManager,
                                     JS::MutableHandle<JSScript*> aScriptp);
-  void TryCacheLoadAndCompileScript(const nsAString& aURL,
-                                    bool aRunInGlobalScope);
-  bool InitChildGlobalInternal(const nsACString& aID);
-  virtual bool WrapGlobalObject(JSContext* aCx,
-                                JS::RealmOptions& aOptions,
-                                JS::MutableHandle<JSObject*> aReflector) = 0;
+  bool Init();
   void Trace(const TraceCallbacks& aCallbacks, void* aClosure);
   void Unlink();
   nsCOMPtr<nsIPrincipal> mPrincipal;
   AutoTArray<JS::Heap<JSObject*>, 2> mAnonymousGlobalScopes;
+
+  // Returns true if this is a process message manager. There should only be a
+  // single process message manager per session, so instances of this type will
+  // optimize their script loading to avoid unnecessary duplication.
+  virtual bool IsProcessScoped() const
+  {
+    return false;
+  }
 
   static nsDataHashtable<nsStringHashKey, nsMessageManagerScriptHolder*>* sCachedScripts;
   static mozilla::StaticRefPtr<nsScriptCacheCleaner> sScriptCacheCleaner;

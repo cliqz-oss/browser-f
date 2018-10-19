@@ -27,6 +27,16 @@ class BouncerCheck(BaseScript, VirtualenvMixin):
             "dest": "version",
             "help": "Version of release, eg: 39.0b5",
         }],
+        [["--product-field"], {
+            "dest": "product_field",
+            "help": "Version field of release from product details, eg: LATEST_FIREFOX_VERSION",
+        }],
+        [["--products-url"], {
+            "dest": "products_url",
+            "help": "The URL of the current Firefox product versions",
+            "type": str,
+            "default": "https://product-details.mozilla.org/1.0/firefox_versions.json",
+        }],
         [["--previous-version"], {
             "dest": "prev_versions",
             "action": "extend",
@@ -76,8 +86,33 @@ class BouncerCheck(BaseScript, VirtualenvMixin):
             ],
         )
 
+    def _pre_config_lock(self, rw_config):
+        super(BouncerCheck, self)._pre_config_lock(rw_config)
+
+        if "product_field" not in self.config:
+            return
+
+        firefox_versions = self.load_json_url(self.config["products_url"])
+
+        if self.config['product_field'] not in firefox_versions:
+            self.fatal('Unknown Firefox label: {}'.format(self.config['product_field']))
+        self.config["version"] = firefox_versions[self.config["product_field"]]
+        self.log("Set Firefox version {}".format(self.config["version"]))
+
     def check_url(self, session, url):
         from redo import retry
+        try:
+            from urllib.parse import urlparse
+        except ImportError:
+            # Python 2
+            from urlparse import urlparse
+
+        mozilla_locations = [
+            'download-installer.cdn.mozilla.net',
+            'download.cdn.mozilla.net',
+            'download.mozilla.org',
+            'archive.mozilla.org',
+        ]
 
         def do_check_url():
             self.log("Checking {}".format(url))
@@ -87,6 +122,13 @@ class BouncerCheck(BaseScript, VirtualenvMixin):
             except Exception:
                 self.warning("FAIL: {}, status: {}".format(url, r.status_code))
                 raise
+
+            final_url = urlparse(r.url)
+            if final_url.scheme != 'https':
+                self.warning('FAIL: URL scheme is not https: {}'.format(r.url))
+
+            if final_url.netloc not in mozilla_locations:
+                self.warning('FAIL: host not in allowed locations: {}'.format(r.url))
 
         retry(do_check_url, sleeptime=3, max_sleeptime=10, attempts=3)
 

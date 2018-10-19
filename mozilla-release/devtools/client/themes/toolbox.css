@@ -5,8 +5,15 @@
 
 :root {
   --close-button-image: url(chrome://devtools/skin/images/close.svg);
+  --dock-bottom-image: url(chrome://devtools/skin/images/dock-bottom.svg);
+  --dock-side-right-image: url(chrome://devtools/skin/images/dock-side-right.svg);
+  --dock-side-left-image: url(chrome://devtools/skin/images/dock-side-left.svg);
+  --dock-undock-image: url(chrome://devtools/skin/images/dock-undock.svg);
   --more-button-image: url(chrome://devtools/skin/images/more.svg);
+  --settings-image: url(chrome://devtools/skin/images/tool-options-photon.svg);
 
+  --command-noautohide-image: url(images/command-noautohide.svg);
+  --command-console-image: url(images/command-console.svg);
   --command-paintflashing-image: url(images/command-paintflashing.svg);
   --command-screenshot-image: url(images/command-screenshot.svg);
   --command-responsive-image: url(images/command-responsivemode.svg);
@@ -61,11 +68,6 @@
   grid-column-end: 4;
 }
 
-.toolbox-tabs-wrapper .tools-chevron-menu {
-  border-top-width: 0;
-  border-bottom-width: 0;
-}
-
 .toolbox-tabs {
   position: absolute;
   top: 0;
@@ -115,6 +117,13 @@
 
 .devtools-tab-label:-moz-locale-dir(rtl) {
   mask-image: linear-gradient(to right, transparent 0, black 6px);
+}
+
+.devtools-tab .devtools-tab-badge {
+  color: var(--theme-highlight-blue);
+  font-size: 80%;
+  font-weight: 500;
+  margin-inline-start: 5px;
 }
 
 .devtools-tab-icon-only {
@@ -181,7 +190,7 @@
 
 #tools-chevron-menu-button::before {
   top: 0;
-  offset-inline-end: 0;
+  inset-inline-end: 0;
   background-image: var(--command-chevron-image);
   background-position: center;
 }
@@ -196,9 +205,12 @@
   margin-inline-end: 3px;
 }
 
+#toolbox-buttons-start > .devtools-separator {
+  --separator-inline-margin: 0;
+}
+
 #toolbox-buttons-end > .devtools-separator {
-  margin-inline-start: 5px;
-  margin-inline-end: 5px;
+  --separator-inline-margin: 5px;
 }
 
 #toolbox-close {
@@ -219,10 +231,33 @@
   background-image: var(--more-button-image);
 }
 
+#toolbox-meatball-menu-dock-bottom > .label::before {
+  --menuitem-icon-image: var(--dock-bottom-image);
+}
+#toolbox-meatball-menu-dock-left > .label::before {
+  --menuitem-icon-image: var(--dock-side-left-image);
+}
+#toolbox-meatball-menu-dock-right > .label::before {
+  --menuitem-icon-image: var(--dock-side-right-image);
+}
+#toolbox-meatball-menu-dock-window > .label::before {
+  --menuitem-icon-image: var(--dock-undock-image);
+}
+#toolbox-meatball-menu-splitconsole > .label::before {
+  --menuitem-icon-image: var(--command-console-image);
+}
+#toolbox-meatball-menu-noautohide > .label::before {
+  --menuitem-icon-image: var(--command-noautohide-image);
+}
+#toolbox-meatball-menu-settings > .label::before {
+  --menuitem-icon-image: var(--settings-image);
+}
+
 /* Command buttons */
 
 .command-button,
-#toolbox-controls > button {
+#toolbox-controls > button,
+.toolbox-tabs-wrapper .tools-chevron-menu {
   /* !important is needed to override .devtools-button rules in common.css */
   padding: 0 !important;
   margin: 0 !important;
@@ -248,6 +283,12 @@
 
 #command-button-responsive::before {
   background-image: var(--command-responsive-image);
+  fill: var(--theme-toolbar-photon-icon-color);
+  -moz-context-properties: fill;
+}
+
+#command-button-responsive.checked::before {
+  fill: currentColor;
 }
 
 #command-button-scratchpad::before {

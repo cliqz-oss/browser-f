@@ -16,6 +16,7 @@
 #include "InputData.h"                  // for InputData, etc
 #include "Layers.h"                     // for Layer, etc
 #include "mozilla/dom/MouseEventBinding.h" // for MouseEvent constants
+#include "mozilla/dom/TabParent.h"      // for AreRecordReplayTabsActive
 #include "mozilla/dom/Touch.h"          // for Touch
 #include "mozilla/gfx/gfxVars.h"        // for gfxVars
 #include "mozilla/gfx/GPUParent.h"      // for GPUParent
@@ -597,9 +598,14 @@ APZCTreeManager::SampleForWebRender(wr::TransactionWrapper& aTxn,
   AssertOnSamplerThread();
   MutexAutoLock lock(mMapLock);
 
-  bool activeAnimations = false;
+  // Sample async transforms on scrollable layers.
   for (const auto& mapping : mApzcMap) {
     AsyncPanZoomController* apzc = mapping.second;
+
+    // Apply any additional async scrolling for testing purposes (used for
+    // reftest-async-scroll and reftest-async-zoom).
+    auto _ = MakeUnique<AutoApplyAsyncTestAttributes>(apzc);
+
     ParentLayerPoint layerTranslation = apzc->GetCurrentAsyncTransform(
         AsyncPanZoomController::eForCompositing).mTranslation;
 
@@ -615,7 +621,6 @@ APZCTreeManager::SampleForWebRender(wr::TransactionWrapper& aTxn,
         wr::ToLayoutPoint(LayoutDevicePoint::FromUnknownPoint(asyncScrollDelta.ToUnknownPoint())));
 
     apzc->ReportCheckerboard(aSampleTime);
-    activeAnimations |= apzc->AdvanceAnimations(aSampleTime);
   }
 
   // Now collect all the async transforms needed for the scrollthumbs.
@@ -648,6 +653,15 @@ APZCTreeManager::SampleForWebRender(wr::TransactionWrapper& aTxn,
   }
   aTxn.AppendTransformProperties(scrollbarTransforms);
 
+  // Advance animations. It's important that this happens after
+  // sampling all async transforms, because AdvanceAnimations() updates
+  // the effective scroll offset to the value it should have for the *next*
+  // composite after this one (if the APZ frame delay is enabled).
+  bool activeAnimations = false;
+  for (const auto& mapping : mApzcMap) {
+    AsyncPanZoomController* apzc = mapping.second;
+    activeAnimations |= apzc->AdvanceAnimations(aSampleTime);
+  }
   if (activeAnimations) {
     RefPtr<CompositorController> controller;
     CompositorBridgeParent::CallWithIndirectShadowTree(mRootLayersId,
@@ -1135,6 +1149,13 @@ APZCTreeManager::ReceiveInputEvent(InputData& aEvent,
                                    uint64_t* aOutInputBlockId)
 {
   APZThreadUtils::AssertOnControllerThread();
+
+  // Ignore input events when there are active tabs that are recording or
+  // replaying. APZ does not work with the special layers constructed by
+  // the middleman processes being communicated with here.
+  if (dom::TabParent::AreRecordReplayTabsActive()) {
+    return nsEventStatus_eIgnore;
+  }
 
   // Use a RAII class for updating the focus sequence number of this event
   AutoFocusSequenceNumberSetter focusSetter(mFocusState, aEvent);
@@ -1746,7 +1767,7 @@ APZCTreeManager::ProcessTouchInputForScrollbarDrag(MultiTouchInput& aTouchInput,
   // reuse code in InputQueue and APZC for handling scrollbar mouse-drags.
   MouseInput mouseInput{MultiTouchTypeToMouseType(aTouchInput.mType),
                         MouseInput::LEFT_BUTTON,
-                        dom::MouseEventBinding::MOZ_SOURCE_TOUCH,
+                        dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH,
                         WidgetMouseEvent::eLeftButtonFlag,
                         aTouchInput.mTouches[0].mScreenPoint,
                         aTouchInput.mTime,
@@ -3038,6 +3059,9 @@ APZCTreeManager::ComputeTransformForNode(const HitTestingTreeNode* aNode) const
 {
   mTreeLock.AssertCurrentThreadIn();
   if (AsyncPanZoomController* apzc = aNode->GetApzc()) {
+    // Apply any additional async scrolling for testing purposes (used for
+    // reftest-async-scroll and reftest-async-zoom).
+    auto _ = MakeUnique<AutoApplyAsyncTestAttributes>(apzc);
     // If the node represents scrollable content, apply the async transform
     // from its APZC.
     return aNode->GetTransform() *
@@ -3126,6 +3150,10 @@ APZCTreeManager::ComputeTransformForScrollThumb(
   }
 
   MOZ_RELEASE_ASSERT(aApzc);
+
+  // Apply any additional async scrolling for testing purposes (used for
+  // reftest-async-scroll and reftest-async-zoom).
+  auto _ = MakeUnique<AutoApplyAsyncTestAttributes>(aApzc);
 
   AsyncTransformComponentMatrix asyncTransform =
     aApzc->GetCurrentAsyncTransform(AsyncPanZoomController::eForCompositing);

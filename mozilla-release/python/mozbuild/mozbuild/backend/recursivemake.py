@@ -43,6 +43,7 @@ from ..frontend.data import (
     GeneratedFile,
     GeneratedSources,
     HostDefines,
+    HostGeneratedSources,
     HostLibrary,
     HostProgram,
     HostRustProgram,
@@ -58,8 +59,10 @@ from ..frontend.data import (
     ObjdirFiles,
     ObjdirPreprocessedFiles,
     PerSourceFlag,
+    PgoGenerateOnlySources,
     Program,
     RustLibrary,
+    HostSharedLibrary,
     HostRustLibrary,
     RustProgram,
     RustTests,
@@ -69,7 +72,7 @@ from ..frontend.data import (
     StaticLibrary,
     TestManifest,
     VariablePassthru,
-    XPIDLFile,
+    XPIDLModule,
 )
 from ..util import (
     ensureParentDir,
@@ -130,8 +133,10 @@ MOZBUILD_VARIABLES = [
 ]
 
 DEPRECATED_VARIABLES = [
+    b'ALLOW_COMPILER_WARNINGS',
     b'EXPORT_LIBRARY',
     b'EXTRA_LIBS',
+    b'FAIL_ON_WARNINGS',
     b'HOST_LIBS',
     b'LIBXUL_LIBRARY',
     b'MOCHITEST_A11Y_FILES',
@@ -432,10 +437,10 @@ class RecursiveMakeBackend(CommonBackend):
 
         consumed = CommonBackend.consume_object(self, obj)
 
-        # CommonBackend handles XPIDLFile, but we want to do
+        # CommonBackend handles XPIDLModule, but we want to do
         # some extra things for them.
-        if isinstance(obj, XPIDLFile):
-            backend_file.xpt_name = '%s.xpt' % obj.module
+        if isinstance(obj, XPIDLModule):
+            backend_file.xpt_name = '%s.xpt' % obj.name
             self._idl_dirs.add(obj.relobjdir)
 
         # If CommonBackend acknowledged the object, we're done with it.
@@ -475,16 +480,26 @@ class RecursiveMakeBackend(CommonBackend):
                 f = mozpath.relpath(f, base)
                 for var in variables:
                     backend_file.write('%s += %s\n' % (var, f))
-        elif isinstance(obj, HostSources):
+        elif isinstance(obj, PgoGenerateOnlySources):
+            assert obj.canonical_suffix == '.cpp'
+            for f in sorted(obj.files):
+                backend_file.write('PGO_GEN_ONLY_CPPSRCS += %s\n' % f)
+        elif isinstance(obj, (HostSources, HostGeneratedSources)):
             suffix_map = {
                 '.c': 'HOST_CSRCS',
                 '.mm': 'HOST_CMMSRCS',
                 '.cpp': 'HOST_CPPSRCS',
             }
-            var = suffix_map[obj.canonical_suffix]
+            variables = [suffix_map[obj.canonical_suffix]]
+            if isinstance(obj, GeneratedSources):
+                variables.append('GARBAGE')
+                base = backend_file.objdir
+            else:
+                base = backend_file.srcdir
             for f in sorted(obj.files):
-                backend_file.write('%s += %s\n' % (
-                    var, mozpath.relpath(f, backend_file.srcdir)))
+                f = mozpath.relpath(f, base)
+                for var in variables:
+                    backend_file.write('%s += %s\n' % (var, f))
         elif isinstance(obj, VariablePassthru):
             # Sorted so output is consistent and we don't bump mtimes.
             for k, v in sorted(obj.variables.items()):
@@ -680,6 +695,10 @@ class RecursiveMakeBackend(CommonBackend):
             self._process_host_library(obj, backend_file)
             self._process_linked_libraries(obj, backend_file)
 
+        elif isinstance(obj, HostSharedLibrary):
+            self._process_host_shared_library(obj, backend_file)
+            self._process_linked_libraries(obj, backend_file)
+
         elif isinstance(obj, ObjdirFiles):
             self._process_objdir_files(obj, obj.files, backend_file)
 
@@ -791,12 +810,39 @@ class RecursiveMakeBackend(CommonBackend):
         compile_roots = [t for t, deps in self._compile_graph.iteritems()
                          if not deps or t not in all_compile_deps]
 
-        rule = root_deps_mk.create_rule(['recurse_compile'])
-        rule.add_dependencies(compile_roots)
-        for target, deps in sorted(self._compile_graph.items()):
-            if deps:
-                rule = root_deps_mk.create_rule([target])
-                rule.add_dependencies(deps)
+        def add_category_rules(category, roots, graph):
+            rule = root_deps_mk.create_rule(['recurse_%s' % category])
+            rule.add_dependencies(roots)
+            for target, deps in sorted(graph.items()):
+                if deps:
+                    rule = root_deps_mk.create_rule([target])
+                    rule.add_dependencies(deps)
+
+        non_default_roots = defaultdict(list)
+        non_default_graphs = defaultdict(lambda: OrderedDefaultDict(set))
+
+        for root in compile_roots:
+            # If this is a non-default target, separate the root from the
+            # rest of the compile graph.
+            target_name = mozpath.basename(root)
+
+            if target_name not in ('target', 'host'):
+                non_default_roots[target_name].append(root)
+                non_default_graphs[target_name][root] = self._compile_graph[root]
+                del self._compile_graph[root]
+
+        for root in chain(*non_default_roots.values()):
+            compile_roots.remove(root)
+            dirname = mozpath.dirname(root)
+            # If a directory only contains non-default compile targets, we don't
+            # attempt to dump symbols there.
+            if (dirname in self._no_skip['syms'] and
+                '%s/target' % dirname not in self._compile_graph):
+                self._no_skip['syms'].remove(dirname)
+
+        add_category_rules('compile', compile_roots, self._compile_graph)
+        for category, graph in non_default_graphs.iteritems():
+            add_category_rules(category, non_default_roots[category], graph)
 
         root_mk = Makefile()
 
@@ -811,6 +857,15 @@ class RecursiveMakeBackend(CommonBackend):
             set(self._compile_graph.keys()) | all_compile_deps)))
         root_mk.add_statement('syms_targets := %s' % ' '.join(sorted(
             set('%s/syms' % d for d in self._no_skip['syms']))))
+
+        root_mk.add_statement('non_default_tiers := %s' % ' '.join(sorted(
+            non_default_roots.keys())))
+
+        for category, graphs in non_default_graphs.iteritems():
+            category_dirs = [mozpath.dirname(target)
+                             for target in graphs.keys()]
+            root_mk.add_statement('%s_dirs := %s' % (category,
+                                                     ' '.join(category_dirs)))
 
         root_mk.add_statement('include root-deps.mk')
 
@@ -1044,9 +1099,8 @@ class RecursiveMakeBackend(CommonBackend):
         for p in ('Makefile', 'backend.mk', '.deps/.mkdir.done'):
             build_files.add_optional_exists(p)
 
-        for idl in manager.idls.values():
-            self._install_manifests['dist_include'].add_optional_exists('%s.h'
-                % idl['root'])
+        for stem in manager.idl_stems():
+            self._install_manifests['dist_include'].add_optional_exists('%s.h' % stem)
 
         for module in manager.modules:
             build_files.add_optional_exists(mozpath.join('.deps',
@@ -1058,10 +1112,10 @@ class RecursiveMakeBackend(CommonBackend):
         mk = Makefile()
         all_directories = set()
 
-        for module in xpt_modules:
-            sources, directories = modules[module]
-            all_directories |= directories
-            deps = sorted(sources)
+        for module_name in xpt_modules:
+            module = manager.modules[module_name]
+            all_directories |= module.directories
+            deps = sorted(module.idl_files)
 
             # It may seem strange to have the .idl files listed as
             # prerequisites both here and in the auto-generated .pp files.
@@ -1073,11 +1127,12 @@ class RecursiveMakeBackend(CommonBackend):
             # listing the .idls here, we ensure the make file has a
             # reference to the new .idl. Since the new .idl presumably has
             # an mtime newer than the .xpt, it will trigger xpt generation.
-            mk.add_statement('%s_deps = %s' % (module, ' '.join(deps)))
 
-            build_files.add_optional_exists('%s.xpt' % module)
+            mk.add_statement('%s_deps := %s' % (module_name, ' '.join(deps)))
 
-        mk.add_statement('all_idl_dirs = %s' % ' '.join(sorted(all_directories)))
+            build_files.add_optional_exists('%s.xpt' % module_name)
+
+        mk.add_statement('all_idl_dirs := %s' % ' '.join(sorted(all_directories)))
 
         rules = StringIO()
         mk.dump(rules, removal_guard=False)
@@ -1233,6 +1288,10 @@ class RecursiveMakeBackend(CommonBackend):
             backend_file.write('COMPUTED_%s += %s\n' % (var,
                                                         ' '.join(make_quote(shell_quote(f)) for f in flags)))
 
+    def _process_non_default_target(self, libdef, target_name, backend_file):
+        backend_file.write("%s:: %s\n" % (libdef.output_category, target_name))
+        backend_file.write('MOZBUILD_NON_DEFAULT_TARGETS += %s\n' % target_name)
+
     def _process_shared_library(self, libdef, backend_file):
         backend_file.write_once('LIBRARY_NAME := %s\n' % libdef.basename)
         backend_file.write('FORCE_SHARED_LIB := 1\n')
@@ -1244,6 +1303,14 @@ class RecursiveMakeBackend(CommonBackend):
             backend_file.write('SYMBOLS_FILE := %s\n' % libdef.symbols_file)
         if not libdef.cxx_link:
             backend_file.write('LIB_IS_C_ONLY := 1\n')
+        if libdef.output_category:
+            self._process_non_default_target(libdef, libdef.lib_name,
+                                             backend_file)
+            # Override the install rule target for this library. This is hacky,
+            # but can go away as soon as we start building libraries in their
+            # final location (bug 1459764).
+            backend_file.write('SHARED_LIBRARY_TARGET := %s\n' %
+                               libdef.output_category)
 
     def _process_static_library(self, libdef, backend_file):
         backend_file.write_once('LIBRARY_NAME := %s\n' % libdef.basename)
@@ -1264,13 +1331,21 @@ class RecursiveMakeBackend(CommonBackend):
         backend_file.write('CARGO_TARGET_DIR := %s\n' % target_dir)
         if libdef.features:
             backend_file.write('%s := %s\n' % (libdef.FEATURES_VAR, ' '.join(libdef.features)))
+        if libdef.output_category:
+            self._process_non_default_target(libdef, libdef.import_name, backend_file)
 
     def _process_host_library(self, libdef, backend_file):
         backend_file.write('HOST_LIBRARY_NAME = %s\n' % libdef.basename)
 
+    def _process_host_shared_library(self, libdef, backend_file):
+        backend_file.write('HOST_SHARED_LIBRARY = %s\n' % libdef.lib_name)
+
     def _build_target_for_obj(self, obj):
+        target_name = obj.KIND
+        if hasattr(obj, 'output_category') and obj.output_category:
+            target_name = obj.output_category
         return '%s/%s' % (mozpath.relpath(obj.objdir,
-            self.environment.topobjdir), obj.KIND)
+            self.environment.topobjdir), target_name)
 
     def _process_linked_libraries(self, obj, backend_file):
         def pretty_relpath(lib, name):
@@ -1282,7 +1357,7 @@ class RecursiveMakeBackend(CommonBackend):
         build_target = self._build_target_for_obj(obj)
         self._compile_graph[build_target]
 
-        objs, no_pgo_objs, shared_libs, os_libs, static_libs = self._expand_libs(obj)
+        objs, pgo_gen_objs, no_pgo_objs, shared_libs, os_libs, static_libs = self._expand_libs(obj)
 
         if obj.KIND == 'target':
             obj_target = obj.name
@@ -1292,13 +1367,19 @@ class RecursiveMakeBackend(CommonBackend):
             is_unit_test = isinstance(obj, BaseProgram) and obj.is_unit_test
             profile_gen_objs = []
 
-            if (self.environment.substs.get('MOZ_PGO') and
-                self.environment.substs.get('GNU_CC')):
+            doing_pgo = self.environment.substs.get('MOZ_PGO')
+            obj_suffix_change_needed = (self.environment.substs.get('GNU_CC') or
+                                        self.environment.substs.get('CLANG_CL'))
+            if doing_pgo and obj_suffix_change_needed:
                 # We use a different OBJ_SUFFIX for the profile generate phase on
-                # linux. These get picked up via OBJS_VAR_SUFFIX in config.mk.
+                # systems where the pgo generate phase requires instrumentation
+                # that can only be removed by recompiling objects. These get
+                # picked up via OBJS_VAR_SUFFIX in config.mk.
                 if not is_unit_test and not isinstance(obj, SimpleProgram):
                     profile_gen_objs = [o if o in no_pgo_objs else '%s.%s' %
                                         (mozpath.splitext(o)[0], 'i_o') for o in objs]
+                    profile_gen_objs += ['%s.%s' % (mozpath.splitext(o)[0], 'i_o')
+                                         for o in pgo_gen_objs]
 
             def write_obj_deps(target, objs_ref, pgo_objs_ref):
                 if pgo_objs_ref:

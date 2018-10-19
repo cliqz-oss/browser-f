@@ -493,14 +493,20 @@ class MacroAssemblerARM : public Assembler
     // - all three registers must be different.
     // - tmp and dest will get clobbered, ptr will remain intact.
     // - byteSize can be up to 4 bytes and no more (GPR are 32 bits on ARM).
-    void emitUnalignedLoad(bool isSigned, unsigned byteSize, Register ptr, Register tmp,
+    // - offset can be 0 or 4
+    // If `access` is not null then emit the appropriate access metadata.
+    void emitUnalignedLoad(const wasm::MemoryAccessDesc* access,
+                           bool isSigned, unsigned byteSize, Register ptr, Register tmp,
                            Register dest, unsigned offset = 0);
 
     // Ditto, for a store. Note stores don't care about signedness.
     // - the two registers must be different.
     // - val will get clobbered, ptr will remain intact.
     // - byteSize can be up to 4 bytes and no more (GPR are 32 bits on ARM).
-    void emitUnalignedStore(unsigned byteSize, Register ptr, Register val, unsigned offset = 0);
+    // - offset can be 0 or 4
+    // If `access` is not null then emit the appropriate access metadata.
+    void emitUnalignedStore(const wasm::MemoryAccessDesc* access,
+                            unsigned byteSize, Register ptr, Register val, unsigned offset = 0);
 
     // Implementation for transferMultipleByRuns so we can use different
     // iterators for forward/backward traversals. The sign argument should be 1
@@ -572,7 +578,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
 
     void branch(JitCode* c) {
         BufferOffset bo = m_buffer.nextOffset();
-        addPendingJump(bo, ImmPtr(c->raw()), Relocation::JITCODE);
+        addPendingJump(bo, ImmPtr(c->raw()), RelocationKind::JITCODE);
         ScratchRegisterScope scratch(asMasm());
         ma_movPatchable(ImmPtr(c->raw()), scratch, Always);
         ma_bx(scratch);
@@ -1062,39 +1068,6 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
 
     void loadPrivate(const Address& address, Register dest);
 
-    void loadInt32x1(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x1(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x2(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x2(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x3(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x3(const BaseIndex& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadInt32x4(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x1(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x1(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x2(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x2(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x3(FloatRegister src, const Address& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x3(FloatRegister src, const BaseIndex& dest) { MOZ_CRASH("NYI"); }
-    void storeInt32x4(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
-    void loadAlignedSimd128Int(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeAlignedSimd128Int(FloatRegister src, Address addr) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Int(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Int(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Int(FloatRegister src, Address addr) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Int(FloatRegister src, BaseIndex addr) { MOZ_CRASH("NYI"); }
-
-    void loadFloat32x3(const Address& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadFloat32x3(const BaseIndex& src, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadFloat32x4(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeFloat32x4(FloatRegister src, const Address& addr) { MOZ_CRASH("NYI"); }
-
-    void loadAlignedSimd128Float(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeAlignedSimd128Float(FloatRegister src, Address addr) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Float(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void loadUnalignedSimd128Float(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Float(FloatRegister src, Address addr) { MOZ_CRASH("NYI"); }
-    void storeUnalignedSimd128Float(FloatRegister src, BaseIndex addr) { MOZ_CRASH("NYI"); }
-
     void loadDouble(const Address& addr, FloatRegister dest);
     void loadDouble(const BaseIndex& src, FloatRegister dest);
 
@@ -1149,12 +1122,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
 
     void cmp32(Register lhs, Imm32 rhs);
     void cmp32(Register lhs, Register rhs);
-    void cmp32(const Address& lhs, Imm32 rhs) {
-        MOZ_CRASH("NYI");
-    }
-    void cmp32(const Address& lhs, Register rhs) {
-        MOZ_CRASH("NYI");
-    }
+    void cmp32(const Address& lhs, Imm32 rhs);
+    void cmp32(const Address& lhs, Register rhs);
 
     void cmpPtr(Register lhs, Register rhs);
     void cmpPtr(Register lhs, ImmWord rhs);

@@ -34,8 +34,23 @@ left instead of right. -->
 <!ENTITY  closeTabsToTheEnd.accesskey        "i">
 <!ENTITY  closeOtherTabs.label               "Close Other Tabs">
 <!ENTITY  closeOtherTabs.accesskey           "o">
+
 <!ENTITY  closeSelectedTabs.label            "Close Selected Tabs">
 <!ENTITY  closeSelectedTabs.accesskey        "S">
+<!ENTITY  pinSelectedTabs.label              "Pin Tabs">
+<!-- Pin Tab and Pin Selected Tabs have the same accesskey
+but will never be visible at the same time. -->
+<!ENTITY  pinSelectedTabs.accesskey          "P">
+<!ENTITY  unpinSelectedTabs.label            "Unpin Tabs">
+<!-- Unpin Tab and Unpin Selected Tabs have the same accesskey
+but will never be visible at the same time. -->
+<!ENTITY  unpinSelectedTabs.accesskey        "b">
+<!-- Reload Tab and Reload Selected Tabs have the same accesskey
+but will never be visible at the same time. -->
+<!ENTITY  reloadSelectedTabs.label           "Reload Selected Tabs">
+<!ENTITY  reloadSelectedTabs.accesskey       "R">
+<!ENTITY  bookmarkSelectedTabs.label         "Bookmark Tabs…">
+<!ENTITY  bookmarkSelectedTabs.accesskey     "k">
 
 <!-- LOCALIZATION NOTE (pinTab.label, unpinTab.label): "Pin" is being
 used as a metaphor for expressing the fact that these tabs are "pinned" to the
@@ -297,6 +312,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY webDeveloperMenu.label       "Web Developer">
 <!ENTITY webDeveloperMenu.accesskey   "W">
 
+<!ENTITY devtoolsRecordExecution.label "Record Execution">
+<!ENTITY devtoolsSaveRecording.label "Save Recording">
+<!ENTITY devtoolsReplayExecution.label "Replay Execution">
+
 <!ENTITY inspectContextMenu.label     "Inspect Element">
 <!ENTITY inspectContextMenu.accesskey "Q">
 
@@ -534,9 +553,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY reloadFrameCmd.label         "Reload Frame">
 <!ENTITY reloadFrameCmd.accesskey     "R">
 <!ENTITY viewPartialSourceForSelectionCmd.label "View Selection Source">
-<!ENTITY viewPartialSourceForMathMLCmd.label    "View MathML Source">
-<!-- LOCALIZATION NOTE (viewPartialSourceCmd.accesskey): This accesskey is used for both
-         viewPartialSourceForSelectionCmd.label and viewPartialSourceForMathMLCmd.label -->
 <!ENTITY viewPartialSourceCmd.accesskey "e">
 <!ENTITY viewPageSourceCmd.label      "View Page Source">
 <!ENTITY viewPageSourceCmd.accesskey  "V">
@@ -597,6 +613,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY hidePluginCmd.label          "Hide this plugin">
 <!ENTITY hidePluginCmd.accesskey      "H">
 <!ENTITY copyLinkCmd.label            "Copy Link Location">
+<!-- LOCALIZATION NOTE (copyLinkCmd.accesskey): The access keys for "Copy Link
+Location" and "Copy Email Address" should be the same if possible; the two
+context menu items are mutually exclusive. -->
 <!ENTITY copyLinkCmd.accesskey        "a">
 <!ENTITY copyImageCmd.label           "Copy Image Location">
 <!ENTITY copyImageCmd.accesskey       "o">
@@ -607,7 +626,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY copyAudioURLCmd.label        "Copy Audio Location">
 <!ENTITY copyAudioURLCmd.accesskey    "o">
 <!ENTITY copyEmailCmd.label           "Copy Email Address">
-<!ENTITY copyEmailCmd.accesskey       "E">
+<!-- LOCALIZATION NOTE (copyEmailCmd.accesskey): The access keys for "Copy Link
+Location" and "Copy Email Address" should be the same if possible; the two
+context menu items are mutually exclusive. -->
+<!ENTITY copyEmailCmd.accesskey       "A">
 <!ENTITY thisFrameMenu.label              "This Frame">
 <!ENTITY thisFrameMenu.accesskey          "h">
 
@@ -742,7 +764,13 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY spellAddDictionaries.label "Add Dictionaries…">
 <!ENTITY spellAddDictionaries.accesskey "A">
 
+<!-- LOCALIZATION NOTE (editBookmark.panel.width): width of the bookmark panel.
+     Should be large enough to fully display the Done and Cancel/
+     Remove Bookmark buttons. -->
+<!ENTITY editBookmark.panel.width                    "23em">
 <!ENTITY editBookmark.done.label                     "Done">
+<!ENTITY editBookmark.showForNewBookmarks.label       "Show editor when saving">
+<!ENTITY editBookmark.showForNewBookmarks.accesskey   "S">
 
 <!-- LOCALIZATION NOTE (identity.securityView.label)
      This is the header of the security subview in the Site Identity panel. -->
@@ -890,29 +918,76 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY getUserMedia.audioCapture.label "Audio from the tab will be shared.">
 <!ENTITY getUserMedia.allWindowsShared.message "All visible windows on your screen will be shared.">
 
-<!ENTITY trackingProtection.on "Tracking Protection: ON">
-<!ENTITY trackingProtection.off "Tracking Protection: OFF">
+<!ENTITY contentBlocking.title "Content Blocking">
+<!ENTITY contentBlocking.detected "Blockable content detected on this site.">
+<!ENTITY contentBlocking.notDetected "No blockable content detected on this page.">
+<!ENTITY contentBlocking.disabled.label "Disabled">
+<!ENTITY contentBlocking.disabled.tooltip "You have disabled Content Blocking.">
+<!ENTITY contentBlocking.exception.tooltip "You have disabled Content Blocking for this site.">
+
+<!ENTITY contentBlocking.fastBlock.label "Slow-Loading Trackers">
+<!-- LOCALIZATION NOTE (contentBlocking.fastBlock.blocked.label):
+     This label signals that this type of content blocking is turned
+     ON and is successfully blocking malicious/slow content, so this is
+     a positive thing. It forms the end of the (imaginary) sentence
+     "Slow-Loading Trackers [are] Blocked"-->
+<!ENTITY contentBlocking.fastBlock.blocked.label "Blocked">
+<!-- LOCALIZATION NOTE (contentBlocking.fastBlock.add.label):
+     This is displayed as a link to preferences, where the user can add
+     this specific type of content blocking. When this text is shown
+     the type of content blocking is currently not enabled. -->
+<!ENTITY contentBlocking.fastBlock.add.label "Add Blocking…">
+
+<!ENTITY contentBlocking.trackingProtection2.label "All Detected Trackers">
+<!-- LOCALIZATION NOTE (contentBlocking.trackingProtection.blocked.label):
+     This label signals that this type of content blocking is turned
+     ON and is successfully blocking tracker content, so this is
+     a positive thing. It forms the end of the (imaginary) sentence
+     "Trackers [are] Blocked"-->
+<!ENTITY contentBlocking.trackingProtection.blocked.label "Blocked">
+<!-- LOCALIZATION NOTE (contentBlocking.trackingProtection.add.label):
+     This is displayed as a link to preferences, where the user can add
+     this specific type of content blocking. When this text is shown
+     the type of content blocking is currently not enabled. -->
+<!ENTITY contentBlocking.trackingProtection.add.label "Add Blocking…">
+
+<!ENTITY contentBlocking.3rdPartyCookies.label "Third-Party Cookies">
+<!-- LOCALIZATION NOTE (contentBlocking.3rdPartyCookies.blocked.label):
+     This label signals that this type of content blocking is turned
+     ON and is successfully blocking third-party cookies, so this is
+     a positive thing. It forms the end of the (imaginary) sentence
+     "Third-Party Cookies [are] Blocked"-->
+<!ENTITY contentBlocking.3rdPartyCookies.blocked.label "Blocked">
+<!-- LOCALIZATION NOTE (contentBlocking.3rdPartyCookies.add.label):
+     This is displayed as a link to preferences, where the user can add
+     this specific type of content blocking. When this text is shown
+     the type of content blocking is currently not enabled. -->
+<!ENTITY contentBlocking.3rdPartyCookies.add.label "Add Blocking…">
+
+<!ENTITY contentBlocking.openBreakageReportView2.label "Report a problem">
+<!ENTITY contentBlocking.breakageReportView.label "Report Problems">
+<!ENTITY contentBlocking.breakageReportView2.description "Content blocking can cause problems with some websites. When you report problems, you’ll help make &brandShortName; better for everyone. (This will send a URL as well as information about your browser settings to Mozilla.)">
+<!ENTITY contentBlocking.breakageReportView.learnMore "Learn More">
+<!ENTITY contentBlocking.breakageReportView.collection.url.label "URL">
+<!ENTITY contentBlocking.breakageReportView.collection.comments.label "What problems did you have? (Optional)">
+<!ENTITY contentBlocking.breakageReportView.sendReport.label "Send Report">
+<!ENTITY contentBlocking.breakageReportView.cancel.label "Cancel">
+
 <!ENTITY trackingProtection.title "Tracking Protection">
 <!ENTITY trackingProtection.tooltip "Open Tracking Protection Preferences">
-<!ENTITY trackingProtection.detectedBlocked4 "&brandShortName; is blocking parts of this page that may track your browsing.">
-<!ENTITY trackingProtection.detectedNotBlocked5 "&brandShortName; has detected elements that may track your browsing.">
-<!ENTITY trackingProtection.detectedException "&brandShortName; has detected elements that may track your browsing. You have disabled protection for this site.">
-<!ENTITY trackingProtection.notDetected5 "No tracking elements detected on this page.">
-<!ENTITY trackingProtection.notDetectedException "No tracking elements detected on this page. You have disabled protection for this site.">
 
-<!ENTITY trackingProtection.reloadRequired2 "You have enabled Tracking Protection. Reload this page to block all trackers.">
 <!-- LOCALIZATION NOTE (trackingProtection.unblock3.label, trackingProtection.unblock3.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
      center while looking at a site with trackers in NON-private browsing mode. -->
-<!ENTITY trackingProtection.unblock3.label "Disable For This Site">
-<!ENTITY trackingProtection.unblock3.accesskey "D">
+<!ENTITY trackingProtection.unblock4.label "Disable Blocking For This Site">
+<!ENTITY trackingProtection.unblock4.accesskey "D">
 <!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate3.label, trackingProtection.unblockPrivate3.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
      center while looking at a site with trackers in PRIVATE browsing mode. -->
-<!ENTITY trackingProtection.unblockPrivate3.label "Disable For This Session">
-<!ENTITY trackingProtection.unblockPrivate3.accesskey "D">
-<!ENTITY trackingProtection.block4.label "Enable For This Site">
-<!ENTITY trackingProtection.block4.accesskey "E">
+<!ENTITY trackingProtection.unblockPrivate4.label "Disable Blocking Temporarily">
+<!ENTITY trackingProtection.unblockPrivate4.accesskey "D">
+<!ENTITY trackingProtection.block5.label "Enable Blocking For This Site">
+<!ENTITY trackingProtection.block5.accesskey "E">
 <!ENTITY trackingProtection.reload2.label "Reload Page">
 <!ENTITY trackingProtection.reload2.accesskey "R">
 
@@ -1017,6 +1092,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY sendToDevice.syncNotReady.label "Syncing Devices…">
 
 <!ENTITY pageAction.shareUrl.label "Share">
+<!ENTITY pageAction.shareMore.label "More…">
 
 <!ENTITY libraryButton.tooltip "View history, saved bookmarks, and more">
 

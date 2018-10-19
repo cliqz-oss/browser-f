@@ -20,6 +20,7 @@ from mozharness.base.python import (
     virtualenv_config_options,
 )
 from mozharness.mozilla.automation import AutomationMixin, TBPL_WARNING
+from mozharness.mozilla.fetches import FetchesMixin
 from mozharness.mozilla.structuredlog import StructuredOutputParser
 from mozharness.mozilla.testing.unittest import DesktopUnittestOutputParser
 from mozharness.mozilla.testing.try_tools import TryToolsMixin, try_config_options
@@ -102,7 +103,7 @@ testing_config_options = [
 
 # TestingMixin {{{1
 class TestingMixin(VirtualenvMixin, AutomationMixin, ResourceMonitoringMixin,
-                   TooltoolMixin, TryToolsMixin, VerifyToolsMixin):
+                   TooltoolMixin, TryToolsMixin, VerifyToolsMixin, FetchesMixin):
     """
     The steps to identify + download the proper bits for [browser] unit
     tests and Talos.
@@ -315,7 +316,11 @@ You can set this by specifying --test-url URL
             'mochitest-media': 'mochitest',
             'mochitest-plain-clipboard': 'mochitest',
             'mochitest-plain-gpu': 'mochitest',
-            'mochitest-gl': 'mochitest',
+            'mochitest-webgl1-core': 'mochitest',
+            'mochitest-webgl1-ext': 'mochitest',
+            'mochitest-webgl2-core': 'mochitest',
+            'mochitest-webgl2-ext': 'mochitest',
+            'mochitest-webgl2-deqp': 'mochitest',
             'geckoview': 'mochitest',
             'geckoview-junit': 'mochitest',
             'jsreftest': 'reftest',
@@ -355,7 +360,7 @@ You can set this by specifying --test-url URL
                                   ]
                 for req_file in required_files:
                     if req_file not in unpack_dirs:
-                        self.info("Adding '{}' for extraction from common.tests zip file"
+                        self.info("Adding '{}' for extraction from common.tests archive"
                                   .format(req_file))
                         unpack_dirs.append(req_file)
 

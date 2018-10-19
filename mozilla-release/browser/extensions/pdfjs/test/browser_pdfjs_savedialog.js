@@ -30,6 +30,7 @@ function changeMimeHandler(preferredAction, alwaysAskBeforeHandling) {
   handlerService.store(handlerInfo);
 
   Services.obs.notifyObservers(null, "pdfjs:handlerChanged");
+  Services.ppmm.sharedData.flush();
 
   // Refresh data
   handlerInfo = mimeService.getFromTypeAndExtension("application/pdf", "pdf");
@@ -47,8 +48,7 @@ function addWindowListener(aURL, aCallback) {
       info("window opened, waiting for focus");
       Services.wm.removeListener(this);
 
-      var domwindow = aXULWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                                .getInterface(Ci.nsIDOMWindow);
+      var domwindow = aXULWindow.docShell.domWindow;
       waitForFocus(function() {
         is(domwindow.document.location.href, aURL, "should have seen the right window open");
         domwindow.close();

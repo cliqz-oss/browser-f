@@ -114,7 +114,7 @@ TaggingService.prototype = {
         // want to change it.
         tag.__defineGetter__("name", () => this._tagFolders[tag.id]);
       } else if (typeof(idOrName) == "string" && idOrName.length > 0 &&
-               idOrName.length <= Ci.nsITaggingService.MAX_TAG_LENGTH) {
+               idOrName.length <= PlacesUtils.bookmarks.MAX_TAG_LENGTH) {
         // This is a tag name.
         tag.name = trim ? idOrName.trim() : idOrName;
         // We can't know the id at this point, since a previous tag could
@@ -230,42 +230,6 @@ TaggingService.prototype = {
   },
 
   // nsITaggingService
-  getURIsForTag: function TS_getURIsForTag(aTagName) {
-    if (!aTagName || aTagName.length == 0) {
-      throw Components.Exception("Invalid tag name", Cr.NS_ERROR_INVALID_ARG);
-    }
-
-    if (/^\s|\s$/.test(aTagName)) {
-      throw Components.Exception("Tag passed to getURIsForTag was not trimmed",
-                                 Cr.NS_ERROR_INVALID_ARG);
-    }
-
-    let uris = [];
-    let tagId = this._getItemIdForTag(aTagName);
-    if (tagId == -1)
-      return uris;
-
-    let db = PlacesUtils.history.DBConnection;
-    let stmt = db.createStatement(
-      `SELECT h.url FROM moz_places h
-       JOIN moz_bookmarks b ON b.fk = h.id
-       WHERE b.parent = :tag_id`
-    );
-    stmt.params.tag_id = tagId;
-    try {
-      while (stmt.executeStep()) {
-        try {
-          uris.push(Services.io.newURI(stmt.row.url));
-        } catch (ex) {}
-      }
-    } finally {
-      stmt.finalize();
-    }
-
-    return uris;
-  },
-
-  // nsITaggingService
   getTagsForURI: function TS_getTagsForURI(aURI, aCount) {
     if (!aURI) {
       throw Components.Exception("Invalid uri", Cr.NS_ERROR_INVALID_ARG);
@@ -323,23 +287,6 @@ TaggingService.prototype = {
     }
 
     return this.__tagFolders;
-  },
-
-  // nsITaggingService
-  get allTags() {
-    var allTags = [];
-    for (var i in this._tagFolders)
-      allTags.push(this._tagFolders[i]);
-    // sort the tag list
-    allTags.sort(function(a, b) {
-        return a.toLowerCase().localeCompare(b.toLowerCase());
-      });
-    return allTags;
-  },
-
-  // nsITaggingService
-  get hasTags() {
-    return this._tagFolders.length > 0;
   },
 
   // nsIObserver
@@ -453,8 +400,8 @@ TaggingService.prototype = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsITaggingService,
     Ci.nsINavBookmarkObserver,
-    Ci.nsIObserver
-  ])
+    Ci.nsIObserver,
+  ]),
 };
 
 // Implements nsIAutoCompleteSearch
@@ -473,7 +420,6 @@ TagAutoCompleteSearch.prototype = {
    * @param listener - A listener to notify when the search is complete
    */
   startSearch(searchString, searchParam, previousResult, listener) {
-    let searchResults = PlacesUtils.tagging.allTags;
     this._stopped = false;
 
     // only search on characters for the last tag
@@ -503,29 +449,33 @@ TagAutoCompleteSearch.prototype = {
       return;
     }
 
-    // Chunk the search results via a generator.
-    let gen = (function* () {
-      for (let i = 0; i < searchResults.length; ++i) {
-        if (this._stopped)
-          yield false;
+    (async () => {
+      let tags = (await PlacesUtils.bookmarks.fetchTags())
+        .filter(t => t.name.toLowerCase().startsWith(searchString.toLowerCase()))
+        .map(t => t.name);
 
-        if (searchResults[i].toLowerCase().startsWith(searchString.toLowerCase())) {
+      // Chunk the search results via a generator.
+      let gen = (function* () {
+        for (let i = 0; i < tags.length; ++i) {
+          if (this._stopped)
+            yield false;
+
           // For each match, prepend what the user has typed so far.
           count++;
-          result.appendMatch(before + searchResults[i], searchResults[i]);
-        }
+          result.appendMatch(before + tags[i], tags[i]);
 
-        // In case of many tags, notify once every 50 loops.
-        if ((i % 10) == 0) {
-          this.notifyResult(result, count, listener, true);
-          yield true;
+          // In case of many tags, notify once every 10 loops.
+          if ((i % 10) == 0) {
+            this.notifyResult(result, count, listener, true);
+            yield true;
+          }
         }
-      }
-      yield false;
-    }.bind(this))();
+        yield false;
+      }.bind(this))();
 
-    while (gen.next().value);
-    this.notifyResult(result, count, listener, false);
+      while (gen.next().value);
+      this.notifyResult(result, count, listener, false);
+    })();
   },
 
   /**
@@ -547,8 +497,8 @@ TagAutoCompleteSearch.prototype = {
   classID: Components.ID("{1dcc23b0-d4cb-11dc-9ad6-479d56d89593}"),
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(TagAutoCompleteSearch),
   QueryInterface: ChromeUtils.generateQI([
-    Ci.nsIAutoCompleteSearch
-  ])
+    Ci.nsIAutoCompleteSearch,
+  ]),
 };
 
 var component = [TaggingService, TagAutoCompleteSearch];

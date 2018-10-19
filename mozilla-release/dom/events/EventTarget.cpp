@@ -29,8 +29,16 @@ EventTarget::Constructor(const GlobalObject& aGlobal, ErrorResult& aRv)
 
 bool
 EventTarget::ComputeWantsUntrusted(const Nullable<bool>& aWantsUntrusted,
+                                   const AddEventListenerOptionsOrBoolean* aOptions,
                                    ErrorResult& aRv)
 {
+  if (aOptions && aOptions->IsAddEventListenerOptions()) {
+    const auto& options = aOptions->GetAsAddEventListenerOptions();
+    if (options.mWantUntrusted.WasPassed()) {
+      return options.mWantUntrusted.Value();
+    }
+  }
+
   if (!aWantsUntrusted.IsNull()) {
     return aWantsUntrusted.Value();
   }
@@ -50,7 +58,7 @@ EventTarget::AddEventListener(const nsAString& aType,
                               const Nullable<bool>& aWantsUntrusted,
                               ErrorResult& aRv)
 {
-  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, aRv);
+  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, &aOptions, aRv);
   if (aRv.Failed()) {
     return;
   }
@@ -71,7 +79,7 @@ EventTarget::AddEventListener(const nsAString& aType,
                               const Nullable<bool>& aWantsUntrusted)
 {
   ErrorResult rv;
-  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, rv);
+  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, nullptr, rv);
   if (rv.Failed()) {
     return rv.StealNSResult();
   }
@@ -112,7 +120,7 @@ EventTarget::AddSystemEventListener(const nsAString& aType,
                                     const Nullable<bool>& aWantsUntrusted)
 {
   ErrorResult rv;
-  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, rv);
+  bool wantsUntrusted = ComputeWantsUntrusted(aWantsUntrusted, nullptr, rv);
   if (rv.Failed()) {
     return rv.StealNSResult();
   }
@@ -143,10 +151,10 @@ EventTarget::RemoveSystemEventListener(const nsAString& aType,
 }
 
 EventHandlerNonNull*
-EventTarget::GetEventHandler(nsAtom* aType, const nsAString& aTypeString)
+EventTarget::GetEventHandler(nsAtom* aType)
 {
   EventListenerManager* elm = GetExistingListenerManager();
-  return elm ? elm->GetEventHandler(aType, aTypeString) : nullptr;
+  return elm ? elm->GetEventHandler(aType) : nullptr;
 }
 
 void
@@ -158,21 +166,14 @@ EventTarget::SetEventHandler(const nsAString& aType,
     aRv.Throw(NS_ERROR_INVALID_ARG);
     return;
   }
-  if (NS_IsMainThread()) {
-    RefPtr<nsAtom> type = NS_Atomize(aType);
-    SetEventHandler(type, EmptyString(), aHandler);
-    return;
-  }
-  SetEventHandler(nullptr,
-                  Substring(aType, 2), // Remove "on"
-                  aHandler);
+  RefPtr<nsAtom> type = NS_Atomize(aType);
+  SetEventHandler(type, aHandler);
 }
 
 void
-EventTarget::SetEventHandler(nsAtom* aType, const nsAString& aTypeString,
-                             EventHandlerNonNull* aHandler)
+EventTarget::SetEventHandler(nsAtom* aType, EventHandlerNonNull* aHandler)
 {
-  GetOrCreateListenerManager()->SetEventHandler(aType, aTypeString, aHandler);
+  GetOrCreateListenerManager()->SetEventHandler(aType, aHandler);
 }
 
 bool

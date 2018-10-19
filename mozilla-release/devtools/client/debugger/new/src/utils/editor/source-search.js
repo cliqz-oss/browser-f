@@ -7,11 +7,12 @@ exports.buildQuery = undefined;
 exports.getMatchIndex = getMatchIndex;
 exports.searchSourceForHighlight = searchSourceForHighlight;
 exports.removeOverlay = removeOverlay;
+exports.clearSearch = clearSearch;
 exports.find = find;
 exports.findNext = findNext;
 exports.findPrev = findPrev;
 
-var _buildQuery = require("../../workers/search/build-query");
+var _buildQuery = require("../build-query");
 
 var _buildQuery2 = _interopRequireDefault(_buildQuery);
 

@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "gc/WeakMap.h"
+#include "gc/WeakMap-inl.h"
 
 #include <string.h>
 
@@ -81,8 +81,7 @@ WeakMapBase::sweepZone(JS::Zone* zone)
         if (m->marked) {
             m->sweep();
         } else {
-            /* Destroy the hash map now to catch any use after this point. */
-            m->finish();
+            m->clearAndCompact();
             m->removeFrom(zone->gcWeakMapList());
         }
         m = next;
@@ -157,16 +156,9 @@ ObjectWeakMap::ObjectWeakMap(JSContext* cx)
   : map(cx, nullptr)
 {}
 
-bool
-ObjectWeakMap::init()
-{
-    return map.init();
-}
-
 JSObject*
 ObjectWeakMap::lookup(const JSObject* obj)
 {
-    MOZ_ASSERT(map.initialized());
     if (ObjectValueMap::Ptr p = map.lookup(const_cast<JSObject*>(obj)))
         return &p->value().toObject();
     return nullptr;
@@ -176,7 +168,6 @@ bool
 ObjectWeakMap::add(JSContext* cx, JSObject* obj, JSObject* target)
 {
     MOZ_ASSERT(obj && target);
-    MOZ_ASSERT(map.initialized());
 
     MOZ_ASSERT(!map.has(obj));
     if (!map.put(obj, ObjectValue(*target))) {
@@ -190,7 +181,6 @@ ObjectWeakMap::add(JSContext* cx, JSObject* obj, JSObject* target)
 void
 ObjectWeakMap::clear()
 {
-    MOZ_ASSERT(map.initialized());
     map.clear();
 }
 
@@ -203,15 +193,13 @@ ObjectWeakMap::trace(JSTracer* trc)
 size_t
 ObjectWeakMap::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 {
-    MOZ_ASSERT(map.initialized());
-    return map.sizeOfExcludingThis(mallocSizeOf);
+    return map.shallowSizeOfExcludingThis(mallocSizeOf);
 }
 
 #ifdef JSGC_HASH_TABLE_CHECKS
 void
 ObjectWeakMap::checkAfterMovingGC()
 {
-    MOZ_ASSERT(map.initialized());
     for (ObjectValueMap::Range r = map.all(); !r.empty(); r.popFront()) {
         CheckGCThingAfterMovingGC(r.front().key().get());
         CheckGCThingAfterMovingGC(&r.front().value().toObject());

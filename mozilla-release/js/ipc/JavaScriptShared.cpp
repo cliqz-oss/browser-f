@@ -20,16 +20,8 @@ using namespace mozilla;
 using namespace mozilla::jsipc;
 
 IdToObjectMap::IdToObjectMap()
-  : table_(SystemAllocPolicy())
+  : table_(SystemAllocPolicy(), 32)
 {
-}
-
-bool
-IdToObjectMap::init()
-{
-    if (table_.initialized())
-        return true;
-    return table_.init(32);
 }
 
 void
@@ -105,10 +97,9 @@ IdToObjectMap::has(const ObjectId& id, const JSObject* obj) const
 }
 #endif
 
-bool
-ObjectToIdMap::init()
+ObjectToIdMap::ObjectToIdMap()
+  : table_(SystemAllocPolicy(), 32)
 {
-    return table_.initialized() || table_.init(32);
 }
 
 void
@@ -177,21 +168,6 @@ JavaScriptShared::JavaScriptShared()
 JavaScriptShared::~JavaScriptShared()
 {
     MOZ_RELEASE_ASSERT(cpows_.empty());
-}
-
-bool
-JavaScriptShared::init()
-{
-    if (!objects_.init())
-        return false;
-    if (!cpows_.init())
-        return false;
-    if (!unwaivedObjectIds_.init())
-        return false;
-    if (!waivedObjectIds_.init())
-        return false;
-
-    return true;
 }
 
 void
@@ -538,11 +514,8 @@ JavaScriptShared::findObjectById(JSContext* cx, const ObjectId& objId)
     // wrappers.
     JSAutoRealm ar(cx, scopeForTargetObjects());
     if (objId.hasXrayWaiver()) {
-        {
-            JSAutoRealm ar2(cx, obj);
-            obj = js::ToWindowProxyIfWindow(obj);
-            MOZ_ASSERT(obj);
-        }
+        obj = js::ToWindowProxyIfWindow(obj);
+        MOZ_ASSERT(obj);
         if (!xpc::WrapperFactory::WaiveXrayAndWrap(cx, &obj))
             return nullptr;
     } else {
@@ -688,7 +661,12 @@ CrossProcessCpowHolder::~CrossProcessCpowHolder()
         // the corresponding part of the CPOW in the other process
         // will eventually be collected. The scope for this object
         // doesn't really matter, because it immediately becomes
-        // garbage.
+        // garbage. Ignore this for middleman processes used when
+        // recording or replaying, as they do not have a CPOW manager
+        // and the message will also be received in the recording
+        // process.
+        if (recordreplay::IsMiddleman())
+            return;
         AutoJSAPI jsapi;
         if (!jsapi.Init(xpc::PrivilegedJunkScope()))
             return;
@@ -713,6 +691,9 @@ bool
 JavaScriptShared::Unwrap(JSContext* cx, const InfallibleTArray<CpowEntry>& aCpows,
                          JS::MutableHandleObject objp)
 {
+    // Middleman processes never operate on CPOWs.
+    MOZ_ASSERT(!recordreplay::IsMiddleman());
+
     objp.set(nullptr);
 
     if (!aCpows.Length())

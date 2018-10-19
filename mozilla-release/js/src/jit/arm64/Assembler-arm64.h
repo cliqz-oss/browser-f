@@ -94,8 +94,8 @@ static constexpr Register r##N { Registers::x##N };
 REGISTER_CODE_LIST(DEFINE_UNSIZED_REGISTERS)
 #undef DEFINE_UNSIZED_REGISTERS
 static constexpr Register ip0 { Registers::x16 };
-static constexpr Register ip1 { Registers::x16 };
-static constexpr Register fp  { Registers::x30 };
+static constexpr Register ip1 { Registers::x17 };
+static constexpr Register fp  { Registers::x29 };
 static constexpr Register lr  { Registers::x30 };
 static constexpr Register rzr { Registers::xzr };
 
@@ -275,16 +275,16 @@ class Assembler : public vixl::Assembler
     static bool HasRoundInstruction(RoundingMode mode) { return false; }
 
     // Tracks a jump that is patchable after finalization.
-    void addJumpRelocation(BufferOffset src, Relocation::Kind reloc);
+    void addJumpRelocation(BufferOffset src, RelocationKind reloc);
 
   protected:
     // Add a jump whose target is unknown until finalization.
     // The jump may not be patched at runtime.
-    void addPendingJump(BufferOffset src, ImmPtr target, Relocation::Kind kind);
+    void addPendingJump(BufferOffset src, ImmPtr target, RelocationKind kind);
 
     // Add a jump whose target is unknown until finalization, and may change
     // thereafter. The jump is patchable at runtime.
-    size_t addPatchableJump(BufferOffset src, Relocation::Kind kind);
+    size_t addPatchableJump(BufferOffset src, RelocationKind kind);
 
   public:
     static uint32_t PatchWrite_NearCallSize() {
@@ -337,7 +337,7 @@ class Assembler : public vixl::Assembler
 #ifdef DEBUG
         MOZ_ASSERT(dataRelocations_.length() == 0);
         for (auto& j : pendingJumps_)
-            MOZ_ASSERT(j.kind == Relocation::HARDCODED);
+            MOZ_ASSERT(j.kind == RelocationKind::HARDCODED);
 #endif
     }
 
@@ -376,7 +376,7 @@ class Assembler : public vixl::Assembler
   protected:
     // Because jumps may be relocated to a target inaccessible by a short jump,
     // each relocatable jump must have a unique entry in the extended jump table.
-    // Valid relocatable targets are of type Relocation::JITCODE.
+    // Valid relocatable targets are of type RelocationKind::JITCODE.
     struct JumpRelocation
     {
         BufferOffset jump; // Offset to the short jump, from the start of the code buffer.
@@ -393,9 +393,9 @@ class Assembler : public vixl::Assembler
     {
         BufferOffset offset;
         void* target;
-        Relocation::Kind kind;
+        RelocationKind kind;
 
-        RelativePatch(BufferOffset offset, void* target, Relocation::Kind kind)
+        RelativePatch(BufferOffset offset, void* target, RelocationKind kind)
           : offset(offset), target(target), kind(kind)
         { }
     };
@@ -438,6 +438,7 @@ class ABIArgGenerator
 static constexpr Register ABINonArgReg0 = r8;
 static constexpr Register ABINonArgReg1 = r9;
 static constexpr Register ABINonArgReg2 = r10;
+static constexpr Register ABINonArgReg3 = r11;
 
 // This register may be volatile or nonvolatile. Avoid d31 which is the
 // ScratchDoubleReg.
@@ -461,9 +462,10 @@ static constexpr Register WasmTlsReg { Registers::x23 };
 
 // Registers used for wasm table calls. These registers must be disjoint
 // from the ABI argument registers, WasmTlsReg and each other.
-static constexpr Register WasmTableCallScratchReg = ABINonArgReg0;
-static constexpr Register WasmTableCallSigReg = ABINonArgReg1;
-static constexpr Register WasmTableCallIndexReg = ABINonArgReg2;
+static constexpr Register WasmTableCallScratchReg0 = ABINonArgReg0;
+static constexpr Register WasmTableCallScratchReg1 = ABINonArgReg1;
+static constexpr Register WasmTableCallSigReg = ABINonArgReg2;
+static constexpr Register WasmTableCallIndexReg = ABINonArgReg3;
 
 static inline bool
 GetIntArgReg(uint32_t usedIntArgs, uint32_t usedFloatArgs, Register* out)

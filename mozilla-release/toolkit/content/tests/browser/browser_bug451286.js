@@ -53,9 +53,7 @@ add_task(async function() {
     let range = iframe.contentDocument.createRange();
     range.selectNodeContents(ifBody.childNodes[0]);
     let ifWindow = iframe.contentWindow;
-    let ifDocShell = ifWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIWebNavigation)
-                             .QueryInterface(Ci.nsIDocShell);
+    let ifDocShell = ifWindow.docShell;
 
     let ifController = ifDocShell.QueryInterface(Ci.nsIInterfaceRequestor)
                                  .getInterface(Ci.nsISelectionDisplay)
@@ -67,9 +65,7 @@ add_task(async function() {
 
     // Create manual highlights in the main document (the matches that lie
     // before/after the iframes
-    let docShell = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIWebNavigation)
-                      .QueryInterface(Ci.nsIDocShell);
+    let docShell = win.docShell;
 
     let controller = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                              .getInterface(Ci.nsISelectionDisplay)
@@ -112,7 +108,7 @@ function toggleHighlightAndWait(shouldHighlight) {
         gFindBar.browser.finder.removeResultListener(listener);
         resolve();
       },
-      onMatchesCountResult() {}
+      onMatchesCountResult() {},
     };
     gFindBar.browser.finder.addResultListener(listener);
     gFindBar.toggleHighlight(shouldHighlight);
@@ -127,7 +123,7 @@ function findAgainAndWait() {
         resolve();
       },
       onHighlightFinished() {},
-      onMatchesCountResult() {}
+      onMatchesCountResult() {},
     };
     gFindBar.browser.finder.addResultListener(listener);
     gFindBar.onFindAgainCommand();

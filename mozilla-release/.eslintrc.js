@@ -40,14 +40,26 @@ module.exports = {
       "mozilla/browser-window": true
     }
   }, {
-    // XXX Bug 1452706. These directories are still being fixed, so turn off
-    //  mozilla/require-expected-throws-or-rejects for now.
+    // XXX Bug 1486741 - We've not rolled out comma-dangle to these directories
+    // yet, so turn it off for now.
     "files": [
-      "services/fxaccounts/**",
-      "toolkit/components/**",
+      "accessible/**",
+      "caps/**",
+      "chrome/**",
+      "devtools/**",
+      "dom/**",
+      "extensions/**",
+      "intl/**",
+      "js/**",
+      "mobile/**",
+      "security/**",
+      "storage/**",
+      "testing/**",
+      "tools/**",
+      "xpcom/**",
     ],
     "rules": {
-      "mozilla/rejects-requires-await": "off",
+      "comma-dangle": "off",
     }
   }]
 };

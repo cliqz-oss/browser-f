@@ -383,13 +383,13 @@ nsImageRenderer::ComputeConstrainedSize(const nsSize& aConstrainingSize,
                     aIntrinsicRatio.height, scaleX);
     // If we're reducing the size by less than one css pixel, then just use the
     // constraining size.
-    if (aFitType == CONTAIN && aConstrainingSize.height - size.height < nsPresContext::AppUnitsPerCSSPixel()) {
+    if (aFitType == CONTAIN && aConstrainingSize.height - size.height < AppUnitsPerCSSPixel()) {
       size.height = aConstrainingSize.height;
     }
   } else {
     size.width = NSCoordSaturatingNonnegativeMultiply(
                    aIntrinsicRatio.width, scaleY);
-    if (aFitType == CONTAIN && aConstrainingSize.width - size.width < nsPresContext::AppUnitsPerCSSPixel()) {
+    if (aFitType == CONTAIN && aConstrainingSize.width - size.width < AppUnitsPerCSSPixel()) {
       size.width = aConstrainingSize.width;
     }
     size.height = aConstrainingSize.height;
@@ -455,9 +455,11 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
                       float                aOpacity)
 {
   if (!IsReady()) {
-    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    MOZ_ASSERT_UNREACHABLE("Ensure PrepareImage() has returned true before "
+                           "calling me");
     return ImgDrawResult::TEMPORARY_ERROR;
   }
+
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
     return ImgDrawResult::SUCCESS;
@@ -556,6 +558,10 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
     dt->SetTransform(oldTransform);
   }
 
+  if (!mImage->IsComplete()) {
+    result &= ImgDrawResult::SUCCESS_NOT_COMPLETE;
+  }
+
   return result;
 }
 
@@ -575,9 +581,11 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
                                             float aOpacity)
 {
   if (!IsReady()) {
-    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    MOZ_ASSERT_UNREACHABLE("Ensure PrepareImage() has returned true before "
+                           "calling me");
     return ImgDrawResult::NOT_READY;
   }
+
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
     return ImgDrawResult::SUCCESS;
@@ -653,7 +661,9 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
       break;
   }
 
-  return ImgDrawResult::SUCCESS;
+  return mImage->IsComplete()
+    ? ImgDrawResult::SUCCESS
+    : ImgDrawResult::SUCCESS_NOT_COMPLETE;
 }
 
 already_AddRefed<gfxDrawable>
@@ -700,9 +710,11 @@ nsImageRenderer::DrawLayer(nsPresContext*       aPresContext,
                            float                aOpacity)
 {
   if (!IsReady()) {
-    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    MOZ_ASSERT_UNREACHABLE("Ensure PrepareImage() has returned true before "
+                           "calling me");
     return ImgDrawResult::TEMPORARY_ERROR;
   }
+
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
     return ImgDrawResult::SUCCESS;
@@ -731,9 +743,11 @@ nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresCo
                                                     float                aOpacity)
 {
   if (!IsReady()) {
-    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    MOZ_ASSERT_UNREACHABLE("Ensure PrepareImage() has returned true before "
+                           "calling me");
     return mPrepareResult;
   }
+
   if (aDest.IsEmpty() || aFill.IsEmpty() ||
       mSize.width <= 0 || mSize.height <= 0) {
     return ImgDrawResult::SUCCESS;
@@ -793,7 +807,7 @@ ComputeTile(nsRect&              aFill,
     }
     break;
   default:
-    NS_NOTREACHED("unrecognized border-image fill style");
+    MOZ_ASSERT_UNREACHABLE("unrecognized border-image fill style");
   }
 
   switch (aVFill) {
@@ -826,7 +840,7 @@ ComputeTile(nsRect&              aFill,
     }
     break;
   default:
-    NS_NOTREACHED("unrecognized border-image fill style");
+    MOZ_ASSERT_UNREACHABLE("unrecognized border-image fill style");
   }
 
   return tile;
@@ -865,9 +879,11 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
                                           const bool           aHasIntrinsicRatio)
 {
   if (!IsReady()) {
-    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    MOZ_ASSERT_UNREACHABLE("Ensure PrepareImage() has returned true before "
+                           "calling me");
     return ImgDrawResult::BAD_ARGS;
   }
+
   if (aFill.IsEmpty() || aSrc.IsEmpty()) {
     return ImgDrawResult::SUCCESS;
   }
@@ -923,26 +939,41 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
     SamplingFilter samplingFilter = nsLayoutUtils::GetSamplingFilterForFrame(mForFrame);
 
     if (!RequiresScaling(aFill, aHFill, aVFill, aUnitSize)) {
-      return nsLayoutUtils::DrawSingleImage(aRenderingContext,
-                                            aPresContext,
-                                            subImage,
-                                            samplingFilter,
-                                            aFill, aDirtyRect,
-                                            /* no SVGImageContext */ Nothing(),
-                                            drawFlags);
+      ImgDrawResult result =
+        nsLayoutUtils::DrawSingleImage(aRenderingContext,
+                                       aPresContext,
+                                       subImage,
+                                       samplingFilter,
+                                       aFill, aDirtyRect,
+                                       /* no SVGImageContext */ Nothing(),
+                                       drawFlags);
+
+      if (!mImage->IsComplete()) {
+        result &= ImgDrawResult::SUCCESS_NOT_COMPLETE;
+      }
+
+      return result;
     }
 
     nsSize repeatSize;
     nsRect fillRect(aFill);
     nsRect tile = ComputeTile(fillRect, aHFill, aVFill, aUnitSize, repeatSize);
     CSSIntSize imageSize(srcRect.width, srcRect.height);
-    return nsLayoutUtils::DrawBackgroundImage(aRenderingContext,
-                                              mForFrame, aPresContext,
-                                              subImage, imageSize, samplingFilter,
-                                              tile, fillRect, repeatSize,
-                                              tile.TopLeft(), aDirtyRect,
-                                              drawFlags,
-                                              ExtendMode::CLAMP, 1.0);
+
+    ImgDrawResult result =
+      nsLayoutUtils::DrawBackgroundImage(aRenderingContext,
+                                         mForFrame, aPresContext,
+                                         subImage, imageSize, samplingFilter,
+                                         tile, fillRect, repeatSize,
+                                         tile.TopLeft(), aDirtyRect,
+                                         drawFlags,
+                                         ExtendMode::CLAMP, 1.0);
+
+      if (!mImage->IsComplete()) {
+        result &= ImgDrawResult::SUCCESS_NOT_COMPLETE;
+      }
+
+      return result;
   }
 
   nsSize repeatSize(aFill.Size());
@@ -960,7 +991,8 @@ nsImageRenderer::DrawShapeImage(nsPresContext* aPresContext,
                                 gfxContext& aRenderingContext)
 {
   if (!IsReady()) {
-    NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
+    MOZ_ASSERT_UNREACHABLE("Ensure PrepareImage() has returned true before "
+                           "calling me");
     return ImgDrawResult::NOT_READY;
   }
 

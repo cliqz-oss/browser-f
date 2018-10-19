@@ -109,7 +109,7 @@ FTPChannelParent::Init(const FTPChannelCreationArgs& aArgs)
     return ConnectChannel(cArgs.channelId());
   }
   default:
-    NS_NOTREACHED("unknown open type");
+    MOZ_ASSERT_UNREACHABLE("unknown open type");
     return false;
   }
 }
@@ -577,7 +577,14 @@ FTPChannelParent::NotifyTrackingProtectionDisabled()
 }
 
 NS_IMETHODIMP
-FTPChannelParent::NotifyTrackingResource()
+FTPChannelParent::NotifyTrackingCookieBlocked(uint32_t aRejectedReason)
+{
+  // One day, this should probably be filled in.
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+FTPChannelParent::NotifyTrackingResource(bool aIsThirdParty)
 {
   // One day, this should probably be filled in.
   return NS_OK;

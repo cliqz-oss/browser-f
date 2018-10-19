@@ -47,6 +47,7 @@
 [@AB_CD@]
 @RESPATH@/dictionaries/*
 @RESPATH@/browser/localization/*
+@RESPATH@/localization/*
 #if defined(XP_WIN) || defined(XP_LINUX)
 @RESPATH@/fonts/*
 #endif
@@ -241,8 +242,6 @@
 @RESPATH@/components/ProcessSingleton.manifest
 @RESPATH@/components/MainProcessSingleton.js
 @RESPATH@/components/ContentProcessSingleton.js
-@RESPATH@/browser/components/nsSessionStartup.manifest
-@RESPATH@/browser/components/nsSessionStartup.js
 @RESPATH@/components/nsURLFormatter.manifest
 @RESPATH@/components/nsURLFormatter.js
 @RESPATH@/components/txEXSLTRegExFunctions.manifest
@@ -286,8 +285,6 @@
 #ifdef XP_MACOSX
 @RESPATH@/browser/components/SafariProfileMigrator.js
 #endif
-@RESPATH@/components/nsINIProcessor.manifest
-@RESPATH@/components/nsINIProcessor.js
 @RESPATH@/components/nsPrompter.manifest
 @RESPATH@/components/nsPrompter.js
 @RESPATH@/components/SyncComponents.manifest
@@ -298,6 +295,7 @@
 @RESPATH@/components/captivedetect.js
 @RESPATH@/components/servicesComponents.manifest
 @RESPATH@/components/servicesSettings.manifest
+@RESPATH@/components/RemoteSettingsComponents.js
 @RESPATH@/components/cryptoComponents.manifest
 @RESPATH@/components/TelemetryStartup.js
 @RESPATH@/components/TelemetryStartup.manifest
@@ -362,24 +360,33 @@
 @RESPATH@/browser/components/startupRecorder.js
 #endif
 
+@RESPATH@/components/mozDOMLocalization.js
+@RESPATH@/components/mozDOMLocalization.manifest
+
 ; [Extensions]
 @RESPATH@/components/extensions-toolkit.manifest
 @RESPATH@/components/extension-process-script.js
 @RESPATH@/browser/components/extensions-browser.manifest
 
+; [Normandy]
+@RESPATH@/components/shield.manifest
+@RESPATH@/components/shield-content-process.js
+
+; [PDF Viewer]
+@RESPATH@/browser/components/pdfjs.manifest
+@RESPATH@/browser/components/pdfjs.js
+
 ; Modules
 @RESPATH@/browser/modules/*
 @RESPATH@/modules/*
+@RESPATH@/browser/actors/*
+@RESPATH@/actors/*
 
 ; Safe Browsing
 @RESPATH@/components/nsURLClassifier.manifest
 @RESPATH@/components/nsUrlClassifierHashCompleter.js
 @RESPATH@/components/nsUrlClassifierListManager.js
 @RESPATH@/components/nsUrlClassifierLib.js
-
-; Private Browsing
-@RESPATH@/components/PrivateBrowsing.manifest
-@RESPATH@/components/PrivateBrowsingTrackingProtectionWhitelist.js
 
 ; Security Reports
 @RESPATH@/components/SecurityReporter.manifest
@@ -502,6 +509,12 @@
 
 ; svg
 @RESPATH@/res/svg.css
+
+; [Layout Debugger]
+#ifdef MOZ_DEBUG
+@RESPATH@/chrome/layoutdebug@JAREXT@
+@RESPATH@/chrome/layoutdebug.manifest
+#endif
 
 ; [Personal Security Manager]
 ;

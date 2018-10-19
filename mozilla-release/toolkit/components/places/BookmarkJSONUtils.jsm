@@ -4,7 +4,6 @@
 
 var EXPORTED_SYMBOLS = [ "BookmarkJSONUtils" ];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 ChromeUtils.import("resource://gre/modules/PlacesUtils.jsm");
@@ -164,7 +163,7 @@ var BookmarkJSONUtils = Object.freeze({
 
     await OS.File.writeAtomic(aFilePath, jsonString, writeOptions);
     return { count, hash };
-  }
+  },
 });
 
 function BookmarkImporter(aReplace, aSource) {
@@ -351,7 +350,7 @@ const rootToFolderGuidMap = {
   "bookmarksMenuFolder": PlacesUtils.bookmarks.menuGuid,
   "unfiledBookmarksFolder": PlacesUtils.bookmarks.unfiledGuid,
   "toolbarFolder": PlacesUtils.bookmarks.toolbarGuid,
-  "mobileFolder": PlacesUtils.bookmarks.mobileGuid
+  "mobileFolder": PlacesUtils.bookmarks.mobileGuid,
 };
 
 /**
@@ -438,7 +437,7 @@ function translateTreeTypes(node) {
   if (node.tags) {
      // Separate any tags into an array, and ignore any that are too long.
     node.tags = node.tags.split(",").filter(aTag =>
-      aTag.length > 0 && aTag.length <= Ci.nsITaggingService.MAX_TAG_LENGTH);
+      aTag.length > 0 && aTag.length <= PlacesUtils.bookmarks.MAX_TAG_LENGTH);
 
     // If we end up with none, then delete the property completely.
     if (!node.tags.length) {

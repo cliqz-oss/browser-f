@@ -37,6 +37,8 @@
 
 #include "jit/AtomicOperations.h"
 #include "jit/mips32/Assembler-mips32.h"
+#include "js/UniquePtr.h"
+#include "js/Utility.h"
 #include "vm/Runtime.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmSignalHandlers.h"
@@ -523,14 +525,12 @@ int Simulator::StopSimAt = -1;
 Simulator*
 Simulator::Create(JSContext* cx)
 {
-    Simulator* sim = js_new<Simulator>();
+    auto sim = MakeUnique<Simulator>();
     if (!sim)
         return nullptr;
 
-    if (!sim->init()) {
-        js_delete(sim);
+    if (!sim->init())
         return nullptr;
-    }
 
     char* stopAtStr = getenv("MIPS_SIM_STOP_AT");
     int64_t stopAt;
@@ -539,7 +539,7 @@ Simulator::Create(JSContext* cx)
         Simulator::StopSimAt = stopAt;
     }
 
-    return sim;
+    return sim.release();
 }
 
 void
@@ -749,7 +749,7 @@ MipsDebugger::printAllRegsIncludingFPU()
 static char*
 ReadLine(const char* prompt)
 {
-    char* result = nullptr;
+    UniqueChars result;
     char lineBuf[256];
     int offset = 0;
     bool keepGoing = true;
@@ -758,8 +758,6 @@ ReadLine(const char* prompt)
     while (keepGoing) {
         if (fgets(lineBuf, sizeof(lineBuf), stdin) == nullptr) {
             // fgets got an error. Just give up.
-            if (result)
-                js_delete(result);
             return nullptr;
         }
         int len = strlen(lineBuf);
@@ -770,29 +768,28 @@ ReadLine(const char* prompt)
         }
         if (!result) {
             // Allocate the initial result and make room for the terminating '\0'
-            result = (char*)js_malloc(len + 1);
+            result.reset(js_pod_malloc<char>(len + 1));
             if (!result)
                 return nullptr;
         } else {
             // Allocate a new result with enough room for the new addition.
             int new_len = offset + len + 1;
-            char* new_result = (char*)js_malloc(new_len);
+            char* new_result = js_pod_malloc<char>(new_len);
             if (!new_result)
                 return nullptr;
             // Copy the existing input into the new array and set the new
             // array as the result.
-            memcpy(new_result, result, offset * sizeof(char));
-            js_free(result);
-            result = new_result;
+            memcpy(new_result, result.get(), offset * sizeof(char));
+            result.reset(new_result);
         }
         // Copy the newly read line into the result.
-        memcpy(result + offset, lineBuf, len * sizeof(char));
+        memcpy(result.get() + offset, lineBuf, len * sizeof(char));
         offset += len;
     }
 
     MOZ_ASSERT(result);
     result[offset] = '\0';
-    return result;
+    return result.release();
 }
 
 static void
@@ -1288,7 +1285,7 @@ Simulator::init()
 {
     // Allocate 2MB for the stack. Note that we will only use 1MB, see below.
     static const size_t stackSize = 2 * 1024 * 1024;
-    stack_ = static_cast<char*>(js_malloc(stackSize));
+    stack_ = js_pod_malloc<char>(stackSize);
     if (!stack_)
         return false;
 
@@ -1346,8 +1343,9 @@ class Redirection
             }
         }
 
+        // Note: we can't use js_new here because the constructor is private.
         AutoEnterOOMUnsafeRegion oomUnsafe;
-        Redirection* redir = (Redirection*)js_malloc(sizeof(Redirection));
+        Redirection* redir = js_pod_malloc<Redirection>(1);
         if (!redir) {
             oomUnsafe.crash("Simulator redirection");
         }
@@ -1376,7 +1374,10 @@ Simulator::~Simulator()
 SimulatorProcess::SimulatorProcess()
   : cacheLock_(mutexid::SimulatorCacheLock)
   , redirection_(nullptr)
-{}
+{
+    if (getenv("MIPS_SIM_ICACHE_CHECKS"))
+        ICacheCheckingDisableCount = 0;
+}
 
 SimulatorProcess::~SimulatorProcess()
 {
@@ -1386,15 +1387,6 @@ SimulatorProcess::~SimulatorProcess()
         js_delete(r);
         r = next;
     }
-}
-
-bool
-SimulatorProcess::init()
-{
-    if (getenv("MIPS_SIM_ICACHE_CHECKS"))
-        ICacheCheckingDisableCount = 0;
-
-    return icache_.init();
 }
 
 /* static */ void*
@@ -1666,11 +1658,9 @@ Simulator::handleWasmFault(int32_t addr, unsigned numBytes)
 
     wasm::Trap trap;
     wasm::BytecodeOffset bytecode;
-    if (!moduleSegment->code().lookupTrap(pc, &trap, &bytecode)) {
-        act->startWasmTrap(wasm::Trap::OutOfBounds, 0, registerState());
-        set_pc(int32_t(moduleSegment->outOfBoundsCode()));
-        return true;
-    }
+    MOZ_ALWAYS_TRUE(moduleSegment->code().lookupTrap(pc, &trap, &bytecode));
+
+    MOZ_RELEASE_ASSERT(trap == wasm::Trap::OutOfBounds);
 
     act->startWasmTrap(wasm::Trap::OutOfBounds, bytecode.offset(), registerState());
     set_pc(int32_t(moduleSegment->trapCode()));

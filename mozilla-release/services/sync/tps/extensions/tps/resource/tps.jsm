@@ -10,7 +10,7 @@
 var EXPORTED_SYMBOLS = [
   "ACTIONS", "Addons", "Addresses", "Bookmarks", "CreditCards",
   "Formdata", "History", "Passwords", "Prefs",
-  "Tabs", "TPS", "Windows"
+  "Tabs", "TPS", "Windows",
 ];
 
 var module = this;
@@ -510,22 +510,25 @@ var TPS = {
           let placesItem;
           bookmark.location = folder;
 
-          if (last_item_pos != -1)
+          if (last_item_pos != -1) {
             bookmark.last_item_pos = last_item_pos;
+          }
           let itemGuid = null;
 
-          if (action != ACTION_MODIFY && action != ACTION_DELETE)
+          if (action != ACTION_MODIFY && action != ACTION_DELETE) {
             Logger.logInfo("executing action " + action.toUpperCase() +
                            " on bookmark " + JSON.stringify(bookmark));
+          }
 
-          if ("uri" in bookmark)
+          if ("uri" in bookmark) {
             placesItem = new Bookmark(bookmark);
-          else if ("folder" in bookmark)
+          } else if ("folder" in bookmark) {
             placesItem = new BookmarkFolder(bookmark);
-          else if ("livemark" in bookmark)
+          } else if ("livemark" in bookmark) {
             placesItem = new Livemark(bookmark);
-          else if ("separator" in bookmark)
+          } else if ("separator" in bookmark) {
             placesItem = new Separator(bookmark);
+          }
 
           if (action == ACTION_ADD) {
             itemGuid = await placesItem.Create();
@@ -553,8 +556,9 @@ var TPS = {
               await item.Remove();
               break;
             case ACTION_MODIFY:
-              if (item.updateProps != null)
+              if (item.updateProps != null) {
                 await item.Update();
+              }
               break;
           }
         }
@@ -685,7 +689,7 @@ var TPS = {
     try {
       Logger.logInfo("About to perform bookmark validation");
       let clientTree = await (PlacesUtils.promiseBookmarksTree("", {
-        includeItemIds: true
+        includeItemIds: true,
       }));
       let serverRecords = await getServerBookmarkState();
       // We can't wait until catch to stringify this, since at that point it will have cycles.
@@ -823,8 +827,9 @@ var TPS = {
       await action[0].apply(this, action.slice(1));
 
       // if we're in an async operation, don't continue on to the next action
-      if (this._operations_pending)
+      if (this._operations_pending) {
         return;
+      }
 
       this._currentAction++;
     } catch (e) {
@@ -1244,7 +1249,7 @@ var TPS = {
   async EnsureTracking() {
     await this.Login(false);
     await this.waitForTracking();
-  }
+  },
 };
 
 var Addons = {
@@ -1265,7 +1270,7 @@ var Addons = {
   },
   skipValidation() {
     TPS.shouldValidateAddons = false;
-  }
+  },
 };
 
 var Addresses = {
@@ -1283,7 +1288,7 @@ var Addresses = {
   },
   async verifyNot(addresses) {
     await this.HandleAddresses(addresses, ACTION_VERIFY_NOT);
-  }
+  },
 };
 
 var Bookmarks = {
@@ -1304,7 +1309,7 @@ var Bookmarks = {
   },
   skipValidation() {
     TPS.shouldValidateBookmarks = false;
-  }
+  },
 };
 
 var CreditCards = {
@@ -1322,7 +1327,7 @@ var CreditCards = {
   },
   async verifyNot(creditCards) {
     await this.HandleCreditCards(creditCards, ACTION_VERIFY_NOT);
-  }
+  },
 };
 
 var Formdata = {
@@ -1337,7 +1342,7 @@ var Formdata = {
   },
   async verifyNot(formdata) {
     await this.HandleForms(formdata, ACTION_VERIFY_NOT);
-  }
+  },
 };
 
 var History = {
@@ -1352,7 +1357,7 @@ var History = {
   },
   async verifyNot(history) {
     await this.HandleHistory(history, ACTION_VERIFY_NOT);
-  }
+  },
 };
 
 var Passwords = {
@@ -1373,7 +1378,7 @@ var Passwords = {
   },
   skipValidation() {
     TPS.shouldValidatePasswords = false;
-  }
+  },
 };
 
 var Prefs = {
@@ -1382,7 +1387,7 @@ var Prefs = {
   },
   async verify(prefs) {
     await TPS.HandlePrefs(prefs, ACTION_VERIFY);
-  }
+  },
 };
 
 var Tabs = {
@@ -1394,7 +1399,7 @@ var Tabs = {
   },
   async verifyNot(tabs) {
     await TPS.HandleTabs(tabs, ACTION_VERIFY_NOT);
-  }
+  },
 };
 
 var Windows = {

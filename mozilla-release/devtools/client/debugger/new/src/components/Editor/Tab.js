@@ -18,15 +18,11 @@ var _SourceIcon2 = _interopRequireDefault(_SourceIcon);
 
 var _Button = require("../shared/Button/index");
 
-var _text = require("../../utils/text");
-
 var _actions = require("../../actions/index");
 
 var _actions2 = _interopRequireDefault(_actions);
 
 var _source = require("../../utils/source");
-
-var _devtoolsModules = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-modules"];
 
 var _clipboard = require("../../utils/clipboard");
 
@@ -40,10 +36,9 @@ var _classnames2 = _interopRequireDefault(_classnames);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 class Tab extends _react.PureComponent {
   constructor(...args) {
     var _temp;
@@ -63,10 +58,10 @@ class Tab extends _react.PureComponent {
       togglePrettyPrint,
       selectedSource
     } = this.props;
-    const otherTabs = tabSources.filter(t => t.get("id") !== tab);
-    const sourceTab = tabSources.find(t => t.get("id") == tab);
-    const tabURLs = tabSources.map(t => t.get("url"));
-    const otherTabURLs = otherTabs.map(t => t.get("url"));
+    const otherTabs = tabSources.filter(t => t.id !== tab);
+    const sourceTab = tabSources.find(t => t.id == tab);
+    const tabURLs = tabSources.map(t => t.url);
+    const otherTabURLs = otherTabs.map(t => t.url);
 
     if (!sourceTab) {
       return;
@@ -75,51 +70,51 @@ class Tab extends _react.PureComponent {
     const isPrettySource = (0, _source.isPretty)(sourceTab);
     const tabMenuItems = (0, _tabs.getTabMenuItems)();
     const items = [{
-      item: _objectSpread({}, tabMenuItems.closeTab, {
-        click: () => closeTab(sourceTab.get("url"))
-      })
+      item: { ...tabMenuItems.closeTab,
+        click: () => closeTab(sourceTab.url)
+      }
     }, {
-      item: _objectSpread({}, tabMenuItems.closeOtherTabs, {
+      item: { ...tabMenuItems.closeOtherTabs,
         click: () => closeTabs(otherTabURLs)
-      }),
+      },
       hidden: () => tabSources.size === 1
     }, {
-      item: _objectSpread({}, tabMenuItems.closeTabsToEnd, {
+      item: { ...tabMenuItems.closeTabsToEnd,
         click: () => {
-          const tabIndex = tabSources.findIndex(t => t.get("id") == tab);
+          const tabIndex = tabSources.findIndex(t => t.id == tab);
           closeTabs(tabURLs.filter((t, i) => i > tabIndex));
         }
-      }),
+      },
       hidden: () => tabSources.size === 1 || tabSources.some((t, i) => t === tab && tabSources.size - 1 === i)
     }, {
-      item: _objectSpread({}, tabMenuItems.closeAllTabs, {
+      item: { ...tabMenuItems.closeAllTabs,
         click: () => closeTabs(tabURLs)
-      })
+      }
     }, {
       item: {
         type: "separator"
       }
     }, {
-      item: _objectSpread({}, tabMenuItems.copyToClipboard, {
-        disabled: selectedSource.get("id") !== tab,
+      item: { ...tabMenuItems.copyToClipboard,
+        disabled: selectedSource.id !== tab,
         click: () => (0, _clipboard.copyToTheClipboard)(sourceTab.text)
-      })
+      }
     }, {
-      item: _objectSpread({}, tabMenuItems.copySourceUri2, {
-        click: () => (0, _clipboard.copyToTheClipboard)((0, _source.getRawSourceURL)(sourceTab.get("url")))
-      })
+      item: { ...tabMenuItems.copySourceUri2,
+        click: () => (0, _clipboard.copyToTheClipboard)((0, _source.getRawSourceURL)(sourceTab.url))
+      }
     }];
     items.push({
-      item: _objectSpread({}, tabMenuItems.showSource, {
+      item: { ...tabMenuItems.showSource,
         click: () => showSource(tab)
-      })
+      }
     });
 
     if (!isPrettySource) {
       items.push({
-        item: _objectSpread({}, tabMenuItems.prettyPrint, {
+        item: { ...tabMenuItems.prettyPrint,
           click: () => togglePrettyPrint(tab)
-        })
+        }
       });
     }
 
@@ -137,13 +132,13 @@ class Tab extends _react.PureComponent {
   render() {
     const {
       selectedSource,
-      selectSpecificSource,
+      selectSource,
       closeTab,
-      source
+      source,
+      tabSources
     } = this.props;
-    const filename = (0, _source.getFilename)(source);
     const sourceId = source.id;
-    const active = selectedSource && sourceId == selectedSource.get("id") && !this.isProjectSearchEnabled() && !this.isSourceSearchEnabled();
+    const active = selectedSource && sourceId == selectedSource.id && !this.isProjectSearchEnabled() && !this.isSourceSearchEnabled();
     const isPrettyCode = (0, _source.isPretty)(source);
 
     function onClickClose(e) {
@@ -153,23 +148,21 @@ class Tab extends _react.PureComponent {
 
     function handleTabClick(e) {
       e.preventDefault();
-      e.stopPropagation(); // Accommodate middle click to close tab
-
-      if (e.button === 1) {
-        return closeTab(source.url);
-      }
-
-      return selectSpecificSource(sourceId);
+      e.stopPropagation();
+      return selectSource(sourceId);
     }
 
     const className = (0, _classnames2.default)("source-tab", {
       active,
       pretty: isPrettyCode
     });
+    const path = (0, _source.getDisplayPath)(source, tabSources);
     return _react2.default.createElement("div", {
       className: className,
       key: sourceId,
-      onMouseUp: handleTabClick,
+      onClick: handleTabClick // Accommodate middle click to close tab
+      ,
+      onMouseUp: e => e.button === 1 && closeTab(source.url),
       onContextMenu: e => this.onTabContextMenu(e, sourceId),
       title: (0, _source.getFileURL)(source)
     }, _react2.default.createElement(_SourceIcon2.default, {
@@ -177,7 +170,7 @@ class Tab extends _react.PureComponent {
       shouldHide: icon => ["file", "javascript"].includes(icon)
     }), _react2.default.createElement("div", {
       className: "filename"
-    }, (0, _text.truncateMiddleText)((0, _devtoolsModules.getUnicodeUrlPath)(filename), 30)), _react2.default.createElement(_Button.CloseButton, {
+    }, (0, _source.getTruncatedFileName)(source), path && _react2.default.createElement("span", null, `../${path}/..`)), _react2.default.createElement(_Button.CloseButton, {
       handleClick: onClickClose,
       tooltip: L10N.getStr("sourceTabs.closeTabButtonTooltip")
     }));
@@ -196,4 +189,10 @@ const mapStateToProps = (state, {
   };
 };
 
-exports.default = (0, _reactRedux.connect)(mapStateToProps, _actions2.default)(Tab);
+exports.default = (0, _reactRedux.connect)(mapStateToProps, {
+  selectSource: _actions2.default.selectSource,
+  closeTab: _actions2.default.closeTab,
+  closeTabs: _actions2.default.closeTabs,
+  togglePrettyPrint: _actions2.default.togglePrettyPrint,
+  showSource: _actions2.default.showSource
+})(Tab);

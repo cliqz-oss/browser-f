@@ -232,6 +232,7 @@ public:
       , horizontal(false)
       , rtl(false)
       , onDarkBackground(false)
+      , custom(false)
     {}
 
     bool overlay : 1;
@@ -240,6 +241,10 @@ public:
     bool horizontal : 1;
     bool rtl : 1;
     bool onDarkBackground : 1;
+    bool custom : 1;
+    // Two colors only used when custom is true.
+    nscolor trackColor = NS_RGBA(0, 0, 0, 0);
+    nscolor faceColor = NS_RGBA(0, 0, 0, 0);
   };
 
   enum Widget : uint8_t {
@@ -274,6 +279,7 @@ public:
     eScale,                        // ScaleParams
     eScrollbarThumb,               // ScrollbarParams
     eScrollbarTrack,               // ScrollbarParams
+    eScrollCorner,                 // ScrollbarParams
     eMultilineTextField,           // bool
     eListBox,
     eSourceList,                   // bool
@@ -315,6 +321,7 @@ public:
     static WidgetInfo Scale(const ScaleParams& aParams) { return WidgetInfo(Widget::eScale, aParams); }
     static WidgetInfo ScrollbarThumb(const ScrollbarParams& aParams) { return WidgetInfo(Widget::eScrollbarThumb, aParams); }
     static WidgetInfo ScrollbarTrack(const ScrollbarParams& aParams) { return WidgetInfo(Widget::eScrollbarTrack, aParams); }
+    static WidgetInfo ScrollCorner(const ScrollbarParams& aParams) { return WidgetInfo(Widget::eScrollCorner, aParams); }
     static WidgetInfo MultilineTextField(bool aParams) { return WidgetInfo(Widget::eMultilineTextField, aParams); }
     static WidgetInfo ListBox() { return WidgetInfo(Widget::eListBox, false); }
     static WidgetInfo SourceList(bool aParams) { return WidgetInfo(Widget::eSourceList, aParams); }
@@ -369,7 +376,7 @@ public:
   // The nsITheme interface.
   NS_IMETHOD DrawWidgetBackground(gfxContext* aContext,
                                   nsIFrame* aFrame,
-                                  uint8_t aWidgetType,
+                                  WidgetType aWidgetType,
                                   const nsRect& aRect,
                                   const nsRect& aDirtyRect) override;
   bool CreateWebRenderCommandsForWidget(mozilla::wr::DisplayListBuilder& aBuilder,
@@ -377,39 +384,39 @@ public:
                                         const mozilla::layers::StackingContextHelper& aSc,
                                         mozilla::layers::WebRenderLayerManager* aManager,
                                         nsIFrame* aFrame,
-                                        uint8_t aWidgetType,
+                                        WidgetType aWidgetType,
                                         const nsRect& aRect) override;
   MOZ_MUST_USE LayoutDeviceIntMargin GetWidgetBorder(nsDeviceContext* aContext,
                                                      nsIFrame* aFrame,
-                                                     uint8_t aWidgetType) override;
+                                                     WidgetType aWidgetType) override;
 
    bool GetWidgetPadding(nsDeviceContext* aContext,
                          nsIFrame* aFrame,
-                         uint8_t aWidgetType,
+                         WidgetType aWidgetType,
                          LayoutDeviceIntMargin* aResult) override;
 
   virtual bool GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
-                                   uint8_t aWidgetType, nsRect* aOverflowRect) override;
+                                   WidgetType aWidgetType, nsRect* aOverflowRect) override;
 
   NS_IMETHOD GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* aFrame,
-                                  uint8_t aWidgetType,
+                                  WidgetType aWidgetType,
                                   mozilla::LayoutDeviceIntSize* aResult, bool* aIsOverridable) override;
-  NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, uint8_t aWidgetType, 
+  NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, WidgetType aWidgetType, 
                                 nsAtom* aAttribute, bool* aShouldRepaint,
                                 const nsAttrValue* aOldValue) override;
   NS_IMETHOD ThemeChanged() override;
-  bool ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame, uint8_t aWidgetType) override;
-  bool WidgetIsContainer(uint8_t aWidgetType) override;
-  bool ThemeDrawsFocusForWidget(uint8_t aWidgetType) override;
+  bool ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame, WidgetType aWidgetType) override;
+  bool WidgetIsContainer(WidgetType aWidgetType) override;
+  bool ThemeDrawsFocusForWidget(WidgetType aWidgetType) override;
   bool ThemeNeedsComboboxDropmarker() override;
-  virtual bool WidgetAppearanceDependsOnWindowFocus(uint8_t aWidgetType) override;
+  virtual bool WidgetAppearanceDependsOnWindowFocus(WidgetType aWidgetType) override;
   virtual bool NeedToClearBackgroundBehindWidget(nsIFrame* aFrame,
-                                                 uint8_t aWidgetType) override;
+                                                 WidgetType aWidgetType) override;
   virtual ThemeGeometryType ThemeGeometryTypeForWidget(nsIFrame* aFrame,
-                                                       uint8_t aWidgetType) override;
-  virtual Transparency GetWidgetTransparency(nsIFrame* aFrame, uint8_t aWidgetType) override;
+                                                       WidgetType aWidgetType) override;
+  virtual Transparency GetWidgetTransparency(nsIFrame* aFrame, WidgetType aWidgetType) override;
   mozilla::Maybe<WidgetInfo> ComputeWidgetInfo(nsIFrame* aFrame,
-                                               uint8_t aWidgetType,
+                                               WidgetType aWidgetType,
                                                const nsRect& aRect);
   void DrawProgress(CGContextRef context, const HIRect& inBoxRect,
                     const ProgressParams& aParams);
@@ -520,13 +527,14 @@ protected:
                           ScrollbarParams aParams);
   void DrawScrollbarTrack(CGContextRef cgContext, const CGRect& inBoxRect,
                           ScrollbarParams aParams);
+  void DrawScrollCorner(CGContextRef cgContext, const CGRect& inBoxRect,
+                        ScrollbarParams aParams);
   void DrawMultilineTextField(CGContextRef cgContext, const CGRect& inBoxRect,
                               bool aIsFocused);
   void DrawSourceList(CGContextRef cgContext, const CGRect& inBoxRect,
                       bool aIsActive);
 
   // Scrollbars
-  nsIFrame* GetParentScrollbarFrame(nsIFrame *aFrame);
   bool IsParentScrollbarRolledOver(nsIFrame* aFrame);
 
   void RenderWidget(const WidgetInfo& aWidgetInfo,

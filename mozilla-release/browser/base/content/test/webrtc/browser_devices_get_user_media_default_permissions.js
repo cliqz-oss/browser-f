@@ -39,12 +39,12 @@ var gTests = [
        "webRTC-shareMicrophone-notification-icon", "anchored to mic icon");
     checkDeviceSelectors(true);
     let iconclass =
-      PopupNotifications.panel.firstChild.getAttribute("iconclass");
+      PopupNotifications.panel.firstElementChild.getAttribute("iconclass");
     ok(iconclass.includes("microphone-icon"), "panel using microphone icon");
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -55,7 +55,7 @@ var gTests = [
     await checkSharingUI({audio: true});
     await closeStream();
     Services.prefs.clearUserPref(CAMERA_PREF);
-  }
+  },
 },
 
 {
@@ -81,7 +81,7 @@ var gTests = [
 
     SitePermissions.remove(browser.currentURI, "camera");
     Services.prefs.clearUserPref(CAMERA_PREF);
-  }
+  },
 },
 
 {
@@ -113,12 +113,12 @@ var gTests = [
        "webRTC-shareDevices-notification-icon", "anchored to device icon");
     checkDeviceSelectors(false, true);
     let iconclass =
-      PopupNotifications.panel.firstChild.getAttribute("iconclass");
+      PopupNotifications.panel.firstElementChild.getAttribute("iconclass");
     ok(iconclass.includes("camera-icon"), "panel using devices icon");
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -129,7 +129,7 @@ var gTests = [
     await checkSharingUI({video: true});
     await closeStream();
     Services.prefs.clearUserPref(MICROPHONE_PREF);
-  }
+  },
 },
 
 {
@@ -155,7 +155,7 @@ var gTests = [
 
     SitePermissions.remove(browser.currentURI, "microphone");
     Services.prefs.clearUserPref(MICROPHONE_PREF);
-  }
+  },
 },
 
 ];

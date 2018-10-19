@@ -54,8 +54,6 @@ class JSONPrinter;
 class MapObject;
 class SetObject;
 
-void SetGCZeal(JSRuntime*, uint8_t, uint32_t);
-
 namespace gc {
 class AutoMaybeStartBackgroundAllocation;
 class AutoTraceSession;
@@ -78,6 +76,8 @@ class TenuringTracer : public JSTracer
 
     // Amount of data moved to the tenured generation during collection.
     size_t tenuredSize;
+    // Number of cells moved to the tenured generation.
+    size_t tenuredCells;
 
     // These lists are threaded through the Nursery using the space from
     // already moved things. The lists are used to fix up the moved things and
@@ -104,6 +104,7 @@ class TenuringTracer : public JSTracer
   private:
     inline void insertIntoObjectFixupList(gc::RelocationOverlay* entry);
     inline void insertIntoStringFixupList(gc::RelocationOverlay* entry);
+
     template <typename T>
     inline T* allocTenured(JS::Zone* zone, gc::AllocKind kind);
 
@@ -289,12 +290,10 @@ class Nursery
         return allocatedChunkCount() * gc::ChunkSize;
     }
     size_t sizeOfMallocedBuffers(mozilla::MallocSizeOf mallocSizeOf) const {
-        if (!mallocedBuffers.initialized())
-            return 0;
         size_t total = 0;
         for (MallocedBuffersSet::Range r = mallocedBuffers.all(); !r.empty(); r.popFront())
             total += mallocSizeOf(r.front());
-        total += mallocedBuffers.sizeOfExcludingThis(mallocSizeOf);
+        total += mallocedBuffers.shallowSizeOfExcludingThis(mallocSizeOf);
         return total;
     }
 
@@ -325,9 +324,11 @@ class Nursery
     /* Print total profile times on shutdown. */
     void printTotalProfileTimes();
 
-    void* addressOfCurrentEnd() const { return (void*)&currentEnd_; }
-    void* addressOfPosition() const { return (void*)&position_; }
-    void* addressOfCurrentStringEnd() const { return (void*)&currentStringEnd_; }
+    void* addressOfPosition() const { return (void**)&position_; }
+    const void* addressOfCurrentEnd() const { return (void**)&currentEnd_; }
+    const void* addressOfCurrentStringEnd() const {
+        return (void*)&currentStringEnd_;
+    }
 
     void requestMinorGC(JS::gcreason::Reason reason) const;
 
@@ -439,6 +440,7 @@ class Nursery
         size_t nurseryLazyCapacity = 0;
         size_t nurseryUsedBytes = 0;
         size_t tenuredBytes = 0;
+        size_t tenuredCells = 0;
     } previousGC;
 
     /*

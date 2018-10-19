@@ -386,9 +386,7 @@ HyperTextAccessible::OffsetToDOMPoint(int32_t aOffset)
   if (aOffset == 0) {
     RefPtr<TextEditor> textEditor = GetEditor();
     if (textEditor) {
-      bool isEmpty = false;
-      textEditor->GetDocumentIsEmpty(&isEmpty);
-      if (isEmpty) {
+      if (textEditor->IsEmpty()) {
         return DOMPoint(textEditor->GetRoot(), 0);
       }
     }
@@ -1259,7 +1257,7 @@ HyperTextAccessible::TextBounds(int32_t aStartOffset, int32_t aEndOffset,
   while (childIdx < static_cast<int32_t>(ChildCount())) {
     nsIFrame* frame = GetChildAt(childIdx++)->GetFrame();
     if (!frame) {
-      NS_NOTREACHED("No frame for a child!");
+      MOZ_ASSERT_UNREACHABLE("No frame for a child!");
       continue;
     }
 
@@ -1505,7 +1503,7 @@ HyperTextAccessible::CaretLineNumber()
     caretFrame = parentFrame;
   }
 
-  NS_NOTREACHED("DOM ancestry had this hypertext but frame ancestry didn't");
+  MOZ_ASSERT_UNREACHABLE("DOM ancestry had this hypertext but frame ancestry didn't");
   return lineNumber;
 }
 
@@ -1652,7 +1650,7 @@ HyperTextAccessible::SetSelectionBoundsAt(int32_t aSelectionNum,
   index_t startOffset = ConvertMagicOffset(aStartOffset);
   index_t endOffset = ConvertMagicOffset(aEndOffset);
   if (!startOffset.IsValid() || !endOffset.IsValid() ||
-      startOffset > endOffset || endOffset > CharacterCount()) {
+      std::max(startOffset, endOffset) > CharacterCount()) {
     NS_ERROR("Wrong in offset");
     return false;
   }
@@ -1671,21 +1669,27 @@ HyperTextAccessible::SetSelectionBoundsAt(int32_t aSelectionNum,
   if (!range)
     return false;
 
-  if (!OffsetsToDOMRange(startOffset, endOffset, range))
+  if (!OffsetsToDOMRange(std::min(startOffset, endOffset),
+                         std::max(startOffset, endOffset), range))
     return false;
 
-  // If new range was created then add it, otherwise notify selection listeners
-  // that existing selection range was changed.
-  if (aSelectionNum == static_cast<int32_t>(rangeCount)) {
-    IgnoredErrorResult err;
-    domSel->AddRange(*range, err);
-    return !err.Failed();
+  // If this is not a new range, notify selection listeners that the existing
+  // selection range has changed. Otherwise, just add the new range.
+  if (aSelectionNum != static_cast<int32_t>(rangeCount)) {
+    domSel->RemoveRange(*range, IgnoreErrors());
   }
 
-  domSel->RemoveRange(*range, IgnoreErrors());
   IgnoredErrorResult err;
   domSel->AddRange(*range, err);
-  return !err.Failed();
+
+  if (!err.Failed()) {
+    // Changing the direction of the selection assures that the caret
+    // will be at the logical end of the selection.
+    domSel->SetDirection(startOffset < endOffset ? eDirNext : eDirPrevious);
+    return true;
+  }
+
+  return false;
 }
 
 bool
@@ -2202,7 +2206,10 @@ HyperTextAccessible::GetSpellTextAttr(nsINode* aNode,
                                      prevRange->EndOffset());
     }
 
-    if (startOffset > *aStartOffset)
+    // The previous range might not be within this accessible. In that case,
+    // DOMPointToOffset returns length as a fallback. We don't want to use
+    // that offset if so, hence the startOffset < *aEndOffset check.
+    if (startOffset > *aStartOffset && startOffset < *aEndOffset)
       *aStartOffset = startOffset;
 
     if (endOffset < *aEndOffset)
@@ -2219,7 +2226,10 @@ HyperTextAccessible::GetSpellTextAttr(nsINode* aNode,
   startOffset = DOMPointToOffset(prevRange->GetEndContainer(),
                                  prevRange->EndOffset());
 
-  if (startOffset > *aStartOffset)
+  // The previous range might not be within this accessible. In that case,
+  // DOMPointToOffset returns length as a fallback. We don't want to use
+  // that offset if so, hence the startOffset < *aEndOffset check.
+  if (startOffset > *aStartOffset && startOffset < *aEndOffset)
     *aStartOffset = startOffset;
 }
 

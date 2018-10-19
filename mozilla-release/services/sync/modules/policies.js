@@ -470,8 +470,9 @@ SyncScheduler.prototype = {
   updateClientMode: function updateClientMode() {
     // Nothing to do if it's the same amount
     let numClients = this.numClients;
-    if (numClients == this.numClientsLastSync)
+    if (numClients == this.numClientsLastSync) {
       return;
+    }
 
     this._log.debug(`Client count: ${this.numClientsLastSync} -> ${numClients}`);
     this.numClientsLastSync = numClients;
@@ -533,11 +534,6 @@ SyncScheduler.prototype = {
       return;
     }
     Services.tm.dispatchToMainThread(() => {
-      // Terrible hack below: we do the fxa messages polling in the sync
-      // scheduler to get free post-wake/link-state etc detection.
-      fxAccounts.messages.consumeRemoteMessages().catch(e => {
-        this._log.error("Error while polling for FxA messages.", e);
-      });
       this.service.sync({engines, why});
     });
   },
@@ -666,8 +662,9 @@ SyncScheduler.prototype = {
     this.globalScore = this.nextSync = 0;
 
     // Clear out any scheduled syncs
-    if (this.syncTimer)
+    if (this.syncTimer) {
       this.syncTimer.clear();
+    }
   },
 
 };

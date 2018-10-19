@@ -34,7 +34,7 @@ nsXBLProtoImplField::nsXBLProtoImplField(const char16_t* aName, const char16_t* 
     mLineNumber(0)
 {
   MOZ_COUNT_CTOR(nsXBLProtoImplField);
-  mName = NS_strdup(aName);  // XXXbz make more sense to use a stringbuffer?
+  mName = NS_xstrdup(aName);  // XXXbz make more sense to use a stringbuffer?
 
   mJSAttributes = JSPROP_ENUMERATE;
   if (aReadOnly) {
@@ -297,7 +297,7 @@ nsXBLProtoImplField::InstallAccessors(JSContext* aCx,
                                       JS::Handle<JSObject*> aTargetClassObject)
 {
   MOZ_ASSERT(js::IsObjectInContextCompartment(aTargetClassObject, aCx));
-  JS::Rooted<JSObject*> globalObject(aCx, JS_GetGlobalForObject(aCx, aTargetClassObject));
+  JS::Rooted<JSObject*> globalObject(aCx, JS::GetNonCCWObjectGlobal(aTargetClassObject));
   JS::Rooted<JSObject*> scopeObject(aCx, xpc::GetXBLScopeOrGlobal(aCx, globalObject));
   NS_ENSURE_TRUE(scopeObject, NS_ERROR_OUT_OF_MEMORY);
 

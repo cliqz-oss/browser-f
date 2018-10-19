@@ -23,6 +23,7 @@ class GeckoViewContent extends GeckoViewModule {
         "GeckoView:RestoreState",
         "GeckoView:SaveState",
         "GeckoView:SetActive",
+        "GeckoView:SetFocused",
         "GeckoView:ZoomToInput",
     ]);
 
@@ -78,12 +79,22 @@ class GeckoViewContent extends GeckoViewModule {
         break;
       case "GeckoView:SetActive":
         if (aData.active) {
-          this.browser.setAttribute("primary", "true");
-          this.browser.focus();
           this.browser.docShellIsActive = true;
         } else {
-          this.browser.removeAttribute("primary");
           this.browser.docShellIsActive = false;
+        }
+        var msgData = {
+          active: aData.active,
+          suspendMedia: this.settings.suspendMediaWhenInactive
+        };
+        this.messageManager.sendAsyncMessage("GeckoView:SetActive", msgData);
+        break;
+      case "GeckoView:SetFocused":
+        if (aData.focused) {
+          this.browser.focus();
+          this.browser.setAttribute("primary", "true");
+        } else {
+          this.browser.removeAttribute("primary");
           this.browser.blur();
         }
         break;
@@ -125,13 +136,11 @@ class GeckoViewContent extends GeckoViewModule {
 
     switch (aMsg.name) {
       case "GeckoView:DOMFullscreenExit":
-        this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils)
+        this.window.windowUtils
                    .remoteFrameFullscreenReverted();
         break;
       case "GeckoView:DOMFullscreenRequest":
-        this.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                   .getInterface(Ci.nsIDOMWindowUtils)
+        this.window.windowUtils
                    .remoteFrameFullscreenChanged(aMsg.target);
         break;
       case "GeckoView:SaveStateFinish":

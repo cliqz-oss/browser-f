@@ -194,9 +194,9 @@ impl GlyphRasterizer {
 
                 // TODO: pathfinder will need to support 2D subpixel offset
                 let pathfinder_subpixel_offset =
-                    pathfinder_font_renderer::SubpixelOffset(glyph_key.subpixel_offset.0 as u8);
+                    pathfinder_font_renderer::SubpixelOffset(glyph_key.subpixel_offset().0 as u8);
                 let pathfinder_glyph_key =
-                    pathfinder_font_renderer::GlyphKey::new(glyph_key.index,
+                    pathfinder_font_renderer::GlyphKey::new(glyph_key.index(),
                                                             pathfinder_subpixel_offset);
 
                 if let Ok(glyph_dimensions) =
@@ -281,9 +281,9 @@ fn request_render_task_from_pathfinder(glyph_key: &GlyphKey,
 
     // TODO: pathfinder will need to support 2D subpixel offset
     let pathfinder_subpixel_offset =
-        pathfinder_font_renderer::SubpixelOffset(glyph_key.subpixel_offset.0 as u8);
-    let glyph_subpixel_offset: f64 = glyph_key.subpixel_offset.0.into();
-    let pathfinder_glyph_key = pathfinder_font_renderer::GlyphKey::new(glyph_key.index,
+        pathfinder_font_renderer::SubpixelOffset(glyph_key.subpixel_offset().0 as u8);
+    let glyph_subpixel_offset: f64 = glyph_key.subpixel_offset().0.into();
+    let pathfinder_glyph_key = pathfinder_font_renderer::GlyphKey::new(glyph_key.index(),
                                                                        pathfinder_subpixel_offset);
 
     // TODO(pcwalton): Fall back to CPU rendering if Pathfinder fails to collect the outline.
@@ -301,7 +301,7 @@ fn request_render_task_from_pathfinder(glyph_key: &GlyphKey,
     let subpixel_offset = TypedPoint2D::new(glyph_subpixel_offset as f32, 0.0);
     let embolden_amount = compute_embolden_amount(size.to_f32_px());
 
-    let location = RenderTaskLocation::Dynamic(None, Some(*glyph_size));
+    let location = RenderTaskLocation::Dynamic(None, *glyph_size);
     let glyph_render_task = RenderTask::new_glyph(location,
                                                   mesh,
                                                   &glyph_origin,

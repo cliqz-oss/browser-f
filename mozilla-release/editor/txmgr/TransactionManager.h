@@ -48,6 +48,8 @@ public:
     return mRedoStack.GetSize();
   }
 
+  int32_t NumberOfMaximumTransactions() const { return mMaxTransactionCount; }
+
   bool EnableUndoRedo(int32_t aMaxTransactionCount = -1);
   bool DisableUndoRedo()
   {
@@ -90,6 +92,12 @@ public:
                           nsITransaction* aTransaction,
                           bool aDidMerge,
                           nsresult aMergeResult);
+
+  /**
+   * Exposing non-virtual methods of nsITransactionManager methods.
+   */
+  nsresult BeginBatchInternal(nsISupports* aData);
+  nsresult EndBatchInternal(bool aAllowEmpty);
 
 private:
   virtual ~TransactionManager() = default;

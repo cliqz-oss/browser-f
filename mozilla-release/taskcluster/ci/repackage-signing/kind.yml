@@ -12,7 +12,6 @@ transforms:
 
 kind-dependencies:
    - repackage
-   - repackage-l10n
 
 only-for-build-platforms:
    - linux-nightly/opt
@@ -28,3 +27,4 @@ only-for-build-platforms:
    - win64-nightly/opt
    - win64-devedition-nightly/opt
    - win64/opt
+   - win64-asan-reporter-nightly/opt

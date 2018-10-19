@@ -250,7 +250,7 @@ nsRubyBaseContainerFrame::AddInlinePrefISize(
 /* virtual */ bool
 nsRubyBaseContainerFrame::IsFrameOfType(uint32_t aFlags) const
 {
-  if (aFlags & eSupportsCSSTransforms) {
+  if (aFlags & (eSupportsCSSTransforms | eSupportsContainLayoutAndPaint)) {
     return false;
   }
   return nsContainerFrame::IsFrameOfType(aFlags &
@@ -784,7 +784,8 @@ nsRubyBaseContainerFrame::PullOneColumn(nsLineLayout* aLineLayout,
     MOZ_ASSERT(newFloatCB, "Must have a float containing block");
     if (oldFloatCB != newFloatCB) {
       for (nsIFrame* frame : aColumn) {
-        newFloatCB->ReparentFloats(frame, oldFloatCB, false);
+        newFloatCB->ReparentFloats(frame, oldFloatCB, false,
+                                   ReparentingDirection::Backwards);
       }
     }
   }

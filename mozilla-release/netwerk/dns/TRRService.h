@@ -38,6 +38,7 @@ public:
   bool UseGET() { return mUseGET; }
   bool EarlyAAAA() { return mEarlyAAAA; }
   bool DisableIPv6() { return mDisableIPv6; }
+  bool DisableECS() { return mDisableECS; }
   nsresult GetURI(nsCString &result);
   nsresult GetCredentials(nsCString &result);
   uint32_t GetRequestTimeout() { return mTRRTimeout; }
@@ -47,6 +48,7 @@ public:
   bool IsTRRBlacklisted(const nsACString &host, bool privateBrowsing, bool fullhost);
 
   bool MaybeBootstrap(const nsACString &possible, nsACString &result);
+  void TRRIsOkay(bool aWorks);
 
 private:
   virtual  ~TRRService();
@@ -71,6 +73,8 @@ private:
   Atomic<bool, Relaxed> mUseGET; // do DOH using GET requests (instead of POST)
   Atomic<bool, Relaxed> mEarlyAAAA; // allow use of AAAA results before A is in
   Atomic<bool, Relaxed> mDisableIPv6; // don't even try
+  Atomic<bool, Relaxed> mDisableECS;  // disable EDNS Client Subnet in requests
+  Atomic<uint32_t, Relaxed> mDisableAfterFails;  // this many fails in a row means failed TRR service
 
   // TRR Blacklist storage
   RefPtr<DataStorage> mTRRBLStorage;
@@ -86,6 +90,7 @@ private:
   RefPtr<TRR> mConfirmer;
   nsCOMPtr<nsITimer> mRetryConfirmTimer;
   uint32_t mRetryConfirmInterval; // milliseconds until retry
+  Atomic<uint32_t, Relaxed> mTRRFailures;
 };
 
 extern TRRService *gTRRService;

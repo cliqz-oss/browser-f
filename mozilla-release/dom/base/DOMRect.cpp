@@ -25,7 +25,7 @@ JSObject*
 DOMRectReadOnly::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   MOZ_ASSERT(mParent);
-  return DOMRectReadOnlyBinding::Wrap(aCx, this, aGivenProto);
+  return DOMRectReadOnly_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 already_AddRefed<DOMRectReadOnly>
@@ -43,7 +43,7 @@ JSObject*
 DOMRect::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   MOZ_ASSERT(mParent);
-  return DOMRectBinding::Wrap(aCx, this, aGivenProto);
+  return DOMRect_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 already_AddRefed<DOMRect>
@@ -71,7 +71,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(DOMRectList)
 JSObject*
 DOMRectList::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::DOMRectListBinding::Wrap(cx, this, aGivenProto);
+  return mozilla::dom::DOMRectList_Binding::Wrap(cx, this, aGivenProto);
 }
 
 static double
@@ -87,7 +87,7 @@ DOMRect::SetLayoutRect(const nsRect& aLayoutRect)
   // Round to the nearest 1/scale units. We choose scale so it can be represented
   // exactly by machine floating point.
   double scaleInv = 1/scale;
-  double t2pScaled = scale/nsPresContext::AppUnitsPerCSSPixel();
+  double t2pScaled = scale/AppUnitsPerCSSPixel();
   double x = RoundFloat(aLayoutRect.x*t2pScaled)*scaleInv;
   double y = RoundFloat(aLayoutRect.y*t2pScaled)*scaleInv;
   SetRect(x, y, RoundFloat(aLayoutRect.XMost()*t2pScaled)*scaleInv - x,

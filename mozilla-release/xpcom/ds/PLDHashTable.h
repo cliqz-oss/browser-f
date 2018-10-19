@@ -4,18 +4,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// See the comment at the top of mfbt/HashTable.h for a comparison between
+// PLDHashTable and mozilla::HashTable.
+
 #ifndef PLDHashTable_h
 #define PLDHashTable_h
 
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h" // for MOZ_ALWAYS_INLINE
 #include "mozilla/fallible.h"
+#include "mozilla/HashFunctions.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
 #include "mozilla/Types.h"
 #include "nscore.h"
 
-typedef uint32_t PLDHashNumber;
+using PLDHashNumber = mozilla::HashNumber;
+static const uint32_t kPLDHashNumberBits = mozilla::kHashNumberBits;
 
 class PLDHashTable;
 struct PLDHashTableOps;
@@ -31,8 +36,8 @@ struct PLDHashTableOps;
 // structure, for single static initialization per hash table sub-type.
 //
 // Each hash table sub-type should make its entry type a subclass of
-// PLDHashEntryHdr. The mKeyHash member contains the result of multiplying the
-// hash code returned from the hashKey callback (see below) by kGoldenRatio,
+// PLDHashEntryHdr. The mKeyHash member contains the result of suitably
+// scrambling the hash code returned from the hashKey callback (see below),
 // then constraining the result to avoid the magic 0 and 1 values. The stored
 // mKeyHash value is table size invariant, and it is maintained automatically
 // -- users need never access it.
@@ -186,8 +191,12 @@ private:
   static const uint32_t kReadMax = 9999;
   static const uint32_t kWrite   = 10000;
 
-  mutable mozilla::Atomic<uint32_t> mState;
-  mutable mozilla::Atomic<uint32_t> mIsWritable;
+  mutable mozilla::Atomic<uint32_t,
+                          mozilla::SequentiallyConsistent,
+                          mozilla::recordreplay::Behavior::DontPreserve> mState;
+  mutable mozilla::Atomic<uint32_t,
+                          mozilla::SequentiallyConsistent,
+                          mozilla::recordreplay::Behavior::DontPreserve> mIsWritable;
 };
 #endif
 
@@ -283,16 +292,12 @@ public:
                uint32_t aLength = kDefaultInitialLength);
 
   PLDHashTable(PLDHashTable&& aOther)
-      // We initialize mOps and mEntrySize here because they are |const|, and
-      // the move assignment operator cannot modify them.
-      // We initialize mEntryStore because it is required for a safe call to
-      // the destructor, which the move assignment operator does.
-      // We initialize mGeneration because it is modified by the move
-      // assignment operator.
-    : mOps(aOther.mOps)
+      // Initialize fields which are checked by the move assignment operator
+      // and the destructor (which the move assignment operator calls).
+    : mOps(nullptr)
     , mEntryStore()
     , mGeneration(0)
-    , mEntrySize(aOther.mEntrySize)
+    , mEntrySize(0)
 #ifdef DEBUG
     , mChecker()
 #endif
@@ -305,7 +310,10 @@ public:
   ~PLDHashTable();
 
   // This should be used rarely.
-  const PLDHashTableOps* Ops() const { return mOps; }
+  const PLDHashTableOps* Ops() const
+  {
+    return mozilla::recordreplay::UnwrapPLDHashTableCallbacks(mOps);
+  }
 
   // Size in entries (gross, not net of free and removed sentinels) for table.
   // This can be zero if no elements have been added yet, in which case the
@@ -325,7 +333,7 @@ public:
   //
   // If |entry| is non-null, |key| was found. If |entry| is null, key was not
   // found.
-  PLDHashEntryHdr* Search(const void* aKey);
+  PLDHashEntryHdr* Search(const void* aKey) const;
 
   // To add an entry identified by |key| to table, call:
   //
@@ -498,24 +506,19 @@ public:
   }
 
 private:
-  // Multiplicative hash uses an unsigned 32 bit integer and the golden ratio,
-  // expressed as a fixed-point 32-bit fraction.
-  static const uint32_t kHashBits = 32;
-  static const uint32_t kGoldenRatio = 0x9E3779B9U;
-
   static uint32_t HashShift(uint32_t aEntrySize, uint32_t aLength);
 
   static const PLDHashNumber kCollisionFlag = 1;
 
-  static bool EntryIsFree(PLDHashEntryHdr* aEntry)
+  static bool EntryIsFree(const PLDHashEntryHdr* aEntry)
   {
     return aEntry->mKeyHash == 0;
   }
-  static bool EntryIsRemoved(PLDHashEntryHdr* aEntry)
+  static bool EntryIsRemoved(const PLDHashEntryHdr* aEntry)
   {
     return aEntry->mKeyHash == 1;
   }
-  static bool EntryIsLive(PLDHashEntryHdr* aEntry)
+  static bool EntryIsLive(const PLDHashEntryHdr* aEntry)
   {
     return aEntry->mKeyHash >= 2;
   }
@@ -529,28 +532,30 @@ private:
     aEntry->mKeyHash = 1;
   }
 
-  PLDHashNumber Hash1(PLDHashNumber aHash0);
-  void Hash2(PLDHashNumber aHash, uint32_t& aHash2Out, uint32_t& aSizeMaskOut);
+  PLDHashNumber Hash1(PLDHashNumber aHash0) const;
+  void Hash2(PLDHashNumber aHash,
+             uint32_t& aHash2Out, uint32_t& aSizeMaskOut) const;
 
-  static bool MatchEntryKeyhash(PLDHashEntryHdr* aEntry, PLDHashNumber aHash);
-  PLDHashEntryHdr* AddressEntry(uint32_t aIndex);
+  static bool MatchEntryKeyhash(const PLDHashEntryHdr* aEntry,
+                                const PLDHashNumber aHash);
+  PLDHashEntryHdr* AddressEntry(uint32_t aIndex) const;
 
   // We store mHashShift rather than sizeLog2 to optimize the collision-free
   // case in SearchTable.
   uint32_t CapacityFromHashShift() const
   {
-    return ((uint32_t)1 << (kHashBits - mHashShift));
+    return ((uint32_t)1 << (kPLDHashNumberBits - mHashShift));
   }
 
-  PLDHashNumber ComputeKeyHash(const void* aKey);
+  PLDHashNumber ComputeKeyHash(const void* aKey) const;
 
   enum SearchReason { ForSearchOrRemove, ForAdd };
 
   template <SearchReason Reason>
   PLDHashEntryHdr* NS_FASTCALL
-    SearchTable(const void* aKey, PLDHashNumber aKeyHash);
+    SearchTable(const void* aKey, PLDHashNumber aKeyHash) const;
 
-  PLDHashEntryHdr* FindFreeEntry(PLDHashNumber aKeyHash);
+  PLDHashEntryHdr* FindFreeEntry(PLDHashNumber aKeyHash) const;
 
   bool ChangeTable(int aDeltaLog2);
 

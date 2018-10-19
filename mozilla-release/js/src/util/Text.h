@@ -7,6 +7,7 @@
 #ifndef util_Text_h
 #define util_Text_h
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/TextUtils.h"
@@ -56,24 +57,9 @@ class StringBuffer;
 
 template <typename Char1, typename Char2>
 inline bool
-EqualChars(const Char1* s1, const Char2* s2, size_t len);
-
-template <typename Char1>
-inline bool
-EqualChars(const Char1* s1, const Char1* s2, size_t len)
-{
-    return mozilla::PodEqual(s1, s2, len);
-}
-
-template <typename Char1, typename Char2>
-inline bool
 EqualChars(const Char1* s1, const Char2* s2, size_t len)
 {
-    for (const Char1* s1end = s1 + len; s1 < s1end; s1++, s2++) {
-        if (*s1 != *s2)
-            return false;
-    }
-    return true;
+    return mozilla::ArrayEqual(s1, s2, len);
 }
 
 // Return less than, equal to, or greater than zero depending on whether
@@ -151,17 +137,6 @@ CopyAndInflateChars(char16_t* dst, const JS::Latin1Char* src, size_t srclen)
     for (size_t i = 0; i < srclen; i++)
         dst[i] = src[i];
 }
-
-/*
- * Deflate JS chars to bytes into a buffer. 'bytes' must be large enough for
- * 'length chars. The buffer is NOT null-terminated. The destination length
- * must to be initialized with the buffer size and will contain on return the
- * number of copied bytes.
- */
-template <typename CharT>
-extern bool
-DeflateStringToBuffer(JSContext* maybecx, const CharT* chars,
-                      size_t charsLength, char* bytes, size_t* length);
 
 /*
  * Convert one UCS-4 char and write it into a UTF-8 buffer, which must be at

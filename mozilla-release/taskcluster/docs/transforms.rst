@@ -23,7 +23,7 @@ Transform Functions
 
 Each transformation looks like this:
 
-.. code-block::
+.. code-block:: python
 
     @transforms.add
     def transform_an_item(config, items):
@@ -147,6 +147,7 @@ following ``run-using`` are available
   * ``toolchain-script``
   * ``always-optimized``
   * ``fetch-url``
+  * ``python-test``
 
 
 Task Descriptions

@@ -306,14 +306,6 @@ GLContextEGL::GLContextEGL(CreateContextFlags flags, const SurfaceCaps& caps,
     , mSurface(surface)
     , mFallbackSurface(CreateFallbackSurface(config))
     , mContext(context)
-    , mSurfaceOverride(EGL_NO_SURFACE)
-    , mThebesSurface(nullptr)
-    , mBound(false)
-    , mIsPBuffer(false)
-    , mIsDoubleBuffered(false)
-    , mCanBindToTexture(false)
-    , mShareWithEGLImage(false)
-    , mOwnsContext(true)
 {
 #ifdef DEBUG
     printf_stderr("Initializing context %p surface %p on display %p\n", mContext, mSurface, EGL_DISPLAY());
@@ -566,6 +558,15 @@ GLContextEGL::CreateGLContext(CreateContextFlags flags,
         required_attribs.push_back(2);
     }
 
+    const auto debugFlags = GLContext::ChooseDebugFlags(flags);
+    if (!debugFlags &&
+        flags & CreateContextFlags::NO_VALIDATION &&
+        egl->IsExtensionSupported(GLLibraryEGL::KHR_create_context_no_error))
+    {
+        required_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_NO_ERROR_KHR);
+        required_attribs.push_back(LOCAL_EGL_TRUE);
+    }
+
     std::vector<EGLint> robustness_attribs;
     std::vector<EGLint> rbab_attribs; // RBAB: Robust Buffer Access Behavior
     if (flags & CreateContextFlags::PREFER_ROBUSTNESS) {
@@ -573,15 +574,16 @@ GLContextEGL::CreateGLContext(CreateContextFlags flags,
             robustness_attribs = required_attribs;
             robustness_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT);
             robustness_attribs.push_back(LOCAL_EGL_LOSE_CONTEXT_ON_RESET_EXT);
-            // Skip EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT, since it doesn't help us.
-        }
 
-        if (egl->IsExtensionSupported(GLLibraryEGL::KHR_create_context) &&
-            !egl->IsANGLE())
-        {
-            rbab_attribs = required_attribs;
-            rbab_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_KHR);
-            rbab_attribs.push_back(LOCAL_EGL_LOSE_CONTEXT_ON_RESET_KHR);
+            rbab_attribs = robustness_attribs;
+            rbab_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT);
+            rbab_attribs.push_back(LOCAL_EGL_TRUE);
+        } else if (egl->IsExtensionSupported(GLLibraryEGL::KHR_create_context)) {
+            robustness_attribs = required_attribs;
+            robustness_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_KHR);
+            robustness_attribs.push_back(LOCAL_EGL_LOSE_CONTEXT_ON_RESET_KHR);
+
+            rbab_attribs = robustness_attribs;
             rbab_attribs.push_back(LOCAL_EGL_CONTEXT_FLAGS_KHR);
             rbab_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR);
         }

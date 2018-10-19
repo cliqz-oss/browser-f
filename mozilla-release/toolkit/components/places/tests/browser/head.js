@@ -44,7 +44,7 @@ function fieldForUrl(aURI, aFieldName, aCallback) {
       if (aReason != Ci.mozIStorageStatementCallback.REASON_FINISHED)
          ok(false, "The statement should properly succeed");
       aCallback(this._value);
-    }
+    },
   });
   stmt.finalize();
 }
@@ -77,7 +77,6 @@ function NavHistoryObserver() {}
 NavHistoryObserver.prototype = {
   onBeginUpdateBatch() {},
   onEndUpdateBatch() {},
-  onVisits() {},
   onTitleChanged() {},
   onDeleteURI() {},
   onClearHistory() {},
@@ -85,7 +84,7 @@ NavHistoryObserver.prototype = {
   onDeleteVisits() {},
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryObserver,
-  ])
+  ]),
 };
 
 function whenNewWindowLoaded(aOptions, aCallback) {

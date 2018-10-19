@@ -17,6 +17,8 @@
 #include "mozilla/UseCounter.h"
 
 #include "AccessCheck.h"
+#include "js/JSON.h"
+#include "js/StableStringChars.h"
 #include "jsfriendapi.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsContentUtils.h"
@@ -37,6 +39,7 @@
 #include "nsPrintfCString.h"
 #include "mozilla/Sprintf.h"
 #include "nsGlobalWindow.h"
+#include "nsReadableUtils.h"
 
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/CustomElementRegistry.h"
@@ -48,6 +51,7 @@
 #include "mozilla/dom/HTMLElementBinding.h"
 #include "mozilla/dom/HTMLEmbedElementBinding.h"
 #include "mozilla/dom/XULElementBinding.h"
+#include "mozilla/dom/XULFrameElementBinding.h"
 #include "mozilla/dom/XULPopupElementBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ResolveSystemBinding.h"
@@ -55,6 +59,7 @@
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/dom/XrayExpandoClass.h"
+#include "mozilla/dom/XULScrollElementBinding.h"
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "ipc/ErrorIPCUtils.h"
 #include "mozilla/UseCounter.h"
@@ -66,7 +71,7 @@ namespace dom {
 
 // Forward declare GetConstructorObject methods.
 #define HTML_TAG(_tag, _classname, _interfacename)                             \
-namespace HTML##_interfacename##ElementBinding {                               \
+namespace HTML##_interfacename##Element_Binding {                               \
   JSObject* GetConstructorObject(JSContext*);                                  \
 }
 #define HTML_OTHER(_tag)
@@ -77,12 +82,12 @@ namespace HTML##_interfacename##ElementBinding {                               \
 typedef JSObject* (*constructorGetterCallback)(JSContext*);
 
 // Mapping of html tag and GetConstructorObject methods.
-#define HTML_TAG(_tag, _classname, _interfacename) HTML##_interfacename##ElementBinding::GetConstructorObject,
+#define HTML_TAG(_tag, _classname, _interfacename) HTML##_interfacename##Element_Binding::GetConstructorObject,
 #define HTML_OTHER(_tag) nullptr,
 // We use eHTMLTag_foo (where foo is the tag) which is defined in nsHTMLTags.h
 // to index into this array.
 static const constructorGetterCallback sConstructorGetterCallback[] = {
-  HTMLUnknownElementBinding::GetConstructorObject,
+  HTMLUnknownElement_Binding::GetConstructorObject,
 #include "nsHTMLTagList.h"
 #undef HTML_TAG
 #undef HTML_OTHER
@@ -173,7 +178,11 @@ namespace binding_danger {
 
 template<typename CleanupPolicy>
 struct TErrorResult<CleanupPolicy>::Message {
-  Message() { MOZ_COUNT_CTOR(TErrorResult::Message); }
+  Message()
+    : mErrorNumber(dom::Err_Limit)
+  {
+    MOZ_COUNT_CTOR(TErrorResult::Message);
+  }
   ~Message() { MOZ_COUNT_DTOR(TErrorResult::Message); }
 
   nsTArray<nsString> mArgs;
@@ -184,7 +193,7 @@ struct TErrorResult<CleanupPolicy>::Message {
     return GetErrorArgCount(mErrorNumber) == mArgs.Length();
   }
 
-  bool operator==(const TErrorResult<CleanupPolicy>::Message& aRight)
+  bool operator==(const TErrorResult<CleanupPolicy>::Message& aRight) const
   {
     return mErrorNumber == aRight.mErrorNumber &&
            mArgs == aRight.mArgs;
@@ -341,7 +350,7 @@ struct TErrorResult<CleanupPolicy>::DOMExceptionInfo {
   nsCString mMessage;
   nsresult mRv;
 
-  bool operator==(const TErrorResult<CleanupPolicy>::DOMExceptionInfo& aRight)
+  bool operator==(const TErrorResult<CleanupPolicy>::DOMExceptionInfo& aRight) const
   {
     return mRv == aRight.mRv &&
            mMessage == aRight.mMessage;
@@ -507,6 +516,32 @@ TErrorResult<CleanupPolicy>::operator=(TErrorResult<CleanupPolicy>&& aRHS)
   mResult = aRHS.mResult;
   aRHS.mResult = NS_OK;
   return *this;
+}
+
+template<typename CleanupPolicy>
+bool
+TErrorResult<CleanupPolicy>::operator==(const ErrorResult& aRight) const
+{
+  auto right = reinterpret_cast<const TErrorResult<CleanupPolicy>*>(&aRight);
+
+  if (mResult != right->mResult) {
+    return false;
+  }
+
+  if (IsJSException()) {
+    // js exceptions are always non-equal
+    return false;
+  }
+
+  if (IsErrorWithMessage()) {
+    return *mExtra.mMessage == *right->mExtra.mMessage;
+  }
+
+  if (IsDOMException()) {
+    return *mExtra.mDOMExceptionInfo == *right->mExtra.mDOMExceptionInfo;
+  }
+
+  return true;
 }
 
 template<typename CleanupPolicy>
@@ -1148,21 +1183,8 @@ XPCOMObjectToJsval(JSContext* cx, JS::Handle<JSObject*> scope,
                    xpcObjectHelper& helper, const nsIID* iid,
                    bool allowNativeWrapper, JS::MutableHandle<JS::Value> rval)
 {
-  if (!NativeInterface2JSObjectAndThrowIfFailed(cx, scope, rval, helper, iid,
-                                                allowNativeWrapper)) {
-    return false;
-  }
-
-#ifdef DEBUG
-  JSObject* jsobj = rval.toObjectOrNull();
-  if (jsobj &&
-      js::GetGlobalForObjectCrossCompartment(jsobj) == jsobj) {
-    NS_ASSERTION(js::GetObjectClass(jsobj)->flags & JSCLASS_IS_GLOBAL,
-                 "Why did we recreate this wrapper?");
-  }
-#endif
-
-  return true;
+  return NativeInterface2JSObjectAndThrowIfFailed(cx, scope, rval, helper, iid,
+                                                  allowNativeWrapper);
 }
 
 bool
@@ -1631,7 +1653,7 @@ ResolvePrototypeOrConstructor(JSContext* cx, JS::Handle<JSObject*> wrapper,
                               JS::MutableHandle<JS::PropertyDescriptor> desc,
                               bool& cacheOnHolder)
 {
-  JS::Rooted<JSObject*> global(cx, js::GetGlobalForObjectCrossCompartment(obj));
+  JS::Rooted<JSObject*> global(cx, JS::GetNonCCWObjectGlobal(obj));
   {
     JSAutoRealm ar(cx, global);
     ProtoAndIfaceCache& protoAndIfaceCache = *GetProtoAndIfaceCache(global);
@@ -2271,9 +2293,8 @@ ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObjArg, ErrorResult& aErr
   const DOMJSClass* domClass = GetDOMClass(aObj);
 
   // DOM things are always parented to globals.
-  JS::Rooted<JSObject*> oldParent(aCx,
-                                  js::GetGlobalForObjectCrossCompartment(aObj));
-  MOZ_ASSERT(js::GetGlobalForObjectCrossCompartment(oldParent) == oldParent);
+  JS::Rooted<JSObject*> oldParent(aCx, JS::GetNonCCWObjectGlobal(aObj));
+  MOZ_ASSERT(JS_IsGlobalObject(oldParent));
 
   JS::Rooted<JSObject*> newParent(aCx,
                                   domClass->mGetAssociatedGlobal(aCx, aObj));
@@ -2403,7 +2424,7 @@ GlobalObject::GlobalObject(JSContext* aCx, JSObject* aObject)
     }
   }
 
-  mGlobalJSObject = js::GetGlobalForObjectCrossCompartment(obj);
+  mGlobalJSObject = JS::GetNonCCWObjectGlobal(obj);
 }
 
 nsISupports*
@@ -2763,34 +2784,16 @@ NonVoidByteStringToJsval(JSContext *cx, const nsACString &str,
     return true;
 }
 
-
-template<typename T> static void
-NormalizeUSVStringInternal(T& aString)
-{
-  char16_t* start = aString.BeginWriting();
-  // Must use const here because we can't pass char** to UTF16CharEnumerator as
-  // it expects const char**.  Unclear why this is illegal...
-  const char16_t* nextChar = start;
-  const char16_t* end = aString.Data() + aString.Length();
-  while (nextChar < end) {
-    uint32_t enumerated = UTF16CharEnumerator::NextChar(&nextChar, end);
-    if (enumerated == UCS2_REPLACEMENT_CHAR) {
-      int32_t lastCharIndex = (nextChar - start) - 1;
-      start[lastCharIndex] = static_cast<char16_t>(enumerated);
-    }
-  }
-}
-
 void
 NormalizeUSVString(nsAString& aString)
 {
-  NormalizeUSVStringInternal(aString);
+  EnsureUTF16Validity(aString);
 }
 
 void
 NormalizeUSVString(binding_detail::FakeString& aString)
 {
-  NormalizeUSVStringInternal(aString);
+  EnsureUTF16ValiditySpan(aString);
 }
 
 bool
@@ -2857,7 +2860,7 @@ ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
       return false;
     }
   } else {
-    length = js::GetStringLength(s);
+    length = JS::GetStringLength(s);
   }
 
   static_assert(js::MaxStringLength < UINT32_MAX,
@@ -2867,7 +2870,9 @@ ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
     return false;
   }
 
-  JS_EncodeStringToBuffer(cx, s, result.BeginWriting(), length);
+  if (!JS_EncodeStringToBuffer(cx, s, result.BeginWriting(), length)) {
+    return false;
+  }
 
   return true;
 }
@@ -2920,7 +2925,8 @@ IsNonExposedGlobal(JSContext* aCx, JSObject* aGlobal,
                 GlobalNames::SharedWorkerGlobalScope |
                 GlobalNames::ServiceWorkerGlobalScope |
                 GlobalNames::WorkerDebuggerGlobalScope |
-                GlobalNames::WorkletGlobalScope)) == 0,
+                GlobalNames::WorkletGlobalScope |
+                GlobalNames::AudioWorkletGlobalScope)) == 0,
              "Unknown non-exposed global type");
 
   const char* name = js::GetObjectClass(aGlobal)->name;
@@ -2957,6 +2963,11 @@ IsNonExposedGlobal(JSContext* aCx, JSObject* aGlobal,
 
   if ((aNonExposedGlobals & GlobalNames::WorkletGlobalScope) &&
       !strcmp(name, "WorkletGlobalScope")) {
+    return true;
+  }
+
+  if ((aNonExposedGlobals & GlobalNames::AudioWorkletGlobalScope) &&
+      !strcmp(name, "AudioWorkletGlobalScope")) {
     return true;
   }
 
@@ -3031,7 +3042,7 @@ struct MaybeGlobalThisPolicy : public NormalThisPolicy
   {
     return aArgs.thisv().isObject() ?
       &aArgs.thisv().toObject() :
-      js::GetGlobalForObjectCrossCompartment(&aArgs.callee());
+      JS::GetNonCCWObjectGlobal(&aArgs.callee());
   }
 
   // We want the MaybeUnwrapThisObject of NormalThisPolicy.
@@ -3470,7 +3481,8 @@ UnwrapArgImpl(JSContext* cx,
   }
 
   RefPtr<nsXPCWrappedJS> wrappedJS;
-  nsresult rv = nsXPCWrappedJS::GetNewOrUsed(src, iid, getter_AddRefs(wrappedJS));
+  nsresult rv =
+    nsXPCWrappedJS::GetNewOrUsed(cx, src, iid, getter_AddRefs(wrappedJS));
   if (NS_FAILED(rv) || !wrappedJS) {
     return rv;
   }
@@ -3661,7 +3673,7 @@ GetDesiredProto(JSContext* aCx, const JS::CallArgs& aCallArgs,
 
   if (protoID != prototypes::id::_ID_Count) {
     ProtoAndIfaceCache& protoAndIfaceCache =
-      *GetProtoAndIfaceCache(js::GetGlobalForObjectCrossCompartment(newTarget));
+      *GetProtoAndIfaceCache(JS::GetNonCCWObjectGlobal(newTarget));
     aDesiredProto.set(protoAndIfaceCache.EntrySlotMustExist(protoID));
     if (newTarget != originalNewTarget) {
       return JS_WrapObject(aCx, aDesiredProto);
@@ -3692,6 +3704,48 @@ GetDesiredProto(JSContext* aCx, const JS::CallArgs& aCallArgs,
   aDesiredProto.set(&protoVal.toObject());
   return true;
 }
+
+namespace {
+
+class MOZ_RAII AutoConstructionDepth final
+{
+public:
+  MOZ_IMPLICIT AutoConstructionDepth(CustomElementDefinition* aDefinition)
+    : mDefinition(aDefinition)
+  {
+    MOZ_ASSERT(mDefinition->mConstructionStack.IsEmpty());
+
+    mDefinition->mConstructionDepth++;
+    // If the mConstructionDepth isn't matched with the length of mPrefixStack,
+    // this means the constructor is called directly from JS, i.e.
+    // 'new CustomElementConstructor()', we have to push a dummy prefix into
+    // stack.
+    if (mDefinition->mConstructionDepth > mDefinition->mPrefixStack.Length()) {
+      mDidPush = true;
+      mDefinition->mPrefixStack.AppendElement(nullptr);
+    }
+
+    MOZ_ASSERT(mDefinition->mConstructionDepth == mDefinition->mPrefixStack.Length());
+  }
+
+  ~AutoConstructionDepth()
+  {
+    MOZ_ASSERT(mDefinition->mConstructionDepth > 0);
+    MOZ_ASSERT(mDefinition->mConstructionDepth == mDefinition->mPrefixStack.Length());
+
+    if (mDidPush) {
+      MOZ_ASSERT(mDefinition->mPrefixStack.LastElement() == nullptr);
+      mDefinition->mPrefixStack.RemoveLastElement();
+    }
+    mDefinition->mConstructionDepth--;
+  }
+
+private:
+  CustomElementDefinition* mDefinition;
+  bool mDidPush = false;
+};
+
+} // anonymous namespace
 
 // https://html.spec.whatwg.org/multipage/dom.html#htmlconstructor
 namespace binding_detail {
@@ -3784,36 +3838,44 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
   // determination of what sort of element we're planning to construct.
   // Technically, this should happen (implicitly) in step 8, but this
   // determination is side-effect-free, so it's OK.
-  int32_t ns = doc->GetDefaultNamespaceID();
-  if (ns != kNameSpaceID_XUL) {
-    ns = kNameSpaceID_XHTML;
+  int32_t ns = definition->mNamespaceID;
+
+  constructorGetterCallback cb = nullptr;
+  if (ns == kNameSpaceID_XUL) {
+    if (definition->mLocalName == nsGkAtoms::menupopup ||
+        definition->mLocalName == nsGkAtoms::popup ||
+        definition->mLocalName == nsGkAtoms::panel ||
+        definition->mLocalName == nsGkAtoms::tooltip) {
+      cb = XULPopupElement_Binding::GetConstructorObject;
+    } else if (definition->mLocalName == nsGkAtoms::iframe ||
+                definition->mLocalName == nsGkAtoms::browser ||
+                definition->mLocalName == nsGkAtoms::editor) {
+      cb = XULFrameElement_Binding::GetConstructorObject;
+    } else if (definition->mLocalName == nsGkAtoms::scrollbox) {
+      cb = XULScrollElement_Binding::GetConstructorObject;
+    } else {
+      cb = XULElement_Binding::GetConstructorObject;
+    }
   }
 
   int32_t tag = eHTMLTag_userdefined;
   if (!definition->IsCustomBuiltIn()) {
     // Step 4.
     // If the definition is for an autonomous custom element, the active
-    // function should be HTMLElement or XULElement.  We want to get the actual
-    // functions to compare to from our global's realm, not the caller
-    // realm.
+    // function should be HTMLElement or extend from XULElement.
+    if (!cb) {
+      cb = HTMLElement_Binding::GetConstructorObject;
+    }
+
+    // We want to get the constructor from our global's realm, not the
+    // caller realm.
     JSAutoRealm ar(aCx, global.Get());
-
-    JS::Rooted<JSObject*> constructor(aCx);
-    if (ns == kNameSpaceID_XUL) {
-      constructor = XULElementBinding::GetConstructorObject(aCx);
-    } else {
-      constructor = HTMLElementBinding::GetConstructorObject(aCx);
-    }
-
-    if (!constructor) {
-      return false;
-    }
+    JS::Rooted<JSObject*> constructor(aCx, cb(aCx));
 
     if (constructor != js::CheckedUnwrap(callee)) {
       return ThrowErrorMessage(aCx, MSG_ILLEGAL_CONSTRUCTOR);
     }
   } else {
-    constructorGetterCallback cb;
     if (ns == kNameSpaceID_XHTML) {
       // Step 5.
       // If the definition is for a customized built-in element, the localName
@@ -3828,15 +3890,6 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
       // If the definition is for a customized built-in element, the active
       // function should be the localname's element interface.
       cb = sConstructorGetterCallback[tag];
-    } else { // kNameSpaceID_XUL
-      if (definition->mLocalName == nsGkAtoms::menupopup ||
-          definition->mLocalName == nsGkAtoms::popup ||
-          definition->mLocalName == nsGkAtoms::panel ||
-          definition->mLocalName == nsGkAtoms::tooltip) {
-        cb = XULPopupElementBinding::GetConstructorObject;
-      } else {
-        cb = XULElementBinding::GetConstructorObject;
-      }
     }
 
     if (!cb) {
@@ -3898,10 +3951,11 @@ HTMLConstructor(JSContext* aCx, unsigned aArgc, JS::Value* aVp,
     // realm, not caller realm (the normal constructor behavior),
     // just in case those elements create JS things.
     JSAutoRealm ar(aCx, global.Get());
+    AutoConstructionDepth acd(definition);
 
     RefPtr<NodeInfo> nodeInfo =
       doc->NodeInfoManager()->GetNodeInfo(definition->mLocalName,
-                                          nullptr,
+                                          definition->mPrefixStack.LastElement(),
                                           ns,
                                           nsINode::ELEMENT_NODE);
     MOZ_ASSERT(nodeInfo);

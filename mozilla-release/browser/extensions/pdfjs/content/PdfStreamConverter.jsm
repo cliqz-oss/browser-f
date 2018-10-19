@@ -99,9 +99,7 @@ function getLocalizedStrings(path) {
     Services.strings.createBundle("chrome://pdf.js/locale/" + path);
 
   var map = {};
-  var enumerator = stringBundle.getSimpleEnumeration();
-  while (enumerator.hasMoreElements()) {
-    var string = enumerator.getNext().QueryInterface(Ci.nsIPropertyElement);
+  for (let string of stringBundle.getSimpleEnumeration()) {
     var key = string.key, property = "textContent";
     var i = key.lastIndexOf(".");
     if (i >= 0) {
@@ -268,9 +266,7 @@ class ChromeActions {
       var listener = {
         extListener: null,
         onStartRequest(aRequest, aContext) {
-          var loadContext = self.domWindow
-                                .QueryInterface(Ci.nsIInterfaceRequestor)
-                                .getInterface(Ci.nsIWebNavigation)
+          var loadContext = self.domWindow.docShell
                                 .QueryInterface(Ci.nsILoadContext);
           this.extListener = extHelperAppSvc.doContent(
             (data.isAttachment ? "application/octet-stream" :
@@ -414,10 +410,7 @@ class ChromeActions {
       getLocalizedString(strings, "open_with_different_viewer"),
       getLocalizedString(strings, "open_with_different_viewer", "accessKey"));
 
-    let winmm = domWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDocShell)
-                         .QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIContentFrameMessageManager);
+    let winmm = domWindow.docShell.messageManager;
 
     winmm.addMessageListener("PDFJS:Child:fallbackDownload",
       function fallbackDownload(msg) {
@@ -442,10 +435,7 @@ class ChromeActions {
       return;
     }
 
-    var winmm = this.domWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIDocShell)
-                              .QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIContentFrameMessageManager);
+    var winmm = this.domWindow.docShell.messageManager;
 
     winmm.sendAsyncMessage("PDFJS:Parent:updateControlState", data);
   }
@@ -736,7 +726,7 @@ class RequestListener {
         response = function sendResponse(aResponse) {
           try {
             var listener = doc.createEvent("CustomEvent");
-            let detail = Cu.cloneInto({ response: aResponse, },
+            let detail = Cu.cloneInto({ response: aResponse },
                                       doc.defaultView);
             listener.initCustomEvent("pdf.js.response", true, false, detail);
             return message.dispatchEvent(listener);
@@ -759,10 +749,7 @@ class RequestListener {
 class FindEventManager {
   constructor(contentWindow) {
     this.contentWindow = contentWindow;
-    this.winmm = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIDocShell)
-                              .QueryInterface(Ci.nsIInterfaceRequestor)
-                              .getInterface(Ci.nsIContentFrameMessageManager);
+    this.winmm = contentWindow.docShell.messageManager;
   }
 
   bind() {

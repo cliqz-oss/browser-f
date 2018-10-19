@@ -45,14 +45,6 @@ const REASON_DEVICE_CHANGED = 2;
 const REASON_DRIVER_CHANGED = 3;
 const REASON_AL_CONFIG_CHANGED = 4;
 
-// GRAPHICS_SANITY_TEST_OS_SNAPSHOT histogram enumeration values
-const SNAPSHOT_VIDEO_OK = 0;
-const SNAPSHOT_VIDEO_FAIL = 1;
-const SNAPSHOT_ERROR = 2;
-const SNAPSHOT_TIMEOUT = 3;
-const SNAPSHOT_LAYERS_OK = 4;
-const SNAPSHOT_LAYERS_FAIL = 5;
-
 function testPixel(ctx, x, y, r, g, b, a, fuzz) {
   var data = ctx.getImageData(x, y, 1, 1);
 
@@ -80,12 +72,20 @@ function reportTestReason(val) {
   histogram.add(val);
 }
 
-function annotateCrashReport(value) {
+function annotateCrashReport() {
   try {
-    // "1" if we're annotating the crash report, "" to remove the annotation.
     var crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].
                           getService(Ci.nsICrashReporter);
-    crashReporter.annotateCrashReport("GraphicsSanityTest", value ? "1" : "");
+    crashReporter.annotateCrashReport("GraphicsSanityTest", "1");
+  } catch (e) {
+  }
+}
+
+function removeCrashReportAnnotation(value) {
+  try {
+    var crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].
+                          getService(Ci.nsICrashReporter);
+    crashReporter.removeCrashReportAnnotation("GraphicsSanityTest");
   } catch (e) {
   }
 }
@@ -176,8 +176,7 @@ var listener = {
   scheduleTest(win) {
     this.win = win;
     this.win.onload = this.onWindowLoaded.bind(this);
-    this.utils = this.win.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils);
+    this.utils = this.win.windowUtils;
     setTimeout(TIMEOUT_SEC * 1000, () => {
       if (this.win) {
         reportResult(TEST_TIMEOUT);
@@ -208,7 +207,7 @@ var listener = {
   },
 
   onWindowLoaded() {
-    let browser = this.win.document.createElementNS(XUL_NS, "browser");
+    let browser = this.win.document.createXULElement("browser");
     browser.setAttribute("type", "content");
     browser.setAttribute("disableglobalhistory", "true");
 
@@ -251,8 +250,8 @@ var listener = {
 
     // Remove the annotation after we've cleaned everything up, to catch any
     // incidental crashes from having performed the sanity test.
-    annotateCrashReport(false);
-  }
+    removeCrashReportAnnotation();
+  },
 };
 
 function SanityTest() {}
@@ -339,13 +338,13 @@ SanityTest.prototype = {
 
     if (!this.shouldRunTest()) return;
 
-    annotateCrashReport(true);
+    annotateCrashReport();
 
     // Open a tiny window to render our test page, and notify us when it's loaded
     var sanityTest = Services.ww.openWindow(null,
         "chrome://gfxsanity/content/sanityparent.html",
         "Test Page",
-        "width=" + PAGE_WIDTH + ",height=" + PAGE_HEIGHT + ",chrome,titlebar=0,scrollbars=0",
+        "width=" + PAGE_WIDTH + ",height=" + PAGE_HEIGHT + ",chrome,titlebar=0,scrollbars=0,popup=1",
         null);
 
     // There's no clean way to have an invisible window and ensure it's always painted.

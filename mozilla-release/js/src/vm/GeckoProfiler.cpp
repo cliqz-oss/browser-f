@@ -10,11 +10,13 @@
 
 #include "jsnum.h"
 
+#include "gc/GC.h"
 #include "gc/PublicIterators.h"
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineJIT.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitFrames.h"
+#include "jit/JitRealm.h"
 #include "jit/JSJitFrameIter.h"
 #include "util/StringBuffer.h"
 #include "vm/JSScript.h"
@@ -38,16 +40,6 @@ GeckoProfilerRuntime::GeckoProfilerRuntime(JSRuntime* rt)
     eventMarker_(nullptr)
 {
     MOZ_ASSERT(rt != nullptr);
-}
-
-bool
-GeckoProfilerRuntime::init()
-{
-    auto locked = strings.lock();
-    if (!locked->init())
-        return false;
-
-    return true;
 }
 
 void
@@ -161,7 +153,6 @@ const char*
 GeckoProfilerRuntime::profileString(JSScript* script, JSFunction* maybeFun)
 {
     auto locked = strings.lock();
-    MOZ_ASSERT(locked->initialized());
 
     ProfileStringMap::AddPtr s = locked->lookupForAdd(script);
 
@@ -185,8 +176,6 @@ GeckoProfilerRuntime::onScriptFinalized(JSScript* script)
      * done.
      */
     auto locked = strings.lock();
-    if (!locked->initialized())
-        return;
     if (ProfileStringMap::Ptr entry = locked->lookup(script))
         locked->remove(entry);
 }
@@ -286,12 +275,17 @@ GeckoProfilerRuntime::allocProfileString(JSScript* script, JSFunction* maybeFun)
     size_t lenFilename = strlen(filename);
 
     // Get the line number and its length as a string.
-    uint64_t lineno = script->lineno();
+    uint32_t lineno = script->lineno();
     size_t lenLineno = 1;
-    for (uint64_t i = lineno; i /= 10; lenLineno++);
+    for (uint32_t i = lineno; i /= 10; lenLineno++);
+
+    // Get the column number and its length as a string.
+    uint32_t column = script->column();
+    size_t lenColumn = 1;
+    for (uint32_t i = column; i /= 10; lenColumn++);
 
     // Determine the required buffer size.
-    size_t len = lenFilename + lenLineno + 1; // +1 for the ":" separating them.
+    size_t len = lenFilename + 1 + lenLineno + 1 + lenColumn; // +1 for each separator colon, ":".
     if (atom) {
         len += JS::GetDeflatedUTF8StringLength(atom) + 3; // +3 for the " (" and ")" it adds.
     }
@@ -308,9 +302,11 @@ GeckoProfilerRuntime::allocProfileString(JSScript* script, JSFunction* maybeFun)
         if (!atomStr)
             return nullptr;
 
-        ret = snprintf(cstr.get(), len + 1, "%s (%s:%" PRIu64 ")", atomStr.get(), filename, lineno);
+        ret = snprintf(cstr.get(), len + 1, "%s (%s:%" PRIu32 ":%" PRIu32 ")",
+                atomStr.get(), filename, lineno, column);
     } else {
-        ret = snprintf(cstr.get(), len + 1, "%s:%" PRIu64, filename, lineno);
+        ret = snprintf(cstr.get(), len + 1, "%s:%" PRIu32 ":%" PRIu32,
+                filename, lineno, column);
     }
 
     MOZ_ASSERT(ret == len, "Computed length should match actual length!");
@@ -332,9 +328,6 @@ void
 GeckoProfilerRuntime::fixupStringsMapAfterMovingGC()
 {
     auto locked = strings.lock();
-    if (!locked->initialized())
-        return;
-
     for (ProfileStringMap::Enum e(locked.get()); !e.empty(); e.popFront()) {
         JSScript* script = e.front().key();
         if (IsForwarded(script)) {
@@ -349,9 +342,6 @@ void
 GeckoProfilerRuntime::checkStringsMapAfterMovingGC()
 {
     auto locked = strings.lock();
-    if (!locked->initialized())
-        return;
-
     for (auto r = locked->all(); !r.empty(); r.popFront()) {
         JSScript* script = r.front().key();
         CheckGCThingAfterMovingGC(script);

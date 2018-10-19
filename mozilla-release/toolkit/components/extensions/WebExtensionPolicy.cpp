@@ -4,6 +4,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ExtensionPolicyService.h"
+#include "mozilla/extensions/DocumentObserver.h"
 #include "mozilla/extensions/WebExtensionContentScript.h"
 #include "mozilla/extensions/WebExtensionPolicy.h"
 
@@ -66,6 +67,68 @@ Proto()
 }
 
 
+bool
+ParseGlobs(GlobalObject& aGlobal, Sequence<OwningMatchGlobOrString> aGlobs,
+           nsTArray<RefPtr<MatchGlob>>& aResult, ErrorResult& aRv)
+{
+  for (auto& elem : aGlobs) {
+    if (elem.IsMatchGlob()) {
+      aResult.AppendElement(elem.GetAsMatchGlob());
+    } else {
+      RefPtr<MatchGlob> glob = MatchGlob::Constructor(aGlobal,
+                                                      elem.GetAsString(),
+                                                      true, aRv);
+      if (aRv.Failed()) {
+        return false;
+      }
+      aResult.AppendElement(glob);
+    }
+  }
+  return true;
+}
+
+enum class ErrorBehavior {
+  CreateEmptyPattern,
+  Fail,
+};
+
+already_AddRefed<MatchPatternSet>
+ParseMatches(GlobalObject& aGlobal,
+             const OwningMatchPatternSetOrStringSequence& aMatches,
+             const MatchPatternOptions& aOptions,
+             ErrorBehavior aErrorBehavior,
+             ErrorResult& aRv)
+{
+  if (aMatches.IsMatchPatternSet()) {
+    return do_AddRef(aMatches.GetAsMatchPatternSet().get());
+  }
+
+  const auto& strings = aMatches.GetAsStringSequence();
+
+  nsTArray<OwningStringOrMatchPattern> patterns;
+  if (!patterns.SetCapacity(strings.Length(), fallible)) {
+    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+    return nullptr;
+  }
+
+  for (auto& string : strings) {
+    OwningStringOrMatchPattern elt;
+    elt.SetAsString() = string;
+    patterns.AppendElement(elt);
+  }
+
+  RefPtr<MatchPatternSet> result = MatchPatternSet::Constructor(
+    aGlobal, patterns, aOptions, aRv);
+
+  if (aRv.Failed() && aErrorBehavior == ErrorBehavior::CreateEmptyPattern) {
+    aRv.SuppressException();
+    result = MatchPatternSet::Constructor(aGlobal, {}, aOptions, aRv);
+  }
+
+  return result.forget();
+}
+
+
 /*****************************************************************************
  * WebExtensionPolicy
  *****************************************************************************/
@@ -79,9 +142,20 @@ WebExtensionPolicy::WebExtensionPolicy(GlobalObject& aGlobal,
   , mContentSecurityPolicy(aInit.mContentSecurityPolicy)
   , mLocalizeCallback(aInit.mLocalizeCallback)
   , mPermissions(new AtomSet(aInit.mPermissions))
-  , mHostPermissions(aInit.mAllowedOrigins)
 {
-  mWebAccessiblePaths.AppendElements(aInit.mWebAccessibleResources);
+  if (!ParseGlobs(aGlobal, aInit.mWebAccessibleResources, mWebAccessiblePaths,
+                  aRv)) {
+    return;
+  }
+
+  MatchPatternOptions options;
+  options.mRestrictSchemes = !HasPermission(nsGkAtoms::mozillaAddons);
+
+  mHostPermissions = ParseMatches(aGlobal, aInit.mAllowedOrigins, options,
+                                  ErrorBehavior::CreateEmptyPattern, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
 
   if (!aInit.mBackgroundScripts.IsNull()) {
     mBackgroundScripts.SetValue().AppendElements(aInit.mBackgroundScripts.Value());
@@ -101,7 +175,7 @@ WebExtensionPolicy::WebExtensionPolicy(GlobalObject& aGlobal,
     }
 
     RefPtr<WebExtensionContentScript> contentScript =
-      new WebExtensionContentScript(*this, scriptInit, aRv);
+      new WebExtensionContentScript(aGlobal, *this, scriptInit, aRv);
     if (aRv.Failed()) {
       return;
     }
@@ -242,7 +316,7 @@ WebExtensionPolicy::RegisterContentScript(WebExtensionContentScript& script,
     return;
   }
 
-  WebExtensionPolicyBinding::ClearCachedContentScriptsValue(this);
+  WebExtensionPolicy_Binding::ClearCachedContentScriptsValue(this);
 }
 
 void
@@ -254,7 +328,16 @@ WebExtensionPolicy::UnregisterContentScript(const WebExtensionContentScript& scr
     return;
   }
 
-  WebExtensionPolicyBinding::ClearCachedContentScriptsValue(this);
+  WebExtensionPolicy_Binding::ClearCachedContentScriptsValue(this);
+}
+
+void
+WebExtensionPolicy::InjectContentScripts(ErrorResult& aRv)
+{
+  nsresult rv = EPS().InjectContentScripts(this);
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
+  }
 }
 
 /* static */ bool
@@ -282,9 +365,9 @@ namespace {
     NS_DECL_NSIOBSERVER
 
     static already_AddRefed<AtomSetPref>
-    Create(const char* aPref)
+    Create(const nsCString& aPref)
     {
-      RefPtr<AtomSetPref> self = new AtomSetPref(aPref);
+      RefPtr<AtomSetPref> self = new AtomSetPref(aPref.get());
       Preferences::AddWeakObserver(self, aPref);
       return self.forget();
     }
@@ -354,7 +437,7 @@ WebExtensionPolicy::IsRestrictedURI(const URLInfo &aURI)
 {
   static RefPtr<AtomSetPref> domains;
   if (!domains) {
-    domains = AtomSetPref::Create(kRestrictedDomainPref);
+    domains = AtomSetPref::Create(nsLiteralCString(kRestrictedDomainPref));
     ClearOnShutdown(&domains);
   }
 
@@ -402,7 +485,7 @@ WebExtensionPolicy::Localize(const nsAString& aInput, nsString& aOutput) const
 JSObject*
 WebExtensionPolicy::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
 {
-  return WebExtensionPolicyBinding::Wrap(aCx, this, aGivenProto);
+  return WebExtensionPolicy_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -428,8 +511,21 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(WebExtensionPolicy)
 
 
 /*****************************************************************************
- * WebExtensionContentScript
+ * WebExtensionContentScript / MozDocumentMatcher
  *****************************************************************************/
+
+/* static */ already_AddRefed<MozDocumentMatcher>
+MozDocumentMatcher::Constructor(GlobalObject& aGlobal,
+                                const dom::MozDocumentMatcherInit& aInit,
+                                ErrorResult& aRv)
+{
+  RefPtr<MozDocumentMatcher> matcher = new MozDocumentMatcher(aGlobal, aInit,
+                                                              false, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+  return matcher.forget();
+}
 
 /* static */ already_AddRefed<WebExtensionContentScript>
 WebExtensionContentScript::Constructor(GlobalObject& aGlobal,
@@ -437,39 +533,71 @@ WebExtensionContentScript::Constructor(GlobalObject& aGlobal,
                                        const ContentScriptInit& aInit,
                                        ErrorResult& aRv)
 {
-  RefPtr<WebExtensionContentScript> script = new WebExtensionContentScript(aExtension, aInit, aRv);
+  RefPtr<WebExtensionContentScript> script = new WebExtensionContentScript(
+      aGlobal, aExtension, aInit, aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
   return script.forget();
 }
 
-WebExtensionContentScript::WebExtensionContentScript(WebExtensionPolicy& aExtension,
-                                                     const ContentScriptInit& aInit,
-                                                     ErrorResult& aRv)
-  : mExtension(&aExtension)
-  , mHasActiveTabPermission(aInit.mHasActiveTabPermission)
-  , mRestricted(!aExtension.HasPermission(nsGkAtoms::mozillaAddons))
-  , mMatches(aInit.mMatches)
-  , mExcludeMatches(aInit.mExcludeMatches)
-  , mCssPaths(aInit.mCssPaths)
-  , mJsPaths(aInit.mJsPaths)
-  , mRunAt(aInit.mRunAt)
+MozDocumentMatcher::MozDocumentMatcher(GlobalObject& aGlobal,
+                                       const dom::MozDocumentMatcherInit& aInit,
+                                       bool aRestricted,
+                                       ErrorResult& aRv)
+  : mHasActiveTabPermission(aInit.mHasActiveTabPermission)
+  , mRestricted(aRestricted)
   , mAllFrames(aInit.mAllFrames)
   , mFrameID(aInit.mFrameID)
   , mMatchAboutBlank(aInit.mMatchAboutBlank)
 {
+  MatchPatternOptions options;
+  options.mRestrictSchemes = mRestricted;
+
+  mMatches = ParseMatches(aGlobal, aInit.mMatches, options,
+                          ErrorBehavior::CreateEmptyPattern, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+
+  if (!aInit.mExcludeMatches.IsNull()) {
+    mExcludeMatches = ParseMatches(aGlobal, aInit.mExcludeMatches.Value(),
+                                   options, ErrorBehavior::CreateEmptyPattern,
+                                   aRv);
+    if (aRv.Failed()) {
+      return;
+    }
+  }
+
   if (!aInit.mIncludeGlobs.IsNull()) {
-    mIncludeGlobs.SetValue().AppendElements(aInit.mIncludeGlobs.Value());
+    if (!ParseGlobs(aGlobal, aInit.mIncludeGlobs.Value(), mIncludeGlobs.SetValue(),
+                    aRv)) {
+      return;
+    }
   }
 
   if (!aInit.mExcludeGlobs.IsNull()) {
-    mExcludeGlobs.SetValue().AppendElements(aInit.mExcludeGlobs.Value());
+    if (!ParseGlobs(aGlobal, aInit.mExcludeGlobs.Value(), mExcludeGlobs.SetValue(),
+                    aRv)) {
+      return;
+    }
   }
 }
 
+WebExtensionContentScript::WebExtensionContentScript(GlobalObject& aGlobal,
+                                                     WebExtensionPolicy& aExtension,
+                                                     const ContentScriptInit& aInit,
+                                                     ErrorResult& aRv)
+  : MozDocumentMatcher(aGlobal, aInit, !aExtension.HasPermission(nsGkAtoms::mozillaAddons), aRv)
+  , mCssPaths(aInit.mCssPaths)
+  , mJsPaths(aInit.mJsPaths)
+  , mRunAt(aInit.mRunAt)
+{
+  mExtension = &aExtension;
+}
+
 bool
-WebExtensionContentScript::Matches(const DocInfo& aDoc) const
+MozDocumentMatcher::Matches(const DocInfo& aDoc) const
 {
   if (!mFrameID.IsNull()) {
     if (aDoc.FrameID() != mFrameID.Value()) {
@@ -508,7 +636,7 @@ WebExtensionContentScript::Matches(const DocInfo& aDoc) const
 }
 
 bool
-WebExtensionContentScript::MatchesURI(const URLInfo& aURL) const
+MozDocumentMatcher::MatchesURI(const URLInfo& aURL) const
 {
   if (!mMatches->Matches(aURL)) {
     return false;
@@ -535,25 +663,99 @@ WebExtensionContentScript::MatchesURI(const URLInfo& aURL) const
 
 
 JSObject*
+MozDocumentMatcher::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
+{
+  return MozDocumentMatcher_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+JSObject*
 WebExtensionContentScript::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
 {
-  return WebExtensionContentScriptBinding::Wrap(aCx, this, aGivenProto);
+  return WebExtensionContentScript_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WebExtensionContentScript,
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(MozDocumentMatcher,
                                       mMatches, mExcludeMatches,
                                       mIncludeGlobs, mExcludeGlobs,
                                       mExtension)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WebExtensionContentScript)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MozDocumentMatcher)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-NS_IMPL_CYCLE_COLLECTING_ADDREF(WebExtensionContentScript)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(WebExtensionContentScript)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(MozDocumentMatcher)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(MozDocumentMatcher)
 
+/*****************************************************************************
+ * MozDocumentObserver
+ *****************************************************************************/
+
+/* static */ already_AddRefed<DocumentObserver>
+DocumentObserver::Constructor(GlobalObject& aGlobal,
+                              dom::MozDocumentCallback& aCallbacks,
+                              ErrorResult& aRv)
+{
+  RefPtr<DocumentObserver> matcher = new DocumentObserver(aGlobal.GetAsSupports(), aCallbacks);
+  return matcher.forget();
+}
+
+
+void
+DocumentObserver::Observe(const dom::Sequence<OwningNonNull<MozDocumentMatcher>>& matchers, ErrorResult& aRv)
+{
+  if (!EPS().RegisterObserver(*this)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return;
+  }
+  mMatchers.Clear();
+  for (auto& matcher : matchers) {
+    if (!mMatchers.AppendElement(matcher, fallible)) {
+      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+      return;
+    }
+  }
+}
+
+void
+DocumentObserver::Disconnect()
+{
+  Unused << EPS().UnregisterObserver(*this);
+}
+
+
+void
+DocumentObserver::NotifyMatch(MozDocumentMatcher& aMatcher, nsPIDOMWindowOuter* aWindow)
+{
+  IgnoredErrorResult rv;
+  mCallbacks->OnNewDocument(aMatcher, aWindow, rv);
+}
+
+void
+DocumentObserver::NotifyMatch(MozDocumentMatcher& aMatcher, nsILoadInfo* aLoadInfo)
+{
+  IgnoredErrorResult rv;
+  mCallbacks->OnPreloadDocument(aMatcher, aLoadInfo, rv);
+}
+
+
+JSObject*
+DocumentObserver::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
+{
+  return MozDocumentObserver_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(DocumentObserver, mCallbacks, mMatchers, mParent)
+
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(DocumentObserver)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
+NS_INTERFACE_MAP_END
+
+NS_IMPL_CYCLE_COLLECTING_ADDREF(DocumentObserver)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(DocumentObserver)
 
 /*****************************************************************************
  * DocInfo

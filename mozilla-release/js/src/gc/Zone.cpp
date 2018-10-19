@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "gc/Zone.h"
+#include "gc/Zone-inl.h"
 
 #include "gc/FreeOp.h"
 #include "gc/Policy.h"
@@ -33,7 +33,8 @@ JS::Zone::Zone(JSRuntime* rt)
     debuggers(this, nullptr),
     uniqueIds_(this),
     suppressAllocationMetadataBuilder(this, false),
-    arenas(rt, this),
+    arenas(this),
+    tenuredAllocsSinceMinorGC_(0),
     types(this),
     gcWeakMapList_(this),
     compartments_(),
@@ -42,7 +43,6 @@ JS::Zone::Zone(JSRuntime* rt)
     weakCaches_(this),
     gcWeakKeys_(this, SystemAllocPolicy(), rt->randomHashCodeScrambler()),
     typeDescrObjects_(this, this),
-    regExps(this),
     markedAtoms_(this),
     atomCache_(this),
     externalStringCache_(this),
@@ -96,7 +96,7 @@ Zone::~Zone()
     // if the embedding leaked GC things.
     if (!rt->gc.shutdownCollectedEverything()) {
         gcWeakMapList().clear();
-        regExps.clear();
+        regExps().clear();
     }
 #endif
 }
@@ -105,13 +105,8 @@ bool
 Zone::init(bool isSystemArg)
 {
     isSystem = isSystemArg;
-    return uniqueIds().init() &&
-           gcSweepGroupEdges().init() &&
-           gcWeakKeys().init() &&
-           typeDescrObjects().init() &&
-           markedAtoms().init() &&
-           atomCache().init() &&
-           regExps.init();
+    regExps_.ref() = make_unique<RegExpZone>(this);
+    return regExps_.ref() && gcWeakKeys().init();
 }
 
 void
@@ -288,7 +283,7 @@ Zone::createJitZone(JSContext* cx)
         return nullptr;
 
     UniquePtr<jit::JitZone> jitZone(cx->new_<js::jit::JitZone>());
-    if (!jitZone || !jitZone->init(cx))
+    if (!jitZone)
         return nullptr;
 
     jitZone_ = jitZone.release();
@@ -362,12 +357,10 @@ Zone::nextZone() const
 void
 Zone::clearTables()
 {
-    MOZ_ASSERT(regExps.empty());
+    MOZ_ASSERT(regExps().empty());
 
-    if (baseShapes().initialized())
-        baseShapes().clear();
-    if (initialShapes().initialized())
-        initialShapes().clear();
+    baseShapes().clear();
+    initialShapes().clear();
 }
 
 void
@@ -453,7 +446,7 @@ Zone::purgeAtomCache()
     MOZ_ASSERT(!hasKeptAtoms());
     MOZ_ASSERT(!purgeAtomsDeferred);
 
-    atomCache().clearAndShrink();
+    atomCache().clearAndCompact();
 
     // Also purge the dtoa caches so that subsequent lookups populate atom
     // cache too.
@@ -470,6 +463,41 @@ Zone::traceAtomCache(JSTracer* trc)
         TraceRoot(trc, &atom, "kept atom");
         MOZ_ASSERT(r.front().asPtrUnbarriered() == atom);
     }
+}
+
+void*
+Zone::onOutOfMemory(js::AllocFunction allocFunc, size_t nbytes, void* reallocPtr)
+{
+    if (!js::CurrentThreadCanAccessRuntime(runtime_))
+        return nullptr;
+    return runtimeFromMainThread()->onOutOfMemory(allocFunc, nbytes, reallocPtr);
+}
+
+void
+Zone::reportAllocationOverflow()
+{
+    js::ReportAllocationOverflow(nullptr);
+}
+
+void
+JS::Zone::maybeTriggerGCForTooMuchMalloc(js::gc::MemoryCounter& counter, TriggerKind trigger)
+{
+    JSRuntime* rt = runtimeFromAnyThread();
+
+    if (!js::CurrentThreadCanAccessRuntime(rt))
+        return;
+
+    bool wouldInterruptGC = rt->gc.isIncrementalGCInProgress() && !isCollecting();
+    if (wouldInterruptGC && !counter.shouldResetIncrementalGC(rt->gc.tunables))
+        return;
+
+    if (!rt->gc.triggerZoneGC(this, JS::gcreason::TOO_MUCH_MALLOC,
+                              counter.bytes(), counter.maxBytes()))
+    {
+        return;
+    }
+
+    counter.recordTrigger(trigger);
 }
 
 ZoneList::ZoneList()

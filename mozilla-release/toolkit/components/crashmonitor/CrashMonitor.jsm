@@ -36,7 +36,6 @@ var EXPORTED_SYMBOLS = [ "CrashMonitor" ];
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
-ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
 const NOTIFICATIONS = [
   "final-ui-startup",
@@ -46,7 +45,7 @@ const NOTIFICATIONS = [
   "profile-change-net-teardown",
   "profile-change-teardown",
   "profile-before-change",
-  "sessionstore-final-state-write-complete"
+  "sessionstore-final-state-write-complete",
 ];
 
 var CrashMonitorInternal = {
@@ -123,7 +122,7 @@ var CrashMonitorInternal = {
     })();
 
     return this.previousCheckpoints;
-  }
+  },
 };
 
 var CrashMonitor = {
@@ -215,6 +214,6 @@ var CrashMonitor = {
         Services.obs.removeObserver(this, aTopic);
       }, this);
     }
-  }
+  },
 };
 Object.freeze(this.CrashMonitor);

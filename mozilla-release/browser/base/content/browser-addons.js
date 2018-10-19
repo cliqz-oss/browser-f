@@ -27,7 +27,7 @@ function removeNotificationOnEnd(notification, installs) {
       onDownloadCancelled: maybeRemove,
       onDownloadFailed: maybeRemove,
       onInstallFailed: maybeRemove,
-      onInstallEnded: maybeRemove
+      onInstallEnded: maybeRemove,
     });
   }
 }
@@ -134,15 +134,15 @@ var gXPInstallObserver = {
             addonList.firstChild.remove();
 
           for (let install of installInfo.installs) {
-            let container = document.createElement("hbox");
+            let container = document.createXULElement("hbox");
 
-            let name = document.createElement("label");
+            let name = document.createXULElement("label");
             name.setAttribute("value", install.addon.name);
             name.setAttribute("class", "addon-install-confirmation-name");
             container.appendChild(name);
 
             if (someUnsigned && install.addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
-              let unsignedLabel = document.createElement("label");
+              let unsignedLabel = document.createXULElement("label");
               unsignedLabel.setAttribute("value",
                 gNavigatorBundle.getString("addonInstall.unsigned"));
               unsignedLabel.setAttribute("class",
@@ -254,7 +254,7 @@ var gXPInstallObserver = {
           accessKey: gNavigatorBundle.getString("xpinstallDisabledButton.accesskey"),
           callback: function editPrefs() {
             Services.prefs.setBoolPref("xpinstall.enabled", true);
-          }
+          },
         };
 
         secondaryActions = [{
@@ -292,7 +292,7 @@ var gXPInstallObserver = {
         callback() {
           secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_ADDON_ASKING_PREVENTED_CLICK_THROUGH);
           installInfo.install();
-        }
+        },
       };
       let secondaryAction = {
         label: gNavigatorBundle.getString("xpinstallPromptMessage.dontAllow"),
@@ -324,7 +324,7 @@ var gXPInstallObserver = {
       options.eventCallback = function(aEvent) {
         switch (aEvent) {
           case "shown":
-            let notificationElement = [...this.owner.panel.childNodes]
+            let notificationElement = [...this.owner.panel.children]
                                       .find(n => n.notification == this);
             if (notificationElement) {
               if (Services.prefs.getBoolPref("xpinstall.customConfirmationUI", false)) {
@@ -461,7 +461,7 @@ var gXPInstallObserver = {
     let notification = PopupNotifications.getNotification("addon-progress", aBrowser);
     if (notification)
       notification.remove();
-  }
+  },
 };
 
 var gExtensionsNotifications = {
@@ -483,7 +483,7 @@ var gExtensionsNotifications = {
   },
 
   _createAddonButton(text, icon, callback) {
-    let button = document.createElement("toolbarbutton");
+    let button = document.createXULElement("toolbarbutton");
     button.setAttribute("label", text);
     button.setAttribute("tooltiptext", text);
     const DEFAULT_EXTENSION_ICON =
@@ -619,7 +619,7 @@ var LightWeightThemeWebInstaller = {
       acceptKey: gNavigatorBundle.getString("lwthemeInstallRequest.allowButton.accesskey2"),
       cancelText: gNavigatorBundle.getString("webextPerms.cancel.label"),
       cancelKey: gNavigatorBundle.getString("webextPerms.cancel.accessKey"),
-      msgs: []
+      msgs: [],
     };
     ExtensionsUI.showPermissionsPrompt(gBrowser.selectedBrowser, strings, null,
       "installWeb").then(answer => {
@@ -635,7 +635,7 @@ var LightWeightThemeWebInstaller = {
         if (notify) {
           ExtensionsUI.showInstallNotification(gBrowser.selectedBrowser, newLWTheme);
         }
-      }
+      },
     };
 
     AddonManager.addAddonListener(listener);

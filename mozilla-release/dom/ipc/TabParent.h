@@ -283,8 +283,6 @@ public:
   virtual mozilla::ipc::IPCResult RecvSetStatus(const uint32_t& aType,
                                                 const nsString& aStatus) override;
 
-  virtual mozilla::ipc::IPCResult RecvIsParentWindowMainWidgetVisible(bool* aIsVisible) override;
-
   virtual mozilla::ipc::IPCResult RecvShowTooltip(const uint32_t& aX,
                                                   const uint32_t& aY,
                                                   const nsString& aTooltip,
@@ -418,6 +416,11 @@ public:
 
   virtual mozilla::ipc::IPCResult
   RecvClearNativeTouchSequence(const uint64_t& aObserverId) override;
+
+  virtual mozilla::ipc::IPCResult
+  RecvSetPrefersReducedMotionOverrideForTest(const bool& aValue) override;
+  virtual mozilla::ipc::IPCResult
+  RecvResetPrefersReducedMotionOverrideForTest() override;
 
   void SendMouseEvent(const nsAString& aType, float aX, float aY,
                       int32_t aButton, int32_t aClickCount,
@@ -560,7 +563,7 @@ public:
   bool SendLoadRemoteScript(const nsString& aURL,
                             const bool& aRunInGlobalScope);
 
-  void LayerTreeUpdate(uint64_t aEpoch, bool aActive);
+  void LayerTreeUpdate(const LayersObserverEpoch& aEpoch, bool aActive);
 
   virtual mozilla::ipc::IPCResult
   RecvInvokeDragSession(nsTArray<IPCDataTransfer>&& aTransfers,
@@ -591,6 +594,10 @@ public:
   void SetReadyToHandleInputEvents() { mIsReadyToHandleInputEvents = true; }
   bool IsReadyToHandleInputEvents() { return mIsReadyToHandleInputEvents; }
 
+  static bool AreRecordReplayTabsActive() {
+    return gNumActiveRecordReplayTabs != 0;
+  }
+
 protected:
   bool ReceiveMessage(const nsString& aMessage,
                       bool aSync,
@@ -618,21 +625,24 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvRemoteIsReadyToHandleInputEvents() override;
 
-  virtual mozilla::ipc::IPCResult RecvPaintWhileInterruptingJSNoOp(const uint64_t& aLayerObserverEpoch) override;
+  virtual mozilla::ipc::IPCResult RecvPaintWhileInterruptingJSNoOp(const LayersObserverEpoch& aEpoch) override;
 
   virtual mozilla::ipc::IPCResult RecvSetDimensions(const uint32_t& aFlags,
                                                     const int32_t& aX, const int32_t& aY,
                                                     const int32_t& aCx, const int32_t& aCy) override;
 
-  virtual mozilla::ipc::IPCResult RecvGetTabCount(uint32_t* aValue) override;
-
   virtual mozilla::ipc::IPCResult RecvShowCanvasPermissionPrompt(const nsCString& aFirstPartyURI) override;
+
+  mozilla::ipc::IPCResult
+  RecvSetSystemFont(const nsCString& aFontName) override;
+  mozilla::ipc::IPCResult
+  RecvGetSystemFont(nsCString* aFontName) override;
 
   ContentCacheInParent mContentCache;
 
   nsIntRect mRect;
   ScreenIntSize mDimensions;
-  ScreenOrientationInternal mOrientation;
+  hal::ScreenOrientation mOrientation;
   float mDPI;
   int32_t mRounding;
   CSSToLayoutDeviceScale mDefaultScale;
@@ -757,7 +767,7 @@ private:
 
   static void RemoveTabParentFromTable(layers::LayersId aLayersId);
 
-  uint64_t mLayerTreeEpoch;
+  LayersObserverEpoch mLayerTreeEpoch;
 
   // If this flag is set, then the tab's layers will be preserved even when
   // the tab's docshell is inactive.
@@ -787,6 +797,15 @@ private:
   // not ready to handle it. We will resend it when the next time we fire a
   // mouse event and the TabChild is ready.
   bool mIsMouseEnterIntoWidgetEventSuppressed;
+
+  // How many record/replay tabs have active docshells in this process.
+  static size_t gNumActiveRecordReplayTabs;
+
+  // Whether this tab is contributing to gNumActiveRecordReplayTabs.
+  bool mIsActiveRecordReplayTab;
+
+  // Update whether this is an active record/replay tab.
+  void SetIsActiveRecordReplayTab(bool aIsActive);
 
 public:
   static TabParent* GetTabParentFromLayersId(layers::LayersId aLayersId);

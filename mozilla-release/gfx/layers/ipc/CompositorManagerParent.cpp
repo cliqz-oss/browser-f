@@ -26,7 +26,7 @@ StaticAutoPtr<nsTArray<CompositorManagerParent*>> CompositorManagerParent::sActi
 /* static */ already_AddRefed<CompositorManagerParent>
 CompositorManagerParent::CreateSameProcess()
 {
-  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(XRE_IsParentProcess() || recordreplay::IsRecordingOrReplaying());
   MOZ_ASSERT(NS_IsMainThread());
   StaticMutexAutoLock lock(sMutex);
 
@@ -71,7 +71,7 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(CSSToLayoutDevi
                                                                  bool aUseExternalSurfaceSize,
                                                                  const gfx::IntSize& aSurfaceSize)
 {
-  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(XRE_IsParentProcess() || recordreplay::IsRecordingOrReplaying());
   MOZ_ASSERT(NS_IsMainThread());
 
   // When we are in a combined UI / GPU process, InProcessCompositorSession
@@ -285,6 +285,17 @@ mozilla::ipc::IPCResult
 CompositorManagerParent::RecvRemoveSharedSurface(const wr::ExternalImageId& aId)
 {
   SharedSurfacesParent::Remove(aId);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+CompositorManagerParent::RecvNotifyMemoryPressure()
+{
+  nsTArray<PCompositorBridgeParent*> compositorBridges;
+  ManagedPCompositorBridgeParent(compositorBridges);
+  for (auto bridge : compositorBridges) {
+    static_cast<CompositorBridgeParentBase*>(bridge)->NotifyMemoryPressure();
+  }
   return IPC_OK();
 }
 

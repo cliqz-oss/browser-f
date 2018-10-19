@@ -14,6 +14,10 @@ def test_null_response_value(session):
     value = assert_success(response)
     assert value is None
 
+    # Need an explicit call to session.end() to notify the test harness
+    # that a new session needs to be created for subsequent tests.
+    session.end()
+
 
 def test_dismissed_beforeunload_prompt(session):
     session.url = inline("""
@@ -31,5 +35,9 @@ def test_dismissed_beforeunload_prompt(session):
     assert_success(response)
 
     # A beforeunload prompt has to be automatically dismissed, and the session deleted
-    with pytest.raises(error.SessionNotCreatedException):
+    with pytest.raises(error.InvalidSessionIdException):
         session.alert.text
+
+    # Need an explicit call to session.end() to notify the test harness
+    # that a new session needs to be created for subsequent tests.
+    session.end()
