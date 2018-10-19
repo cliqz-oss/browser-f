@@ -189,7 +189,7 @@ nsIURI*
 URLInfo::URINoRef() const
 {
   if (!mURINoRef) {
-    if (NS_FAILED(mURI->CloneIgnoringRef(getter_AddRefs(mURINoRef)))) {
+    if (NS_FAILED(NS_GetURIWithoutRef(mURI, getter_AddRefs(mURINoRef)))) {
       mURINoRef = mURI;
     }
   }
@@ -265,6 +265,9 @@ CookieInfo::RawHost() const
 
 const char* PERMITTED_SCHEMES[] = {"http", "https", "ws", "wss", "file", "ftp", "data", nullptr};
 
+// Known schemes that are followed by "://" instead of ":".
+const char* HOST_LOCATOR_SCHEMES[] = {"http", "https", "ws", "wss", "file", "ftp", "moz-extension", "chrome", "resource", "moz", "moz-icon", "moz-gio", nullptr};
+
 const char* WILDCARD_SCHEMES[] = {"http", "https", "ws", "wss", nullptr};
 
 /* static */ already_AddRefed<MatchPattern>
@@ -310,12 +313,15 @@ MatchPattern::Init(JSContext* aCx, const nsAString& aPattern, bool aIgnorePath,
   }
 
   RefPtr<nsAtom> scheme = NS_AtomizeMainThread(StringHead(aPattern, index));
+  bool requireHostLocatorScheme = true;
   if (scheme == nsGkAtoms::_asterisk) {
     mSchemes = AtomSet::Get<WILDCARD_SCHEMES>();
   } else if (!aRestrictSchemes ||
              permittedSchemes->Contains(scheme) ||
              scheme == nsGkAtoms::moz_extension) {
     mSchemes = new AtomSet({scheme});
+    RefPtr<AtomSet> hostLocatorSchemes = AtomSet::Get<HOST_LOCATOR_SCHEMES>();
+    requireHostLocatorScheme = hostLocatorSchemes->Contains(scheme);
   } else {
     aRv.Throw(NS_ERROR_INVALID_ARG);
     return;
@@ -327,11 +333,10 @@ MatchPattern::Init(JSContext* aCx, const nsAString& aPattern, bool aIgnorePath,
   offset = index + 1;
   tail.Rebind(aPattern, offset);
 
-  if (scheme == nsGkAtoms::about) {
-    // about: URIs don't have hosts, so just treat the host as a wildcard and
-    // match on the path.
-    mMatchSubdomain = true;
-    // And so, ignorePath doesn't make sense for about: matchers.
+  if (!requireHostLocatorScheme) {
+    // Unrecognized schemes and some schemes such as about: and data: URIs
+    // don't have hosts, so just match on the path.
+    // And so, ignorePath doesn't make sense for these matchers.
     aIgnorePath = false;
   } else {
     if (!StringHead(tail, 2).EqualsLiteral("//")) {
@@ -427,7 +432,7 @@ MatchPattern::Matches(const URLInfo& aURL, bool aExplicit) const
     return false;
   }
 
-  if (!DomainIsWildcard() && !MatchesDomain(aURL.Host())) {
+  if (!MatchesDomain(aURL.Host())) {
     return false;
   }
 
@@ -504,7 +509,7 @@ MatchPattern::Overlaps(const MatchPattern& aPattern) const
 JSObject*
 MatchPattern::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
 {
-  return MatchPatternBinding::Wrap(aCx, this, aGivenProto);
+  return MatchPattern_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 /* static */ bool
@@ -641,7 +646,7 @@ MatchPatternSet::OverlapsAll(const MatchPatternSet& aPatternSet) const
 JSObject*
 MatchPatternSet::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
 {
-  return MatchPatternSetBinding::Wrap(aCx, this, aGivenProto);
+  return MatchPatternSet_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 
@@ -767,7 +772,7 @@ MatchGlob::Matches(const nsAString& aString) const
 JSObject*
 MatchGlob::WrapObject(JSContext* aCx, JS::HandleObject aGivenProto)
 {
-  return MatchGlobBinding::Wrap(aCx, this, aGivenProto);
+  return MatchGlob_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 

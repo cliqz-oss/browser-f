@@ -6,7 +6,9 @@
 
 const {
   CLEAR_FLEXBOX,
+  TOGGLE_FLEX_ITEM_SHOWN,
   UPDATE_FLEXBOX,
+  UPDATE_FLEXBOX_COLOR,
   UPDATE_FLEXBOX_HIGHLIGHTED,
 } = require("./index");
 
@@ -22,12 +24,40 @@ module.exports = {
   },
 
   /**
+   * Toggles the display of flex item sizing information shown for the given flex item
+   * actor ID.
+   *
+   * @param  {NodeFront} nodeFront
+   *         The NodeFront of the flex item to toggle the sizing information displayed
+   *         for.
+   */
+  toggleFlexItemShown(nodeFront) {
+    return {
+      type: TOGGLE_FLEX_ITEM_SHOWN,
+      nodeFront,
+    };
+  },
+
+  /**
    * Updates the flexbox state with the newly selected flexbox.
    */
   updateFlexbox(flexbox) {
     return {
       type: UPDATE_FLEXBOX,
       flexbox,
+    };
+  },
+
+  /**
+   * Updates the color used for the flexbox's highlighter.
+   *
+   * @param  {String} color
+   *         The color to use for this nodeFront's flexbox highlighter.
+   */
+  updateFlexboxColor(color) {
+    return {
+      type: UPDATE_FLEXBOX_COLOR,
+      color,
     };
   },
 

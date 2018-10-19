@@ -35,7 +35,6 @@ class BrowserWindow(BaseWindow):
 
     properties = [
         'chrome://branding/locale/brand.properties',
-        'chrome://branding/locale/browserconfig.properties',
         'chrome://browser/locale/browser.properties',
         'chrome://browser/locale/preferences/preferences.properties',
         'chrome://global/locale/browser.properties',
@@ -53,8 +52,7 @@ class BrowserWindow(BaseWindow):
 
         :returns: The default homepage for the current locale.
         """
-        return self.marionette.get_pref('browser.startup.homepage',
-                                        value_type='nsIPrefLocalizedString')
+        return self.marionette.get_pref('browser.startup.homepage')
 
     @property
     def is_private(self):
@@ -246,7 +244,7 @@ class BrowserWindow(BaseWindow):
             elif trigger == 'menu':
                 self.menubar.select_by_id('tools-menu', 'menu_pageInfo')
             elif trigger == 'shortcut':
-                if win.marionette.session_capabilities['platformName'] == 'windows_nt':
+                if win.marionette.session_capabilities['platformName'] == 'windows':
                     raise ValueError('Page info shortcut not available on Windows.')
                 win.send_shortcut(win.localize_entity('pageInfoCmd.commandkey'),
                                   accel=True)

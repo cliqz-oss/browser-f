@@ -119,12 +119,15 @@ ScriptLoadHandler::DecodeRawData(const uint8_t* aData,
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  uint32_t haveRead = mRequest->ScriptText().length();
+  // Reference to the script source buffer which we will update.
+  ScriptLoadRequest::ScriptTextBuffer& scriptText = mRequest->ScriptText();
+
+  uint32_t haveRead = scriptText.length();
 
   CheckedInt<uint32_t> capacity = haveRead;
   capacity += needed.value();
 
-  if (!capacity.isValid() || !mRequest->ScriptText().reserve(capacity.value())) {
+  if (!capacity.isValid() || !scriptText.resize(capacity.value())) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -134,7 +137,7 @@ ScriptLoadHandler::DecodeRawData(const uint8_t* aData,
   bool hadErrors;
   Tie(result, read, written, hadErrors) = mDecoder->DecodeToUTF16(
     MakeSpan(aData, aDataLength),
-    MakeSpan(mRequest->ScriptText().begin() + haveRead, needed.value()),
+    MakeSpan(scriptText.begin() + haveRead, needed.value()),
     aEndOfStream);
   MOZ_ASSERT(result == kInputEmpty);
   MOZ_ASSERT(read == aDataLength);
@@ -143,7 +146,8 @@ ScriptLoadHandler::DecodeRawData(const uint8_t* aData,
 
   haveRead += written;
   MOZ_ASSERT(haveRead <= capacity.value(), "mDecoder produced more data than expected");
-  MOZ_ALWAYS_TRUE(mRequest->ScriptText().resizeUninitialized(haveRead));
+  MOZ_ALWAYS_TRUE(scriptText.resize(haveRead));
+  mRequest->mScriptTextLength = scriptText.length();
 
   return NS_OK;
 }
@@ -219,7 +223,7 @@ ScriptLoadHandler::EnsureDecoder(nsIIncrementalStreamLoader* aLoader,
   // request.
   nsAutoString hintCharset;
   if (!mRequest->IsPreload()) {
-    mRequest->mElement->GetScriptCharset(hintCharset);
+    mRequest->Element()->GetScriptCharset(hintCharset);
   } else {
     nsTArray<ScriptLoader::PreloadInfo>::index_type i =
       mScriptLoader->mPreloads.IndexOf(mRequest, 0,
@@ -297,7 +301,7 @@ ScriptLoadHandler::EnsureKnownDataType(nsIIncrementalStreamLoader* aLoader)
       if (mimeType.LowerCaseEqualsASCII(APPLICATION_JAVASCRIPT_BINAST)) {
         if (mRequest->ShouldAcceptBinASTEncoding()) {
           mRequest->SetBinASTSource();
-          TRACE_FOR_TEST(mRequest->mElement, "scriptloader_load_source");
+          TRACE_FOR_TEST(mRequest->Element(), "scriptloader_load_source");
           return NS_OK;
         } else {
           return NS_ERROR_FAILURE;
@@ -308,7 +312,7 @@ ScriptLoadHandler::EnsureKnownDataType(nsIIncrementalStreamLoader* aLoader)
 
   if (mRequest->IsLoadingSource()) {
     mRequest->SetTextSource();
-    TRACE_FOR_TEST(mRequest->mElement, "scriptloader_load_source");
+    TRACE_FOR_TEST(mRequest->Element(), "scriptloader_load_source");
     return NS_OK;
   }
 
@@ -318,15 +322,15 @@ ScriptLoadHandler::EnsureKnownDataType(nsIIncrementalStreamLoader* aLoader)
     cic->GetAlternativeDataType(altDataType);
     if (altDataType.Equals(nsContentUtils::JSBytecodeMimeType())) {
       mRequest->SetBytecode();
-      TRACE_FOR_TEST(mRequest->mElement, "scriptloader_load_bytecode");
+      TRACE_FOR_TEST(mRequest->Element(), "scriptloader_load_bytecode");
     } else {
       MOZ_ASSERT(altDataType.IsEmpty());
       mRequest->SetTextSource();
-      TRACE_FOR_TEST(mRequest->mElement, "scriptloader_load_source");
+      TRACE_FOR_TEST(mRequest->Element(), "scriptloader_load_source");
     }
   } else {
     mRequest->SetTextSource();
-    TRACE_FOR_TEST(mRequest->mElement, "scriptloader_load_source");
+    TRACE_FOR_TEST(mRequest->Element(), "scriptloader_load_source");
   }
 
   MOZ_ASSERT(!mRequest->IsUnknownDataType());

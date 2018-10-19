@@ -15,9 +15,11 @@ namespace mozilla {
 namespace dom {
 
 CSSImportRule::CSSImportRule(RefPtr<RawServoImportRule> aRawRule,
+                             StyleSheet* aSheet,
+                             css::Rule* aParentRule,
                              uint32_t aLine,
                              uint32_t aColumn)
-  : Rule(aLine, aColumn)
+  : css::Rule(aSheet, aParentRule, aLine, aColumn)
   , mRawRule(std::move(aRawRule))
 {
   const auto* sheet = Servo_ImportRule_GetSheet(mRawRule.get());
@@ -112,7 +114,7 @@ CSSImportRule::IsCCLeaf() const
 CSSImportRule::WrapObject(JSContext* aCx,
                           JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSImportRuleBinding::Wrap(aCx, this, aGivenProto);
+  return CSSImportRule_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

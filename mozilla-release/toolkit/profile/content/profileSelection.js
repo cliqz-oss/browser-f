@@ -31,16 +31,12 @@ function startup() {
 
     var profilesElement = document.getElementById("profiles");
 
-    var profileList = gProfileService.profiles;
-    while (profileList.hasMoreElements()) {
-      var profile = profileList.getNext().QueryInterface(I.nsIToolkitProfile);
-
+    for (let profile of gProfileService.profiles.entries(I.nsIToolkitProfile)) {
       var listitem = profilesElement.appendItem(profile.name, "");
 
       var tooltiptext =
         gProfileManagerBundle.getFormattedString("profileTooltip", [profile.name, profile.rootDir.path]);
       listitem.setAttribute("tooltiptext", tooltiptext);
-      listitem.setAttribute("class", "listitem-iconic");
       listitem.profile = profile;
       try {
         if (profile === gProfileService.selectedProfile) {
@@ -138,7 +134,7 @@ function onProfilesKey(aEvent) {
 }
 
 function onProfilesDblClick(aEvent) {
-  if (aEvent.target.localName == "listitem")
+  if (aEvent.target.closest("richlistitem"))
     document.documentElement.acceptDialog();
 }
 
@@ -159,7 +155,6 @@ function CreateProfile(aProfile) {
   var tooltiptext =
     gProfileManagerBundle.getFormattedString("profileTooltip", [aProfile.name, aProfile.rootDir.path]);
   listitem.setAttribute("tooltiptext", tooltiptext);
-  listitem.setAttribute("class", "listitem-iconic");
   listitem.profile = aProfile;
 
   profilesElement.ensureElementIsVisible(listitem);
@@ -199,7 +194,7 @@ function RenameProfile() {
       return false;
     }
 
-    selectedItem.label = newName;
+    selectedItem.firstChild.setAttribute("value", newName);
     var tiptext = gProfileManagerBundle.
                   getFormattedString("profileTooltip",
                                      [newName, selectedProfile.rootDir.path]);

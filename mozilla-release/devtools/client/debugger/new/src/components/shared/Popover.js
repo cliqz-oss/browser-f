@@ -22,10 +22,20 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 class Popover extends _react.Component {
-  constructor(props) {
-    super(props);
+  constructor(...args) {
+    var _temp;
 
-    this.calculateTopForRightOrientation = (target, editor, popover) => {
+    return _temp = super(...args), this.state = {
+      coords: {
+        left: 0,
+        top: 0,
+        orientation: "down",
+        targetMid: {
+          x: 0,
+          y: 0
+        }
+      }
+    }, this.calculateTopForRightOrientation = (target, editor, popover) => {
       if (popover.height < editor.height) {
         const rightOrientationTop = target.top - popover.height / 2;
 
@@ -43,9 +53,7 @@ class Popover extends _react.Component {
       }
 
       return 0;
-    };
-
-    this.calculateTop = (target, editor, popover, orientation) => {
+    }, this.calculateTop = (target, editor, popover, orientation) => {
       if (orientation === "down") {
         return target.bottom;
       }
@@ -55,48 +63,22 @@ class Popover extends _react.Component {
       }
 
       return this.calculateTopForRightOrientation(target, editor, popover);
-    };
-
-    this.onMouseLeave = e => {
-      const {
-        onMouseLeave
-      } = this.props;
-
-      if (/^(bracket-arrow|gap)$/.test(e.currentTarget.className)) {
-        return;
-      }
-
-      onMouseLeave(e);
-    };
-
-    this.state = {
-      left: 0,
-      top: 0,
-      targetMid: {
-        x: 0,
-        y: 0
-      },
-      orientation: "up"
-    };
+    }, _temp;
   }
 
   componentDidMount() {
     const {
       type
     } = this.props;
-    const {
-      left,
-      top,
-      orientation,
-      targetMid
-    } = type == "popover" ? this.getPopoverCoords() : this.getTooltipCoords(); // eslint-disable-next-line react/no-did-mount-set-state
+    const coords = type == "popover" ? this.getPopoverCoords() : this.getTooltipCoords();
 
-    this.setState({
-      left,
-      top,
-      orientation,
-      targetMid
-    });
+    if (coords) {
+      this.setState({
+        coords
+      });
+    }
+
+    this.props.onPopoverCoords(coords);
   }
 
   calculateLeft(target, editor, popover, orientation) {
@@ -133,72 +115,57 @@ class Popover extends _react.Component {
   }
 
   getPopoverCoords() {
-    if (this.$popover && this.props.editorRef) {
-      const popover = this.$popover;
-      const editor = this.props.editorRef;
-      const popoverRect = popover.getBoundingClientRect();
-      const editorRect = editor.getBoundingClientRect();
-      const targetRect = this.props.targetPosition;
-      const orientation = this.calculateOrientation(targetRect, editorRect, popoverRect);
-      const top = this.calculateTop(targetRect, editorRect, popoverRect, orientation);
-      const popoverLeft = this.calculateLeft(targetRect, editorRect, popoverRect, orientation);
-      let targetMid;
+    if (!this.$popover || !this.props.editorRef) {
+      return null;
+    }
 
-      if (orientation === "right") {
-        targetMid = {
-          x: -14,
-          y: targetRect.top - top - 2
-        };
-      } else {
-        targetMid = {
-          x: targetRect.left - popoverLeft + targetRect.width / 2 - 8,
-          y: 0
-        };
-      }
+    const popover = this.$popover;
+    const editor = this.props.editorRef;
+    const popoverRect = popover.getBoundingClientRect();
+    const editorRect = editor.getBoundingClientRect();
+    const targetRect = this.props.targetPosition;
+    const orientation = this.calculateOrientation(targetRect, editorRect, popoverRect);
+    const top = this.calculateTop(targetRect, editorRect, popoverRect, orientation);
+    const popoverLeft = this.calculateLeft(targetRect, editorRect, popoverRect, orientation);
+    let targetMid;
 
-      return {
-        left: popoverLeft,
-        top,
-        orientation,
-        targetMid
+    if (orientation === "right") {
+      targetMid = {
+        x: -14,
+        y: targetRect.top - top - 2
+      };
+    } else {
+      targetMid = {
+        x: targetRect.left - popoverLeft + targetRect.width / 2 - 8,
+        y: 0
       };
     }
 
     return {
-      left: 0,
-      top: 0,
-      orientation: "down",
-      targetMid: {
-        x: 0,
-        y: 0
-      }
+      left: popoverLeft,
+      top,
+      orientation,
+      targetMid
     };
   }
 
   getTooltipCoords() {
-    if (this.$tooltip && this.props.editorRef) {
-      const tooltip = this.$tooltip;
-      const editor = this.props.editorRef;
-      const tooltipRect = tooltip.getBoundingClientRect();
-      const editorRect = editor.getBoundingClientRect();
-      const targetRect = this.props.targetPosition;
-      const left = this.calculateLeft(targetRect, editorRect, tooltipRect);
-      const top = targetRect.top - tooltipRect.height;
-      return {
-        left,
-        top,
-        orientation: "up",
-        targetMid: {
-          x: 0,
-          y: 0
-        }
-      };
+    if (!this.$tooltip || !this.props.editorRef) {
+      return null;
     }
 
+    const tooltip = this.$tooltip;
+    const editor = this.props.editorRef;
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const editorRect = editor.getBoundingClientRect();
+    const targetRect = this.props.targetPosition;
+    const left = this.calculateLeft(targetRect, editorRect, tooltipRect);
+    const enoughRoomForTooltipAbove = targetRect.top - editorRect.top > tooltipRect.height;
+    const top = enoughRoomForTooltipAbove ? targetRect.top - tooltipRect.height : targetRect.bottom;
     return {
-      left: 0,
-      top: 0,
-      orientation: "up",
+      left,
+      top,
+      orientation: enoughRoomForTooltipAbove ? "up" : "down",
       targetMid: {
         x: 0,
         y: 0
@@ -212,7 +179,7 @@ class Popover extends _react.Component {
     } = this.props;
     const {
       orientation
-    } = this.state;
+    } = this.state.coords;
 
     const gap = _react2.default.createElement("div", {
       className: "gap",
@@ -254,13 +221,18 @@ class Popover extends _react.Component {
       left,
       orientation,
       targetMid
-    } = this.state;
+    } = this.state.coords;
+    const {
+      onMouseLeave,
+      onKeyDown
+    } = this.props;
     const arrow = this.getPopoverArrow(orientation, targetMid.x, targetMid.y);
     return _react2.default.createElement("div", {
       className: (0, _classnames2.default)("popover", `orientation-${orientation}`, {
         up: orientation === "up"
       }),
-      onMouseLeave: this.onMouseLeave,
+      onMouseLeave: onMouseLeave,
+      onKeyDown: onKeyDown,
       style: {
         top,
         left
@@ -271,15 +243,17 @@ class Popover extends _react.Component {
 
   renderTooltip() {
     const {
-      onMouseLeave
-    } = this.props;
-    const {
       top,
       left
-    } = this.state;
+    } = this.state.coords;
+    const {
+      onMouseLeave,
+      onKeyDown
+    } = this.props;
     return _react2.default.createElement("div", {
       className: "tooltip",
       onMouseLeave: onMouseLeave,
+      onKeyDown: onKeyDown,
       style: {
         top,
         left
@@ -304,6 +278,8 @@ class Popover extends _react.Component {
 
 Popover.defaultProps = {
   onMouseLeave: () => {},
+  onPopoverCoords: () => {},
+  onKeyDown: () => {},
   type: "popover"
 };
 exports.default = Popover;

@@ -17,8 +17,8 @@
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-ChromeUtils.defineModuleGetter(this, "ContentWebRTC",
-  "resource:///modules/ContentWebRTC.jsm");
+ChromeUtils.defineModuleGetter(this, "WebRTCChild",
+  "resource:///actors/WebRTCChild.jsm");
 
 var gEMEUIObserver = function(subject, topic, data) {
   let win = subject.top;
@@ -37,26 +37,14 @@ var gDecoderDoctorObserver = function(subject, topic, data) {
 };
 
 function getMessageManagerForWindow(aContentWindow) {
-  let ir = aContentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDocShell)
-                         .sameTypeRootTreeItem
-                         .QueryInterface(Ci.nsIInterfaceRequestor);
-  try {
-    // If e10s is disabled, this throws NS_NOINTERFACE for closed tabs.
-    return ir.getInterface(Ci.nsIContentFrameMessageManager);
-  } catch (e) {
-    if (e.result == Cr.NS_NOINTERFACE) {
-      return null;
-    }
-    throw e;
-  }
+  return aContentWindow.docShell.messageManager;
 }
 
 Services.obs.addObserver(gEMEUIObserver, "mediakeys-request");
 Services.obs.addObserver(gDecoderDoctorObserver, "decoder-doctor-notification");
 
 
-// ContentWebRTC observer registration.
+// WebRTCChild observer registration.
 const kWebRTCObserverTopics = ["getUserMedia:request",
                                "recording-device-stopped",
                                "PeerConnection:request",
@@ -64,7 +52,7 @@ const kWebRTCObserverTopics = ["getUserMedia:request",
                                "recording-window-ended"];
 
 function webRTCObserve(aSubject, aTopic, aData) {
-  ContentWebRTC.observe(aSubject, aTopic, aData);
+  WebRTCChild.observe(aSubject, aTopic, aData);
 }
 
 for (let topic of kWebRTCObserverTopics) {

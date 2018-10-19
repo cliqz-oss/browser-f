@@ -4,6 +4,7 @@
 
 import ObservedPropertiesMixin from "../mixins/ObservedPropertiesMixin.js";
 import RichOption from "./rich-option.js";
+/* import-globals-from ../unprivileged-fallbacks.js */
 
 /**
  * <rich-select>
@@ -56,12 +57,18 @@ export default class AddressOption extends ObservedPropertiesMixin(RichOption) {
     super.connectedCallback();
   }
 
+  static formatSingleLineLabel(address, addressFields) {
+    return PaymentDialogUtils.getAddressLabel(address, addressFields);
+  }
+
   render() {
-    this._name.textContent = this.name;
-    this["_street-address"].textContent = `${this.streetAddress} ` +
-      `${this.addressLevel2} ${this.addressLevel1} ${this.postalCode} ${this.country}`;
-    this._email.textContent = this.email;
-    this._tel.textContent = this.tel;
+    // Fall back to empty strings to prevent 'null' from appearing.
+    this._name.textContent = this.name || "";
+    this["_street-address"].textContent =
+      `${this.streetAddress || ""} ${this.addressLevel2 || ""} ` +
+      `${this.addressLevel1 || ""} ${this.postalCode || ""} ${this.country || ""}`;
+    this._email.textContent = this.email || "";
+    this._tel.textContent = this.tel || "";
   }
 }
 

@@ -70,8 +70,8 @@
   background-color: transparent;
   border-radius: 0;
   border-width: 0;
-  margin: 0;
-  padding: 0;
+  margin: 0 !important /* override tabbox.css */;
+  padding: 0 !important /* override tabbox.css */;
   -moz-box-align: stretch;
 }
 
@@ -153,6 +153,7 @@
 
 .tab-throbber,
 .tab-throbber-fallback,
+.tab-icon-pending,
 .tab-icon-image,
 .tab-sharing-icon-overlay,
 .tab-icon-sound,
@@ -162,6 +163,7 @@
 
 .tab-throbber,
 .tab-throbber-fallback,
+.tab-icon-pending,
 .tab-icon-image,
 .tab-sharing-icon-overlay {
   height: 16px;
@@ -171,6 +173,7 @@
 .tab-throbber:not([pinned]),
 .tab-throbber-fallback:not([pinned]),
 .tab-sharing-icon-overlay:not([pinned]),
+.tab-icon-pending:not([pinned]),
 .tab-icon-image:not([pinned]) {
   margin-inline-end: 6px;
 }
@@ -573,14 +576,19 @@
   transition: transform 250ms var(--animation-easing-function), opacity 250ms var(--animation-easing-function);
 }
 
-.tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true]) {
+.tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true]):not([multiselected]) {
   background-color: rgba(0,0,0,.2);
   opacity: 1;
   transform: none;
 }
 
-#TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true]) {
+#TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true]):not([multiselected]) {
   background-color: rgba(255,255,255,.2);
+}
+
+.tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true])[multiselected],
+#TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab:hover > .tab-stack > .tab-background > .tab-line:not([selected=true])[multiselected] {
+  opacity: 0.5;
 }
 
 /* Tab multi-selected */
@@ -680,7 +688,7 @@
 .tabbrowser-tab:hover::after,
 #tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[beforehovered]::after,
 .tabbrowser-tab[multiselected]::after,
-.tabbrowser-tab[before-multiselected]::after {
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[before-multiselected]::after {
   margin-top: var(--tabs-top-border-width);
   margin-bottom: 0;
 }
@@ -792,15 +800,12 @@
 }
 
 .all-tabs-item[selected] {
+  font-weight: bold;
   box-shadow: inset 4px 0 var(--blue-40);
 }
 
 .all-tabs-item[selected]:-moz-locale-dir(rtl) {
   box-shadow: inset -4px 0 var(--blue-40);
-}
-
-.all-tabs-item[selected] > .all-tabs-button {
-  font-weight: bold;
 }
 
 .all-tabs-button {

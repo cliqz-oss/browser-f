@@ -168,7 +168,7 @@ nsXULPopupListener::HandleEvent(Event* aEvent)
   if (mIsContext) {
 #ifndef NS_CONTEXT_MENU_IS_MOUSEUP
     uint16_t inputSource = mouseEvent->MozInputSource();
-    bool isTouch = inputSource == MouseEventBinding::MOZ_SOURCE_TOUCH;
+    bool isTouch = inputSource == MouseEvent_Binding::MOZ_SOURCE_TOUCH;
     // If the context menu launches on mousedown,
     // we have to fire focus on the content we clicked on
     FireFocusOnTargetContent(targetContent, isTouch);
@@ -205,7 +205,7 @@ nsXULPopupListener::FireFocusOnTargetContent(nsIContent* aTargetContent,
   nsIFrame* targetFrame = aTargetContent->GetPrimaryFrame();
   if (!targetFrame) return NS_ERROR_FAILURE;
 
-  const nsStyleUserInterface* ui = targetFrame->StyleUserInterface();
+  const nsStyleUI* ui = targetFrame->StyleUI();
   bool suppressBlur = (ui->mUserFocus == StyleUserFocus::Ignore);
 
   RefPtr<Element> newFocusElement;

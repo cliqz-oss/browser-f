@@ -180,6 +180,10 @@ nsDebugImpl::GetIsDebuggerAttached(bool* aResult)
 {
   *aResult = false;
 
+#if defined(__OpenBSD__) && defined(MOZ_SANDBOX)
+  // no access to KERN_PROC_PID sysctl when pledge'd
+  return NS_OK;
+#endif
 #if defined(XP_WIN)
   *aResult = ::IsDebuggerPresent();
 #elif defined(XP_MACOSX) || defined(__DragonFly__) || defined(__FreeBSD__) \
@@ -219,6 +223,12 @@ nsDebugImpl::GetIsDebuggerAttached(bool* aResult)
 nsDebugImpl::SetMultiprocessMode(const char* aDesc)
 {
   sMultiprocessDescription = aDesc;
+}
+
+/* static */ const char *
+nsDebugImpl::GetMultiprocessMode()
+{
+  return sMultiprocessDescription;
 }
 
 /**
@@ -311,6 +321,9 @@ EXPORT_XPCOM_API(void)
 NS_DebugBreak(uint32_t aSeverity, const char* aStr, const char* aExpr,
               const char* aFile, int32_t aLine)
 {
+  // Allow messages to be printed during GC if we are recording or replaying.
+  recordreplay::AutoEnsurePassThroughThreadEvents pt;
+
   FixedBuffer nonPIDBuf;
   FixedBuffer buf;
   const char* sevString = "WARNING";
@@ -400,8 +413,9 @@ NS_DebugBreak(uint32_t aSeverity, const char* aStr, const char* aExpr,
         note += nonPIDBuf.buffer;
         note += ")";
         CrashReporter::AppendAppNotesToCrashReport(note);
-        CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AbortMessage"),
-                                           nsDependentCString(nonPIDBuf.buffer));
+        CrashReporter::AnnotateCrashReport(
+          CrashReporter::Annotation::AbortMessage,
+          nsDependentCString(nonPIDBuf.buffer));
       }
 
 #if defined(DEBUG) && defined(_WIN32)

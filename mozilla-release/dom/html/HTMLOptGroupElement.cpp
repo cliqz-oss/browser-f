@@ -53,7 +53,7 @@ HTMLOptGroupElement::GetEventTargetParent(EventChainPreVisitor& aVisitor)
   if (nsIFrame* frame = GetPrimaryFrame()) {
     // FIXME(emilio): This poking at the style of the frame is broken unless we
     // flush before every event handling, which we don't really want to.
-    if (frame->StyleUserInterface()->mUserInput == StyleUserInput::None) {
+    if (frame->StyleUI()->mUserInput == StyleUserInput::None) {
       return;
     }
   }
@@ -134,7 +134,7 @@ HTMLOptGroupElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 JSObject*
 HTMLOptGroupElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLOptGroupElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLOptGroupElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

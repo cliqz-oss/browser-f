@@ -174,13 +174,9 @@ public:
   void GetProperties(nsTArray<AnimationPropertyDetails>& aProperties,
                      ErrorResult& aRv) const;
 
-  // aCallerType is not used in the getter so we supply a default value so that
-  // internal users don't need to specify this value.
-  IterationCompositeOperation IterationComposite(
-    CallerType aCallerType = CallerType::System) const;
+  IterationCompositeOperation IterationComposite() const;
   void SetIterationComposite(
-    const IterationCompositeOperation& aIterationComposite,
-    CallerType aCallerType);
+    const IterationCompositeOperation& aIterationComposite);
 
   CompositeOperation Composite() const;
   void SetComposite(const CompositeOperation& aComposite);
@@ -305,18 +301,12 @@ protected:
   static Maybe<OwningAnimationTarget>
   ConvertTarget(const Nullable<ElementOrCSSPseudoElement>& aTarget);
 
-  template<class KeyframeEffectType, class OptionsType>
-  static already_AddRefed<KeyframeEffectType>
+  template<class OptionsType>
+  static already_AddRefed<KeyframeEffect>
   ConstructKeyframeEffect(const GlobalObject& aGlobal,
                           const Nullable<ElementOrCSSPseudoElement>& aTarget,
                           JS::Handle<JSObject*> aKeyframes,
                           const OptionsType& aOptions,
-                          ErrorResult& aRv);
-
-  template<class KeyframeEffectType>
-  static already_AddRefed<KeyframeEffectType>
-  ConstructKeyframeEffect(const GlobalObject& aGlobal,
-                          KeyframeEffect& aSource,
                           ErrorResult& aRv);
 
   // Build properties by recalculating from |mKeyframes| using |aComputedStyle|
@@ -421,8 +411,9 @@ private:
   nsIFrame* GetStyleFrame() const;
 
   bool CanThrottle() const;
-  bool CanThrottleTransformChanges(const nsIFrame& aFrame) const;
-  bool CanThrottleTransformChangesInScrollable(nsIFrame& aFrame) const;
+  bool CanThrottleOverflowChanges(const nsIFrame& aFrame) const;
+  bool CanThrottleOverflowChangesInScrollable(nsIFrame& aFrame) const;
+  bool CanThrottleIfNotVisible(nsIFrame& aFrame) const;
 
   // Returns true if the computedTiming has changed since the last
   // composition.
@@ -440,14 +431,15 @@ private:
 
   void UpdateEffectSet(mozilla::EffectSet* aEffectSet = nullptr) const;
 
-  // Returns true if this effect has transform and the transform might affect
-  // the overflow region.
+  // Returns true if this effect has properties that might affect the overflow
+  // region.
   // This function is used for updating scroll bars or notifying intersection
   // observers reflected by the transform.
-  bool HasTransformThatMightAffectOverflow() const
+  bool HasPropertiesThatMightAffectOverflow() const
   {
-    return mCumulativeChangeHint & (nsChangeHint_UpdatePostTransformOverflow |
-                                    nsChangeHint_AddOrRemoveTransform |
+    return mCumulativeChangeHint & (nsChangeHint_AddOrRemoveTransform |
+                                    nsChangeHint_UpdateOverflow |
+                                    nsChangeHint_UpdatePostTransformOverflow |
                                     nsChangeHint_UpdateTransformLayer);
   }
 

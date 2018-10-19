@@ -9,7 +9,7 @@
 
 #include "mozilla/dom/nsCSPUtils.h"
 #include "mozilla/dom/SecurityPolicyViolationEvent.h"
-#include "nsDataHashtable.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsIChannel.h"
 #include "nsIChannelEventSink.h"
 #include "nsIClassInfo.h"
@@ -29,6 +29,12 @@
 class nsINetworkInterceptController;
 class nsIEventTarget;
 struct ConsoleMsgQueueElem;
+
+namespace mozilla {
+namespace dom {
+class Element;
+}
+}
 
 class nsCSPContext : public nsIContentSecurityPolicy
 {
@@ -76,17 +82,21 @@ class nsCSPContext : public nsIContentSecurityPolicy
      *        a sample of the violating inline script
      * @param aLineNum
      *        source line number of the violation (if available)
+     * @param aColumnNum
+     *        source column number of the violation (if available)
      * @param aViolationEventInit
      *        The output
      */
     nsresult GatherSecurityPolicyViolationEventData(
       nsIURI* aBlockedURI,
+      const nsACString& aBlockedString,
       nsIURI* aOriginalURI,
       nsAString& aViolatedDirective,
       uint32_t aViolatedPolicyIndex,
       nsAString& aSourceFile,
       nsAString& aScriptSample,
       uint32_t aLineNum,
+      uint32_t aColumnNum,
       mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit);
 
     nsresult SendReports(
@@ -94,16 +104,28 @@ class nsCSPContext : public nsIContentSecurityPolicy
       uint32_t aViolatedPolicyIndex);
 
     nsresult FireViolationEvent(
+      mozilla::dom::Element* aTriggeringElement,
       const mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit);
 
-    nsresult AsyncReportViolation(nsISupports* aBlockedContentSource,
+    enum BlockedContentSource
+    {
+      eUnknown,
+      eInline,
+      eEval,
+      eSelf,
+    };
+
+    nsresult AsyncReportViolation(mozilla::dom::Element* aTriggeringElement,
+                                  nsIURI* aBlockedURI,
+                                  BlockedContentSource aBlockedContentSource,
                                   nsIURI* aOriginalURI,
                                   const nsAString& aViolatedDirective,
                                   uint32_t aViolatedPolicyIndex,
                                   const nsAString& aObserverSubject,
                                   const nsAString& aSourceFile,
                                   const nsAString& aScriptSample,
-                                  uint32_t aLineNum);
+                                  uint32_t aLineNum,
+                                  uint32_t aColumnNum);
 
     // Hands off! Don't call this method unless you know what you
     // are doing. It's only supposed to be called from within
@@ -116,12 +138,19 @@ class nsCSPContext : public nsIContentSecurityPolicy
       return mLoadingContext;
     }
 
+    static uint32_t ScriptSampleMaxLength()
+    {
+      return std::max(
+        mozilla::StaticPrefs::security_csp_reporting_script_sample_max_length(),
+        0);
+    }
+
   private:
     bool permitsInternal(CSPDirective aDir,
+                         mozilla::dom::Element* aTriggeringElement,
                          nsIURI* aContentLocation,
-                         nsIURI* aOriginalURI,
+                         nsIURI* aOriginalURIIfRedirect,
                          const nsAString& aNonce,
-                         bool aWasRedirected,
                          bool aIsPreload,
                          bool aSpecific,
                          bool aSendViolationReports,
@@ -130,32 +159,25 @@ class nsCSPContext : public nsIContentSecurityPolicy
 
     // helper to report inline script/style violations
     void reportInlineViolation(nsContentPolicyType aContentType,
+                               mozilla::dom::Element* aTriggeringElement,
                                const nsAString& aNonce,
                                const nsAString& aContent,
                                const nsAString& aViolatedDirective,
                                uint32_t aViolatedPolicyIndex,
-                               uint32_t aLineNumber);
-
-    static int32_t sScriptSampleMaxLength;
-
-    static uint32_t ScriptSampleMaxLength()
-    {
-      return std::max(sScriptSampleMaxLength, 0);
-    }
-
-    static bool sViolationEventsEnabled;
+                               uint32_t aLineNumber,
+                               uint32_t aColumnNumber);
 
     nsString                                   mReferrer;
     uint64_t                                   mInnerWindowID; // used for web console logging
     nsTArray<nsCSPPolicy*>                     mPolicies;
     nsCOMPtr<nsIURI>                           mSelfURI;
-    nsDataHashtable<nsCStringHashKey, int16_t> mShouldLoadCache;
     nsCOMPtr<nsILoadGroup>                     mCallingChannelLoadGroup;
     nsWeakPtr                                  mLoadingContext;
     // The CSP hangs off the principal, so let's store a raw pointer of the principal
     // to avoid memory leaks. Within the destructor of the principal we explicitly
     // set mLoadingPrincipal to null.
     nsIPrincipal*                              mLoadingPrincipal;
+    nsCOMPtr<nsICSPEventListener>              mEventListener;
 
     // helper members used to queue up web console messages till
     // the windowID becomes available. see flushConsoleMessages()

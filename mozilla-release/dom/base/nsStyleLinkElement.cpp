@@ -76,6 +76,7 @@ nsStyleLinkElement::nsStyleLinkElement()
   : mDontLoadStyle(false)
   , mUpdatesEnabled(true)
   , mLineNumber(1)
+  , mColumnNumber(1)
 {
 }
 
@@ -176,8 +177,8 @@ nsStyleLinkElement::GetCharset(nsAString& aCharset)
 /* virtual */ void
 nsStyleLinkElement::OverrideBaseURI(nsIURI* aNewBaseURI)
 {
-  NS_NOTREACHED("Base URI can't be overriden in this implementation "
-                "of nsIStyleSheetLinkingElement.");
+  MOZ_ASSERT_UNREACHABLE("Base URI can't be overriden in this implementation "
+                         "of nsIStyleSheetLinkingElement.");
 }
 
 /* virtual */ void
@@ -190,6 +191,18 @@ nsStyleLinkElement::SetLineNumber(uint32_t aLineNumber)
 nsStyleLinkElement::GetLineNumber()
 {
   return mLineNumber;
+}
+
+/* virtual */ void
+nsStyleLinkElement::SetColumnNumber(uint32_t aColumnNumber)
+{
+  mColumnNumber = aColumnNumber;
+}
+
+/* virtual */ uint32_t
+nsStyleLinkElement::GetColumnNumber()
+{
+  return mColumnNumber;
 }
 
 static uint32_t ToLinkMask(const nsAString& aLink)
@@ -250,20 +263,9 @@ uint32_t nsStyleLinkElement::ParseLinkTypes(const nsAString& aTypes)
 }
 
 Result<nsStyleLinkElement::Update, nsresult>
-nsStyleLinkElement::UpdateStyleSheet(nsICSSLoaderObserver* aObserver,
-                                     ForceUpdate aForceUpdate)
+nsStyleLinkElement::UpdateStyleSheet(nsICSSLoaderObserver* aObserver)
 {
-  if (aForceUpdate == ForceUpdate::Yes) {
-    // We remove this stylesheet from the cache to load a new version.
-    nsCOMPtr<nsIContent> thisContent = do_QueryInterface(this);
-    nsCOMPtr<nsIDocument> doc = thisContent->IsInShadowTree() ?
-      thisContent->OwnerDoc() : thisContent->GetUncomposedDoc();
-    if (doc && doc->CSSLoader()->GetEnabled() &&
-        mStyleSheet && !mStyleSheet->IsInline()) {
-      doc->CSSLoader()->ObsoleteSheet(mStyleSheet->GetOriginalURI());
-    }
-  }
-  return DoUpdateStyleSheet(nullptr, nullptr, aObserver, aForceUpdate);
+  return DoUpdateStyleSheet(nullptr, nullptr, aObserver, ForceUpdate::No);
 }
 
 Result<nsStyleLinkElement::Update, nsresult>
@@ -285,8 +287,7 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
   // All instances of nsStyleLinkElement should implement nsIContent.
   MOZ_ASSERT(thisContent);
 
-  if (thisContent->IsInAnonymousSubtree() &&
-      thisContent->IsAnonymousContentInSVGUseSubtree()) {
+  if (thisContent->IsInSVGUseShadowTree()) {
     // Stylesheets in <use>-cloned subtrees are disabled until we figure out
     // how they should behave.
     return Update { };
@@ -347,7 +348,10 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
   if (mStyleSheet) {
     if (thisContent->IsInShadowTree()) {
       ShadowRoot* containingShadow = thisContent->GetContainingShadow();
-      containingShadow->RemoveSheet(mStyleSheet);
+      // Could be null only during unlink.
+      if (MOZ_LIKELY(containingShadow)) {
+        containingShadow->RemoveSheet(mStyleSheet);
+      }
     } else {
       doc->RemoveStyleSheet(mStyleSheet);
     }
@@ -381,7 +385,8 @@ nsStyleLinkElement::DoUpdateStyleSheet(nsIDocument* aOldDocument,
                                            thisContent->NodePrincipal(),
                                            info->mTriggeringPrincipal,
                                            doc->GetDocumentURI(),
-                                           mLineNumber, text, &rv)) {
+                                           mLineNumber, mColumnNumber, text,
+                                           &rv)) {
       if (NS_FAILED(rv)) {
         return Err(rv);
       }

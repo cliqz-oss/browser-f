@@ -38,7 +38,7 @@ var gEMEHandler = {
     let mainMessage = gNavigatorBundle.getString("emeNotifications.drmContentDisabled.message");
     let text = gNavigatorBundle.getString("emeNotifications.drmContentDisabled.learnMoreLabel");
     let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-    let link = document.createElement("label");
+    let link = document.createXULElement("label");
     link.className = "text-link";
     link.setAttribute("href", baseURL + "drm-content");
     link.textContent = text;
@@ -83,11 +83,6 @@ var gEMEHandler = {
         notificationMessage = this.getEMEDisabledFragment();
         break;
 
-      case "cdm-insufficient-version":
-        notificationId = "drmContentCDMInsufficientVersion";
-        notificationMessage = this.getMessageWithBrandName(notificationId);
-        break;
-
       case "cdm-not-installed":
         notificationId = "drmContentCDMInstalling";
         notificationMessage = this.getMessageWithBrandName(notificationId);
@@ -129,7 +124,7 @@ var gEMEHandler = {
     // We're playing EME content! Remove any "we can't play because..." messages.
     var box = gBrowser.getNotificationBox(browser);
     ["drmContentDisabled",
-     "drmContentCDMInstalling"
+     "drmContentCDMInstalling",
      ].forEach(function(value) {
         var notification = box.getNotificationWithValue(value);
         if (notification)
@@ -163,7 +158,7 @@ var gEMEHandler = {
       callback() {
         openPreferences("general-drm", {origin: "browserMedia"});
       },
-      dismiss: true
+      dismiss: true,
     };
     let options = {
       dismissed: true,
@@ -321,7 +316,7 @@ let gDecoderDoctorHandler = {
 
             let baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
             openTrustedLinkIn(baseURL + sumo, "tab");
-          }
+          },
         });
       }
       let endpoint = gDecoderDoctorHandler.getEndpointForReportIssueButton(type);
@@ -351,7 +346,7 @@ let gDecoderDoctorHandler = {
 
             params.append("details", JSON.stringify(details));
             openTrustedLinkIn(endpoint + "?" + params.toString(), "tab");
-          }
+          },
         });
       }
 

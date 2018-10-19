@@ -6,6 +6,7 @@
 
 #include "nsIObserverService.h"
 #include "mozilla/Services.h"
+#include "mozilla/SimpleEnumerator.h"
 #include "nsISupportsPrimitives.h"
 #include "nsIStringEnumerator.h"
 
@@ -13,7 +14,9 @@
 
 #include "nsCategoryCache.h"
 
-nsCategoryObserver::nsCategoryObserver(const char* aCategory)
+using mozilla::SimpleEnumerator;
+
+nsCategoryObserver::nsCategoryObserver(const nsACString& aCategory)
   : mCategory(aCategory)
   , mCallback(nullptr)
   , mClosure(nullptr)
@@ -34,23 +37,15 @@ nsCategoryObserver::nsCategoryObserver(const char* aCategory)
     return;
   }
 
-  nsCOMPtr<nsIUTF8StringEnumerator> strings = do_QueryInterface(enumerator);
-  MOZ_ASSERT(strings);
+  for (auto& categoryEntry : SimpleEnumerator<nsICategoryEntry>(enumerator)) {
+    nsAutoCString entryValue;
+    categoryEntry->GetValue(entryValue);
 
-  bool more;
-  while (NS_SUCCEEDED(strings->HasMore(&more)) && more) {
-    nsAutoCString entryName;
-    strings->GetNext(entryName);
+    if (nsCOMPtr<nsISupports> service = do_GetService(entryValue.get())) {
+      nsAutoCString entryName;
+      categoryEntry->GetEntry(entryName);
 
-    nsCString entryValue;
-    rv = catMan->GetCategoryEntry(aCategory,
-                                  entryName.get(),
-                                  getter_Copies(entryValue));
-    if (NS_SUCCEEDED(rv)) {
-      nsCOMPtr<nsISupports> service = do_GetService(entryValue.get());
-      if (service) {
-        mHash.Put(entryName, service);
-      }
+      mHash.Put(entryName, service);
     }
   }
 
@@ -151,9 +146,7 @@ nsCategoryObserver::Observe(nsISupports* aSubject, const char* aTopic,
     }
 
     nsCString entryValue;
-    catMan->GetCategoryEntry(mCategory.get(),
-                             str.get(),
-                             getter_Copies(entryValue));
+    catMan->GetCategoryEntry(mCategory, str, entryValue);
 
     nsCOMPtr<nsISupports> service = do_GetService(entryValue.get());
 

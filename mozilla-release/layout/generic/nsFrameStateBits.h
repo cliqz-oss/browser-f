@@ -224,7 +224,7 @@ FRAME_STATE_BIT(Generic, 42, NS_FRAME_FONT_INFLATION_FLOW_ROOT)
 // this does not include nsSVGOuterSVGFrame since it takes part is CSS layout.
 FRAME_STATE_BIT(Generic, 43, NS_FRAME_SVG_LAYOUT)
 
-// Bits 44 and 45 are currently unused, but be kind and check with bug 1465478
+// Bits 44 and 45 are currently unused, but be kind and check with bug 1465474
 // first please :-)
 
 // This bit indicates that we're tracking visibility for this frame, and that
@@ -355,6 +355,9 @@ FRAME_STATE_BIT(GridContainer, 26, NS_STATE_GRID_HAS_COL_SUBGRID_ITEM)
 
 // The container contains one or more items subgridded in its block axis.
 FRAME_STATE_BIT(GridContainer, 27, NS_STATE_GRID_HAS_ROW_SUBGRID_ITEM)
+
+// We've merged some OverflowList children since last reflow.
+FRAME_STATE_BIT(GridContainer, 28, NS_STATE_GRID_HAS_CHILD_NIFS)
 
 // == Frame state bits that apply to SVG frames ===============================
 

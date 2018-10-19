@@ -6,7 +6,6 @@ var EXPORTED_SYMBOLS = [
 
 Cu.importGlobalProperties(["URL"]);
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesUtils",
                                "resource://gre/modules/PlacesUtils.jsm");
@@ -78,7 +77,7 @@ var PlacesTestUtils = Object.freeze({
       info.visits = [{
         transition: place.transition,
         date: visitDate,
-        referrer: place.referrer
+        referrer: place.referrer,
       }];
       infos.push(info);
       if (place.transition != PlacesUtils.history.TRANSITIONS.EMBED)
@@ -318,6 +317,18 @@ var PlacesTestUtils = Object.freeze({
   },
 
   waitForNotification(notification, conditionFn = () => true, type = "bookmarks") {
+    if (type == "places") {
+      return new Promise(resolve => {
+        function listener(events) {
+          if (conditionFn(events)) {
+            PlacesObservers.removeListener([notification], listener);
+            resolve();
+          }
+        }
+        PlacesObservers.addListener([notification], listener);
+      });
+    }
+
     let iface = type == "bookmarks" ? Ci.nsINavBookmarkObserver
                                     : Ci.nsINavHistoryObserver;
     return new Promise(resolve => {
@@ -336,7 +347,7 @@ var PlacesTestUtils = Object.freeze({
             return false;
           }
           return () => false;
-        }
+        },
       });
       PlacesUtils[type].addObserver(proxifiedObserver);
     });

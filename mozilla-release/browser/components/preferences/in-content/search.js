@@ -396,7 +396,7 @@ var gSearchPane = {
     Services.search.currentEngine =
       document.getElementById("defaultEngine").selectedItem.engine;
     ExtensionSettingsStore.setByUser(SEARCH_TYPE, SEARCH_KEY);
-  }
+  },
 };
 
 function onDragEngineStart(event) {
@@ -538,7 +538,7 @@ EngineStore.prototype = {
     this._engines.forEach(function(e) {
       e.uri = e.originalEngine.uri;
     });
-  }
+  },
 };
 
 function EngineView(aEngineStore) {
@@ -688,5 +688,5 @@ EngineView.prototype = {
   },
   performAction(action) { },
   performActionOnRow(action, index) { },
-  performActionOnCell(action, index, column) { }
+  performActionOnCell(action, index, column) { },
 };

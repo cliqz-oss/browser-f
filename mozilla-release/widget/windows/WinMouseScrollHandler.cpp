@@ -297,7 +297,8 @@ MouseScrollHandler::SynthesizeNativeMouseScrollEvent(nsWindowBase* aWidget,
   memset(kbdState, 0, sizeof(kbdState));
 
   AutoTArray<KeyPair,10> keySequence;
-  WinUtils::SetupKeyModifiersSequence(&keySequence, aModifierFlags);
+  WinUtils::SetupKeyModifiersSequence(&keySequence, aModifierFlags,
+                                      aNativeMessage);
 
   for (uint32_t i = 0; i < keySequence.Length(); ++i) {
     uint8_t key = keySequence[i].mGeneral;
@@ -351,6 +352,9 @@ MouseScrollHandler::GetModifierKeyState(UINT aMessage)
   // MouseScrollHandler::Device::Elantech::HandleKeyMessage().)
   if ((aMessage == MOZ_WM_MOUSEVWHEEL || aMessage == WM_MOUSEWHEEL) &&
       !result.IsControl() && Device::Elantech::IsZooming()) {
+    // XXX Do we need to unset MODIFIER_SHIFT, MODIFIER_ALT, MODIFIER_OS too?
+    //     If one of them are true, the default action becomes not zooming.
+    result.Unset(MODIFIER_ALTGRAPH);
     result.Set(MODIFIER_CONTROL);
   }
   return result;
@@ -693,14 +697,14 @@ MouseScrollHandler::HandleScrollMessageAsMouseWheelMessage(nsWindowBase* aWidget
       delta = -1.0;
       lineOrPageDelta = -1;
     case SB_PAGEDOWN:
-      wheelEvent.mDeltaMode = dom::WheelEventBinding::DOM_DELTA_PAGE;
+      wheelEvent.mDeltaMode = dom::WheelEvent_Binding::DOM_DELTA_PAGE;
       break;
 
     case SB_LINEUP:
       delta = -1.0;
       lineOrPageDelta = -1;
     case SB_LINEDOWN:
-      wheelEvent.mDeltaMode = dom::WheelEventBinding::DOM_DELTA_LINE;
+      wheelEvent.mDeltaMode = dom::WheelEvent_Binding::DOM_DELTA_LINE;
       break;
 
     default:
@@ -849,8 +853,8 @@ MouseScrollHandler::LastEventInfo::InitWheelEvent(
   // Use orienter for computing our delta value with native delta value.
   int32_t orienter = mIsVertical ? -1 : 1;
 
-  aWheelEvent.mDeltaMode = mIsPage ? dom::WheelEventBinding::DOM_DELTA_PAGE :
-                                     dom::WheelEventBinding::DOM_DELTA_LINE;
+  aWheelEvent.mDeltaMode = mIsPage ? dom::WheelEvent_Binding::DOM_DELTA_PAGE :
+                                     dom::WheelEvent_Binding::DOM_DELTA_LINE;
 
   double& delta = mIsVertical ? aWheelEvent.mDeltaY : aWheelEvent.mDeltaX;
   int32_t& lineOrPageDelta = mIsVertical ? aWheelEvent.mLineOrPageDeltaY :
@@ -867,7 +871,7 @@ MouseScrollHandler::LastEventInfo::InitWheelEvent(
   mAccumulatedDelta -=
     lineOrPageDelta * orienter * RoundDelta(nativeDeltaPerUnit);
 
-  if (aWheelEvent.mDeltaMode != dom::WheelEventBinding::DOM_DELTA_LINE) {
+  if (aWheelEvent.mDeltaMode != dom::WheelEvent_Binding::DOM_DELTA_LINE) {
     // If the scroll delta mode isn't per line scroll, we shouldn't allow to
     // override the system scroll speed setting.
     aWheelEvent.mAllowToOverrideSystemScrollSpeed = false;
@@ -1411,10 +1415,10 @@ MouseScrollHandler::Device::Elantech::HandleKeyMessage(nsWindowBase* aWidget,
          "%s command event",
          aWParam == VK_NEXT ? "Forward" : "Back"));
 
-      WidgetCommandEvent commandEvent(true, nsGkAtoms::onAppCommand,
+      WidgetCommandEvent appCommandEvent(true,
         (aWParam == VK_NEXT) ? nsGkAtoms::Forward : nsGkAtoms::Back, aWidget);
-      InitEvent(aWidget, commandEvent);
-      aWidget->DispatchWindowEvent(&commandEvent);
+      InitEvent(aWidget, appCommandEvent);
+      aWidget->DispatchWindowEvent(&appCommandEvent);
     }
     else {
       MOZ_LOG(gMouseScrollLog, LogLevel::Info,

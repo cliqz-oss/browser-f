@@ -220,27 +220,40 @@ namespace xpc {
 // This handles JS Exceptions (via ExceptionStackOrNull), as well as DOM and XPC
 // Exceptions.
 //
-// Note that the returned object is _not_ wrapped into the compartment of
-// exceptionValue.
-JSObject*
+// Note that the returned stackObj and stackGlobal are _not_ wrapped into the
+// compartment of exceptionValue.
+void
 FindExceptionStackForConsoleReport(nsPIDOMWindowInner* win,
-                                   JS::HandleValue exceptionValue)
+                                   JS::HandleValue exceptionValue,
+                                   JS::MutableHandleObject stackObj,
+                                   JS::MutableHandleObject stackGlobal)
 {
+  stackObj.set(nullptr);
+  stackGlobal.set(nullptr);
+
   if (!exceptionValue.isObject()) {
-    return nullptr;
+    return;
   }
 
   if (win && win->AsGlobal()->IsDying()) {
     // Pretend like we have no stack, so we don't end up keeping the global
     // alive via the stack.
-    return nullptr;
+    return;
   }
 
   JS::RootingContext* rcx = RootingCx();
   JS::RootedObject exceptionObject(rcx, &exceptionValue.toObject());
-  JSObject* stackObject = JS::ExceptionStackOrNull(exceptionObject);
-  if (stackObject) {
-    return stackObject;
+  if (JSObject* excStack = JS::ExceptionStackOrNull(exceptionObject)) {
+    // At this point we know exceptionObject is a possibly-wrapped
+    // js::ErrorObject that has excStack as stack. excStack might also be a CCW,
+    // but excStack must be same-compartment with the unwrapped ErrorObject.
+    // Return the ErrorObject's global as stackGlobal. This matches what we do
+    // in the ErrorObject's |.stack| getter and ensures stackObj and stackGlobal
+    // are same-compartment.
+    JSObject* unwrappedException = js::UncheckedUnwrap(exceptionObject);
+    stackObj.set(excStack);
+    stackGlobal.set(JS::GetNonCCWObjectGlobal(unwrappedException));
+    return;
   }
 
   // It is not a JS Exception, try DOM Exception.
@@ -250,20 +263,22 @@ FindExceptionStackForConsoleReport(nsPIDOMWindowInner* win,
     // Not a DOM Exception, try XPC Exception.
     UNWRAP_OBJECT(Exception, exceptionObject, exception);
     if (!exception) {
-      return nullptr;
+      return;
     }
   }
 
   nsCOMPtr<nsIStackFrame> stack = exception->GetLocation();
   if (!stack) {
-    return nullptr;
+    return;
   }
   JS::RootedValue value(rcx);
   stack->GetNativeSavedFrame(&value);
   if (value.isObject()) {
-    return &value.toObject();
+    stackObj.set(&value.toObject());
+    MOZ_ASSERT(JS::IsUnwrappedSavedFrame(stackObj));
+    stackGlobal.set(JS::GetNonCCWObjectGlobal(stackObj));
+    return;
   }
-  return nullptr;
 }
 
 } /* namespace xpc */
@@ -466,9 +481,11 @@ public:
     }
 
     if (status != nsEventStatus_eConsumeNoDefault) {
-      JS::Rooted<JSObject*> stack(rootingCx,
-        xpc::FindExceptionStackForConsoleReport(win, mError));
-      mReport->LogToConsoleWithStack(stack);
+      JS::Rooted<JSObject*> stack(rootingCx);
+      JS::Rooted<JSObject*> stackGlobal(rootingCx);
+      xpc::FindExceptionStackForConsoleReport(win, mError,
+                                              &stack, &stackGlobal);
+      mReport->LogToConsoleWithStack(stack, stackGlobal, JS::ExceptionTimeWarpTarget(mError));
     }
 
     return NS_OK;
@@ -1251,6 +1268,34 @@ FireForgetSkippable(uint32_t aSuspected, bool aRemoveChildless,
                                                  : "IdleForgetSkippable");
   PRTime startTime = PR_Now();
   TimeStamp startTimeStamp = TimeStamp::Now();
+
+  static uint32_t sForgetSkippableCounter = 0;
+  static TimeStamp sForgetSkippableFrequencyStartTime;
+  static TimeStamp sLastForgetSkippableEndTime;
+  static const TimeDuration minute = TimeDuration::FromSeconds(60.0f);
+
+  if (sForgetSkippableFrequencyStartTime.IsNull()) {
+    sForgetSkippableFrequencyStartTime = startTimeStamp;
+  } else if (startTimeStamp - sForgetSkippableFrequencyStartTime > minute) {
+    TimeStamp startPlusMinute = sForgetSkippableFrequencyStartTime + minute;
+
+    // If we had forget skippables only at the beginning of the interval, we
+    // still want to use the whole time, minute or more, for frequency
+    // calculation. sLastForgetSkippableEndTime is needed if forget skippable
+    // takes enough time to push the interval to be over a minute.
+    TimeStamp endPoint = startPlusMinute > sLastForgetSkippableEndTime ?
+      startPlusMinute : sLastForgetSkippableEndTime;
+
+    // Duration in minutes.
+    double duration =
+      (endPoint - sForgetSkippableFrequencyStartTime).ToSeconds() / 60;
+    uint32_t frequencyPerMinute = uint32_t(sForgetSkippableCounter / duration);
+    Telemetry::Accumulate(Telemetry::FORGET_SKIPPABLE_FREQUENCY, frequencyPerMinute);
+    sForgetSkippableCounter = 0;
+    sForgetSkippableFrequencyStartTime = startTimeStamp;
+  }
+  ++sForgetSkippableCounter;
+
   FinishAnyIncrementalGC();
   bool earlyForgetSkippable =
     sCleanupsSinceLastGC < NS_MAJOR_FORGET_SKIPPABLE_CALLS;
@@ -1275,6 +1320,8 @@ FireForgetSkippable(uint32_t aSuspected, bool aRemoveChildless,
   ++sForgetSkippableBeforeCC;
 
   TimeStamp now = TimeStamp::Now();
+  sLastForgetSkippableEndTime = now;
+
   TimeDuration duration = now - startTimeStamp;
   if (duration.ToSeconds()) {
     TimeDuration idleDuration;
@@ -2172,7 +2219,7 @@ nsJSContext::PokeShrinkingGC()
 void
 nsJSContext::MaybePokeCC()
 {
-  if (sCCRunner || sICCRunner || sShuttingDown || !sHasRunGC) {
+  if (sCCRunner || sICCRunner || !sHasRunGC || sShuttingDown) {
     return;
   }
 
@@ -2921,7 +2968,13 @@ NS_IMETHODIMP nsJSArgArray::IndexOf(uint32_t startIndex, nsISupports *element, u
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP nsJSArgArray::Enumerate(nsISimpleEnumerator **_retval)
+NS_IMETHODIMP nsJSArgArray::ScriptedEnumerate(nsIJSIID* aElemIID, uint8_t aArgc,
+                                              nsISimpleEnumerator** aResult)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP nsJSArgArray::EnumerateImpl(const nsID& aEntryIID, nsISimpleEnumerator **_retval)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

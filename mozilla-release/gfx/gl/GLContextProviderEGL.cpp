@@ -306,14 +306,6 @@ GLContextEGL::GLContextEGL(CreateContextFlags flags, const SurfaceCaps& caps,
     , mSurface(surface)
     , mFallbackSurface(CreateFallbackSurface(config))
     , mContext(context)
-    , mSurfaceOverride(EGL_NO_SURFACE)
-    , mThebesSurface(nullptr)
-    , mBound(false)
-    , mIsPBuffer(false)
-    , mIsDoubleBuffered(false)
-    , mCanBindToTexture(false)
-    , mShareWithEGLImage(false)
-    , mOwnsContext(true)
 {
 #ifdef DEBUG
     printf_stderr("Initializing context %p surface %p on display %p\n", mContext, mSurface, EGL_DISPLAY());
@@ -564,6 +556,15 @@ GLContextEGL::CreateGLContext(CreateContextFlags flags,
         required_attribs.push_back(3);
     } else {
         required_attribs.push_back(2);
+    }
+
+    const auto debugFlags = GLContext::ChooseDebugFlags(flags);
+    if (!debugFlags &&
+        flags & CreateContextFlags::NO_VALIDATION &&
+        egl->IsExtensionSupported(GLLibraryEGL::KHR_create_context_no_error))
+    {
+        required_attribs.push_back(LOCAL_EGL_CONTEXT_OPENGL_NO_ERROR_KHR);
+        required_attribs.push_back(LOCAL_EGL_TRUE);
     }
 
     std::vector<EGLint> robustness_attribs;

@@ -13,6 +13,7 @@
 #include "Units.h"                      // for ParentLayerIntRect
 #include "gfxRect.h"                    // for gfxRect
 #include "gfxUtils.h"                   // for gfxUtils
+#include "mozilla/ArrayUtils.h"         // for ArrayEqual
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
 #include "mozilla/gfx/Point.h"          // for IntSize
 #include "mozilla/mozalloc.h"           // for operator new, etc
@@ -89,8 +90,8 @@ TransformRect(const IntRect& aRect, const Matrix4x4Flagged& aTransform)
   rect.RoundOut();
 
   IntRect intRect;
-  if (!gfxUtils::GfxRectToIntRect(ThebesRect(rect), &intRect)) {
-    return IntRect();
+  if (!rect.ToIntRect(&intRect)) {
+    intRect = IntRect::MaxIntRect();
   }
 
   return intRect;
@@ -170,6 +171,10 @@ struct LayerPropertiesBase : public LayerProperties
   LayerPropertiesBase()
     : mLayer(nullptr)
     , mMaskLayer(nullptr)
+    , mPostXScale(0.0)
+    , mPostYScale(0.0)
+    , mOpacity(0.0)
+    , mUseClipRect(false)
   {
     MOZ_COUNT_CTOR(LayerPropertiesBase);
   }
@@ -234,13 +239,15 @@ public:
         areaOverflowed = true;
       }
 
-      // We can't bail out early because we need to update mChildrenChanged.
+      // We can't bail out early because we might need to update some internal
+      // layer state.
     }
 
     nsIntRegion internal;
     if (!ComputeChangeInternal(aPrefix, internal, aCallback)) {
       areaOverflowed = true;
     }
+
     LTI_DUMP(internal, "internal");
     AddRegion(result, internal);
     LTI_DUMP(mLayer->GetInvalidRegion().GetRegion(), "invalid");
@@ -293,23 +300,23 @@ public:
   }
 
   IntRect NewTransformedBoundsForLeaf() {
-    return TransformRect(mLayer->GetLocalVisibleRegion().ToUnknownRegion().GetBounds(),
+    return TransformRect(mLayer->GetLocalVisibleRegion().GetBounds().ToUnknownRect(),
                          GetTransformForInvalidation(mLayer));
   }
 
   IntRect OldTransformedBoundsForLeaf() {
-    return TransformRect(mVisibleRegion.ToUnknownRegion().GetBounds(), mTransform);
+    return TransformRect(mVisibleRegion.GetBounds().ToUnknownRect(), mTransform);
   }
 
   virtual Maybe<IntRect> NewTransformedBounds()
   {
-    return Some(TransformRect(mLayer->GetLocalVisibleRegion().ToUnknownRegion().GetBounds(),
+    return Some(TransformRect(mLayer->GetLocalVisibleRegion().GetBounds().ToUnknownRect(),
                               GetTransformForInvalidation(mLayer)));
   }
 
   virtual Maybe<IntRect> OldTransformedBounds()
   {
-    return Some(TransformRect(mVisibleRegion.ToUnknownRegion().GetBounds(), mTransform));
+    return Some(TransformRect(mVisibleRegion.GetBounds().ToUnknownRect(), mTransform));
   }
 
   virtual bool ComputeChangeInternal(const char* aPrefix,
@@ -529,7 +536,7 @@ public:
         }
         Maybe<IntRect> combined = result.SafeUnion(childBounds.value());
         if (!combined) {
-          LTI_LOG("overflowed bounds of container %p accumulating child %p\n", this, child->mLayer);
+          LTI_LOG("overflowed bounds of container %p accumulating child %p\n", this, child->mLayer.get());
           return Nothing();
         }
         result = combined.value();
@@ -551,7 +558,7 @@ public:
         }
         Maybe<IntRect> combined = result.SafeUnion(childBounds.value());
         if (!combined) {
-          LTI_LOG("overflowed bounds of container %p accumulating child %p\n", this, child->mLayer);
+          LTI_LOG("overflowed bounds of container %p accumulating child %p\n", this, child->mLayer.get());
           return Nothing();
         }
         result = combined.value();
@@ -603,52 +610,6 @@ public:
 
   Color mColor;
   IntRect mBounds;
-};
-
-struct BorderLayerProperties : public LayerPropertiesBase
-{
-  explicit BorderLayerProperties(BorderLayer *aLayer)
-    : LayerPropertiesBase(aLayer)
-    , mColors(aLayer->GetColors())
-    , mRect(aLayer->GetRect())
-    , mCorners(aLayer->GetCorners())
-    , mWidths(aLayer->GetWidths())
-  { }
-
-protected:
-  BorderLayerProperties(const BorderLayerProperties& a) = delete;
-  BorderLayerProperties& operator=(const BorderLayerProperties& a) = delete;
-
-public:
-  bool ComputeChangeInternal(const char* aPrefix,
-                             nsIntRegion& aOutRegion,
-                             NotifySubDocInvalidationFunc aCallback) override
-  {
-    BorderLayer* border = static_cast<BorderLayer*>(mLayer.get());
-
-    if (!border->GetLocalVisibleRegion().ToUnknownRegion().IsEqual(mVisibleRegion)) {
-      IntRect result = NewTransformedBoundsForLeaf();
-      result = result.Union(OldTransformedBoundsForLeaf());
-      aOutRegion = result;
-      return true;
-    }
-
-    if (!PodEqual(&mColors[0], &border->GetColors()[0], 4) ||
-        !PodEqual(&mWidths[0], &border->GetWidths()[0], 4) ||
-        !PodEqual(&mCorners[0], &border->GetCorners()[0], 4) ||
-        !mRect.IsEqualEdges(border->GetRect())) {
-      LTI_DUMP(NewTransformedBoundsForLeaf(), "bounds");
-      aOutRegion = NewTransformedBoundsForLeaf();
-      return true;
-    }
-
-    return true;
-  }
-
-  BorderColors mColors;
-  LayerRect mRect;
-  BorderCorners mCorners;
-  BorderWidths mWidths;
 };
 
 static ImageHost* GetImageHost(Layer* aLayer)
@@ -785,8 +746,6 @@ CloneLayerTreePropertiesInternal(Layer* aRoot, bool aIsMask /* = false */)
       return MakeUnique<ImageLayerProperties>(static_cast<ImageLayer*>(aRoot), aIsMask);
     case Layer::TYPE_CANVAS:
       return MakeUnique<CanvasLayerProperties>(static_cast<CanvasLayer*>(aRoot));
-    case Layer::TYPE_BORDER:
-      return MakeUnique<BorderLayerProperties>(static_cast<BorderLayer*>(aRoot));
     case Layer::TYPE_DISPLAYITEM:
     case Layer::TYPE_READBACK:
     case Layer::TYPE_SHADOW:
@@ -834,7 +793,7 @@ LayerPropertiesBase::ComputeDifferences(Layer* aRoot, nsIntRegion& aOutRegion, N
       ClearInvalidations(aRoot);
     }
     IntRect bounds = TransformRect(
-      aRoot->GetLocalVisibleRegion().ToUnknownRegion().GetBounds(),
+      aRoot->GetLocalVisibleRegion().GetBounds().ToUnknownRect(),
       aRoot->GetLocalTransform());
     Maybe<IntRect> oldBounds = OldTransformedBounds();
     if (!oldBounds) {

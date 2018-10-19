@@ -42,8 +42,10 @@ EXPORTS.mozilla = [
     'FastBernoulliTrial.h',
     'FloatingPoint.h',
     'FStream.h',
+    'FunctionTypeTraits.h',
     'GuardObjects.h',
     'HashFunctions.h',
+    'HashTable.h',
     'IntegerPrintfMacros.h',
     'IntegerRange.h',
     'IntegerTypeTraits.h',
@@ -70,6 +72,7 @@ EXPORTS.mozilla = [
     'Range.h',
     'RangedArray.h',
     'RangedPtr.h',
+    'RecordReplay.h',
     'ReentrancyGuard.h',
     'RefCounted.h',
     'RefCountType.h',
@@ -103,6 +106,7 @@ EXPORTS.mozilla = [
     'UniquePtr.h',
     'UniquePtrExtensions.h',
     'Unused.h',
+    'Utf8.h',
     'Variant.h',
     'Vector.h',
     'WeakPtr.h',
@@ -143,9 +147,11 @@ UNIFIED_SOURCES += [
     'HashFunctions.cpp',
     'JSONWriter.cpp',
     'Poison.cpp',
+    'RecordReplay.cpp',
     'SHA1.cpp',
     'TaggedAnonymousMemory.cpp',
     'Unused.cpp',
+    'Utf8.cpp',
 ]
 
 DEFINES['IMPL_MFBT'] = True

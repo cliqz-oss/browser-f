@@ -18,7 +18,7 @@ function frameScript() {
   });
   addMessageListener("Test:DispatchUntrustedKeyEvents", msg => {
     var evt = new content.CustomEvent("Test:DispatchKeyEvents", {
-      detail: { code: msg.data }
+      detail: Cu.cloneInto({ code: msg.data }, content),
     });
     content.dispatchEvent(evt);
   });
@@ -38,7 +38,7 @@ function frameScript() {
   doc.addEventListener("keypress", keyHandler, true);
 
   function waitUntilActive() {
-    if (doc.docShell.isActive && doc.hasFocus()) {
+    if (docShell.isActive && doc.hasFocus()) {
       sendAsyncMessage("Test:Activated");
     } else {
       setTimeout(waitUntilActive, 10);

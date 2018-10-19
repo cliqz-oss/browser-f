@@ -11,10 +11,12 @@
 #include "mozilla/dom/ServiceWorkerRegistration.h"
 #include "nsContentUtils.h"
 #include "nsThreadUtils.h"
+#include "nsGlobalWindowInner.h"
 
 using mozilla::MallocSizeOf;
 using mozilla::Maybe;
 using mozilla::DOMEventTargetHelper;
+using mozilla::dom::BlobURLProtocolHandler;
 using mozilla::dom::ClientInfo;
 using mozilla::dom::ServiceWorker;
 using mozilla::dom::ServiceWorkerDescriptor;
@@ -207,9 +209,25 @@ nsIGlobalObject::GetOrCreateServiceWorker(const ServiceWorkerDescriptor& aDescri
 }
 
 RefPtr<ServiceWorkerRegistration>
+nsIGlobalObject::GetServiceWorkerRegistration(const mozilla::dom::ServiceWorkerRegistrationDescriptor& aDescriptor) const
+{
+  MOZ_DIAGNOSTIC_ASSERT(false, "this global should not have any service workers");
+  return nullptr;
+}
+
+RefPtr<ServiceWorkerRegistration>
 nsIGlobalObject::GetOrCreateServiceWorkerRegistration(const ServiceWorkerRegistrationDescriptor& aDescriptor)
 {
   MOZ_DIAGNOSTIC_ASSERT(false, "this global should not have any service worker registrations");
+  return nullptr;
+}
+
+nsPIDOMWindowInner*
+nsIGlobalObject::AsInnerWindow()
+{
+  if (MOZ_LIKELY(mIsInnerWindow)) {
+    return static_cast<nsPIDOMWindowInner*>(static_cast<nsGlobalWindowInner*>(this)); 
+  }
   return nullptr;
 }
 

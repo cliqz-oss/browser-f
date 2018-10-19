@@ -222,6 +222,9 @@ enum JSWhyMagic
     /** standard constructors are not created for off-thread parsing. */
     JS_OFF_THREAD_CONSTRUCTOR,
 
+    /** used in jit::TrySkipAwait */
+    JS_CANNOT_SKIP_AWAIT,
+
     /** for local use */
     JS_GENERIC_MAGIC,
 
@@ -268,6 +271,8 @@ CanonicalizeNaN(double d)
 }
 
 /**
+ * [SMDOC] JS::Value type
+ *
  * JS::Value is the interface for a single JavaScript Engine value.  A few
  * general notes on JS::Value:
  *
@@ -312,13 +317,7 @@ CanonicalizeNaN(double d)
  */
 union MOZ_NON_PARAM alignas(8) Value
 {
-#if !defined(_MSC_VER) && !defined(__sparc)
-  // Don't expose Value's fields unless we have to: MSVC (bug 689101) and SPARC
-  // (bug 737344) require Value be POD to pass it by value and not in memory.
-  // More precisely, we don't want Value return values compiled as outparams.
   private:
-#endif
-
     uint64_t asBits_;
     double asDouble_;
 

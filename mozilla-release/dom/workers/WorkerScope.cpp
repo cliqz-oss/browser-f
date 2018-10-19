@@ -558,8 +558,8 @@ WorkerGlobalScope::GetController() const
   return mWorkerPrivate->GetController();
 }
 
-RefPtr<ServiceWorkerRegistration>
-WorkerGlobalScope::GetOrCreateServiceWorkerRegistration(const ServiceWorkerRegistrationDescriptor& aDescriptor)
+RefPtr<mozilla::dom::ServiceWorkerRegistration>
+WorkerGlobalScope::GetServiceWorkerRegistration(const ServiceWorkerRegistrationDescriptor& aDescriptor) const
 {
   mWorkerPrivate->AssertIsOnWorkerThread();
   RefPtr<ServiceWorkerRegistration> ref;
@@ -572,12 +572,18 @@ WorkerGlobalScope::GetOrCreateServiceWorkerRegistration(const ServiceWorkerRegis
     ref = swr.forget();
     *aDoneOut = true;
   });
+  return ref.forget();
+}
 
+RefPtr<ServiceWorkerRegistration>
+WorkerGlobalScope::GetOrCreateServiceWorkerRegistration(const ServiceWorkerRegistrationDescriptor& aDescriptor)
+{
+  mWorkerPrivate->AssertIsOnWorkerThread();
+  RefPtr<ServiceWorkerRegistration> ref = GetServiceWorkerRegistration(aDescriptor);
   if (!ref) {
     ref = ServiceWorkerRegistration::CreateForWorker(mWorkerPrivate, this,
                                                      aDescriptor);
   }
-
   return ref.forget();
 }
 
@@ -617,7 +623,7 @@ DedicatedWorkerGlobalScope::WrapGlobalObject(JSContext* aCx,
   JS::RealmCreationOptions& creationOptions = options.creationOptions();
   creationOptions.setSharedMemoryAndAtomicsEnabled(sharedMemoryEnabled);
 
-  return DedicatedWorkerGlobalScopeBinding::Wrap(aCx, this, this,
+  return DedicatedWorkerGlobalScope_Binding::Wrap(aCx, this, this,
                                                  options,
                                                  GetWorkerPrincipal(),
                                                  true, aReflector);
@@ -656,7 +662,7 @@ SharedWorkerGlobalScope::WrapGlobalObject(JSContext* aCx,
   JS::RealmOptions options;
   mWorkerPrivate->CopyJSRealmOptions(options);
 
-  return SharedWorkerGlobalScopeBinding::Wrap(aCx, this, this, options,
+  return SharedWorkerGlobalScope_Binding::Wrap(aCx, this, this, options,
                                               GetWorkerPrincipal(),
                                               true, aReflector);
 }
@@ -702,7 +708,7 @@ ServiceWorkerGlobalScope::WrapGlobalObject(JSContext* aCx,
   JS::RealmOptions options;
   mWorkerPrivate->CopyJSRealmOptions(options);
 
-  return ServiceWorkerGlobalScopeBinding::Wrap(aCx, this, this, options,
+  return ServiceWorkerGlobalScope_Binding::Wrap(aCx, this, this, options,
                                                GetWorkerPrincipal(),
                                                true, aReflector);
 }
@@ -730,7 +736,7 @@ ServiceWorkerGlobalScope::GetOnfetch()
   MOZ_ASSERT(mWorkerPrivate);
   mWorkerPrivate->AssertIsOnWorkerThread();
 
-  return GetEventHandler(nullptr, NS_LITERAL_STRING("fetch"));
+  return GetEventHandler(nsGkAtoms::onfetch);
 }
 
 namespace {
@@ -783,16 +789,16 @@ ServiceWorkerGlobalScope::SetOnfetch(mozilla::dom::EventHandlerNonNull* aCallbac
     }
     mWorkerPrivate->SetFetchHandlerWasAdded();
   }
-  SetEventHandler(nullptr, NS_LITERAL_STRING("fetch"), aCallback);
+  SetEventHandler(nsGkAtoms::onfetch, aCallback);
 }
 
 void
-ServiceWorkerGlobalScope::EventListenerAdded(const nsAString& aType)
+ServiceWorkerGlobalScope::EventListenerAdded(nsAtom* aType)
 {
   MOZ_ASSERT(mWorkerPrivate);
   mWorkerPrivate->AssertIsOnWorkerThread();
 
-  if (!aType.EqualsLiteral("fetch")) {
+  if (aType != nsGkAtoms::onfetch) {
     return;
   }
 
@@ -958,7 +964,7 @@ WorkerDebuggerGlobalScope::WrapGlobalObject(JSContext* aCx,
   JS::RealmOptions options;
   mWorkerPrivate->CopyJSRealmOptions(options);
 
-  return WorkerDebuggerGlobalScopeBinding::Wrap(aCx, this, this, options,
+  return WorkerDebuggerGlobalScope_Binding::Wrap(aCx, this, this, options,
                                                 GetWorkerPrincipal(), true,
                                                 aReflector);
 }

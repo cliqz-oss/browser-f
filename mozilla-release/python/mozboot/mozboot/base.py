@@ -133,12 +133,13 @@ tool or package manager on your system, or directly from https://rust-lang.org/
 '''
 
 BROWSER_ARTIFACT_MODE_MOZCONFIG = '''
-Paste the lines between the chevrons (>>> and <<<) into your mozconfig file:
+Paste the lines between the chevrons (>>> and <<<) into your
+$topsrcdir/mozconfig file, or create the file if it does not exist:
 
-<<<
+>>>
 # Automatically download and use compiled C++ components:
 ac_add_options --enable-artifact-builds
->>>
+<<<
 '''
 
 # Upgrade Mercurial older than this.
@@ -150,15 +151,16 @@ MODERN_MERCURIAL_VERSION = LooseVersion('4.3.3')
 MODERN_PYTHON_VERSION = LooseVersion('2.7.3')
 
 # Upgrade rust older than this.
-MODERN_RUST_VERSION = LooseVersion('1.24.0')
+MODERN_RUST_VERSION = LooseVersion('1.28.0')
 
 
 class BaseBootstrapper(object):
     """Base class for system bootstrappers."""
 
-    def __init__(self, no_interactive=False):
+    def __init__(self, no_interactive=False, no_system_changes=False):
         self.package_manager_updated = False
         self.no_interactive = no_interactive
+        self.no_system_changes = no_system_changes
         self.state_dir = None
 
     def install_system_packages(self):
@@ -259,6 +261,26 @@ class BaseBootstrapper(object):
             '%s does not yet implement ensure_stylo_packages()'
             % __name__)
 
+    def ensure_node_packages(self, state_dir, checkout_root):
+        '''
+        Install any necessary packages needed to supply NodeJS'''
+        raise NotImplementedError(
+            '%s does not yet implement ensure_node_packages()'
+            % __name__)
+
+    def ensure_rust_package(self, crate_name):
+        if self.which(crate_name):
+            return
+        cargo_home, cargo_bin = self.cargo_home()
+        cargo_bin_path = os.path.join(cargo_bin, crate_name)
+        if os.path.exists(cargo_bin_path) and os.access(cargo_bin_path, os.X_OK):
+            return
+        print('%s not found, installing via cargo install.' % crate_name)
+        cargo = self.which('cargo')
+        if not cargo:
+            cargo = os.path.join(cargo_bin, 'cargo')
+        subprocess.check_call([cargo, 'install', crate_name])
+
     def install_toolchain_artifact(self, state_dir, checkout_root, toolchain_job):
         mach_binary = os.path.join(checkout_root, 'mach')
         mach_binary = os.path.abspath(mach_binary)
@@ -276,14 +298,17 @@ class BaseBootstrapper(object):
 
         subprocess.check_call(cmd, cwd=state_dir)
 
-    def which(self, name):
+    def which(self, name, *extra_search_dirs):
         """Python implementation of which.
 
         It returns the path of an executable or None if it couldn't be found.
         """
-        for path in os.environ['PATH'].split(os.pathsep):
+        search_dirs = os.environ['PATH'].split(os.pathsep)
+        search_dirs.extend(extra_search_dirs)
+
+        for path in search_dirs:
             test = os.path.join(path, name)
-            if os.path.exists(test) and os.access(test, os.X_OK):
+            if os.path.isfile(test) and os.access(test, os.X_OK):
                 return test
 
         return None
@@ -549,8 +574,8 @@ class BaseBootstrapper(object):
         """
         print(PYTHON_UNABLE_UPGRADE % (current, MODERN_PYTHON_VERSION))
 
-    def is_rust_modern(self):
-        rustc = self.which('rustc')
+    def is_rust_modern(self, cargo_bin):
+        rustc = self.which('rustc', cargo_bin)
         if not rustc:
             print('Could not find a Rust compiler.')
             return False, None
@@ -594,30 +619,20 @@ class BaseBootstrapper(object):
         })
 
     def ensure_rust_modern(self):
-        modern, version = self.is_rust_modern()
+        cargo_home, cargo_bin = self.cargo_home()
+        modern, version = self.is_rust_modern(cargo_bin)
 
         if modern:
             print('Your version of Rust (%s) is new enough.' % version)
-            rustup = self.which('rustup')
+            rustup = self.which('rustup', cargo_bin)
             if rustup:
                 self.ensure_rust_targets(rustup)
             return
 
-        if not version:
-            # Rust wasn't in PATH. Check the standard location.
-            cargo_home, cargo_bin = self.cargo_home()
-            try_rustc = os.path.join(cargo_bin, 'rustc' + rust.exe_suffix())
-            try_cargo = os.path.join(cargo_bin, 'cargo' + rust.exe_suffix())
-            have_rustc = os.path.exists(try_rustc)
-            have_cargo = os.path.exists(try_cargo)
-            if have_rustc or have_cargo:
-                self.print_rust_path_advice(RUST_NOT_IN_PATH,
-                                            cargo_home, cargo_bin)
-                sys.exit(1)
-        else:
+        if version:
             print('Your version of Rust (%s) is too old.' % version)
 
-        rustup = self.which('rustup')
+        rustup = self.which('rustup', cargo_bin)
         if rustup:
             rustup_version = self._parse_version(rustup)
             if not rustup_version:
@@ -626,7 +641,7 @@ class BaseBootstrapper(object):
             print('Found rustup. Will try to upgrade.')
             self.upgrade_rust(rustup)
 
-            modern, after = self.is_rust_modern()
+            modern, after = self.is_rust_modern(cargo_bin)
             if not modern:
                 print(RUST_UPGRADE_FAILED % (MODERN_RUST_VERSION, after))
                 sys.exit(1)

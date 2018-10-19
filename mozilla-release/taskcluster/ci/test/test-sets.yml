@@ -33,7 +33,8 @@ common-tests:
     - mochitest-devtools-chrome
     - mochitest-gpu
     - mochitest-media
-    - mochitest-webgl
+    - mochitest-webgl1-core
+    - mochitest-webgl1-ext
     - reftest
     - reftest-no-accel
     - telemetry-tests-client
@@ -67,6 +68,7 @@ talos:
     - talos-g4
     - talos-g5
     - talos-other
+    - talos-sessionrestore-many-windows
     - talos-svgr
     - talos-tp5o
     - talos-perf-reftest
@@ -76,14 +78,42 @@ talos:
     - talos-tps
     - talos-speedometer
     - talos-motionmark
-    - talos-h1
-    - talos-h2
+    # - talos-h1 Bug 1487031 - Disabled for not finding actionable regressions
+    # - talos-h2 Bug 1487031 - Disabled for not finding actionable regressions
 
-raptor:
-    - raptor-firefox-tp6
-    - raptor-firefox-speedometer
-    - raptor-chrome-tp6
-    - raptor-chrome-speedometer
+raptor-firefox:
+    - raptor-tp6-firefox
+    - raptor-speedometer-firefox
+    - raptor-stylebench-firefox
+    - raptor-motionmark-htmlsuite-firefox
+    - raptor-motionmark-animometer-firefox
+    - raptor-webaudio-firefox
+    - raptor-gdocs-firefox
+    - raptor-sunspider-firefox
+    - raptor-assorted-dom-firefox
+
+raptor-chrome:
+    - raptor-tp6-chrome
+    - raptor-speedometer-chrome
+    - raptor-stylebench-chrome
+    - raptor-motionmark-htmlsuite-chrome
+    - raptor-motionmark-animometer-chrome
+    - raptor-webaudio-chrome
+    - raptor-gdocs-chrome
+    - raptor-sunspider-chrome
+    - raptor-assorted-dom-chrome
+
+# Fetch tasks are only supported on Linux for now,
+# so these need to be separate sets.
+raptor-fetch-firefox:
+    - raptor-unity-webgl-firefox
+    - raptor-wasm-misc-firefox
+    - raptor-wasm-misc-baseline-firefox
+    - raptor-wasm-misc-ion-firefox
+
+raptor-fetch-chrome:
+    - raptor-unity-webgl-chrome
+    - raptor-wasm-misc-chrome
 
 awsy:
     - awsy
@@ -105,7 +135,7 @@ linux-qr-tests:
     - mochitest-a11y
     - mochitest-gpu
     - mochitest-media
-    - mochitest-webgl
+    - mochitest-webgl1-core
     - reftest
     - xpcshell
 
@@ -136,7 +166,7 @@ windows-qr-tests:
     - mochitest
     - mochitest-gpu
     - mochitest-media
-    - mochitest-webgl
+    - mochitest-webgl1-core
     - reftest
 
 jsdcov-code-coverage-tests:
@@ -166,7 +196,10 @@ windows-tests:
     - mochitest-devtools-chrome
     - mochitest-gpu
     - mochitest-media
-    - mochitest-webgl
+    - mochitest-webgl1-core
+    - mochitest-webgl1-ext
+    - mochitest-webgl2-core
+    - mochitest-webgl2-ext
     - reftest
     - reftest-no-accel
     - test-coverage
@@ -187,6 +220,7 @@ windows-talos:
     - talos-g4
     - talos-g5
     - talos-other
+    - talos-sessionrestore-many-windows
     - talos-perf-reftest
     - talos-perf-reftest-singletons
     - talos-svgr
@@ -196,7 +230,7 @@ windows-talos:
     - talos-tp6
     - talos-tps
     - talos-motionmark
-    - talos-h1
+    # - talos-h1 Bug 1487031 - Disabled for not finding actionable regressions
 
 windows-talos-profiling:
     - talos-bcv-profiling
@@ -235,7 +269,10 @@ macosx64-tests:
     - mochitest-devtools-chrome
     - mochitest-gpu
     - mochitest-media
-    - mochitest-webgl
+    - mochitest-webgl1-core
+    - mochitest-webgl1-ext
+    - mochitest-webgl2-core
+    # - mochitest-webgl2-ext test timeouts
     - reftest
     - test-verify
     - test-verify-gpu
@@ -253,6 +290,7 @@ macosx64-talos:
     - talos-g4
     - talos-g5
     - talos-other
+    - talos-sessionrestore-many-windows
     - talos-svgr
     - talos-tp5o
     - talos-perf-reftest
@@ -303,7 +341,7 @@ linux32-tests:
     - mochitest-clipboard
     - mochitest-gpu
     - mochitest-media
-    - mochitest-webgl
+    - mochitest-webgl1-core
     - reftest
     - reftest-no-accel
     - web-platform-tests
@@ -333,6 +371,10 @@ android-common-tests:
     - mochitest-clipboard
     - mochitest-gpu
     - mochitest-media
+    # - mochitest-webgl1-core
+    # - mochitest-webgl1-ext
+    # - mochitest-webgl2-core
+    # - mochitest-webgl2-ext
     - reftest
     - test-verify
     - xpcshell
@@ -354,14 +396,17 @@ android-x86-kvm-tests:
     - crashtest
     - geckoview-junit
     - jsreftest
-    - mochitest
+    # - mochitest
     # - mochitest-chrome
     - mochitest-clipboard
     - mochitest-gpu
-    - mochitest-media
-    # - mochitest-webgl
-    - reftest
-    - test-verify
+    # - mochitest-media
+    # - mochitest-webgl1-core
+    # - reftest
+    # - test-verify
+
+android-ccov-tests:
+    - geckoview-junit
 
 devtools-tests:
     - mochitest-devtools-chrome

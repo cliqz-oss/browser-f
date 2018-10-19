@@ -333,7 +333,8 @@ struct MarkGlyphSets
 
 
 /*
- * GDEF -- The Glyph Definition Table
+ * GDEF -- Glyph Definition
+ * https://docs.microsoft.com/en-us/typography/opentype/spec/gdef
  */
 
 struct GDEF
@@ -348,6 +349,7 @@ struct GDEF
     ComponentGlyph	= 4
   };
 
+  inline bool has_data (void) const { return version.to_int () != 0; }
   inline bool has_glyph_classes (void) const { return glyphClassDef != 0; }
   inline unsigned int get_glyph_class (hb_codepoint_t glyph) const
   { return (this+glyphClassDef).get_class (glyph); }

@@ -21,6 +21,7 @@ import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.design.widget.Snackbar;
+import android.support.multidex.MultiDex;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
@@ -233,6 +234,7 @@ public class GeckoApplication extends Application
         return new GeckoRuntimeSettings.Builder()
                 .javaCrashReportingEnabled(true)
                 .nativeCrashReportingEnabled(true)
+                .crashReportingJobId(JobIdsConstants.getIdForCrashReporter())
                 .arguments(getDefaultGeckoArgs());
     }
 
@@ -332,6 +334,7 @@ public class GeckoApplication extends Application
         FilePicker.init(context);
         DownloadsIntegration.init();
         HomePanelsManager.getInstance().init(context);
+        AddonUICache.getInstance().init();
 
         GlobalPageMetadata.getInstance().init();
 
@@ -366,6 +369,19 @@ public class GeckoApplication extends Application
                 null);
 
         super.onCreate();
+    }
+
+    @Override
+    protected void attachBaseContext(Context base) {
+        super.attachBaseContext(base);
+
+        // API >= 21 natively supports loading multiple DEX files from APK files.
+        // Needs just 'multiDexEnabled true' inside the gradle build configuration.
+        final boolean isMultidexLibNeeded = BuildConfig.FLAVOR_minApi.equals("noMinApi");
+
+        if (isMultidexLibNeeded) {
+            MultiDex.install(this);
+        }
     }
 
     /**
@@ -657,15 +673,27 @@ public class GeckoApplication extends Application
     }
 
     public static void createBrowserShortcut(final String title, final String url) {
-      Icons.with(GeckoAppShell.getApplicationContext())
+        createBrowserShortcut(title, url, true);
+    }
+
+    private static void createBrowserShortcut(final String title, final String url, final boolean skipMemoryCache) {
+        // Try to fetch the icon from the disk cache. The memory cache is
+        // initially skipped to avoid the use of downsized icons.
+        Icons.with(GeckoAppShell.getApplicationContext())
               .pageUrl(url)
               .skipNetwork()
-              .skipMemory()
+              .skipMemoryIf(skipMemoryCache)
               .forLauncherIcon()
               .build()
               .execute(new IconCallback() {
                   @Override
                   public void onIconResponse(final IconResponse response) {
+                      if (response.isGenerated() && skipMemoryCache) {
+                          // The icon was not found in the disk cache.
+                          // Fall back to the memory cache.
+                          createBrowserShortcut(title, url, false);
+                          return;
+                      }
                       createShortcutWithIcon(title, url, response.getBitmap());
                   }
               });

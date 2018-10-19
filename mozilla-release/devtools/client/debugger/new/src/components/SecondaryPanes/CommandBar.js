@@ -30,7 +30,9 @@ var _actions2 = _interopRequireDefault(_actions);
 
 var _CommandBarButton = require("../shared/Button/CommandBarButton");
 
-var _devtoolsModules = require("devtools/client/debugger/new/dist/vendors").vendored["devtools-modules"];
+var _devtoolsServices = require("Services");
+
+var _devtoolsServices2 = _interopRequireDefault(_devtoolsServices);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -41,7 +43,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 const {
   appinfo
-} = _devtoolsModules.Services;
+} = _devtoolsServices2.default;
 const isMacOS = appinfo.OS === "Darwin";
 const COMMANDS = ["resume", "stepOver", "stepIn", "stepOut"];
 const KEYS = {
@@ -149,11 +151,11 @@ class CommandBar extends _react.Component {
       canRewind
     } = this.props;
 
-    if (canRewind) {
-      return;
-    }
-
     if (isPaused) {
+      if (canRewind) {
+        return null;
+      }
+
       return (0, _CommandBarButton.debugBtn)(() => this.resume(), "resume", "active", L10N.getFormatStr("resumeButtonTooltip", formatKey("resume")));
     }
 
@@ -179,7 +181,7 @@ class CommandBar extends _react.Component {
     }
 
     const isDisabled = !isPaused;
-    return [(0, _CommandBarButton.debugBtn)(this.props.rewind, "rewind", "active", "Rewind Execution"), (0, _CommandBarButton.debugBtn)(() => this.props.resume, "resume", "active", L10N.getFormatStr("resumeButtonTooltip", formatKey("resume"))), _react2.default.createElement("div", {
+    return [(0, _CommandBarButton.debugBtn)(this.props.rewind, "rewind", "active", "Rewind Execution"), (0, _CommandBarButton.debugBtn)(this.props.resume, "resume", "active", L10N.getFormatStr("resumeButtonTooltip", formatKey("resume"))), _react2.default.createElement("div", {
       key: "divider-1",
       className: "divider"
     }), (0, _CommandBarButton.debugBtn)(this.props.reverseStepOver, "reverseStepOver", "active", "Reverse step over"), (0, _CommandBarButton.debugBtn)(this.props.stepOver, "stepOver", "active", L10N.getFormatStr("stepOverTooltip", formatKey("stepOver")), isDisabled), _react2.default.createElement("div", {
@@ -258,7 +260,7 @@ class CommandBar extends _react.Component {
     }
 
     return _react2.default.createElement("button", {
-      className: (0, _classnames2.default)("command-bar-button", {
+      className: (0, _classnames2.default)("command-bar-button", "command-bar-skip-pausing", {
         active: skipPausing
       }),
       title: L10N.getStr("skipPausingTooltip"),
@@ -293,4 +295,18 @@ const mapStateToProps = state => ({
   skipPausing: (0, _selectors.getSkipPausing)(state)
 });
 
-exports.default = (0, _reactRedux.connect)(mapStateToProps, _actions2.default)(CommandBar);
+exports.default = (0, _reactRedux.connect)(mapStateToProps, {
+  timeTravelTo: _actions2.default.timeTravelTo,
+  clearHistory: _actions2.default.clearHistory,
+  resume: _actions2.default.resume,
+  stepIn: _actions2.default.stepIn,
+  stepOut: _actions2.default.stepOut,
+  stepOver: _actions2.default.stepOver,
+  breakOnNext: _actions2.default.breakOnNext,
+  rewind: _actions2.default.rewind,
+  reverseStepIn: _actions2.default.reverseStepIn,
+  reverseStepOut: _actions2.default.reverseStepOut,
+  reverseStepOver: _actions2.default.reverseStepOver,
+  pauseOnExceptions: _actions2.default.pauseOnExceptions,
+  toggleSkipPausing: _actions2.default.toggleSkipPausing
+})(CommandBar);

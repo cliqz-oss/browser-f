@@ -49,6 +49,8 @@ bool SetImmutablePrototype(JSContext* cx, JS::HandleObject obj, bool* succeeded)
 }  /* namespace js */
 
 /*
+ * [SMDOC] JSObject layout
+ *
  * A JavaScript object.
  *
  * This is the base class for all objects exposed to JS script (as well as some
@@ -428,15 +430,12 @@ class JSObject : public js::gc::Cell
      */
     inline JSObject* enclosingEnvironment() const;
 
-    // Deprecated: call nonCCWGlobal or NativeObject::global() instead!
-    inline js::GlobalObject& deprecatedGlobal() const;
-
     // Cross-compartment wrappers are not associated with a single realm/global,
     // so these methods assert the object is not a CCW.
     inline js::GlobalObject& nonCCWGlobal() const;
 
     JS::Realm* nonCCWRealm() const {
-        MOZ_ASSERT(!js::IsCrossCompartmentWrapper(this));
+        MOZ_ASSERT(!js::UninlinedIsCrossCompartmentWrapper(this));
         return group_->realm();
     }
 
@@ -536,7 +535,7 @@ class JSObject : public js::gc::Cell
         return *static_cast<const T*>(this);
     }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
     void dump(js::GenericPrinter& fp) const;
     void dump() const;
 #endif
@@ -1149,7 +1148,7 @@ bool
 GetPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp);
 
 bool
-GetOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp);
+GetOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id, Value* vp, bool* found);
 
 bool
 GetGetterPure(JSContext* cx, JSObject* obj, jsid id, JSFunction** fp);
@@ -1179,13 +1178,10 @@ extern bool
 FromPropertyDescriptorToObject(JSContext* cx, Handle<JS::PropertyDescriptor> desc,
                                MutableHandleValue vp);
 
-extern bool
-IsDelegate(JSContext* cx, HandleObject obj, const Value& v, bool* result);
-
 // obj is a JSObject*, but we root it immediately up front. We do it
 // that way because we need a Rooted temporary in this method anyway.
 extern bool
-IsDelegateOfObject(JSContext* cx, HandleObject protoObj, JSObject* obj, bool* result);
+IsPrototypeOf(JSContext* cx, HandleObject protoObj, JSObject* obj, bool* result);
 
 /* Wrap boolean, number or string as Boolean, Number or String object. */
 extern JSObject*
@@ -1202,6 +1198,38 @@ ToObjectFromStack(JSContext* cx, HandleValue vp)
     if (vp.isObject())
         return &vp.toObject();
     return js::ToObjectSlow(cx, vp, true);
+}
+
+JSObject*
+ToObjectSlowForPropertyAccess(JSContext* cx, JS::HandleValue val, HandleId key,
+                              bool reportScanStack);
+JSObject*
+ToObjectSlowForPropertyAccess(JSContext* cx, JS::HandleValue val, HandlePropertyName key,
+                              bool reportScanStack);
+JSObject*
+ToObjectSlowForPropertyAccess(JSContext* cx, JS::HandleValue val, HandleValue keyValue,
+                              bool reportScanStack);
+
+MOZ_ALWAYS_INLINE JSObject*
+ToObjectFromStackForPropertyAccess(JSContext* cx, HandleValue vp, HandleId key)
+{
+    if (vp.isObject())
+        return &vp.toObject();
+    return js::ToObjectSlowForPropertyAccess(cx, vp, key, true);
+}
+MOZ_ALWAYS_INLINE JSObject*
+ToObjectFromStackForPropertyAccess(JSContext* cx, HandleValue vp, HandlePropertyName key)
+{
+    if (vp.isObject())
+        return &vp.toObject();
+    return js::ToObjectSlowForPropertyAccess(cx, vp, key, true);
+}
+MOZ_ALWAYS_INLINE JSObject*
+ToObjectFromStackForPropertyAccess(JSContext* cx, HandleValue vp, HandleValue key)
+{
+    if (vp.isObject())
+        return &vp.toObject();
+    return js::ToObjectSlowForPropertyAccess(cx, vp, key, true);
 }
 
 template<XDRMode mode>

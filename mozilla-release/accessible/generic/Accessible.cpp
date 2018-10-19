@@ -32,7 +32,6 @@
 #include "XULDocument.h"
 
 #include "nsIDOMXULButtonElement.h"
-#include "nsIDOMXULLabelElement.h"
 #include "nsIDOMXULSelectCntrlEl.h"
 #include "nsIDOMXULSelectCntrlItemEl.h"
 #include "nsINodeList.h"
@@ -115,11 +114,16 @@ Accessible::Accessible(nsIContent* aContent, DocAccessible* aDoc) :
 {
   mBits.groupInfo = nullptr;
   mInt.mIndexOfEmbeddedChild = -1;
+
+  // Assign an ID to this Accessible for use in UniqueID().
+  recordreplay::RegisterThing(this);
 }
 
 Accessible::~Accessible()
 {
   NS_ASSERTION(!mDoc, "LastRelease was never called!?!");
+
+  recordreplay::UnregisterThing(this);
 }
 
 ENameValueFlag
@@ -256,13 +260,13 @@ Accessible::AccessKey() const
   switch (Preferences::GetInt("ui.key.generalAccessKey", -1)) {
   case -1:
     break;
-  case dom::KeyboardEventBinding::DOM_VK_SHIFT:
+  case dom::KeyboardEvent_Binding::DOM_VK_SHIFT:
     return KeyBinding(key, KeyBinding::kShift);
-  case dom::KeyboardEventBinding::DOM_VK_CONTROL:
+  case dom::KeyboardEvent_Binding::DOM_VK_CONTROL:
     return KeyBinding(key, KeyBinding::kControl);
-  case dom::KeyboardEventBinding::DOM_VK_ALT:
+  case dom::KeyboardEvent_Binding::DOM_VK_ALT:
     return KeyBinding(key, KeyBinding::kAlt);
-  case dom::KeyboardEventBinding::DOM_VK_META:
+  case dom::KeyboardEvent_Binding::DOM_VK_META:
     return KeyBinding(key, KeyBinding::kMeta);
   default:
     return KeyBinding();
@@ -639,7 +643,10 @@ Accessible::RelativeBounds(nsIFrame** aBoundingFrame) const
 {
   nsIFrame* frame = GetFrame();
   if (frame && mContent) {
-    bool* hasHitRegionRect = static_cast<bool*>(mContent->GetProperty(nsGkAtoms::hitregion));
+    bool* pHasHitRegionRect = static_cast<bool*>(mContent->GetProperty(nsGkAtoms::hitregion));
+    MOZ_ASSERT(pHasHitRegionRect == nullptr ||
+               *pHasHitRegionRect, "hitregion property is always null or true");
+    bool hasHitRegionRect = pHasHitRegionRect != nullptr && *pHasHitRegionRect;
 
     if (hasHitRegionRect && mContent->IsElement()) {
       // This is for canvas fallback content
@@ -704,7 +711,7 @@ Accessible::Bounds() const
 nsIntRect
 Accessible::BoundsInCSSPixels() const
 {
-  return BoundsInAppUnits().ToNearestPixels(mDoc->PresContext()->AppUnitsPerCSSPixel());
+  return BoundsInAppUnits().ToNearestPixels(AppUnitsPerCSSPixel());
 }
 
 void
@@ -815,17 +822,15 @@ Accessible::XULElmName(DocAccessible* aDocument,
 
   // CASES #2 and #3 ------ label as a child or <label control="id" ... > </label>
   if (aName.IsEmpty()) {
-    Accessible* labelAcc = nullptr;
+    Accessible* label = nullptr;
     XULLabelIterator iter(aDocument, aElm);
-    while ((labelAcc = iter.Next())) {
-      nsCOMPtr<nsIDOMXULLabelElement> xulLabel =
-        do_QueryInterface(labelAcc->GetContent());
+    while ((label = iter.Next())) {
       // Check if label's value attribute is used
-      if (xulLabel && NS_SUCCEEDED(xulLabel->GetValue(aName)) && aName.IsEmpty()) {
+      label->Elm()->GetAttr(kNameSpaceID_None, nsGkAtoms::value, aName);
+      if (aName.IsEmpty()) {
         // If no value attribute, a non-empty label must contain
         // children that define its text -- possibly using HTML
-        nsTextEquivUtils::
-          AppendTextEquivFromContent(labelAcc, labelAcc->GetContent(), &aName);
+        nsTextEquivUtils::AppendTextEquivFromContent(label, label->Elm(), &aName);
       }
     }
   }
@@ -934,7 +939,8 @@ Accessible::HandleAccEvent(AccEvent* aEvent)
             vcEvent->OldStartOffset(), vcEvent->OldEndOffset(),
             position ? reinterpret_cast<uintptr_t>(position->UniqueID()) : 0,
             vcEvent->NewStartOffset(), vcEvent->NewEndOffset(),
-            vcEvent->Reason(), vcEvent->IsFromUserInput());
+            vcEvent->Reason(), vcEvent->BoundaryType(),
+            vcEvent->IsFromUserInput());
           break;
         }
 #if defined(XP_WIN)
@@ -943,6 +949,14 @@ Accessible::HandleAccEvent(AccEvent* aEvent)
           break;
         }
 #endif
+        case nsIAccessibleEvent::EVENT_SCROLLING_END:
+        case nsIAccessibleEvent::EVENT_SCROLLING: {
+          AccScrollingEvent* scrollingEvent = downcast_accEvent(aEvent);
+          ipcDoc->SendScrollingEvent(id, aEvent->GetEventType(),
+            scrollingEvent->ScrollX(), scrollingEvent->ScrollY(),
+            scrollingEvent->MaxScrollX(), scrollingEvent->MaxScrollY());
+          break;
+        }
         default:
           ipcDoc->SendEvent(id, aEvent->GetEventType());
       }
@@ -981,11 +995,6 @@ Accessible::Attributes()
   nsAutoString name, value;
   while(attribIter.Next(name, value))
     attributes->SetStringProperty(NS_ConvertUTF16toUTF8(name), value, unused);
-
-  if (IsARIAHidden()) {
-    nsAccUtils::SetAccAttr(attributes, nsGkAtoms::hidden,
-                           NS_LITERAL_STRING("true"));
-  }
 
   // If there is no aria-live attribute then expose default value of 'live'
   // object attribute used for ARIA role of this accessible.
@@ -1357,10 +1366,11 @@ void
 Accessible::Value(nsString& aValue) const
 {
   const nsRoleMapEntry* roleMapEntry = ARIARoleMap();
-  if (!roleMapEntry)
-    return;
 
-  if (roleMapEntry->valueRule != eNoValue) {
+  if ((roleMapEntry && roleMapEntry->valueRule != eNoValue) ||
+      // Bug 1475376: aria-valuetext should also be supported for implicit ARIA
+      // roles; e.g. <input type="range">.
+      HasNumericValue()) {
     // aria-valuenow is a number, and aria-valuetext is the optional text
     // equivalent. For the string value, we will try the optional text
     // equivalent first.
@@ -1373,6 +1383,10 @@ Accessible::Value(nsString& aValue) const
       mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::aria_valuenow,
                                      aValue);
     }
+    return;
+  }
+
+  if (!roleMapEntry) {
     return;
   }
 
@@ -1784,7 +1798,7 @@ Accessible::RelationByType(RelationType aType) const
         nsCOMPtr<nsIDOMXULButtonElement> buttonEl;
         if (doc->IsXULDocument()) {
           dom::XULDocument* xulDoc = doc->AsXULDocument();
-          nsCOMPtr<nsINodeList> possibleDefaultButtons =
+          nsCOMPtr<nsIHTMLCollection> possibleDefaultButtons =
             xulDoc->GetElementsByAttribute(NS_LITERAL_STRING("default"),
                                            NS_LITERAL_STRING("true"));
           if (possibleDefaultButtons) {
@@ -2112,9 +2126,6 @@ Accessible::BindToParent(Accessible* aParent, uint32_t aIndexInParent)
     mContextFlags |= eHasNameDependentParent;
   else
     mContextFlags &= ~eHasNameDependentParent;
-
-  if (mParent->IsARIAHidden() || aria::HasDefinedARIAHidden(mContent))
-    SetARIAHidden(true);
 
   mContextFlags |=
     static_cast<uint32_t>((mParent->IsAlert() ||
@@ -2640,20 +2651,6 @@ Accessible::ContainerWidget() const
     }
   }
   return nullptr;
-}
-
-void
-Accessible::SetARIAHidden(bool aIsDefined)
-{
-  if (aIsDefined)
-    mContextFlags |= eARIAHidden;
-  else
-    mContextFlags &= ~eARIAHidden;
-
-  uint32_t length = mChildren.Length();
-  for (uint32_t i = 0; i < length; i++) {
-    mChildren[i]->SetARIAHidden(aIsDefined);
-  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

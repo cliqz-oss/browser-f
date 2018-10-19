@@ -7,6 +7,7 @@ exports.setContextMenu = setContextMenu;
 exports.setPrimaryPaneTab = setPrimaryPaneTab;
 exports.closeActiveSearch = closeActiveSearch;
 exports.setActiveSearch = setActiveSearch;
+exports.updateActiveFileSearch = updateActiveFileSearch;
 exports.toggleFrameworkGrouping = toggleFrameworkGrouping;
 exports.showSource = showSource;
 exports.togglePaneCollapse = togglePaneCollapse;
@@ -21,9 +22,11 @@ exports.setOrientation = setOrientation;
 
 var _selectors = require("../selectors/index");
 
-var _ui = require("../reducers/ui");
+var _select = require("../actions/sources/select");
 
-var _source = require("../utils/source");
+var _editor = require("../utils/editor/index");
+
+var _fileSearch = require("./file-search");
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -80,6 +83,21 @@ function setActiveSearch(activeSearch) {
   };
 }
 
+function updateActiveFileSearch() {
+  return ({
+    dispatch,
+    getState
+  }) => {
+    const isFileSearchOpen = (0, _selectors.getActiveSearch)(getState()) === "file";
+    const fileSearchQuery = (0, _selectors.getFileSearchQuery)(getState());
+
+    if (isFileSearchOpen && fileSearchQuery) {
+      const editor = (0, _editor.getEditor)();
+      dispatch((0, _fileSearch.searchContents)(fileSearchQuery, editor));
+    }
+  };
+}
+
 function toggleFrameworkGrouping(toggleValue) {
   return ({
     dispatch,
@@ -99,6 +117,10 @@ function showSource(sourceId) {
   }) => {
     const source = (0, _selectors.getSource)(getState(), sourceId);
 
+    if (!source) {
+      return;
+    }
+
     if ((0, _selectors.getPaneCollapse)(getState(), "start")) {
       dispatch({
         type: "TOGGLE_PANE",
@@ -110,11 +132,12 @@ function showSource(sourceId) {
     dispatch(setPrimaryPaneTab("sources"));
     dispatch({
       type: "SHOW_SOURCE",
-      sourceUrl: ""
+      source: null
     });
+    dispatch((0, _select.selectSource)(source.id));
     dispatch({
       type: "SHOW_SOURCE",
-      sourceUrl: (0, _source.getRawSourceURL)(source.get("url"))
+      source
     });
   };
 }
@@ -199,7 +222,7 @@ function setProjectDirectoryRoot(newRoot) {
     dispatch,
     getState
   }) => {
-    const curRoot = (0, _ui.getProjectDirectoryRoot)(getState());
+    const curRoot = (0, _selectors.getProjectDirectoryRoot)(getState());
 
     if (newRoot && curRoot) {
       const newRootArr = newRoot.replace(/\/+/g, "/").split("/");

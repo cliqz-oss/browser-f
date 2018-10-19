@@ -92,6 +92,11 @@ class NoSuchAlertException(WebDriverException):
     status_code = "no such alert"
 
 
+class NoSuchCookieException(WebDriverException):
+    http_status = 404
+    status_code = "no such cookie"
+
+
 class NoSuchElementException(WebDriverException):
     http_status = 404
     status_code = "no such element"
@@ -108,7 +113,7 @@ class NoSuchWindowException(WebDriverException):
 
 
 class ScriptTimeoutException(WebDriverException):
-    http_status = 408
+    http_status = 500
     status_code = "script timeout"
 
 
@@ -123,7 +128,7 @@ class StaleElementReferenceException(WebDriverException):
 
 
 class TimeoutException(WebDriverException):
-    http_status = 408
+    http_status = 500
     status_code = "timeout"
 
 

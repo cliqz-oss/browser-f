@@ -37,6 +37,8 @@ public:
   void Clear();
   bool IsEmpty() const;
 
+  layers::WebRenderBridgeChild* WrBridge() const { return mShmAllocator; }
+
 protected:
   bool AllocChunk();
   layers::OffsetRange AllocLargeChunk(size_t aSize);
@@ -83,6 +85,11 @@ public:
 
   void AddExternalImage(wr::ExternalImageId aExtId, wr::ImageKey aKey);
 
+  void PushExternalImageForTexture(wr::ExternalImageId aExtId,
+                                   wr::ImageKey aKey,
+                                   layers::TextureClient* aTexture,
+                                   bool aIsUpdate);
+
   bool UpdateImageBuffer(wr::ImageKey aKey,
                          const ImageDescriptor& aDescriptor,
                          Range<uint8_t> aBytes);
@@ -92,11 +99,11 @@ public:
                        Range<uint8_t> aBytes,
                        ImageIntRect aDirtyRect);
 
-  void UpdateExternalImage(ImageKey aKey,
-                           const ImageDescriptor& aDescriptor,
-                           ExternalImageId aExtID,
-                           wr::WrExternalImageBufferType aBufferType,
-                           uint8_t aChannelIndex = 0);
+  void UpdateExternalImage(ExternalImageId aExtID,
+                           ImageKey aKey,
+                           ImageIntRect aDirtyRect);
+
+  void SetImageVisibleArea(ImageKey aKey, const gfx::Rect& aArea);
 
   void DeleteImage(wr::ImageKey aKey);
 

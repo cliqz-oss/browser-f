@@ -62,6 +62,14 @@ public:
   NS_DECL_NSIDOMEVENTLISTENER
 
   explicit nsSplitterFrameInner(nsSplitterFrame* aSplitter)
+    : mDidDrag(false)
+    , mDragStart(0)
+    , mParentBox(nullptr)
+    , mChildInfosBeforeCount(0)
+    , mChildInfosAfterCount(0)
+    , mState(Open)
+    , mSplitterPos(0)
+    , mDragging(false)
   {
     mOuter = aSplitter;
     mPressed = false;
@@ -113,7 +121,6 @@ public:
   nsSplitterFrame* mOuter;
   bool mDidDrag;
   nscoord mDragStart;
-  nscoord mCurrentPos;
   nsIFrame* mParentBox;
   bool mPressed;
   UniquePtr<nsSplitterInfo[]> mChildInfosBefore;
@@ -265,8 +272,6 @@ nsSplitterFrame::Init(nsIContent*       aContent,
   mInner = new nsSplitterFrameInner(this);
 
   mInner->AddRef();
-  mInner->mState = nsSplitterFrameInner::Open;
-  mInner->mDragging = false;
 
   // determine orientation of parent, and if vertical, set orient to vertical
   // on splitter content, then re-resolve style
@@ -554,7 +559,7 @@ nsSplitterFrameInner::AddListener()
 void
 nsSplitterFrameInner::RemoveListener()
 {
-  ENSURE_TRUE(mOuter);
+  NS_ENSURE_TRUE_VOID(mOuter);
   mOuter->GetContent()->
     RemoveEventListener(NS_LITERAL_STRING("mouseup"), this, false);
   mOuter->GetContent()->
@@ -631,7 +636,6 @@ nsSplitterFrameInner::MouseDown(Event* aMouseEvent)
   RefPtr<gfxContext> rc =
     outerPresContext->PresShell()->CreateReferenceRenderingContext();
   nsBoxLayoutState state(outerPresContext, rc);
-  mCurrentPos = 0;
   mPressed = true;
 
   mDidDrag = false;
@@ -979,7 +983,7 @@ nsSplitterFrameInner::SetPreferredSize(nsBoxLayoutState& aState, nsIFrame* aChil
 
   AutoWeakFrame weakBox(aChildBox);
   content->AsElement()->SetAttr(kNameSpaceID_None, attribute, prefValue, true);
-  ENSURE_TRUE(weakBox.IsAlive());
+  NS_ENSURE_TRUE_VOID(weakBox.IsAlive());
   aState.PresShell()->FrameNeedsReflow(aChildBox, nsIPresShell::eStyleChange,
                                        NS_FRAME_IS_DIRTY);
 }

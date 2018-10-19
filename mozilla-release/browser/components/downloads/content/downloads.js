@@ -401,7 +401,7 @@ var DownloadsPanel = {
     if (aEvent.keyCode == aEvent.DOM_VK_DOWN) {
       // If the last element in the list is selected, or the footer is already
       // focused, focus the footer.
-      if (richListBox.selectedItem === richListBox.lastChild ||
+      if (richListBox.selectedItem === richListBox.lastElementChild ||
           document.activeElement.parentNode.id === "downloadsFooter") {
         DownloadsFooter.focus();
         aEvent.preventDefault();
@@ -425,9 +425,9 @@ var DownloadsPanel = {
     // in it, focus the last element in the list when going up.
     if (aEvent.keyCode == aEvent.DOM_VK_UP &&
         document.activeElement.parentNode.id === "downloadsFooter" &&
-        DownloadsView.richListBox.firstChild) {
+        DownloadsView.richListBox.firstElementChild) {
       DownloadsView.richListBox.focus();
-      DownloadsView.richListBox.selectedItem = DownloadsView.richListBox.lastChild;
+      DownloadsView.richListBox.selectedItem = DownloadsView.richListBox.lastElementChild;
       aEvent.preventDefault();
       return;
     }
@@ -723,12 +723,12 @@ var DownloadsView = {
     DownloadsCommon.log("Adding a new DownloadsViewItem to the downloads list.",
                         "aNewest =", aNewest);
 
-    let element = document.createElement("richlistitem");
+    let element = document.createXULElement("richlistitem");
     let viewItem = new DownloadsViewItem(download, element);
     this._visibleViewItems.set(download, viewItem);
     this._itemsForElements.set(element, viewItem);
     if (aNewest) {
-      this.richListBox.insertBefore(element, this.richListBox.firstChild);
+      this.richListBox.insertBefore(element, this.richListBox.firstElementChild);
     } else {
       this.richListBox.appendChild(element);
     }
@@ -1344,7 +1344,7 @@ var DownloadsSummary = {
     }
     delete this._detailsNode;
     return this._detailsNode = node;
-  }
+  },
 };
 
 XPCOMUtils.defineConstant(this, "DownloadsSummary", DownloadsSummary);
@@ -1398,7 +1398,7 @@ var DownloadsFooter = {
     }
     delete this._footerNode;
     return this._footerNode = node;
-  }
+  },
 };
 
 XPCOMUtils.defineConstant(this, "DownloadsFooter", DownloadsFooter);

@@ -12,6 +12,7 @@
 #include "mozilla/DebugOnly.h"
 
 #include "gc/Marking.h"
+#include "js/AutoByteString.h"
 #include "js/Value.h"
 #include "vm/Debugger.h"
 #include "vm/TypedArrayObject.h"
@@ -76,11 +77,11 @@ NativeObject::canHaveNonEmptyElements()
 
 #endif // DEBUG
 
-/* static */ bool
+/* static */ void
 ObjectElements::ConvertElementsToDoubles(JSContext* cx, uintptr_t elementsPtr)
 {
     /*
-     * This function is infallible, but has a fallible interface so that it can
+     * This function has an otherwise unused JSContext argument so that it can
      * be called directly from Ion code. Only arrays can have their dense
      * elements converted to doubles, and arrays never have empty elements.
      */
@@ -100,7 +101,6 @@ ObjectElements::ConvertElementsToDoubles(JSContext* cx, uintptr_t elementsPtr)
     }
 
     header->setShouldConvertDoubleElements();
-    return true;
 }
 
 /* static */ bool
@@ -161,7 +161,8 @@ ObjectElements::FreezeOrSeal(JSContext* cx, NativeObject* obj, IntegrityLevel le
 }
 
 #ifdef DEBUG
-static mozilla::Atomic<bool, mozilla::Relaxed> gShapeConsistencyChecksEnabled(false);
+static mozilla::Atomic<bool, mozilla::Relaxed, mozilla::recordreplay::Behavior::DontPreserve>
+    gShapeConsistencyChecksEnabled(false);
 
 /* static */ void
 js::NativeObject::enableShapeConsistencyChecks()
@@ -659,6 +660,8 @@ NativeObject::maybeDensifySparseElements(JSContext* cx, HandleNativeObject obj)
 void
 NativeObject::moveShiftedElements()
 {
+    MOZ_ASSERT(isExtensible());
+
     ObjectElements* header = getElementsHeader();
     uint32_t numShifted = header->numShiftedElements();
     MOZ_ASSERT(numShifted > 0);
@@ -691,6 +694,8 @@ NativeObject::moveShiftedElements()
 void
 NativeObject::maybeMoveShiftedElements()
 {
+    MOZ_ASSERT(isExtensible());
+
     ObjectElements* header = getElementsHeader();
     MOZ_ASSERT(header->numShiftedElements() > 0);
 
@@ -702,6 +707,7 @@ NativeObject::maybeMoveShiftedElements()
 bool
 NativeObject::tryUnshiftDenseElements(uint32_t count)
 {
+    MOZ_ASSERT(isExtensible());
     MOZ_ASSERT(count > 0);
 
     ObjectElements* header = getElementsHeader();
@@ -717,7 +723,6 @@ NativeObject::tryUnshiftDenseElements(uint32_t count)
         // limit.
         if (header->initializedLength <= 10 ||
             header->isCopyOnWrite() ||
-            !isExtensible() ||
             header->hasNonwritableArrayLength() ||
             MOZ_UNLIKELY(count > ObjectElements::MaxShiftedElements))
         {
@@ -1194,6 +1199,17 @@ CallAddPropertyHookDense(JSContext* cx, HandleNativeObject obj, uint32_t index,
     return true;
 }
 
+/**
+ * Determines whether a write to the given element on |arr| should fail
+ * because |arr| has a non-writable length, and writing that element would
+ * increase the length of the array.
+ */
+static bool
+WouldDefinePastNonwritableLength(ArrayObject* arr, uint32_t index)
+{
+    return !arr->lengthIsWritable() && index >= arr->length();
+}
+
 static MOZ_ALWAYS_INLINE void
 UpdateShapeTypeAndValue(JSContext* cx, NativeObject* obj, Shape* shape, jsid id,
                         const Value& value)
@@ -1621,7 +1637,7 @@ js::NativeDefineProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
         // 9.4.2.1 step 3. Don't extend a fixed-length array.
         uint32_t index;
         if (IdIsIndex(id, &index)) {
-            if (WouldDefinePastNonwritableLength(obj, index))
+            if (WouldDefinePastNonwritableLength(arr, index))
                 return result.fail(JSMSG_CANT_DEFINE_PAST_ARRAY_LENGTH);
         }
     } else if (obj->is<TypedArrayObject>()) {
@@ -1914,6 +1930,12 @@ DefineNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
 {
     // Optimized NativeDefineProperty() version for known absent properties.
 
+#ifdef DEBUG
+    // Indexed properties of typed arrays should have been handled by SetTypedArrayElement.
+    uint64_t index;
+    MOZ_ASSERT_IF(obj->is<TypedArrayObject>(), !IsTypedArrayIndex(id, &index));
+#endif
+
     // Dispense with custom behavior of exotic native objects first.
     if (obj->is<ArrayObject>()) {
         // Array's length property is non-configurable, so we shouldn't
@@ -1923,21 +1945,10 @@ DefineNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id,
         // 9.4.2.1 step 3. Don't extend a fixed-length array.
         uint32_t index;
         if (IdIsIndex(id, &index)) {
-            if (WouldDefinePastNonwritableLength(obj, index))
+            if (WouldDefinePastNonwritableLength(&obj->as<ArrayObject>(), index))
                 return result.fail(JSMSG_CANT_DEFINE_PAST_ARRAY_LENGTH);
         }
-    } else if (obj->is<TypedArrayObject>()) {
-        // 9.4.5.3 step 3. Indexed properties of typed arrays are special.
-        uint64_t index;
-        if (IsTypedArrayIndex(id, &index)) {
-            // This method is only called for non-existent properties, which
-            // means any absent indexed property must be out of range.
-            MOZ_ASSERT(index >= obj->as<TypedArrayObject>().length());
-
-            // We (wrongly) ignore out of range defines.
-            return result.failSoft(JSMSG_BAD_INDEX);
-        }
-    } else if (obj->is<ArgumentsObject>()) {
+    }  else if (obj->is<ArgumentsObject>()) {
         // If this method is called with either |length| or |@@iterator|, the
         // property was previously deleted and hence should already be marked
         // as overridden.
@@ -2606,7 +2617,6 @@ SetNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id, Handl
 #endif
 
         // Step 5.e. Define the new data property.
-
         if (DefinePropertyOp op = obj->getOpsDefineProperty()) {
             // Purge the property cache of now-shadowed id in receiver's environment chain.
             if (!ReshapeForShadowedProp(cx, obj, id))
@@ -2625,33 +2635,47 @@ SetNonexistentProperty(JSContext* cx, HandleNativeObject obj, HandleId id, Handl
     return SetPropertyByDefining(cx, id, v, receiver, result);
 }
 
-/*
- * Set an existing own property obj[index] that's a dense element or typed
- * array element.
- */
+// ES2019 draft rev e7dc63fb5d1c26beada9ffc12dc78aa6548f1fb5
+// 9.4.5.9 IntegerIndexedElementSet
 static bool
-SetDenseOrTypedArrayElement(JSContext* cx, HandleNativeObject obj, uint32_t index, HandleValue v,
-                            ObjectOpResult& result)
+SetTypedArrayElement(JSContext* cx, Handle<TypedArrayObject*> obj, uint64_t index, HandleValue v,
+                     ObjectOpResult& result)
 {
-    if (obj->is<TypedArrayObject>()) {
-        double d;
-        if (!ToNumber(cx, v, &d))
-            return false;
+    // Steps 1-2. Are enforced by the caller.
 
-        // Silently do nothing for out-of-bounds sets, for consistency with
-        // current behavior.  (ES6 currently says to throw for this in
-        // strict mode code, so we may eventually need to change.)
-        uint32_t len = obj->as<TypedArrayObject>().length();
-        if (index < len) {
-            TypedArrayObject::setElement(obj->as<TypedArrayObject>(), index, d);
-            return result.succeed();
-        }
+    // Step 3.
+    double d;
+    if (!ToNumber(cx, v, &d))
+        return false;
 
+    // Step 5.
+    if (obj->hasDetachedBuffer())
+        return result.failSoft(JSMSG_TYPED_ARRAY_DETACHED);
+
+    // Step 6. Right now we only allow integer indexes.
+    // Step 7.
+
+    // Step 8.
+    uint32_t length = obj->length();
+
+    // Step 9.
+    if (index >= length)
         return result.failSoft(JSMSG_BAD_INDEX);
-    }
 
-    if (WouldDefinePastNonwritableLength(obj, index))
-        return result.fail(JSMSG_CANT_DEFINE_PAST_ARRAY_LENGTH);
+    // Steps 4, 10-15.
+    TypedArrayObject::setElement(*obj, index, d);
+
+    // Step 16.
+    return result.succeed();
+}
+
+// Set an existing own property obj[index] that's a dense element.
+static bool
+SetDenseElement(JSContext* cx, HandleNativeObject obj, uint32_t index, HandleValue v,
+                ObjectOpResult& result)
+{
+    MOZ_ASSERT(!obj->is<TypedArrayObject>());
+    MOZ_ASSERT(obj->containsDenseElement(index));
 
     if (!obj->maybeCopyElementsForWrite(cx))
         return false;
@@ -2669,19 +2693,20 @@ SetDenseOrTypedArrayElement(JSContext* cx, HandleNativeObject obj, uint32_t inde
  * dense or typed array element (i.e. not actually a pointer to a Shape).
  */
 static bool
-SetExistingProperty(JSContext* cx, HandleNativeObject obj, HandleId id, HandleValue v,
-                    HandleValue receiver, HandleNativeObject pobj, Handle<PropertyResult> prop,
-                    ObjectOpResult& result)
+SetExistingProperty(JSContext* cx, HandleId id, HandleValue v, HandleValue receiver,
+                    HandleNativeObject pobj, Handle<PropertyResult> prop, ObjectOpResult& result)
 {
     // Step 5 for dense elements.
     if (prop.isDenseOrTypedArrayElement()) {
+        MOZ_ASSERT(!pobj->is<TypedArrayObject>());
+
         // Step 5.a.
         if (pobj->denseElementsAreFrozen())
             return result.fail(JSMSG_READ_ONLY);
 
         // Pure optimization for the common case:
         if (receiver.isObject() && pobj == &receiver.toObject())
-            return SetDenseOrTypedArrayElement(cx, pobj, JSID_TO_INT(id), v, result);
+            return SetDenseElement(cx, pobj, JSID_TO_INT(id), v, result);
 
         // Steps 5.b-f.
         return SetPropertyByDefining(cx, id, v, receiver, result);
@@ -2742,9 +2767,20 @@ js::NativeSetProperty(JSContext* cx, HandleNativeObject obj, HandleId id, Handle
         if (!LookupOwnPropertyInline<CanGC>(cx, pobj, id, &prop, &done))
             return false;
 
+        if (pobj->is<TypedArrayObject>()) {
+            uint64_t index;
+            if (IsTypedArrayIndex(id, &index)) {
+                Rooted<TypedArrayObject*> tobj(cx, &pobj->as<TypedArrayObject>());
+                return SetTypedArrayElement(cx, tobj, index, v, result);
+            }
+
+            // This case should have been handled.
+            MOZ_ASSERT(!prop.isDenseOrTypedArrayElement());
+        }
+
         if (prop) {
             // Steps 5-6.
-            return SetExistingProperty(cx, obj, id, v, receiver, pobj, prop, result);
+            return SetExistingProperty(cx, id, v, receiver, pobj, prop, result);
         }
 
         // Steps 4.a-b. The check for 'done' on this next line is tricky.

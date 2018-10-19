@@ -219,8 +219,13 @@
                 "preprocess": "localize"
               }
             }
-          }
+          },
 
+          "hidden": {
+            "type": "boolean",
+            "optional": true,
+            "default": false
+          }
         },
 
         "additionalProperties": { "$ref": "UnrecognizedProperty" }
@@ -481,24 +486,6 @@
           {
             "type": "string",
             "pattern": "^resource://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$|^about:"
-          }
-        ]
-      },
-      {
-        "id": "MatchPatternInternal",
-        "description": "Same as MatchPattern above, but includes moz-extension protocol",
-        "choices": [
-          {
-            "type": "string",
-            "enum": ["<all_urls>"]
-          },
-          {
-            "type": "string",
-            "pattern": "^(https?|wss?|file|ftp|moz-extension|\\*)://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$"
-          },
-          {
-            "type": "string",
-            "pattern": "^file:///.*$"
           }
         ]
       },

@@ -269,7 +269,7 @@ class GeckoInstance(object):
             args["preferences"].update(self.prefs)
 
         if self.verbose:
-            level = "TRACE" if self.verbose >= 2 else "DEBUG"
+            level = "Trace" if self.verbose >= 2 else "Debug"
             args["preferences"]["marionette.log.level"] = level
             args["preferences"]["marionette.logging"] = level
 
@@ -454,7 +454,7 @@ class FennecInstance(GeckoInstance):
             logcat_args["logfile"] = self.gecko_log
         self.runner.device.start_logcat(**logcat_args)
 
-        # forward marionette port (localhost:2828)
+        # forward marionette port
         self.runner.device.device.forward(
             local="tcp:{}".format(self.marionette_port),
             remote="tcp:{}".format(self.marionette_port))
@@ -504,6 +504,10 @@ class FennecInstance(GeckoInstance):
 class DesktopInstance(GeckoInstance):
     desktop_prefs = {
         # Disable application updates
+        "app.update.disabledForTesting": True,
+        "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer": True,
+        # app.update.enabled is being removed. Once Firefox 62 becomes stable,
+        # the line below can be removed as well.
         "app.update.enabled": False,
 
         # Enable output of dump()

@@ -139,10 +139,10 @@ async function doSelectTests(contentType, content) {
   let isWindows = navigator.platform.includes("Win");
 
   is(menulist.selectedIndex, 1, "Initial selection");
-  is(selectPopup.firstChild.localName, "menucaption", "optgroup is caption");
-  is(selectPopup.firstChild.getAttribute("label"), "First Group", "optgroup label");
-  is(selectPopup.childNodes[1].localName, "menuitem", "option is menuitem");
-  is(selectPopup.childNodes[1].getAttribute("label"), "One", "option label");
+  is(selectPopup.firstElementChild.localName, "menucaption", "optgroup is caption");
+  is(selectPopup.firstElementChild.getAttribute("label"), "First Group", "optgroup label");
+  is(selectPopup.children[1].localName, "menuitem", "option is menuitem");
+  is(selectPopup.children[1].getAttribute("label"), "One", "option label");
 
   EventUtils.synthesizeKey("KEY_ArrowDown");
   is(menulist.menuBoxObject.activeChild, menulist.getItemAtIndex(2), "Select item 2");
@@ -216,8 +216,8 @@ async function doSelectTests(contentType, content) {
   is((await getChangeEvents()), isWindows ? 2 : 1, "Tab away from select with change - number of change events");
   is((await getClickEvents()), 2, "Tab away from select with change - number of click events");
 
-  is(selectPopup.lastChild.previousSibling.label, "Seven", "Spaces collapsed");
-  is(selectPopup.lastChild.label, "\xA0\xA0Eight\xA0\xA0", "Non-breaking spaces not collapsed");
+  is(selectPopup.lastElementChild.previousElementSibling.label, "Seven", "Spaces collapsed");
+  is(selectPopup.lastElementChild.label, "\xA0\xA0Eight\xA0\xA0", "Non-breaking spaces not collapsed");
 
   BrowserTestUtils.removeTab(tab);
 }
@@ -226,8 +226,8 @@ add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
     "set": [
       ["dom.select_popup_in_parent.enabled", true],
-      ["dom.forms.select.customstyling", true]
-    ]
+      ["dom.forms.select.customstyling", true],
+    ],
   });
 });
 
@@ -490,7 +490,7 @@ async function performLargePopupTests(win) {
   is(selectPopup.scrollBox.scrollTop, scrollPos, "scroll position at mousemove after mouseup should not change");
 
   // Now check dragging with a mousedown on an item
-  let menuRect = selectPopup.childNodes[51].getBoundingClientRect();
+  let menuRect = selectPopup.children[51].getBoundingClientRect();
   EventUtils.synthesizeMouseAtPoint(menuRect.left + 5, menuRect.top + 5, { type: "mousedown" }, win);
 
   // Dragging below the popup scrolls it down.
@@ -513,7 +513,7 @@ async function performLargePopupTests(win) {
   let positions = [
     "margin-top: 300px;",
     "position: fixed; bottom: 200px;",
-    "width: 100%; height: 9999px;"
+    "width: 100%; height: 9999px;",
   ];
 
   let position;
@@ -540,7 +540,7 @@ async function performLargePopupTests(win) {
       // might return floating point values. We don't care about sub-pixel
       // accuracy, and only care about the final pixel value, so we add a
       // fuzz-factor of 1.
-      SimpleTest.isfuzzy(selectPopup.childNodes[selectedOption].getBoundingClientRect().bottom,
+      SimpleTest.isfuzzy(selectPopup.children[selectedOption].getBoundingClientRect().bottom,
                          selectPopup.getBoundingClientRect().bottom - bpBottom,
                          1, "Popup scroll at correct position " + bpBottom);
     }
@@ -590,18 +590,24 @@ add_task(async function test_large_popup() {
 
 // This test checks the same as the previous test but in a new smaller window.
 add_task(async function test_large_popup_in_small_window() {
-  let newwin = await BrowserTestUtils.openNewBrowserWindow({ width: 400, height: 400 });
+  let newWin = await BrowserTestUtils.openNewBrowserWindow();
+
+  let resizePromise = BrowserTestUtils.waitForEvent(newWin, "resize", false, e => {
+    return newWin.innerHeight <= 400 && newWin.innerWidth <= 400;
+  });
+  newWin.resizeTo(400, 400);
+  await resizePromise;
 
   const pageUrl = "data:text/html," + escape(PAGECONTENT_SMALL);
-  let browserLoadedPromise = BrowserTestUtils.browserLoaded(newwin.gBrowser.selectedBrowser);
-  await BrowserTestUtils.loadURI(newwin.gBrowser.selectedBrowser, pageUrl);
+  let browserLoadedPromise = BrowserTestUtils.browserLoaded(newWin.gBrowser.selectedBrowser);
+  await BrowserTestUtils.loadURI(newWin.gBrowser.selectedBrowser, pageUrl);
   await browserLoadedPromise;
 
-  newwin.gBrowser.selectedBrowser.focus();
+  newWin.gBrowser.selectedBrowser.focus();
 
-  await performLargePopupTests(newwin);
+  await performLargePopupTests(newWin);
 
-  await BrowserTestUtils.closeWindow(newwin);
+  await BrowserTestUtils.closeWindow(newWin);
 });
 
 async function performSelectSearchTests(win) {
@@ -625,35 +631,35 @@ async function performSelectSearchTests(win) {
   searchElement.focus();
 
   EventUtils.synthesizeKey("O", {}, win);
-  is(selectPopup.childNodes[2].hidden, false, "First option should be visible");
-  is(selectPopup.childNodes[3].hidden, false, "Second option should be visible");
+  is(selectPopup.children[2].hidden, false, "First option should be visible");
+  is(selectPopup.children[3].hidden, false, "Second option should be visible");
 
   EventUtils.synthesizeKey("3", {}, win);
-  is(selectPopup.childNodes[2].hidden, true, "First option should be hidden");
-  is(selectPopup.childNodes[3].hidden, true, "Second option should be hidden");
-  is(selectPopup.childNodes[4].hidden, false, "Third option should be visible");
+  is(selectPopup.children[2].hidden, true, "First option should be hidden");
+  is(selectPopup.children[3].hidden, true, "Second option should be hidden");
+  is(selectPopup.children[4].hidden, false, "Third option should be visible");
 
   EventUtils.synthesizeKey("Z", {}, win);
-  is(selectPopup.childNodes[4].hidden, true, "Third option should be hidden");
-  is(selectPopup.childNodes[1].hidden, true, "First group header should be hidden");
+  is(selectPopup.children[4].hidden, true, "Third option should be hidden");
+  is(selectPopup.children[1].hidden, true, "First group header should be hidden");
 
   EventUtils.synthesizeKey("KEY_Backspace", {}, win);
-  is(selectPopup.childNodes[4].hidden, false, "Third option should be visible");
+  is(selectPopup.children[4].hidden, false, "Third option should be visible");
 
   EventUtils.synthesizeKey("KEY_Backspace", {}, win);
-  is(selectPopup.childNodes[5].hidden, false, "Second group header should be visible");
+  is(selectPopup.children[5].hidden, false, "Second group header should be visible");
 
   EventUtils.synthesizeKey("KEY_Backspace", {}, win);
   EventUtils.synthesizeKey("O", {}, win);
   EventUtils.synthesizeKey("5", {}, win);
-  is(selectPopup.childNodes[5].hidden, false, "Second group header should be visible");
-  is(selectPopup.childNodes[1].hidden, true, "First group header should be hidden");
+  is(selectPopup.children[5].hidden, false, "Second group header should be visible");
+  is(selectPopup.children[1].hidden, true, "First group header should be hidden");
 
   EventUtils.synthesizeKey("KEY_Backspace", {}, win);
-  is(selectPopup.childNodes[1].hidden, false, "First group header should be shown");
+  is(selectPopup.children[1].hidden, false, "First group header should be shown");
 
   EventUtils.synthesizeKey("KEY_Backspace", {}, win);
-  is(selectPopup.childNodes[8].hidden, true, "Option hidden by content should remain hidden");
+  is(selectPopup.children[8].hidden, true, "Option hidden by content should remain hidden");
 
   await hideSelectPopup(selectPopup, "escape", win);
 }
@@ -694,7 +700,7 @@ add_task(async function test_mousemove_correcttarget() {
       resolve();
     }, {capture: true, once: true});
 
-    EventUtils.synthesizeMouseAtCenter(selectPopup.firstChild, { type: "mousemove" });
+    EventUtils.synthesizeMouseAtCenter(selectPopup.firstElementChild, { type: "mousemove" });
   });
 
   await BrowserTestUtils.synthesizeMouseAtCenter("#one", { type: "mouseup" }, gBrowser.selectedBrowser);
@@ -726,18 +732,18 @@ add_task(async function test_somehidden() {
   await popupShownPromise;
 
   // The exact number is not needed; just ensure the height is larger than 4 items to accomodate any popup borders.
-  ok(selectPopup.getBoundingClientRect().height >= selectPopup.lastChild.getBoundingClientRect().height * 4, "Height contains at least 4 items");
-  ok(selectPopup.getBoundingClientRect().height < selectPopup.lastChild.getBoundingClientRect().height * 5, "Height doesn't contain 5 items");
+  ok(selectPopup.getBoundingClientRect().height >= selectPopup.lastElementChild.getBoundingClientRect().height * 4, "Height contains at least 4 items");
+  ok(selectPopup.getBoundingClientRect().height < selectPopup.lastElementChild.getBoundingClientRect().height * 5, "Height doesn't contain 5 items");
 
   // The label contains the substring 'Visible' for items that are visible.
   // Otherwise, it is expected to be display: none.
   is(selectPopup.parentNode.itemCount, 9, "Correct number of items");
-  let child = selectPopup.firstChild;
+  let child = selectPopup.firstElementChild;
   let idx = 1;
   while (child) {
     is(getComputedStyle(child).display, child.label.indexOf("Visible") > 0 ? "-moz-box" : "none",
        "Item " + (idx++) + " is visible");
-    child = child.nextSibling;
+    child = child.nextElementSibling;
   }
 
   await hideSelectPopup(selectPopup, "escape");

@@ -26,6 +26,7 @@ android {
         buildConfigField 'String', 'BUILD_DIR', "\"${project.buildDir}\""
 
         vectorDrawables.useSupportLibrary = true
+        multiDexEnabled true
     }
 
     aaptOptions {
@@ -79,6 +80,7 @@ android {
         def isDebuggable = (!mozconfig.substs.MOZILLA_OFFICIAL) || (mozconfig.substs.NIGHTLY_BUILD && mozconfig.substs.MOZ_DEBUG)
         debug {
             debuggable isDebuggable 
+            multiDexKeepProguard file("${topsrcdir}/mobile/android/config/proguard/debug-robocop-keeps.cfg")
         }
         release {
             debuggable isDebuggable
@@ -132,6 +134,7 @@ android {
                     exclude 'org/mozilla/gecko/GeckoPresentationDisplay.java'
                     exclude 'org/mozilla/gecko/MediaPlayerManager.java'
                     exclude 'org/mozilla/gecko/RemotePresentationService.java'
+                    exclude 'org/mozilla/gecko/VirtualPresentation.java'
                 }
 
                 if (mozconfig.substs.MOZ_INSTALL_TRACKING) {
@@ -144,6 +147,7 @@ android {
                     exclude 'org/mozilla/gecko/mma/MmaStubImp.java'
                 } else {
                     exclude 'org/mozilla/gecko/mma/MmaLeanplumImp.java'
+                    exclude 'org/mozilla/gecko/mma/LeanplumVariables.java'
                 }
 
                 if (!mozconfig.substs.MOZ_ANDROID_GCM) {
@@ -221,6 +225,11 @@ dependencies {
     implementation "com.android.support:customtabs:$support_library_version"
     implementation "com.android.support:palette-v7:$support_library_version"
 
+    // We always include support for multidexing even when we don't enable it at runtime.
+    // We could conditionally include support, but we'd need
+    // to generate the `Application` class or fork the file on disk.
+    implementation "com.android.support:multidex:1.0.3"
+
     if (mozconfig.substs.MOZ_NATIVE_DEVICES) {
         implementation "com.android.support:mediarouter-v7:$support_library_version"
         implementation "com.google.android.gms:play-services-basement:$google_play_services_version"
@@ -229,7 +238,7 @@ dependencies {
     }
 
     if (mozconfig.substs.MOZ_INSTALL_TRACKING) {
-        implementation "com.google.android.gms:play-services-analytics:$google_play_services_version"
+        implementation "com.google.android.gms:play-services-ads-identifier:$google_play_services_version"
         implementation "com.google.android.gms:play-services-basement:$google_play_services_version"
     }
 
@@ -237,7 +246,6 @@ dependencies {
         implementation "com.google.android.gms:play-services-basement:$google_play_services_version"
         implementation "com.google.android.gms:play-services-base:$google_play_services_version"
         implementation "com.google.android.gms:play-services-gcm:$google_play_services_version"
-        implementation "com.google.android.gms:play-services-measurement:$google_play_services_version"
     }
 
     // Include LeakCanary in local builds, but not in official builds.  Mach
@@ -437,6 +445,20 @@ android.applicationVariants.all configureVariantDebugLevel
 // official automation builds and not for local developer builds.
 import groovy.xml.XmlUtil
 
+// Workaround for fixing sub-dependencies upon gradle error:
+// All gms/firebase libraries must use the exact same version specification (mixing versions can
+// lead to runtime crashes). Found versions 15.0.1, 15.0.0. Examples include
+// com.google.android.gms:play-services-base:15.0.1 and com.google.android.gms:play-services-cast:15.0.0
+configurations.all {
+    resolutionStrategy {
+        eachDependency { DependencyResolveDetails details ->
+            if (details.requested.group == 'com.google.android.gms') {
+                details.useVersion "$google_play_services_version"
+            }
+        }
+    }
+}
+
 android.applicationVariants.all { variant ->
     // Like 'local', 'localOld', or 'official'.
     def audienceDimension = variant.productFlavors[0].name
@@ -458,11 +480,6 @@ android.applicationVariants.all { variant ->
                     xml.depthFirst()
                         .findAll { it.name() == 'activity-alias' && it.'@android:name' == 'org.mozilla.gecko.App' }
                         .each { it.'@android:name' = '.App' }
-
-                    // Second, cull all manifest entries provided by com.google.android.gms.measurement.
-                    xml.depthFirst()
-                        .findAll { it.'@android:name'.text().contains('AppMeasurement') }
-                        .each { it.replaceNode {} }
 
                     manifestOutFile.write(XmlUtil.serialize(xml), 'UTF-8')
                 }
@@ -504,4 +521,9 @@ android.applicationVariants.all { variant ->
     }
     def buildType = "${variant.buildType.name.capitalize()}"
     tasks["compile${productFlavor}${buildType}UnitTestSources"].dependsOn(tasks["merge${productFlavor}${buildType}Assets"])
+}
+
+apply from: "${topsrcdir}/mobile/android/gradle/jacoco_dependencies.gradle"
+if (project.hasProperty('enable_code_coverage')) {
+    apply from: "${topsrcdir}/mobile/android/gradle/jacoco_for_junit.gradle"
 }

@@ -91,7 +91,7 @@ function AddonRecord(collection, id) {
 }
 AddonRecord.prototype = {
   __proto__: CryptoWrapper.prototype,
-  _logName: "Record.Addon"
+  _logName: "Record.Addon",
 };
 
 Utils.deferGetSet(AddonRecord, "cleartext", ["addonID",
@@ -242,7 +242,7 @@ AddonsEngine.prototype = {
   // Returns a promise
   isAddonSyncable(addon, ignoreRepoCheck) {
     return this._store.isAddonSyncable(addon, ignoreRepoCheck);
-  }
+  },
 };
 
 /**
@@ -290,9 +290,15 @@ AddonsStore.prototype = {
     }
 
     // Ignore incoming records for which an existing non-syncable addon
-    // exists.
+    // exists. Note that we do not insist that the addon manager already have
+    // metadata for this addon - it's possible our reconciler previously saw the
+    // addon but the addon-manager cache no longer has it - which is fine for a
+    // new incoming addon.
+    // (Note that most other cases where the addon-manager cache is invalid
+    // doesn't get this treatment because that cache self-repairs after some
+    // time - but it only re-populates addons which are currently installed.)
     let existingMeta = this.reconciler.addons[record.addonID];
-    if (existingMeta && !(await this.isAddonSyncable(existingMeta))) {
+    if (existingMeta && !(await this.isAddonSyncable(existingMeta, /* ignoreRepoCheck */ true))) {
       this._log.info("Ignoring incoming record for an existing but non-syncable addon", record.addonID);
       return;
     }
@@ -732,7 +738,7 @@ class AddonValidator extends CollectionValidator {
       "addonID",
       "enabled",
       "applicationID",
-      "source"
+      "source",
     ]);
     this.engine = engine;
   }
@@ -754,7 +760,7 @@ class AddonValidator extends CollectionValidator {
       addonID: item.id,
       applicationID: Services.appinfo.ID,
       source: "amo", // check item.foreignInstall?
-      original: item
+      original: item,
     };
   }
 

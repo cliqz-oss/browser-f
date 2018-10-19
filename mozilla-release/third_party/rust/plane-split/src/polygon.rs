@@ -1,10 +1,11 @@
 use {Line, Plane, is_zero};
 
-use std::{fmt, mem, ops};
 use euclid::{Point2D, TypedTransform3D, TypedPoint3D, TypedVector3D, TypedRect};
 use euclid::approxeq::ApproxEq;
 use euclid::Trig;
 use num_traits::{Float, One, Zero};
+
+use std::{fmt, mem, ops};
 
 
 /// The projection of a `Polygon` on a line.
@@ -118,24 +119,67 @@ impl<T, U> Polygon<T, U> where
     U: fmt::Debug,
 {
     /// Construct a polygon from points that are already transformed.
+    #[deprecated(since = "0.12.1", note = "Use try_from_points instead")]
     pub fn from_points(
         points: [TypedPoint3D<T, U>; 4],
         anchor: usize,
     ) -> Self {
-        let normal = (points[1] - points[0])
-            .cross(points[2] - points[0])
-            .normalize();
+        Self::try_from_points(points, anchor).unwrap()
+    }
+
+    /// Construct a polygon from points that are already transformed.
+    /// Return None if the polygon doesn't contain any space.
+    /// This method will be removed in `from_points` in the next breaking release.
+    pub fn try_from_points(
+        points: [TypedPoint3D<T, U>; 4],
+        anchor: usize,
+    ) -> Option<Self> {
+        let edge1 = points[1] - points[0];
+        let edge2 = points[2] - points[0];
+        let edge3 = points[3] - points[0];
+        let edge4 = points[3] - points[1];
+
+        if edge2.square_length() < T::epsilon() || edge4.square_length() < T::epsilon() {
+            return None
+        }
+
+        // one of them can be zero for redundant polygons produced by plane splitting
+        //Note: this would be nicer if we used triangles instead of quads in the first place...
+        // see https://github.com/servo/plane-split/issues/17
+        let normal_rough1 = edge1.cross(edge2);
+        let normal_rough2 = edge2.cross(edge3);
+        let square_length1 = normal_rough1.square_length();
+        let square_length2 = normal_rough2.square_length();
+        let normal = if square_length1 > square_length2 {
+            normal_rough1 / square_length1.sqrt()
+        } else {
+            normal_rough2 / square_length2.sqrt()
+        };
+
         let offset = -points[0].to_vector()
             .dot(normal);
 
-        Polygon {
+        Some(Polygon {
             points,
             plane: Plane {
                 normal,
                 offset,
             },
             anchor,
-        }
+        })
+    }
+
+    /// Construct a polygon from a non-transformed rectangle.
+    pub fn from_rect(rect: TypedRect<T, U>, anchor: usize) -> Self {
+        Self::from_points(
+            [
+                rect.origin.to_3d(),
+                rect.top_right().to_3d(),
+                rect.bottom_right().to_3d(),
+                rect.bottom_left().to_3d(),
+            ],
+            anchor,
+        )
     }
 
     /// Construct a polygon from a rectangle with 3D transform.
@@ -143,21 +187,21 @@ impl<T, U> Polygon<T, U> where
         rect: TypedRect<T, V>,
         transform: TypedTransform3D<T, V, U>,
         anchor: usize,
-    ) -> Self
+    ) -> Option<Self>
     where
         T: Trig + ops::Neg<Output=T>,
     {
         let points = [
-            transform.transform_point3d(&rect.origin.to_3d()),
-            transform.transform_point3d(&rect.top_right().to_3d()),
-            transform.transform_point3d(&rect.bottom_right().to_3d()),
-            transform.transform_point3d(&rect.bottom_left().to_3d()),
+            transform.transform_point3d(&rect.origin.to_3d())?,
+            transform.transform_point3d(&rect.top_right().to_3d())?,
+            transform.transform_point3d(&rect.bottom_right().to_3d())?,
+            transform.transform_point3d(&rect.bottom_left().to_3d())?,
         ];
 
         //Note: this code path could be more efficient if we had inverse-transpose
         //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
         //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
-        Self::from_points(points, anchor)
+        Self::try_from_points(points, anchor)
     }
 
     /// Bring a point into the local coordinate space, returning
@@ -181,6 +225,27 @@ impl<T, U> Polygon<T, U> where
         Point2D::new(x, y) / denom
     }
 
+    /// Transform a polygon by an affine transform (preserving straight lines).
+    pub fn transform<V>(
+        &self, transform: &TypedTransform3D<T, U, V>
+    ) -> Option<Polygon<T, V>>
+    where
+        T: Trig,
+        V: fmt::Debug,
+    {
+        let mut points = [TypedPoint3D::origin(); 4];
+        for (out, point) in points.iter_mut().zip(self.points.iter()) {
+            let mut homo = transform.transform_point3d_homogeneous(point);
+            homo.w = homo.w.max(T::approx_epsilon());
+            *out = homo.to_point3d()?;
+        }
+
+        //Note: this code path could be more efficient if we had inverse-transpose
+        //let n4 = transform.transform_point4d(&TypedPoint4D::new(T::zero(), T::zero(), T::one(), T::zero()));
+        //let normal = TypedPoint3D::new(n4.x, n4.y, n4.z);
+        Polygon::try_from_points(points, self.anchor)
+    }
+
     /// Check if all the points are indeed placed on the plane defined by
     /// the normal and offset, and the winding order is consistent.
     pub fn is_valid(&self) -> bool {
@@ -201,12 +266,18 @@ impl<T, U> Polygon<T, U> where
         is_planar && is_winding
     }
 
+    /// Check if the polygon doesn't contain any space. This may happen
+    /// after a sequence of splits, and such polygons should be discarded.
+    pub fn is_empty(&self) -> bool {
+        (self.points[0] - self.points[2]).square_length() < T::epsilon() ||
+        (self.points[1] - self.points[3]).square_length() < T::epsilon()
+    }
+
     /// Check if this polygon contains another one.
     pub fn contains(&self, other: &Self) -> bool {
         //TODO: actually check for inside/outside
         self.plane.contains(&other.plane)
     }
-
 
     /// Project this polygon onto a 3D vector, returning a line projection.
     /// Note: we can think of it as a projection to a ray placed at the origin.
@@ -282,8 +353,8 @@ impl<T, U> Polygon<T, U> where
             .zip(cuts.iter_mut())
         {
             // intersecting line segment [a, b] with `line`
-            //a + (b-a) * t = r + k * d
-            //(a, d) + t * (b-a, d) - (r, d) = k
+            // a + (b-a) * t = r + k * d
+            // (a, d) + t * (b-a, d) - (r, d) = k
             // a + t * (b-a) = r + t * (b-a, d) * d + (a-r, d) * d
             // t * ((b-a) - (b-a, d)*d) = (r-a) - (r-a, d) * d
             let pr = line.origin - a - line.dir * line.dir.dot(line.origin - a);

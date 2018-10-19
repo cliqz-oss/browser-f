@@ -95,7 +95,8 @@ Compatibility::IsModuleVersionLessThan(HMODULE aModuleHandle,
 ////////////////////////////////////////////////////////////////////////////////
 
 static WindowsDllInterceptor sUser32Interceptor;
-static decltype(&InSendMessageEx) sInSendMessageExStub = nullptr;
+static WindowsDllInterceptor::FuncHookType<decltype(&InSendMessageEx)>
+  sInSendMessageExStub;
 static bool sInSendMessageExHackEnabled = false;
 static PVOID sVectoredExceptionHandler = nullptr;
 
@@ -241,7 +242,7 @@ Compatibility::Init()
   InitConsumers();
 
   CrashReporter::
-    AnnotateCrashReport(NS_LITERAL_CSTRING("AccessibilityInProcClient"),
+    AnnotateCrashReport(CrashReporter::Annotation::AccessibilityInProcClient,
                         nsPrintfCString("0x%X", sConsumers));
 
   // Gather telemetry
@@ -267,11 +268,9 @@ Compatibility::Init()
   if ((sConsumers & (~(UIAUTOMATION | NVDA))) &&
       BrowserTabsRemoteAutostart()) {
     sUser32Interceptor.Init("user32.dll");
-    if (!sInSendMessageExStub) {
-      sUser32Interceptor.AddHook("InSendMessageEx",
-                                 reinterpret_cast<intptr_t>(&InSendMessageExHook),
-                                 (void**)&sInSendMessageExStub);
-    }
+    sInSendMessageExStub.Set(sUser32Interceptor, "InSendMessageEx",
+                             &InSendMessageExHook);
+
     // The vectored exception handler allows us to catch exceptions ahead of any
     // SEH handlers.
     if (!sVectoredExceptionHandler) {
@@ -437,8 +436,9 @@ UseIAccessibleProxyStub()
   // If we reach this point then something is seriously wrong with the
   // IAccessible configuration in the computer's registry. Let's annotate this
   // so that we can easily determine this condition during crash analysis.
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("IAccessibleConfig"),
-                                     NS_LITERAL_CSTRING("NoSystemTypeLibOrPS"));
+  CrashReporter::AnnotateCrashReport(
+    CrashReporter::Annotation::IAccessibleConfig,
+    NS_LITERAL_CSTRING("NoSystemTypeLibOrPS"));
   return false;
 }
 

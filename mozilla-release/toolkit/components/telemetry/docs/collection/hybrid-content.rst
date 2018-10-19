@@ -224,6 +224,7 @@ Authorized content can use the following functions:
 .. code-block:: js
 
   Mozilla.ContentTelemetry.canUpload();
+  Mozilla.ContentTelemetry.initPromise();
   Mozilla.ContentTelemetry.registerEvents(category, eventData);
   Mozilla.ContentTelemetry.recordEvent(category, method, object, value, extra);
 
@@ -254,6 +255,15 @@ Example:
   if (Mozilla.ContentTelemetry.canUpload()) {
     // ... perform the data collection here using another measurement system.
   }
+
+``Mozilla.ContentTelemetry.initPromise()``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: js
+
+  Mozilla.ContentTelemetry.initPromise();
+
+This function returns a Promise that gets resolved as soon as Hybrid Content Telemetry is correctly initialized and the value from ``canUpload`` can be reliably read. The promise will reject if Hybrid Content Telemetry is disabled or the host doesn't have enough privileges to use the API.
 
 ``Mozilla.ContentTelemetry.registerEvents()``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -338,6 +348,10 @@ To enable Hybrid Content Telemetry on ``https://example.mozilla.org``, execute t
   Services.perms.add(hostURI, "hc_telemetry", Services.perms.ALLOW_ACTION);
 
 Afterwards load the page on ``https://example.mozilla.org`` and it will be able to record Telemetry data.
+
+.. note::
+
+  Manual testing requires a host that handles HTTPS connections, as this kind of collection is only allowed on secure hosts. To allow for local testing, a local proxy capable of handling HTTPS connection is required.
 
 Automated testing
 -----------------

@@ -99,7 +99,7 @@ struct ValueFormat : HBUINT16
 #endif
 
   inline unsigned int get_len (void) const
-  { return _hb_popcount ((unsigned int) *this); }
+  { return hb_popcount ((unsigned int) *this); }
   inline unsigned int get_size (void) const
   { return get_len () * Value::static_size; }
 
@@ -262,7 +262,7 @@ struct AnchorFormat2
     hb_font_t *font = c->font;
     unsigned int x_ppem = font->x_ppem;
     unsigned int y_ppem = font->y_ppem;
-    hb_position_t cx, cy;
+    hb_position_t cx = 0, cy = 0;
     hb_bool_t ret;
 
     ret = (x_ppem || y_ppem) &&
@@ -374,7 +374,7 @@ struct AnchorMatrix
   {
     TRACE_SANITIZE (this);
     if (!c->check_struct (this)) return_trace (false);
-    if (unlikely (_hb_unsigned_int_mul_overflows (rows, cols))) return_trace (false);
+    if (unlikely (hb_unsigned_mul_overflows (rows, cols))) return_trace (false);
     unsigned int count = rows * cols;
     if (!c->check_array (matrixZ, matrixZ[0].static_size, count)) return_trace (false);
     for (unsigned int i = 0; i < count; i++)
@@ -1074,10 +1074,13 @@ struct MarkBasePosFormat1
       if (!skippy_iter.prev ()) return_trace (false);
       /* We only want to attach to the first of a MultipleSubst sequence.
        * https://github.com/harfbuzz/harfbuzz/issues/740
-       * Reject others. */
+       * Reject others...
+       * ...but stop if we find a mark in the MultipleSubst sequence:
+       * https://github.com/harfbuzz/harfbuzz/issues/1020 */
       if (!_hb_glyph_info_multiplied (&buffer->info[skippy_iter.idx]) ||
 	  0 == _hb_glyph_info_get_lig_comp (&buffer->info[skippy_iter.idx]) ||
 	  (skippy_iter.idx == 0 ||
+	   _hb_glyph_info_is_mark (&buffer->info[skippy_iter.idx - 1]) ||
 	   _hb_glyph_info_get_lig_id (&buffer->info[skippy_iter.idx]) !=
 	   _hb_glyph_info_get_lig_id (&buffer->info[skippy_iter.idx - 1]) ||
 	   _hb_glyph_info_get_lig_comp (&buffer->info[skippy_iter.idx]) !=
@@ -1497,7 +1500,8 @@ struct PosLookup : Lookup
 typedef OffsetListOf<PosLookup> PosLookupList;
 
 /*
- * GPOS -- The Glyph Positioning Table
+ * GPOS -- Glyph Positioning
+ * https://docs.microsoft.com/en-us/typography/opentype/spec/gpos
  */
 
 struct GPOS : GSUBGPOS
@@ -1624,14 +1628,14 @@ GPOS::position_finish_offsets (hb_font_t *font HB_UNUSED, hb_buffer_t *buffer)
 template <typename context_t>
 /*static*/ inline typename context_t::return_t PosLookup::dispatch_recurse_func (context_t *c, unsigned int lookup_index)
 {
-  const GPOS &gpos = *(hb_ot_layout_from_face (c->face)->gpos);
+  const GPOS &gpos = *(hb_ot_layout_from_face (c->face)->table.GPOS);
   const PosLookup &l = gpos.get_lookup (lookup_index);
   return l.dispatch (c);
 }
 
 /*static*/ inline bool PosLookup::apply_recurse_func (hb_ot_apply_context_t *c, unsigned int lookup_index)
 {
-  const GPOS &gpos = *(hb_ot_layout_from_face (c->face)->gpos);
+  const GPOS &gpos = *(hb_ot_layout_from_face (c->face)->table.GPOS);
   const PosLookup &l = gpos.get_lookup (lookup_index);
   unsigned int saved_lookup_props = c->lookup_props;
   unsigned int saved_lookup_index = c->lookup_index;

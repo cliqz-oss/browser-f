@@ -7,7 +7,7 @@
 var button, menuButton;
 /* Clicking a button should close the panel */
 add_task(async function plain_button() {
-  button = document.createElement("toolbarbutton");
+  button = document.createXULElement("toolbarbutton");
   button.id = "browser_940307_button";
   button.setAttribute("label", "Button");
   gNavToolbox.palette.appendChild(button);
@@ -45,8 +45,8 @@ add_task(async function searchbar_in_panel() {
   searchbar.value = "foo";
   searchbar.focus();
   // Reaching into this context menu is pretty evil, but hey... it's a test.
-  let textbox = document.getAnonymousElementByAttribute(searchbar.textbox, "anonid", "textbox-input-box");
-  let contextmenu = document.getAnonymousElementByAttribute(textbox, "anonid", "input-box-contextmenu");
+  let textbox = document.getAnonymousElementByAttribute(searchbar.textbox, "anonid", "moz-input-box");
+  let contextmenu = textbox.menupopup;
   let contextMenuShown = promisePanelElementShown(window, contextmenu);
   EventUtils.synthesizeMouseAtCenter(searchbar, {type: "contextmenu", button: 2});
   await contextMenuShown;
@@ -75,7 +75,7 @@ add_task(async function searchbar_in_panel() {
 });
 
 add_task(async function disabled_button_in_panel() {
-  button = document.createElement("toolbarbutton");
+  button = document.createXULElement("toolbarbutton");
   button.id = "browser_946166_button_disabled";
   button.setAttribute("disabled", "true");
   button.setAttribute("label", "Button");

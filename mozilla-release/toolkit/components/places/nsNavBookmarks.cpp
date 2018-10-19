@@ -17,6 +17,8 @@
 #include "nsQueryObject.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/storage.h"
+#include "mozilla/dom/PlacesObservers.h"
+#include "mozilla/dom/PlacesVisit.h"
 
 #include "GeckoProfiler.h"
 
@@ -193,6 +195,16 @@ nsNavBookmarks::StoreLastInsertedId(const nsACString& aTable,
 }
 
 
+Atomic<int64_t> nsNavBookmarks::sTotalSyncChanges(0);
+
+
+void // static
+nsNavBookmarks::NoteSyncChange()
+{
+  sTotalSyncChanges++;
+}
+
+
 nsresult
 nsNavBookmarks::Init()
 {
@@ -212,6 +224,9 @@ nsNavBookmarks::Init()
   nsNavHistory* history = nsNavHistory::GetHistoryService();
   NS_ENSURE_STATE(history);
   history->AddObserver(this, true);
+  AutoTArray<PlacesEventType, 1> events;
+  events.AppendElement(PlacesEventType::Page_visited);
+  PlacesObservers::AddListener(events, this);
 
   // DO NOT PUT STUFF HERE that can fail. See observer comment above.
 
@@ -326,21 +341,9 @@ nsNavBookmarks::GetTagsFolder(int64_t* aRoot)
 
 
 NS_IMETHODIMP
-nsNavBookmarks::GetUnfiledBookmarksFolder(int64_t* aRoot)
+nsNavBookmarks::GetTotalSyncChanges(int64_t* aTotalSyncChanges)
 {
-  int64_t id = mDB->GetUnfiledFolderId();
-  NS_ENSURE_TRUE(id > 0, NS_ERROR_UNEXPECTED);
-  *aRoot = id;
-  return NS_OK;
-}
-
-
-NS_IMETHODIMP
-nsNavBookmarks::GetMobileFolder(int64_t* aRoot)
-{
-  int64_t id = mDB->GetMobileFolderId();
-  NS_ENSURE_TRUE(id > 0, NS_ERROR_UNEXPECTED);
-  *aRoot = id;
+  *aTotalSyncChanges = sTotalSyncChanges;
   return NS_OK;
 }
 
@@ -617,15 +620,13 @@ nsNavBookmarks::RemoveItem(int64_t aItemId, uint16_t aSource)
 
   mozStorageTransaction transaction(mDB->MainConn(), false);
 
-  // First, if not a tag, remove item annotations. We remove annos without
-  // notifying to avoid firing `onItemAnnotationRemoved` for an item that
-  // we're about to remove.
+  // First, if not a tag, remove item annotations.
   int64_t tagsRootId = TagsRootId();
   bool isUntagging = bookmark.grandParentId == tagsRootId;
   if (bookmark.parentId != tagsRootId && !isUntagging) {
     nsAnnotationService* annosvc = nsAnnotationService::GetAnnotationService();
     NS_ENSURE_TRUE(annosvc, NS_ERROR_OUT_OF_MEMORY);
-    rv = annosvc->RemoveItemAnnotationsWithoutNotifying(bookmark.id);
+    rv = annosvc->RemoveItemAnnotations(bookmark.id);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -2053,30 +2054,28 @@ nsNavBookmarks::OnEndUpdateBatch()
 }
 
 
-NS_IMETHODIMP
-nsNavBookmarks::OnVisits(nsIVisitData** aVisits, uint32_t aVisitsCount)
+void
+nsNavBookmarks::HandlePlacesEvent(const PlacesEventSequence& aEvents)
 {
-  NS_ENSURE_ARG(aVisits);
-  NS_ENSURE_ARG(aVisitsCount);
+  for (const auto& event : aEvents) {
+    if (NS_WARN_IF(event->Type() != PlacesEventType::Page_visited)) {
+      continue;
+    }
 
-  for (uint32_t i = 0; i < aVisitsCount; ++i) {
-    nsIVisitData* place = aVisits[i];
-    nsCOMPtr<nsIURI> uri;
-    MOZ_ALWAYS_SUCCEEDS(place->GetUri(getter_AddRefs(uri)));
+    const dom::PlacesVisit* visit = event->AsPlacesVisit();
+    if (NS_WARN_IF(!visit)) {
+      continue;
+    }
 
-    // If the page is bookmarked, notify observers for each associated bookmark.
     ItemVisitData visitData;
-    nsresult rv = uri->GetSpec(visitData.bookmark.url);
-    NS_ENSURE_SUCCESS(rv, rv);
-    MOZ_ALWAYS_SUCCEEDS(place->GetVisitId(&visitData.visitId));
-    MOZ_ALWAYS_SUCCEEDS(place->GetTime(&visitData.time));
-    MOZ_ALWAYS_SUCCEEDS(place->GetTransitionType(&visitData.transitionType));
-
+    visitData.visitId = visit->mVisitId;
+    visitData.bookmark.url = NS_ConvertUTF16toUTF8(visit->mUrl);
+    visitData.time = visit->mVisitTime * 1000;
+    visitData.transitionType = visit->mTransitionType;
     RefPtr< AsyncGetBookmarksForURI<ItemVisitMethod, ItemVisitData> > notifier =
       new AsyncGetBookmarksForURI<ItemVisitMethod, ItemVisitData>(this, &nsNavBookmarks::NotifyItemVisited, visitData);
     notifier->Init();
   }
-  return NS_OK;
 }
 
 
@@ -2179,14 +2178,14 @@ nsNavBookmarks::OnPageChanged(nsIURI* aURI,
 
 
 NS_IMETHODIMP
-nsNavBookmarks::OnDeleteVisits(nsIURI* aURI, PRTime aVisitTime,
+nsNavBookmarks::OnDeleteVisits(nsIURI* aURI, bool aPartialRemoval,
                                const nsACString& aGUID,
                                uint16_t aReason, uint32_t aTransitionType)
 {
   NS_ENSURE_ARG(aURI);
 
   // Notify "cleartime" only if all visits to the page have been removed.
-  if (!aVisitTime) {
+  if (!aPartialRemoval) {
     // If the page is bookmarked, notify observers for each associated bookmark.
     ItemChangeData changeData;
     nsresult rv = aURI->GetSpec(changeData.bookmark.url);

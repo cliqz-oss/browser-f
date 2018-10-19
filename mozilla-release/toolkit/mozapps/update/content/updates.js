@@ -14,10 +14,10 @@ ChromeUtils.import("resource://gre/modules/UpdateTelemetry.jsm", this);
 
 const XMLNS_XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
+const PREF_APP_UPDATE_AUTO                = "app.update.auto";
 const PREF_APP_UPDATE_BACKGROUNDERRORS    = "app.update.backgroundErrors";
 const PREF_APP_UPDATE_CERT_ERRORS         = "app.update.cert.errors";
 const PREF_APP_UPDATE_ELEVATE_NEVER       = "app.update.elevate.never";
-const PREF_APP_UPDATE_ENABLED             = "app.update.enabled";
 const PREF_APP_UPDATE_LOG                 = "app.update.log";
 const PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED = "app.update.notifiedUnsupported";
 const PREF_APP_UPDATE_URL_MANUAL          = "app.update.url.manual";
@@ -442,7 +442,7 @@ var gUpdates = {
     this.update = update;
     if (this.update)
       this.update.QueryInterface(Ci.nsIWritablePropertyBag);
-  }
+  },
 };
 
 /**
@@ -492,7 +492,7 @@ var gCheckingPage = {
    * Manager control, so stop checking for updates.
    */
   onWizardCancel() {
-    this._checker.stopChecking(Ci.nsIUpdateChecker.CURRENT_CHECK);
+    this._checker.stopCurrentCheck();
   },
 
   /**
@@ -548,7 +548,7 @@ var gCheckingPage = {
      * See nsISupports.idl
      */
     QueryInterface: ChromeUtils.generateQI(["nsIUpdateCheckListener"]),
-  }
+  },
 };
 
 /**
@@ -561,15 +561,14 @@ var gNoUpdatesPage = {
   onPageShow() {
     LOG("gNoUpdatesPage", "onPageShow - could not select an appropriate " +
         "update. Either there were no updates or |selectUpdate| failed");
-
-    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED, true))
+    if (Services.prefs.getBoolPref(PREF_APP_UPDATE_AUTO, true))
       document.getElementById("noUpdatesAutoEnabled").hidden = false;
     else
       document.getElementById("noUpdatesAutoDisabled").hidden = false;
 
     gUpdates.setButtons(null, null, "okButton", true);
     gUpdates.wiz.getButton("finish").focus();
-  }
+  },
 };
 
 /**
@@ -585,7 +584,7 @@ var gManualUpdatePage = {
 
     gUpdates.setButtons(null, null, "okButton", true);
     gUpdates.wiz.getButton("finish").focus();
-  }
+  },
 };
 
 /**
@@ -602,7 +601,7 @@ var gUnsupportedPage = {
 
     gUpdates.setButtons(null, null, "okButton", true);
     gUpdates.wiz.getButton("finish").focus();
-  }
+  },
 };
 
 /**
@@ -650,7 +649,7 @@ var gUpdatesFoundBasicPage = {
 
   onExtra1() {
     gUpdates.wiz.cancel();
-  }
+  },
 };
 
 /**
@@ -1109,7 +1108,7 @@ var gDownloadingPage = {
   /**
    * See nsISupports.idl
    */
-  QueryInterface: ChromeUtils.generateQI(["nsIRequestObserver", "nsIProgressEventSink", "nsIObserver"])
+  QueryInterface: ChromeUtils.generateQI(["nsIRequestObserver", "nsIProgressEventSink", "nsIObserver"]),
 };
 
 /**
@@ -1132,7 +1131,7 @@ var gErrorsPage = {
     var errorLinkLabel = document.getElementById("errorLinkLabel");
     errorLinkLabel.value = manualURL;
     errorLinkLabel.setAttribute("url", manualURL);
-  }
+  },
 };
 
 /**
@@ -1156,7 +1155,7 @@ var gErrorExtraPage = {
     let errorLinkLabel = document.getElementById("errorExtraLinkLabel");
     errorLinkLabel.value = manualURL;
     errorLinkLabel.setAttribute("url", manualURL);
-  }
+  },
 };
 
 /**
@@ -1192,7 +1191,7 @@ var gErrorPatchingPage = {
         gUpdates.wiz.goTo("errors");
         break;
     }
-  }
+  },
 };
 
 /**

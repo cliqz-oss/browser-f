@@ -11,8 +11,10 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/Move.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/TextUtils.h"
 #include "mozilla/Unused.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdlib>
@@ -38,8 +40,15 @@
 #include "gc/Heap.h"
 #include "jit/BaselineJIT.h"
 #include "jit/InlinableNatives.h"
+#include "jit/JitRealm.h"
+#include "js/AutoByteString.h"
+#include "js/CompilationAndEvaluation.h"
+#include "js/CompileOptions.h"
 #include "js/Debug.h"
 #include "js/HashTable.h"
+#include "js/LocaleSensitive.h"
+#include "js/SourceBufferHolder.h"
+#include "js/StableStringChars.h"
 #include "js/StructuredClone.h"
 #include "js/UbiNode.h"
 #include "js/UbiNodeBreadthFirst.h"
@@ -63,7 +72,6 @@
 #include "vm/StringType.h"
 #include "vm/TraceLogging.h"
 #include "wasm/AsmJS.h"
-#include "wasm/WasmBinaryToText.h"
 #include "wasm/WasmJS.h"
 #include "wasm/WasmModule.h"
 #include "wasm/WasmSignalHandlers.h"
@@ -82,6 +90,10 @@ using namespace js;
 
 using mozilla::ArrayLength;
 using mozilla::Maybe;
+
+using JS::AutoStableStringChars;
+using JS::CompileOptions;
+using JS::SourceBufferHolder;
 
 // If fuzzingSafe is set, remove functionality that could cause problems with
 // fuzzers. Set this via the environment variable MOZ_FUZZING_SAFE.
@@ -196,6 +208,22 @@ GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp)
     value = BooleanValue(false);
 #endif
     if (!JS_SetProperty(cx, info, "arm64-simulator", value))
+        return false;
+
+#ifdef JS_SIMULATOR_MIPS32
+    value = BooleanValue(true);
+#else
+    value = BooleanValue(false);
+#endif
+    if (!JS_SetProperty(cx, info, "mips32-simulator", value))
+        return false;
+
+#ifdef JS_SIMULATOR_MIPS64
+    value = BooleanValue(true);
+#else
+    value = BooleanValue(false);
+#endif
+    if (!JS_SetProperty(cx, info, "mips64-simulator", value))
         return false;
 
 #ifdef MOZ_ASAN
@@ -659,87 +687,58 @@ WasmTextToBinary(JSContext* cx, unsigned argc, Value* vp)
     if (!twoByteChars.initTwoByte(cx, args[0].toString()))
         return false;
 
+    bool withOffsets = false;
     if (args.hasDefined(1)) {
-        if (!args[1].isString()) {
-            ReportUsageErrorASCII(cx, callee, "Second argument, if present, must be a String");
+        if (!args[1].isBoolean()) {
+            ReportUsageErrorASCII(cx, callee, "Second argument, if present, must be a boolean");
             return false;
         }
+        withOffsets = ToBoolean(args[1]);
     }
 
     uintptr_t stackLimit = GetNativeStackLimit(cx);
 
     wasm::Bytes bytes;
     UniqueChars error;
-    if (!wasm::TextToBinary(twoByteChars.twoByteChars(), stackLimit, &bytes, &error)) {
+    wasm::Uint32Vector offsets;
+    if (!wasm::TextToBinary(twoByteChars.twoByteChars(), stackLimit, &bytes, &offsets, &error)) {
         JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_TEXT_FAIL,
                                   error.get() ? error.get() : "out of memory");
         return false;
     }
 
-    RootedObject obj(cx, JS_NewUint8Array(cx, bytes.length()));
+    RootedObject binary(cx, JS_NewUint8Array(cx, bytes.length()));
+    if (!binary)
+        return false;
+
+    memcpy(binary->as<TypedArrayObject>().viewDataUnshared(), bytes.begin(), bytes.length());
+
+    if (!withOffsets) {
+        args.rval().setObject(*binary);
+        return true;
+    }
+
+    RootedObject obj(cx, JS_NewPlainObject(cx));
     if (!obj)
         return false;
 
-    memcpy(obj->as<TypedArrayObject>().viewDataUnshared(), bytes.begin(), bytes.length());
+    constexpr unsigned propAttrs = JSPROP_ENUMERATE;
+    if (!JS_DefineProperty(cx, obj, "binary", binary, propAttrs))
+        return false;
+
+    RootedObject jsOffsets(cx, JS_NewArrayObject(cx, offsets.length()));
+    if (!jsOffsets)
+        return false;
+    for (size_t i = 0; i < offsets.length(); i++) {
+        uint32_t offset = offsets[i];
+        RootedValue offsetVal(cx, NumberValue(offset));
+        if (!JS_SetElement(cx, jsOffsets, i, offsetVal))
+            return false;
+    }
+    if (!JS_DefineProperty(cx, obj, "offsets", jsOffsets, propAttrs))
+        return false;
 
     args.rval().setObject(*obj);
-    return true;
-}
-
-static bool
-WasmBinaryToText(JSContext* cx, unsigned argc, Value* vp)
-{
-    if (!cx->options().wasm()) {
-        JS_ReportErrorASCII(cx, "wasm support unavailable");
-        return false;
-    }
-
-    CallArgs args = CallArgsFromVp(argc, vp);
-
-    if (!args.get(0).isObject() || !args.get(0).toObject().is<TypedArrayObject>()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_ARG);
-        return false;
-    }
-
-    Rooted<TypedArrayObject*> code(cx, &args[0].toObject().as<TypedArrayObject>());
-
-    if (!TypedArrayObject::ensureHasBuffer(cx, code))
-        return false;
-
-    if (code->isSharedMemory()) {
-        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_BUF_ARG);
-        return false;
-    }
-
-    const uint8_t* bufferStart = code->bufferUnshared()->dataPointer();
-    const uint8_t* bytes = bufferStart + code->byteOffset();
-    uint32_t length = code->byteLength();
-
-    Vector<uint8_t> copy(cx);
-    if (code->bufferUnshared()->hasInlineData()) {
-        if (!copy.append(bytes, length))
-            return false;
-        bytes = copy.begin();
-    }
-
-    if (args.length() > 1) {
-        JS_ReportErrorASCII(cx, "wasm text format selection is not supported");
-        return false;
-    }
-
-    StringBuffer buffer(cx);
-    bool ok = wasm::BinaryToText(cx, bytes, length, buffer);
-    if (!ok) {
-        if (!cx->isExceptionPending())
-            JS_ReportErrorASCII(cx, "wasm binary to text print error");
-        return false;
-    }
-
-    JSString* result = buffer.finishString();
-    if (!result)
-        return false;
-
-    args.rval().setString(result);
     return true;
 }
 
@@ -825,7 +824,7 @@ WasmHasTier2CompilationCompleted(JSContext* cx, unsigned argc, Value* vp)
     }
 
     Rooted<WasmModuleObject*> module(cx, &unwrapped->as<WasmModuleObject>());
-    args.rval().set(BooleanValue(module->module().compilationComplete()));
+    args.rval().set(BooleanValue(!module->module().testingTier2Active()));
     return true;
 }
 
@@ -1283,8 +1282,7 @@ ClearSavedFrames(JSContext* cx, unsigned argc, Value* vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     js::SavedStacks& savedStacks = cx->realm()->savedStacks();
-    if (savedStacks.initialized())
-        savedStacks.clear();
+    savedStacks.clear();
 
     for (ActivationIterator iter(cx); !iter.done(); ++iter)
         iter->clearLiveSavedFrameCache();
@@ -1468,7 +1466,7 @@ NewExternalString(JSContext* cx, unsigned argc, Value* vp)
     RootedString str(cx, args[0].toString());
     size_t len = str->length();
 
-    UniqueTwoByteChars buf(cx->pod_malloc<char16_t>(len));
+    auto buf = cx->make_pod_array<char16_t>(len);
     if (!buf)
         return false;
 
@@ -1497,7 +1495,7 @@ NewMaybeExternalString(JSContext* cx, unsigned argc, Value* vp)
     RootedString str(cx, args[0].toString());
     size_t len = str->length();
 
-    UniqueTwoByteChars buf(cx->pod_malloc<char16_t>(len));
+    auto buf = cx->make_pod_array<char16_t>(len);
     if (!buf)
         return false;
 
@@ -1593,6 +1591,7 @@ RepresentativeStringArray(JSContext* cx, unsigned argc, Value* vp)
 }
 
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
+
 static bool
 OOMThreadTypes(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -1692,98 +1691,78 @@ CountCompartments(JSContext* cx)
     return count;
 }
 
-static bool
-OOMTest(JSContext* cx, unsigned argc, Value* vp)
+// Iterative failure testing: test a function by simulating failures at indexed
+// locations throughout the normal execution path and checking that the
+// resulting state of the environment is consistent with the error result.
+//
+// For example, trigger OOM at every allocation point and test that the function
+// either recovers and succeeds or raises an exception and fails.
+
+struct MOZ_STACK_CLASS IterativeFailureTestParams
 {
-    CallArgs args = CallArgsFromVp(argc, vp);
+    explicit IterativeFailureTestParams(JSContext* cx)
+      : testFunction(cx)
+    {}
 
-    if (args.length() < 1 || args.length() > 2) {
-        JS_ReportErrorASCII(cx, "oomTest() takes between 1 and 2 arguments.");
-        return false;
-    }
+    RootedFunction testFunction;
+    unsigned threadStart = 0;
+    unsigned threadEnd = 0;
+    bool expectExceptionOnFailure = false;
+    bool verbose = false;
+};
 
-    if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-        JS_ReportErrorASCII(cx, "The first argument to oomTest() must be a function.");
-        return false;
-    }
+struct IterativeFailureSimulator
+{
+    virtual void setup(JSContext* cx) {}
+    virtual void teardown(JSContext* cx) {}
+    virtual void startSimulating(JSContext* cx, unsigned iteration, unsigned thread) = 0;
+    virtual bool stopSimulating() = 0;
+    virtual void cleanup(JSContext* cx) {}
+};
 
-    if (args.length() == 2 && !args[1].isBoolean()) {
-        JS_ReportErrorASCII(cx, "The optional second argument to oomTest() must be a boolean.");
-        return false;
-    }
-
-    if (!CheckCanSimulateOOM(cx))
-        return false;
-
-    bool expectExceptionOnFailure = true;
-    if (args.length() == 2)
-        expectExceptionOnFailure = args[1].toBoolean();
-
-    // There are some places where we do fail without raising an exception, so
-    // we can't expose this to the fuzzers by default.
-    if (fuzzingSafe)
-        expectExceptionOnFailure = false;
-
-    if (disableOOMFunctions) {
-        args.rval().setUndefined();
+bool
+RunIterativeFailureTest(JSContext* cx, const IterativeFailureTestParams& params,
+                        IterativeFailureSimulator& simulator)
+{
+    if (disableOOMFunctions)
         return true;
-    }
 
-    RootedFunction function(cx, &args[0].toObject().as<JSFunction>());
-
-    bool verbose = EnvVarIsDefined("OOM_VERBOSE");
-
-    unsigned threadStart = oom::FirstThreadTypeToTest;
-    unsigned threadEnd = oom::LastThreadTypeToTest;
-
-    // Test a single thread type if specified by the OOM_THREAD environment variable.
-    int threadOption = 0;
-    if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
-        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
-            JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
-            return false;
-        }
-
-        threadStart = threadOption;
-        threadEnd = threadOption + 1;
-    }
-
+    // Disallow nested tests.
     if (cx->runningOOMTest) {
-        JS_ReportErrorASCII(cx, "Nested call to oomTest() is not allowed.");
+        JS_ReportErrorASCII(cx, "Nested call to iterative failure test is not allowed.");
         return false;
     }
     cx->runningOOMTest = true;
 
     MOZ_ASSERT(!cx->isExceptionPending());
-    cx->runtime()->hadOutOfMemory = false;
-
-    size_t compartmentCount = CountCompartments(cx);
 
 #ifdef JS_GC_ZEAL
     JS_SetGCZeal(cx, 0, JS_DEFAULT_ZEAL_FREQ);
 #endif
 
-    for (unsigned thread = threadStart; thread < threadEnd; thread++) {
-        if (verbose)
+    size_t compartmentCount = CountCompartments(cx);
+
+    simulator.setup(cx);
+
+    for (unsigned thread = params.threadStart; thread < params.threadEnd; thread++) {
+        if (params.verbose)
             fprintf(stderr, "thread %d\n", thread);
 
-        unsigned allocation = 1;
-        bool handledOOM;
+        unsigned iteration = 1;
+        bool failureWasSimulated;
         do {
-            if (verbose)
-                fprintf(stderr, "  allocation %d\n", allocation);
+            if (params.verbose)
+                fprintf(stderr, "  iteration %d\n", iteration);
 
             MOZ_ASSERT(!cx->isExceptionPending());
-            MOZ_ASSERT(!cx->runtime()->hadOutOfMemory);
 
-            js::oom::SimulateOOMAfter(allocation, thread, false);
+            simulator.startSimulating(cx, iteration, thread);
 
             RootedValue result(cx);
-            bool ok = JS_CallFunction(cx, cx->global(), function,
+            bool ok = JS_CallFunction(cx, cx->global(), params.testFunction,
                                       HandleValueArray::empty(), &result);
 
-            handledOOM = js::oom::HadSimulatedOOM();
-            js::oom::ResetSimulatedOOM();
+            failureWasSimulated = simulator.stopSimulating();
 
             MOZ_ASSERT_IF(ok, !cx->isExceptionPending());
 
@@ -1791,19 +1770,19 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
                 MOZ_ASSERT(!cx->isExceptionPending(),
                            "Thunk execution succeeded but an exception was raised - "
                            "missing error check?");
-            } else if (expectExceptionOnFailure) {
+            } else if (params.expectExceptionOnFailure) {
                 MOZ_ASSERT(cx->isExceptionPending(),
                            "Thunk execution failed but no exception was raised - "
                            "missing call to js::ReportOutOfMemory()?");
             }
 
             // Note that it is possible that the function throws an exception
-            // unconnected to OOM, in which case we ignore it. More correct
-            // would be to have the caller pass some kind of exception
-            // specification and to check the exception against it.
+            // unconnected to the simulated failure, in which case we ignore
+            // it. More correct would be to have the caller pass some kind of
+            // exception specification and to check the exception against it.
 
             cx->clearPendingException();
-            cx->runtime()->hadOutOfMemory = false;
+            simulator.cleanup(cx);
 
             // Some tests create a new compartment or zone on every
             // iteration. Our GC is triggered by GC allocations and not by
@@ -1825,292 +1804,184 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
             }
 #endif
 
-            allocation++;
-        } while (handledOOM);
+            iteration++;
+        } while (failureWasSimulated);
 
-        if (verbose) {
-            fprintf(stderr, "  finished after %d allocations\n", allocation - 2);
-        }
+        if (params.verbose)
+            fprintf(stderr, "  finished after %d iterations\n", iteration - 2);
     }
 
+    simulator.teardown(cx);
+
     cx->runningOOMTest = false;
+    return true;
+}
+
+bool
+ParseIterativeFailureTestParams(JSContext* cx, const CallArgs& args,
+                                IterativeFailureTestParams* params)
+{
+    MOZ_ASSERT(params);
+
+    if (args.length() < 1 || args.length() > 2) {
+        JS_ReportErrorASCII(cx, "function takes between 1 and 2 arguments.");
+        return false;
+    }
+
+    if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
+        JS_ReportErrorASCII(cx, "The first argument must be the function to test.");
+        return false;
+    }
+    params->testFunction = &args[0].toObject().as<JSFunction>();
+
+    // There are some places where we do fail without raising an exception, so
+    // we can't expose this to the fuzzers by default.
+    params->expectExceptionOnFailure = !fuzzingSafe;
+    if (args.length() == 2) {
+        if (!args[1].isBoolean()) {
+            JS_ReportErrorASCII(cx, "The optional second argument must be a boolean.");
+            return false;
+        }
+        params->expectExceptionOnFailure = args[1].toBoolean();
+    }
+
+    // Test all threads by default.
+    params->threadStart = oom::FirstThreadTypeToTest;
+    params->threadEnd = oom::LastThreadTypeToTest;
+
+    // Test a single thread type if specified by the OOM_THREAD environment variable.
+    int threadOption = 0;
+    if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
+        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
+            JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
+            return false;
+        }
+
+        params->threadStart = threadOption;
+        params->threadEnd = threadOption + 1;
+    }
+
+    params->verbose = EnvVarIsDefined("OOM_VERBOSE");
+
+    return true;
+}
+
+struct OOMSimulator : public IterativeFailureSimulator
+{
+    void setup(JSContext* cx) override {
+        cx->runtime()->hadOutOfMemory = false;
+    }
+
+    void startSimulating(JSContext* cx, unsigned i, unsigned thread) override {
+        MOZ_ASSERT(!cx->runtime()->hadOutOfMemory);
+        js::oom::SimulateOOMAfter(i, thread, false);
+    }
+
+    bool stopSimulating() override {
+        bool handledOOM = js::oom::HadSimulatedOOM();
+        js::oom::ResetSimulatedOOM();
+        return handledOOM;
+    }
+
+    void cleanup(JSContext* cx) override {
+        cx->runtime()->hadOutOfMemory = false;
+    }
+};
+
+static bool
+OOMTest(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    IterativeFailureTestParams params(cx);
+    if (!ParseIterativeFailureTestParams(cx, args, &params))
+        return false;
+
+    OOMSimulator simulator;
+    if (!RunIterativeFailureTest(cx, params, simulator))
+        return false;
+
     args.rval().setUndefined();
     return true;
 }
+
+struct StackOOMSimulator : public IterativeFailureSimulator
+{
+    void startSimulating(JSContext* cx, unsigned i, unsigned thread) override {
+        js::oom::SimulateStackOOMAfter(i, thread, false);
+    }
+
+    bool stopSimulating() override {
+        bool handledOOM = js::oom::HadSimulatedStackOOM();
+        js::oom::ResetSimulatedStackOOM();
+        return handledOOM;
+    }
+};
 
 static bool
 StackTest(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    if (args.length() < 1 || args.length() > 2) {
-        JS_ReportErrorASCII(cx, "stackTest() takes between 1 and 2 arguments.");
+    IterativeFailureTestParams params(cx);
+    if (!ParseIterativeFailureTestParams(cx, args, &params))
         return false;
-    }
 
-    if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-        JS_ReportErrorASCII(cx, "The first argument to stackTest() must be a function.");
+    StackOOMSimulator simulator;
+    if (!RunIterativeFailureTest(cx, params, simulator))
         return false;
-    }
 
-    if (args.length() == 2 && !args[1].isBoolean()) {
-        JS_ReportErrorASCII(cx, "The optional second argument to stackTest() must be a boolean.");
-        return false;
-    }
-
-    bool expectExceptionOnFailure = true;
-    if (args.length() == 2)
-        expectExceptionOnFailure = args[1].toBoolean();
-
-    // There are some places where we do fail without raising an exception, so
-    // we can't expose this to the fuzzers by default.
-    if (fuzzingSafe)
-        expectExceptionOnFailure = false;
-
-    if (disableOOMFunctions) {
-        args.rval().setUndefined();
-        return true;
-    }
-
-    RootedFunction function(cx, &args[0].toObject().as<JSFunction>());
-
-    bool verbose = EnvVarIsDefined("OOM_VERBOSE");
-
-    unsigned threadStart = oom::FirstThreadTypeToTest;
-    unsigned threadEnd = oom::LastThreadTypeToTest;
-
-    // Test a single thread type if specified by the OOM_THREAD environment variable.
-    int threadOption = 0;
-    if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
-        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
-            JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
-            return false;
-        }
-
-        threadStart = threadOption;
-        threadEnd = threadOption + 1;
-    }
-
-    if (cx->runningOOMTest) {
-        JS_ReportErrorASCII(cx, "Nested call to oomTest() or stackTest() is not allowed.");
-        return false;
-    }
-    cx->runningOOMTest = true;
-
-    MOZ_ASSERT(!cx->isExceptionPending());
-
-    size_t compartmentCount = CountCompartments(cx);
-
-#ifdef JS_GC_ZEAL
-    JS_SetGCZeal(cx, 0, JS_DEFAULT_ZEAL_FREQ);
-#endif
-
-    for (unsigned thread = threadStart; thread < threadEnd; thread++) {
-        if (verbose)
-            fprintf(stderr, "thread %d\n", thread);
-
-        unsigned check = 1;
-        bool handledOOM;
-        do {
-            if (verbose)
-                fprintf(stderr, "  check %d\n", check);
-
-            MOZ_ASSERT(!cx->isExceptionPending());
-
-            js::oom::SimulateStackOOMAfter(check, thread, false);
-
-            RootedValue result(cx);
-            bool ok = JS_CallFunction(cx, cx->global(), function,
-                                      HandleValueArray::empty(), &result);
-
-            handledOOM = js::oom::HadSimulatedStackOOM();
-            js::oom::ResetSimulatedStackOOM();
-
-            MOZ_ASSERT_IF(ok, !cx->isExceptionPending());
-
-            if (ok) {
-                MOZ_ASSERT(!cx->isExceptionPending(),
-                           "Thunk execution succeeded but an exception was raised - "
-                           "missing error check?");
-            } else if (expectExceptionOnFailure) {
-                MOZ_ASSERT(cx->isExceptionPending(),
-                           "Thunk execution failed but no exception was raised - "
-                           "missing call to js::ReportOutOfMemory()?");
-            }
-
-            // Note that it is possible that the function throws an exception
-            // unconnected to OOM, in which case we ignore it. More correct
-            // would be to have the caller pass some kind of exception
-            // specification and to check the exception against it.
-
-            cx->clearPendingException();
-
-            // Some tests create a new compartment or zone on every
-            // iteration. Our GC is triggered by GC allocations and not by
-            // number of compartments or zones, so these won't normally get
-            // cleaned up. The check here stops some tests running out of
-            // memory.
-            if (CountCompartments(cx) > compartmentCount + 100) {
-                JS_GC(cx);
-                compartmentCount = CountCompartments(cx);
-            }
-
-#ifdef JS_TRACE_LOGGING
-            // Reset the TraceLogger state if enabled.
-            TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
-            if (logger->enabled()) {
-                while (logger->enabled())
-                    logger->disable();
-                logger->enable(cx);
-            }
-#endif
-
-            check++;
-        } while (handledOOM);
-
-        if (verbose) {
-            fprintf(stderr, "  finished after %d checks\n", check - 2);
-        }
-    }
-
-    cx->runningOOMTest = false;
     args.rval().setUndefined();
     return true;
 }
 
-static bool
-FailingInterruptCallback(JSContext* cx)
+struct FailingIterruptSimulator : public IterativeFailureSimulator
 {
-    return false;
-}
+    JSInterruptCallback* prevEnd = nullptr;
+
+    static bool
+    failingInterruptCallback(JSContext* cx) {
+        return false;
+    }
+
+    void setup(JSContext* cx) override {
+        prevEnd = cx->interruptCallbacks().end();
+        JS_AddInterruptCallback(cx, failingInterruptCallback);
+    }
+
+    void teardown(JSContext* cx) override {
+        cx->interruptCallbacks().erase(prevEnd, cx->interruptCallbacks().end());
+    }
+
+    void startSimulating(JSContext* cx, unsigned i, unsigned thread) override {
+        js::oom::SimulateInterruptAfter(i, thread, false);
+    }
+
+    bool stopSimulating() override {
+        bool handledInterrupt = js::oom::HadSimulatedInterrupt();
+        js::oom::ResetSimulatedInterrupt();
+        return handledInterrupt;
+    }
+};
 
 static bool
 InterruptTest(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    if (args.length() < 1 || args.length() > 2) {
-        JS_ReportErrorASCII(cx, "interruptTest() takes exactly 1 argument.");
+    IterativeFailureTestParams params(cx);
+    if (!ParseIterativeFailureTestParams(cx, args, &params))
         return false;
-    }
 
-    if (!args[0].isObject() || !args[0].toObject().is<JSFunction>()) {
-        JS_ReportErrorASCII(cx, "The argument to interruptTest() must be a function.");
+    FailingIterruptSimulator simulator;
+    if (!RunIterativeFailureTest(cx, params, simulator))
         return false;
-    }
 
-    if (disableOOMFunctions) {
-        args.rval().setUndefined();
-        return true;
-    }
-
-    RootedFunction function(cx, &args[0].toObject().as<JSFunction>());
-
-    bool verbose = EnvVarIsDefined("OOM_VERBOSE");
-
-    unsigned threadStart = oom::FirstThreadTypeToTest;
-    unsigned threadEnd = oom::LastThreadTypeToTest;
-
-    // Test a single thread type if specified by the OOM_THREAD environment variable.
-    int threadOption = 0;
-    if (EnvVarAsInt("OOM_THREAD", &threadOption)) {
-        if (threadOption < oom::FirstThreadTypeToTest || threadOption > oom::LastThreadTypeToTest) {
-            JS_ReportErrorASCII(cx, "OOM_THREAD value out of range.");
-            return false;
-        }
-
-        threadStart = threadOption;
-        threadEnd = threadOption + 1;
-    }
-
-    if (cx->runningOOMTest) {
-        JS_ReportErrorASCII(cx, "Nested call to oomTest(), stackTest() or interruptTest() is not allowed.");
-        return false;
-    }
-    cx->runningOOMTest = true;
-
-    MOZ_ASSERT(!cx->isExceptionPending());
-
-    size_t compartmentCount = CountCompartments(cx);
-
-#ifdef JS_GC_ZEAL
-    JS_SetGCZeal(cx, 0, JS_DEFAULT_ZEAL_FREQ);
-#endif
-
-    JSInterruptCallback *prevEnd = cx->interruptCallbacks().end();
-    JS_AddInterruptCallback(cx, FailingInterruptCallback);
-
-    for (unsigned thread = threadStart; thread < threadEnd; thread++) {
-        if (verbose)
-            fprintf(stderr, "thread %d\n", thread);
-
-        unsigned check = 1;
-        bool handledInterrupt;
-        do {
-            if (verbose)
-                fprintf(stderr, "  check %d\n", check);
-
-            MOZ_ASSERT(!cx->isExceptionPending());
-
-            js::oom::SimulateInterruptAfter(check, thread, false);
-
-            RootedValue result(cx);
-            bool ok = JS_CallFunction(cx, cx->global(), function,
-                                      HandleValueArray::empty(), &result);
-
-            handledInterrupt = js::oom::HadSimulatedInterrupt();
-            js::oom::ResetSimulatedInterrupt();
-
-            MOZ_ASSERT_IF(ok, !cx->isExceptionPending());
-
-            if (ok) {
-                MOZ_ASSERT(!cx->isExceptionPending(),
-                           "Thunk execution succeeded but an exception was raised - "
-                           "missing error check?");
-            }
-
-            // Note that it is possible that the function throws an exception
-            // unconnected to OOM, in which case we ignore it. More correct
-            // would be to have the caller pass some kind of exception
-            // specification and to check the exception against it.
-
-            cx->clearPendingException();
-
-            // Some tests create a new compartment or zone on every
-            // iteration. Our GC is triggered by GC allocations and not by
-            // number of compartments or zones, so these won't normally get
-            // cleaned up. The check here stops some tests running out of
-            // memory.
-            if (CountCompartments(cx) > compartmentCount + 100) {
-                JS_GC(cx);
-                compartmentCount = CountCompartments(cx);
-            }
-
-#ifdef JS_TRACE_LOGGING
-            // Reset the TraceLogger state if enabled.
-            TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
-            if (logger->enabled()) {
-                while (logger->enabled())
-                    logger->disable();
-                logger->enable(cx);
-            }
-#endif
-
-            check++;
-        } while (handledInterrupt);
-
-        if (verbose) {
-            fprintf(stderr, "  finished after %d checks\n", check - 2);
-        }
-    }
-
-    // Clear any interrupt callbacks we added within this function
-    cx->interruptCallbacks().erase(prevEnd, cx->interruptCallbacks().end());
-    cx->runningOOMTest = false;
     args.rval().setUndefined();
     return true;
 }
-#endif
+
+#endif // defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
 static bool
 SettlePromiseNow(JSContext* cx, unsigned argc, Value* vp)
@@ -2124,7 +1995,12 @@ SettlePromiseNow(JSContext* cx, unsigned argc, Value* vp)
     }
 
     Rooted<PromiseObject*> promise(cx, &args[0].toObject().as<PromiseObject>());
-    int32_t flags = promise->getFixedSlot(PromiseSlot_Flags).toInt32();
+    if (IsPromiseForAsync(promise)) {
+        JS_ReportErrorASCII(cx, "async function's promise shouldn't be manually settled");
+        return false;
+    }
+
+    int32_t flags = promise->flags();
     promise->setFixedSlot(PromiseSlot_Flags,
                           Int32Value(flags | PROMISE_FLAG_RESOLVED | PROMISE_FLAG_FULFILLED));
     promise->setFixedSlot(PromiseSlot_ReactionsOrResult, UndefinedValue());
@@ -2465,13 +2341,9 @@ ReadGeckoProfilingStack(JSContext* cx, unsigned argc, Value* vp)
             if (!JS_DefineProperty(cx, inlineFrameInfo, "kind", frameKind, propAttrs))
                 return false;
 
-            size_t length = strlen(inlineFrame.label.get());
-            auto* label = reinterpret_cast<Latin1Char*>(inlineFrame.label.release());
-            frameLabel = NewString<CanGC>(cx, label, length);
-            if (!frameLabel) {
-                js_free(label);
+            frameLabel = NewLatin1StringZ(cx, std::move(inlineFrame.label));
+            if (!frameLabel)
                 return false;
-            }
 
             if (!JS_DefineProperty(cx, inlineFrameInfo, "label", frameLabel, propAttrs))
                 return false;
@@ -2957,7 +2829,7 @@ class CloneBufferObject : public NativeObject {
             return false;
 
         size_t size = data->Size();
-        UniqueChars buffer(static_cast<char*>(js_malloc(size)));
+        UniqueChars buffer(js_pod_malloc<char>(size));
         if (!buffer) {
             ReportOutOfMemory(cx);
             return false;
@@ -2987,7 +2859,7 @@ class CloneBufferObject : public NativeObject {
             return false;
 
         size_t size = data->Size();
-        UniqueChars buffer(static_cast<char*>(js_malloc(size)));
+        UniqueChars buffer(js_pod_malloc<char>(size));
         if (!buffer) {
             ReportOutOfMemory(cx);
             return false;
@@ -3272,7 +3144,7 @@ DisableTraceLogger(JSContext* cx, unsigned argc, Value* vp)
 }
 #endif
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
 static bool
 DumpObject(JSContext* cx, unsigned argc, Value* vp)
 {
@@ -3621,7 +3493,7 @@ FindPath(JSContext* cx, unsigned argc, Value* vp)
 
         heaptools::FindPathHandler handler(cx, start, target, &nodes, edges);
         heaptools::FindPathHandler::Traversal traversal(cx, handler, autoCannotGC);
-        if (!traversal.init() || !traversal.addStart(start)) {
+        if (!traversal.addStart(start)) {
             ReportOutOfMemory(cx);
             return false;
         }
@@ -3675,10 +3547,10 @@ FindPath(JSContext* cx, unsigned argc, Value* vp)
 
         heaptools::EdgeName edgeName = std::move(edges[i]);
 
-        RootedString edgeStr(cx, NewString<CanGC>(cx, edgeName.get(), js_strlen(edgeName.get())));
+        size_t edgeNameLength = js_strlen(edgeName.get());
+        RootedString edgeStr(cx, NewString<CanGC>(cx, std::move(edgeName), edgeNameLength));
         if (!edgeStr)
             return false;
-        mozilla::Unused << edgeName.release(); // edgeStr acquired ownership
 
         if (!JS_DefineProperty(cx, obj, "edge", edgeStr, JSPROP_ENUMERATE))
             return false;
@@ -3747,10 +3619,6 @@ ShortestPaths(JSContext* cx, unsigned argc, Value* vp)
         JS::AutoCheckCannotGC noGC(cx);
 
         JS::ubi::NodeSet targets;
-        if (!targets.init()) {
-            ReportOutOfMemory(cx);
-            return false;
-        }
 
         for (size_t i = 0; i < length; i++) {
             RootedValue val(cx, objs->getDenseElement(i));
@@ -3916,15 +3784,18 @@ EvalReturningScope(JSContext* cx, unsigned argc, Value* vp)
     RootedObject lexicalScope(cx);
 
     {
-        // If we're switching globals here, ExecuteInGlobalAndReturnScope will
+        // If we're switching globals here, ExecuteInFrameScriptEnvironment will
         // take care of cloning the script into that compartment before
         // executing it.
         AutoRealm ar(cx, global);
-
-        if (!js::ExecuteInGlobalAndReturnScope(cx, global, script, &lexicalScope))
+        JS::RootedObject obj(cx, JS_NewPlainObject(cx));
+        if (!obj)
             return false;
 
-        varObj = lexicalScope->enclosingEnvironment();
+        if (!js::ExecuteInFrameScriptEnvironment(cx, obj, script, &lexicalScope))
+            return false;
+
+        varObj = lexicalScope->enclosingEnvironment()->enclosingEnvironment();
     }
 
     RootedObject rv(cx, JS_NewPlainObject(cx));
@@ -4008,12 +3879,7 @@ static bool
 IsSimdAvailable(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-#if defined(JS_CODEGEN_NONE) || !defined(ENABLE_SIMD)
-    bool available = false;
-#else
-    bool available = cx->jitSupportsSimd();
-#endif
-    args.rval().set(BooleanValue(available));
+    args.rval().set(BooleanValue(cx->jitSupportsSimd()));
     return true;
 }
 
@@ -4377,18 +4243,16 @@ GetLcovInfo(JSContext* cx, unsigned argc, Value* vp)
     }
 
     size_t length = 0;
-    char* content = nullptr;
+    UniqueChars content;
     {
         AutoRealm ar(cx, global);
-        content = js::GetCodeCoverageSummary(cx, &length);
+        content.reset(js::GetCodeCoverageSummary(cx, &length));
     }
 
     if (!content)
         return false;
 
-    JSString* str = JS_NewStringCopyN(cx, content, length);
-    js_free(content);
-
+    JSString* str = JS_NewStringCopyN(cx, content.get(), length);
     if (!str)
         return false;
 
@@ -4426,96 +4290,6 @@ SetRNGState(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 #endif
-
-static ModuleEnvironmentObject*
-GetModuleEnvironment(JSContext* cx, HandleModuleObject module)
-{
-    // Use the initial environment so that tests can check bindings exists
-    // before they have been instantiated.
-    RootedModuleEnvironmentObject env(cx, &module->initialEnvironment());
-    MOZ_ASSERT(env);
-    return env;
-}
-
-static bool
-GetModuleEnvironmentNames(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    if (args.length() != 1) {
-        JS_ReportErrorASCII(cx, "Wrong number of arguments");
-        return false;
-    }
-
-    if (!args[0].isObject() || !args[0].toObject().is<ModuleObject>()) {
-        JS_ReportErrorASCII(cx, "First argument should be a ModuleObject");
-        return false;
-    }
-
-    RootedModuleObject module(cx, &args[0].toObject().as<ModuleObject>());
-    if (module->hadEvaluationError()) {
-        JS_ReportErrorASCII(cx, "Module environment unavailable");
-        return false;
-    }
-
-    RootedModuleEnvironmentObject env(cx, GetModuleEnvironment(cx, module));
-    Rooted<IdVector> ids(cx, IdVector(cx));
-    if (!JS_Enumerate(cx, env, &ids))
-        return false;
-
-    uint32_t length = ids.length();
-    RootedArrayObject array(cx, NewDenseFullyAllocatedArray(cx, length));
-    if (!array)
-        return false;
-
-    array->setDenseInitializedLength(length);
-    for (uint32_t i = 0; i < length; i++)
-        array->initDenseElement(i, StringValue(JSID_TO_STRING(ids[i])));
-
-    args.rval().setObject(*array);
-    return true;
-}
-
-static bool
-GetModuleEnvironmentValue(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    if (args.length() != 2) {
-        JS_ReportErrorASCII(cx, "Wrong number of arguments");
-        return false;
-    }
-
-    if (!args[0].isObject() || !args[0].toObject().is<ModuleObject>()) {
-        JS_ReportErrorASCII(cx, "First argument should be a ModuleObject");
-        return false;
-    }
-
-    if (!args[1].isString()) {
-        JS_ReportErrorASCII(cx, "Second argument should be a string");
-        return false;
-    }
-
-    RootedModuleObject module(cx, &args[0].toObject().as<ModuleObject>());
-    if (module->hadEvaluationError()) {
-        JS_ReportErrorASCII(cx, "Module environment unavailable");
-        return false;
-    }
-
-    RootedModuleEnvironmentObject env(cx, GetModuleEnvironment(cx, module));
-    RootedString name(cx, args[1].toString());
-    RootedId id(cx);
-    if (!JS_StringToId(cx, name, &id))
-        return false;
-
-    if (!GetProperty(cx, env, env, id, args.rval()))
-        return false;
-
-    if (args.rval().isMagic(JS_UNINITIALIZED_LEXICAL)) {
-        ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, id);
-        return false;
-    }
-
-    return true;
-}
 
 #ifdef DEBUG
 static const char*
@@ -4990,6 +4764,85 @@ SetTimeZone(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
+static bool
+GetDefaultLocale(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    RootedObject callee(cx, &args.callee());
+
+    if (args.length() != 0) {
+        ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
+        return false;
+    }
+
+    UniqueChars locale = JS_GetDefaultLocale(cx);
+    if (!locale) {
+        JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_DEFAULT_LOCALE_ERROR);
+        return false;
+    }
+
+    return ReturnStringCopy(cx, args, locale.get());
+}
+
+static bool
+SetDefaultLocale(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    RootedObject callee(cx, &args.callee());
+
+    if (args.length() != 1) {
+        ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
+        return false;
+    }
+
+    if (!args[0].isString() && !args[0].isUndefined()) {
+        ReportUsageErrorASCII(cx, callee, "First argument should be a string or undefined");
+        return false;
+    }
+
+    if (args[0].isString() && !args[0].toString()->empty()) {
+        auto containsOnlyValidBCP47Characters = [](auto* chars, size_t length) {
+            return mozilla::IsAsciiAlpha(chars[0]) &&
+                   std::all_of(chars, chars + length, [](auto c) {
+                       return mozilla::IsAsciiAlphanumeric(c) || c == '-';
+                   });
+        };
+
+        RootedLinearString str(cx, args[0].toString()->ensureLinear(cx));
+        if (!str)
+            return false;
+
+        bool hasValidChars;
+        {
+            JS::AutoCheckCannotGC nogc;
+
+            size_t length = str->length();
+            hasValidChars = str->hasLatin1Chars()
+                            ? containsOnlyValidBCP47Characters(str->latin1Chars(nogc), length)
+                            : containsOnlyValidBCP47Characters(str->twoByteChars(nogc), length);
+        }
+
+        if (!hasValidChars) {
+            ReportUsageErrorASCII(cx, callee, "First argument should be BCP47 language tag");
+            return false;
+        }
+
+        JSAutoByteString locale;
+        if (!locale.encodeLatin1(cx, str))
+            return false;
+
+        if (!JS_SetDefaultLocale(cx->runtime(), locale.ptr())) {
+            ReportOutOfMemory(cx);
+            return false;
+        }
+    } else {
+        JS_ResetDefaultLocale(cx->runtime());
+    }
+
+    args.rval().setUndefined();
+    return true;
+}
+
 #if defined(FUZZING) && defined(__AFL_COMPILER)
 static bool
 AflLoop(JSContext* cx, unsigned argc, Value* vp)
@@ -5019,7 +4872,7 @@ MonotonicNow(JSContext* cx, unsigned argc, Value* vp)
     };
 
     timespec ts;
-    if (false && clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
         // Use a monotonic clock if available.
         now = ComputeNow(ts);
     } else {
@@ -5183,6 +5036,15 @@ ObjectGlobal(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
+static bool
+AssertCorrectRealm(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    MOZ_RELEASE_ASSERT(cx->realm() == args.callee().as<JSFunction>().realm());
+    args.rval().setUndefined();
+    return true;
+}
+
 JSScript*
 js::TestingFunctionArgumentToScript(JSContext* cx,
                                     HandleValue v,
@@ -5201,7 +5063,8 @@ js::TestingFunctionArgumentToScript(JSContext* cx,
 
         RootedScript script(cx);
         CompileOptions options(cx);
-        if (!JS::Compile(cx, options, chars, len, &script))
+        SourceBufferHolder source(chars, len, SourceBufferHolder::NoOwnership);
+        if (!JS::Compile(cx, options, source, &script))
             return nullptr;
         return script;
     }
@@ -5275,6 +5138,15 @@ BaselineCompile(JSContext* cx, unsigned argc, Value* vp)
 
     const char* returnedStr = nullptr;
     do {
+#ifdef JS_MORE_DETERMINISTIC
+        // In order to check for differential behaviour, baselineCompile should have
+        // the same output whether --no-baseline is used or not.
+        if (fuzzingSafe) {
+            returnedStr = "skipped (fuzzing-safe)";
+            break;
+        }
+#endif
+
         AutoRealm ar(cx, script);
         if (script->hasBaselineScript()) {
             if (forceDebug && !script->baselineScript()->hasDebugInstrumentation()) {
@@ -5421,6 +5293,7 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  types and character encodings."),
 
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
+
     JS_FN_HELP("oomThreadTypes", OOMThreadTypes, 0, 0,
 "oomThreadTypes()",
 "  Get the number of thread types that can be used as an argument for\n"
@@ -5461,7 +5334,8 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
     JS_FN_HELP("interruptTest", InterruptTest, 0, 0,
 "interruptTest(function)",
 "  This function simulates interrupts similar to how oomTest simulates OOM conditions."),
-#endif
+
+#endif // defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
     JS_FN_HELP("newRope", NewRope, 3, 0,
 "newRope(left, right[, options])",
@@ -5669,10 +5543,6 @@ gc::ZealModeHelpText),
 "wasmTextToBinary(str)",
 "  Translates the given text wasm module into its binary encoding."),
 
-    JS_FN_HELP("wasmBinaryToText", WasmBinaryToText, 1, 0,
-"wasmBinaryToText(bin)",
-"  Translates binary encoding to text format"),
-
     JS_FN_HELP("wasmExtractCode", WasmExtractCode, 1, 0,
 "wasmExtractCode(module[, tier])",
 "  Extracts generated machine code from WebAssembly.Module.  The tier is a string,\n"
@@ -5823,7 +5693,7 @@ gc::ZealModeHelpText),
 "  paths in each of those arrays is bounded by |maxNumPaths|. Each element in a\n"
 "  path is of the form |{ predecessor, edge }|."),
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
     JS_FN_HELP("dumpObject", DumpObject, 1, 0,
 "dumpObject()",
 "  Dump an internal representation of an object."),
@@ -5938,14 +5808,6 @@ gc::ZealModeHelpText),
 "  Set this compartment's RNG state.\n"),
 #endif
 
-    JS_FN_HELP("getModuleEnvironmentNames", GetModuleEnvironmentNames, 1, 0,
-"getModuleEnvironmentNames(module)",
-"  Get the list of a module environment's bound names for a specified module.\n"),
-
-    JS_FN_HELP("getModuleEnvironmentValue", GetModuleEnvironmentValue, 2, 0,
-"getModuleEnvironmentValue(module, name)",
-"  Get the value of a bound name in a module environment.\n"),
-
 #if defined(FUZZING) && defined(__AFL_COMPILER)
     JS_FN_HELP("aflloop", AflLoop, 1, 0,
 "aflloop(max_cnt)",
@@ -5974,6 +5836,10 @@ gc::ZealModeHelpText),
 "getTimeZone()",
 "  Get the current time zone.\n"),
 
+    JS_FN_HELP("getDefaultLocale", GetDefaultLocale, 0, 0,
+"getDefaultLocale()",
+"  Get the current default locale.\n"),
+
     JS_FN_HELP("setTimeResolution", SetTimeResolution, 2, 0,
 "setTimeResolution(resolution, jitter)",
 "  Enables time clamping and jittering. Specify a time resolution in\n"
@@ -5987,6 +5853,10 @@ gc::ZealModeHelpText),
 "objectGlobal(obj)",
 "  Returns the object's global object or null if the object is a wrapper.\n"),
 
+    JS_FN_HELP("assertCorrectRealm", AssertCorrectRealm, 0, 0,
+"assertCorrectRealm()",
+"  Asserts cx->realm matches callee->raelm.\n"),
+
     JS_FN_HELP("baselineCompile", BaselineCompile, 2, 0,
 "baselineCompile([fun/code], forceDebugInstrumentation=false)",
 "  Baseline-compiles the given JS function or script.\n"
@@ -5994,7 +5864,8 @@ gc::ZealModeHelpText),
 "  that extra boilerplate is needed afterwards to cause the VM to start\n"
 "  running the jitcode rather than staying in the interpreter:\n"
 "    baselineCompile();  for (var i=0; i<1; i++) {} ...\n"
-"  The interpreter will enter the new jitcode at the loop header.\n"),
+"  The interpreter will enter the new jitcode at the loop header unless\n"
+"  baselineCompile returned a string or threw an error.\n"),
 
     JS_FS_HELP_END
 };
@@ -6019,6 +5890,12 @@ static const JSFunctionSpecWithHelp FuzzingUnsafeTestingFunctions[] = {
 "  Set the 'TZ' environment variable to the given time zone and applies the new time zone.\n"
 "  An empty string or undefined resets the time zone to its default value.\n"
 "  NOTE: The input string is not validated and will be passed verbatim to setenv()."),
+
+JS_FN_HELP("setDefaultLocale", SetDefaultLocale, 1, 0,
+"setDefaultLocale(locale)",
+"  Set the runtime default locale to the given value.\n"
+"  An empty string or undefined resets the runtime locale to its default value.\n"
+"  NOTE: The input string is not fully validated, it must be a valid BCP-47 language tag."),
 
     JS_FS_HELP_END
 };

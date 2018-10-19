@@ -141,16 +141,17 @@ gfxGDIFont::GetScaledFont(DrawTarget *aTarget)
 {
     if (!mAzureScaledFont) {
         NativeFont nativeFont;
-        nativeFont.mType = NativeFontType::GDI_FONT_FACE;
+        nativeFont.mType = NativeFontType::GDI_LOGFONT;
         LOGFONT lf;
         GetObject(GetHFONT(), sizeof(LOGFONT), &lf);
         nativeFont.mFont = &lf;
 
         mAzureScaledFont =
-          Factory::CreateScaledFontWithCairo(nativeFont,
-                                             GetUnscaledFont(),
-                                             GetAdjustedSize(),
-                                             GetCairoScaledFont());
+          Factory::CreateScaledFontForNativeFont(nativeFont,
+                                                 GetUnscaledFont(),
+                                                 GetAdjustedSize(),
+                                                 GetCairoScaledFont());
+        InitializeScaledFont();
     }
 
     RefPtr<ScaledFont> scaledFont(mAzureScaledFont);

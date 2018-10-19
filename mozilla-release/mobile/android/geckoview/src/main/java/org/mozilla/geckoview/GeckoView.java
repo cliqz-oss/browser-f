@@ -14,8 +14,10 @@ import org.mozilla.gecko.gfx.GeckoDisplay;
 import org.mozilla.gecko.InputMethods;
 import org.mozilla.gecko.util.ActivityUtils;
 
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Rect;
@@ -28,14 +30,16 @@ import android.support.annotation.Nullable;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
+import android.util.SparseArray;
 import android.util.TypedValue;
-import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewStructure;
+import android.view.autofill.AutofillValue;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -107,12 +111,14 @@ public class GeckoView extends FrameLayout {
                 final SurfaceHolder holder = GeckoView.this.mSurfaceView.getHolder();
                 final Rect frame = holder.getSurfaceFrame();
                 mDisplay.surfaceChanged(holder.getSurface(), frame.right, frame.bottom);
+                GeckoView.this.setActive(true);
             }
         }
 
         public GeckoDisplay release() {
             if (mValid) {
                 mDisplay.surfaceDestroyed();
+                GeckoView.this.setActive(false);
             }
 
             final GeckoDisplay display = mDisplay;
@@ -129,6 +135,9 @@ public class GeckoView extends FrameLayout {
                                    final int width, final int height) {
             if (mDisplay != null) {
                 mDisplay.surfaceChanged(holder.getSurface(), width, height);
+                if (!mValid) {
+                    GeckoView.this.setActive(true);
+                }
             }
             mValid = true;
         }
@@ -137,6 +146,7 @@ public class GeckoView extends FrameLayout {
         public void surfaceDestroyed(final SurfaceHolder holder) {
             if (mDisplay != null) {
                 mDisplay.surfaceDestroyed();
+                GeckoView.this.setActive(false);
             }
             mValid = false;
         }
@@ -149,6 +159,10 @@ public class GeckoView extends FrameLayout {
                 GeckoView.this.mSurfaceView.getLocationOnScreen(mOrigin);
                 mDisplay.screenOriginChanged(mOrigin[0], mOrigin[1]);
             }
+        }
+
+        public boolean shouldPinOnScreen() {
+            return mDisplay != null ? mDisplay.shouldPinOnScreen() : false;
         }
     }
 
@@ -203,6 +217,25 @@ public class GeckoView extends FrameLayout {
         }
     }
 
+    /**
+     * Return whether the view should be pinned on the screen. When pinned, the view
+     * should not be moved on the screen due to animation, scrolling, etc. A common reason
+     * for the view being pinned is when the user is dragging a selection caret inside
+     * the view; normal user interaction would be disrupted in that case if the view
+     * was moved on screen.
+     *
+     * @return True if view should be pinned on the screen.
+     */
+    public boolean shouldPinOnScreen() {
+        return mDisplay.shouldPinOnScreen();
+    }
+
+    /* package */ void setActive(final boolean active) {
+        if (mSession != null) {
+            mSession.setActive(active);
+        }
+    }
+
     public GeckoSession releaseSession() {
         if (mSession == null) {
             return null;
@@ -224,11 +257,15 @@ public class GeckoView extends FrameLayout {
             mSession.getTextInput().setView(null);
         }
 
-        if (session.getSelectionActionDelegate() == mSelectionActionDelegate) {
+        if (mSession.getSelectionActionDelegate() == mSelectionActionDelegate) {
             mSession.setSelectionActionDelegate(null);
         }
 
+        if (isFocused()) {
+            mSession.setFocused(false);
+        }
         mSession = null;
+        mRuntime = null;
         return session;
     }
 
@@ -315,6 +352,10 @@ public class GeckoView extends FrameLayout {
         if (session.getSelectionActionDelegate() == null && mSelectionActionDelegate != null) {
             session.setSelectionActionDelegate(mSelectionActionDelegate);
         }
+
+        if (isFocused()) {
+            session.setFocused(true);
+        }
     }
 
     public GeckoSession getSession() {
@@ -342,6 +383,7 @@ public class GeckoView extends FrameLayout {
         if (!mSession.isOpen()) {
             mSession.open(mRuntime);
         }
+        mRuntime.orientationChanged();
 
         super.onAttachedToWindow();
     }
@@ -357,6 +399,18 @@ public class GeckoView extends FrameLayout {
         // If we saved state earlier, we don't want to close the window.
         if (!mStateSaved && mSession.isOpen()) {
             mSession.close();
+        }
+    }
+
+    @Override
+    protected void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        if (mRuntime != null) {
+            // onConfigurationChanged is not called for 180 degree orientation changes,
+            // we will miss such rotations and the screen orientation will not be
+            // updated.
+            mRuntime.orientationChanged(newConfig.orientation);
         }
     }
 
@@ -389,19 +443,74 @@ public class GeckoView extends FrameLayout {
         final SavedState ss = (SavedState) state;
         super.onRestoreInstanceState(ss.getSuperState());
 
-        if (mSession == null && ss.session != null) {
-            setSession(ss.session, ss.session.getRuntime());
-        } else if (ss.session != null) {
-            mSession.transferFrom(ss.session);
-            mRuntime = ss.session.getRuntime();
+        restoreSession(ss.session);
+    }
+
+    private void restoreSession(final @Nullable GeckoSession savedSession) {
+        if (savedSession == null || savedSession.equals(mSession)) {
+            return;
+        }
+
+        GeckoRuntime runtimeToRestore = savedSession.getRuntime();
+        // Note: setSession sets either both mSession and mRuntime, or none of them. So if we don't
+        // have an mRuntime here, we won't have an mSession, either.
+        if (mRuntime == null) {
+            if (runtimeToRestore == null) {
+                // If the saved session is closed, we fall back to using the default runtime, same
+                // as we do when we don't even have an mSession in onAttachedToWindow().
+                runtimeToRestore = GeckoRuntime.getDefault(getContext());
+            }
+            setSession(savedSession, runtimeToRestore);
+        // We already have a session. We only want to transfer the saved session if its close/open
+        // state is the same or better as our current session.
+        } else if (savedSession.isOpen() || !mSession.isOpen()) {
+            if (mSession.isOpen()) {
+                mSession.close();
+            }
+            mSession.transferFrom(savedSession);
+            if (runtimeToRestore != null) {
+                // If the saved session was open, we transfer its runtime as well. Otherwise we just
+                // keep the runtime we already had in mRuntime.
+                mRuntime = runtimeToRestore;
+            }
         }
     }
 
     @Override
-    public void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+
+        // Only call setFocus(true) when the window gains focus. Any focus loss could be temporary
+        // (e.g. due to auto-fill popups) and we don't want to call setFocus(false) in those cases.
+        // Instead, we call setFocus(false) in onWindowVisibilityChanged.
+        if (mSession != null && hasWindowFocus && isFocused()) {
+            mSession.setFocused(true);
+        }
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+
+        // We can be reasonably sure that the focus loss is not temporary, so call setFocus(false).
+        if (mSession != null && visibility != View.VISIBLE && !hasWindowFocus()) {
+            mSession.setFocused(false);
+        }
+    }
+
+    @Override
+    protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
 
-        if (!gainFocus || mIsResettingFocus) {
+        if (mIsResettingFocus) {
+            return;
+        }
+
+        if (mSession != null) {
+            mSession.setFocused(gainFocus);
+        }
+
+        if (!gainFocus) {
             return;
         }
 
@@ -533,5 +642,33 @@ public class GeckoView extends FrameLayout {
 
         return mSession.getAccessibility().onMotionEvent(event) ||
                mSession.getPanZoomController().onMotionEvent(event);
+    }
+
+    @Override
+    public void onProvideAutofillVirtualStructure(final ViewStructure structure, int flags) {
+        super.onProvideAutofillVirtualStructure(structure, flags);
+
+        if (mSession != null) {
+            mSession.getTextInput().onProvideAutofillVirtualStructure(structure, flags);
+        }
+    }
+
+    @Override
+    @TargetApi(26)
+    public void autofill(@NonNull final SparseArray<AutofillValue> values) {
+        super.autofill(values);
+
+        if (mSession == null) {
+            return;
+        }
+        final SparseArray<CharSequence> strValues = new SparseArray<>(values.size());
+        for (int i = 0; i < values.size(); i++) {
+            final AutofillValue value = values.valueAt(i);
+            if (value.isText()) {
+                // Only text is currently supported.
+                strValues.put(values.keyAt(i), value.getTextValue());
+            }
+        }
+        mSession.getTextInput().autofill(strValues);
     }
 }

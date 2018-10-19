@@ -5,7 +5,7 @@
 <%namespace name="helpers" file="/helpers.mako.rs" />
 
 <%
-    from data import to_idl_name, SYSTEM_FONT_LONGHANDS
+    from data import to_idl_name, SYSTEM_FONT_LONGHANDS, to_camel_case
     from itertools import groupby
 %>
 
@@ -25,11 +25,11 @@ use servo_arc::Arc;
 use smallvec::SmallVec;
 use std::{cmp, ptr};
 use std::mem::{self, ManuallyDrop};
-use hash::FnvHashMap;
+use hash::FxHashMap;
 use super::ComputedValues;
 use values::CSSFloat;
 use values::animated::{Animate, Procedure, ToAnimatedValue, ToAnimatedZero};
-use values::animated::color::RGBA as AnimatedRGBA;
+use values::animated::color::Color as AnimatedColor;
 use values::animated::effects::Filter as AnimatedFilter;
 #[cfg(feature = "gecko")] use values::computed::TransitionProperty;
 use values::computed::{Angle, CalcLengthOrPercentage};
@@ -114,7 +114,7 @@ pub fn nscsspropertyid_is_transitionable(property: nsCSSPropertyID) -> bool {
 #[cfg_attr(feature = "servo", derive(MallocSizeOf))]
 pub enum AnimatedProperty {
     % for prop in data.longhands:
-        % if prop.animatable:
+        % if prop.animatable and not prop.logical:
             <%
                 value_type = "longhands::{}::computed_value::T".format(prop.ident)
                 if not prop.is_animatable_with_computed_value:
@@ -131,7 +131,7 @@ impl AnimatedProperty {
     pub fn name(&self) -> &'static str {
         match *self {
             % for prop in data.longhands:
-                % if prop.animatable:
+                % if prop.animatable and not prop.logical:
                     AnimatedProperty::${prop.camel_case}(..) => "${prop.name}",
                 % endif
             % endfor
@@ -143,7 +143,7 @@ impl AnimatedProperty {
     pub fn does_animate(&self) -> bool {
         match *self {
             % for prop in data.longhands:
-                % if prop.animatable:
+                % if prop.animatable and not prop.logical:
                     AnimatedProperty::${prop.camel_case}(ref from, ref to) => from != to,
                 % endif
             % endfor
@@ -154,7 +154,7 @@ impl AnimatedProperty {
     pub fn has_the_same_end_value_as(&self, other: &Self) -> bool {
         match (self, other) {
             % for prop in data.longhands:
-                % if prop.animatable:
+                % if prop.animatable and not prop.logical:
                     (&AnimatedProperty::${prop.camel_case}(_, ref this_end_value),
                      &AnimatedProperty::${prop.camel_case}(_, ref other_end_value)) => {
                         this_end_value == other_end_value
@@ -173,7 +173,7 @@ impl AnimatedProperty {
         {
             match *self {
                 % for prop in data.longhands:
-                % if prop.animatable:
+                % if prop.animatable and not prop.logical:
                     AnimatedProperty::${prop.camel_case}(ref from, ref to) => {
                         // https://drafts.csswg.org/web-animations/#discrete-animation-type
                         % if prop.animation_value_type == "discrete":
@@ -203,12 +203,15 @@ impl AnimatedProperty {
         old_style: &ComputedValues,
         new_style: &ComputedValues,
     ) -> Option<AnimatedProperty> {
+        // FIXME(emilio): Handle the case where old_style and new_style's
+        // writing mode differ.
+        let property = property.to_physical(new_style.writing_mode);
         Some(match property {
             % for prop in data.longhands:
-            % if prop.animatable:
+            % if prop.animatable and not prop.logical:
                 LonghandId::${prop.camel_case} => {
-                    let old_computed = old_style.get_${prop.style_struct.ident.strip("_")}().clone_${prop.ident}();
-                    let new_computed = new_style.get_${prop.style_struct.ident.strip("_")}().clone_${prop.ident}();
+                    let old_computed = old_style.clone_${prop.ident}();
+                    let new_computed = new_style.clone_${prop.ident}();
                     AnimatedProperty::${prop.camel_case}(
                     % if prop.is_animatable_with_computed_value:
                         old_computed,
@@ -229,7 +232,7 @@ impl AnimatedProperty {
 /// A collection of AnimationValue that were composed on an element.
 /// This HashMap stores the values that are the last AnimationValue to be
 /// composed for each TransitionProperty.
-pub type AnimationValueMap = FnvHashMap<LonghandId, AnimationValue>;
+pub type AnimationValueMap = FxHashMap<LonghandId, AnimationValue>;
 
 #[cfg(feature = "gecko")]
 unsafe impl HasFFI for AnimationValueMap {
@@ -254,11 +257,10 @@ unsafe impl HasSimpleFFI for AnimationValueMap {}
 #[repr(u16)]
 pub enum AnimationValue {
     % for prop in data.longhands:
-    % if prop.animatable:
     /// `${prop.name}`
+    % if prop.animatable and not prop.logical:
     ${prop.camel_case}(${prop.animated_type()}),
     % else:
-    /// `${prop.name}` (not animatable)
     ${prop.camel_case}(Void),
     % endif
     % endfor
@@ -267,8 +269,11 @@ pub enum AnimationValue {
 <%
     animated = []
     unanimated = []
+    animated_with_logical = []
     for prop in data.longhands:
         if prop.animatable:
+            animated_with_logical.append(prop)
+        if prop.animatable and not prop.logical:
             animated.append(prop)
         else:
             unanimated.append(prop)
@@ -370,7 +375,7 @@ impl AnimationValue {
         let id = unsafe { *(self as *const _ as *const LonghandId) };
         debug_assert_eq!(id, match *self {
             % for prop in data.longhands:
-            % if prop.animatable:
+            % if prop.animatable and not prop.logical:
             AnimationValue::${prop.camel_case}(..) => LonghandId::${prop.camel_case},
             % else:
             AnimationValue::${prop.camel_case}(void) => void::unreachable(void),
@@ -444,17 +449,18 @@ impl AnimationValue {
         %>
 
         let animatable = match *decl {
-            % for (specified_ty, ty, boxed, to_animated, inherit, system), props in groupby(animated, key=keyfunc):
+            % for (specified_ty, ty, boxed, to_animated, inherit, system), props in groupby(animated_with_logical, key=keyfunc):
             ${" |\n".join("PropertyDeclaration::{}(ref value)".format(prop.camel_case) for prop in props)} => {
                 let decl_repr = unsafe {
                     &*(decl as *const _ as *const PropertyDeclarationVariantRepr<${specified_ty}>)
                 };
+                let longhand_id = unsafe {
+                    *(&decl_repr.tag as *const u16 as *const LonghandId)
+                };
                 % if inherit:
                 context.for_non_inherited_property = None;
                 % else:
-                context.for_non_inherited_property = unsafe {
-                    Some(*(&decl_repr.tag as *const u16 as *const LonghandId))
-                };
+                context.for_non_inherited_property = Some(longhand_id);
                 % endif
                 % if system:
                 if let Some(sf) = value.get_system() {
@@ -475,7 +481,7 @@ impl AnimationValue {
                     ptr::write(
                         &mut out as *mut _ as *mut AnimationValueVariantRepr<${ty}>,
                         AnimationValueVariantRepr {
-                            tag: decl_repr.tag,
+                            tag: longhand_id.to_physical(context.builder.writing_mode) as u16,
                             value,
                         },
                     );
@@ -492,24 +498,40 @@ impl AnimationValue {
                     LonghandId::${prop.camel_case} => {
                         let style_struct = match declaration.keyword {
                             % if not prop.style_struct.inherited:
-                                CSSWideKeyword::Unset |
+                            CSSWideKeyword::Unset |
                             % endif
                             CSSWideKeyword::Initial => {
                                 initial.get_${prop.style_struct.name_lower}()
                             },
                             % if prop.style_struct.inherited:
-                                CSSWideKeyword::Unset |
+                            CSSWideKeyword::Unset |
                             % endif
                             CSSWideKeyword::Inherit => {
                                 context.builder
                                        .get_parent_${prop.style_struct.name_lower}()
                             },
                         };
-                        let computed = style_struct.clone_${prop.ident}();
+                        let computed = style_struct
+                        % if prop.logical:
+                            .clone_${prop.ident}(context.builder.writing_mode);
+                        % else:
+                            .clone_${prop.ident}();
+                        % endif
+
                         % if not prop.is_animatable_with_computed_value:
                         let computed = computed.to_animated_value();
                         % endif
-                        AnimationValue::${prop.camel_case}(computed)
+
+                        % if prop.logical:
+                        let wm = context.builder.writing_mode;
+                        <%helpers:logical_setter_helper name="${prop.name}">
+                        <%def name="inner(physical_ident)">
+                            AnimationValue::${to_camel_case(physical_ident)}(computed)
+                        </%def>
+                        </%helpers:logical_setter_helper>
+                        % else:
+                            AnimationValue::${prop.camel_case}(computed)
+                        % endif
                     },
                     % endif
                     % endfor
@@ -546,15 +568,14 @@ impl AnimationValue {
     /// Get an AnimationValue for an AnimatableLonghand from a given computed values.
     pub fn from_computed_values(
         property: LonghandId,
-        computed_values: &ComputedValues
+        style: &ComputedValues,
     ) -> Option<Self> {
+        let property = property.to_physical(style.writing_mode);
         Some(match property {
             % for prop in data.longhands:
-            % if prop.animatable:
+            % if prop.animatable and not prop.logical:
             LonghandId::${prop.camel_case} => {
-                let computed = computed_values
-                    .get_${prop.style_struct.ident.strip("_")}()
-                    .clone_${prop.ident}();
+                let computed = style.clone_${prop.ident}();
                 AnimationValue::${prop.camel_case}(
                 % if prop.is_animatable_with_computed_value:
                     computed
@@ -658,7 +679,7 @@ impl ToAnimatedZero for AnimationValue {
     fn to_animated_zero(&self) -> Result<Self, ()> {
         match *self {
             % for prop in data.longhands:
-            % if prop.animatable and prop.animation_value_type != "discrete":
+            % if prop.animatable and not prop.logical and prop.animation_value_type != "discrete":
             AnimationValue::${prop.camel_case}(ref base) => {
                 Ok(AnimationValue::${prop.camel_case}(base.to_animated_zero()?))
             },
@@ -1275,9 +1296,27 @@ impl Animate for ComputedTransformOperation {
                 &TransformOperation::Perspective(ref fd),
                 &TransformOperation::Perspective(ref td),
             ) => {
-                Ok(TransformOperation::Perspective(
-                    fd.animate(td, procedure)?
-                ))
+                use values::computed::CSSPixelLength;
+                use values::generics::transform::create_perspective_matrix;
+
+                // From https://drafts.csswg.org/css-transforms-2/#interpolation-of-transform-functions:
+                //
+                //    The transform functions matrix(), matrix3d() and
+                //    perspective() get converted into 4x4 matrices first and
+                //    interpolated as defined in section Interpolation of
+                //    Matrices afterwards.
+                //
+                let from = create_perspective_matrix(fd.px());
+                let to = create_perspective_matrix(td.px());
+
+                let interpolated =
+                    Matrix3D::from(from).animate(&Matrix3D::from(to), procedure)?;
+
+                let decomposed = decompose_3d_matrix(interpolated)?;
+                let perspective_z = decomposed.perspective.2;
+                let used_value =
+                    if perspective_z == 0. { 0. } else { -1. / perspective_z };
+                Ok(TransformOperation::Perspective(CSSPixelLength::new(used_value)))
             },
             _ if self.is_translate() && other.is_translate() => {
                 self.to_translate_3d().animate(&other.to_translate_3d(), procedure)
@@ -2676,10 +2715,10 @@ impl ComputeSquaredDistance for ComputedTransform {
 }
 
 /// Animated SVGPaint
-pub type IntermediateSVGPaint = SVGPaint<AnimatedRGBA, ComputedUrl>;
+pub type IntermediateSVGPaint = SVGPaint<AnimatedColor, ComputedUrl>;
 
 /// Animated SVGPaintKind
-pub type IntermediateSVGPaintKind = SVGPaintKind<AnimatedRGBA, ComputedUrl>;
+pub type IntermediateSVGPaintKind = SVGPaintKind<AnimatedColor, ComputedUrl>;
 
 impl ToAnimatedZero for IntermediateSVGPaint {
     #[inline]
@@ -2926,43 +2965,67 @@ impl ToAnimatedZero for AnimatedFilter {
     }
 }
 
-/// A comparator to sort PropertyIds such that longhands are sorted before shorthands,
-/// shorthands with fewer components are sorted before shorthands with more components,
-/// and otherwise shorthands are sorted by IDL name as defined by [Web Animations][property-order].
+/// The category a property falls into for ordering purposes.
+///
+/// https://drafts.csswg.org/web-animations/#calculating-computed-keyframes
+///
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+enum PropertyCategory {
+    Custom,
+    PhysicalLonghand,
+    LogicalLonghand,
+    Shorthand,
+}
+
+impl PropertyCategory {
+    fn of(id: &PropertyId) -> Self {
+        match *id {
+            PropertyId::Shorthand(..) |
+            PropertyId::ShorthandAlias(..) => PropertyCategory::Shorthand,
+            PropertyId::Longhand(id) |
+            PropertyId::LonghandAlias(id, ..) => {
+                if id.is_logical() {
+                    PropertyCategory::LogicalLonghand
+                } else {
+                    PropertyCategory::PhysicalLonghand
+                }
+            }
+            PropertyId::Custom(..) => PropertyCategory::Custom,
+        }
+    }
+}
+
+/// A comparator to sort PropertyIds such that physical longhands are sorted
+/// before logical longhands and shorthands, shorthands with fewer components
+/// are sorted before shorthands with more components, and otherwise shorthands
+/// are sorted by IDL name as defined by [Web Animations][property-order].
 ///
 /// Using this allows us to prioritize values specified by longhands (or smaller
-/// shorthand subsets) when longhands and shorthands are both specified on the one keyframe.
-///
-/// Example orderings that result from this:
-///
-///   margin-left, margin
-///
-/// and:
-///
-///   border-top-color, border-color, border-top, border
+/// shorthand subsets) when longhands and shorthands are both specified on the
+/// one keyframe.
 ///
 /// [property-order] https://drafts.csswg.org/web-animations/#calculating-computed-keyframes
 pub fn compare_property_priority(a: &PropertyId, b: &PropertyId) -> cmp::Ordering {
-    match (a.as_shorthand(), b.as_shorthand()) {
-        // Within shorthands, sort by the number of subproperties, then by IDL name.
-        (Ok(a), Ok(b)) => {
-            let subprop_count_a = a.longhands().count();
-            let subprop_count_b = b.longhands().count();
-            subprop_count_a
-                .cmp(&subprop_count_b)
-                .then_with(|| {
-                    get_idl_name_sort_order(a).cmp(&get_idl_name_sort_order(b))
-                })
-        },
+    let a_category = PropertyCategory::of(a);
+    let b_category = PropertyCategory::of(b);
 
-        // Longhands go before shorthands.
-        (Ok(_), Err(_)) => cmp::Ordering::Greater,
-        (Err(_), Ok(_)) => cmp::Ordering::Less,
-
-        // Both are longhands or custom properties in which case they don't overlap and should
-        // sort equally.
-        _ => cmp::Ordering::Equal,
+    if a_category != b_category {
+        return a_category.cmp(&b_category);
     }
+
+    if a_category == PropertyCategory::Shorthand {
+        let a = a.as_shorthand().unwrap();
+        let b = b.as_shorthand().unwrap();
+        // Within shorthands, sort by the number of subproperties, then by IDL
+        // name.
+        let subprop_count_a = a.longhands().count();
+        let subprop_count_b = b.longhands().count();
+        return subprop_count_a.cmp(&subprop_count_b).then_with(|| {
+            get_idl_name_sort_order(a).cmp(&get_idl_name_sort_order(b))
+        });
+    }
+
+    cmp::Ordering::Equal
 }
 
 fn get_idl_name_sort_order(shorthand: ShorthandId) -> u32 {

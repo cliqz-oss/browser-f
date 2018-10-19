@@ -42,6 +42,8 @@ public:
   virtual void ZeroSensor() = 0;
   virtual void StartPresentation() = 0;
   virtual void StopPresentation() = 0;
+  virtual void StartVRNavigation();
+  virtual void StopVRNavigation(const TimeDuration& aTimeout);
   void NotifyVSync();
 
   void StartFrame();
@@ -99,6 +101,11 @@ private:
   VRDisplayInfo mLastUpdateDisplayInfo;
   TimeStamp mLastFrameStart;
   bool mFrameStarted;
+#if defined(MOZ_WIDGET_ANDROID)
+protected:
+  uint64_t mLastSubmittedFrameId;
+  uint64_t mLastStartedFrame;
+#endif // defined(MOZ_WIDGET_ANDROID)
 
 #if defined(XP_WIN)
 protected:

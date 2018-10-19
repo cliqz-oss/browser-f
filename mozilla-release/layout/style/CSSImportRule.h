@@ -19,7 +19,10 @@ class CSSImportRule final : public css::Rule
 {
 public:
   CSSImportRule(RefPtr<RawServoImportRule> aRawRule,
-                uint32_t aLine, uint32_t aColumn);
+                StyleSheet* aSheet,
+                css::Rule* aParentRule,
+                uint32_t aLine,
+                uint32_t aColumn);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(CSSImportRule, css::Rule)
@@ -34,7 +37,7 @@ public:
     const override;
 
   // WebIDL interface
-  uint16_t Type() const final { return CSSRuleBinding::IMPORT_RULE; }
+  uint16_t Type() const final { return CSSRule_Binding::IMPORT_RULE; }
   void GetCssText(nsAString& aCssText) const override;
   void GetHref(nsAString& aHref) const;
   dom::MediaList* GetMedia() const;

@@ -246,30 +246,6 @@ LIRGeneratorShared::defineInt64(LInstructionHelper<INT64_PIECES, Ops, Temps>* li
 }
 
 void
-LIRGeneratorShared::defineSharedStubReturn(LInstruction* lir, MDefinition* mir)
-{
-    lir->setMir(mir);
-
-    MOZ_ASSERT(lir->isBinarySharedStub() || lir->isNullarySharedStub());
-    MOZ_ASSERT(mir->type() == MIRType::Value);
-
-    uint32_t vreg = getVirtualRegister();
-
-#if defined(JS_NUNBOX32)
-    lir->setDef(TYPE_INDEX, LDefinition(vreg + VREG_TYPE_OFFSET, LDefinition::TYPE,
-                                        LGeneralReg(JSReturnReg_Type)));
-    lir->setDef(PAYLOAD_INDEX, LDefinition(vreg + VREG_DATA_OFFSET, LDefinition::PAYLOAD,
-                                           LGeneralReg(JSReturnReg_Data)));
-    getVirtualRegister();
-#elif defined(JS_PUNBOX64)
-    lir->setDef(0, LDefinition(vreg, LDefinition::BOX, LGeneralReg(JSReturnReg)));
-#endif
-
-    mir->setVirtualRegister(vreg);
-    add(lir);
-}
-
-void
 LIRGeneratorShared::defineReturn(LInstruction* lir, MDefinition* mir)
 {
     lir->setMir(mir);
@@ -374,9 +350,6 @@ IsCompatibleLIRCoercion(MIRType to, MIRType from)
         (from == MIRType::Int32 || from == MIRType::Boolean)) {
         return true;
     }
-    // SIMD types can be coerced with from*Bits operators.
-    if (IsSimdType(to) && IsSimdType(from))
-        return true;
     return false;
 }
 
@@ -688,6 +661,14 @@ LIRGeneratorShared::tempFixed(Register reg)
 }
 
 LDefinition
+LIRGeneratorShared::tempFixed(FloatRegister reg)
+{
+    LDefinition t = temp(LDefinition::DOUBLE);
+    t.setOutput(LFloatReg(reg));
+    return t;
+}
+
+LDefinition
 LIRGeneratorShared::tempFloat32()
 {
     return temp(LDefinition::FLOAT32);
@@ -822,7 +803,6 @@ LIRGeneratorShared::useBoxOrTyped(MDefinition* mir)
 {
     if (mir->type() == MIRType::Value)
         return useBox(mir);
-
 
 #if defined(JS_NUNBOX32)
     return LBoxAllocation(useRegister(mir), LAllocation());

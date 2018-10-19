@@ -3,7 +3,8 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.syncClientBreakpoint = syncClientBreakpoint;
+exports.syncBreakpointPromise = syncBreakpointPromise;
+exports.syncBreakpoint = syncBreakpoint;
 
 var _breakpoint = require("../../utils/breakpoint/index");
 
@@ -15,10 +16,9 @@ var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
 
 var _selectors = require("../../selectors/index");
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 async function makeScopedLocation({
   name,
   offset
@@ -37,13 +37,12 @@ async function makeScopedLocation({
 }
 
 function createSyncData(id, pendingBreakpoint, location, generatedLocation, previousLocation, text, originalText) {
-  const overrides = _objectSpread({}, pendingBreakpoint, {
+  const overrides = { ...pendingBreakpoint,
     generatedLocation,
     id,
     text,
     originalText
-  });
-
+  };
   const breakpoint = (0, _breakpoint.createBreakpoint)(location, overrides);
   (0, _breakpoint.assertBreakpoint)(breakpoint);
   return {
@@ -54,28 +53,30 @@ function createSyncData(id, pendingBreakpoint, location, generatedLocation, prev
 // and adding a new breakpoint
 
 
-async function syncClientBreakpoint(getState, client, sourceMaps, sourceId, pendingBreakpoint) {
+async function syncBreakpointPromise(getState, client, sourceMaps, sourceId, pendingBreakpoint) {
   (0, _breakpoint.assertPendingBreakpoint)(pendingBreakpoint);
   const source = (0, _selectors.getSource)(getState(), sourceId);
-  const generatedSourceId = sourceMaps.isOriginalId(sourceId) ? (0, _devtoolsSourceMap.originalToGeneratedId)(sourceId) : sourceId;
+  const generatedSourceId = (0, _devtoolsSourceMap.isOriginalId)(sourceId) ? (0, _devtoolsSourceMap.originalToGeneratedId)(sourceId) : sourceId;
   const generatedSource = (0, _selectors.getSource)(getState(), generatedSourceId);
+
+  if (!source) {
+    return null;
+  }
+
   const {
     location,
     astLocation
   } = pendingBreakpoint;
-
-  const previousLocation = _objectSpread({}, location, {
+  const previousLocation = { ...location,
     sourceId
-  });
-
+  };
   const scopedLocation = await makeScopedLocation(astLocation, previousLocation, source);
   const scopedGeneratedLocation = await (0, _sourceMaps.getGeneratedLocation)(getState(), source, scopedLocation, sourceMaps); // this is the generatedLocation of the pending breakpoint, with
   // the source id updated to reflect the new connection
 
-  const generatedLocation = _objectSpread({}, pendingBreakpoint.generatedLocation, {
+  const generatedLocation = { ...pendingBreakpoint.generatedLocation,
     sourceId: generatedSourceId
-  });
-
+  };
   const isSameLocation = !(0, _breakpoint.locationMoved)(generatedLocation, scopedGeneratedLocation);
   const existingClient = client.getBreakpointByLocation(generatedLocation);
   /** ******* CASE 1: No server change ***********/
@@ -108,7 +109,7 @@ async function syncClientBreakpoint(getState, client, sourceMaps, sourceId, pend
   const {
     id,
     actualLocation
-  } = await client.setBreakpoint(scopedGeneratedLocation, pendingBreakpoint.condition, sourceMaps.isOriginalId(sourceId)); // the breakpoint might have slid server side, so we want to get the location
+  } = await client.setBreakpoint(scopedGeneratedLocation, pendingBreakpoint.condition, (0, _devtoolsSourceMap.isOriginalId)(sourceId)); // the breakpoint might have slid server side, so we want to get the location
   // based on the server's return value
 
   const newGeneratedLocation = actualLocation;
@@ -116,4 +117,39 @@ async function syncClientBreakpoint(getState, client, sourceMaps, sourceId, pend
   const originalText = (0, _source.getTextAtPosition)(source, newLocation);
   const text = (0, _source.getTextAtPosition)(generatedSource, newGeneratedLocation);
   return createSyncData(id, pendingBreakpoint, newLocation, newGeneratedLocation, previousLocation, text, originalText);
+}
+/**
+ * Syncing a breakpoint add breakpoint information that is stored, and
+ * contact the server for more data.
+ *
+ * @memberof actions/breakpoints
+ * @static
+ * @param {String} $1.sourceId String  value
+ * @param {PendingBreakpoint} $1.location PendingBreakpoint  value
+ */
+
+
+function syncBreakpoint(sourceId, pendingBreakpoint) {
+  return async ({
+    dispatch,
+    getState,
+    client,
+    sourceMaps
+  }) => {
+    const response = await syncBreakpointPromise(getState, client, sourceMaps, sourceId, pendingBreakpoint);
+
+    if (!response) {
+      return;
+    }
+
+    const {
+      breakpoint,
+      previousLocation
+    } = response;
+    return dispatch({
+      type: "SYNC_BREAKPOINT",
+      breakpoint,
+      previousLocation
+    });
+  };
 }

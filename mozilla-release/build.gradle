@@ -51,14 +51,15 @@ buildscript {
     }
 
     ext.kotlin_version = '1.2.41'
-    ext.support_library_version = '23.4.0'
+    ext.support_library_version = '26.1.0'
+    ext.jacoco_version = '0.8.1'
 
     if (gradle.mozconfig.substs.MOZ_ANDROID_GOOGLE_PLAY_SERVICES) {
-        ext.google_play_services_version = '8.4.0'
+        ext.google_play_services_version = '15.0.1'
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.0.1'
+        classpath 'com.android.tools.build:gradle:3.1.0'
         classpath 'com.getkeepsafe.dexcount:dexcount-gradle-plugin:0.8.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
@@ -110,9 +111,22 @@ afterEvaluate {
                     "-Xlint:-deprecation",
                     // Serial, because we don't use Java serialization.
                     "-Xlint:-serial",
+                    // Classfile, because javac has a bug with MethodParameters attributes
+                    // with Java 7. https://bugs.openjdk.java.net/browse/JDK-8190452
+                    "-Xlint:-classfile",
                     // Turn all remaining warnings into errors,
                     // unless marked by @SuppressWarnings.
                     "-Werror"]
+            }
+            if (project.name == 'app') {
+                tasks.withType(JavaCompile) {
+                    // Turn off classfile warnings because upon updating to play services 15.0.0
+                    // a warning is being thrown from play-services-base which fails the build
+                    // (com/google/android/gms/common/api/GoogleApiClient.class):
+                    // warning: Cannot find annotation method 'value()' in type 'GuardedBy':
+                    // class file for javax.annotation.concurrent.GuardedBy not found
+                    options.compilerArgs += ["-Xlint:-classfile"]
+                }
             }
         }
 

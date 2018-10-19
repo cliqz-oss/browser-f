@@ -6,14 +6,15 @@
 
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/ShadowRoot.h"
-#include "mozilla/dom/ShadowRootBinding.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "ChildIterator.h"
 #include "nsContentUtils.h"
 #include "nsIStyleSheetLinkingElement.h"
+#include "nsWindowSizes.h"
+#include "nsXBLPrototypeBinding.h"
+#include "mozilla/dom/DirectionalityUtils.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLSlotElement.h"
-#include "nsXBLPrototypeBinding.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/ServoStyleRuleMap.h"
 #include "mozilla/StyleSheet.h"
@@ -30,6 +31,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ShadowRoot, DocumentFragment)
   for (StyleSheet* sheet : tmp->mStyleSheets) {
     // mServoStyles keeps another reference to it if applicable.
     if (sheet->IsApplicable()) {
+      MOZ_ASSERT(tmp->mServoStyles);
       NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mServoStyles->sheets[i]");
       cb.NoteXPCOMChild(sheet);
     }
@@ -39,6 +41,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ShadowRoot, DocumentFragment)
        iter.Next()) {
     iter.Get()->Traverse(&cb);
   }
+  DocumentOrShadowRoot::Traverse(tmp, cb);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ShadowRoot)
@@ -47,11 +50,13 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ShadowRoot)
   }
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDOMStyleSheets)
   tmp->mIdentifierMap.Clear();
+  DocumentOrShadowRoot::Unlink(tmp);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END_INHERITED(DocumentFragment)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ShadowRoot)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIContent)
   NS_INTERFACE_MAP_ENTRY(nsIMutationObserver)
+  NS_INTERFACE_MAP_ENTRY(nsIRadioGroupContainer)
 NS_INTERFACE_MAP_END_INHERITING(DocumentFragment)
 
 NS_IMPL_ADDREF_INHERITED(ShadowRoot, DocumentFragment)
@@ -62,8 +67,7 @@ ShadowRoot::ShadowRoot(Element* aElement, ShadowRootMode aMode,
   : DocumentFragment(aNodeInfo)
   , DocumentOrShadowRoot(*this)
   , mMode(aMode)
-  , mServoStyles(Servo_AuthorStyles_Create())
-  , mIsComposedDocParticipant(false)
+  , mIsUAWidget(false)
 {
   SetHost(aElement);
 
@@ -73,6 +77,7 @@ ShadowRoot::ShadowRoot(Element* aElement, ShadowRootMode aMode,
   ClearSubtreeRootPointer();
 
   SetFlags(NODE_IS_IN_SHADOW_TREE);
+  Bind();
 
   ExtendedDOMSlots()->mBindingParent = aElement;
   ExtendedDOMSlots()->mContainingShadow = this;
@@ -90,7 +95,7 @@ ShadowRoot::~ShadowRoot()
     host->RemoveMutationObserver(this);
   }
 
-  if (IsComposedDocParticipant()) {
+  if (IsInComposedDoc()) {
     OwnerDoc()->RemoveComposedDocShadowRoot(*this);
   }
 
@@ -102,27 +107,25 @@ ShadowRoot::~ShadowRoot()
   SetSubtreeRootPointer(this);
 }
 
-void
-ShadowRoot::SetIsComposedDocParticipant(bool aIsComposedDocParticipant)
-{
-  bool changed = mIsComposedDocParticipant != aIsComposedDocParticipant;
-  mIsComposedDocParticipant = aIsComposedDocParticipant;
-  if (!changed) {
-    return;
-  }
+MOZ_DEFINE_MALLOC_SIZE_OF(ShadowRootAuthorStylesMallocSizeOf)
+MOZ_DEFINE_MALLOC_ENCLOSING_SIZE_OF(ShadowRootAuthorStylesMallocEnclosingSizeOf)
 
-  nsIDocument* doc = OwnerDoc();
-  if (IsComposedDocParticipant()) {
-    doc->AddComposedDocShadowRoot(*this);
-  } else {
-    doc->RemoveComposedDocShadowRoot(*this);
-  }
+void
+ShadowRoot::AddSizeOfExcludingThis(nsWindowSizes& aSizes, size_t* aNodeSize) const
+{
+  DocumentFragment::AddSizeOfExcludingThis(aSizes, aNodeSize);
+  DocumentOrShadowRoot::AddSizeOfExcludingThis(aSizes);
+  aSizes.mLayoutShadowDomAuthorStyles +=
+    Servo_AuthorStyles_SizeOfIncludingThis(
+      ShadowRootAuthorStylesMallocSizeOf,
+      ShadowRootAuthorStylesMallocEnclosingSizeOf,
+      mServoStyles.get());
 }
 
 JSObject*
 ShadowRoot::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return mozilla::dom::ShadowRootBinding::Wrap(aCx, this, aGivenProto);
+  return mozilla::dom::ShadowRoot_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -141,18 +144,50 @@ ShadowRoot::CloneInternalDataFrom(ShadowRoot* aOther)
   }
 }
 
+nsresult
+ShadowRoot::Bind()
+{
+  MOZ_ASSERT(!IsInComposedDoc(), "Forgot to unbind?");
+  if (Host()->IsInComposedDoc()) {
+    SetIsConnected(true);
+    OwnerDoc()->AddComposedDocShadowRoot(*this);
+  }
+
+  for (nsIContent* child = GetFirstChild();
+       child;
+       child = child->GetNextSibling()) {
+    nsresult rv = child->BindToTree(nullptr, this, Host());
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  return NS_OK;
+}
+
+void
+ShadowRoot::Unbind()
+{
+  if (IsInComposedDoc()) {
+    SetIsConnected(false);
+    OwnerDoc()->RemoveComposedDocShadowRoot(*this);
+  }
+
+  for (nsIContent* child = GetFirstChild();
+       child;
+       child = child->GetNextSibling()) {
+    child->UnbindFromTree(true, false);
+  }
+}
+
 void
 ShadowRoot::InvalidateStyleAndLayoutOnSubtree(Element* aElement)
 {
   MOZ_ASSERT(aElement);
-
-  if (!IsComposedDocParticipant()) {
+  nsIDocument* doc = GetComposedDoc();
+  if (!doc) {
     return;
   }
 
-  MOZ_ASSERT(GetComposedDoc() == OwnerDoc());
-
-  nsIPresShell* shell = OwnerDoc()->GetShell();
+  nsIPresShell* shell = doc->GetShell();
   if (!shell) {
     return;
   }
@@ -198,6 +233,8 @@ ShadowRoot::AddSlot(HTMLSlotElement* aSlot)
     if (doEnqueueSlotChange) {
       oldSlot->EnqueueSlotChangeEvent();
       currentSlot->EnqueueSlotChangeEvent();
+      SlotStateChanged(oldSlot);
+      SlotStateChanged(currentSlot);
     }
   } else {
     bool doEnqueueSlotChange = false;
@@ -218,6 +255,7 @@ ShadowRoot::AddSlot(HTMLSlotElement* aSlot)
 
     if (doEnqueueSlotChange) {
       currentSlot->EnqueueSlotChangeEvent();
+      SlotStateChanged(currentSlot);
     }
   }
 }
@@ -278,10 +316,14 @@ ShadowRoot::RemoveSlot(HTMLSlotElement* aSlot)
 void
 ShadowRoot::RuleAdded(StyleSheet& aSheet, css::Rule& aRule)
 {
+  if (!aSheet.IsApplicable()) {
+    return;
+  }
+
+  MOZ_ASSERT(mServoStyles);
   if (mStyleRuleMap) {
     mStyleRuleMap->RuleAdded(aSheet, aRule);
   }
-
   Servo_AuthorStyles_ForceDirty(mServoStyles.get());
   ApplicableRulesChanged();
 }
@@ -289,16 +331,25 @@ ShadowRoot::RuleAdded(StyleSheet& aSheet, css::Rule& aRule)
 void
 ShadowRoot::RuleRemoved(StyleSheet& aSheet, css::Rule& aRule)
 {
+  if (!aSheet.IsApplicable()) {
+    return;
+  }
+
+  MOZ_ASSERT(mServoStyles);
   if (mStyleRuleMap) {
     mStyleRuleMap->RuleRemoved(aSheet, aRule);
   }
-
   Servo_AuthorStyles_ForceDirty(mServoStyles.get());
   ApplicableRulesChanged();
 }
 
 void
-ShadowRoot::RuleChanged(StyleSheet&, css::Rule*) {
+ShadowRoot::RuleChanged(StyleSheet& aSheet, css::Rule*) {
+  if (!aSheet.IsApplicable()) {
+    return;
+  }
+
+  MOZ_ASSERT(mServoStyles);
   Servo_AuthorStyles_ForceDirty(mServoStyles.get());
   ApplicableRulesChanged();
 }
@@ -306,11 +357,11 @@ ShadowRoot::RuleChanged(StyleSheet&, css::Rule*) {
 void
 ShadowRoot::ApplicableRulesChanged()
 {
-  if (!IsComposedDocParticipant()) {
+  nsIDocument* doc = GetComposedDoc();
+  if (!doc) {
     return;
   }
 
-  nsIDocument* doc = OwnerDoc();
   if (nsIPresShell* shell = doc->GetShell()) {
     shell->RecordShadowStyleChange(*this);
   }
@@ -330,6 +381,10 @@ ShadowRoot::InsertSheetIntoAuthorData(size_t aIndex, StyleSheet& aSheet)
 {
   MOZ_ASSERT(SheetAt(aIndex) == &aSheet);
   MOZ_ASSERT(aSheet.IsApplicable());
+
+  if (!mServoStyles) {
+    mServoStyles.reset(Servo_AuthorStyles_Create());
+  }
 
   if (mStyleRuleMap) {
     mStyleRuleMap->SheetAdded(aSheet);
@@ -370,6 +425,7 @@ ShadowRoot::StyleSheetApplicableStateChanged(StyleSheet& aSheet, bool aApplicabl
   if (aApplicable) {
     InsertSheetIntoAuthorData(size_t(index), aSheet);
   } else {
+    MOZ_ASSERT(mServoStyles);
     if (mStyleRuleMap) {
       mStyleRuleMap->SheetRemoved(aSheet);
     }
@@ -385,6 +441,7 @@ ShadowRoot::RemoveSheet(StyleSheet* aSheet)
   RefPtr<StyleSheet> sheet = DocumentOrShadowRoot::RemoveSheet(*aSheet);
   MOZ_ASSERT(sheet);
   if (sheet->IsApplicable()) {
+    MOZ_ASSERT(mServoStyles);
     if (mStyleRuleMap) {
       mStyleRuleMap->SheetRemoved(*sheet);
     }
@@ -504,8 +561,8 @@ ShadowRoot::MaybeReassignElement(Element* aElement)
     return;
   }
 
-  if (IsComposedDocParticipant()) {
-    if (nsIPresShell* shell = OwnerDoc()->GetShell()) {
+  if (nsIDocument* doc = GetComposedDoc()) {
+    if (nsIPresShell* shell = doc->GetShell()) {
       shell->SlotAssignmentWillChange(*aElement, oldSlot, assignment.mSlot);
     }
   }
@@ -523,6 +580,9 @@ ShadowRoot::MaybeReassignElement(Element* aElement)
     }
     assignment.mSlot->EnqueueSlotChangeEvent();
   }
+
+  SlotStateChanged(oldSlot);
+  SlotStateChanged(assignment.mSlot);
 }
 
 Element*
@@ -541,6 +601,50 @@ void
 ShadowRoot::SetInnerHTML(const nsAString& aInnerHTML, ErrorResult& aError)
 {
   SetInnerHTMLInternal(aInnerHTML, aError);
+}
+
+nsINode*
+ShadowRoot::ImportNodeAndAppendChildAt(nsINode& aParentNode,
+                                       nsINode& aNode,
+                                       bool aDeep,
+                                       mozilla::ErrorResult& rv)
+{
+  MOZ_ASSERT(mIsUAWidget);
+
+  if (!aParentNode.IsInUAWidget()) {
+    rv.Throw(NS_ERROR_INVALID_ARG);
+    return nullptr;
+  }
+
+  RefPtr<nsINode> node = OwnerDoc()->ImportNode(aNode, aDeep, rv);
+  if (rv.Failed()) {
+    return nullptr;
+  }
+
+  return aParentNode.AppendChild(*node, rv);
+}
+
+nsINode*
+ShadowRoot::CreateElementAndAppendChildAt(nsINode& aParentNode,
+                                          const nsAString& aTagName,
+                                          mozilla::ErrorResult& rv) {
+  MOZ_ASSERT(mIsUAWidget);
+  MOZ_ASSERT(OwnerDoc());
+
+  if (!aParentNode.IsInUAWidget()) {
+    rv.Throw(NS_ERROR_INVALID_ARG);
+    return nullptr;
+  }
+
+  // This option is not exposed to UA Widgets
+  ElementCreationOptionsOrString options;
+
+  RefPtr<nsINode> node = OwnerDoc()->CreateElement(aTagName, options, rv);
+  if (rv.Failed()) {
+    return nullptr;
+  }
+
+  return aParentNode.AppendChild(*node, rv);
 }
 
 void
@@ -602,6 +706,8 @@ ShadowRoot::ContentInserted(nsIContent* aChild)
       assignment.mSlot->AppendAssignedNode(aChild);
     }
     assignment.mSlot->EnqueueSlotChangeEvent();
+
+    SlotStateChanged(assignment.mSlot);
     return;
   }
 
@@ -661,8 +767,7 @@ ShadowRoot::ServoStyleRuleMap()
 }
 
 nsresult
-ShadowRoot::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                  bool aPreallocateChildren) const
+ShadowRoot::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
   return NS_ERROR_DOM_NOT_SUPPORTED_ERR;

@@ -15,7 +15,6 @@ toolkit.jar:
 * skin/classic/global/findBar.css
 * skin/classic/global/global.css
   skin/classic/global/groupbox.css
-  skin/classic/global/listbox.css
   skin/classic/global/menu.css
   skin/classic/global/menulist.css
 * skin/classic/global/notification.css
@@ -33,6 +32,7 @@ toolkit.jar:
   skin/classic/global/textbox.css
   skin/classic/global/toolbar.css
   skin/classic/global/toolbarbutton.css
+  skin/classic/global/tooltip.css
 * skin/classic/global/tree.css
   skin/classic/global/wizard.css
 * skin/classic/global/alerts/alert.css                               (alerts/alert.css)
@@ -51,7 +51,6 @@ toolkit.jar:
   skin/classic/global/arrow/panelarrow-horizontal.svg                (arrow/panelarrow-horizontal.svg)
   skin/classic/global/arrow/panelarrow-vertical.svg                  (arrow/panelarrow-vertical.svg)
   skin/classic/global/checkbox/cbox-check.gif                        (checkbox/cbox-check.gif)
-  skin/classic/global/checkbox/cbox-check-dis.gif                    (checkbox/cbox-check-dis.gif)
   skin/classic/global/dirListing/dirListing.css                      (dirListing/dirListing.css)
   skin/classic/global/dirListing/folder.png                          (dirListing/folder.png)
   skin/classic/global/dirListing/up.png                              (dirListing/up.png)
@@ -73,7 +72,4 @@ toolkit.jar:
   skin/classic/global/icons/sslWarning.png                           (icons/sslWarning.png)
 * skin/classic/global/in-content/common.css                          (in-content/common.css)
 * skin/classic/global/in-content/info-pages.css                      (in-content/info-pages.css)
-  skin/classic/global/tree/arrow-collapsed.svg                       (tree/arrow-collapsed.svg)
-  skin/classic/global/tree/arrow-collapsed-rtl.svg                   (tree/arrow-collapsed-rtl.svg)
-  skin/classic/global/tree/arrow-expanded.svg                        (tree/arrow-expanded.svg)
   skin/classic/global/tree/columnpicker.gif                          (tree/columnpicker.gif)

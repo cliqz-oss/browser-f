@@ -4,6 +4,7 @@
 
 /* all localizable skin settings shall live here */
 @import url("chrome://global/locale/intl.css");
+@import url("chrome://global/content/widgets.css");
 
 %include shared.inc
 @namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
@@ -17,9 +18,12 @@ menulist > menupopup {
 /* ::::: Variables ::::: */
 :root {
   --arrowpanel-padding: 16px;
-  --arrowpanel-background: hsla(0,0%,99%,.975);
-  --arrowpanel-color: hsl(0,0%,10%);
-  --arrowpanel-border-color: hsla(210,4%,10%,.05);
+  --default-arrowpanel-background: hsla(0,0%,99%,.975);
+  --default-arrowpanel-color: hsl(0,0%,10%);
+  --default-arrowpanel-border-color: hsla(210,4%,10%,.05);
+  --arrowpanel-background: var(--default-arrowpanel-background);
+  --arrowpanel-color: var(--default-arrowpanel-color);
+  --arrowpanel-border-color: var(--default-arrowpanel-border-color);
   --arrowpanel-border-radius: 3.5px;
   --panel-disabled-color: GrayText;
 
@@ -212,10 +216,6 @@ label[disabled="true"] {
 
 .text-link:-moz-focusring {
   box-shadow: var(--focus-ring-box-shadow);
-}
-
-.toolbar-focustarget {
-  -moz-user-focus: ignore !important;
 }
 
 notification > button {

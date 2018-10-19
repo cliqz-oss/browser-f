@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/ScreenBinding.h"
 #include "nsContentUtils.h"
 #include "nsScreen.h"
 #include "nsIDocument.h"
@@ -189,7 +188,7 @@ nsScreen::GetMozOrientation(nsString& aOrientation,
 
 static void
 UpdateDocShellOrientationLock(nsPIDOMWindowInner* aWindow,
-                              ScreenOrientationInternal aOrientation)
+                              hal::ScreenOrientation aOrientation)
 {
   if (!aWindow) {
     return;
@@ -229,27 +228,27 @@ nsScreen::MozLockOrientation(const Sequence<nsString>& aOrientations,
   if (ShouldResistFingerprinting()) {
     return false;
   }
-  ScreenOrientationInternal orientation = eScreenOrientation_None;
+  hal::ScreenOrientation orientation = hal::eScreenOrientation_None;
 
   for (uint32_t i = 0; i < aOrientations.Length(); ++i) {
     const nsString& item = aOrientations[i];
 
     if (item.EqualsLiteral("portrait")) {
-      orientation |= eScreenOrientation_PortraitPrimary |
-                     eScreenOrientation_PortraitSecondary;
+      orientation |= hal::eScreenOrientation_PortraitPrimary |
+                     hal::eScreenOrientation_PortraitSecondary;
     } else if (item.EqualsLiteral("portrait-primary")) {
-      orientation |= eScreenOrientation_PortraitPrimary;
+      orientation |= hal::eScreenOrientation_PortraitPrimary;
     } else if (item.EqualsLiteral("portrait-secondary")) {
-      orientation |= eScreenOrientation_PortraitSecondary;
+      orientation |= hal::eScreenOrientation_PortraitSecondary;
     } else if (item.EqualsLiteral("landscape")) {
-      orientation |= eScreenOrientation_LandscapePrimary |
-                     eScreenOrientation_LandscapeSecondary;
+      orientation |= hal::eScreenOrientation_LandscapePrimary |
+                     hal::eScreenOrientation_LandscapeSecondary;
     } else if (item.EqualsLiteral("landscape-primary")) {
-      orientation |= eScreenOrientation_LandscapePrimary;
+      orientation |= hal::eScreenOrientation_LandscapePrimary;
     } else if (item.EqualsLiteral("landscape-secondary")) {
-      orientation |= eScreenOrientation_LandscapeSecondary;
+      orientation |= hal::eScreenOrientation_LandscapeSecondary;
     } else if (item.EqualsLiteral("default")) {
-      orientation |= eScreenOrientation_Default;
+      orientation |= hal::eScreenOrientation_Default;
     } else {
       // If we don't recognize the token, we should just return 'false'
       // without throwing.
@@ -279,7 +278,7 @@ nsScreen::MozUnlockOrientation()
   if (ShouldResistFingerprinting()) {
     return;
   }
-  UpdateDocShellOrientationLock(GetOwner(), eScreenOrientation_None);
+  UpdateDocShellOrientationLock(GetOwner(), hal::eScreenOrientation_None);
   mScreenOrientation->UnlockDeviceOrientation();
 }
 
@@ -299,7 +298,7 @@ nsScreen::IsDeviceSizePageSize()
 JSObject*
 nsScreen::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return ScreenBinding::Wrap(aCx, this, aGivenProto);
+  return Screen_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 nsresult

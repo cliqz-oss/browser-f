@@ -395,7 +395,8 @@ function _setupDebuggerServer(breakpointFiles, callback) {
   let { OriginalLocation } = require("devtools/server/actors/common");
   DebuggerServer.init();
   DebuggerServer.registerAllActors();
-  DebuggerServer.addActors("resource://testing-common/dbg-actors.js");
+  let { createRootActor } = require("resource://testing-common/dbg-actors.js");
+  DebuggerServer.setRootActor(createRootActor);
   DebuggerServer.allowChromeProcess = true;
 
   // An observer notification that tells us when we can "resume" script
@@ -511,6 +512,12 @@ function _execute_test() {
     this[func] = Assert[func].bind(Assert);
   }
 
+  const {PerTestCoverageUtils} = ChromeUtils.import("resource://testing-common/PerTestCoverageUtils.jsm", {});
+
+  if (runningInParent) {
+    PerTestCoverageUtils.beforeTestSync();
+  }
+
   try {
     do_test_pending("MAIN run_test");
     // Check if run_test() is defined. If defined, run it.
@@ -528,6 +535,10 @@ function _execute_test() {
 
     if (coverageCollector != null) {
       coverageCollector.recordTestCoverage(_TEST_FILE[0]);
+    }
+
+    if (runningInParent) {
+      PerTestCoverageUtils.afterTestSync();
     }
   } catch (e) {
     _passed = false;

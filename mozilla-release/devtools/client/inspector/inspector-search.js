@@ -164,7 +164,6 @@ function SelectorAutocompleter(inspector, inputNode) {
     listId: "searchbox-panel-listbox",
     autoSelect: true,
     position: "top",
-    theme: "auto",
     onClick: this._onSearchPopupClick,
   };
 
@@ -411,7 +410,7 @@ SelectorAutocompleter.prototype = {
    * @return {Promise} promise that will resolve when the autocomplete popup is fully
    * displayed or hidden.
    */
-  _showPopup: function(list, firstPart, popupState) {
+  _showPopup: function(list, popupState) {
     let total = 0;
     const query = this.searchBox.value;
     const items = [];
@@ -448,7 +447,7 @@ SelectorAutocompleter.prototype = {
         item.preLabel = "#" + item.preLabel;
       }
 
-      items.unshift(item);
+      items.push(item);
       if (++total > MAX_SUGGESTIONS - 1) {
         break;
       }
@@ -458,7 +457,9 @@ SelectorAutocompleter.prototype = {
       const onPopupOpened = this.searchPopup.once("popup-opened");
       this.searchPopup.once("popup-closed", () => {
         this.searchPopup.setItems(items);
-        this.searchPopup.openPopup(this.searchBox);
+        // The offset is left padding (22px) + left border width (1px) of searchBox.
+        const xOffset = 23;
+        this.searchPopup.openPopup(this.searchBox, xOffset);
       });
       this.searchPopup.hidePopup();
       return onPopupOpened;
@@ -538,7 +539,7 @@ SelectorAutocompleter.prototype = {
 
       // Wait for the autocomplete-popup to fire its popup-opened event, to make sure
       // the autoSelect item has been selected.
-      return this._showPopup(result.suggestions, firstPart, state);
+      return this._showPopup(result.suggestions, state);
     });
   }
 };

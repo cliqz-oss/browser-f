@@ -35,13 +35,14 @@
 #endif
 #endif
 
-class nsAttrAndChildArray;
+class AttrArray;
 class nsAttrChildContentList;
 class nsDOMAttributeMap;
 class nsIAnimationObserver;
 class nsIContent;
 class nsIDocument;
 class nsIFrame;
+class nsIHTMLCollection;
 class nsIMutationObserver;
 class nsINode;
 class nsINodeList;
@@ -86,6 +87,7 @@ template<typename T> class Optional;
 class OwningNodeOrString;
 class Promise;
 template<typename> class Sequence;
+class SVGUseElement;
 class Text;
 class TextOrElementOrDocument;
 struct DOMPointInit;
@@ -302,23 +304,23 @@ public:
 
   // XXXbz Maybe we should codegen a class holding these constants and
   // inherit from it...
-  static const auto ELEMENT_NODE = mozilla::dom::NodeBinding::ELEMENT_NODE;
-  static const auto ATTRIBUTE_NODE = mozilla::dom::NodeBinding::ATTRIBUTE_NODE;
-  static const auto TEXT_NODE = mozilla::dom::NodeBinding::TEXT_NODE;
+  static const auto ELEMENT_NODE = mozilla::dom::Node_Binding::ELEMENT_NODE;
+  static const auto ATTRIBUTE_NODE = mozilla::dom::Node_Binding::ATTRIBUTE_NODE;
+  static const auto TEXT_NODE = mozilla::dom::Node_Binding::TEXT_NODE;
   static const auto CDATA_SECTION_NODE =
-    mozilla::dom::NodeBinding::CDATA_SECTION_NODE;
+    mozilla::dom::Node_Binding::CDATA_SECTION_NODE;
   static const auto ENTITY_REFERENCE_NODE =
-    mozilla::dom::NodeBinding::ENTITY_REFERENCE_NODE;
-  static const auto ENTITY_NODE = mozilla::dom::NodeBinding::ENTITY_NODE;
+    mozilla::dom::Node_Binding::ENTITY_REFERENCE_NODE;
+  static const auto ENTITY_NODE = mozilla::dom::Node_Binding::ENTITY_NODE;
   static const auto PROCESSING_INSTRUCTION_NODE =
-    mozilla::dom::NodeBinding::PROCESSING_INSTRUCTION_NODE;
-  static const auto COMMENT_NODE = mozilla::dom::NodeBinding::COMMENT_NODE;
-  static const auto DOCUMENT_NODE = mozilla::dom::NodeBinding::DOCUMENT_NODE;
+    mozilla::dom::Node_Binding::PROCESSING_INSTRUCTION_NODE;
+  static const auto COMMENT_NODE = mozilla::dom::Node_Binding::COMMENT_NODE;
+  static const auto DOCUMENT_NODE = mozilla::dom::Node_Binding::DOCUMENT_NODE;
   static const auto DOCUMENT_TYPE_NODE =
-    mozilla::dom::NodeBinding::DOCUMENT_TYPE_NODE;
+    mozilla::dom::Node_Binding::DOCUMENT_TYPE_NODE;
   static const auto DOCUMENT_FRAGMENT_NODE =
-    mozilla::dom::NodeBinding::DOCUMENT_FRAGMENT_NODE;
-  static const auto NOTATION_NODE = mozilla::dom::NodeBinding::NOTATION_NODE;
+    mozilla::dom::Node_Binding::DOCUMENT_FRAGMENT_NODE;
+  static const auto NOTATION_NODE = mozilla::dom::Node_Binding::NOTATION_NODE;
 
   template<class T>
   using Sequence = mozilla::dom::Sequence<T>;
@@ -365,22 +367,10 @@ public:
   friend class nsNodeUtils;
   friend class nsNodeWeakReference;
   friend class nsNodeSupportsWeakRefTearoff;
-  friend class nsAttrAndChildArray;
+  friend class AttrArray;
 
 #ifdef MOZILLA_INTERNAL_API
-  explicit nsINode(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
-  : mNodeInfo(aNodeInfo)
-  , mParent(nullptr)
-#ifndef BOOL_FLAGS_ON_WRAPPER_CACHE
-  , mBoolFlags(0)
-#endif
-  , mNextSibling(nullptr)
-  , mPreviousSibling(nullptr)
-  , mFirstChild(nullptr)
-  , mSubtreeRoot(this)
-  , mSlots(nullptr)
-  {
-  }
+  explicit nsINode(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 #endif
 
   virtual ~nsINode();
@@ -453,6 +443,12 @@ public:
   inline const mozilla::dom::DocumentFragment* AsDocumentFragment() const;
 
   virtual JSObject* WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto) override;
+
+  /**
+  * Hook for constructing JS::ubi::Concrete specializations for memory reporting.
+  * Specializations are defined in NodeUbiReporting.h.
+  */
+  virtual void ConstructUbiNode(void* storage) = 0;
 
   /**
    * returns true if we are in priviliged code or
@@ -574,7 +570,10 @@ public:
    * Get the number of children
    * @return the number of children
    */
-  virtual uint32_t GetChildCount() const = 0;
+  uint32_t GetChildCount() const
+  {
+    return mChildCount;
+  }
 
   /**
    * NOTE: this function is going to be removed soon (hopefully!) Don't use it
@@ -584,7 +583,7 @@ public:
    * @param aIndex the index of the child to get
    * @return the child, or null if index out of bounds
    */
-  virtual nsIContent* GetChildAt_Deprecated(uint32_t aIndex) const = 0;
+  nsIContent* GetChildAt_Deprecated(uint32_t aIndex) const;
 
   /**
    * Get the index of a child within this content
@@ -594,7 +593,7 @@ public:
    * If the return value is not -1, then calling GetChildAt_Deprecated() with
    * that value will return aPossibleChild.
    */
-  virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const = 0;
+  virtual int32_t ComputeIndexOf(const nsINode* aPossibleChild) const;
 
   /**
    * Returns the "node document" of this node.
@@ -644,6 +643,15 @@ public:
   }
 
   /**
+   * Returns true if we're connected, and thus GetComposedDoc() would return a
+   * non-null value.
+   */
+  bool IsInComposedDoc() const
+  {
+    return GetBoolFlag(IsConnected);
+  }
+
+  /**
    * This method returns the owner document if the node is connected to it
    * (as defined in the DOM spec), otherwise it returns null.
    * In other words, returns non-null even in the case the node is in
@@ -652,16 +660,7 @@ public:
    */
   nsIDocument* GetComposedDoc() const
   {
-    return IsInShadowTree() ?
-      GetComposedDocInternal() : GetUncomposedDoc();
-  }
-
-  /**
-   * Returns true if GetComposedDoc() would return a non-null value.
-   */
-  bool IsInComposedDoc() const
-  {
-    return IsInUncomposedDoc() || (IsInShadowTree() && GetComposedDocInternal());
+    return IsInComposedDoc() ? OwnerDoc() : nullptr;
   }
 
   /**
@@ -819,7 +818,7 @@ public:
    * @throws NS_ERROR_OUT_OF_MEMORY in some cases (from BindToTree).
    */
   virtual nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
-                                     bool aNotify) = 0;
+                                     bool aNotify);
 
   /**
    * Append a content node to the end of the child list.  This method handles
@@ -853,7 +852,7 @@ public:
    *        nsIContent, and |this| for nsIDocument) that the remove has
    *        occurred
    */
-  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify) = 0;
+  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify);
 
   /**
    * Get a property associated with this node.
@@ -946,7 +945,7 @@ public:
 
   /**
    * Get the parent nsINode for this node. This can be either an nsIContent,
-   * an nsIDocument or an nsIAttribute.
+   * an nsIDocument or an Attr.
    * @return the parent node
    */
   nsINode* GetParentNode() const
@@ -971,6 +970,8 @@ public:
    * @return the flattened tree parent
    */
   inline nsINode* GetFlattenedTreeParentNode() const;
+
+  nsINode* GetFlattenedTreeParentNodeNonInline() const;
 
   /**
    * Like GetFlattenedTreeParentNode, but returns the document for any native
@@ -1098,11 +1099,8 @@ public:
    *
    * @param aNodeInfo the nodeinfo to use for the clone
    * @param aResult the clone
-   * @param aPreallocateChildren If true, the array of children will be
-   *                             preallocated in preparation for a deep copy.
    */
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const = 0;
+  virtual nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const = 0;
 
   // This class can be extended by subclasses that wish to store more
   // information in the slots.
@@ -1230,8 +1228,20 @@ public:
 
   bool IsInAnonymousSubtree() const;
 
-  // Note: This asserts |IsInAnonymousSubtree()|.
-  bool IsAnonymousContentInSVGUseSubtree() const;
+  bool IsInSVGUseShadowTree() const
+  {
+    return !!GetContainingSVGUseShadowHost();
+  }
+
+  mozilla::dom::SVGUseElement* GetContainingSVGUseShadowHost() const
+  {
+    if (!IsInShadowTree()) {
+      return nullptr;
+    }
+    return DoGetContainingSVGUseShadowHost();
+  }
+
+  bool IsInUAWidget() const;
 
   // True for native anonymous content and for XBL content if the binding
   // has chromeOnlyContent="true".
@@ -1276,13 +1286,13 @@ public:
   nsIContent* GetSelectionRootContent(nsIPresShell* aPresShell);
 
   nsINodeList* ChildNodes();
-  nsIContent* GetFirstChild() const { return mFirstChild; }
-  nsIContent* GetLastChild() const
-  {
-    uint32_t count = GetChildCount();
 
-    return count > 0 ? GetChildAt_Deprecated(count - 1) : nullptr;
+  nsIContent* GetFirstChild() const
+  {
+    return mFirstChild;
   }
+
+  nsIContent* GetLastChild() const;
 
   /**
    * Implementation is in nsIDocument.h, because it needs to cast from
@@ -1353,6 +1363,10 @@ protected:
   // should really only be called for elements and document fragments.
   mozilla::dom::Element* GetElementById(const nsAString& aId);
 
+  void AppendChildToChildList(nsIContent* aKid);
+  void InsertChildToChildList(nsIContent* aKid, nsIContent* aNextSibling);
+  void DisconnectChild(nsIContent* aKid);
+
 public:
   void LookupPrefix(const nsAString& aNamespace, nsAString& aResult);
   bool IsDefaultNamespace(const nsAString& aNamespaceURI)
@@ -1365,7 +1379,7 @@ public:
                           nsAString& aNamespaceURI);
 
   nsIContent* GetNextSibling() const { return mNextSibling; }
-  nsIContent* GetPreviousSibling() const { return mPreviousSibling; }
+  nsIContent* GetPreviousSibling() const;
 
   /**
    * Get the next node in the pre-order tree traversal of the DOM.  If
@@ -1402,7 +1416,7 @@ public:
 
 private:
 
-  nsIDocument* GetComposedDocInternal() const;
+  mozilla::dom::SVGUseElement* DoGetContainingSVGUseShadowHost() const;
 
   nsIContent* GetNextNodeImpl(const nsINode* aRoot,
                               const bool aSkipChildren) const
@@ -1438,7 +1452,7 @@ private:
       }
       cur = parent;
     }
-    NS_NOTREACHED("How did we get here?");
+    MOZ_ASSERT_UNREACHABLE("How did we get here?");
   }
 
 public:
@@ -1485,6 +1499,9 @@ private:
     // Set if our parent chain (including this node itself) terminates
     // in a document
     IsInDocument,
+    // Set if we're part of the composed doc.
+    // https://dom.spec.whatwg.org/#connected
+    IsConnected,
     // Set if mParent is an nsIContent
     ParentIsContent,
     // Set if this node is an Element
@@ -1539,8 +1556,6 @@ private:
     NodeAncestorHasDirAuto,
     // Set if the node is handling a click.
     NodeHandlingClick,
-    // Set if the node has had :hover selectors matched against it
-    NodeHasRelevantHoverRules,
     // Set if the element has a parser insertion mode other than "in body",
     // per the HTML5 "Parse state" section.
     ElementHasWeirdParserInsertionMode,
@@ -1551,6 +1566,8 @@ private:
     // Set if the element might have any kind of anonymous content children,
     // which would not be found through the element's children list.
     ElementMayHaveAnonymousChildren,
+    // Set if element has CustomElementData.
+    ElementHasCustomElementData,
     // Guard value
     BooleanFlagCount
   };
@@ -1662,8 +1679,6 @@ public:
   // Implemented in nsIContentInlines.h.
   inline bool NodeOrAncestorHasDirAuto() const;
 
-  bool HasRelevantHoverRules() const { return GetBoolFlag(NodeHasRelevantHoverRules); }
-  void SetHasRelevantHoverRules() { SetBoolFlag(NodeHasRelevantHoverRules); }
   void SetParserHasNotified() { SetBoolFlag(ParserHasNotified); };
   bool HasParserNotified() { return GetBoolFlag(ParserHasNotified); }
 
@@ -1676,11 +1691,15 @@ public:
   void SetMayHaveAnonymousChildren() { SetBoolFlag(ElementMayHaveAnonymousChildren); }
   bool MayHaveAnonymousChildren() const { return GetBoolFlag(ElementMayHaveAnonymousChildren); }
 
+  void SetHasCustomElementData() { SetBoolFlag(ElementHasCustomElementData); }
+  bool HasCustomElementData() const { return GetBoolFlag(ElementHasCustomElementData); }
+
 protected:
   void SetParentIsContent(bool aValue) { SetBoolFlag(ParentIsContent, aValue); }
   void SetIsInDocument() { SetBoolFlag(IsInDocument); }
-  void SetNodeIsContent() { SetBoolFlag(NodeIsContent); }
   void ClearInDocument() { ClearBoolFlag(IsInDocument); }
+  void SetIsConnected(bool aConnected) { SetBoolFlag(IsConnected, aConnected); }
+  void SetNodeIsContent() { SetBoolFlag(NodeIsContent); }
   void SetIsElement() { SetBoolFlag(NodeIsElement); }
   void SetHasID() { SetBoolFlag(ElementHasID); }
   void ClearHasID() { ClearBoolFlag(ElementHasID); }
@@ -1750,7 +1769,11 @@ public:
   {
     return HasChildren();
   }
-  uint16_t CompareDocumentPosition(nsINode& aOther) const;
+
+  // See nsContentUtils::PositionIsBefore for aThisIndex and aOtherIndex usage.
+  uint16_t CompareDocumentPosition(nsINode& aOther,
+                                   int32_t* aThisIndex = nullptr,
+                                   int32_t* aOtherIndex = nullptr) const;
   void GetNodeValue(nsAString& aNodeValue)
   {
     GetNodeValueInternal(aNodeValue);
@@ -1834,6 +1857,16 @@ public:
   // ParentNode methods
   mozilla::dom::Element* GetFirstElementChild() const;
   mozilla::dom::Element* GetLastElementChild() const;
+
+  already_AddRefed<nsIHTMLCollection>
+    GetElementsByAttribute(const nsAString& aAttribute,
+                           const nsAString& aValue);
+  already_AddRefed<nsIHTMLCollection>
+    GetElementsByAttributeNS(const nsAString& aNamespaceURI,
+                             const nsAString& aAttribute,
+                             const nsAString& aValue,
+                             ErrorResult& aRv);
+
 
   MOZ_CAN_RUN_SCRIPT void Prepend(const Sequence<OwningNodeOrString>& aNodes,
                                   ErrorResult& aRv);
@@ -1955,33 +1988,6 @@ protected:
   virtual mozilla::dom::Element* GetNameSpaceElement() = 0;
 
   /**
-   * Most of the implementation of the nsINode RemoveChildAt method.
-   * Should only be called on document, element, and document fragment
-   * nodes.  The aChildArray passed in should be the one for |this|.
-   *
-   * @param aIndex The index to remove at.
-   * @param aNotify Whether to notify.
-   * @param aKid The kid at aIndex.  Must not be null.
-   * @param aChildArray The child array to work with.
-   * @param aMutationEvent whether to fire a mutation event for this removal.
-   */
-  void doRemoveChildAt(uint32_t aIndex, bool aNotify, nsIContent* aKid,
-                       nsAttrAndChildArray& aChildArray);
-
-  /**
-   * Most of the implementation of the nsINode InsertChildAt_Deprecated method.
-   * Should only be called on document, element, and document fragment
-   * nodes.  The aChildArray passed in should be the one for |this|.
-   *
-   * @param aKid The child to insert.
-   * @param aIndex The index to insert at.
-   * @param aNotify Whether to notify.
-   * @param aChildArray The child array to work with
-   */
-  nsresult doInsertChildAt(nsIContent* aKid, uint32_t aIndex,
-                           bool aNotify, nsAttrAndChildArray& aChildArray);
-
-  /**
    * Parse the given selector string into a servo SelectorList.
    *
    * Never returns null if aRv is not failing.
@@ -2028,16 +2034,17 @@ private:
   uint32_t mBoolFlags;
 #endif
 
+  //NOTE, there are 32 bits left here, at least in 64 bit builds.
+
+  uint32_t mChildCount;
 
 protected:
-  // These references are non-owning and safe, as they are managed by
-  // nsAttrAndChildArray.
-  nsIContent* MOZ_NON_OWNING_REF mNextSibling;
-  nsIContent* MOZ_NON_OWNING_REF mPreviousSibling;
-  // This reference is non-owning and safe, since in the case of documents,
-  // it is set to null when the document gets destroyed, and in the case of
-  // other nodes, the children keep the parents alive.
-  nsIContent* MOZ_NON_OWNING_REF mFirstChild;
+  // mNextSibling and mFirstChild are strong references while
+  // mPreviousOrLastSibling is a weak ref. |mFirstChild->mPreviousOrLastSibling|
+  // points to the last child node.
+  nsCOMPtr<nsIContent> mFirstChild;
+  nsCOMPtr<nsIContent> mNextSibling;
+  nsIContent* MOZ_NON_OWNING_REF mPreviousOrLastSibling;
 
   union {
     // Pointer to our primary frame.  Might be null.

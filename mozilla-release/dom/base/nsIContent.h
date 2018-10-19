@@ -55,6 +55,8 @@ class nsIContent : public nsINode {
 public:
   typedef mozilla::widget::IMEState IMEState;
 
+  void ConstructUbiNode(void* storage) override;
+
 #ifdef MOZILLA_INTERNAL_API
   // If you're using the external API, the only thing you can know about
   // nsIContent is that it exists with an IID
@@ -91,8 +93,6 @@ public:
    *                       This is must either be non-null if a particular
    *                       binding parent is desired or match aParent's binding
    *                       parent.
-   * @param aCompileEventHandlers whether to initialize the event handlers in
-   *        the document (used by nsXULElement)
    * @note either aDocument or aParent must be non-null.  If both are null,
    *       this method _will_ crash.
    * @note This method must not be called by consumers of nsIContent on a node
@@ -101,10 +101,13 @@ public:
    *       changing their binding parent as needed).
    * @note This method does not add the content node to aParent's child list
    * @throws NS_ERROR_OUT_OF_MEMORY if that happens
+   *
+   * TODO(emilio): Should we move to nsIContent::BindToTree most of the
+   * FragmentOrElement / CharacterData duplicated code?
    */
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) = 0;
+  virtual nsresult BindToTree(nsIDocument* aDocument,
+                              nsIContent* aParent,
+                              nsIContent* aBindingParent) = 0;
 
   /**
    * Unbind this content node from a tree.  This will set its current document
@@ -791,8 +794,10 @@ protected:
     nsExtendedContentSlots();
     virtual ~nsExtendedContentSlots();
 
-    virtual void Traverse(nsCycleCollectionTraversalCallback&);
-    virtual void Unlink();
+    virtual void TraverseExtendedSlots(nsCycleCollectionTraversalCallback&);
+    virtual void UnlinkExtendedSlots();
+
+    virtual size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
     /**
      * The nearest enclosing content node with a binding that created us.
@@ -821,11 +826,24 @@ protected:
   class nsContentSlots : public nsINode::nsSlots
   {
   public:
+    nsContentSlots()
+      : nsINode::nsSlots()
+      , mExtendedSlots(0)
+    {
+    }
+
+    ~nsContentSlots()
+    {
+      if (!(mExtendedSlots & sNonOwningExtendedSlotsFlag)) {
+        delete GetExtendedContentSlots();
+      }
+    }
+
     void Traverse(nsCycleCollectionTraversalCallback& aCb) override
     {
       nsINode::nsSlots::Traverse(aCb);
       if (mExtendedSlots) {
-        mExtendedSlots->Traverse(aCb);
+        GetExtendedContentSlots()->TraverseExtendedSlots(aCb);
       }
     }
 
@@ -833,11 +851,35 @@ protected:
     {
       nsINode::nsSlots::Unlink();
       if (mExtendedSlots) {
-        mExtendedSlots->Unlink();
+        GetExtendedContentSlots()->UnlinkExtendedSlots();
       }
     }
 
-    mozilla::UniquePtr<nsExtendedContentSlots> mExtendedSlots;
+    void SetExtendedContentSlots(nsExtendedContentSlots* aSlots, bool aOwning)
+    {
+      mExtendedSlots = reinterpret_cast<uintptr_t>(aSlots);
+      if (!aOwning) {
+        mExtendedSlots |= sNonOwningExtendedSlotsFlag;
+      }
+    }
+
+    // OwnsExtendedSlots returns true if we have no extended slots or if we
+    // have extended slots and own them.
+    bool OwnsExtendedSlots() const
+    {
+      return !(mExtendedSlots & sNonOwningExtendedSlotsFlag);
+    }
+
+    nsExtendedContentSlots* GetExtendedContentSlots() const
+    {
+      return reinterpret_cast<nsExtendedContentSlots*>(
+        mExtendedSlots & ~sNonOwningExtendedSlotsFlag);
+    }
+
+  private:
+    static const uintptr_t sNonOwningExtendedSlotsFlag = 1u;
+
+    uintptr_t mExtendedSlots;
   };
 
   // Override from nsINode
@@ -869,22 +911,22 @@ protected:
   const nsExtendedContentSlots* GetExistingExtendedContentSlots() const
   {
     const nsContentSlots* slots = GetExistingContentSlots();
-    return slots ? slots->mExtendedSlots.get() : nullptr;
+    return slots ? slots->GetExtendedContentSlots() : nullptr;
   }
 
   nsExtendedContentSlots* GetExistingExtendedContentSlots()
   {
     nsContentSlots* slots = GetExistingContentSlots();
-    return slots ? slots->mExtendedSlots.get() : nullptr;
+    return slots ? slots->GetExtendedContentSlots() : nullptr;
   }
 
   nsExtendedContentSlots* ExtendedContentSlots()
   {
     nsContentSlots* slots = ContentSlots();
-    if (!slots->mExtendedSlots) {
-      slots->mExtendedSlots.reset(CreateExtendedSlots());
+    if (!slots->GetExtendedContentSlots()) {
+      slots->SetExtendedContentSlots(CreateExtendedSlots(), true);
     }
-    return slots->mExtendedSlots.get();
+    return slots->GetExtendedContentSlots();
   }
 
   /**

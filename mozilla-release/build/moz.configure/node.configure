@@ -1,0 +1,102 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+option('--disable-nodejs',
+       help='Require Node.js to build')
+
+
+@depends(host)
+@imports('os')
+@imports(_from='os', _import='environ')
+def node_toolchain_search_path(host):
+    # XXX partly copied from tooltool.py; should be hoisted somewhere central
+
+    # Also add in the location to which `mach bootstrap` or
+    # `mach artifact toolchain` installs clang.
+    mozbuild_state_dir = environ.get('MOZBUILD_STATE_PATH', os.path.expanduser(
+                                     os.path.join('~', '.mozbuild')))
+
+    if host.kernel == "WINNT":
+        mozbuild_node_path = os.path.join(mozbuild_state_dir, 'node')
+    else:
+        mozbuild_node_path = os.path.join(mozbuild_state_dir, 'node', 'bin')
+
+    # We still fallback to the PATH, since on OSes that don't have toolchain
+    # artifacts available to download, Node may be coming from $PATH.
+    path = [environ.get('PATH')]
+    updated_path = [mozbuild_node_path] + path
+
+    return updated_path
+
+# "nodejs" is first in the tuple on the assumption that it's only likely to
+# exist on systems (probably linux distros) where there is a program in the path
+# called "node" that does something else.
+nodejs = check_prog('NODEJS', ('nodejs', 'node',),
+                    allow_missing=True, paths=node_toolchain_search_path,
+                    paths_have_priority=True)
+
+
+@depends_if(nodejs)
+@checking('for node.js version')
+@imports('os')
+@imports('re')
+@imports('subprocess')
+def nodejs_version(node):
+    env = dict(os.environ)
+    env[b'NODE_DISABLE_COLORS'] = b'1'
+
+    out = check_cmd_output(node, '--version', env=env)
+
+    match = re.search(r'v(.+)$', out)
+
+    if not match:
+        return None
+
+    return Version(match.group(1))
+
+
+@depends('--enable-nodejs', nodejs, nodejs_version)
+def nodejs_suitability(require, node, version):
+    MIN_NODE_VERSION = Version('8.11')
+
+    MAYBE_FILE_A_BUG = '''
+
+If you believe this is a bug, <https://mzl.la/2vLbXAv> is a good way
+to file.  Executing `mach bootstrap --no-system-changes` should
+install a compatible version in ~/.mozbuild on most platforms.
+More details: <https://bit.ly/2BbyD1E>
+'''
+
+    if not node:
+        msg = ('could not find Node.js executable; ensure `node` or `nodejs` '
+               'is in PATH or set NODEJS in environment to point to an '
+               'executable.%s' % (MAYBE_FILE_A_BUG)
+               )
+
+        if require:
+            raise FatalCheckError(msg)
+        else:
+            log.warning(msg)
+            log.warning('(This will become an error in the near future.)')
+            return
+
+    if not version:
+        msg = 'could not resolve Node.js version.%s' % (MAYBE_FILE_A_BUG)
+        if require:
+            raise FatalCheckError(msg)
+        else:
+            log.warning(msg)
+            log.warning('(This will become an error in the near future.)')
+            return
+
+    if version < MIN_NODE_VERSION:
+        msg = 'NODEJS must point to node %s or newer; %s found. %s' % (
+            MIN_NODE_VERSION, version, MAYBE_FILE_A_BUG)
+
+        if require:
+            raise FatalCheckError(msg)
+        else:
+            log.warning(msg)

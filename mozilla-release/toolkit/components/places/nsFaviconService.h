@@ -25,8 +25,9 @@
 #include "FaviconHelpers.h"
 
 // The target dimension in pixels for favicons we store, in reverse order.
-static uint16_t sFaviconSizes[8] = {
-  256, 192, 144, 96, 64, 48, 32, 16
+// When adding/removing sizes from here, make sure to update the vector size.
+static uint16_t sFaviconSizes[7] = {
+  192, 144, 96, 64, 48, 32, 16
 };
 
 // forward class definitions
@@ -42,7 +43,7 @@ public:
   UnassociatedIconHashKey(const UnassociatedIconHashKey& aOther)
   : nsURIHashKey(aOther)
   {
-    NS_NOTREACHED("Do not call me!");
+    MOZ_ASSERT_UNREACHABLE("Do not call me!");
   }
   mozilla::places::IconData iconData;
   PRTime created;
@@ -149,9 +150,6 @@ private:
    * they get back. May be null, in which case it needs initialization.
    */
   nsCOMPtr<nsIURI> mDefaultIcon;
-
-  uint32_t mFailedFaviconSerial;
-  nsDataHashtable<nsCStringHashKey, uint32_t> mFailedFavicons;
 
   // This class needs access to the icons cache.
   friend class mozilla::places::AsyncReplaceFaviconData;

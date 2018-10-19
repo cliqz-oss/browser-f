@@ -10,13 +10,9 @@
 let internal = {
   intialized: false,
 
-  deviceManager: null,
-  deviceManagerInterceptor: null,
-  deviceManagerCrossFrameProxy: null,
-
-  chooser: null,
-  chooserInterceptor: null,
-  chooserCrossFrameProxy: null,
+  webUsbService: null,
+  webUsbServiceInterceptor: null,
+  webUsbServiceCrossFrameProxy: null,
 };
 
 // Converts an ECMAScript String object to an instance of
@@ -299,9 +295,9 @@ class FakeDevice {
   }
 }
 
-class FakeDeviceManager {
+class FakeWebUsbService {
   constructor() {
-    this.bindingSet_ = new mojo.BindingSet(device.mojom.UsbDeviceManager);
+    this.bindingSet_ = new mojo.BindingSet(blink.mojom.WebUsbService);
     this.devices_ = new Map();
     this.devicesByGuid_ = new Map();
     this.client_ = null;
@@ -351,7 +347,7 @@ class FakeDeviceManager {
     this.devicesByGuid_.clear();
   }
 
-  getDevices(options) {
+  getDevices() {
     let devices = [];
     this.devices_.forEach(device => {
       devices.push(fakeDeviceInitToDeviceInfo(device.guid, device.info));
@@ -376,6 +372,17 @@ class FakeDeviceManager {
     }
   }
 
+  getPermission(deviceFilters) {
+    return new Promise(resolve => {
+      if (navigator.usb.test.onrequestdevice) {
+        navigator.usb.test.onrequestdevice(
+            new USBDeviceRequestEvent(deviceFilters, resolve));
+      } else {
+        resolve({ result: null });
+      }
+    });
+  }
+
   setClient(client) {
     this.client_ = client;
   }
@@ -391,7 +398,7 @@ class USBDeviceRequestEvent {
     // Wait until |value| resolves (if it is a Promise). This function returns
     // no value.
     Promise.resolve(value).then(fakeDevice => {
-      let device = internal.deviceManager.devices_.get(fakeDevice);
+      let device = internal.webUsbService.devices_.get(fakeDevice);
       let result = null;
       if (device) {
         result = fakeDeviceInitToDeviceInfo(device.guid, device.info);
@@ -403,27 +410,6 @@ class USBDeviceRequestEvent {
   }
 }
 
-class FakeChooserService {
-  constructor() {
-    this.bindingSet_ = new mojo.BindingSet(device.mojom.UsbChooserService);
-  }
-
-  addBinding(handle) {
-    this.bindingSet_.addBinding(this, handle);
-  }
-
-  getPermission(deviceFilters) {
-    return new Promise(resolve => {
-      if (navigator.usb.test.onrequestdevice) {
-        navigator.usb.test.onrequestdevice(
-            new USBDeviceRequestEvent(deviceFilters, resolve));
-      } else {
-        resolve({ result: null });
-      }
-    });
-  }
-}
-
 // Unlike FakeDevice this class is exported to callers of USBTest.addFakeDevice.
 class FakeUSBDevice {
   constructor() {
@@ -431,7 +417,7 @@ class FakeUSBDevice {
   }
 
   disconnect() {
-    setTimeout(() => internal.deviceManager.removeDevice(this), 0);
+    setTimeout(() => internal.webUsbService.removeDevice(this), 0);
   }
 }
 
@@ -463,23 +449,14 @@ class USBTest {
     if (internal.initialized)
       return;
 
-    internal.deviceManager = new FakeDeviceManager();
-    internal.deviceManagerInterceptor =
-        new MojoInterfaceInterceptor(device.mojom.UsbDeviceManager.name);
-    internal.deviceManagerInterceptor.oninterfacerequest =
-        e => internal.deviceManager.addBinding(e.handle);
-    internal.deviceManagerInterceptor.start();
-    internal.deviceManagerCrossFrameProxy = new CrossFrameHandleProxy(
-        handle => internal.deviceManager.addBinding(handle));
-
-    internal.chooser = new FakeChooserService();
-    internal.chooserInterceptor =
-        new MojoInterfaceInterceptor(device.mojom.UsbChooserService.name);
-    internal.chooserInterceptor.oninterfacerequest =
-        e => internal.chooser.addBinding(e.handle);
-    internal.chooserInterceptor.start();
-    internal.chooserCrossFrameProxy = new CrossFrameHandleProxy(
-        handle => internal.chooser.addBinding(handle));
+    internal.webUsbService = new FakeWebUsbService();
+    internal.webUsbServiceInterceptor =
+        new MojoInterfaceInterceptor(blink.mojom.WebUsbService.name);
+    internal.webUsbServiceInterceptor.oninterfacerequest =
+        e => internal.webUsbService.addBinding(e.handle);
+    internal.webUsbServiceInterceptor.start();
+    internal.webUsbServiceCrossFrameProxy = new CrossFrameHandleProxy(
+        handle => internal.webUsbService.addBinding(handle));
 
     // Wait for a call to GetDevices() to pass between the renderer and the
     // mock in order to establish that everything is set up.
@@ -491,19 +468,12 @@ class USBTest {
     if (!internal.initialized)
       throw new Error('Call initialize() before attachToWindow().');
 
-    otherWindow.deviceManagerInterceptor =
+    otherWindow.webUsbServiceInterceptor =
         new otherWindow.MojoInterfaceInterceptor(
-            device.mojom.UsbDeviceManager.name);
-    otherWindow.deviceManagerInterceptor.oninterfacerequest =
-        e => internal.deviceManagerCrossFrameProxy.forwardHandle(e.handle);
-    otherWindow.deviceManagerInterceptor.start();
-
-    otherWindow.chooserInterceptor =
-        new otherWindow.MojoInterfaceInterceptor(
-            device.mojom.UsbChooserService.name);
-    otherWindow.chooserInterceptor.oninterfacerequest =
-        e => internal.chooserCrossFrameProxy.forwardHandle(e.handle);
-    otherWindow.chooserInterceptor.start();
+            blink.mojom.WebUsbService.name);
+    otherWindow.webUsbServiceInterceptor.oninterfacerequest =
+        e => internal.webUsbServiceCrossFrameProxy.forwardHandle(e.handle);
+    otherWindow.webUsbServiceInterceptor.start();
 
     // Wait for a call to GetDevices() to pass between the renderer and the
     // mock in order to establish that everything is set up.
@@ -519,7 +489,7 @@ class USBTest {
     // may not be true for all implementations of this test API.
     let fakeDevice = new FakeUSBDevice();
     setTimeout(
-        () => internal.deviceManager.addDevice(fakeDevice, deviceInit), 0);
+        () => internal.webUsbService.addDevice(fakeDevice, deviceInit), 0);
     return fakeDevice;
   }
 
@@ -531,7 +501,7 @@ class USBTest {
     // the fact that this polyfill can do this synchronously.
     return new Promise(resolve => {
       setTimeout(() => {
-        internal.deviceManager.removeAllDevices();
+        internal.webUsbService.removeAllDevices();
         resolve();
       }, 0);
     });

@@ -26,6 +26,7 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'necko_http'
 
 EXPORTS += [
+    'DocumentAnalyticsTrackerFastBlocked.h',
     'nsCORSListenerProxy.h',
     'nsHttp.h',
     'nsHttpAtomList.h',
@@ -143,3 +144,6 @@ if CONFIG['OS_TARGET'] == 'Darwin':
         DEFINES.update(
             HAS_CONNECTX=True,
         )
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

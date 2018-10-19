@@ -18,7 +18,6 @@ import mozharness
 
 from mozharness.base.errors import PythonErrorList
 from mozharness.base.log import OutputParser, DEBUG, ERROR, CRITICAL, INFO
-from mozharness.base.python import Python3Virtualenv
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.base.vcs.vcsbase import MercurialScript
 from mozharness.mozilla.testing.codecoverage import (
@@ -44,7 +43,7 @@ RaptorErrorList = PythonErrorList + [
 ]
 
 
-class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin):
+class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin):
     """
     install and run raptor tests
     """
@@ -56,7 +55,7 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
           }],
         [["--app"],
          {"default": "firefox",
-          "choices": ["firefox", "chrome"],
+          "choices": ["firefox", "chrome", "geckoview"],
           "dest": "app",
           "help": "name of the application we are testing (default: firefox)"
           }],
@@ -110,12 +109,16 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
         if self.run_local:
             # raptor initiated locally, get app from command line args
             # which are passed in from mach inside 'raptor_cmd_line_args'
+            # cmd line args can be in two formats depending on how user entered them
+            # i.e. "--app=geckoview" or separate as "--app", "geckoview" so we have to
+            # check each cmd line arg individually
             self.app = "firefox"
             if 'raptor_cmd_line_args' in self.config:
-                for next_arg in self.config['raptor_cmd_line_args']:
-                    if "chrome" in next_arg:
-                        self.app = "chrome"
-                        break
+                for app in ['chrome', 'geckoview']:
+                    for next_arg in self.config['raptor_cmd_line_args']:
+                        if app in next_arg:
+                            self.app = app
+                            break
         else:
             # raptor initiated in production via mozharness
             self.test = self.config['test']
@@ -165,39 +168,73 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
             self.info("expecting Google Chrome to be pre-installed locally")
             return
 
-        chrome_url = "https://dl.google.com/chrome/mac/stable/GGRO/googlechrome.dmg"
         # in production we can put the chrome build in mozharness/mozilla/testing/chrome
         self.chrome_dest = os.path.join(here, 'chrome')
-        chrome_dmg = os.path.join(self.chrome_dest, 'googlechrome.dmg')
+
+        # mozharness/base/script.py.self.platform_name will return one of:
+        # 'linux64', 'linux', 'macosx', 'win64', 'win32'
+
+        base_url = "http://commondatastorage.googleapis.com/chromium-browser-snapshots"
+
+        # note: temporarily use a specified chromium revision number to download; however
+        # in the future we will be using a fetch task to get a new chromium (Bug 1476372)
+
+        if 'mac' in self.platform_name():
+            # for now hardcoding a revision; but change this to update to newer version; from:
+            # http://commondatastorage.googleapis.com/chromium-browser-snapshots/Mac/LAST_CHANGE
+            chromium_rev = "575625"
+            chrome_archive_file = "chrome-mac.zip"
+            chrome_url = "%s/Mac/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
+            self.chrome_path = os.path.join(self.chrome_dest, 'chrome-mac', 'Chromium.app',
+                                            'Contents', 'MacOS', 'Chromium')
+
+        elif 'linux' in self.platform_name():
+            # for now hardcoding a revision; but change this to update to newer version; from:
+            # http://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/LAST_CHANGE
+            chromium_rev = "575640"
+            chrome_archive_file = "chrome-linux.zip"
+            chrome_url = "%s/Linux_x64/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
+            self.chrome_path = os.path.join(self.chrome_dest, 'chrome-linux', 'chrome')
+
+        else:
+            # windows 7/10
+            # for now hardcoding a revision; but change this to update to newer version; from:
+            # http://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/LAST_CHANGE
+            chromium_rev = "575637"
+            chrome_archive_file = "chrome-win32.zip"  # same zip name for win32/64
+
+            # url is different for win32/64
+            if '64' in self.platform_name():
+                chrome_url = "%s/Win_x64/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
+            else:
+                chrome_url = "%s/Win_x32/%s/%s" % (base_url, chromium_rev, chrome_archive_file)
+
+            self.chrome_path = os.path.join(self.chrome_dest, 'chrome-win32', 'Chrome.exe')
+
+        chrome_archive = os.path.join(self.chrome_dest, chrome_archive_file)
 
         self.info("installing google chrome - temporary install hack")
-        self.info("chrome_dest is: %s" % self.chrome_dest)
-
-        self.chrome_path = os.path.join(self.chrome_dest, 'Google Chrome.app',
-                                        'Contents', 'MacOS', 'Google Chrome')
+        self.info("chrome archive is: %s" % chrome_archive)
+        self.info("chrome dest is: %s" % self.chrome_dest)
 
         if os.path.exists(self.chrome_path):
             self.info("google chrome binary already exists at: %s" % self.chrome_path)
             return
 
-        if not os.path.exists(chrome_dmg):
-            # download the chrome dmg
+        if not os.path.exists(chrome_archive):
+            # download the chrome installer
             self.download_file(chrome_url, parent_dir=self.chrome_dest)
 
-        command = ["open", "googlechrome.dmg"]
-        return_code = self.run_command(command, cwd=self.chrome_dest)
-        if return_code not in [0]:
-            self.info("abort: failed to open %s/googlechrome.dmg" % self.chrome_dest)
-            return
-        # give 30 sec for open cmd to finish
-        time.sleep(30)
+        commands = []
+        commands.append(['unzip', '-q', '-o', chrome_archive_file, '-d', self.chrome_dest])
 
-        # now that the googlechrome dmg is mounted, extract/copy app from mnt to our folder
-        command = ["cp", "-r", "/Volumes/Google Chrome/Google Chrome.app", "."]
-        return_code = self.run_command(command, cwd=self.chrome_dest)
-        if return_code not in [0]:
-            self.info("abort: failed to open %s/googlechrome.dmg" % self.chrome_dest)
-            return
+        # now run the commands to unpack / install google chrome
+        for next_command in commands:
+            return_code = self.run_command(next_command, cwd=self.chrome_dest)
+            time.sleep(30)
+            if return_code not in [0]:
+                self.info("abort: failed to install %s to %s with command: %s"
+                          % (chrome_archive_file, self.chrome_dest, next_command))
 
         # now ensure chrome binary exists
         if os.path.exists(self.chrome_path):
@@ -217,8 +254,6 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
             binary_path = self.binary_path or self.config.get('binary_path')
             if not binary_path:
                 self.fatal("Raptor requires a path to the binary.")
-            if binary_path.endswith('.exe'):
-                binary_path = binary_path[:-4]
             kw_options['binary'] = binary_path
         else:
             if not self.run_local:
@@ -264,6 +299,8 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
     # clobber defined in BaseScript
 
     def download_and_extract(self, extract_dirs=None, suite_categories=None):
+        if 'MOZ_FETCHES' in os.environ:
+            self.fetch_content()
         return super(Raptor, self).download_and_extract(
             suite_categories=['common', 'raptor']
         )
@@ -341,7 +378,7 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
             jsonschema.validate(data, schema)
         except Exception as e:
             self.exception("Error while validating PERFHERDER_DATA")
-            self.info(e)
+            self.info(str(e))
 
     def _artifact_perf_data(self, dest):
         src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor.json')
@@ -354,7 +391,7 @@ class Raptor(TestingMixin, MercurialScript, Python3Virtualenv, CodeCoverageMixin
             copyfile(src, dest)
         except Exception as e:
             self.critical("Error copying results %s to upload dir %s" % (src, dest))
-            self.info(e)
+            self.info(str(e))
 
     def run_tests(self, args=None, **kw):
         """run raptor tests"""

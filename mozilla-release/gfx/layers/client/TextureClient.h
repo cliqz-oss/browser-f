@@ -94,6 +94,10 @@ enum TextureAllocationFlags {
   // The texture is going to be updated using UpdateFromSurface and needs to support
   // that call.
   ALLOC_UPDATE_FROM_SURFACE = 1 << 7,
+
+  // In practice, this means we support the APPLE_client_storage extension, meaning
+  // the buffer will not be internally copied by the graphics driver.
+  ALLOC_ALLOW_DIRECT_MAPPING = 1 << 8,
 };
 
 /**
@@ -375,16 +379,6 @@ public:
                            TextureFlags aTextureFlags,
                            TextureAllocationFlags flags = ALLOC_DEFAULT);
 
-  // Creates and allocates a TextureClient (can beaccessed through raw
-  // pointers) with a certain buffer size. It's unfortunate that we need this.
-  // providing format and sizes could let us do more optimization.
-  static already_AddRefed<TextureClient>
-  CreateForYCbCrWithBufferSize(KnowsCompositor* aAllocator,
-                               size_t aSize,
-                               YUVColorSpace aYUVColorSpace,
-                               uint32_t aBitDepth,
-                               TextureFlags aTextureFlags);
-
   // Creates and allocates a TextureClient of the same type.
   already_AddRefed<TextureClient>
   CreateSimilar(LayersBackend aLayersBackend = LayersBackend::LAYERS_NONE,
@@ -653,6 +647,8 @@ public:
   // must only be called from the PaintThread.
   void DropPaintThreadRef();
 
+  wr::MaybeExternalImageId GetExternalImageKey() { return mExternalImageId; }
+
 private:
   static void TextureClientRecycleCallback(TextureClient* aClient, void* aClosure);
 
@@ -831,6 +827,80 @@ private:
   bool mChecked;
 #endif
   bool mSucceeded;
+};
+
+// Automatically locks and unlocks two texture clients, and exposes them as a
+// a single draw target dual. Since texture locking is fallible, Succeeded()
+// must be checked on the guard object before proceeding.
+class MOZ_RAII DualTextureClientAutoLock
+{
+public:
+  DualTextureClientAutoLock(TextureClient* aTexture, TextureClient* aTextureOnWhite, OpenMode aMode)
+    : mTarget(nullptr)
+    , mTexture(aTexture)
+    , mTextureOnWhite(aTextureOnWhite)
+  {
+    if (!mTexture->Lock(aMode)) {
+      return;
+    }
+
+    mTarget = mTexture->BorrowDrawTarget();
+
+    if (!mTarget) {
+      mTexture->Unlock();
+      return;
+    }
+
+    if (!mTextureOnWhite) {
+      return;
+    }
+
+    if (!mTextureOnWhite->Lock(aMode)) {
+      mTarget = nullptr;
+      mTexture->Unlock();
+      return;
+    }
+
+    RefPtr<gfx::DrawTarget> targetOnWhite = mTextureOnWhite->BorrowDrawTarget();
+
+    if (!targetOnWhite) {
+      mTarget = nullptr;
+      mTexture->Unlock();
+      mTextureOnWhite->Unlock();
+      return;
+    }
+
+    mTarget = gfx::Factory::CreateDualDrawTarget(mTarget, targetOnWhite);
+
+    if (!mTarget) {
+      mTarget = nullptr;
+      mTexture->Unlock();
+      mTextureOnWhite->Unlock();
+    }
+  }
+
+  ~DualTextureClientAutoLock()
+  {
+    if (Succeeded()) {
+      mTarget = nullptr;
+
+      mTexture->Unlock();
+      if (mTextureOnWhite) {
+        mTextureOnWhite->Unlock();
+      }
+    }
+  }
+
+  bool Succeeded() const { return !!mTarget; }
+
+  operator gfx::DrawTarget*() const { return mTarget; }
+  gfx::DrawTarget* operator->() const { return mTarget; }
+
+  RefPtr<gfx::DrawTarget> mTarget;
+
+private:
+  RefPtr<TextureClient> mTexture;
+  RefPtr<TextureClient> mTextureOnWhite;
 };
 
 class KeepAlive

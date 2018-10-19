@@ -49,6 +49,7 @@ class EventListenerInfo final : public nsIEventListenerInfo
 public:
   EventListenerInfo(const nsAString& aType,
                     JS::Handle<JSObject*> aScriptedListener,
+                    JS::Handle<JSObject*> aScriptedListenerGlobal,
                     bool aCapturing,
                     bool aAllowsUntrusted,
                     bool aInSystemEventGroup);
@@ -66,6 +67,11 @@ protected:
 
   nsString mType;
   JS::Heap<JSObject*> mScriptedListener;  // May be null.
+  // mScriptedListener may be a cross-compartment wrapper so we cannot use it
+  // with JSAutoRealm because CCWs are not associated with a single realm. We
+  // use this global instead (must be same-compartment with mScriptedListener
+  // and must be non-null if mScriptedListener is non-null).
+  JS::Heap<JSObject*> mScriptedListenerGlobal;
   bool mCapturing;
   bool mAllowsUntrusted;
   bool mInSystemEventGroup;

@@ -25,6 +25,8 @@
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
+#include "js/CompilationAndEvaluation.h"
+#include "js/SourceBufferHolder.h"
 #include "nsError.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
@@ -1226,7 +1228,8 @@ private:
       if (wcsp) {
         wcsp->LogViolationDetails(
             nsIContentSecurityPolicy::VIOLATION_TYPE_REQUIRE_SRI_FOR_SCRIPT,
-            aLoadInfo.mURL, EmptyString(), 0, EmptyString(), EmptyString());
+            nullptr, // triggering element
+            aLoadInfo.mURL, EmptyString(), 0, 0, EmptyString(), EmptyString());
       }
       return NS_ERROR_SRI_CORRUPT;
     }
@@ -1258,7 +1261,7 @@ private:
       nsCOMPtr<nsIContentSecurityPolicy> csp = mWorkerPrivate->GetCSP();
       // We did inherit CSP in bug 1223647. If we do not already have a CSP, we
       // should get it from the HTTP headers on the worker script.
-      if (CSPService::sCSPEnabled) {
+      if (StaticPrefs::security_csp_enable()) {
         if (!csp) {
           rv = mWorkerPrivate->SetCSPFromHeaderValues(tCspHeaderValue,
                                                       tCspROHeaderValue);
@@ -1513,12 +1516,18 @@ CacheCreator::CreateCacheStorage(nsIPrincipal* aPrincipal)
   nsIXPConnect* xpc = nsContentUtils::XPConnect();
   MOZ_ASSERT(xpc, "This should never be null!");
 
-  mozilla::AutoSafeJSContext cx;
+  AutoJSAPI jsapi;
+  jsapi.Init();
+  JSContext* cx = jsapi.cx();
   JS::Rooted<JSObject*> sandbox(cx);
   nsresult rv = xpc->CreateSandbox(cx, aPrincipal, sandbox.address());
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
+
+  // The JSContext is not in a realm, so CreateSandbox returned an unwrapped
+  // global.
+  MOZ_ASSERT(JS_IsGlobalObject(sandbox));
 
   mSandboxGlobalObject = xpc::NativeGlobal(sandbox);
   if (NS_WARN_IF(!mSandboxGlobalObject)) {
@@ -1540,7 +1549,6 @@ CacheCreator::CreateCacheStorage(nsIPrincipal* aPrincipal)
     CacheStorage::CreateOnMainThread(mozilla::dom::cache::CHROME_ONLY_NAMESPACE,
                                      mSandboxGlobalObject,
                                      aPrincipal,
-                                     false, /* privateBrowsing can't be true here */
                                      true /* force trusted origin */,
                                      error);
   if (NS_WARN_IF(error.Failed())) {
@@ -2214,7 +2222,7 @@ LoadAllScripts(WorkerPrivate* aWorkerPrivate,
   aWorkerPrivate->AssertIsOnWorkerThread();
   NS_ASSERTION(!aLoadInfos.IsEmpty(), "Bad arguments!");
 
-  AutoSyncLoopHolder syncLoop(aWorkerPrivate, Terminating);
+  AutoSyncLoopHolder syncLoop(aWorkerPrivate, Canceling);
   nsCOMPtr<nsIEventTarget> syncLoopTarget = syncLoop.GetEventTarget();
   if (!syncLoopTarget) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
@@ -2298,7 +2306,7 @@ ChannelFromScriptURLWorkerThread(JSContext* aCx,
     new ChannelGetterRunnable(aParent, aScriptURL, aLoadInfo);
 
   ErrorResult rv;
-  getter->Dispatch(Terminating, rv);
+  getter->Dispatch(Canceling, rv);
   if (rv.Failed()) {
     NS_ERROR("Failed to dispatch!");
     return rv.StealNSResult();

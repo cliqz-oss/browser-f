@@ -238,8 +238,9 @@ enum H264_LEVEL {
 // Returns false on failure.
 bool
 ExtractH264CodecDetails(const nsAString& aCodecs,
-                        int16_t& aProfile,
-                        int16_t& aLevel);
+                        uint8_t& aProfile,
+                        uint8_t& aConstraint,
+                        uint8_t& aLevel);
 
 struct VideoColorSpace
 {
@@ -359,6 +360,9 @@ IsVP8CodecString(const nsAString& aCodec);
 
 bool
 IsVP9CodecString(const nsAString& aCodec);
+
+bool
+IsAV1CodecString(const nsAString& aCodec);
 
 // Try and create a TrackInfo with a given codec MIME type.
 UniquePtr<TrackInfo>

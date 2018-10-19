@@ -5,20 +5,25 @@
 
 <?xml-stylesheet href="chrome://browser/content/places/places.css"?>
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
-<?xml-stylesheet href="chrome://browser/skin/places/places.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/tree-icons.css"?>
+<?xml-stylesheet href="chrome://browser/skin/places/sidebar.css"?>
 
 <!DOCTYPE page [
 <!ENTITY % placesDTD SYSTEM "chrome://browser/locale/places/places.dtd">
 %placesDTD;
 <!ENTITY % editMenuDTD SYSTEM "chrome://global/locale/editMenuOverlay.dtd">
 %editMenuDTD;
+<!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd">
+%browserDTD;
 ]>
 
 <page id="history-panel"
+      class="sidebar-panel"
       orient="vertical"
       xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
       onload="HistorySidebarInit();"
-      onunload="PlacesUIUtils.setMouseoverURL('', window);">
+      onunload="PlacesUIUtils.setMouseoverURL('', window);"
+      aria-label="&historyButton.label;">
 
   <script type="application/javascript"
           src="chrome://browser/content/places/historySidebar.js"/>
@@ -26,21 +31,8 @@
           src="chrome://global/content/globalOverlay.js"/>
   <script type="application/javascript"
           src="chrome://browser/content/utilityOverlay.js"/>
-  <script type="application/javascript"><![CDATA[
-    ChromeUtils.defineModuleGetter(window,
-      "PlacesUtils", "resource://gre/modules/PlacesUtils.jsm");
-    ChromeUtils.defineModuleGetter(window,
-      "PlacesUIUtils", "resource:///modules/PlacesUIUtils.jsm");
-    ChromeUtils.defineModuleGetter(window,
-      "PlacesTransactions", "resource://gre/modules/PlacesTransactions.jsm");
-
-    ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-    XPCOMUtils.defineLazyScriptGetter(window, "PlacesTreeView",
-      "chrome://browser/content/places/treeView.js");
-    XPCOMUtils.defineLazyScriptGetter(window,
-      ["PlacesInsertionPoint", "PlacesController", "PlacesControllerDragHelper"],
-       "chrome://browser/content/places/controller.js");
-  ]]></script>
+  <script type="application/javascript"
+          src="chrome://browser/content/contentTheme.js"/>
 
 #include ../../../../toolkit/content/editMenuCommands.inc.xul
 

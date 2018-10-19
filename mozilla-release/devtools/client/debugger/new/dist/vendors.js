@@ -1,13 +1,13 @@
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
-		module.exports = factory(require("devtools/client/shared/vendor/react"), require("devtools/client/shared/vendor/react-dom"), require("Services"), require("devtools/shared/flags"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories"));
+		module.exports = factory(require("devtools/client/shared/vendor/react"), require("devtools/client/shared/vendor/lodash"), require("devtools/client/shared/vendor/react-dom"), require("Services"), require("devtools/shared/flags"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories"));
 	else if(typeof define === 'function' && define.amd)
-		define(["devtools/client/shared/vendor/react", "devtools/client/shared/vendor/react-dom", "Services", "devtools/shared/flags", "devtools/client/shared/vendor/react-prop-types", "devtools/client/shared/vendor/react-dom-factories"], factory);
+		define(["devtools/client/shared/vendor/react", "devtools/client/shared/vendor/lodash", "devtools/client/shared/vendor/react-dom", "Services", "devtools/shared/flags", "devtools/client/shared/vendor/react-prop-types", "devtools/client/shared/vendor/react-dom-factories"], factory);
 	else {
-		var a = typeof exports === 'object' ? factory(require("devtools/client/shared/vendor/react"), require("devtools/client/shared/vendor/react-dom"), require("Services"), require("devtools/shared/flags"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories")) : factory(root["devtools/client/shared/vendor/react"], root["devtools/client/shared/vendor/react-dom"], root["Services"], root["devtools/shared/flags"], root["devtools/client/shared/vendor/react-prop-types"], root["devtools/client/shared/vendor/react-dom-factories"]);
+		var a = typeof exports === 'object' ? factory(require("devtools/client/shared/vendor/react"), require("devtools/client/shared/vendor/lodash"), require("devtools/client/shared/vendor/react-dom"), require("Services"), require("devtools/shared/flags"), require("devtools/client/shared/vendor/react-prop-types"), require("devtools/client/shared/vendor/react-dom-factories")) : factory(root["devtools/client/shared/vendor/react"], root["devtools/client/shared/vendor/lodash"], root["devtools/client/shared/vendor/react-dom"], root["Services"], root["devtools/shared/flags"], root["devtools/client/shared/vendor/react-prop-types"], root["devtools/client/shared/vendor/react-dom-factories"]);
 		for(var i in a) (typeof exports === 'object' ? exports : root)[i] = a[i];
 	}
-})(typeof self !== 'undefined' ? self : this, function(__WEBPACK_EXTERNAL_MODULE_0__, __WEBPACK_EXTERNAL_MODULE_4__, __WEBPACK_EXTERNAL_MODULE_22__, __WEBPACK_EXTERNAL_MODULE_52__, __WEBPACK_EXTERNAL_MODULE_3642__, __WEBPACK_EXTERNAL_MODULE_3643__) {
+})(typeof self !== 'undefined' ? self : this, function(__WEBPACK_EXTERNAL_MODULE_0__, __WEBPACK_EXTERNAL_MODULE_2__, __WEBPACK_EXTERNAL_MODULE_4__, __WEBPACK_EXTERNAL_MODULE_22__, __WEBPACK_EXTERNAL_MODULE_52__, __WEBPACK_EXTERNAL_MODULE_3642__, __WEBPACK_EXTERNAL_MODULE_3643__) {
 return /******/ (function(modules) { // webpackBootstrap
 /******/ 	// The module cache
 /******/ 	var installedModules = {};
@@ -82,92 +82,6 @@ module.exports = __WEBPACK_EXTERNAL_MODULE_0__;
 
 /***/ }),
 
-/***/ 10:
-/***/ (function(module, exports, __webpack_require__) {
-
-var Symbol = __webpack_require__(7);
-
-/** Used for built-in method references. */
-var objectProto = Object.prototype;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/**
- * Used to resolve the
- * [`toStringTag`](http://ecma-international.org/ecma-262/7.0/#sec-object.prototype.tostring)
- * of values.
- */
-var nativeObjectToString = objectProto.toString;
-
-/** Built-in value references. */
-var symToStringTag = Symbol ? Symbol.toStringTag : undefined;
-
-/**
- * A specialized version of `baseGetTag` which ignores `Symbol.toStringTag` values.
- *
- * @private
- * @param {*} value The value to query.
- * @returns {string} Returns the raw `toStringTag`.
- */
-function getRawTag(value) {
-  var isOwn = hasOwnProperty.call(value, symToStringTag),
-      tag = value[symToStringTag];
-
-  try {
-    value[symToStringTag] = undefined;
-    var unmasked = true;
-  } catch (e) {}
-
-  var result = nativeObjectToString.call(value);
-  if (unmasked) {
-    if (isOwn) {
-      value[symToStringTag] = tag;
-    } else {
-      delete value[symToStringTag];
-    }
-  }
-  return result;
-}
-
-module.exports = getRawTag;
-
-
-/***/ }),
-
-/***/ 100:
-/***/ (function(module, exports, __webpack_require__) {
-
-var assocIndexOf = __webpack_require__(96);
-
-/**
- * Sets the list cache `key` to `value`.
- *
- * @private
- * @name set
- * @memberOf ListCache
- * @param {string} key The key of the value to set.
- * @param {*} value The value to set.
- * @returns {Object} Returns the list cache instance.
- */
-function listCacheSet(key, value) {
-  var data = this.__data__,
-      index = assocIndexOf(data, key);
-
-  if (index < 0) {
-    ++this.size;
-    data.push([key, value]);
-  } else {
-    data[index][1] = value;
-  }
-  return this;
-}
-
-module.exports = listCacheSet;
-
-
-/***/ }),
-
 /***/ 1000:
 /***/ (function(module, exports) {
 
@@ -203,92 +117,6 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 
 /***/ }),
 
-/***/ 101:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getNative = __webpack_require__(81),
-    root = __webpack_require__(8);
-
-/* Built-in method references that are verified to be native. */
-var Map = getNative(root, 'Map');
-
-module.exports = Map;
-
-
-/***/ }),
-
-/***/ 102:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getMapData = __webpack_require__(103);
-
-/**
- * Removes `key` and its value from the map.
- *
- * @private
- * @name delete
- * @memberOf MapCache
- * @param {string} key The key of the value to remove.
- * @returns {boolean} Returns `true` if the entry was removed, else `false`.
- */
-function mapCacheDelete(key) {
-  var result = getMapData(this, key)['delete'](key);
-  this.size -= result ? 1 : 0;
-  return result;
-}
-
-module.exports = mapCacheDelete;
-
-
-/***/ }),
-
-/***/ 103:
-/***/ (function(module, exports, __webpack_require__) {
-
-var isKeyable = __webpack_require__(104);
-
-/**
- * Gets the data for `map`.
- *
- * @private
- * @param {Object} map The map to query.
- * @param {string} key The reference key.
- * @returns {*} Returns the map data.
- */
-function getMapData(map, key) {
-  var data = map.__data__;
-  return isKeyable(key)
-    ? data[typeof key == 'string' ? 'string' : 'hash']
-    : data.map;
-}
-
-module.exports = getMapData;
-
-
-/***/ }),
-
-/***/ 104:
-/***/ (function(module, exports) {
-
-/**
- * Checks if `value` is suitable for use as unique object key.
- *
- * @private
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is suitable, else `false`.
- */
-function isKeyable(value) {
-  var type = typeof value;
-  return (type == 'string' || type == 'number' || type == 'symbol' || type == 'boolean')
-    ? (value !== '__proto__')
-    : (value === null);
-}
-
-module.exports = isKeyable;
-
-
-/***/ }),
-
 /***/ 1043:
 /***/ (function(module, exports) {
 
@@ -310,245 +138,6 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 
 /***/ }),
 
-/***/ 105:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getMapData = __webpack_require__(103);
-
-/**
- * Gets the map value for `key`.
- *
- * @private
- * @name get
- * @memberOf MapCache
- * @param {string} key The key of the value to get.
- * @returns {*} Returns the entry value.
- */
-function mapCacheGet(key) {
-  return getMapData(this, key).get(key);
-}
-
-module.exports = mapCacheGet;
-
-
-/***/ }),
-
-/***/ 106:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getMapData = __webpack_require__(103);
-
-/**
- * Checks if a map value for `key` exists.
- *
- * @private
- * @name has
- * @memberOf MapCache
- * @param {string} key The key of the entry to check.
- * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
- */
-function mapCacheHas(key) {
-  return getMapData(this, key).has(key);
-}
-
-module.exports = mapCacheHas;
-
-
-/***/ }),
-
-/***/ 107:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getMapData = __webpack_require__(103);
-
-/**
- * Sets the map `key` to `value`.
- *
- * @private
- * @name set
- * @memberOf MapCache
- * @param {string} key The key of the value to set.
- * @param {*} value The value to set.
- * @returns {Object} Returns the map cache instance.
- */
-function mapCacheSet(key, value) {
-  var data = getMapData(this, key),
-      size = data.size;
-
-  data.set(key, value);
-  this.size += data.size == size ? 0 : 1;
-  return this;
-}
-
-module.exports = mapCacheSet;
-
-
-/***/ }),
-
-/***/ 108:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseToString = __webpack_require__(109);
-
-/**
- * Converts `value` to a string. An empty string is returned for `null`
- * and `undefined` values. The sign of `-0` is preserved.
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @category Lang
- * @param {*} value The value to convert.
- * @returns {string} Returns the converted string.
- * @example
- *
- * _.toString(null);
- * // => ''
- *
- * _.toString(-0);
- * // => '-0'
- *
- * _.toString([1, 2, 3]);
- * // => '1,2,3'
- */
-function toString(value) {
-  return value == null ? '' : baseToString(value);
-}
-
-module.exports = toString;
-
-
-/***/ }),
-
-/***/ 109:
-/***/ (function(module, exports, __webpack_require__) {
-
-var Symbol = __webpack_require__(7),
-    arrayMap = __webpack_require__(110),
-    isArray = __webpack_require__(70),
-    isSymbol = __webpack_require__(72);
-
-/** Used as references for various `Number` constants. */
-var INFINITY = 1 / 0;
-
-/** Used to convert symbols to primitives and strings. */
-var symbolProto = Symbol ? Symbol.prototype : undefined,
-    symbolToString = symbolProto ? symbolProto.toString : undefined;
-
-/**
- * The base implementation of `_.toString` which doesn't convert nullish
- * values to empty strings.
- *
- * @private
- * @param {*} value The value to process.
- * @returns {string} Returns the string.
- */
-function baseToString(value) {
-  // Exit early for strings to avoid a performance hit in some environments.
-  if (typeof value == 'string') {
-    return value;
-  }
-  if (isArray(value)) {
-    // Recursively convert values (susceptible to call stack limits).
-    return arrayMap(value, baseToString) + '';
-  }
-  if (isSymbol(value)) {
-    return symbolToString ? symbolToString.call(value) : '';
-  }
-  var result = (value + '');
-  return (result == '0' && (1 / value) == -INFINITY) ? '-0' : result;
-}
-
-module.exports = baseToString;
-
-
-/***/ }),
-
-/***/ 11:
-/***/ (function(module, exports) {
-
-/** Used for built-in method references. */
-var objectProto = Object.prototype;
-
-/**
- * Used to resolve the
- * [`toStringTag`](http://ecma-international.org/ecma-262/7.0/#sec-object.prototype.tostring)
- * of values.
- */
-var nativeObjectToString = objectProto.toString;
-
-/**
- * Converts `value` to a string using `Object.prototype.toString`.
- *
- * @private
- * @param {*} value The value to convert.
- * @returns {string} Returns the converted string.
- */
-function objectToString(value) {
-  return nativeObjectToString.call(value);
-}
-
-module.exports = objectToString;
-
-
-/***/ }),
-
-/***/ 110:
-/***/ (function(module, exports) {
-
-/**
- * A specialized version of `_.map` for arrays without support for iteratee
- * shorthands.
- *
- * @private
- * @param {Array} [array] The array to iterate over.
- * @param {Function} iteratee The function invoked per iteration.
- * @returns {Array} Returns the new mapped array.
- */
-function arrayMap(array, iteratee) {
-  var index = -1,
-      length = array == null ? 0 : array.length,
-      result = Array(length);
-
-  while (++index < length) {
-    result[index] = iteratee(array[index], index, array);
-  }
-  return result;
-}
-
-module.exports = arrayMap;
-
-
-/***/ }),
-
-/***/ 111:
-/***/ (function(module, exports, __webpack_require__) {
-
-var isSymbol = __webpack_require__(72);
-
-/** Used as references for various `Number` constants. */
-var INFINITY = 1 / 0;
-
-/**
- * Converts `value` to a string key if it's not a string or symbol.
- *
- * @private
- * @param {*} value The value to inspect.
- * @returns {string|symbol} Returns the key.
- */
-function toKey(value) {
-  if (typeof value == 'string' || isSymbol(value)) {
-    return value;
-  }
-  var result = (value + '');
-  return (result == '0' && (1 / value) == -INFINITY) ? '-0' : result;
-}
-
-module.exports = toKey;
-
-
-/***/ }),
-
 /***/ 1117:
 /***/ (function(module, exports) {
 
@@ -567,219 +156,6 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /***/ (function(module, exports) {
 
 module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0.1 31.4 256 244.5\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMinYMin meet\"><path fill=\"#FFF\" d=\"M57.9 219.3l.6-1.5.1-.2c.5-1.2 1-2.5 1.5-3.7.6-1.6 1.2-3.3 1.8-4.9.4-.9.7-1.8 1-2.8.8-2.2 1.9-5.1 3.2-7.9.8-1.7 1.4-2.9 2.1-4 .8-1.3 1.6-2.5 2.5-3.7l.7-1 1.1-.7c.1-.1.3-.2.5-.3.5-.3 1.1-.5 1.5-.7.7-.3 1.6-.6 2.6-.9 1.4-.4 3-.8 4.9-1.2 2.8-.6 5.8-1.2 9.6-1.8 5.7-.9 11.8-1.7 19.1-2.5 12.9-1.4 25.8-2.4 38.2-3 6.6-.3 11.6-.4 16.3-.4h3c3.1.1 6.7.2 10 .7 1.2.2 2.3.4 3.1.7.3.1.6.2.7.3l1 .4.8.7.9.9c1.1 1.1 2.3 2.4 3.5 3.9 3.8 4.8 7.2 10.6 10.2 17.2 2.9 6.4 4.7 12.1 5.8 17.7l1.5 7.9h-18.4l-1.1-5.3c-1.2-5.6-16.3-20.4-23.8-23.3-.8-.3-4-1.2-13.9-1.2-20.4 0-49.2 3.6-53.3 4.5-4.9 2.3-12.4 11.9-16.7 21.5l-1.8 3.9\"></path><path fill=\"#BA8449\" d=\"M182.9 190.1c-.9-1.2-1.9-2.3-3-3.3l-.7-.7s-.1 0-.2-.1c-.5-.2-1.2-.3-1.9-.4-2.9-.4-6-.5-9.1-.6-6.3-.1-12.6.1-18.9.4-12.6.6-25.3 1.6-37.8 3-6.3.7-12.6 1.5-18.8 2.5-3.1.5-6.2 1-9.2 1.7-1.5.3-3 .7-4.4 1.1-.7.2-1.4.4-2 .7-.3.1-.6.2-.7.4 0 0-.1 0-.1.1-.7 1-1.4 2-2.1 3.1-.7 1.1-1.2 2.3-1.8 3.5-1.1 2.4-2.1 4.9-3 7.4s-1.9 5.1-2.8 7.7c-.5 1.3-1 2.6-1.6 3.9-.2.6-.5 1.2-.8 1.8h8.5c4.6-10.3 13.3-22.1 20.5-25 2-.8 34.2-4.8 55.5-4.8 7.9 0 13.3.6 16.3 1.7 8.7 3.4 26.1 19.5 27.9 28.2h4.9c-1-5.5-3-10.9-5.3-16.1-2.6-6-5.7-11.5-9.4-16.2\"></path><path fill=\"#FFF\" d=\"M179.1 185.9z\"></path><path fill=\"#BA8449\" d=\"M179.1 185.9z\"></path><path fill=\"#FFF\" d=\"M192.1 228.6l-1-5.4c-.9-4.5-2.4-9.3-4.8-14.6-2.6-5.6-5.4-10.5-8.6-14.4-.6-.8-1.2-1.5-1.8-2.1-2.5-.4-5.4-.4-8-.5h-2.8c-4.5 0-9.3.1-15.7.4-12.2.6-24.7 1.6-37.4 3-7.1.8-13 1.6-18.4 2.4-3.5.5-6.3 1.1-8.8 1.6-1.6.4-2.8.7-3.9 1-.2 0-.3.1-.4.1-.2.4-.5.7-.7 1.1-.5.8-.9 1.7-1.6 2.9-1.1 2.3-2 4.7-2.8 6.8-.4.9-.7 1.8-1 2.7-.6 1.7-1.2 3.4-1.9 5.1-.5 1.3-1.1 2.6-1.6 4l-.1.2c-.2.6-.5 1.2-.7 1.7l-1.8 4H56.6l-1.7-.8-.2-.1c-4-2.3-4-5.7-3.9-7.1v-.3l.2-.9.3-1.1c.2-.7.4-1.5.6-2.2.4-1.5.9-2.9 1.4-4.3.9-2.6 2-5.4 3.3-8.4 1.4-3.1 2.7-5.8 4.2-8.3.7-1.3 1.5-2.6 2.5-4.1.9-1.4 1.9-2.8 2.9-4.1.9-1.1 1.7-1.8 2.3-2.2h.1c.6-.5 1.2-.8 1.5-.9.9-.5 1.6-.8 2.1-1 1.2-.5 2.3-.8 3.2-1.1 2-.6 3.9-1 5.3-1.3 2.9-.6 6-1.2 9.9-1.8 5.8-.9 11.9-1.6 19.4-2.4 13-1.3 26-2.3 38.6-2.8 6-.2 10.7-.4 15-.4h4.6c3.2.1 6.8.2 10.7.8h.1c.9.2 2.3.4 3.9.9h.1c.4.2 1 .4 1.7.7.5.3.9.5 1.2.7l.5.4.4.3.4.4 1.1 1.1c1.3 1.3 2.5 2.7 3.8 4.4 4 5.2 7.5 11.2 10.7 18.3 1.5 3.3 2.8 6.6 3.8 9.8 1.1 3.5 1.9 6.8 2.5 10l1.2 7.7h-18.2v.1z\"></path><path fill=\"#FFF\" d=\"M64.3 228.6l4.4-9.5c3.7-7.9 12.6-22.4 22.5-26.5l.2-.1c3.3-1.2 36.7-5.1 57.1-5.1 11.4 0 15.7 1.1 17.9 2 10.3 4 28.2 20.9 30.6 30.9l2 8.2H64.3z\"></path><path fill=\"#FFF\" d=\"M185.4 228.6l-1.2-5.1c-1.1-4.7-15.2-18.8-22.5-21.7-.7-.3-3.6-1.1-13.2-1.1-19.6 0-48 3.5-52.6 4.4-3.8 1.9-10.7 10-15.2 19.6l-1.8 3.8H62.3l4.2-9.3c4.9-11 14.6-24.6 24.1-28.4 3.7-1.5 37.5-5.3 58-5.3 8.9 0 14.9.7 18.6 2.1 10.3 4 29.6 21.4 32 33l1.6 8h-15.4z\"></path><path fill=\"#FFF\" d=\"M193.1 228.6l-1.9-1.8c-7.2-6.7-9.2-20.6-7-26.3 1.5-3.8 4.7-5.1 7.1-5.1.7 0 1.3.1 1.9.3 1.3-.1 4.3-2.6 5.2-4 1.4-2.6 4.1-4.2 7.4-4.2 4.9 0 12.9 3.9 15.5 7.6 1.5 2.1 1.9 4.6 1.1 6.8-.1.2-.2.6-.4 1.1-2.7 8.1-6.2 18-9 22.6l-1.9 3.1-18-.1z\"></path><path fill=\"#FFF\" d=\"M192.5 228.6l6.2-10.1c3-4.9 5.1-8.9 6.5-12-3.5 2.5-8.4 4-15.7 4.4l-.2-.2-.1.7c-4.3 0-7.8-3.5-8-7.8-.1-2.1.7-4.2 2.1-5.8 1.4-1.6 3.4-2.5 5.5-2.6 7.2-.3 8.1-2 9.4-4.5 1.8-3.4 5.7-5.4 10.8-5.4 1.3 0 2.6.1 3.8.4 6.3 1.4 10.4 6.2 10.7 12.4.3 6.3-3.2 15.5-10.2 27.3l-1.9 3.2h-18.9z\"></path><path fill=\"#FFF\" d=\"M218.8 208.9c-8.1 0-16.9-5.3-21.4-10.5-4.1-4.7-4.5-8.9-4.1-11.6.5-3.3 3.2-6.6 8.1-6.6.9 0 1.8.1 2.6.2.8-3.6 2.7-11.1 10.4-11.1h1.1c3.7.4 6.5 2.7 7.6 6.2 1.2-.6 2.6-1.1 4.2-1.1 2.4 0 4.7 1 6.4 2.8 2.7 2.9 3.3 6.9 1.6 10.7 1.8 1.1 3.2 2.8 3.8 5 .8 2.8.3 5.8-1.5 8.2-3.5 4.9-11.6 7.2-18 7.4-.4.4-.6.4-.8.4M210.8 44.2c-7.3 4.6-15.3 15.1-25.1 29.5-1.5 2.3-4 3.5-6.8 3.5-3.6 0-8.2-2.2-13.5-6.5-8.4-6.8-8.6-10.6-8.7-12.1-.2-4 2.8-7.4 7-7.8 8.1-.7 14.8-5.6 21.3-10.3 6.5-4.7 12.5-9 19.7-9 1.4 0 2.9.2 4.3.5\"></path><path fill=\"#FFF8EE\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4\"></path><path fill=\"#FFF\" d=\"M37.3 48.2c4.9-4.5 11.5-6.8 19.6-6.8 7 0 15.3 1.7 24.6 5.1 2.5.9 5.8 1.1 8.3 1.1h3.7c2.3 0 7.2 0 9.3 4.5.7 1.7 1.6 5.2-1.1 9.3-3.3 5.1-12 10.5-20.4 10.5h-.4c-4.5-.1-8.7-2.5-13.6-5.2-6.1-3.4-13-7.3-21.2-7.3-1.1 0-2.3.1-3.4.2M188.1 96.7c-3.6 0-10.4-1.5-14.7-11.7-2.4-5.4-3.2-11.5-3.2-14.9 0-7 3.7-8.9 6-9.4 1.6-1.6 4.6-5.7 6.8-8.8 9.1-12.4 15.7-20.5 23.4-20.5 1.3 0 2.5.2 3.7.7 10.3 4.1 15.3 12.8 13.6 23.8-1.2 8.1-6.3 17.7-13.8 26.5-3.5 4.1-12.6 13.7-20.7 14.3h-1.1\"></path><path fill=\"#FFF\" d=\"M69.9 100.5c-.9 0-1.8 0-2.6-.2-12.8-2.1-28.8-15-34.8-28.3-4.1-9.1-2.3-15.3 0-18.9 3.7-5.9 9.2-9 16-9 8.2 0 16.4 4.5 23.6 8.4 2.8 1.5 6.8 3.7 8.5 4.1.6-.2 1.2-.3 1.9-.3 2.6 0 5 1.4 6.4 3.8 3.3 5.8 1.3 21.4-3.9 30.4-3.6 6.6-9 10-15.1 10z\"></path><path fill=\"#FFF\" d=\"M114.5 212.1c-30 0-59.7-14.7-69.6-25.4-10.3-11.1-14-23.7-11.2-37.5 2.4-11.3 8.7-21.4 14.2-30.4 3.8-6.2 7.4-12 8.4-16.2 12.2-53.9 42.8-60.8 68.1-60.8 1.6 0 3.3 0 5.2.1 53.9 1.6 59.3 27.6 62.5 43.2.6 2.9 1.2 5.6 1.9 7.4 18.1 44.4 21.1 71 10 89-10.9 17.7-34.8 26.4-82.4 30.3-2.3.2-4.7.3-7.1.3z\"></path><path fill=\"#FFF\" d=\"M113.4 212.2c-30.6 0-58.9-15.2-68.4-25.5-10.3-11.1-14-23.7-11.2-37.5 2.4-11.3 8.7-21.4 14.2-30.4 3.8-6.2 7.4-12 8.4-16.2 12.2-53.9 42.8-60.8 68.1-60.8 1.6 0 3.3 0 5.2.1 53.9 1.6 59.3 27.6 62.5 43.2.6 2.9 1.2 5.6 1.9 7.4 17.8 43.7 20.7 70.1 9.8 88.1-12.5 20.7-41.9 27.4-82.1 31.2-2.8.3-5.6.4-8.4.4\"></path><path fill=\"#FFF\" d=\"M191.3 174.6c.4-.9.8-1.9 1.2-2.8 4.1-9.8 7.2-18.4 2.3-23.9-5.8-6.4-30.3-18-52.1-28.2-41.7-19.7-67.5-32.4-71.2-45-.9-3.2-.5-6.5 1.2-9.3C79.9 54.1 100 42 127.5 42h.8c25.9.2 44.7 7.7 56 22.1 9.6 12.2 11.7 26.5 13.3 36.9.5 3.5 1.2 8 1.9 9.2 19.6 33.7 10.6 58.6 3.5 70.3l-11.7-5.9z\"></path><path fill=\"#FFF\" d=\"M170.8 135.8c-10.1 0-27-2.5-32.8-8.1-4.6-4.4-6.3-11.7-8.1-18.8-.7-3-1.9-7.8-3-10h-.1c-.4 1.1-.9 2.5-1.3 3.6-2.7 7.6-6.5 18.1-14.4 23.8-3.4 2.5-15.7 4.7-25.2 4.7s-16.7-2-21.5-6.1c-6.9-5.8-12.1-16.5-15.6-31.8-.2-.1-.3-.2-.5-.3-1.6-1.1-3.7-2.4-4.8-4.7-1.8-3.6-1.1-10 .8-13.4 1.4-2.5 3.8-4.1 6.4-4.3h.9c1.4 0 2.8.2 4.4.5s3.5.6 5.1.6h.9c9.5-1.4 18.4-2 26.5-2 19.7 0 30.1 4 34 5.6.3.1.6.2.8.3 1.1.3 3.2.7 5.4.7.8 0 1.6 0 2.3-.2 8.9-1.4 17.4-2 25.2-2 20.8 0 31.8 4.7 36.6 6.8.4.2.8.4 1.1.4h.4c1.3 0 3.2-.4 4.8-.7 1.2-.3 2.4-.5 3.5-.7h.9c3.1 0 5.9 1.8 7.6 4.8 1.9 3.5 3.2 10.8.5 15-1.8 2.8-4.7 4.1-7.1 5.2-.3.1-.7.3-1 .5-.8 1.4-2.2 4.2-3.4 6.5-3.5 6.8-7.4 14.6-11 18.8-3.2 3.6-9.2 5.3-18.3 5.3\"></path><defs><path id=\"a\" d=\"M42.5 75H212v59.2H42.5z\"></path></defs><clipPath id=\"b\"><use xlink:href=\"#a\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#b)\"><path fill=\"#FFF\" d=\"M166.778 134.181c-8 0-19.3-1.2-27.4-6.9-4.6-3.3-6.7-9.9-9.6-20.5-.8-3-2-7.2-2.9-9.3-.5 1.2-1.1 2.8-1.6 4.1-3 8.1-7.1 19.1-14.6 23.7-3.9 2.4-16 4.6-25.4 4.6-10.1 0-17.4-2.3-21.6-6.7-10.7-11.2-12.8-21.9-14.1-28.2-.2-.9-.4-2.1-.6-2.8-6.3-3.3-6.7-8.2-6.6-10.3.3-3.9 3.3-6.8 7-6.8 2.5 0 4.1 1.2 5.3 2 .1.1.2.2.4.2.1 0 .4.1.5.2 1.6.5 6.3 1.8 7.3 7.9.2 1.1 1.8 7.5 4.4 14.2 4.1 10.7 7 12.5 7.3 12.6 3.4 1.2 7.4 1.8 11.9 1.8 7.4 0 13.6-1.6 16.1-2.4 1.5-2.3 4.5-8.3 6.6-12.4 6.3-12.5 7.4-14.4 10.1-15.8 1.5-.8 3.3-1.2 5.6-1.2 3 0 7.3.7 9.3 1.6 4.6 2 7 8 12.4 23.5 1 2.8 2.2 6.4 3 8.2 4 1.9 13.1 3.2 22.6 3.2 2.7 0 4.7-.1 6-.2.9-1.9 2.2-4.6 3.3-6.9 7.6-16.2 8.8-18.1 10.7-19.6 3.3-2.5 9.1-4.2 12.4-4.2 4.4 0 6.8 2.9 7.4 5.7 1.1 5.8-4.6 8-6.5 8.7-.5.2-1.2.5-1.7.7-.7 1.2-2 3.8-3 5.9-8.2 16-10.9 20.4-14 22.3-3.8 2.1-13 3.1-20 3.1\"></path></g><defs><path id=\"c\" d=\"M45 70.7h33.4v16.2H45z\"></path></defs><clipPath id=\"d\"><use xlink:href=\"#c\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#d)\"><path fill=\"#FFF\" d=\"M61.388 86.816c-1.2 0-3.5-.2-8.1-1.7-1.2-.4-2.3-.8-3-1.1-1.5-.6-5.4-2.1-5.4-6.7v-6.7h6.6c.9 0 1.5.2 2 .3 1.4.2 5.9.5 7.4.6l.9.1c1.2 0 4.9-.5 6.5-.7 2-.3 2.6-.4 3.4-.4h5.7l.9 5.6c.4 2.8-1.1 6.3-4.8 7.4-.2.1-.9.3-1.5.5-3.5 1.3-7 2.5-10 2.6-.2.2-.4.2-.6.2\"></path></g><defs><path id=\"e\" d=\"M181 79.3h25.4v17.2H181z\"></path></defs><clipPath id=\"f\"><use xlink:href=\"#e\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#f)\"><path fill=\"#FFF\" d=\"M193.488 96.41c-2.2 0-4.4-.9-7.4-3-2.9-2-5.1-4-5.1-7.5v-6.7h6.5c.9 0 1.8.2 2.7.6.7.3 3.4 1.2 4.6 1.5.4 0 1.2-.2 2.8-.5.8-.2 1.3-.2 2-.2h5.7l.9 5.6c.4 2.7-.8 6.1-4.5 7.4l-1.2.6c-1.8.9-3.9 1.9-6 2.3-.2-.1-.6-.1-1-.1\"></path></g><path fill=\"#FFF\" d=\"M171.7 243.3h-24.6V222h24.6v21.3z\"></path><path fill=\"#BA8449\" d=\"M182.9 190.1c-.9-1.2-1.9-2.3-3-3.3l-.7-.7s-.1 0-.2-.1c-.5-.2-1.2-.3-1.9-.4-2.9-.4-6-.5-9.1-.6-6.3-.1-12.6.1-18.9.4-12.6.6-25.3 1.6-37.8 3-6.3.7-12.6 1.5-18.8 2.5-3.1.5-6.2 1-9.2 1.7-1.5.3-3 .7-4.4 1.1-.7.2-1.4.4-2 .7-.3.1-.6.2-.7.4 0 0-.1 0-.1.1-.7 1-1.4 2-2.1 3.1-.7 1.1-1.2 2.3-1.8 3.5-1.1 2.4-2.1 4.9-3 7.4s-1.9 5.1-2.8 7.7c-.5 1.3-1 2.6-1.6 3.9-.2.6-.5 1.2-.8 1.8h8.5c4.6-10.3 13.3-22.1 20.5-25 2-.8 34.2-4.8 55.5-4.8 7.9 0 13.3.6 16.3 1.7 8.7 3.4 26.1 19.5 27.9 28.2h4.9c-1-5.5-3-10.9-5.3-16.1-2.6-6-5.7-11.5-9.4-16.2M179.1 185.9z\"></path><path fill=\"#895B2E\" d=\"M179.1 185.9zm17.8 17.9c-2.7-6-5.8-11.7-9.9-16.9-1-1.3-2.1-2.6-3.3-3.8l-.9-.9-.2-.2-.1-.1-.2-.2c-.2-.1-.4-.2-.5-.3-.3-.2-.6-.3-.9-.4-1.1-.4-1.9-.5-2.8-.7-3.4-.5-6.6-.6-9.8-.7-6.5-.1-12.8 0-19.2.3-12.8.5-25.5 1.5-38.2 2.8-6.3.7-12.7 1.4-19.1 2.4-3.2.5-6.3 1-9.5 1.7-1.6.4-3.2.7-4.8 1.2-.8.2-1.6.5-2.5.9-.4.2-.9.4-1.4.7-.2.2-.5.3-.8.5-.3.2-.6.5-1 1-.9 1.1-1.8 2.4-2.6 3.6-.8 1.2-1.6 2.5-2.3 3.8-1.4 2.5-2.7 5.1-3.9 7.7-1.1 2.6-2.2 5.2-3.1 7.9-.5 1.3-.9 2.6-1.2 4-.2.7-.4 1.3-.6 2l-.3 1-.1.5c0 .1.2.2.6.5H64.2c.3-.6.5-1.2.8-1.8.5-1.3 1.1-2.6 1.6-3.8 1-2.6 1.9-5.1 2.8-7.7.9-2.5 1.9-5.1 3-7.4.6-1.2 1.2-2.3 1.8-3.5.7-1.1 1.3-2.1 2.1-3.1 0 0 .1 0 .1-.1.2-.1.5-.2.7-.4.6-.2 1.3-.5 2-.7 1.4-.4 2.9-.8 4.4-1.1 3-.7 6.1-1.2 9.2-1.7 6.2-1 12.5-1.8 18.8-2.5 12.6-1.4 25.2-2.4 37.8-3 6.3-.3 12.6-.5 18.9-.4 3.1.1 6.3.2 9.1.6.7.1 1.4.3 1.9.4.1 0 .2 0 .2.1l.7.7c1.1 1.1 2 2.2 3 3.3 3.7 4.7 6.8 10.2 9.4 15.8 2.3 5.2 4.3 10.6 5.3 16.1h5c-.5-3.1-1.3-6.1-2.2-9-1.2-3.1-2.4-6.1-3.7-9.1\"></path><path fill=\"#FFF8EE\" d=\"M164.1 195.7c-2.6-1-7.9-1.6-15.5-1.6-21.4 0-53 4-54.7 4.7-6.5 2.6-14.6 13.6-19.1 23.2h115.9c-1.9-7.5-18-22.9-26.6-26.3\"></path><path fill=\"#E5D0AE\" d=\"M164.8 193.8c-2.9-1.1-8.4-1.7-16.3-1.7-21.3 0-53.5 4-55.5 4.8-7.3 3-15.9 14.7-20.5 25h2.2c4.5-9.5 12.6-20.5 19.1-23.2 1.7-.7 33.3-4.7 54.7-4.7 7.6 0 12.9.5 15.5 1.6 8.6 3.3 24.7 18.8 26.6 26.3h2c-1.7-8.6-19.1-24.7-27.8-28.1\"></path><path fill=\"#BA8449\" d=\"M204.4 194.7c-1.2 2.5-7.5 8.9-12.8 7.4-2.8-.8-2.3 14 4.1 19.9h11.6c3.2-5.1 8.2-20.7 8.8-22.3.7-1.9-10.5-7.5-11.7-5\"></path><path fill=\"#895B2E\" d=\"M216.7 198.4c-.2-3.2-2.1-5.5-5.5-6.3-2.7-.6-6.3-.1-7.2 1.6-1.8 3.4-4 7.5-14.9 8.1-.7 0-1.3.7-1.3 1.4s.7 1.3 1.4 1.3c11.4-.5 14.7-4.9 17.1-9.4.5-.4 3.2-.9 5.4 0 1.6.7 2.3 1.8 2.4 3.5.3 6.2-6.2 17.7-9.7 23.5h3.1c3.9-6.8 9.5-17.3 9.2-23.7\"></path><defs><path id=\"g\" d=\"M193.5 196.5H217v27.3h-23.5z\"></path></defs><clipPath id=\"h\"><use xlink:href=\"#g\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#h)\"><path fill=\"#E3AB5E\" d=\"M194.235 222.3c7.1-1.7 13.4-8.8 13.9-18.9.1-1.9-3.8-5.5-3.8-6.5s11.9.2 12.5 3c.5 2.8-7.4 19.7-10.1 22.5-2.6 2.7-16.7.9-12.5-.1\"></path></g><path fill=\"#FCD4C3\" d=\"M199.8 187.8c-.9 6.2 11.2 14.7 19.4 14.5 6.8-.2 14.5-3.4 13.4-7.2-1.1-3.9-7.7.7-8.3-2-.5-2.6 7.7-7.5 4.4-11.1-3.1-3.3-6.7 5.2-10.3 4-3.6-1.2.7-9.5-3.8-10-5.3-.5-3.3 11.3-7.3 11.5-2.8.3-7.2-1.7-7.5.3\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M199.8 187.8c-.9 6.2 11.2 14.7 19.4 14.5 6.8-.2 14.5-3.4 13.4-7.2-1.1-3.9-7.7.7-8.3-2-.5-2.6 7.7-7.5 4.4-11.1-3.1-3.3-6.7 5.2-10.3 4-3.6-1.2.7-9.5-3.8-10-5.3-.5-3.3 11.3-7.3 11.5-2.8.3-7.2-1.7-7.5.3z\"></path><defs><path id=\"i\" d=\"M203.2 182.8h7.8v6.4h-7.8z\"></path></defs><clipPath id=\"j\"><use xlink:href=\"#i\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#j)\"><path fill=\"#FCD4C3\" d=\"M203.238 187.742c1.3 1 6 2.3 6.7.6.8-1.7 1.4-5.1.9-5.6-.4 1.6-.9 4.6-2.6 5.3-1.3.5-4.1-.1-5-.3\"></path></g><defs><path id=\"k\" d=\"M215.9 181.2h7.7v7.2h-7.7z\"></path></defs><clipPath id=\"l\"><use xlink:href=\"#k\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#l)\"><path fill=\"#FCD4C3\" d=\"M216.159 181.142c-.2 1.1-1.1 6.3 1.6 7 2.3.6 4-.8 5.8-3.7-1 .9-3.5 3.1-5.4 2.3-1.9-.9-2.1-2.9-2-5.6\"></path></g><defs><path id=\"m\" d=\"M204.5 193h15.8v8.6h-15.8z\"></path></defs><clipPath id=\"n\"><use xlink:href=\"#m\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#n)\"><path fill=\"#FCD4C3\" d=\"M204.576 195.158c13.6-6.7 16.4 4.2 15.7 6.4-5.4.9-14.9-4.7-15.7-6.4\"></path></g><defs><path id=\"o\" d=\"M223 190.9h5.7v5H223z\"></path></defs><clipPath id=\"p\"><use xlink:href=\"#o\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#p)\"><path fill=\"#FCD4C3\" d=\"M224.351 190.896c-2.3 2.6-1.2 4.7.3 5 1.9.4 4.4-1.6 4-1.6-.5 0-4.2 1.2-4.9-.6-.5-1.4.3-2.2.6-2.8\"></path></g><defs><path id=\"q\" d=\"M66.1 182.6H195v36.5H66.1z\"></path></defs><clipPath id=\"r\"><use xlink:href=\"#q\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#r)\"><path fill=\"#E3AB5E\" d=\"M69.034 208.266c43.7 25.1 130.4-.4 125.8-8.6-6.1-10.9-8.5-17.7-21.9-17.1-13.3.7-98.9 7.5-102.4 10.1-3.4 2.7-7.2 12.3-1.5 15.6\"></path></g><path fill=\"#FFF8EE\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4\"></path><path fill=\"none\" stroke=\"#E5D0AE\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-miterlimit=\"10\" d=\"M164.3 57.5c19.6-1.8 31.1-22.1 43-19-8 5-15.9 15-27 31.4-2.7 3.9-21.4-11.9-16-12.4z\"></path><path fill=\"#BA8449\" d=\"M41.8 53.1c8.8-8.2 24.7-5 37.5-.4 7.3 2.6 16.8.5 17.4 2 1.6 3.5-7.9 10.7-15.7 10.5-7.7-.1-20.6-14.6-39.2-12.1\"></path><path fill=\"none\" stroke=\"#895B2E\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-miterlimit=\"10\" d=\"M41.8 53.1c8.8-8.2 24.7-5 37.5-.4 7.3 2.6 16.8.5 17.4 2 1.6 3.5-7.9 10.7-15.7 10.5-7.7-.1-20.6-14.6-39.2-12.1z\"></path><path fill=\"#FCD4C3\" d=\"M177.7 67.2c4.5 1.3 21.6-32.2 29.9-28.9 26.4 10.5-8 50.9-18.9 51.8-11 .8-13.5-23.7-11-22.9\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M177.7 67.2c4.5 1.3 21.6-32.2 29.9-28.9 26.4 10.5-8 50.9-18.9 51.8-11 .8-13.5-23.7-11-22.9z\"></path><path fill=\"#FCD4C3\" d=\"M82.3 63.2c-7.3 3.2-33.2-23.9-44.1-6.5C31 68.2 52.8 91.4 68.4 93.9s17.7-32.4 13.9-30.7\"></path><path fill=\"none\" stroke=\"#F8A38F\" stroke-width=\"2\" stroke-miterlimit=\"10\" d=\"M82.3 63.2c-7.3 3.2-33.2-23.9-44.1-6.5C31 68.2 52.8 91.4 68.4 93.9s17.7-32.4 13.9-30.7z\"></path><defs><path id=\"s\" d=\"M180.5 44.8h18v44.6h-18z\"></path></defs><clipPath id=\"t\"><use xlink:href=\"#s\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#t)\"><path fill=\"#FCD4C3\" d=\"M198.067 44.8c-1.4 4.6-13.2 16.5-11.6 26.7.6 3.8 4.6 15 6.3 14.6s6-3.1 5.6-2.5c-.4.6-6 4.7-8.1 5.8-2.1-1.1-11-21.8-9.7-22.9 3.9-3.5 15.8-21.5 17.5-21.7\"></path></g><defs><path id=\"u\" d=\"M38.6 51.5h44.2v31.6H38.6z\"></path></defs><clipPath id=\"v\"><use xlink:href=\"#u\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#v)\"><path fill=\"#FCD4C3\" d=\"M38.533 57.4c8-4.9 22.6-2.8 31.1 5.5 3 3 3.9 13-2.9 19.8-2.7 2.7 16-9.6 16.1-13.2 0-3.6-1.2-4.6-4-5.6-10.3-3.8-21.1-12.6-30.5-12.4-6.1.1-8.9 4.3-9.8 5.9\"></path></g><defs><path id=\"w\" d=\"M181.1 42.2h26.2v44.2h-26.2z\"></path></defs><clipPath id=\"x\"><use xlink:href=\"#w\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#x)\"><path fill=\"#FCD4C3\" d=\"M201.3 42.175c18.2 10-11.1 25.2-8.9 44.1-3.8-.4-13.2-18.7-10.9-20.3 3.2-2.2 16.7-24.6 19.8-23.8\"></path></g><path fill=\"#E5D0AE\" d=\"M60.9 103.6c.3-1.3.5-2.7.5-4 .1-1.4.2-2.8.5-4.1.1-.7.3-1.4.6-2 .3-.6.5-1.3.7-1.9.5-1.3 1-2.6 1.6-3.8 2.3-5.1 4.9-9.9 8.1-14.4 3.2-4.5 6.7-8.7 10.7-12.3 4-3.7 8.7-6.7 13.7-8.7 5-2.1 10.4-3.4 15.8-4 5.4-.7 10.8-.8 16.2-.7 5.4.1 10.8.4 16.2 1.1 5.4.7 10.8 1.9 16 3.8 2.6 1 5.1 2.1 7.5 3.5 2.4 1.4 4.7 3.1 6.8 5.1 2.1 1.9 3.9 4.2 5.4 6.6 1.5 2.4 2.6 5 3.6 7.7.9 2.6 1.6 5.3 2.2 8s1 5.3 1.6 7.8c.3 1.2.7 2.4 1.1 3.6.5 1.2 1 2.5 1.4 3.8.9 2.5 1.9 5.1 2.8 7.6 3.5 10.2 6.6 20.6 8.5 31.2.9 5.3 1.6 10.7 1.7 16.1.1 5.4-.4 10.8-1.9 16-.4 1.3-.8 2.6-1.3 3.8-.5 1.2-1.2 2.4-1.6 3.7-.2.7-.4 1.3-.7 1.9-.3.6-.7 1.2-1.1 1.8-.7 1.1-1.6 2.3-2.5 3.3-3.5 4.2-8 7.6-12.8 10.2s-10 4.6-15.2 6.1c-5.3 1.5-10.5 2.7-15.9 3.7s-10.7 1.7-16 2.4l-8.1.9-4 .4c-1.3.1-2.7.2-4.1.3-11 .6-22-1-32.5-3.9-5.3-1.5-10.4-3.3-15.4-5.5s-9.9-4.7-14.5-7.7c-2.3-1.5-4.6-3.2-6.7-5.1-.5-.5-1.1-1-1.6-1.5s-.9-1.1-1.4-1.6c-.9-1.1-1.8-2.2-2.6-3.3-3.1-4.6-5.6-10-6.4-15.6-.9-5.7-.1-11.5 1.5-16.8 1.6-5.4 4.1-10.3 6.7-15.1 2.7-4.7 5.6-9.3 8.4-13.8 1.4-2.3 2.7-4.6 3.9-6.9 1.1-3 2.1-5.3 2.6-7.7zm4 .9c-.7 2.8-1.9 5.4-3.2 7.9s-2.7 4.8-4.1 7.1c-2.8 4.6-5.7 9.1-8.2 13.7s-4.8 9.4-6.2 14.3c-1.4 4.9-2 10-1.2 15 .8 4.9 2.9 9.6 5.9 13.7.7 1 1.6 2 2.4 3 .4.5.9 1 1.3 1.4.4.5.9.9 1.3 1.3 1.8 1.7 3.9 3.2 6.1 4.7 4.4 2.8 9 5.3 13.9 7.4 4.8 2.1 9.8 3.9 14.9 5.3s10.2 2.5 15.4 3.2c5.2.7 10.4.9 15.6.7l3.9-.3 4-.4c2.6-.2 5.3-.5 8-.8 5.3-.5 10.6-1.2 15.8-2.1 5.3-.9 10.4-1.9 15.5-3.3s10.1-3 14.9-5.1c4.7-2.2 9.3-4.9 13-8.6.9-.9 1.8-1.9 2.6-2.9.4-.5.8-1.1 1.2-1.6.4-.5.9-1 1.3-1.6.9-1.1 1.3-2.3 1.9-3.5.5-1.2.9-2.5 1.2-3.8 1.3-5.2 1.6-10.6 1.3-15.9-.4-5.3-1.3-10.6-2.6-15.8-2.5-10.4-6.2-20.4-10.1-30.3-1-2.5-2-5-3-7.4l-1.6-3.7c-.5-1.3-1-2.7-1.4-4-.7-2.7-1.2-5.3-1.8-7.9-.5-2.6-1.2-5.1-2-7.5-1.7-4.9-4.2-9.3-7.9-12.8-3.6-3.5-8.1-6.2-12.9-8.2-4.8-2-10-3.3-15.2-4.2-5.2-.9-10.5-1.4-15.8-1.7-5.3-.2-10.7-.3-16 .3-5.3.6-10.5 1.7-15.4 3.8-4.9 2-9.4 4.9-13.2 8.5-3.9 3.6-7 8-9.3 12.6-2.4 4.7-4.1 9.7-5.6 14.7-.4 1.2-.7 2.5-1 3.8-.2.6-.3 1.3-.5 1.9-.1.3-.1.7-.2 1-.1.3-.2.6-.4.9-.5 1.2-1.1 2.4-1.7 3.6-.2 1.1-.6 2.3-.9 3.6z\"></path><path fill=\"#FFF8EE\" d=\"M62.9 104.1c-4.2 18.6-40.9 48-13 78.1 9.5 10.2 40.3 25.9 71.2 23 80.4-7.6 100.7-27 66.8-110.2-5.5-13.5.7-44.7-58.4-46.5-24.8-.7-54.6 2.7-66.6 55.6\"></path><path fill=\"#E5BFA1\" d=\"M76.8 67.7c2.6-4 6-7.3 9.8-10C90.4 55 94.7 53 99 51.4c8.8-3.2 18-4.4 27.2-4.7 9.2-.2 18.5.5 27.5 2.8 4.5 1.2 8.9 2.8 13.1 5.1s8.1 5.1 11.4 8.6c3.3 3.5 6 7.4 8.1 11.7 2.1 4.3 3.6 8.8 4.7 13.3 1.1 4.6 1.8 9.1 2.4 13.6.3 2.3.6 4.5 1.1 6.6.2 1.1.5 2.1.8 2.9l.3.6.1.1.1.1.2.4.9 1.5c4.4 8.1 7.7 17 8.9 26.3.6 4.6.7 9.3.2 14-.5 4.6-1.7 9.2-3.5 13.5-.9 2.1-1.9 4.2-3.1 6.3l-.9 1.5c-.3.5-.6.9-1 1.5-.1.1-.1.2-.2.3-.3-.2.4.7-1.6 0-.5-.9-.2-.7-.3-.9 0-.3.1-.4.1-.6l.3-.9.5-1.6c1.4-4.3 2.6-8.6 3.1-13.1.2-2.2.3-4.4 0-6.7-.3-2.2-.9-4.3-2-6.1-.3-.5-.6-.9-1-1.3s-.7-.8-1.1-1.2c-.8-.8-1.6-1.5-2.5-2.2-1.8-1.4-3.7-2.5-5.7-3.5-4.1-1.8-8.6-2.5-13-2.3-4.5.2-8.9 1.1-13.2 2.3-2.2.6-4.3 1.3-6.5 2-1.1.4-2.2.7-3.3 1-.6.2-1.1.3-1.8.4-.6.1-1.1.2-1.7.2-4.6.5-9.1.8-13.8.7-4.6-.1-9.2-.6-13.8-1.6-4.5-1-9-2.5-13.2-4.4-4.2-2-8.2-4.4-11.8-7.4-3.6-3-6.8-6.4-9.6-10.1-5.6-7.5-9.3-16.2-11.1-25.3-.9-4.6-1.3-9.2-1.1-13.9.1-2.3.4-4.7.9-7 .6-1.8 1.4-4.1 2.7-6.2zm2 1.3c-1.1 1.8-1.8 3.8-2.3 6-.5 2.1-.7 4.3-.9 6.5-.2 4.4.3 8.9 1.2 13.2 1.9 8.7 5.6 17 11 24 2.7 3.5 5.8 6.7 9.2 9.5 3.4 2.8 7.2 5.2 11.2 7.1 4 1.9 8.2 3.3 12.6 4.3 4.3 1 8.8 1.6 13.2 1.7 4.5.2 8.9 0 13.4-.5l1.7-.2c.5-.1 1-.2 1.6-.3 1.1-.3 2.1-.6 3.2-.9 2.2-.6 4.4-1.3 6.6-1.8 4.4-1.1 9-1.9 13.7-1.9 4.6 0 9.3.8 13.5 2.8 2.1 1 4.1 2.2 5.9 3.6.9.7 1.8 1.5 2.6 2.3l1.2 1.2c.4.4.8.9 1.1 1.4 1.3 2 2 4.3 2.3 6.7s.3 4.7.1 7c-.4 4.6-1.4 9.1-2.7 13.5l-.5 1.6-.2.8c0 .1-.1.3 0 .3-.1-.1.2.2-.2-.7-1.9-.7-1.2.2-1.4-.1.2-.4.5-.9.8-1.4.3-.5.5-1 .8-1.5 1-2 1.9-4 2.7-6.1 3-8.3 3.6-17.4 2.1-26.1-.7-4.4-2-8.6-3.6-12.7s-3.5-8.1-5.7-12l-.8-1.4-.2-.4-.1-.2-.1-.2c-.2-.3-.3-.6-.4-.9-.5-1.2-.8-2.5-1.1-3.6-.5-2.3-.9-4.6-1.2-6.8-.7-4.5-1.3-8.9-2.4-13.2-1-4.3-2.4-8.5-4.3-12.4-1.9-3.9-4.2-7.5-7.2-10.7-5.8-6.3-13.8-10.5-22.3-13s-17.5-3.3-26.5-3.3c-8.9 0-17.9 1.1-26.3 3.9-4.2 1.4-8.2 3.3-11.9 5.8-3.8 2.4-7 5.4-9.4 9.1z\"></path><path fill=\"#895B2E\" d=\"M75.6 67.2c1.5-2.4 3.3-4.3 5.1-6.1 1.9-1.8 3.9-3.3 6-4.7 4.2-2.8 8.7-5 13.4-6.7 9.4-3.3 19.3-4.6 29.1-4.4 9.7.3 19.5 1.5 28.9 4.9 4.7 1.7 9.2 3.9 13.3 6.9 4.1 2.9 7.7 6.5 10.7 10.6 2.9 4.1 5.1 8.6 6.8 13.3 1.6 4.7 2.7 9.5 3.5 14.2.4 2.4.7 4.7 1.1 7.1.4 2.3.7 4.7 1.1 6.8.2 1.1.5 2.1.9 2.9l.1.2.1.2.2.4.4.8.9 1.6c1.1 2.1 2.2 4.3 3.2 6.5 1.9 4.4 3.5 9.1 4.6 13.9 1.1 4.7 1.6 9.6 1.6 14.5-.1 9.8-2.8 19.5-7.9 27.8-.4.6-1.2.9-1.8.5-.6-.4-.8-1.1-.6-1.6 1.4-3.6 2.9-7 4-10.5 1.2-3.5 2-7.1 2-10.6s-.9-6.9-3-9.6c-.1-.2-.3-.4-.4-.5l-.2-.2-.2-.3-.9-.9c-.6-.6-1.3-1.2-2-1.7-1.4-1.1-3-2.1-4.5-3.1-6.3-3.9-13-7.3-19.8-10.7-6.8-3.3-13.7-6.5-20.5-9.6-13.8-6.3-27.6-12.6-41.2-19.4-6.8-3.5-13.5-7-20.1-11.2-3.5-2.5-6.7-4.7-9.8-7.5-1.5-1.4-3-3-4.2-5.2-.6-1.1-1.1-2.4-1.2-4 0-.8 0-1.6.2-2.4.1-.4.2-.8.4-1.2.1-.3.4-.9.5-1h.2zm5.6 3.4c-.2.3-.1.2-.2.3 0 .1 0 .1-.1.2v.4c0 .3.2.8.4 1.4.6 1.2 1.7 2.5 2.9 3.6 2.5 2.4 5.4 4.6 8.5 6.6 6.1 4.1 12.7 7.7 19.4 11.3 13.3 7 27 13.5 40.6 20.1 6.8 3.3 13.6 6.7 20.4 10.1 6.8 3.5 13.5 7 20 11.3 1.6 1.1 3.2 2.2 4.7 3.5.8.6 1.5 1.3 2.3 2 .4.4.7.7 1.1 1.2l.2.3.3.3c.2.2.3.4.5.6 1.2 1.7 2.1 3.6 2.7 5.6s.7 4.1.7 6.1c-.1 4-1.2 7.9-2.5 11.6-1.3 3.7-2.9 7.1-4.4 10.6l-2.4-1.2c4.7-8 6.9-17.2 6.8-26.4-.2-9.2-2.6-18.3-6.5-26.7-1-2.1-2-4.2-3.2-6.2l-1.8-3.2c-.7-1.3-1-2.6-1.3-3.8-.6-2.5-1-4.8-1.4-7.2s-.8-4.7-1.2-6.9c-.9-4.6-2-9-3.6-13.3-1.6-4.2-3.7-8.3-6.3-11.8-2.6-3.6-5.9-6.7-9.5-9.2-3.7-2.5-7.7-4.5-12-5.9-8.6-2.9-17.8-3.9-27-4-4.6 0-9.1.2-13.6 1-4.5.7-8.9 1.8-13.1 3.3s-8.3 3.4-12 5.8c-1.9 1.2-3.6 2.5-5.2 4s-3.1 3-4.2 4.6z\"></path><path fill=\"#BA8449\" d=\"M77.8 68.3c-11 17 2.1 82.3 71.2 73.5 7.3-.9 31.6-13.9 48 4.3 8.9 10-3.1 35.3 0 30 3.5-5.8 16.9-28.2-3.2-62.7-6.4-11.1 4.2-64.4-65-65.1-26.5-.1-43.7 8.7-51 20\"></path><defs><path id=\"y\" d=\"M61.7 64.6H179v111.9H61.7z\"></path></defs><clipPath id=\"z\"><use xlink:href=\"#y\" overflow=\"visible\"></use></clipPath><g opacity=\".15\" clip-path=\"url(#z)\"><path fill=\"#E3AB5E\" d=\"M75.968 72.433c19.9-12.8 80.1-11.9 99.3 18.8 12.8 20.4-10.6 70.8-19.3 77.2-8.6 6.4-20.6 12-52.2 4.4-26.8-6.4 13.5-31.3-17.9-34.9-28.7-3.3-31.6-51.5-9.9-65.5\"></path></g><defs><path id=\"A\" d=\"M118.5 119.2h13.1v5.5h-13.1z\"></path></defs><clipPath id=\"B\"><use xlink:href=\"#A\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#B)\"><path fill=\"#E3AB5E\" d=\"M131.6 121.966c0 1.5-2.9 2.8-6.5 2.8s-6.5-1.2-6.5-2.8c0-1.5 2.9-2.8 6.5-2.8 3.6.1 6.5 1.3 6.5 2.8\"></path></g><path fill=\"#F8A38F\" d=\"M120.1 113.8c1.5-1 9.5-.7 10.5.4 1 1 3.2 5.2.7 7-.9.6-.9-1.9-2.9-1.5-2.4.5-1.1 3.6-3 3.6-2.9-.1-.1-3.4-2.6-3.8-1.9-.4-2.3 1.5-3.2 1.3-2.9-.6-1.6-5.6.5-7\"></path><defs><path id=\"C\" d=\"M117.9 113.2h14.5v9.9h-14.5z\"></path></defs><clipPath id=\"D\"><use xlink:href=\"#C\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#D)\"><path fill=\"#F8A38F\" d=\"M124.42 113.205c-1.9 0-3.7.2-4.3.6-2.1 1.4-3.4 6.4-.6 6.9h.1c.7 0 1.1-1.4 2.6-1.4h.5c2.5.4-.2 3.8 2.6 3.8 1.8 0 .5-3 3-3.5h.4c1.4 0 1.6 1.6 2.2 1.6.1 0 .2 0 .3-.1 2.6-1.8.4-6-.7-7-.5-.5-3.4-.9-6.1-.9m0 .7c3 0 5.3.4 5.7.7.6.6 1.8 2.8 1.6 4.4-.1.6-.3 1.1-.7 1.4 0-.1-.1-.1-.2-.2-.4-.5-1-1.3-2.1-1.3-.2 0-.4 0-.5.1-1.7.4-2 1.7-2.3 2.6-.2.9-.3.9-.6.9-.8 0-.8-.2-.8-1.1 0-.9 0-2.3-1.8-2.6h-.6c-1.1 0-1.8.7-2.3 1.1-.1.1-.3.3-.4.3-.4-.1-.8-.3-1-1.1-.3-1.4.7-3.8 1.8-4.6.6-.4 2-.6 4.2-.6\"></path></g><defs><path id=\"E\" d=\"M74.1 124.9H187V189H74.1z\"></path></defs><clipPath id=\"F\"><use xlink:href=\"#E\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#F)\"><path fill=\"#F7E8D0\" d=\"M186.799 140.05c3 19.2-21 43.3-53.3 48.3-32.3 4.9-56.1-23.9-59.1-43.2-3-19.2 16.8-11.9 49.1-16.8s60.3-7.5 63.3 11.7\"></path></g><defs><path id=\"G\" d=\"M80 125.9h93.6v47.5H80z\"></path></defs><clipPath id=\"H\"><use xlink:href=\"#G\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#H)\"><path fill=\"#D8CAB2\" d=\"M102.515 169.277c-.9-1.4-1.4-3.1-1.9-4.7l-1.5-4.8c-1-3.2-2.1-6.4-3.6-9.4s-3.4-5.8-5.8-7.9c-2.4-2.1-5.3-3.5-8.4-4.1-1.1-.4-1.6-1.5-1.2-2.5.4-1 1.4-1.5 2.3-1.3 7.2 1.7 14.7 2.5 22.1 2.6s15-.3 22.5-1.2c7.5-.9 14.9-2.2 22.2-3.9 7.3-1.7 14.6-3.7 21.7-6.1 1.1-.4 2.2.2 2.5 1.2.3.8 0 1.6-.6 2.1-.2.2-.6.5-.9.8-.3.3-.6.7-.9 1-.6.7-1.2 1.5-1.8 2.3-1.2 1.6-2.3 3.2-3.3 4.9-2.2 3.3-4.2 6.7-6.1 10.2-1.9 3.5-3.8 7-5.5 10.5-.9 1.8-1.7 3.6-2.4 5.4-.4.9-.7 1.8-1.1 2.8-.2.5-.3.9-.4 1.4v.2c0 .1 0 .1-.1.2 0 .1-.1.2-.2.2-.1.1-.2.2-.4.3-.2.2-.5.3-.7.4-1.9.8-3.9 1.2-5.8 1.6-1.9.4-3.9.7-5.9.9-4 .5-7.9.9-11.9 1-4 .2-8 .2-11.9-.2-2-.2-4-.5-5.9-1-1-.3-1.9-.6-2.8-1.1-.9-.4-1.7-1-2.3-1.8m.1-.1c.5.8 1.4 1.4 2.3 1.8.9.4 1.8.7 2.8 1 1.9.5 3.9.8 5.9.9 4 .3 7.9.3 11.9.1 4-.2 7.9-.7 11.8-1.2 1.9-.3 3.9-.6 5.8-1.1s3.9-.9 5.6-1.7c.2-.1.4-.2.6-.4.2-.1.3-.2.3-.3.1-.5.2-1 .4-1.5.3-1 .6-1.9.9-2.9.7-1.9 1.4-3.7 2.2-5.6 1.6-3.7 3.2-7.3 4.9-10.9 1.7-3.6 3.5-7.2 5.4-10.7.9-1.8 1.9-3.5 3-5.3.5-.9 1.1-1.8 1.7-2.6.3-.4.6-.9.9-1.3.4-.4.7-.9 1.2-1.3l1.9 3.4c-7.3 2.5-14.6 4.5-22.1 6.2-7.5 1.7-15 3.1-22.6 4-7.6.9-15.3 1.4-23 1.2s-15.4-1.1-23-2.9l1.1-4c3.3 2 6.3 3.9 8.6 6.6 2.3 2.7 3.9 5.8 5.2 9 1.2 3.2 2.2 6.5 3 9.7.4 1.6.9 3.3 1.3 4.9.6 1.9 1.1 3.5 2 4.9\"></path></g><defs><path id=\"I\" d=\"M81 126.9h91.6v46.5H81z\"></path></defs><clipPath id=\"J\"><use xlink:href=\"#I\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#J)\"><path fill=\"#D8CAB2\" d=\"M102.532 169.288c-.9-1.4-1.4-3-1.9-4.6-.5-1.6-.9-3.2-1.4-4.8-1-3.2-2-6.4-3.5-9.5-1.4-3-3.3-5.8-5.6-8-2.4-2.3-5.3-3.9-8.4-4.6v-.1c-.5-.2-.8-.8-.6-1.3.2-.5.7-.8 1.2-.7 7.3 1.7 14.8 2.5 22.4 2.6s15.1-.3 22.6-1.2c7.5-.9 14.9-2.3 22.3-3.9 7.4-1.7 14.7-3.7 21.8-6.1.5-.2 1.1.1 1.3.6.1.4 0 .8-.3 1.1-.6.5-1.3 1.3-1.9 2-.6.7-1.2 1.6-1.8 2.3-1.1 1.6-2.2 3.3-3.2 5-2.1 3.3-4.1 6.8-6 10.3-1.9 3.5-3.7 7-5.3 10.6l-2.4 5.4c-.4.9-.7 1.8-1 2.8-.2.5-.3.9-.4 1.4-.1.4-.4.5-.6.7-.2.2-.5.3-.7.4-1.9.8-3.9 1.2-5.8 1.6-1.9.4-3.9.7-5.9 1-3.9.5-7.9.9-11.9 1.1-4 .2-8 .2-11.9-.2-2-.2-4-.5-5.9-1-1-.3-1.9-.6-2.8-1-1-.5-1.9-1.1-2.4-1.9m0-.1c.5.8 1.4 1.4 2.3 1.9.9.4 1.8.7 2.8 1 1.9.5 3.9.8 5.9.9 4 .4 7.9.3 11.9.1 4-.2 7.9-.6 11.9-1.2 1.9-.3 3.9-.6 5.9-1.1 1.9-.4 3.9-.9 5.6-1.7.2-.1.4-.2.6-.4.2-.1.4-.3.4-.4.1-.5.2-1 .4-1.5.3-1 .6-1.9 1-2.8.7-1.9 1.5-3.7 2.3-5.5 1.6-3.7 3.3-7.2 5.1-10.8 1.8-3.6 3.6-7.1 5.6-10.6 1-1.8 2-3.5 3.1-5.1.5-.9 1.1-1.7 1.7-2.5.6-.8 1.2-1.6 2.1-2.4l1 1.8c-7.2 2.5-14.6 4.5-22 6.2s-14.9 3-22.5 4c-7.6.9-15.2 1.4-22.9 1.2-7.6-.2-15.3-1-22.8-2.7l.5-1.9c3.3 1.3 6.3 3.3 8.6 5.9 2.3 2.6 4 5.6 5.3 8.7 1.3 3.1 2.3 6.3 3.2 9.6.4 1.6.9 3.2 1.4 4.9.2 1.4.7 3 1.6 4.4\"></path></g><path fill=\"#333\" d=\"M102.6 169.2c5.1 8 46.8 2.5 47.5-.7 1.8-8.1 16.8-36.7 21.6-40.7-8.6 3-53.3 17.3-89.6 8.6 16.3 5.5 16.5 26.6 20.5 32.8\"></path><g><defs><path id=\"K\" d=\"M82 127.9h89.6v45.4H82z\"></path></defs><clipPath id=\"L\"><use xlink:href=\"#K\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#L)\"><path fill=\"#333\" d=\"M171.55 127.95c-6.7 2.3-34.9 11.4-64.1 11.4-8.6 0-17.2-.8-25.5-2.7 16.4 5.3 16.6 26.5 20.6 32.7 1.9 3 9.2 4.1 17.5 4.1 13.4 0 29.5-2.8 30-4.8 1.8-8.2 16.7-36.8 21.5-40.7m-5.6 3.9c-6.5 9.8-15.9 28.7-17.8 35.8-2.5 1.4-15.4 3.8-28.1 3.8-10.2 0-14.8-1.7-15.8-3.2-1-1.5-1.8-4.3-2.6-7.5-1.7-6.1-4.1-14.5-9.8-20.3 5 .6 10.2.9 15.7.9 23.8-.1 47.1-6.1 58.4-9.5\"></path></g></g><path fill=\"#FCD4C3\" d=\"M119.7 173.4c-8.6 0-14.2-1.2-16.4-3.6-.2-.2-.2-1.4.8-3.7 2.4-5.5 9.8-14.9 22.6-15.7.9 0 1.7-.1 2.5-.1 15 0 24 7.6 24 8.9-.2.4-.4 1-.7 1.8-.8 1.9-2 4.9-3.1 8.1-1.3 1.3-16.3 4.3-29.7 4.3\"></path><path fill=\"#F8A38F\" d=\"M129.2 149.8c-.9 0-1.7 0-2.6.1-17.5 1.1-25.6 18.4-23.8 20.5 2.6 2.8 9.3 3.8 16.9 3.8 13.5 0 29.8-3.1 30.3-4.6 1.5-4.5 3.2-8.2 3.9-10 .6-1.8-9.5-9.9-24.7-9.8m0 1.3c13.4 0 22.4 6.4 23.3 8.3-.2.4-.4.9-.6 1.5-.8 1.9-2 4.7-3.1 7.9-2.1 1.2-16.1 3.9-29.1 3.9-8.1 0-13.7-1.2-15.8-3.3-.1-.7.6-3.5 3.1-7 2.2-3.2 8.6-10.7 19.7-11.3h2.5\"></path><g><defs><path id=\"M\" d=\"M103.1 149.4h50.2v20.7h-50.2z\"></path></defs><clipPath id=\"N\"><use xlink:href=\"#M\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#N)\"><path fill=\"#FCD4C3\" d=\"M103.084 169.317c-1.2 5.4 31.9-21.1 49.7-8.4 3.7-4.9-16-13.2-27.5-11.3-9.7 1.7-19.7 7.9-22.2 19.7\"></path></g></g><path fill=\"#FFF7E3\" d=\"M109.8 140.8c1.7 3 4.8 17.6 6.1 17.9s9.5 2.6 10.6 2.1c1.2-.5 1.1-3.3 2.3-2.5 1 .7 1.5 2 2.5 1.5 1.8-.9 7.1-4.2 8-5.6.8-1.5.7-9.8 0-16.4-3.4 1.6-23.5 3.7-29.5 3\"></path><g><defs><path id=\"O\" d=\"M109.8 137.9h30.1v23.2h-30.1z\"></path></defs><clipPath id=\"P\"><use xlink:href=\"#O\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#P)\"><path fill=\"#FFDC99\" d=\"M139.35 137.85c-3 1.3-18.7 3.1-26.6 3.1-1.2 0-2.1 0-2.9-.1 1.7 3 4.8 17.6 6.1 17.9 1.2.3 8 2.2 10.1 2.2.2 0 .4 0 .5-.1 1-.4 1.1-2.6 1.9-2.6.1 0 .3 0 .4.2.9.5 1.3 1.6 2.1 1.6.1 0 .3 0 .4-.1 1.8-.9 7.1-4.2 8-5.6.9-1.5.7-9.8 0-16.5m-.5.9c.6 6.8.6 14 0 15.2-.7 1.2-5.5 4.3-7.7 5.4h-.1c-.2 0-.5-.3-.7-.6-.3-.3-.6-.6-1-.9-.3-.2-.5-.3-.8-.3-.9 0-1.2.9-1.5 1.6-.2.4-.4 1-.7 1.1h-.3c-1.7 0-6.8-1.4-8.9-1.9-.4-.1-.7-.2-.9-.2-.6-.7-1.9-5.4-2.9-8.8-.9-3.1-1.7-6-2.4-7.7h1.9c7.5 0 21.5-1.6 26-2.9\"></path></g></g><g><defs><path id=\"Q\" d=\"M109.9 137.5h29.7v10.3h-29.7z\"></path></defs><clipPath id=\"R\"><use xlink:href=\"#Q\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#R)\"><path fill=\"#EADCBE\" d=\"M112.151 147.85c-.5-5.4 24.4-7.2 27.5-6.7 0-1.3-.2-2.1-.2-3.6-4.1 2.1-26.5 4.3-29.5 3.4.3.6 1.4 3.6 2.2 6.9\"></path></g></g><g><defs><path id=\"S\" d=\"M124 143.8h5.5v14.7H124z\"></path></defs><clipPath id=\"T\"><use xlink:href=\"#S\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#T)\"><path fill=\"#FFDC99\" d=\"M124.558 143.768c.5 1.2 1 2.3 1.4 3.5l1.2 3.6 1.1 3.6 1.1 3.6-1.7.5-.8-3.7-.9-3.7-.9-3.6c-.4-1.2-.7-2.4-1.1-3.5l.6-.3z\"></path></g></g><g><defs><path id=\"U\" d=\"M39.1 51.5h39.4v35.7H39.1z\"></path></defs><clipPath id=\"V\"><use xlink:href=\"#U\" overflow=\"visible\"></use></clipPath><g opacity=\".4\" clip-path=\"url(#V)\"><path fill=\"#FCD4C3\" d=\"M40.384 59.116c13.2 3.4 11.1 26.2 18.9 28 7.9 1.8 18.2-18.8 19.2-23.3-15.2-6.5-22.3-14.1-33.2-11.9-3.6.7-8.6 6.2-4.9 7.2\"></path></g></g><g><defs><path id=\"W\" d=\"M59.9 88.7h133.7v42.5H59.9z\"></path></defs><clipPath id=\"X\"><use xlink:href=\"#W\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#X)\"><path fill=\"#E3AB5E\" d=\"M76.967 125.833c16.6 1.3 30.3 2 35.2-3.1s6.7-27.7 14.7-27.1c6.8.5 9.1 29.9 13.5 30.7 4.4.9 35.5 9.4 43.3 1.4 7.7-8 11.3-13 9.5-17.8-1.8-4.8-47.3-20.3-56.6-21.2-9.3-.9-72.1 7-73.7 10.9-1.6 4-3.3 3.4-3 7.6.6 8.1.5 17.3 17.1 18.6\"></path></g></g><path fill=\"#333\" d=\"M123.5 92.4c1.2 0 5.9-.4 7 .5 6 4.7 5.8 24 12.1 30 5.6 5.4 36.2 9.3 41.5 3.2 5.3-6.1 13.1-24.7 14.9-26.1 1.8-1.3 5.8-2.3 7-4.2 1.2-1.8.2-10-2.6-9.6-2.8.4-8.1 2.1-11.4 1.2-3.3-1-19.4-11.1-59.9-5-3.9.6-7.8 0-10.5-.7S103.7 72.2 63 78c-4 .6-9.6-1.2-11.6-1-2 .2-2.6 6.5-1.8 8.1s5 3 5.5 5 4.2 21.6 13.8 29.7c10.2 8.6 36.2 2.6 38.5 1 10.3-7.3 12.6-28.4 16.1-28.4\"></path><g><defs><path id=\"Y\" d=\"M49.1 76.1h157.3v53.1H49.1z\"></path></defs><clipPath id=\"Z\"><use xlink:href=\"#Y\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#Z)\"><path fill=\"#1A1A1A\" d=\"M88.438 76.123c-7.1 0-15.6.5-25.6 2-.6.1-1.2.1-1.8.1-3.5 0-7.6-1.1-9.5-1.1h-.3c-2 .2-2.6 6.5-1.8 8.1.8 1.7 5 3 5.5 5s4.2 21.6 13.8 29.7c4 3.4 10.6 4.5 17.2 4.5 10 0 19.9-2.5 21.3-3.5 10.4-7.4 12.8-28.5 16.3-28.5.5 0 1.8-.1 3-.1 1.6 0 3.3.1 3.9.5 6 4.7 5.8 24 12.1 30 3.6 3.4 17.4 6.3 28.2 6.3 6.1 0 11.3-.9 13.2-3.1 5.3-6.1 13.1-24.7 14.9-26.1 1.8-1.4 5.8-2.3 7-4.2 1.1-1.8.2-9.6-2.5-9.6h-.2c-2.2.3-6 1.4-9.1 1.4-.8 0-1.6-.1-2.3-.3-2.6-.8-12.7-6.9-35.7-6.9-6.9 0-14.9.5-24.2 1.9-1.1.2-2.3.2-3.3.2-2.7 0-5.2-.4-7.1-.9-2-.2-11.2-5.4-33-5.4m0 2c18.1 0 27.4 3.6 30.8 5 .7.3 1.2.5 1.7.6 1.8.4 4.5 1 7.6 1 1.2 0 2.5-.1 3.6-.3 8.5-1.3 16.5-1.9 23.9-1.9 19 0 28.9 4.2 33.2 6.1.9.4 1.5.6 2 .8.9.3 1.8.4 2.9.4 2.2 0 4.6-.5 6.6-.9.9-.2 1.8-.4 2.5-.5.9 1 1.5 5.4 1 6.6-.4.6-2.1 1.4-3.3 1.9-1.2.5-2.3 1-3.1 1.6-1.1.8-2.2 2.9-5.4 9.3-3.1 6.1-6.9 13.7-9.8 17-1 1.2-4.6 2.4-11.8 2.4-10.5 0-23.9-2.8-26.9-5.7-2.8-2.6-4.2-8.7-5.6-14.6-1.6-6.6-3.1-12.8-6.6-15.6-.9-.7-2.3-1-5.1-1h-3.1c-2.8 0-4 3.3-6.1 9.3-2.3 6.6-5.6 15.5-11.3 19.6-1.3.8-10.7 3.2-20.2 3.2-7.3 0-12.8-1.4-15.9-4-3.8-3.2-9.1-10.7-12.9-27.8-.1-.4-.2-.7-.2-.9-.5-1.9-2.3-3-3.8-4-.6-.4-1.6-1.1-1.8-1.4-.4-.9 0-4.2.6-5.3.7 0 1.7.2 2.8.4 1.9.3 4.3.7 6.5.7.7 0 1.5 0 2.1-.2 8.9-1.1 17.4-1.8 25.1-1.8\"></path></g></g><g><defs><path id=\"aa\" d=\"M64.4 83.4h50.5v34.2H64.4z\"></path></defs><clipPath id=\"ab\"><use xlink:href=\"#aa\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#ab)\"><path fill=\"none\" stroke=\"#333\" stroke-width=\"4\" stroke-miterlimit=\"10\" d=\"M66.2 90.45c-.9 1.2-1.5 18.9 6 23.7 4.9 3.2 25.7 2.5 29.9.2 6.5-3.7 12.9-20.5 11.1-22.9-3-4-24.6-9.3-40.8-5.1-2 .4-5.1 2.6-6.2 4.1z\"></path></g></g><path fill=\"#FFF\" d=\"M66.2 90.4c-.9 1.2-1.5 18.9 6 23.7 4.9 3.2 25.7 2.5 29.9.2 6.5-3.7 12.9-20.5 11.1-22.9-3-4-24.6-9.3-40.8-5.1-2 .5-5.1 2.6-6.2 4.1\"></path><g><defs><path id=\"ac\" d=\"M139.8 88.1h50.1v35h-50.1z\"></path></defs><clipPath id=\"ad\"><use xlink:href=\"#ac\" overflow=\"visible\"></use></clipPath><g opacity=\".5\" clip-path=\"url(#ad)\"><path fill=\"none\" stroke=\"#333\" stroke-width=\"4\" stroke-miterlimit=\"10\" d=\"M188.394 98.163c.8 1.3-1 18.9-9 22.8-5.3 2.5-25.8-.9-29.6-3.7-6-4.5-10.2-22-8.1-24.2 3.5-3.6 25.6-6 41.1.2 1.9.7 4.7 3.3 5.6 4.9z\"></path></g></g><path fill=\"#FFF\" d=\"M188.4 98.2c.8 1.3-1 18.9-9 22.8-5.3 2.5-25.8-.9-29.6-3.7-6-4.5-10.2-22-8.1-24.2 3.5-3.6 25.6-6 41.1.2 1.9.7 4.6 3.2 5.6 4.9\"></path><path d=\"M89.9 101.2c-.5 3.9-2.5 6.8-4.4 6.5-1.9-.3-2.9-3.6-2.4-7.5s2.5-6.8 4.4-6.5c1.9.3 2.9 3.6 2.4 7.5M169.6 105.6c.4 3.9-.8 7.2-2.6 7.4-1.9.2-3.7-2.8-4.1-6.7-.4-3.9.8-7.2 2.6-7.4 1.8-.1 3.6 2.9 4.1 6.7\"></path><g><defs><path id=\"ae\" d=\"M49.1 81.6h156.3v46H49.1z\"></path></defs><clipPath id=\"af\"><use xlink:href=\"#ae\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#af)\"><path fill=\"#333\" d=\"M51.475 82.75c2.3 1.5 4.4.6 4.9 3.6s7.4 29 16 32c14.1 4.9 31.9.1 34.3-1.4 2.4-1.5 13.7-26.8 15.6-27.8 1.9-1 7.9.1 9.2.7 3.9 1.7 11.1 29.1 13 30.5 8.7 6.1 36.6 5.6 37.9 4 1.4-1.7 11.8-25.6 13.7-27 2.7-2.1 9-3.5 9.2-2.6.2.9-5.1 1.8-6.7 3.7-1.6 2-12.1 24.9-15.4 26.9-3.3 2-27.7 5.3-40.1-3.4-5.9-4.2-8.2-29.1-12.9-30.5-3-.9-5.3-.8-7.5-.2-2.9 1.9-7 23.1-15.7 28.4-3.5 2.1-30.6 7.4-38.7-1.1-15.1-15.8-10.5-29.9-15.4-31.9-3.3-1.4-4-3.2-4-4.4.3-1.3 1.4-.3 2.6.5\"></path></g></g><g><defs><path id=\"ag\" d=\"M51.6 77.2h20.2v3H51.6z\"></path></defs><clipPath id=\"ah\"><use xlink:href=\"#ag\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#ah)\"><path fill=\"#333\" d=\"M51.75 77.45c-1.6-.6 6.8 2.9 9.9 2.7 3.1-.2 8.3-2.4 10-2.9 1.5-.5-7.8 1.2-10.1 1.1s-8.9-.6-9.8-.9\"></path></g></g><g><defs><path id=\"ai\" d=\"M116.6 82.1h21.7v5.3h-21.7z\"></path></defs><clipPath id=\"aj\"><use xlink:href=\"#ai\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#aj)\"><path fill=\"#333\" d=\"M116.6 82.15c2.9 1.3 4.2 4.6 7 4.9s6.2.8 7.8-.1c1.6-.9 5.6-3 6.7-3.2 1.2-.2-8.7 1.3-12.4 1-3.7-.4-8-2.5-9.1-2.6\"></path></g></g><g><defs><path id=\"ak\" d=\"M187.4 86h12.3v3.9h-12.3z\"></path></defs><clipPath id=\"al\"><use xlink:href=\"#ak\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#al)\"><path fill=\"#333\" d=\"M187.575 85.975c-1.2-.5 4.4 4 6.1 3.8 1.7-.2 4.7-2.1 6-2.6 1-.4-4 1-5.5.7-1.5-.1-5.4-1.4-6.6-1.9\"></path></g></g><g><defs><path id=\"am\" d=\"M62.3 82.8h28.9v28.6H62.3z\"></path></defs><clipPath id=\"an\"><use xlink:href=\"#am\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#an)\"><path fill=\"#333\" d=\"M63.05 87.825c7.4-7.3 25-4.8 28.2-4.2-21.1 1.5-21.5 3.1-25.2 6.8-.5 2.9-1.2 12.5 2.1 20.9-3.7-2-7.6-21-5.1-23.5\"></path></g></g><g><defs><path id=\"ao\" d=\"M165.1 87.8h27.8v30.5h-27.8z\"></path></defs><clipPath id=\"ap\"><use xlink:href=\"#ao\" overflow=\"visible\"></use></clipPath><g opacity=\".3\" clip-path=\"url(#ap)\"><path fill=\"#333\" d=\"M192.46 95.698c-6.4-8.2-24.1-8.1-27.4-7.8 20.7 4.3 20.9 5.9 24.1 10.1.2 2.9-.4 12.5-4.7 20.4 3.8-1.6 10.1-20 8-22.7\"></path></g></g><g><defs><path id=\"aq\" d=\"M65.8 84.8h47.8v27.5H65.8z\"></path></defs><clipPath id=\"ar\"><use xlink:href=\"#aq\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#ar)\"><path fill=\"#D0DDDC\" d=\"M66.412 102.575c.7-8.6 1.5-15.6 18.6-16.1 13.7-.4 24.6 2.8 26.1 6.1 1 2.1.2 11.3-6.6 19.7 4.4-3.9 11.4-19.4 8.4-21.3-11.1-7.1-33.2-7.3-41.4-4.4-1.5.5-3.9 2.2-5.5 4-.3 2.2-.3 10.8.4 12\"></path></g></g><g><defs><path id=\"as\" d=\"M66.8 103H102v13.9H66.8z\"></path></defs><clipPath id=\"at\"><use xlink:href=\"#as\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#at)\"><path fill=\"#D0DDDC\" d=\"M66.884 103.2c2.6 16.8 33.3 11.7 35.1 11-.1.9-16.1 5.4-29.5.2-5.4-2-5.8-13.1-5.6-11.2\"></path></g></g><g><defs><path id=\"au\" d=\"M141.2 89.5h47.7V115h-47.7z\"></path></defs><clipPath id=\"av\"><use xlink:href=\"#au\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#av)\"><path fill=\"#D0DDDC\" d=\"M186.957 110.087c.4-8.7.4-15.6-16.4-18.2-13.5-2.1-24.7-.3-26.7 2.8-1.2 1.9-1.6 11.2 4.2 20.4-3.9-4.5-9-20.6-5.7-22.2 11.9-5.7 33.9-3.2 41.6.7 1.4.7 3.7 2.6 5 4.7-.1 2.1-1.1 10.7-2 11.8\"></path></g></g><g><defs><path id=\"aw\" d=\"M150.2 110.4h36.3v11.7h-36.3z\"></path></defs><clipPath id=\"ax\"><use xlink:href=\"#aw\" overflow=\"visible\"></use></clipPath><g clip-path=\"url(#ax)\"><path fill=\"#D0DDDC\" d=\"M186.383 110.613c-4.6 16.3-34.5 7.5-36.2 6.6 0 .9 15.3 7.3 29.3 3.9 5.6-1.4 7.5-12.4 6.9-10.5\"></path></g></g><g><defs><path id=\"ay\" d=\"M87.3 95.2h2v2h-2z\"></path></defs><clipPath id=\"az\"><use xlink:href=\"#ay\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#az)\"><path fill=\"#FFF\" d=\"M89.375 96.2c0-.5-.4-1-1-1s-1 .4-1 1 .4 1 1 1 1-.4 1-1\"></path></g></g><g><defs><path id=\"aA\" d=\"M166.3 99.9h2v2h-2z\"></path></defs><clipPath id=\"aB\"><use xlink:href=\"#aA\" overflow=\"visible\"></use></clipPath><g opacity=\".25\" clip-path=\"url(#aB)\"><path fill=\"#FFF\" d=\"M168.375 100.9c0-.5-.4-1-1-1-.5 0-1 .4-1 1s.4 1 1 1c.5 0 1-.5 1-1\"></path></g></g><g><defs><path id=\"aC\" d=\"M52 79.1h64.8v9.5H52z\"></path></defs><clipPath id=\"aD\"><use xlink:href=\"#aC\" overflow=\"visible\"></use></clipPath><g opacity=\".1\" clip-path=\"url(#aD)\"><path fill=\"#D0DDDC\" d=\"M52.025 81.675c2.4 2.7 3.9 3 7.1 2.6 31.1-4 48.3-3.9 56.8 4 1.8 1.7.8-5.1-2.6-6-26.2-6.9-45.2-.7-49.2-.2-4.1.6-7-.3-12.1-.4\"></path></g></g><g><defs><path id=\"aE\" d=\"M137.7 82.3h47.9v9.2h-47.9z\"></path></defs><clipPath id=\"aF\"><use xlink:href=\"#aE\" overflow=\"visible\"></use></clipPath><g opacity=\".1\" clip-path=\"url(#aF)\"><path fill=\"#D0DDDC\" d=\"M138.025 85.675c-.7.7-.4 7.9 3 5.2 9.8-7.8 30.3-6 44.6-1.2-2.3-4.5-19-7.6-28.4-7.5-4.5.2-17.3 1.5-19.2 3.5\"></path></g></g><path fill=\"#D0DDDC\" d=\"M197.2 91.4c0 .3-1.6.5-3.5.5s-3.5-.2-3.5-.5 1.6-.5 3.5-.5c2 0 3.5.3 3.5.5M62.4 82.8c0 .3-1.6.3-3.5 0s-3.4-.8-3.3-1.1 1.6-.3 3.5 0c1.9.2 3.4.7 3.3 1.1\"></path><g><path fill=\"#FFF\" d=\"M256.04 243.036c-.6-6.1-5.1-8.8-9.2-8.8-1.9 0-3.4.5-4 .8l-.8.4-.7.5c-1 .7-2.7 1.8-4.2 2.3-.1-1.2 0-2.8.2-4.2v-.2c1.1-10.7-1.1-17-6.7-18.6-.9-.3-1.9-.4-2.9-.4-3.4 0-6.4 1.6-8.3 3-1.6-2.1-4.4-3.2-7.8-3.2-5.1 0-9.2 2.4-10.7 6.2-.2.4-.4 1-.6 1.8-3-6.6-9.1-9.1-14.8-9.1-5.4 0-10.6 2.1-12.5 3.6-.1.1-.2.1-.3.2-5.1 3.6-9.1 8.2-11.9 13.7-1.4-4.7-4.4-9.2-9.7-12.5l-.1-.1c-.2-.1-.3-.2-.4-.2 5.3-9.3 9.9-21.7 7.1-33.5-3-12.6-10.4-14.4-14.5-14.4-1.7 0-3.5.3-5.3.9h-.2c-7.8 3.1-11.2 7.7-12 8.8-.8 1.2-9.3 14.2-11.4 33.2-.2 2.1-.5 4.3-.7 6.5-1.2-1.7-3.2-3.3-6.3-4.2-1-.3-2-.4-3-.4-4.3 0-7.8 2.6-9.7 4.4-1.6-2.4-4.2-3.9-7.1-4h-.7c-4.6 0-8.2 2-10.9 4.3-1.7-3-4.9-4.9-8.6-4.9h-1.5c-5.1 0-9.1 2.4-10.7 6.4-.1.3-.3.7-.4 1.2-4-5-9.1-7.3-16-7.3h-.7c-4.3.1-14.9 1.9-21.5 16.6-1 2.3-1.8 4.6-2.4 6.8-1.4-.7-2.8-.8-3.7-.8-3.4 0-6 1.9-7.2 3.8-1 1.5-4.2 6.7-2.6 11.9.9 2.8 2.8 4.9 5.6 6 2.5 1 5.6 1.9 7.9 2.6 1.4 3.3 4 7 8.6 10.5 3.2 2.5 7.4 3.7 12.2 3.7 8.2 0 16.1-3.5 16.9-3.9l.3-.2.1-.1c1.6 1.6 3.6 2.8 6.2 3.3.8.2 1.8.3 3 .3 4.4 0 7.5-2.3 10.4-6.5 2.3 3.7 6.6 5.7 11.6 5.7.3 0 .5.2.9.2 2.6 0 6-.9 8.7-5.4 2.3 4.1 6.5 6.5 11.5 6.5 4.4 0 8.3-1.8 9-2.2l.2-.1c1.5-.8 2.7-1.5 3.7-2 3.3 1.8 8.3 3.7 14.5 3.7 1.1 0 2.1 0 3.2-.2h.6c13-2.6 21.5-5.7 26.6-8.1 3.5 4 9.2 7.8 17.2 8.4.9.1 1.8.1 2.7.1 6.6 0 11.9-1.9 15.8-3.9 1.2 1.3 2.8 2.5 4.8 3.3 1.2.5 2.5.7 3.7.7 8.1 0 11.9-9.6 12.9-12.9l1.9-5.2c1.7 1.8 3.9 3.3 6.7 4.1 1.5.4 3.2.7 4.8.7 8.9 0 17.5-6.3 18.8-7.4 2.3-2.3 4.9-6.5 4.4-12.2\"></path></g><g><path fill=\"#E24B31\" d=\"M174.35 245.713s-1.1-4 3.1-11.6 7.4-3.5 7.4-3.5 3.6 3.9-.5 9.7c-4.1 5.8-10 5.4-10 5.4m-32.1 5.5c-4.8 12.5-16.4 7.4-16.4 7.4s-1.3-4.5 2.5-17 12.6-7.6 12.6-7.6 6.1 4.7 1.3 17.2m-8.7-52.5s7.2-18.9 9-9.7c1.8 9.2-15.2 36.5-15.2 36.5.2-6.1 6.2-26.8 6.2-26.8m-103.5 47c.3-12.1 8.2-17.4 11-14.8 2.8 2.6 1.8 8.4-3.5 11.9-5.1 3.6-7.5 2.9-7.5 2.9m219.3-2c-.4-4.1-4.1-2.6-4.1-2.6s-5.9 4.6-11.1 4.1c-5.2-.5-3.5-12.1-3.5-12.1s1.1-10.7-1.9-11.6c-3.1-.9-6.8 2.8-6.8 2.8s-4.7 5.2-6.9 11.8l-.6.2s.7-11.6-.1-14.3c-.6-1.3-6.2-1.2-7.1 1.1-.9 2.3-5.4 18.6-5.7 25.5 0 0-8.8 7.4-16.4 8.7-7.7 1.2-9.5-3.6-9.5-3.6s20.8-5.8 20.1-22.4c-.7-16.6-16.8-10.5-18.6-9.1-1.8 1.3-11.1 7-13.9 22.6-.1.5-.3 2.9-.3 2.9s-8.1 5.4-12.5 6.8c0 0 12.5-21.1-2.8-30.7-6.9-4.2-12.5 4.6-12.5 4.6s20.7-23 16.1-42.5c-2.2-9.3-6.8-10.3-11.1-8.8-6.5 2.6-8.9 6.3-8.9 6.3s-8.4 12.1-10.3 30.2-4.8 39.8-4.8 39.8-4 3.9-7.6 4.1c-3.7.2-2-10.9-2-10.9s2.8-16.9 2.6-19.8-.4-4.4-3.8-5.4c-3.3-1-7 3.3-7 3.3s-9.7 14.7-10.5 16.9l-.5.9-.5-.6s6.8-20 .3-20.3c-6.5-.3-10.8 7.1-10.8 7.1s-7.4 12.5-7.7 13.9l-.5-.6s3.1-14.5 2.5-18.1c-.6-3.6-4-2.8-4-2.8s-4.3-.5-5.4 2.3c-1.1 2.8-5.2 21-5.7 26.8 0 0-10.7 7.7-17.7 7.7-7 .1-6.3-4.5-6.3-4.5s25.8-8.8 18.8-26.3c-3.2-4.5-6.8-5.9-12-5.8-5.2.1-11.3 3.3-15.5 12.6-2 4.5-2.8 8.7-2.8 11.9 0 0-4.8.9-7.3-1.1s-3.9 0-3.9 0-4.3 6.1-.1 7.7c4.2 1.6 10.6 3.2 10.6 3.2.6 2.6 2.3 7 7.4 10.8 7.6 5.8 22.3-.9 22.3-.9l6-3.6s.2 5.4 4.6 6.2c4.4.8 6.2-.1 13.9-18.6 4.5-9.5 4.8-9 4.8-9l.5-.1s-3.5 18.1-2.1 23 7.1 4.4 7.1 4.4 3.2 1.1 5.7-7.9c2.6-9 7.4-18.4 7.4-18.4h.6s-2.1 18.1 1.1 24c3.3 5.9 11.7 1.8 11.7 1.8s5.9-3.1 6.8-4c0 0 7 5.9 16.9 4.8 22.1-4.4 30-10.3 30-10.3s3.8 9.6 15.6 10.5c13.5 1 20.8-7.5 20.8-7.5s-.1 5.5 4.6 7.4c4.7 1.9 7.9-8.3 7.9-8.3l7.9-21.1h.7s.4 13.5 8.2 15.7c7.8 2.2 17.9-5.6 17.9-5.6s2.2-1.1 1.7-5.2\"></path></g></svg>"
-
-/***/ }),
-
-/***/ 112:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseSet = __webpack_require__(113);
-
-/**
- * Sets the value at `path` of `object`. If a portion of `path` doesn't exist,
- * it's created. Arrays are created for missing index properties while objects
- * are created for all other missing properties. Use `_.setWith` to customize
- * `path` creation.
- *
- * **Note:** This method mutates `object`.
- *
- * @static
- * @memberOf _
- * @since 3.7.0
- * @category Object
- * @param {Object} object The object to modify.
- * @param {Array|string} path The path of the property to set.
- * @param {*} value The value to set.
- * @returns {Object} Returns `object`.
- * @example
- *
- * var object = { 'a': [{ 'b': { 'c': 3 } }] };
- *
- * _.set(object, 'a[0].b.c', 4);
- * console.log(object.a[0].b.c);
- * // => 4
- *
- * _.set(object, ['x', '0', 'y', 'z'], 5);
- * console.log(object.x[0].y.z);
- * // => 5
- */
-function set(object, path, value) {
-  return object == null ? object : baseSet(object, path, value);
-}
-
-module.exports = set;
-
-
-/***/ }),
-
-/***/ 113:
-/***/ (function(module, exports, __webpack_require__) {
-
-var assignValue = __webpack_require__(114),
-    castPath = __webpack_require__(69),
-    isIndex = __webpack_require__(117),
-    isObject = __webpack_require__(84),
-    toKey = __webpack_require__(111);
-
-/**
- * The base implementation of `_.set`.
- *
- * @private
- * @param {Object} object The object to modify.
- * @param {Array|string} path The path of the property to set.
- * @param {*} value The value to set.
- * @param {Function} [customizer] The function to customize path creation.
- * @returns {Object} Returns `object`.
- */
-function baseSet(object, path, value, customizer) {
-  if (!isObject(object)) {
-    return object;
-  }
-  path = castPath(path, object);
-
-  var index = -1,
-      length = path.length,
-      lastIndex = length - 1,
-      nested = object;
-
-  while (nested != null && ++index < length) {
-    var key = toKey(path[index]),
-        newValue = value;
-
-    if (index != lastIndex) {
-      var objValue = nested[key];
-      newValue = customizer ? customizer(objValue, key, nested) : undefined;
-      if (newValue === undefined) {
-        newValue = isObject(objValue)
-          ? objValue
-          : (isIndex(path[index + 1]) ? [] : {});
-      }
-    }
-    assignValue(nested, key, newValue);
-    nested = nested[key];
-  }
-  return object;
-}
-
-module.exports = baseSet;
-
-
-/***/ }),
-
-/***/ 114:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseAssignValue = __webpack_require__(115),
-    eq = __webpack_require__(97);
-
-/** Used for built-in method references. */
-var objectProto = Object.prototype;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/**
- * Assigns `value` to `key` of `object` if the existing value is not equivalent
- * using [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
- * for equality comparisons.
- *
- * @private
- * @param {Object} object The object to modify.
- * @param {string} key The key of the property to assign.
- * @param {*} value The value to assign.
- */
-function assignValue(object, key, value) {
-  var objValue = object[key];
-  if (!(hasOwnProperty.call(object, key) && eq(objValue, value)) ||
-      (value === undefined && !(key in object))) {
-    baseAssignValue(object, key, value);
-  }
-}
-
-module.exports = assignValue;
-
-
-/***/ }),
-
-/***/ 115:
-/***/ (function(module, exports, __webpack_require__) {
-
-var defineProperty = __webpack_require__(116);
-
-/**
- * The base implementation of `assignValue` and `assignMergeValue` without
- * value checks.
- *
- * @private
- * @param {Object} object The object to modify.
- * @param {string} key The key of the property to assign.
- * @param {*} value The value to assign.
- */
-function baseAssignValue(object, key, value) {
-  if (key == '__proto__' && defineProperty) {
-    defineProperty(object, key, {
-      'configurable': true,
-      'enumerable': true,
-      'value': value,
-      'writable': true
-    });
-  } else {
-    object[key] = value;
-  }
-}
-
-module.exports = baseAssignValue;
-
-
-/***/ }),
-
-/***/ 116:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getNative = __webpack_require__(81);
-
-var defineProperty = (function() {
-  try {
-    var func = getNative(Object, 'defineProperty');
-    func({}, '', {});
-    return func;
-  } catch (e) {}
-}());
-
-module.exports = defineProperty;
-
-
-/***/ }),
-
-/***/ 117:
-/***/ (function(module, exports) {
-
-/** Used as references for various `Number` constants. */
-var MAX_SAFE_INTEGER = 9007199254740991;
-
-/** Used to detect unsigned integer values. */
-var reIsUint = /^(?:0|[1-9]\d*)$/;
-
-/**
- * Checks if `value` is a valid array-like index.
- *
- * @private
- * @param {*} value The value to check.
- * @param {number} [length=MAX_SAFE_INTEGER] The upper bounds of a valid index.
- * @returns {boolean} Returns `true` if `value` is a valid index, else `false`.
- */
-function isIndex(value, length) {
-  var type = typeof value;
-  length = length == null ? MAX_SAFE_INTEGER : length;
-
-  return !!length &&
-    (type == 'number' ||
-      (type != 'symbol' && reIsUint.test(value))) &&
-        (value > -1 && value % 1 == 0 && value < length);
-}
-
-module.exports = isIndex;
-
 
 /***/ }),
 
@@ -1220,191 +596,6 @@ process.umask = function() { return 0; };
 
 /***/ }),
 
-/***/ 121:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-
-// If obj.hasOwnProperty has been overridden, then calling
-// obj.hasOwnProperty(prop) will break.
-// See: https://github.com/joyent/node/issues/1707
-function hasOwnProperty(obj, prop) {
-  return Object.prototype.hasOwnProperty.call(obj, prop);
-}
-
-module.exports = function(qs, sep, eq, options) {
-  sep = sep || '&';
-  eq = eq || '=';
-  var obj = {};
-
-  if (typeof qs !== 'string' || qs.length === 0) {
-    return obj;
-  }
-
-  var regexp = /\+/g;
-  qs = qs.split(sep);
-
-  var maxKeys = 1000;
-  if (options && typeof options.maxKeys === 'number') {
-    maxKeys = options.maxKeys;
-  }
-
-  var len = qs.length;
-  // maxKeys <= 0 means that we should not limit keys count
-  if (maxKeys > 0 && len > maxKeys) {
-    len = maxKeys;
-  }
-
-  for (var i = 0; i < len; ++i) {
-    var x = qs[i].replace(regexp, '%20'),
-        idx = x.indexOf(eq),
-        kstr, vstr, k, v;
-
-    if (idx >= 0) {
-      kstr = x.substr(0, idx);
-      vstr = x.substr(idx + 1);
-    } else {
-      kstr = x;
-      vstr = '';
-    }
-
-    k = decodeURIComponent(kstr);
-    v = decodeURIComponent(vstr);
-
-    if (!hasOwnProperty(obj, k)) {
-      obj[k] = v;
-    } else if (isArray(obj[k])) {
-      obj[k].push(v);
-    } else {
-      obj[k] = [obj[k], v];
-    }
-  }
-
-  return obj;
-};
-
-var isArray = Array.isArray || function (xs) {
-  return Object.prototype.toString.call(xs) === '[object Array]';
-};
-
-
-/***/ }),
-
-/***/ 122:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-
-var stringifyPrimitive = function(v) {
-  switch (typeof v) {
-    case 'string':
-      return v;
-
-    case 'boolean':
-      return v ? 'true' : 'false';
-
-    case 'number':
-      return isFinite(v) ? v : '';
-
-    default:
-      return '';
-  }
-};
-
-module.exports = function(obj, sep, eq, name) {
-  sep = sep || '&';
-  eq = eq || '=';
-  if (obj === null) {
-    obj = undefined;
-  }
-
-  if (typeof obj === 'object') {
-    return map(objectKeys(obj), function(k) {
-      var ks = encodeURIComponent(stringifyPrimitive(k)) + eq;
-      if (isArray(obj[k])) {
-        return map(obj[k], function(v) {
-          return ks + encodeURIComponent(stringifyPrimitive(v));
-        }).join(sep);
-      } else {
-        return ks + encodeURIComponent(stringifyPrimitive(obj[k]));
-      }
-    }).join(sep);
-
-  }
-
-  if (!name) return '';
-  return encodeURIComponent(stringifyPrimitive(name)) + eq +
-         encodeURIComponent(stringifyPrimitive(obj));
-};
-
-var isArray = Array.isArray || function (xs) {
-  return Object.prototype.toString.call(xs) === '[object Array]';
-};
-
-function map (xs, f) {
-  if (xs.map) return xs.map(f);
-  var res = [];
-  for (var i = 0; i < xs.length; i++) {
-    res.push(f(xs[i], i));
-  }
-  return res;
-}
-
-var objectKeys = Object.keys || function (obj) {
-  var res = [];
-  for (var key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) res.push(key);
-  }
-  return res;
-};
-
-
-/***/ }),
-
 /***/ 1233:
 /***/ (function(module, exports) {
 
@@ -1460,6 +651,10 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 "use strict";
 
 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 const feature = __webpack_require__(1461);
 
 module.exports = feature;
@@ -1496,212 +691,6 @@ exports.default = _Svg2.default;
 
 /***/ }),
 
-/***/ 1363:
-/***/ (function(module, exports, __webpack_require__) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-const networkRequest = __webpack_require__(1367);
-const workerUtils = __webpack_require__(1368);
-
-module.exports = {
-  networkRequest,
-  workerUtils
-};
-
-/***/ }),
-
-/***/ 1367:
-/***/ (function(module, exports) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-function networkRequest(url, opts) {
-  return fetch(url, {
-    cache: opts.loadFromCache ? "default" : "no-cache"
-  }).then(res => {
-    if (res.status >= 200 && res.status < 300) {
-      return res.text().then(text => ({ content: text }));
-    }
-    return Promise.reject(`request failed with status ${res.status}`);
-  });
-}
-
-module.exports = networkRequest;
-
-/***/ }),
-
-/***/ 1368:
-/***/ (function(module, exports) {
-
-function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
-
-function WorkerDispatcher() {
-  this.msgId = 1;
-  this.worker = null;
-} /* This Source Code Form is subject to the terms of the Mozilla Public
-   * License, v. 2.0. If a copy of the MPL was not distributed with this
-   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-WorkerDispatcher.prototype = {
-  start(url) {
-    this.worker = new Worker(url);
-    this.worker.onerror = () => {
-      console.error(`Error in worker ${url}`);
-    };
-  },
-
-  stop() {
-    if (!this.worker) {
-      return;
-    }
-
-    this.worker.terminate();
-    this.worker = null;
-  },
-
-  task(method, { queue = false } = {}) {
-    const calls = [];
-    const push = args => {
-      return new Promise((resolve, reject) => {
-        if (queue && calls.length === 0) {
-          Promise.resolve().then(flush);
-        }
-
-        calls.push([args, resolve, reject]);
-
-        if (!queue) {
-          flush();
-        }
-      });
-    };
-
-    const flush = () => {
-      const items = calls.slice();
-      calls.length = 0;
-
-      const id = this.msgId++;
-      this.worker.postMessage({ id, method, calls: items.map(item => item[0]) });
-
-      const listener = ({ data: result }) => {
-        if (result.id !== id) {
-          return;
-        }
-
-        if (!this.worker) {
-          return;
-        }
-
-        this.worker.removeEventListener("message", listener);
-
-        result.results.forEach((resultData, i) => {
-          const [, resolve, reject] = items[i];
-
-          if (resultData.error) {
-            reject(resultData.error);
-          } else {
-            resolve(resultData.response);
-          }
-        });
-      };
-
-      this.worker.addEventListener("message", listener);
-    };
-
-    return (...args) => push(args);
-  }
-};
-
-function workerHandler(publicInterface) {
-  return function (msg) {
-    const { id, method, calls } = msg.data;
-
-    Promise.all(calls.map(args => {
-      try {
-        const response = publicInterface[method].apply(undefined, args);
-        if (response instanceof Promise) {
-          return response.then(val => ({ response: val }),
-          // Error can't be sent via postMessage, so be sure to
-          // convert to string.
-          err => ({ error: err.toString() }));
-        } else {
-          return { response };
-        }
-      } catch (error) {
-        // Error can't be sent via postMessage, so be sure to convert to
-        // string.
-        return { error: error.toString() };
-      }
-    })).then(results => {
-      self.postMessage({ id, results });
-    });
-  };
-}
-
-function streamingWorkerHandler(publicInterface, { timeout = 100 } = {}, worker = self) {
-  let streamingWorker = (() => {
-    var _ref = _asyncToGenerator(function* (id, tasks) {
-      let isWorking = true;
-
-      const intervalId = setTimeout(function () {
-        isWorking = false;
-      }, timeout);
-
-      const results = [];
-      while (tasks.length !== 0 && isWorking) {
-        const { callback, context, args } = tasks.shift();
-        const result = yield callback.call(context, args);
-        results.push(result);
-      }
-      worker.postMessage({ id, status: "pending", data: results });
-      clearInterval(intervalId);
-
-      if (tasks.length !== 0) {
-        yield streamingWorker(id, tasks);
-      }
-    });
-
-    return function streamingWorker(_x, _x2) {
-      return _ref.apply(this, arguments);
-    };
-  })();
-
-  return (() => {
-    var _ref2 = _asyncToGenerator(function* (msg) {
-      const { id, method, args } = msg.data;
-      const workerMethod = publicInterface[method];
-      if (!workerMethod) {
-        console.error(`Could not find ${method} defined in worker.`);
-      }
-      worker.postMessage({ id, status: "start" });
-
-      try {
-        const tasks = workerMethod(args);
-        yield streamingWorker(id, tasks);
-        worker.postMessage({ id, status: "done" });
-      } catch (error) {
-        worker.postMessage({ id, status: "error", error });
-      }
-    });
-
-    return function (_x3) {
-      return _ref2.apply(this, arguments);
-    };
-  })();
-}
-
-module.exports = {
-  WorkerDispatcher,
-  workerHandler,
-  streamingWorkerHandler
-};
-
-/***/ }),
-
 /***/ 1376:
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -1715,11 +704,12 @@ module.exports = {
 const Menu = __webpack_require__(1464);
 const MenuItem = __webpack_require__(1466);
 const { PrefsHelper } = __webpack_require__(1467);
-const Services = __webpack_require__(22);
 const KeyShortcuts = __webpack_require__(1468);
 const { ZoomKeys } = __webpack_require__(1469);
 const EventEmitter = __webpack_require__(1382);
+const asyncStorage = __webpack_require__(3769);
 const SourceUtils = __webpack_require__(3637);
+const Telemetry = __webpack_require__(3750);
 const { getUnicodeHostname, getUnicodeUrlPath, getUnicodeUrl } = __webpack_require__(3638);
 
 module.exports = {
@@ -1727,10 +717,11 @@ module.exports = {
   Menu,
   MenuItem,
   PrefsHelper,
-  Services,
   ZoomKeys,
+  asyncStorage,
   EventEmitter,
   SourceUtils,
+  Telemetry,
   getUnicodeHostname,
   getUnicodeUrlPath,
   getUnicodeUrl
@@ -1867,42 +858,6 @@ EventEmitter.prototype = {
     }
   }
 };
-
-/***/ }),
-
-/***/ 14:
-/***/ (function(module, exports) {
-
-/**
- * Checks if `value` is object-like. A value is object-like if it's not `null`
- * and has a `typeof` result of "object".
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
- * @example
- *
- * _.isObjectLike({});
- * // => true
- *
- * _.isObjectLike([1, 2, 3]);
- * // => true
- *
- * _.isObjectLike(_.noop);
- * // => false
- *
- * _.isObjectLike(null);
- * // => false
- */
-function isObjectLike(value) {
-  return value != null && typeof value == 'object';
-}
-
-module.exports = isObjectLike;
-
 
 /***/ }),
 
@@ -2068,19 +1023,15 @@ module.exports = SplitBox;
 "use strict";
 
 
-const pick = __webpack_require__(67);
-const put = __webpack_require__(112);
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const { get: pick, set: put } = __webpack_require__(2);
 const fs = __webpack_require__(118);
 const path = __webpack_require__(119);
 
 let config;
-
-const flag = __webpack_require__(52);
-
-function isBrowser() {
-  return typeof window == "object" && typeof module == "undefined";
-}
-
 /**
  * Gets a config value for a given key
  * e.g "chrome.webSocketPort"
@@ -2091,43 +1042,6 @@ function getValue(key) {
 
 function setValue(key, value) {
   return put(config, key, value);
-}
-
-function isEnabled(key) {
-  return config.features && typeof config.features[key] == "object" ? config.features[key].enabled : config.features[key];
-}
-
-function isDevelopment() {
-  if (isBrowser()) {
-    if (true) {
-      return false;
-    }
-    const href = window.location ? window.location.href : "";
-    return href.match(/^file:/) || href.match(/localhost:/);
-  }
-
-  if (isFirefoxPanel()) {
-    // Default to production if compiling for the Firefox panel
-    return "production" === "development";
-  }
-  return "production" !== "production";
-}
-
-function isTesting() {
-  return flag.testing;
-}
-
-function isFirefoxPanel() {
-  return "firefox-panel" == "firefox-panel";
-}
-
-function isApplication() {
-  return "firefox-panel" == "application";
-}
-
-function isFirefox() {
-  return (/firefox/i.test(navigator.userAgent)
-  );
 }
 
 function setConfig(value) {
@@ -2146,14 +1060,8 @@ function updateLocalConfig(relativePath) {
 }
 
 module.exports = {
-  isEnabled,
   getValue,
   setValue,
-  isDevelopment,
-  isTesting,
-  isFirefoxPanel,
-  isApplication,
-  isFirefox,
   getConfig,
   setConfig,
   updateLocalConfig
@@ -3007,6 +1915,12 @@ class SplitBox extends Component {
   componentWillReceiveProps(nextProps) {
     if (this.props.vert !== nextProps.vert) {
       this.setState({ vert: nextProps.vert });
+    }
+    if (this.props.initialSize !== nextProps.initialSize || this.props.initialWidth !== nextProps.initialWidth || this.props.initialHeight !== nextProps.initialHeight) {
+      this.setState({
+        width: parseInt(nextProps.initialWidth || nextProps.initialSize, 10),
+        height: parseInt(nextProps.initialHeight || nextProps.initialSize, 10)
+      });
     }
   }
 
@@ -4306,7 +3220,7 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 /***/ (function(module, exports, __webpack_require__) {
 
 var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
-  Copyright (c) 2016 Jed Watson.
+  Copyright (c) 2017 Jed Watson.
   Licensed under the MIT License (MIT), see
   http://jedwatson.github.io/classnames
 */
@@ -4328,8 +3242,11 @@ var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
 
 			if (argType === 'string' || argType === 'number') {
 				classes.push(arg);
-			} else if (Array.isArray(arg)) {
-				classes.push(classNames.apply(null, arg));
+			} else if (Array.isArray(arg) && arg.length) {
+				var inner = classNames.apply(null, arg);
+				if (inner) {
+					classes.push(inner);
+				}
 			} else if (argType === 'object') {
 				for (var key in arg) {
 					if (hasOwn.call(arg, key) && arg[key]) {
@@ -4343,6 +3260,7 @@ var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;/*!
 	}
 
 	if (typeof module !== 'undefined' && module.exports) {
+		classNames.default = classNames;
 		module.exports = classNames;
 	} else if (true) {
 		// register as 'classnames', consistent with npm package name
@@ -4489,9 +3407,14 @@ function serializeAttrs(map) {
     var ret = {};
     for (var prop, i = 0; i < map.length; i++) {
         var key = map[i].name;
-        if (!startsWith(key, DataPropPrefix)) {
+        if (key == "class") {
+            prop = "className";
+        } else if (!startsWith(key, DataPropPrefix)) {
             prop = convertReactSVGDOMProperty(key);
+        } else {
+            prop = key;
         }
+
         ret[prop] = map[i].value;
     }
     return ret;
@@ -4501,7 +3424,7 @@ function getSVGFromSource(src) {
     var svgContainer = document.createElement('div');
     svgContainer.innerHTML = src;
     var svg = svgContainer.firstElementChild;
-    svg.remove(); // deref from parent element
+    svg.remove ? svg.remove() : svgContainer.removeChild(svg); // deref from parent element
     return svg;
 }
 
@@ -4517,6 +3440,13 @@ function extractSVGProps(src) {
 /***/ (function(module, exports) {
 
 module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 256 247\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" preserveAspectRatio=\"xMidYMid\"><defs><radialGradient cx=\"78.7636112%\" cy=\"37.8476394%\" fx=\"78.7636112%\" fy=\"37.8476394%\" r=\"89.8725577%\" id=\"radialGradient-1\"><stop stop-color=\"#F80090\" offset=\"0%\"></stop><stop stop-color=\"#4D008E\" offset=\"100%\"></stop></radialGradient><radialGradient cx=\"68.7389016%\" cy=\"4.39833672%\" fx=\"68.7389016%\" fy=\"4.39833672%\" r=\"81.7284786%\" id=\"radialGradient-2\"><stop stop-color=\"#57008E\" offset=\"0%\"></stop><stop stop-color=\"#5C008E\" offset=\"29.1746283%\"></stop><stop stop-color=\"#F80090\" offset=\"100%\"></stop></radialGradient><linearGradient x1=\"18.2386532%\" y1=\"0%\" x2=\"81.1591125%\" y2=\"84.3374763%\" id=\"linearGradient-3\"><stop stop-color=\"#F70090\" offset=\"0%\"></stop><stop stop-color=\"#E50090\" offset=\"66.9712865%\"></stop><stop stop-color=\"#D6008F\" stop-opacity=\"0.2\" offset=\"82.7147533%\"></stop><stop stop-color=\"#C10090\" stop-opacity=\"0\" offset=\"100%\"></stop></linearGradient><linearGradient x1=\"64.9060589%\" y1=\"71.5585538%\" x2=\"44.2897699%\" y2=\"50%\" id=\"linearGradient-4\"><stop stop-color=\"#B2008F\" stop-opacity=\"0.151340138\" offset=\"0%\"></stop><stop stop-color=\"#F70090\" stop-opacity=\"0.4\" offset=\"40.0350765%\"></stop><stop stop-color=\"#F60090\" stop-opacity=\"0.891668\" offset=\"64.8995536%\"></stop><stop stop-color=\"#FF0090\" offset=\"100%\"></stop></linearGradient></defs><g><path d=\"M16.6852208,157.125328 C3.56690702,87.3798324 38.2363025,20.1145078 117.808706,11.1662199 C106.835616,-0.558801732 91.8452087,-0.646905628 84.9481697,0.779380087 C72.770288,4.66044372 73.1525932,12.540855 59.3390152,22.7199675 C45.6064437,30.5634307 38.7094156,24.5568182 28.7057455,32.6879515 C18.7234849,40.7583874 25.6888528,59.2851732 21.5022823,62.8870857 C17.3464381,70.0905489 4.45500952,76.5077264 2.10834286,85.6062545 C0.168948918,97.2420641 7.37241212,105.553752 7.09535584,115.527778 C7.92652468,123.839467 -1.17920693,128.539449 0.129052814,135.275796 C4.0477368,146.281025 11.600845,152.904887 15.1615723,155.958047 C15.9781085,156.533531 16.8404881,157.95083 16.6852208,157.125328 L16.6852208,157.125328 Z\" fill=\"#FF0090\"></path><path d=\"M158.275491,60.578542 C155.368486,60.578542 153.011422,58.2214776 153.011422,55.3144727 C153.011422,52.4074679 155.368486,50.0504035 158.275491,50.0504035 C161.182496,50.0504035 163.53956,52.4074679 163.53956,55.3144727 C163.53956,58.2214776 161.182496,60.578542 158.275491,60.578542 L158.275491,60.578542 Z M19.7566405,164.732808 C7.1500258,104.116773 46.1602355,53.4676156 121.704062,78.4026805 C166.031404,104.334594 221.793282,102.646102 224.307422,85.8832 C230.514061,65.7878769 196.047681,24.3767065 144.515214,13.5715117 C42.2814476,-6.37654026 -12.8335943,104.116774 19.7566405,164.732808 L19.7566405,164.732808 Z\" fill=\"url(#radialGradient-1)\"></path><path d=\"M187.458604,171.493257 C202.639072,173.137863 217.048769,169.494573 230.402327,158.61014 C210.228197,181.112651 185.002777,192.426521 156.059262,195.505171 C169.878829,207.254019 183.20579,212.546348 195.955366,210.281136 C160.528734,220.05679 130.847947,209.296529 94.7424273,173.340673 C92.8517347,183.020022 103.074741,198.100667 113.611745,207.727264 C52.4742909,181.221845 47.1143627,98.6544556 121.66531,78.3442237 C44.3844415,41.214641 0.686373501,113.357693 22.1558444,172.485931 C43.1623368,218.026693 99.1402667,253.085223 160.492163,245.3753 C190.292928,241.7251 234.79401,221.178935 252.973664,172.485931 C240.160919,183.983766 217.257941,193.997836 207.037617,194.765984 C241.628648,177.478781 260.301586,148.103896 255.060336,107.955387 C247.895106,125.013742 238.441392,138.114625 226.616076,147.112305 C251.735653,107.955387 247.425219,87.716426 228.832526,65.4732398 C242.131228,102.044668 224.928249,142.633967 187.458604,171.493257 L187.458604,171.493257 Z\" fill=\"url(#radialGradient-2)\"></path><path d=\"M169.707072,213.625541 C167.082407,213.13513 175.656929,217.098842 159.079366,212.710316 C142.501804,208.32179 125.622502,204.092744 94.7424273,173.340673 C92.8517347,183.020022 103.074741,198.100667 113.611745,207.727264 C142.056275,227.564927 122.711866,218.286797 166.051946,233.269481 C169.52976,226.346862 169.707072,220.195346 169.707072,213.625541 L169.707072,213.625541 Z\" fill=\"url(#linearGradient-3)\"></path><path d=\"M114.601372,57.8510108 C114.601372,57.8510108 118.369452,52.2893628 119.836219,49.7810251 C121.633641,46.7072319 124.393939,41.104618 124.393939,41.104618 C124.393939,41.104618 95.389611,31.6417749 88.2716448,30.4871665 C66.1450215,36.2308801 66.0645022,45.5009559 78.435065,59.690116 C79.8114806,61.2693368 114.601372,57.8510108 114.601372,57.8510108 L114.601372,57.8510108 Z\" fill=\"url(#linearGradient-4)\"></path></g></svg>"
+
+/***/ }),
+
+/***/ 2:
+/***/ (function(module, exports) {
+
+module.exports = __WEBPACK_EXTERNAL_MODULE_2__;
 
 /***/ }),
 
@@ -4589,6 +3519,8 @@ var _react2 = _interopRequireDefault(_react);
 var _reactDom = __webpack_require__(4);
 
 var _reactDom2 = _interopRequireDefault(_reactDom);
+
+var _reactLifecyclesCompat = __webpack_require__(3770);
 
 var _PropTypes = __webpack_require__(335);
 
@@ -4724,12 +3656,13 @@ var Transition = function (_React$Component) {
     var appear = parentGroup && !parentGroup.isMounting ? props.enter : props.appear;
 
     var initialStatus = void 0;
-    _this.nextStatus = null;
+
+    _this.appearStatus = null;
 
     if (props.in) {
       if (appear) {
         initialStatus = EXITED;
-        _this.nextStatus = ENTERING;
+        _this.appearStatus = ENTERING;
       } else {
         initialStatus = ENTERED;
       }
@@ -4748,33 +3681,60 @@ var Transition = function (_React$Component) {
   }
 
   Transition.prototype.getChildContext = function getChildContext() {
-    return { transitionGroup: null }; // allows for nested Transitions
+    return { transitionGroup: null // allows for nested Transitions
+    };
   };
+
+  Transition.getDerivedStateFromProps = function getDerivedStateFromProps(_ref, prevState) {
+    var nextIn = _ref.in;
+
+    if (nextIn && prevState.status === UNMOUNTED) {
+      return { status: EXITED };
+    }
+    return null;
+  };
+
+  // getSnapshotBeforeUpdate(prevProps) {
+  //   let nextStatus = null
+
+  //   if (prevProps !== this.props) {
+  //     const { status } = this.state
+
+  //     if (this.props.in) {
+  //       if (status !== ENTERING && status !== ENTERED) {
+  //         nextStatus = ENTERING
+  //       }
+  //     } else {
+  //       if (status === ENTERING || status === ENTERED) {
+  //         nextStatus = EXITING
+  //       }
+  //     }
+  //   }
+
+  //   return { nextStatus }
+  // }
 
   Transition.prototype.componentDidMount = function componentDidMount() {
-    this.updateStatus(true);
+    this.updateStatus(true, this.appearStatus);
   };
 
-  Transition.prototype.componentWillReceiveProps = function componentWillReceiveProps(nextProps) {
-    var _ref = this.pendingState || this.state,
-        status = _ref.status;
+  Transition.prototype.componentDidUpdate = function componentDidUpdate(prevProps) {
+    var nextStatus = null;
+    if (prevProps !== this.props) {
+      var status = this.state.status;
 
-    if (nextProps.in) {
-      if (status === UNMOUNTED) {
-        this.setState({ status: EXITED });
-      }
-      if (status !== ENTERING && status !== ENTERED) {
-        this.nextStatus = ENTERING;
-      }
-    } else {
-      if (status === ENTERING || status === ENTERED) {
-        this.nextStatus = EXITING;
+
+      if (this.props.in) {
+        if (status !== ENTERING && status !== ENTERED) {
+          nextStatus = ENTERING;
+        }
+      } else {
+        if (status === ENTERING || status === ENTERED) {
+          nextStatus = EXITING;
+        }
       }
     }
-  };
-
-  Transition.prototype.componentDidUpdate = function componentDidUpdate() {
-    this.updateStatus();
+    this.updateStatus(false, nextStatus);
   };
 
   Transition.prototype.componentWillUnmount = function componentWillUnmount() {
@@ -4800,11 +3760,9 @@ var Transition = function (_React$Component) {
 
   Transition.prototype.updateStatus = function updateStatus() {
     var mounting = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
-
-    var nextStatus = this.nextStatus;
+    var nextStatus = arguments[1];
 
     if (nextStatus !== null) {
-      this.nextStatus = null;
       // nextStatus will always be ENTERING or EXITING.
       this.cancelNextCallback();
       var node = _reactDom2.default.findDOMNode(this);
@@ -4886,32 +3844,22 @@ var Transition = function (_React$Component) {
   };
 
   Transition.prototype.safeSetState = function safeSetState(nextState, callback) {
-    var _this4 = this;
-
-    // We need to track pending updates for instances where a cWRP fires quickly
-    // after cDM and before the state flushes, which would double trigger a
-    // transition
-    this.pendingState = nextState;
-
     // This shouldn't be necessary, but there are weird race conditions with
     // setState callbacks and unmounting in testing, so always make sure that
     // we can cancel any pending setState callbacks after we unmount.
     callback = this.setNextCallback(callback);
-    this.setState(nextState, function () {
-      _this4.pendingState = null;
-      callback();
-    });
+    this.setState(nextState, callback);
   };
 
   Transition.prototype.setNextCallback = function setNextCallback(callback) {
-    var _this5 = this;
+    var _this4 = this;
 
     var active = true;
 
     this.nextCallback = function (event) {
       if (active) {
         active = false;
-        _this5.nextCallback = null;
+        _this4.nextCallback = null;
 
         callback(event);
       }
@@ -5124,10 +4072,9 @@ Transition.propTypes =  false ? {
    * @type Function(node: HtmlElement) -> void
    */
   onExited: PropTypes.func
-} : {};
 
-// Name the function so it is clearer in the documentation
-function noop() {}
+  // Name the function so it is clearer in the documentation
+} : {};function noop() {}
 
 Transition.defaultProps = {
   in: false,
@@ -5152,747 +4099,7 @@ Transition.ENTERING = 2;
 Transition.ENTERED = 3;
 Transition.EXITING = 4;
 
-exports.default = Transition;
-
-/***/ }),
-
-/***/ 334:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-
-var punycode = __webpack_require__(3641);
-var util = __webpack_require__(336);
-
-exports.parse = urlParse;
-exports.resolve = urlResolve;
-exports.resolveObject = urlResolveObject;
-exports.format = urlFormat;
-
-exports.Url = Url;
-
-function Url() {
-  this.protocol = null;
-  this.slashes = null;
-  this.auth = null;
-  this.host = null;
-  this.port = null;
-  this.hostname = null;
-  this.hash = null;
-  this.search = null;
-  this.query = null;
-  this.pathname = null;
-  this.path = null;
-  this.href = null;
-}
-
-// Reference: RFC 3986, RFC 1808, RFC 2396
-
-// define these here so at least they only have to be
-// compiled once on the first module load.
-var protocolPattern = /^([a-z0-9.+-]+:)/i,
-    portPattern = /:[0-9]*$/,
-
-    // Special case for a simple path URL
-    simplePathPattern = /^(\/\/?(?!\/)[^\?\s]*)(\?[^\s]*)?$/,
-
-    // RFC 2396: characters reserved for delimiting URLs.
-    // We actually just auto-escape these.
-    delims = ['<', '>', '"', '`', ' ', '\r', '\n', '\t'],
-
-    // RFC 2396: characters not allowed for various reasons.
-    unwise = ['{', '}', '|', '\\', '^', '`'].concat(delims),
-
-    // Allowed by RFCs, but cause of XSS attacks.  Always escape these.
-    autoEscape = ['\''].concat(unwise),
-    // Characters that are never ever allowed in a hostname.
-    // Note that any invalid chars are also handled, but these
-    // are the ones that are *expected* to be seen, so we fast-path
-    // them.
-    nonHostChars = ['%', '/', '?', ';', '#'].concat(autoEscape),
-    hostEndingChars = ['/', '?', '#'],
-    hostnameMaxLen = 255,
-    hostnamePartPattern = /^[+a-z0-9A-Z_-]{0,63}$/,
-    hostnamePartStart = /^([+a-z0-9A-Z_-]{0,63})(.*)$/,
-    // protocols that can allow "unsafe" and "unwise" chars.
-    unsafeProtocol = {
-      'javascript': true,
-      'javascript:': true
-    },
-    // protocols that never have a hostname.
-    hostlessProtocol = {
-      'javascript': true,
-      'javascript:': true
-    },
-    // protocols that always contain a // bit.
-    slashedProtocol = {
-      'http': true,
-      'https': true,
-      'ftp': true,
-      'gopher': true,
-      'file': true,
-      'http:': true,
-      'https:': true,
-      'ftp:': true,
-      'gopher:': true,
-      'file:': true
-    },
-    querystring = __webpack_require__(66);
-
-function urlParse(url, parseQueryString, slashesDenoteHost) {
-  if (url && util.isObject(url) && url instanceof Url) return url;
-
-  var u = new Url;
-  u.parse(url, parseQueryString, slashesDenoteHost);
-  return u;
-}
-
-Url.prototype.parse = function(url, parseQueryString, slashesDenoteHost) {
-  if (!util.isString(url)) {
-    throw new TypeError("Parameter 'url' must be a string, not " + typeof url);
-  }
-
-  // Copy chrome, IE, opera backslash-handling behavior.
-  // Back slashes before the query string get converted to forward slashes
-  // See: https://code.google.com/p/chromium/issues/detail?id=25916
-  var queryIndex = url.indexOf('?'),
-      splitter =
-          (queryIndex !== -1 && queryIndex < url.indexOf('#')) ? '?' : '#',
-      uSplit = url.split(splitter),
-      slashRegex = /\\/g;
-  uSplit[0] = uSplit[0].replace(slashRegex, '/');
-  url = uSplit.join(splitter);
-
-  var rest = url;
-
-  // trim before proceeding.
-  // This is to support parse stuff like "  http://foo.com  \n"
-  rest = rest.trim();
-
-  if (!slashesDenoteHost && url.split('#').length === 1) {
-    // Try fast path regexp
-    var simplePath = simplePathPattern.exec(rest);
-    if (simplePath) {
-      this.path = rest;
-      this.href = rest;
-      this.pathname = simplePath[1];
-      if (simplePath[2]) {
-        this.search = simplePath[2];
-        if (parseQueryString) {
-          this.query = querystring.parse(this.search.substr(1));
-        } else {
-          this.query = this.search.substr(1);
-        }
-      } else if (parseQueryString) {
-        this.search = '';
-        this.query = {};
-      }
-      return this;
-    }
-  }
-
-  var proto = protocolPattern.exec(rest);
-  if (proto) {
-    proto = proto[0];
-    var lowerProto = proto.toLowerCase();
-    this.protocol = lowerProto;
-    rest = rest.substr(proto.length);
-  }
-
-  // figure out if it's got a host
-  // user@server is *always* interpreted as a hostname, and url
-  // resolution will treat //foo/bar as host=foo,path=bar because that's
-  // how the browser resolves relative URLs.
-  if (slashesDenoteHost || proto || rest.match(/^\/\/[^@\/]+@[^@\/]+/)) {
-    var slashes = rest.substr(0, 2) === '//';
-    if (slashes && !(proto && hostlessProtocol[proto])) {
-      rest = rest.substr(2);
-      this.slashes = true;
-    }
-  }
-
-  if (!hostlessProtocol[proto] &&
-      (slashes || (proto && !slashedProtocol[proto]))) {
-
-    // there's a hostname.
-    // the first instance of /, ?, ;, or # ends the host.
-    //
-    // If there is an @ in the hostname, then non-host chars *are* allowed
-    // to the left of the last @ sign, unless some host-ending character
-    // comes *before* the @-sign.
-    // URLs are obnoxious.
-    //
-    // ex:
-    // http://a@b@c/ => user:a@b host:c
-    // http://a@b?@c => user:a host:c path:/?@c
-
-    // v0.12 TODO(isaacs): This is not quite how Chrome does things.
-    // Review our test case against browsers more comprehensively.
-
-    // find the first instance of any hostEndingChars
-    var hostEnd = -1;
-    for (var i = 0; i < hostEndingChars.length; i++) {
-      var hec = rest.indexOf(hostEndingChars[i]);
-      if (hec !== -1 && (hostEnd === -1 || hec < hostEnd))
-        hostEnd = hec;
-    }
-
-    // at this point, either we have an explicit point where the
-    // auth portion cannot go past, or the last @ char is the decider.
-    var auth, atSign;
-    if (hostEnd === -1) {
-      // atSign can be anywhere.
-      atSign = rest.lastIndexOf('@');
-    } else {
-      // atSign must be in auth portion.
-      // http://a@b/c@d => host:b auth:a path:/c@d
-      atSign = rest.lastIndexOf('@', hostEnd);
-    }
-
-    // Now we have a portion which is definitely the auth.
-    // Pull that off.
-    if (atSign !== -1) {
-      auth = rest.slice(0, atSign);
-      rest = rest.slice(atSign + 1);
-      this.auth = decodeURIComponent(auth);
-    }
-
-    // the host is the remaining to the left of the first non-host char
-    hostEnd = -1;
-    for (var i = 0; i < nonHostChars.length; i++) {
-      var hec = rest.indexOf(nonHostChars[i]);
-      if (hec !== -1 && (hostEnd === -1 || hec < hostEnd))
-        hostEnd = hec;
-    }
-    // if we still have not hit it, then the entire thing is a host.
-    if (hostEnd === -1)
-      hostEnd = rest.length;
-
-    this.host = rest.slice(0, hostEnd);
-    rest = rest.slice(hostEnd);
-
-    // pull out port.
-    this.parseHost();
-
-    // we've indicated that there is a hostname,
-    // so even if it's empty, it has to be present.
-    this.hostname = this.hostname || '';
-
-    // if hostname begins with [ and ends with ]
-    // assume that it's an IPv6 address.
-    var ipv6Hostname = this.hostname[0] === '[' &&
-        this.hostname[this.hostname.length - 1] === ']';
-
-    // validate a little.
-    if (!ipv6Hostname) {
-      var hostparts = this.hostname.split(/\./);
-      for (var i = 0, l = hostparts.length; i < l; i++) {
-        var part = hostparts[i];
-        if (!part) continue;
-        if (!part.match(hostnamePartPattern)) {
-          var newpart = '';
-          for (var j = 0, k = part.length; j < k; j++) {
-            if (part.charCodeAt(j) > 127) {
-              // we replace non-ASCII char with a temporary placeholder
-              // we need this to make sure size of hostname is not
-              // broken by replacing non-ASCII by nothing
-              newpart += 'x';
-            } else {
-              newpart += part[j];
-            }
-          }
-          // we test again with ASCII char only
-          if (!newpart.match(hostnamePartPattern)) {
-            var validParts = hostparts.slice(0, i);
-            var notHost = hostparts.slice(i + 1);
-            var bit = part.match(hostnamePartStart);
-            if (bit) {
-              validParts.push(bit[1]);
-              notHost.unshift(bit[2]);
-            }
-            if (notHost.length) {
-              rest = '/' + notHost.join('.') + rest;
-            }
-            this.hostname = validParts.join('.');
-            break;
-          }
-        }
-      }
-    }
-
-    if (this.hostname.length > hostnameMaxLen) {
-      this.hostname = '';
-    } else {
-      // hostnames are always lower case.
-      this.hostname = this.hostname.toLowerCase();
-    }
-
-    if (!ipv6Hostname) {
-      // IDNA Support: Returns a punycoded representation of "domain".
-      // It only converts parts of the domain name that
-      // have non-ASCII characters, i.e. it doesn't matter if
-      // you call it with a domain that already is ASCII-only.
-      this.hostname = punycode.toASCII(this.hostname);
-    }
-
-    var p = this.port ? ':' + this.port : '';
-    var h = this.hostname || '';
-    this.host = h + p;
-    this.href += this.host;
-
-    // strip [ and ] from the hostname
-    // the host field still retains them, though
-    if (ipv6Hostname) {
-      this.hostname = this.hostname.substr(1, this.hostname.length - 2);
-      if (rest[0] !== '/') {
-        rest = '/' + rest;
-      }
-    }
-  }
-
-  // now rest is set to the post-host stuff.
-  // chop off any delim chars.
-  if (!unsafeProtocol[lowerProto]) {
-
-    // First, make 100% sure that any "autoEscape" chars get
-    // escaped, even if encodeURIComponent doesn't think they
-    // need to be.
-    for (var i = 0, l = autoEscape.length; i < l; i++) {
-      var ae = autoEscape[i];
-      if (rest.indexOf(ae) === -1)
-        continue;
-      var esc = encodeURIComponent(ae);
-      if (esc === ae) {
-        esc = escape(ae);
-      }
-      rest = rest.split(ae).join(esc);
-    }
-  }
-
-
-  // chop off from the tail first.
-  var hash = rest.indexOf('#');
-  if (hash !== -1) {
-    // got a fragment string.
-    this.hash = rest.substr(hash);
-    rest = rest.slice(0, hash);
-  }
-  var qm = rest.indexOf('?');
-  if (qm !== -1) {
-    this.search = rest.substr(qm);
-    this.query = rest.substr(qm + 1);
-    if (parseQueryString) {
-      this.query = querystring.parse(this.query);
-    }
-    rest = rest.slice(0, qm);
-  } else if (parseQueryString) {
-    // no query string, but parseQueryString still requested
-    this.search = '';
-    this.query = {};
-  }
-  if (rest) this.pathname = rest;
-  if (slashedProtocol[lowerProto] &&
-      this.hostname && !this.pathname) {
-    this.pathname = '/';
-  }
-
-  //to support http.request
-  if (this.pathname || this.search) {
-    var p = this.pathname || '';
-    var s = this.search || '';
-    this.path = p + s;
-  }
-
-  // finally, reconstruct the href based on what has been validated.
-  this.href = this.format();
-  return this;
-};
-
-// format a parsed object into a url string
-function urlFormat(obj) {
-  // ensure it's an object, and not a string url.
-  // If it's an obj, this is a no-op.
-  // this way, you can call url_format() on strings
-  // to clean up potentially wonky urls.
-  if (util.isString(obj)) obj = urlParse(obj);
-  if (!(obj instanceof Url)) return Url.prototype.format.call(obj);
-  return obj.format();
-}
-
-Url.prototype.format = function() {
-  var auth = this.auth || '';
-  if (auth) {
-    auth = encodeURIComponent(auth);
-    auth = auth.replace(/%3A/i, ':');
-    auth += '@';
-  }
-
-  var protocol = this.protocol || '',
-      pathname = this.pathname || '',
-      hash = this.hash || '',
-      host = false,
-      query = '';
-
-  if (this.host) {
-    host = auth + this.host;
-  } else if (this.hostname) {
-    host = auth + (this.hostname.indexOf(':') === -1 ?
-        this.hostname :
-        '[' + this.hostname + ']');
-    if (this.port) {
-      host += ':' + this.port;
-    }
-  }
-
-  if (this.query &&
-      util.isObject(this.query) &&
-      Object.keys(this.query).length) {
-    query = querystring.stringify(this.query);
-  }
-
-  var search = this.search || (query && ('?' + query)) || '';
-
-  if (protocol && protocol.substr(-1) !== ':') protocol += ':';
-
-  // only the slashedProtocols get the //.  Not mailto:, xmpp:, etc.
-  // unless they had them to begin with.
-  if (this.slashes ||
-      (!protocol || slashedProtocol[protocol]) && host !== false) {
-    host = '//' + (host || '');
-    if (pathname && pathname.charAt(0) !== '/') pathname = '/' + pathname;
-  } else if (!host) {
-    host = '';
-  }
-
-  if (hash && hash.charAt(0) !== '#') hash = '#' + hash;
-  if (search && search.charAt(0) !== '?') search = '?' + search;
-
-  pathname = pathname.replace(/[?#]/g, function(match) {
-    return encodeURIComponent(match);
-  });
-  search = search.replace('#', '%23');
-
-  return protocol + host + pathname + search + hash;
-};
-
-function urlResolve(source, relative) {
-  return urlParse(source, false, true).resolve(relative);
-}
-
-Url.prototype.resolve = function(relative) {
-  return this.resolveObject(urlParse(relative, false, true)).format();
-};
-
-function urlResolveObject(source, relative) {
-  if (!source) return relative;
-  return urlParse(source, false, true).resolveObject(relative);
-}
-
-Url.prototype.resolveObject = function(relative) {
-  if (util.isString(relative)) {
-    var rel = new Url();
-    rel.parse(relative, false, true);
-    relative = rel;
-  }
-
-  var result = new Url();
-  var tkeys = Object.keys(this);
-  for (var tk = 0; tk < tkeys.length; tk++) {
-    var tkey = tkeys[tk];
-    result[tkey] = this[tkey];
-  }
-
-  // hash is always overridden, no matter what.
-  // even href="" will remove it.
-  result.hash = relative.hash;
-
-  // if the relative url is empty, then there's nothing left to do here.
-  if (relative.href === '') {
-    result.href = result.format();
-    return result;
-  }
-
-  // hrefs like //foo/bar always cut to the protocol.
-  if (relative.slashes && !relative.protocol) {
-    // take everything except the protocol from relative
-    var rkeys = Object.keys(relative);
-    for (var rk = 0; rk < rkeys.length; rk++) {
-      var rkey = rkeys[rk];
-      if (rkey !== 'protocol')
-        result[rkey] = relative[rkey];
-    }
-
-    //urlParse appends trailing / to urls like http://www.example.com
-    if (slashedProtocol[result.protocol] &&
-        result.hostname && !result.pathname) {
-      result.path = result.pathname = '/';
-    }
-
-    result.href = result.format();
-    return result;
-  }
-
-  if (relative.protocol && relative.protocol !== result.protocol) {
-    // if it's a known url protocol, then changing
-    // the protocol does weird things
-    // first, if it's not file:, then we MUST have a host,
-    // and if there was a path
-    // to begin with, then we MUST have a path.
-    // if it is file:, then the host is dropped,
-    // because that's known to be hostless.
-    // anything else is assumed to be absolute.
-    if (!slashedProtocol[relative.protocol]) {
-      var keys = Object.keys(relative);
-      for (var v = 0; v < keys.length; v++) {
-        var k = keys[v];
-        result[k] = relative[k];
-      }
-      result.href = result.format();
-      return result;
-    }
-
-    result.protocol = relative.protocol;
-    if (!relative.host && !hostlessProtocol[relative.protocol]) {
-      var relPath = (relative.pathname || '').split('/');
-      while (relPath.length && !(relative.host = relPath.shift()));
-      if (!relative.host) relative.host = '';
-      if (!relative.hostname) relative.hostname = '';
-      if (relPath[0] !== '') relPath.unshift('');
-      if (relPath.length < 2) relPath.unshift('');
-      result.pathname = relPath.join('/');
-    } else {
-      result.pathname = relative.pathname;
-    }
-    result.search = relative.search;
-    result.query = relative.query;
-    result.host = relative.host || '';
-    result.auth = relative.auth;
-    result.hostname = relative.hostname || relative.host;
-    result.port = relative.port;
-    // to support http.request
-    if (result.pathname || result.search) {
-      var p = result.pathname || '';
-      var s = result.search || '';
-      result.path = p + s;
-    }
-    result.slashes = result.slashes || relative.slashes;
-    result.href = result.format();
-    return result;
-  }
-
-  var isSourceAbs = (result.pathname && result.pathname.charAt(0) === '/'),
-      isRelAbs = (
-          relative.host ||
-          relative.pathname && relative.pathname.charAt(0) === '/'
-      ),
-      mustEndAbs = (isRelAbs || isSourceAbs ||
-                    (result.host && relative.pathname)),
-      removeAllDots = mustEndAbs,
-      srcPath = result.pathname && result.pathname.split('/') || [],
-      relPath = relative.pathname && relative.pathname.split('/') || [],
-      psychotic = result.protocol && !slashedProtocol[result.protocol];
-
-  // if the url is a non-slashed url, then relative
-  // links like ../.. should be able
-  // to crawl up to the hostname, as well.  This is strange.
-  // result.protocol has already been set by now.
-  // Later on, put the first path part into the host field.
-  if (psychotic) {
-    result.hostname = '';
-    result.port = null;
-    if (result.host) {
-      if (srcPath[0] === '') srcPath[0] = result.host;
-      else srcPath.unshift(result.host);
-    }
-    result.host = '';
-    if (relative.protocol) {
-      relative.hostname = null;
-      relative.port = null;
-      if (relative.host) {
-        if (relPath[0] === '') relPath[0] = relative.host;
-        else relPath.unshift(relative.host);
-      }
-      relative.host = null;
-    }
-    mustEndAbs = mustEndAbs && (relPath[0] === '' || srcPath[0] === '');
-  }
-
-  if (isRelAbs) {
-    // it's absolute.
-    result.host = (relative.host || relative.host === '') ?
-                  relative.host : result.host;
-    result.hostname = (relative.hostname || relative.hostname === '') ?
-                      relative.hostname : result.hostname;
-    result.search = relative.search;
-    result.query = relative.query;
-    srcPath = relPath;
-    // fall through to the dot-handling below.
-  } else if (relPath.length) {
-    // it's relative
-    // throw away the existing file, and take the new path instead.
-    if (!srcPath) srcPath = [];
-    srcPath.pop();
-    srcPath = srcPath.concat(relPath);
-    result.search = relative.search;
-    result.query = relative.query;
-  } else if (!util.isNullOrUndefined(relative.search)) {
-    // just pull out the search.
-    // like href='?foo'.
-    // Put this after the other two cases because it simplifies the booleans
-    if (psychotic) {
-      result.hostname = result.host = srcPath.shift();
-      //occationaly the auth can get stuck only in host
-      //this especially happens in cases like
-      //url.resolveObject('mailto:local1@domain1', 'local2@domain2')
-      var authInHost = result.host && result.host.indexOf('@') > 0 ?
-                       result.host.split('@') : false;
-      if (authInHost) {
-        result.auth = authInHost.shift();
-        result.host = result.hostname = authInHost.shift();
-      }
-    }
-    result.search = relative.search;
-    result.query = relative.query;
-    //to support http.request
-    if (!util.isNull(result.pathname) || !util.isNull(result.search)) {
-      result.path = (result.pathname ? result.pathname : '') +
-                    (result.search ? result.search : '');
-    }
-    result.href = result.format();
-    return result;
-  }
-
-  if (!srcPath.length) {
-    // no path at all.  easy.
-    // we've already handled the other stuff above.
-    result.pathname = null;
-    //to support http.request
-    if (result.search) {
-      result.path = '/' + result.search;
-    } else {
-      result.path = null;
-    }
-    result.href = result.format();
-    return result;
-  }
-
-  // if a url ENDs in . or .., then it must get a trailing slash.
-  // however, if it ends in anything else non-slashy,
-  // then it must NOT get a trailing slash.
-  var last = srcPath.slice(-1)[0];
-  var hasTrailingSlash = (
-      (result.host || relative.host || srcPath.length > 1) &&
-      (last === '.' || last === '..') || last === '');
-
-  // strip single dots, resolve double dots to parent dir
-  // if the path tries to go above the root, `up` ends up > 0
-  var up = 0;
-  for (var i = srcPath.length; i >= 0; i--) {
-    last = srcPath[i];
-    if (last === '.') {
-      srcPath.splice(i, 1);
-    } else if (last === '..') {
-      srcPath.splice(i, 1);
-      up++;
-    } else if (up) {
-      srcPath.splice(i, 1);
-      up--;
-    }
-  }
-
-  // if the path is allowed to go above the root, restore leading ..s
-  if (!mustEndAbs && !removeAllDots) {
-    for (; up--; up) {
-      srcPath.unshift('..');
-    }
-  }
-
-  if (mustEndAbs && srcPath[0] !== '' &&
-      (!srcPath[0] || srcPath[0].charAt(0) !== '/')) {
-    srcPath.unshift('');
-  }
-
-  if (hasTrailingSlash && (srcPath.join('/').substr(-1) !== '/')) {
-    srcPath.push('');
-  }
-
-  var isAbsolute = srcPath[0] === '' ||
-      (srcPath[0] && srcPath[0].charAt(0) === '/');
-
-  // put the host back
-  if (psychotic) {
-    result.hostname = result.host = isAbsolute ? '' :
-                                    srcPath.length ? srcPath.shift() : '';
-    //occationaly the auth can get stuck only in host
-    //this especially happens in cases like
-    //url.resolveObject('mailto:local1@domain1', 'local2@domain2')
-    var authInHost = result.host && result.host.indexOf('@') > 0 ?
-                     result.host.split('@') : false;
-    if (authInHost) {
-      result.auth = authInHost.shift();
-      result.host = result.hostname = authInHost.shift();
-    }
-  }
-
-  mustEndAbs = mustEndAbs || (result.host && srcPath.length);
-
-  if (mustEndAbs && !isAbsolute) {
-    srcPath.unshift('');
-  }
-
-  if (!srcPath.length) {
-    result.pathname = null;
-    result.path = null;
-  } else {
-    result.pathname = srcPath.join('/');
-  }
-
-  //to support request.http
-  if (!util.isNull(result.pathname) || !util.isNull(result.search)) {
-    result.path = (result.pathname ? result.pathname : '') +
-                  (result.search ? result.search : '');
-  }
-  result.auth = relative.auth || result.auth;
-  result.slashes = result.slashes || relative.slashes;
-  result.href = result.format();
-  return result;
-};
-
-Url.prototype.parseHost = function() {
-  var host = this.host;
-  var port = portPattern.exec(host);
-  if (port) {
-    port = port[0];
-    if (port !== ':') {
-      this.port = port.substr(1);
-    }
-    host = host.substr(0, host.length - port.length);
-  }
-  if (host) this.hostname = host;
-};
-
+exports.default = (0, _reactLifecyclesCompat.polyfill)(Transition);
 
 /***/ }),
 
@@ -5950,30 +4157,6 @@ var classNamesShape = exports.classNamesShape = _propTypes2.default.oneOfType([_
   exitDone: _propTypes2.default.string,
   exitActive: _propTypes2.default.string
 })]);
-
-/***/ }),
-
-/***/ 336:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-module.exports = {
-  isString: function(arg) {
-    return typeof(arg) === 'string';
-  },
-  isObject: function(arg) {
-    return typeof(arg) === 'object' && arg !== null;
-  },
-  isNull: function(arg) {
-    return arg === null;
-  },
-  isNullOrUndefined: function(arg) {
-    return arg == null;
-  }
-};
-
 
 /***/ }),
 
@@ -6468,7 +4651,7 @@ module.exports = {
 
 
 
-const punycode = __webpack_require__(3641);
+const punycode = __webpack_require__(916);
 
 /**
  * Gets a readble Unicode hostname from a hostname.
@@ -6574,7 +4757,2623 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 
 /***/ }),
 
-/***/ 3641:
+/***/ 3642:
+/***/ (function(module, exports) {
+
+module.exports = __WEBPACK_EXTERNAL_MODULE_3642__;
+
+/***/ }),
+
+/***/ 3643:
+/***/ (function(module, exports) {
+
+module.exports = __WEBPACK_EXTERNAL_MODULE_3643__;
+
+/***/ }),
+
+/***/ 365:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M1.5 14.042h4.095a.5.5 0 0 0 0-1H1.5a.5.5 0 1 0 0 1zM7.983 2a.5.5 0 0 1 .517.5v7.483l3.136-3.326a.5.5 0 1 1 .728.686l-4 4.243a.499.499 0 0 1-.73-.004L3.635 7.343a.5.5 0 0 1 .728-.686L7.5 9.983V3H1.536C1.24 3 1 2.776 1 2.5s.24-.5.536-.5h6.447zM10.5 14.042h4.095a.5.5 0 0 0 0-1H10.5a.5.5 0 1 0 0 1z\"></path></g></svg>"
+
+/***/ }),
+
+/***/ 3651:
+/***/ (function(module, exports, __webpack_require__) {
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+const networkRequest = __webpack_require__(3653);
+const workerUtils = __webpack_require__(3654);
+
+module.exports = {
+  networkRequest,
+  workerUtils
+};
+
+/***/ }),
+
+/***/ 3653:
+/***/ (function(module, exports) {
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+function networkRequest(url, opts) {
+  return fetch(url, {
+    cache: opts.loadFromCache ? "default" : "no-cache"
+  }).then(res => {
+    if (res.status >= 200 && res.status < 300) {
+      return res.text().then(text => ({ content: text }));
+    }
+    return Promise.reject(`request failed with status ${res.status}`);
+  });
+}
+
+module.exports = networkRequest;
+
+/***/ }),
+
+/***/ 3654:
+/***/ (function(module, exports) {
+
+function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
+
+function WorkerDispatcher() {
+  this.msgId = 1;
+  this.worker = null;
+} /* This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+WorkerDispatcher.prototype = {
+  start(url) {
+    this.worker = new Worker(url);
+    this.worker.onerror = () => {
+      console.error(`Error in worker ${url}`);
+    };
+  },
+
+  stop() {
+    if (!this.worker) {
+      return;
+    }
+
+    this.worker.terminate();
+    this.worker = null;
+  },
+
+  task(method, { queue = false } = {}) {
+    const calls = [];
+    const push = args => {
+      return new Promise((resolve, reject) => {
+        if (queue && calls.length === 0) {
+          Promise.resolve().then(flush);
+        }
+
+        calls.push([args, resolve, reject]);
+
+        if (!queue) {
+          flush();
+        }
+      });
+    };
+
+    const flush = () => {
+      const items = calls.slice();
+      calls.length = 0;
+
+      if (!this.worker) {
+        return;
+      }
+
+      const id = this.msgId++;
+      this.worker.postMessage({
+        id,
+        method,
+        calls: items.map(item => item[0])
+      });
+
+      const listener = ({ data: result }) => {
+        if (result.id !== id) {
+          return;
+        }
+
+        if (!this.worker) {
+          return;
+        }
+
+        this.worker.removeEventListener("message", listener);
+
+        result.results.forEach((resultData, i) => {
+          const [, resolve, reject] = items[i];
+
+          if (resultData.error) {
+            reject(resultData.error);
+          } else {
+            resolve(resultData.response);
+          }
+        });
+      };
+
+      this.worker.addEventListener("message", listener);
+    };
+
+    return (...args) => push(args);
+  }
+};
+
+function workerHandler(publicInterface) {
+  return function (msg) {
+    const { id, method, calls } = msg.data;
+
+    Promise.all(calls.map(args => {
+      try {
+        const response = publicInterface[method].apply(undefined, args);
+        if (response instanceof Promise) {
+          return response.then(val => ({ response: val }),
+          // Error can't be sent via postMessage, so be sure to
+          // convert to string.
+          err => ({ error: err.toString() }));
+        }
+        return { response };
+      } catch (error) {
+        // Error can't be sent via postMessage, so be sure to convert to
+        // string.
+        return { error: error.toString() };
+      }
+    })).then(results => {
+      self.postMessage({ id, results });
+    });
+  };
+}
+
+function streamingWorkerHandler(publicInterface, { timeout = 100 } = {}, worker = self) {
+  let streamingWorker = (() => {
+    var _ref = _asyncToGenerator(function* (id, tasks) {
+      let isWorking = true;
+
+      const timeoutId = setTimeout(function () {
+        isWorking = false;
+      }, timeout);
+
+      const results = [];
+      while (tasks.length !== 0 && isWorking) {
+        const { callback, context, args } = tasks.shift();
+        const result = yield callback.call(context, args);
+        results.push(result);
+      }
+      worker.postMessage({ id, status: "pending", data: results });
+      clearTimeout(timeoutId);
+
+      if (tasks.length !== 0) {
+        yield streamingWorker(id, tasks);
+      }
+    });
+
+    return function streamingWorker(_x, _x2) {
+      return _ref.apply(this, arguments);
+    };
+  })();
+
+  return (() => {
+    var _ref2 = _asyncToGenerator(function* (msg) {
+      const { id, method, args } = msg.data;
+      const workerMethod = publicInterface[method];
+      if (!workerMethod) {
+        console.error(`Could not find ${method} defined in worker.`);
+      }
+      worker.postMessage({ id, status: "start" });
+
+      try {
+        const tasks = workerMethod(args);
+        yield streamingWorker(id, tasks);
+        worker.postMessage({ id, status: "done" });
+      } catch (error) {
+        worker.postMessage({ id, status: "error", error });
+      }
+    });
+
+    return function (_x3) {
+      return _ref2.apply(this, arguments);
+    };
+  })();
+}
+
+module.exports = {
+  WorkerDispatcher,
+  workerHandler,
+  streamingWorkerHandler
+};
+
+/***/ }),
+
+/***/ 366:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M5 13.5H1a.5.5 0 1 0 0 1h4a.5.5 0 1 0 0-1zM12 13.5H8a.5.5 0 1 0 0 1h4a.5.5 0 1 0 0-1zM6.11 5.012A.427.427 0 0 1 6.21 5h7.083L9.646 1.354a.5.5 0 1 1 .708-.708l4.5 4.5a.498.498 0 0 1 0 .708l-4.5 4.5a.5.5 0 0 1-.708-.708L13.293 6H6.5v5.5a.5.5 0 1 1-1 0v-6a.5.5 0 0 1 .61-.488z\"></path></g></svg>"
+
+/***/ }),
+
+/***/ 3669:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var _tree = __webpack_require__(3670);
+
+var _tree2 = _interopRequireDefault(_tree);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+module.exports = {
+  Tree: _tree2.default
+}; /* This Source Code Form is subject to the terms of the Mozilla Public
+    * License, v. 2.0. If a copy of the MPL was not distributed with this
+    * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/***/ }),
+
+/***/ 367:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M13.297 6.912C12.595 4.39 10.167 2.5 7.398 2.5A5.898 5.898 0 0 0 1.5 8.398a.5.5 0 0 0 1 0A4.898 4.898 0 0 1 7.398 3.5c2.75 0 5.102 2.236 5.102 4.898v.004L8.669 7.029a.5.5 0 0 0-.338.942l4.462 1.598a.5.5 0 0 0 .651-.34.506.506 0 0 0 .02-.043l2-5a.5.5 0 1 0-.928-.372l-1.24 3.098z\"></path><circle cx=\"7\" cy=\"12\" r=\"1\"></circle></g></svg>"
+
+/***/ }),
+
+/***/ 3670:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _reactDomFactories = __webpack_require__(3643);
+
+var _reactDomFactories2 = _interopRequireDefault(_reactDomFactories);
+
+var _propTypes = __webpack_require__(3642);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+const { Component, createFactory } = _react2.default; /* This Source Code Form is subject to the terms of the Mozilla Public
+                                                       * License, v. 2.0. If a copy of the MPL was not distributed with this
+                                                       * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+__webpack_require__(3671);
+
+// depth
+const AUTO_EXPAND_DEPTH = 0;
+
+/**
+ * An arrow that displays whether its node is expanded (▼) or collapsed
+ * (▶). When its node has no children, it is hidden.
+ */
+class ArrowExpander extends Component {
+  static get propTypes() {
+    return {
+      expanded: _propTypes2.default.bool
+    };
+  }
+
+  shouldComponentUpdate(nextProps, nextState) {
+    return this.props.expanded !== nextProps.expanded;
+  }
+
+  render() {
+    const { expanded } = this.props;
+
+    const classNames = ["arrow"];
+    if (expanded) {
+      classNames.push("expanded");
+    }
+    return _reactDomFactories2.default.img({
+      className: classNames.join(" ")
+    });
+  }
+}
+
+const treeIndent = _reactDomFactories2.default.span({ className: "tree-indent" }, "\u200B");
+
+class TreeNode extends Component {
+  static get propTypes() {
+    return {
+      id: _propTypes2.default.any.isRequired,
+      index: _propTypes2.default.number.isRequired,
+      depth: _propTypes2.default.number.isRequired,
+      focused: _propTypes2.default.bool.isRequired,
+      expanded: _propTypes2.default.bool.isRequired,
+      item: _propTypes2.default.any.isRequired,
+      isExpandable: _propTypes2.default.bool.isRequired,
+      onClick: _propTypes2.default.func,
+      renderItem: _propTypes2.default.func.isRequired
+    };
+  }
+
+  shouldComponentUpdate(nextProps) {
+    return this.props.item !== nextProps.item || this.props.focused !== nextProps.focused || this.props.expanded !== nextProps.expanded;
+  }
+
+  render() {
+    const {
+      depth,
+      id,
+      item,
+      focused,
+      expanded,
+      renderItem,
+      isExpandable
+    } = this.props;
+
+    const arrow = isExpandable ? ArrowExpanderFactory({
+      item,
+      expanded
+    }) : null;
+
+    let ariaExpanded;
+    if (this.props.isExpandable) {
+      ariaExpanded = false;
+    }
+    if (this.props.expanded) {
+      ariaExpanded = true;
+    }
+
+    const indents = Array.from({ length: depth }).fill(treeIndent);
+    const items = indents.concat(renderItem(item, depth, focused, arrow, expanded));
+
+    return _reactDomFactories2.default.div({
+      id,
+      className: `tree-node${focused ? " focused" : ""}`,
+      onClick: this.props.onClick,
+      role: "treeitem",
+      "aria-level": depth + 1,
+      "aria-expanded": ariaExpanded,
+      "data-expandable": this.props.isExpandable
+    }, ...items);
+  }
+}
+
+const ArrowExpanderFactory = createFactory(ArrowExpander);
+const TreeNodeFactory = createFactory(TreeNode);
+
+/**
+ * Create a function that calls the given function `fn` only once per animation
+ * frame.
+ *
+ * @param {Function} fn
+ * @returns {Function}
+ */
+function oncePerAnimationFrame(fn) {
+  let animationId = null;
+  let argsToPass = null;
+  return function (...args) {
+    argsToPass = args;
+    if (animationId !== null) {
+      return;
+    }
+
+    animationId = requestAnimationFrame(() => {
+      fn.call(this, ...argsToPass);
+      animationId = null;
+      argsToPass = null;
+    });
+  };
+}
+
+/**
+ * A generic tree component. See propTypes for the public API.
+ *
+ * This tree component doesn't make any assumptions about the structure of your
+ * tree data. Whether children are computed on demand, or stored in an array in
+ * the parent's `_children` property, it doesn't matter. We only require the
+ * implementation of `getChildren`, `getRoots`, `getParent`, and `isExpanded`
+ * functions.
+ *
+ * This tree component is well tested and reliable. See the tests in ./tests
+ * and its usage in the performance and memory panels in mozilla-central.
+ *
+ * This tree component doesn't make any assumptions about how to render items in
+ * the tree. You provide a `renderItem` function, and this component will ensure
+ * that only those items whose parents are expanded and which are visible in the
+ * viewport are rendered. The `renderItem` function could render the items as a
+ * "traditional" tree or as rows in a table or anything else. It doesn't
+ * restrict you to only one certain kind of tree.
+ *
+ * The tree comes with basic styling for the indent, the arrow, as well as
+ * hovered and focused styles which can be override in CSS.
+ *
+ * ### Example Usage
+ *
+ * Suppose we have some tree data where each item has this form:
+ *
+ *     {
+ *       id: Number,
+ *       label: String,
+ *       parent: Item or null,
+ *       children: Array of child items,
+ *       expanded: bool,
+ *     }
+ *
+ * Here is how we could render that data with this component:
+ *
+ *     class MyTree extends Component {
+ *       static get propTypes() {
+ *         // The root item of the tree, with the form described above.
+ *         return {
+ *           root: PropTypes.object.isRequired
+ *         };
+ *       },
+ *
+ *       render() {
+ *         return Tree({
+ *           itemHeight: 20, // px
+ *
+ *           getRoots: () => [this.props.root],
+ *
+ *           getParent: item => item.parent,
+ *           getChildren: item => item.children,
+ *           getKey: item => item.id,
+ *           isExpanded: item => item.expanded,
+ *
+ *           renderItem: (item, depth, isFocused, arrow, isExpanded) => {
+ *             let className = "my-tree-item";
+ *             if (isFocused) {
+ *               className += " focused";
+ *             }
+ *             return dom.div({
+ *               className,
+ *             },
+ *               arrow,
+ *               // And here is the label for this item.
+ *               dom.span({ className: "my-tree-item-label" }, item.label)
+ *             );
+ *           },
+ *
+ *           onExpand: item => dispatchExpandActionToRedux(item),
+ *           onCollapse: item => dispatchCollapseActionToRedux(item),
+ *         });
+ *       }
+ *     }
+ */
+class Tree extends Component {
+  static get propTypes() {
+    return {
+      // Required props
+
+      // A function to get an item's parent, or null if it is a root.
+      //
+      // Type: getParent(item: Item) -> Maybe<Item>
+      //
+      // Example:
+      //
+      //     // The parent of this item is stored in its `parent` property.
+      //     getParent: item => item.parent
+      getParent: _propTypes2.default.func.isRequired,
+
+      // A function to get an item's children.
+      //
+      // Type: getChildren(item: Item) -> [Item]
+      //
+      // Example:
+      //
+      //     // This item's children are stored in its `children` property.
+      //     getChildren: item => item.children
+      getChildren: _propTypes2.default.func.isRequired,
+
+      // A function which takes an item and ArrowExpander component instance and
+      // returns a component, or text, or anything else that React considers
+      // renderable.
+      //
+      // Type: renderItem(item: Item,
+      //                  depth: Number,
+      //                  isFocused: Boolean,
+      //                  arrow: ReactComponent,
+      //                  isExpanded: Boolean) -> ReactRenderable
+      //
+      // Example:
+      //
+      //     renderItem: (item, depth, isFocused, arrow, isExpanded) => {
+      //       let className = "my-tree-item";
+      //       if (isFocused) {
+      //         className += " focused";
+      //       }
+      //       return dom.div(
+      //         {
+      //           className,
+      //           style: { marginLeft: depth * 10 + "px" }
+      //         },
+      //         arrow,
+      //         dom.span({ className: "my-tree-item-label" }, item.label)
+      //       );
+      //     },
+      renderItem: _propTypes2.default.func.isRequired,
+
+      // A function which returns the roots of the tree (forest).
+      //
+      // Type: getRoots() -> [Item]
+      //
+      // Example:
+      //
+      //     // In this case, we only have one top level, root item. You could
+      //     // return multiple items if you have many top level items in your
+      //     // tree.
+      //     getRoots: () => [this.props.rootOfMyTree]
+      getRoots: _propTypes2.default.func.isRequired,
+
+      // A function to get a unique key for the given item. This helps speed up
+      // React's rendering a *TON*.
+      //
+      // Type: getKey(item: Item) -> String
+      //
+      // Example:
+      //
+      //     getKey: item => `my-tree-item-${item.uniqueId}`
+      getKey: _propTypes2.default.func.isRequired,
+
+      // A function to get whether an item is expanded or not. If an item is not
+      // expanded, then it must be collapsed.
+      //
+      // Type: isExpanded(item: Item) -> Boolean
+      //
+      // Example:
+      //
+      //     isExpanded: item => item.expanded,
+      isExpanded: _propTypes2.default.func.isRequired,
+
+      // Optional props
+
+      // The currently focused item, if any such item exists.
+      focused: _propTypes2.default.any,
+
+      // Handle when a new item is focused.
+      onFocus: _propTypes2.default.func,
+
+      // The depth to which we should automatically expand new items.
+      autoExpandDepth: _propTypes2.default.number,
+      // Should auto expand all new items or just the new items under the first
+      // root item.
+      autoExpandAll: _propTypes2.default.bool,
+
+      // Note: the two properties below are mutually exclusive. Only one of the
+      // label properties is necessary.
+      // ID of an element whose textual content serves as an accessible label
+      // for a tree.
+      labelledby: _propTypes2.default.string,
+      // Accessibility label for a tree widget.
+      label: _propTypes2.default.string,
+
+      // Optional event handlers for when items are expanded or collapsed.
+      // Useful for dispatching redux events and updating application state,
+      // maybe lazily loading subtrees from a worker, etc.
+      //
+      // Type:
+      //     onExpand(item: Item)
+      //     onCollapse(item: Item)
+      //
+      // Example:
+      //
+      //     onExpand: item => dispatchExpandActionToRedux(item)
+      onExpand: _propTypes2.default.func,
+      onCollapse: _propTypes2.default.func,
+      // Optional event handler called with the current focused node when the
+      // Enter key is pressed. Can be useful to allow further keyboard actions
+      // within the tree node.
+      onActivate: _propTypes2.default.func,
+      isExpandable: _propTypes2.default.func,
+      // Additional classes to add to the root element.
+      className: _propTypes2.default.string,
+      // style object to be applied to the root element.
+      style: _propTypes2.default.object,
+      // Prevents blur when Tree loses focus
+      preventBlur: _propTypes2.default.bool
+    };
+  }
+
+  static get defaultProps() {
+    return {
+      autoExpandDepth: AUTO_EXPAND_DEPTH,
+      autoExpandAll: true
+    };
+  }
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      seen: new Set()
+    };
+
+    this._onExpand = oncePerAnimationFrame(this._onExpand).bind(this);
+    this._onCollapse = oncePerAnimationFrame(this._onCollapse).bind(this);
+    this._focusPrevNode = oncePerAnimationFrame(this._focusPrevNode).bind(this);
+    this._focusNextNode = oncePerAnimationFrame(this._focusNextNode).bind(this);
+    this._focusParentNode = oncePerAnimationFrame(this._focusParentNode).bind(this);
+    this._focusFirstNode = oncePerAnimationFrame(this._focusFirstNode).bind(this);
+    this._focusLastNode = oncePerAnimationFrame(this._focusLastNode).bind(this);
+
+    this._autoExpand = this._autoExpand.bind(this);
+    this._preventArrowKeyScrolling = this._preventArrowKeyScrolling.bind(this);
+    this._dfs = this._dfs.bind(this);
+    this._dfsFromRoots = this._dfsFromRoots.bind(this);
+    this._focus = this._focus.bind(this);
+    this._scrollNodeIntoView = this._scrollNodeIntoView.bind(this);
+    this._onBlur = this._onBlur.bind(this);
+    this._onKeyDown = this._onKeyDown.bind(this);
+    this._nodeIsExpandable = this._nodeIsExpandable.bind(this);
+    this._activateNode = oncePerAnimationFrame(this._activateNode).bind(this);
+  }
+
+  componentDidMount() {
+    this._autoExpand();
+    if (this.props.focused) {
+      this._scrollNodeIntoView(this.props.focused);
+      // Always keep the focus on the tree itself.
+      this.treeRef.focus();
+    }
+  }
+
+  componentWillReceiveProps(nextProps) {
+    this._autoExpand();
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (this.props.focused && prevProps.focused !== this.props.focused) {
+      this._scrollNodeIntoView(this.props.focused);
+      // Always keep the focus on the tree itself.
+      this.treeRef.focus();
+    }
+  }
+
+  _autoExpand() {
+    if (!this.props.autoExpandDepth) {
+      return;
+    }
+
+    // Automatically expand the first autoExpandDepth levels for new items. Do
+    // not use the usual DFS infrastructure because we don't want to ignore
+    // collapsed nodes.
+    const autoExpand = (item, currentDepth) => {
+      if (currentDepth >= this.props.autoExpandDepth || this.state.seen.has(item)) {
+        return;
+      }
+
+      this.props.onExpand(item);
+      this.state.seen.add(item);
+
+      const children = this.props.getChildren(item);
+      const length = children.length;
+      for (let i = 0; i < length; i++) {
+        autoExpand(children[i], currentDepth + 1);
+      }
+    };
+
+    const roots = this.props.getRoots();
+    const length = roots.length;
+    if (this.props.autoExpandAll) {
+      for (let i = 0; i < length; i++) {
+        autoExpand(roots[i], 0);
+      }
+    } else if (length != 0) {
+      autoExpand(roots[0], 0);
+    }
+  }
+
+  _preventArrowKeyScrolling(e) {
+    switch (e.key) {
+      case "ArrowUp":
+      case "ArrowDown":
+      case "ArrowLeft":
+      case "ArrowRight":
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.nativeEvent) {
+          if (e.nativeEvent.preventDefault) {
+            e.nativeEvent.preventDefault();
+          }
+          if (e.nativeEvent.stopPropagation) {
+            e.nativeEvent.stopPropagation();
+          }
+        }
+    }
+  }
+
+  /**
+   * Perform a pre-order depth-first search from item.
+   */
+  _dfs(item, maxDepth = Infinity, traversal = [], _depth = 0) {
+    traversal.push({ item, depth: _depth });
+
+    if (!this.props.isExpanded(item)) {
+      return traversal;
+    }
+
+    const nextDepth = _depth + 1;
+
+    if (nextDepth > maxDepth) {
+      return traversal;
+    }
+
+    const children = this.props.getChildren(item);
+    const length = children.length;
+    for (let i = 0; i < length; i++) {
+      this._dfs(children[i], maxDepth, traversal, nextDepth);
+    }
+
+    return traversal;
+  }
+
+  /**
+   * Perform a pre-order depth-first search over the whole forest.
+   */
+  _dfsFromRoots(maxDepth = Infinity) {
+    const traversal = [];
+
+    const roots = this.props.getRoots();
+    const length = roots.length;
+    for (let i = 0; i < length; i++) {
+      this._dfs(roots[i], maxDepth, traversal);
+    }
+
+    return traversal;
+  }
+
+  /**
+   * Expands current row.
+   *
+   * @param {Object} item
+   * @param {Boolean} expandAllChildren
+   */
+  _onExpand(item, expandAllChildren) {
+    if (this.props.onExpand) {
+      this.props.onExpand(item);
+
+      if (expandAllChildren) {
+        const children = this._dfs(item);
+        const length = children.length;
+        for (let i = 0; i < length; i++) {
+          this.props.onExpand(children[i].item);
+        }
+      }
+    }
+  }
+
+  /**
+   * Collapses current row.
+   *
+   * @param {Object} item
+   */
+  _onCollapse(item) {
+    if (this.props.onCollapse) {
+      this.props.onCollapse(item);
+    }
+  }
+
+  /**
+   * Sets the passed in item to be the focused item.
+   *
+   * @param {Object|undefined} item
+   *        The item to be focused, or undefined to focus no item.
+   *
+   * @param {Object|undefined} options
+   *        An options object which can contain:
+   *          - dir: "up" or "down" to indicate if we should scroll the element
+   *                 to the top or the bottom of the scrollable container when
+   *                 the element is off canvas.
+   */
+  _focus(item, options = {}) {
+    const { preventAutoScroll } = options;
+    if (item && !preventAutoScroll) {
+      this._scrollNodeIntoView(item, options);
+    }
+    if (this.props.onFocus) {
+      this.props.onFocus(item);
+    }
+  }
+
+  /**
+   * Sets the passed in item to be the focused item.
+   *
+   * @param {Object|undefined} item
+   *        The item to be scrolled to.
+   *
+   * @param {Object|undefined} options
+   *        An options object which can contain:
+   *          - dir: "up" or "down" to indicate if we should scroll the element
+   *                 to the top or the bottom of the scrollable container when
+   *                 the element is off canvas.
+   */
+  _scrollNodeIntoView(item, options = {}) {
+    if (item !== undefined) {
+      const treeElement = this.treeRef;
+      const element = document.getElementById(this.props.getKey(item));
+
+      if (element) {
+        const { top, bottom } = element.getBoundingClientRect();
+        const closestScrolledParent = node => {
+          if (node == null) {
+            return null;
+          }
+
+          if (node.scrollHeight > node.clientHeight) {
+            return node;
+          }
+          return closestScrolledParent(node.parentNode);
+        };
+        const scrolledParent = closestScrolledParent(treeElement);
+        const scrolledParentRect = scrolledParent ? scrolledParent.getBoundingClientRect() : null;
+        const isVisible = !scrolledParent || top >= scrolledParentRect.top && bottom <= scrolledParentRect.bottom;
+
+        if (!isVisible) {
+          const { alignTo } = options;
+          const scrollToTop = alignTo ? alignTo === "top" : !scrolledParentRect || top < scrolledParentRect.top;
+          element.scrollIntoView(scrollToTop);
+        }
+      }
+    }
+  }
+
+  /**
+   * Sets the state to have no focused item.
+   */
+  _onBlur() {
+    if (!this.props.preventBlur) {
+      this._focus(undefined);
+    }
+  }
+
+  /**
+   * Handles key down events in the tree's container.
+   *
+   * @param {Event} e
+   */
+  _onKeyDown(e) {
+    if (this.props.focused == null) {
+      return;
+    }
+
+    // Allow parent nodes to use navigation arrows with modifiers.
+    if (e.altKey || e.ctrlKey || e.shiftKey || e.metaKey) {
+      return;
+    }
+
+    this._preventArrowKeyScrolling(e);
+
+    switch (e.key) {
+      case "ArrowUp":
+        this._focusPrevNode();
+        return;
+
+      case "ArrowDown":
+        this._focusNextNode();
+        return;
+
+      case "ArrowLeft":
+        if (this.props.isExpanded(this.props.focused) && this._nodeIsExpandable(this.props.focused)) {
+          this._onCollapse(this.props.focused);
+        } else {
+          this._focusParentNode();
+        }
+        return;
+
+      case "ArrowRight":
+        if (this._nodeIsExpandable(this.props.focused) && !this.props.isExpanded(this.props.focused)) {
+          this._onExpand(this.props.focused);
+        } else {
+          this._focusNextNode();
+        }
+        return;
+
+      case "Home":
+        this._focusFirstNode();
+        return;
+
+      case "End":
+        this._focusLastNode();
+        return;
+
+      case "Enter":
+        this._activateNode();
+    }
+  }
+
+  /**
+   * Sets the previous node relative to the currently focused item, to focused.
+   */
+  _focusPrevNode() {
+    // Start a depth first search and keep going until we reach the currently
+    // focused node. Focus the previous node in the DFS, if it exists. If it
+    // doesn't exist, we're at the first node already.
+
+    let prev;
+
+    const traversal = this._dfsFromRoots();
+    const length = traversal.length;
+    for (let i = 0; i < length; i++) {
+      const item = traversal[i].item;
+      if (item === this.props.focused) {
+        break;
+      }
+      prev = item;
+    }
+    if (prev === undefined) {
+      return;
+    }
+
+    this._focus(prev, { alignTo: "top" });
+  }
+
+  /**
+   * Handles the down arrow key which will focus either the next child
+   * or sibling row.
+   */
+  _focusNextNode() {
+    // Start a depth first search and keep going until we reach the currently
+    // focused node. Focus the next node in the DFS, if it exists. If it
+    // doesn't exist, we're at the last node already.
+    const traversal = this._dfsFromRoots();
+    const length = traversal.length;
+    let i = 0;
+
+    while (i < length) {
+      if (traversal[i].item === this.props.focused) {
+        break;
+      }
+      i++;
+    }
+
+    if (i + 1 < traversal.length) {
+      this._focus(traversal[i + 1].item, { alignTo: "bottom" });
+    }
+  }
+
+  /**
+   * Handles the left arrow key, going back up to the current rows'
+   * parent row.
+   */
+  _focusParentNode() {
+    const parent = this.props.getParent(this.props.focused);
+    if (!parent) {
+      this._focusPrevNode(this.props.focused);
+      return;
+    }
+
+    this._focus(parent, { alignTo: "top" });
+  }
+
+  _focusFirstNode() {
+    const traversal = this._dfsFromRoots();
+    this._focus(traversal[0].item, { alignTo: "top" });
+  }
+
+  _focusLastNode() {
+    const traversal = this._dfsFromRoots();
+    const lastIndex = traversal.length - 1;
+    this._focus(traversal[lastIndex].item, { alignTo: "bottom" });
+  }
+
+  _activateNode() {
+    if (this.props.onActivate) {
+      this.props.onActivate(this.props.focused);
+    }
+  }
+
+  _nodeIsExpandable(item) {
+    return this.props.isExpandable ? this.props.isExpandable(item) : !!this.props.getChildren(item).length;
+  }
+
+  render() {
+    const traversal = this._dfsFromRoots();
+    const { focused } = this.props;
+
+    const nodes = traversal.map((v, i) => {
+      const { item, depth } = traversal[i];
+      const key = this.props.getKey(item, i);
+      return TreeNodeFactory({
+        key,
+        id: key,
+        index: i,
+        item,
+        depth,
+        renderItem: this.props.renderItem,
+        focused: focused === item,
+        expanded: this.props.isExpanded(item),
+        isExpandable: this._nodeIsExpandable(item),
+        onExpand: this._onExpand,
+        onCollapse: this._onCollapse,
+        onClick: e => {
+          // We can stop the propagation since click handler on the node can be
+          // created in `renderItem`.
+          e.stopPropagation();
+
+          // Since the user just clicked the node, there's no need to check if
+          // it should be scrolled into view.
+          this._focus(item, { preventAutoScroll: true });
+          if (this.props.isExpanded(item)) {
+            this.props.onCollapse(item);
+          } else {
+            this.props.onExpand(item, e.altKey);
+          }
+        }
+      });
+    });
+
+    const style = Object.assign({}, this.props.style || {}, {
+      padding: 0,
+      margin: 0
+    });
+
+    return _reactDomFactories2.default.div({
+      className: `tree ${this.props.className ? this.props.className : ""}`,
+      ref: el => {
+        this.treeRef = el;
+      },
+      role: "tree",
+      tabIndex: "0",
+      onKeyDown: this._onKeyDown,
+      onKeyPress: this._preventArrowKeyScrolling,
+      onKeyUp: this._preventArrowKeyScrolling,
+      onFocus: ({ nativeEvent }) => {
+        if (focused || !nativeEvent || !this.treeRef) {
+          return;
+        }
+        this._focus(traversal[0].item);
+      },
+      onBlur: this._onBlur,
+      "aria-label": this.props.label,
+      "aria-labelledby": this.props.labelledby,
+      "aria-activedescendant": focused && this.props.getKey(focused),
+      style
+    }, nodes);
+  }
+}
+
+exports.default = Tree;
+
+/***/ }),
+
+/***/ 3671:
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+
+/***/ 368:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M12.219 7c.345 0 .635.117.869.352.234.234.351.524.351.869 0 .351-.118.652-.356.903-.238.25-.526.376-.864.376-.332 0-.615-.125-.85-.376a1.276 1.276 0 0 1-.351-.903A1.185 1.185 0 0 1 12.218 7zM8.234 7c.345 0 .635.117.87.352.234.234.351.524.351.869 0 .351-.119.652-.356.903-.238.25-.526.376-.865.376-.332 0-.613-.125-.844-.376a1.286 1.286 0 0 1-.347-.903c0-.352.114-.643.342-.874.228-.231.51-.347.85-.347zM4.201 7c.339 0 .627.117.864.352.238.234.357.524.357.869 0 .351-.119.652-.357.903-.237.25-.525.376-.864.376-.338 0-.623-.125-.854-.376A1.286 1.286 0 0 1 3 8.221 1.185 1.185 0 0 1 4.201 7z\" fill-rule=\"evenodd\"></path></svg>"
+
+/***/ }),
+
+/***/ 369:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M3.233 11.25l-.417 1H1.712C.763 12.25 0 11.574 0 10.747V6.503C0 5.675.755 5 1.712 5h4.127l-.417 1H1.597C1.257 6 1 6.225 1 6.503v4.244c0 .277.267.503.597.503h1.636zM7.405 11.27L7 12.306c.865.01 2.212-.024 2.315-.04.112-.016.112-.016.185-.035.075-.02.156-.046.251-.082.152-.056.349-.138.592-.244.415-.182.962-.435 1.612-.744l.138-.066a179.35 179.35 0 0 0 2.255-1.094c1.191-.546 1.191-2.074-.025-2.632l-.737-.34a3547.554 3547.554 0 0 0-3.854-1.78c-.029.11-.065.222-.11.336l-.232.596c.894.408 4.56 2.107 4.56 2.107.458.21.458.596 0 .806L9.197 11.27H7.405zM4.462 14.692l5-12a.5.5 0 1 0-.924-.384l-5 12a.5.5 0 1 0 .924.384z\"></path></g></svg>"
+
+/***/ }),
+
+/***/ 370:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"#0b0b0b\"><path fill-opacity=\".3\" d=\"M12,3h2v10h-2V3z M5,9.9V6.1L8,8L5,9.9z\"></path><path d=\"M14,2H2C1.4,2,1,2.4,1,3v10c0,0.6,0.4,1,1,1h12c0.6,0,1-0.4,1-1V3C15,2.4,14.6,2,14,2z M2,13L2,13V3h0h9v10 H2L2,13z M14,13C14,13,14,13,14,13h-2V3h2c0,0,0,0,0,0V13z M8.5,7.2l-3-1.9C4.6,4.7,4,5,4,6.1v3.8c0,1.1,0.6,1.4,1.5,0.8l3-1.9 C9.5,8.3,9.5,7.8,8.5,7.2z M5,9.9V6.1L8,8L5,9.9z\"></path></svg>"
+
+/***/ }),
+
+/***/ 371:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\" stroke=\"none\" fillrule=\"evenodd\"><rect opacity=\"0.6\" x=\"1\" y=\"3\" width=\"2\" height=\"6\"></rect><rect opacity=\"0.6\" x=\"17\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"6\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"12\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"9\" y=\"3\" width=\"2\" height=\"6\"></rect><path d=\"M4.5,13 L15.5,13 L16,13 L16,12 L15.5,12 L4.5,12 L4,12 L4,13 L4.5,13 L4.5,13 Z\"></path><path d=\"M4,10.5 L4,12.5 L4,13 L5,13 L5,12.5 L5,10.5 L5,10 L4,10 L4,10.5 L4,10.5 Z\"></path><path d=\"M15,10.5 L15,12.5 L15,13 L16,13 L16,12.5 L16,10.5 L16,10 L15,10 L15,10.5 L15,10.5 Z\"></path></svg>"
+
+/***/ }),
+
+/***/ 372:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path fill-rule=\"evenodd\" d=\"M8.5 8.793L5.854 6.146l-.04-.035L7.5 4.426c.2-.2.3-.4.3-.6 0-.2-.1-.4-.2-.6l-1-1c-.4-.3-.9-.3-1.2 0l-4.1 4.1c-.2.2-.3.4-.3.6 0 .2.1.4.2.6l1 1c.3.3.9.3 1.2 0l1.71-1.71.036.04L7.793 9.5l-3.647 3.646c-.195.196-.195.512 0 .708.196.195.512.195.708 0L8.5 10.207l3.646 3.647c.196.195.512.195.708 0 .195-.196.195-.512 0-.708L9.207 9.5l2.565-2.565L13.3 8.5c.1.1 2.3 1.1 2.7.7.4-.4-.3-2.7-.5-2.9l-1.1-1.1c.1-.1.2-.4.2-.6 0-.2-.1-.4-.2-.6l-.4-.4c-.3-.3-.8-.3-1.1 0l-1.5-1.4c-.2-.2-.3-.2-.5-.2s-.3.1-.5.2L9.2 3.4c-.2.1-.2.2-.2.4s.1.4.2.5l1.874 1.92L8.5 8.792z\"></path></svg>"
+
+/***/ }),
+
+/***/ 3721:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(process) {
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+const flag = __webpack_require__(52);
+
+function isBrowser() {
+  return typeof window == "object";
+}
+
+function isNode() {
+  return process && process.release && process.release.name == 'node';
+}
+
+function isDevelopment() {
+  if (!isNode() && isBrowser()) {
+    const href = window.location ? window.location.href : "";
+    return href.match(/^file:/) || href.match(/localhost:/);
+  }
+
+  return "production" != "production";
+}
+
+function isTesting() {
+  return flag.testing;
+}
+
+function isFirefoxPanel() {
+  return !isDevelopment();
+}
+
+function isFirefox() {
+  return (/firefox/i.test(navigator.userAgent)
+  );
+}
+
+module.exports = {
+  isDevelopment,
+  isTesting,
+  isFirefoxPanel,
+  isFirefox
+};
+/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(120)))
+
+/***/ }),
+
+/***/ 3728:
+/***/ (function(module, exports, __webpack_require__) {
+
+module.exports = __webpack_require__(3729);
+
+
+/***/ }),
+
+/***/ 3729:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.vendored = undefined;
+
+var _devtoolsComponents = __webpack_require__(3669);
+
+var devtoolsComponents = _interopRequireWildcard(_devtoolsComponents);
+
+var _devtoolsConfig = __webpack_require__(1355);
+
+var devtoolsConfig = _interopRequireWildcard(_devtoolsConfig);
+
+var _devtoolsContextmenu = __webpack_require__(1413);
+
+var devtoolsContextmenu = _interopRequireWildcard(_devtoolsContextmenu);
+
+var _devtoolsEnvironment = __webpack_require__(3721);
+
+var devtoolsEnvironment = _interopRequireWildcard(_devtoolsEnvironment);
+
+var _devtoolsModules = __webpack_require__(1376);
+
+var devtoolsModules = _interopRequireWildcard(_devtoolsModules);
+
+var _devtoolsUtils = __webpack_require__(3651);
+
+var devtoolsUtils = _interopRequireWildcard(_devtoolsUtils);
+
+var _fuzzaldrinPlus = __webpack_require__(161);
+
+var fuzzaldrinPlus = _interopRequireWildcard(_fuzzaldrinPlus);
+
+var _Transition = __webpack_require__(333);
+
+var transition = _interopRequireWildcard(_Transition);
+
+var _tabs = __webpack_require__(3762);
+
+var reactAriaComponentsTabs = _interopRequireWildcard(_tabs);
+
+var _reselect = __webpack_require__(993);
+
+var reselect = _interopRequireWildcard(_reselect);
+
+var _classnames = __webpack_require__(175);
+
+var _classnames2 = _interopRequireDefault(_classnames);
+
+var _devtoolsSplitter = __webpack_require__(1440);
+
+var _devtoolsSplitter2 = _interopRequireDefault(_devtoolsSplitter);
+
+var _lodashMove = __webpack_require__(3751);
+
+var _lodashMove2 = _interopRequireDefault(_lodashMove);
+
+var _Svg = __webpack_require__(1359);
+
+var _Svg2 = _interopRequireDefault(_Svg);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
+
+// We cannot directly export literals containing special characters
+// (eg. "my-module/Test") which is why they are nested in "vendored".
+// The keys of the vendored object should match the module names
+// !!! Should remain synchronized with .babel/transform-mc.js !!!
+
+
+// Modules imported without destructuring
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * Vendors.js is a file used to bundle and expose all dependencies needed to run
+ * the transpiled debugger modules when running in Firefox.
+ *
+ * To make transpilation easier, a vendored module should always be imported in
+ * same way:
+ * - always with destructuring (import { a } from "modA";)
+ * - always without destructuring (import modB from "modB")
+ *
+ * Both are fine, but cannot be mixed for the same module.
+ */
+
+// Modules imported with destructuring
+const vendored = exports.vendored = {
+  classnames: _classnames2.default,
+  "devtools-components": devtoolsComponents,
+  "devtools-config": devtoolsConfig,
+  "devtools-contextmenu": devtoolsContextmenu,
+  "devtools-environment": devtoolsEnvironment,
+  "devtools-modules": devtoolsModules,
+  "devtools-splitter": _devtoolsSplitter2.default,
+  "devtools-utils": devtoolsUtils,
+  "fuzzaldrin-plus": fuzzaldrinPlus,
+  "lodash-move": _lodashMove2.default,
+  "react-aria-components/src/tabs": reactAriaComponentsTabs,
+  "react-transition-group/Transition": transition,
+  reselect,
+  // Svg is required via relative paths, so the key is not imported path.
+  // See .babel/transform-mc.js
+  Svg: _Svg2.default
+};
+
+/***/ }),
+
+/***/ 3750:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
+
+/**
+ * This is a stub of the DevTools telemetry module and will be replaced by the
+ * full version of the file by Webpack for running inside Firefox.
+ */
+
+class Telemetry {
+  /**
+   * Time since the system wide epoch. This is not a monotonic timer but
+   * can be used across process boundaries.
+   */
+  get msSystemNow() {
+    return 0;
+  }
+
+  /**
+   * Starts a timer associated with a telemetry histogram. The timer can be
+   * directly associated with a histogram, or with a pair of a histogram and
+   * an object.
+   *
+   * @param {String} histogramId
+   *        A string which must be a valid histogram name.
+   * @param {Object} obj
+   *        Optional parameter. If specified, the timer is associated with this
+   *        object, meaning that multiple timers for the same histogram may be
+   *        run concurrently, as long as they are associated with different
+   *        objects.
+   *
+   * @returns {Boolean}
+   *          True if the timer was successfully started, false otherwise. If a
+   *          timer already exists, it can't be started again, and the existing
+   *          one will be cleared in order to avoid measurements errors.
+   */
+  start(histogramId, obj) {
+    return true;
+  }
+
+  /**
+   * Starts a timer associated with a keyed telemetry histogram. The timer can
+   * be directly associated with a histogram and its key. Similarly to
+   * TelemetryStopwatch.start the histogram and its key can be associated
+   * with an object. Each key may have multiple associated objects and each
+   * object can be associated with multiple keys.
+   *
+   * @param {String} histogramId
+   *        A string which must be a valid histogram name.
+   * @param {String} key
+   *        A string which must be a valid histgram key.
+   * @param {Object} obj
+   *        Optional parameter. If specified, the timer is associated with this
+   *        object, meaning that multiple timers for the same histogram may be
+   *        run concurrently,as long as they are associated with different
+   *        objects.
+   *
+   * @returns {Boolean}
+   *          True if the timer was successfully started, false otherwise. If a
+   *          timer already exists, it can't be started again, and the existing
+   *          one will be cleared in order to avoid measurements errors.
+   */
+  startKeyed(histogramId, key, obj) {
+    return true;
+  }
+
+  /**
+   * Stops the timer associated with the given histogram (and object),
+   * calculates the time delta between start and finish, and adds the value
+   * to the histogram.
+   *
+   * @param {String} histogramId
+   *        A string which must be a valid histogram name.
+   * @param {Object} obj
+   *        Optional parameter which associates the histogram timer with the
+   *        given object.
+   * @param {Boolean} canceledOkay
+   *        Optional parameter which will suppress any warnings that normally
+   *        fire when a stopwatch is finished after being cancelled.
+   *        Defaults to false.
+   *
+   * @returns {Boolean}
+   *          True if the timer was succesfully stopped and the data was added
+   *          to the histogram, False otherwise.
+   */
+  finish(histogramId, obj, canceledOkay) {
+    return true;
+  }
+
+  /**
+   * Stops the timer associated with the given keyed histogram (and object),
+   * calculates the time delta between start and finish, and adds the value
+   * to the keyed histogram.
+   *
+   * @param {String} histogramId
+   *        A string which must be a valid histogram name.
+   * @param {String} key
+   *        A string which must be a valid histogram key.
+   * @param {Object} obj
+   *        Optional parameter which associates the histogram timer with the
+   *        given object.
+   * @param {Boolean} canceledOkay
+   *        Optional parameter which will suppress any warnings that normally
+   *        fire when a stopwatch is finished after being cancelled.
+   *        Defaults to false.
+   *
+   * @returns {Boolean}
+   *          True if the timer was succesfully stopped and the data was added
+   *          to the histogram, False otherwise.
+   */
+  finishKeyed(histogramId, key, obj, cancelledOkay) {
+    return true;
+  }
+
+  /**
+   * Log a value to a histogram.
+   *
+   * @param  {String} histogramId
+   *         Histogram in which the data is to be stored.
+   */
+  getHistogramById(histogramId) {
+    return {
+      add: () => {}
+    };
+  }
+
+  /**
+   * Get a keyed histogram.
+   *
+   * @param  {String} histogramId
+   *         Histogram in which the data is to be stored.
+   */
+  getKeyedHistogramById(histogramId) {
+    return {
+      add: () => {}
+    };
+  }
+
+  /**
+   * Log a value to a scalar.
+   *
+   * @param  {String} scalarId
+   *         Scalar in which the data is to be stored.
+   * @param  value
+   *         Value to store.
+   */
+  scalarSet(scalarId, value) {}
+
+  /**
+   * Log a value to a count scalar.
+   *
+   * @param  {String} scalarId
+   *         Scalar in which the data is to be stored.
+   * @param  value
+   *         Value to store.
+   */
+  scalarAdd(scalarId, value) {}
+
+  /**
+   * Log a value to a keyed count scalar.
+   *
+   * @param  {String} scalarId
+   *         Scalar in which the data is to be stored.
+   * @param  {String} key
+   *         The key within the  scalar.
+   * @param  value
+   *         Value to store.
+   */
+  keyedScalarAdd(scalarId, key, value) {}
+
+  /**
+   * Event telemetry is disabled by default. Use this method to enable it for
+   * a particular category.
+   *
+   * @param {String} category
+   *        The telemetry event category e.g. "devtools.main"
+   * @param {Boolean} enabled
+   *        Enabled: true or false.
+   */
+  setEventRecordingEnabled(category, enabled) {
+    return enabled;
+  }
+
+  /**
+   * Telemetry events often need to make use of a number of properties from
+   * completely different codepaths. To make this possible we create a
+   * "pending event" along with an array of property names that we need to wait
+   * for before sending the event.
+   *
+   * As each property is received via addEventProperty() we check if all
+   * properties have been received. Once they have all been received we send the
+   * telemetry event.
+   *
+   * @param {String} category
+   *        The telemetry event category (a group name for events and helps to
+   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {String} method
+   *        The telemetry event method (describes the type of event that
+   *        occurred e.g. "open")
+   * @param {String} object
+   *        The telemetry event object name (the name of the object the event
+   *        occurred on) e.g. "tools" or "setting"
+   * @param {String|null} value
+   *        The telemetry event value (a user defined value, providing context
+   *        for the event) e.g. "console"
+   * @param {Array} expected
+   *        An array of the properties needed before sending the telemetry
+   *        event e.g.
+   *        [
+   *          "host",
+   *          "width"
+   *        ]
+   */
+  preparePendingEvent(category, method, object, value, expected = []) {}
+
+  /**
+   * Adds an expected property for either a current or future pending event.
+   * This means that if preparePendingEvent() is called before or after sending
+   * the event properties they will automatically added to the event.
+   *
+   * @param {String} category
+   *        The telemetry event category (a group name for events and helps to
+   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {String} method
+   *        The telemetry event method (describes the type of event that
+   *        occurred e.g. "open")
+   * @param {String} object
+   *        The telemetry event object name (the name of the object the event
+   *        occurred on) e.g. "tools" or "setting"
+   * @param {String|null} value
+   *        The telemetry event value (a user defined value, providing context
+   *        for the event) e.g. "console"
+   * @param {String} pendingPropName
+   *        The pending property name
+   * @param {String} pendingPropValue
+   *        The pending property value
+   */
+  addEventProperty(category, method, object, value, pendingPropName, pendingPropValue) {}
+
+  /**
+   * Adds expected properties for either a current or future pending event.
+   * This means that if preparePendingEvent() is called before or after sending
+   * the event properties they will automatically added to the event.
+   *
+   * @param {String} category
+   *        The telemetry event category (a group name for events and helps to
+   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {String} method
+   *        The telemetry event method (describes the type of event that
+   *        occurred e.g. "open")
+   * @param {String} object
+   *        The telemetry event object name (the name of the object the event
+   *        occurred on) e.g. "tools" or "setting"
+   * @param {String|null} value
+   *        The telemetry event value (a user defined value, providing context
+   *        for the event) e.g. "console"
+   * @param {String} pendingObject
+   *        An object containing key, value pairs that should be added to the
+   *        event as properties.
+   */
+  addEventProperties(category, method, object, value, pendingObject) {}
+
+  /**
+   * A private method that is not to be used externally. This method is used to
+   * prepare a pending telemetry event for sending and then send it via
+   * recordEvent().
+   *
+   * @param {String} category
+   *        The telemetry event category (a group name for events and helps to
+   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {String} method
+   *        The telemetry event method (describes the type of event that
+   *        occurred e.g. "open")
+   * @param {String} object
+   *        The telemetry event object name (the name of the object the event
+   *        occurred on) e.g. "tools" or "setting"
+   * @param {String|null} value
+   *        The telemetry event value (a user defined value, providing context
+   *        for the event) e.g. "console"
+   */
+  _sendPendingEvent(category, method, object, value) {}
+
+  /**
+   * Send a telemetry event.
+   *
+   * @param {String} category
+   *        The telemetry event category (a group name for events and helps to
+   *        avoid name conflicts) e.g. "devtools.main"
+   * @param {String} method
+   *        The telemetry event method (describes the type of event that
+   *        occurred e.g. "open")
+   * @param {String} object
+   *        The telemetry event object name (the name of the object the event
+   *        occurred on) e.g. "tools" or "setting"
+   * @param {String|null} value
+   *        The telemetry event value (a user defined value, providing context
+   *        for the event) e.g. "console"
+   * @param {Object} extra
+   *        The telemetry event extra object containing the properties that will
+   *        be sent with the event e.g.
+   *        {
+   *          host: "bottom",
+   *          width: "1024"
+   *        }
+   */
+  recordEvent(category, method, object, value, extra) {}
+
+  /**
+   * Sends telemetry pings to indicate that a tool has been opened.
+   *
+   * @param {String} id
+   *        The ID of the tool opened.
+   */
+  toolOpened(id) {}
+
+  /**
+   * Sends telemetry pings to indicate that a tool has been closed.
+   *
+   * @param {String} id
+   *        The ID of the tool opened.
+   */
+  toolClosed(id) {}
+}
+
+module.exports = Telemetry;
+
+/***/ }),
+
+/***/ 3751:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = move;
+
+function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
+
+function move(array, moveIndex, toIndex) {
+  /* #move - Moves an array item from one position in an array to another.
+      Note: This is a pure function so a new array will be returned, instead
+     of altering the array argument.
+     Arguments:
+    1. array     (String) : Array in which to move an item.         (required)
+    2. moveIndex (Object) : The index of the item to move.          (required)
+    3. toIndex   (Object) : The index to move item at moveIndex to. (required)
+  */
+  var item = array[moveIndex];
+  var length = array.length;
+  var diff = moveIndex - toIndex;
+
+  if (diff > 0) {
+    // move left
+    return [].concat(_toConsumableArray(array.slice(0, toIndex)), [item], _toConsumableArray(array.slice(toIndex, moveIndex)), _toConsumableArray(array.slice(moveIndex + 1, length)));
+  } else if (diff < 0) {
+    // move right
+    return [].concat(_toConsumableArray(array.slice(0, moveIndex)), _toConsumableArray(array.slice(moveIndex + 1, toIndex + 1)), [item], _toConsumableArray(array.slice(toIndex + 1, length)));
+  }
+  return array;
+}
+
+/***/ }),
+
+/***/ 3758:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _propTypes = __webpack_require__(3642);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _tab = __webpack_require__(3759);
+
+var _tab2 = _interopRequireDefault(_tab);
+
+var _tabList = __webpack_require__(3764);
+
+var _tabList2 = _interopRequireDefault(_tabList);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var TabList = function (_React$Component) {
+  _inherits(TabList, _React$Component);
+
+  function TabList(props) {
+    _classCallCheck(this, TabList);
+
+    var _this = _possibleConstructorReturn(this, (TabList.__proto__ || Object.getPrototypeOf(TabList)).call(this, props));
+
+    var childrenCount = _react2.default.Children.count(props.children);
+
+    _this.handleKeyPress = _this.handleKeyPress.bind(_this);
+    _this.tabRefs = new Array(childrenCount).fill(0).map(function () {
+      return _react2.default.createRef();
+    });
+    _this.handlers = _this.getHandlers(props.vertical);
+    return _this;
+  }
+
+  _createClass(TabList, [{
+    key: 'componentDidUpdate',
+    value: function componentDidUpdate(prevProps) {
+      if (prevProps.activeIndex !== this.props.activeIndex) {
+        this.tabRefs[this.props.activeIndex].current.focus();
+      }
+    }
+  }, {
+    key: 'getHandlers',
+    value: function getHandlers(vertical) {
+      if (vertical) {
+        return {
+          ArrowDown: this.next.bind(this),
+          ArrowUp: this.previous.bind(this)
+        };
+      }
+      return {
+        ArrowLeft: this.previous.bind(this),
+        ArrowRight: this.next.bind(this)
+      };
+    }
+  }, {
+    key: 'wrapIndex',
+    value: function wrapIndex(index) {
+      var count = _react2.default.Children.count(this.props.children);
+      return (index + count) % count;
+    }
+  }, {
+    key: 'handleKeyPress',
+    value: function handleKeyPress(event) {
+      var handler = this.handlers[event.key];
+      if (handler) {
+        handler();
+      }
+    }
+  }, {
+    key: 'previous',
+    value: function previous() {
+      var newIndex = this.wrapIndex(this.props.activeIndex - 1);
+      this.props.onActivateTab(newIndex);
+    }
+  }, {
+    key: 'next',
+    value: function next() {
+      var newIndex = this.wrapIndex(this.props.activeIndex + 1);
+      this.props.onActivateTab(newIndex);
+    }
+  }, {
+    key: 'render',
+    value: function render() {
+      var _this2 = this;
+
+      var _props = this.props,
+          accessibleId = _props.accessibleId,
+          activeIndex = _props.activeIndex,
+          children = _props.children,
+          className = _props.className,
+          onActivateTab = _props.onActivateTab;
+
+
+      return _react2.default.createElement(
+        'ul',
+        { className: className, onKeyUp: this.handleKeyPress, role: 'tablist' },
+        _react2.default.Children.map(children, function (child, index) {
+          if (child.type !== _tab2.default) {
+            throw new Error('Direct children of a <TabList> must be a <Tab>');
+          }
+
+          var active = index === activeIndex;
+          var tabRef = _this2.tabRefs[index];
+
+          return _react2.default.cloneElement(child, {
+            accessibleId: active ? accessibleId : undefined,
+            active: active,
+            tabRef: tabRef,
+            onActivate: function onActivate() {
+              return onActivateTab(index);
+            }
+          });
+        })
+      );
+    }
+  }]);
+
+  return TabList;
+}(_react2.default.Component);
+
+exports.default = TabList;
+
+
+TabList.propTypes = {
+  accessibleId: _propTypes2.default.string,
+  activeIndex: _propTypes2.default.number,
+  children: _propTypes2.default.node,
+  className: _propTypes2.default.string,
+  onActivateTab: _propTypes2.default.func,
+  vertical: _propTypes2.default.bool
+};
+
+TabList.defaultProps = {
+  accessibleId: undefined,
+  activeIndex: 0,
+  children: null,
+  className: _tabList2.default.container,
+  onActivateTab: function onActivateTab() {},
+  vertical: false
+};
+
+/***/ }),
+
+/***/ 3759:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = Tab;
+
+var _propTypes = __webpack_require__(3642);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _ref2 = __webpack_require__(3784);
+
+var _ref3 = _interopRequireDefault(_ref2);
+
+var _tab = __webpack_require__(3763);
+
+var _tab2 = _interopRequireDefault(_tab);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function Tab(_ref) {
+  var accessibleId = _ref.accessibleId,
+      active = _ref.active,
+      children = _ref.children,
+      className = _ref.className,
+      onActivate = _ref.onActivate,
+      tabRef = _ref.tabRef;
+
+  return _react2.default.createElement(
+    'li',
+    {
+      'aria-selected': active,
+      className: className,
+      id: accessibleId,
+      onClick: onActivate,
+      onKeyDown: function onKeyDown() {},
+      ref: tabRef,
+      role: 'tab',
+      tabIndex: active ? 0 : undefined
+    },
+    children
+  );
+}
+
+Tab.propTypes = {
+  accessibleId: _propTypes2.default.string,
+  active: _propTypes2.default.bool,
+  children: _propTypes2.default.node.isRequired,
+  className: _propTypes2.default.string,
+  onActivate: _propTypes2.default.func,
+  tabRef: _ref3.default
+};
+
+Tab.defaultProps = {
+  accessibleId: undefined,
+  active: false,
+  className: _tab2.default.container,
+  onActivate: undefined,
+  tabRef: undefined
+};
+
+/***/ }),
+
+/***/ 3760:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = TabPanels;
+
+var _propTypes = __webpack_require__(3642);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function TabPanels(_ref) {
+  var accessibleId = _ref.accessibleId,
+      activeIndex = _ref.activeIndex,
+      children = _ref.children,
+      className = _ref.className,
+      hasFocusableContent = _ref.hasFocusableContent;
+
+  return _react2.default.createElement(
+    'div',
+    {
+      'aria-labelledby': accessibleId,
+      role: 'tabpanel',
+      className: className,
+      tabIndex: hasFocusableContent ? undefined : 0
+    },
+    _react2.default.Children.toArray(children)[activeIndex]
+  );
+}
+
+TabPanels.propTypes = {
+  accessibleId: _propTypes2.default.string,
+  activeIndex: _propTypes2.default.number,
+  children: _propTypes2.default.node.isRequired,
+  className: _propTypes2.default.string,
+  hasFocusableContent: _propTypes2.default.bool.isRequired
+};
+
+TabPanels.defaultProps = {
+  accessibleId: undefined,
+  activeIndex: 0,
+  className: null
+};
+
+/***/ }),
+
+/***/ 3762:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _tabList = __webpack_require__(3758);
+
+Object.defineProperty(exports, 'TabList', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_tabList).default;
+  }
+});
+
+var _tabPanels = __webpack_require__(3760);
+
+Object.defineProperty(exports, 'TabPanels', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_tabPanels).default;
+  }
+});
+
+var _tab = __webpack_require__(3759);
+
+Object.defineProperty(exports, 'Tab', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_tab).default;
+  }
+});
+
+var _tabs = __webpack_require__(3765);
+
+Object.defineProperty(exports, 'Tabs', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_tabs).default;
+  }
+});
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/***/ }),
+
+/***/ 3763:
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+
+/***/ 3764:
+/***/ (function(module, exports) {
+
+// removed by extract-text-webpack-plugin
+
+/***/ }),
+
+/***/ 3765:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _propTypes = __webpack_require__(3642);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+var _react = __webpack_require__(0);
+
+var _react2 = _interopRequireDefault(_react);
+
+var _uniqueId = __webpack_require__(3766);
+
+var _uniqueId2 = _interopRequireDefault(_uniqueId);
+
+var _tabList = __webpack_require__(3758);
+
+var _tabList2 = _interopRequireDefault(_tabList);
+
+var _tabPanels = __webpack_require__(3760);
+
+var _tabPanels2 = _interopRequireDefault(_tabPanels);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+var Tabs = function (_React$Component) {
+  _inherits(Tabs, _React$Component);
+
+  function Tabs() {
+    _classCallCheck(this, Tabs);
+
+    var _this = _possibleConstructorReturn(this, (Tabs.__proto__ || Object.getPrototypeOf(Tabs)).call(this));
+
+    _this.accessibleId = (0, _uniqueId2.default)();
+    return _this;
+  }
+
+  _createClass(Tabs, [{
+    key: 'render',
+    value: function render() {
+      var _props = this.props,
+          activeIndex = _props.activeIndex,
+          children = _props.children,
+          className = _props.className,
+          onActivateTab = _props.onActivateTab;
+
+      var accessibleId = this.accessibleId;
+
+      return _react2.default.createElement(
+        'div',
+        { className: className },
+        _react2.default.Children.map(children, function (child) {
+          if (!child) {
+            return child;
+          }
+
+          switch (child.type) {
+            case _tabList2.default:
+              return _react2.default.cloneElement(child, { accessibleId: accessibleId, activeIndex: activeIndex, onActivateTab: onActivateTab });
+            case _tabPanels2.default:
+              return _react2.default.cloneElement(child, { accessibleId: accessibleId, activeIndex: activeIndex });
+            default:
+              return child;
+          }
+        })
+      );
+    }
+  }]);
+
+  return Tabs;
+}(_react2.default.Component);
+
+exports.default = Tabs;
+
+
+Tabs.propTypes = {
+  activeIndex: _propTypes2.default.number.isRequired,
+  children: _propTypes2.default.node,
+  className: _propTypes2.default.string,
+  onActivateTab: _propTypes2.default.func
+};
+
+Tabs.defaultProps = {
+  children: null,
+  className: undefined,
+  onActivateTab: function onActivateTab() {}
+};
+
+/***/ }),
+
+/***/ 3766:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = uniqueId;
+var counter = 0;
+
+function uniqueId() {
+  counter += 1;
+  return "$rac$" + counter;
+}
+
+/***/ }),
+
+/***/ 3769:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/**
+ *
+ * Adapted from https://github.com/mozilla-b2g/gaia/blob/f09993563fb5fec4393eb71816ce76cb00463190/shared/js/async_storage.js
+ * (converted to use Promises instead of callbacks).
+ *
+ * This file defines an asynchronous version of the localStorage API, backed by
+ * an IndexedDB database.  It creates a global asyncStorage object that has
+ * methods like the localStorage object.
+ *
+ * To store a value use setItem:
+ *
+ *   asyncStorage.setItem("key", "value");
+ *
+ * This returns a promise in case you want confirmation that the value has been stored.
+ *
+ *  asyncStorage.setItem("key", "newvalue").then(function() {
+ *    console.log("new value stored");
+ *  });
+ *
+ * To read a value, call getItem(), but note that you must wait for a promise
+ * resolution for the value to be retrieved.
+ *
+ *  asyncStorage.getItem("key").then(function(value) {
+ *    console.log("The value of key is:", value);
+ *  });
+ *
+ * Note that unlike localStorage, asyncStorage does not allow you to store and
+ * retrieve values by setting and querying properties directly. You cannot just
+ * write asyncStorage.key; you have to explicitly call setItem() or getItem().
+ *
+ * removeItem(), clear(), length(), and key() are like the same-named methods of
+ * localStorage, and all return a promise.
+ *
+ * The asynchronous nature of getItem() makes it tricky to retrieve multiple
+ * values. But unlike localStorage, asyncStorage does not require the values you
+ * store to be strings.  So if you need to save multiple values and want to
+ * retrieve them together, in a single asynchronous operation, just group the
+ * values into a single object. The properties of this object may not include
+ * DOM elements, but they may include things like Blobs and typed arrays.
+ *
+ */
+
+
+
+const DBNAME = "devtools-async-storage";
+const DBVERSION = 1;
+const STORENAME = "keyvaluepairs";
+var db = null;
+
+function withStore(type, onsuccess, onerror) {
+  if (db) {
+    const transaction = db.transaction(STORENAME, type);
+    const store = transaction.objectStore(STORENAME);
+    onsuccess(store);
+  } else {
+    const openreq = indexedDB.open(DBNAME, DBVERSION);
+    openreq.onerror = function withStoreOnError() {
+      onerror();
+    };
+    openreq.onupgradeneeded = function withStoreOnUpgradeNeeded() {
+      // First time setup: create an empty object store
+      openreq.result.createObjectStore(STORENAME);
+    };
+    openreq.onsuccess = function withStoreOnSuccess() {
+      db = openreq.result;
+      const transaction = db.transaction(STORENAME, type);
+      const store = transaction.objectStore(STORENAME);
+      onsuccess(store);
+    };
+  }
+}
+
+function getItem(itemKey) {
+  return new Promise((resolve, reject) => {
+    let req;
+    withStore("readonly", store => {
+      store.transaction.oncomplete = function onComplete() {
+        let value = req.result;
+        if (value === undefined) {
+          value = null;
+        }
+        resolve(value);
+      };
+      req = store.get(itemKey);
+      req.onerror = function getItemOnError() {
+        reject("Error in asyncStorage.getItem(): ", req.error.name);
+      };
+    }, reject);
+  });
+}
+
+function setItem(itemKey, value) {
+  return new Promise((resolve, reject) => {
+    withStore("readwrite", store => {
+      store.transaction.oncomplete = resolve;
+      const req = store.put(value, itemKey);
+      req.onerror = function setItemOnError() {
+        reject("Error in asyncStorage.setItem(): ", req.error.name);
+      };
+    }, reject);
+  });
+}
+
+function removeItem(itemKey) {
+  return new Promise((resolve, reject) => {
+    withStore("readwrite", store => {
+      store.transaction.oncomplete = resolve;
+      const req = store.delete(itemKey);
+      req.onerror = function removeItemOnError() {
+        reject("Error in asyncStorage.removeItem(): ", req.error.name);
+      };
+    }, reject);
+  });
+}
+
+function clear() {
+  return new Promise((resolve, reject) => {
+    withStore("readwrite", store => {
+      store.transaction.oncomplete = resolve;
+      const req = store.clear();
+      req.onerror = function clearOnError() {
+        reject("Error in asyncStorage.clear(): ", req.error.name);
+      };
+    }, reject);
+  });
+}
+
+function length() {
+  return new Promise((resolve, reject) => {
+    let req;
+    withStore("readonly", store => {
+      store.transaction.oncomplete = function onComplete() {
+        resolve(req.result);
+      };
+      req = store.count();
+      req.onerror = function lengthOnError() {
+        reject("Error in asyncStorage.length(): ", req.error.name);
+      };
+    }, reject);
+  });
+}
+
+function key(n) {
+  return new Promise((resolve, reject) => {
+    if (n < 0) {
+      resolve(null);
+      return;
+    }
+
+    let req;
+    withStore("readonly", store => {
+      store.transaction.oncomplete = function onComplete() {
+        const cursor = req.result;
+        resolve(cursor ? cursor.key : null);
+      };
+      let advanced = false;
+      req = store.openCursor();
+      req.onsuccess = function keyOnSuccess() {
+        const cursor = req.result;
+        if (!cursor) {
+          // this means there weren"t enough keys
+          return;
+        }
+        if (n === 0 || advanced) {
+          // Either 1) we have the first key, return it if that's what they
+          // wanted, or 2) we"ve got the nth key.
+          return;
+        }
+
+        // Otherwise, ask the cursor to skip ahead n records
+        advanced = true;
+        cursor.advance(n);
+      };
+      req.onerror = function keyOnError() {
+        reject("Error in asyncStorage.key(): ", req.error.name);
+      };
+    }, reject);
+  });
+}
+
+exports.getItem = getItem;
+exports.setItem = setItem;
+exports.removeItem = removeItem;
+exports.clear = clear;
+exports.length = length;
+exports.key = key;
+
+/***/ }),
+
+/***/ 3770:
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "polyfill", function() { return polyfill; });
+/**
+ * Copyright (c) 2013-present, Facebook, Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+function componentWillMount() {
+  // Call this.constructor.gDSFP to support sub-classes.
+  var state = this.constructor.getDerivedStateFromProps(this.props, this.state);
+  if (state !== null && state !== undefined) {
+    this.setState(state);
+  }
+}
+
+function componentWillReceiveProps(nextProps) {
+  // Call this.constructor.gDSFP to support sub-classes.
+  // Use the setState() updater to ensure state isn't stale in certain edge cases.
+  function updater(prevState) {
+    var state = this.constructor.getDerivedStateFromProps(nextProps, prevState);
+    return state !== null && state !== undefined ? state : null;
+  }
+  // Binding "this" is important for shallow renderer support.
+  this.setState(updater.bind(this));
+}
+
+function componentWillUpdate(nextProps, nextState) {
+  try {
+    var prevProps = this.props;
+    var prevState = this.state;
+    this.props = nextProps;
+    this.state = nextState;
+    this.__reactInternalSnapshotFlag = true;
+    this.__reactInternalSnapshot = this.getSnapshotBeforeUpdate(
+      prevProps,
+      prevState
+    );
+  } finally {
+    this.props = prevProps;
+    this.state = prevState;
+  }
+}
+
+// React may warn about cWM/cWRP/cWU methods being deprecated.
+// Add a flag to suppress these warnings for this special case.
+componentWillMount.__suppressDeprecationWarning = true;
+componentWillReceiveProps.__suppressDeprecationWarning = true;
+componentWillUpdate.__suppressDeprecationWarning = true;
+
+function polyfill(Component) {
+  var prototype = Component.prototype;
+
+  if (!prototype || !prototype.isReactComponent) {
+    throw new Error('Can only polyfill class components');
+  }
+
+  if (
+    typeof Component.getDerivedStateFromProps !== 'function' &&
+    typeof prototype.getSnapshotBeforeUpdate !== 'function'
+  ) {
+    return Component;
+  }
+
+  // If new component APIs are defined, "unsafe" lifecycles won't be called.
+  // Error if any of these lifecycles are present,
+  // Because they would work differently between older and newer (16.3+) versions of React.
+  var foundWillMountName = null;
+  var foundWillReceivePropsName = null;
+  var foundWillUpdateName = null;
+  if (typeof prototype.componentWillMount === 'function') {
+    foundWillMountName = 'componentWillMount';
+  } else if (typeof prototype.UNSAFE_componentWillMount === 'function') {
+    foundWillMountName = 'UNSAFE_componentWillMount';
+  }
+  if (typeof prototype.componentWillReceiveProps === 'function') {
+    foundWillReceivePropsName = 'componentWillReceiveProps';
+  } else if (typeof prototype.UNSAFE_componentWillReceiveProps === 'function') {
+    foundWillReceivePropsName = 'UNSAFE_componentWillReceiveProps';
+  }
+  if (typeof prototype.componentWillUpdate === 'function') {
+    foundWillUpdateName = 'componentWillUpdate';
+  } else if (typeof prototype.UNSAFE_componentWillUpdate === 'function') {
+    foundWillUpdateName = 'UNSAFE_componentWillUpdate';
+  }
+  if (
+    foundWillMountName !== null ||
+    foundWillReceivePropsName !== null ||
+    foundWillUpdateName !== null
+  ) {
+    var componentName = Component.displayName || Component.name;
+    var newApiName =
+      typeof Component.getDerivedStateFromProps === 'function'
+        ? 'getDerivedStateFromProps()'
+        : 'getSnapshotBeforeUpdate()';
+
+    throw Error(
+      'Unsafe legacy lifecycles will not be called for components using new component APIs.\n\n' +
+        componentName +
+        ' uses ' +
+        newApiName +
+        ' but also contains the following legacy lifecycles:' +
+        (foundWillMountName !== null ? '\n  ' + foundWillMountName : '') +
+        (foundWillReceivePropsName !== null
+          ? '\n  ' + foundWillReceivePropsName
+          : '') +
+        (foundWillUpdateName !== null ? '\n  ' + foundWillUpdateName : '') +
+        '\n\nThe above lifecycles should be removed. Learn more about this warning here:\n' +
+        'https://fb.me/react-async-component-lifecycle-hooks'
+    );
+  }
+
+  // React <= 16.2 does not support static getDerivedStateFromProps.
+  // As a workaround, use cWM and cWRP to invoke the new static lifecycle.
+  // Newer versions of React will ignore these lifecycles if gDSFP exists.
+  if (typeof Component.getDerivedStateFromProps === 'function') {
+    prototype.componentWillMount = componentWillMount;
+    prototype.componentWillReceiveProps = componentWillReceiveProps;
+  }
+
+  // React <= 16.2 does not support getSnapshotBeforeUpdate.
+  // As a workaround, use cWU to invoke the new lifecycle.
+  // Newer versions of React will ignore that lifecycle if gSBU exists.
+  if (typeof prototype.getSnapshotBeforeUpdate === 'function') {
+    if (typeof prototype.componentDidUpdate !== 'function') {
+      throw new Error(
+        'Cannot polyfill getSnapshotBeforeUpdate() for components that do not define componentDidUpdate() on the prototype'
+      );
+    }
+
+    prototype.componentWillUpdate = componentWillUpdate;
+
+    var componentDidUpdate = prototype.componentDidUpdate;
+
+    prototype.componentDidUpdate = function componentDidUpdatePolyfill(
+      prevProps,
+      prevState,
+      maybeSnapshot
+    ) {
+      // 16.3+ will not execute our will-update method;
+      // It will pass a snapshot value to did-update though.
+      // Older versions will require our polyfilled will-update value.
+      // We need to handle both cases, but can't just check for the presence of "maybeSnapshot",
+      // Because for <= 15.x versions this might be a "prevContext" object.
+      // We also can't just check "__reactInternalSnapshot",
+      // Because get-snapshot might return a falsy value.
+      // So check for the explicit __reactInternalSnapshotFlag flag to determine behavior.
+      var snapshot = this.__reactInternalSnapshotFlag
+        ? this.__reactInternalSnapshot
+        : maybeSnapshot;
+
+      componentDidUpdate.call(this, prevProps, prevState, snapshot);
+    };
+  }
+
+  return Component;
+}
+
+
+
+
+/***/ }),
+
+/***/ 3784:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _propTypes = __webpack_require__(3642);
+
+var _propTypes2 = _interopRequireDefault(_propTypes);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+exports.default = _propTypes2.default.object;
+
+/***/ }),
+
+/***/ 4:
+/***/ (function(module, exports) {
+
+module.exports = __WEBPACK_EXTERNAL_MODULE_4__;
+
+/***/ }),
+
+/***/ 52:
+/***/ (function(module, exports) {
+
+module.exports = __WEBPACK_EXTERNAL_MODULE_52__;
+
+/***/ }),
+
+/***/ 792:
+/***/ (function(module, exports) {
+
+var g;
+
+// This works in non-strict mode
+g = (function() {
+	return this;
+})();
+
+try {
+	// This works if eval is allowed (see CSP)
+	g = g || Function("return this")() || (1,eval)("this");
+} catch(e) {
+	// This works if the window reference is available
+	if(typeof window === "object")
+		g = window;
+}
+
+// g can still be undefined, but nothing to do about it...
+// We return undefined, instead of nothing here, so it's
+// easier to handle this case. if(!global) { ...}
+
+module.exports = g;
+
+
+/***/ }),
+
+/***/ 793:
+/***/ (function(module, exports) {
+
+module.exports = function(module) {
+	if(!module.webpackPolyfill) {
+		module.deprecate = function() {};
+		module.paths = [];
+		// module.parent = undefined by default
+		if(!module.children) module.children = [];
+		Object.defineProperty(module, "loaded", {
+			enumerable: true,
+			get: function() {
+				return module.l;
+			}
+		});
+		Object.defineProperty(module, "id", {
+			enumerable: true,
+			get: function() {
+				return module.i;
+			}
+		});
+		module.webpackPolyfill = 1;
+	}
+	return module;
+};
+
+
+/***/ }),
+
+/***/ 806:
+/***/ (function(module, exports) {
+
+module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 256 256\"><defs><style>.cls-1{isolation:isolate;}.cls-17,.cls-2,.cls-25{fill:none;}.cls-17,.cls-2{stroke-miterlimit:10;}.cls-2{stroke-width:0.75px;stroke:url(#linear-gradient);}.cls-3{fill:url(#linear-gradient-2);}.cls-4{fill:#f15a24;}.cls-5{fill:#ed1c24;}.cls-6{fill:#c1272d;}.cls-7{fill:url(#linear-gradient-3);}.cls-8{fill:url(#linear-gradient-4);}.cls-9{fill:url(#linear-gradient-5);}.cls-10{fill:url(#linear-gradient-6);}.cls-11{opacity:0.49;fill:url(#linear-gradient-7);}.cls-12{fill:url(#linear-gradient-8);}.cls-13{fill:#2db5f9;}.cls-13,.cls-14{mix-blend-mode:screen;}.cls-14{fill:#5fd2ff;}.cls-15{fill:#219058;}.cls-16{fill:url(#linear-gradient-9);}.cls-17{stroke:#fff;stroke-width:1.87px;}.cls-18{fill:#f7b852;}.cls-19{fill:#ff8431;}.cls-20{fill:#fffb69;}.cls-21{fill:#44c688;}.cls-22{fill:#29b36e;}.cls-23{fill:#6fd191;}.cls-24{fill:#c83ad7;}.cls-26{fill:#fba9ff;}.cls-27{fill:#ff737d;}.cls-28{fill:#fdc666;}</style><linearGradient id=\"linear-gradient\" x1=\"67.45\" y1=\"154.72\" x2=\"67.29\" y2=\"155.43\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ff1d25\" stop-opacity=\"0.5\"></stop><stop offset=\"0.06\" stop-color=\"#ff1d25\" stop-opacity=\"0.54\"></stop><stop offset=\"0.37\" stop-color=\"#ff1d25\" stop-opacity=\"0.74\"></stop><stop offset=\"0.64\" stop-color=\"#ff1d25\" stop-opacity=\"0.88\"></stop><stop offset=\"0.86\" stop-color=\"#ff1d25\" stop-opacity=\"0.97\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient><linearGradient id=\"linear-gradient-2\" x1=\"73.09\" y1=\"170.74\" x2=\"73.09\" y2=\"153.5\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ffdd42\"></stop><stop offset=\"1\" stop-color=\"#fb784b\"></stop></linearGradient><linearGradient id=\"linear-gradient-3\" x1=\"201.52\" y1=\"95.13\" x2=\"207.88\" y2=\"89.89\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#5bcb99\"></stop><stop offset=\"1\" stop-color=\"#85a8e8\"></stop></linearGradient><linearGradient id=\"linear-gradient-4\" x1=\"81.17\" y1=\"158.3\" x2=\"279.32\" y2=\"55.49\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#34e28b\"></stop><stop offset=\"1\"></stop></linearGradient><linearGradient id=\"linear-gradient-5\" x1=\"117.57\" y1=\"178.22\" x2=\"133.15\" y2=\"178.22\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#c297ff\"></stop><stop offset=\"1\" stop-color=\"#ae31bb\"></stop></linearGradient><linearGradient id=\"linear-gradient-6\" x1=\"54.05\" y1=\"253.29\" x2=\"251.08\" y2=\"99.63\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-color=\"#d23de2\"></stop></linearGradient><linearGradient id=\"linear-gradient-7\" x1=\"199.8\" y1=\"86.45\" x2=\"191.83\" y2=\"113.37\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-opacity=\"0\"></stop></linearGradient><linearGradient id=\"linear-gradient-8\" x1=\"126.87\" y1=\"190.63\" x2=\"182.9\" y2=\"204.2\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#2db5f9\"></stop><stop offset=\"1\" stop-color=\"#092432\"></stop></linearGradient><linearGradient id=\"linear-gradient-9\" x1=\"83.08\" y1=\"49.55\" x2=\"46.06\" y2=\"151.24\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"0.21\" stop-color=\"#48080a\"></stop><stop offset=\"0.42\" stop-color=\"#891014\"></stop><stop offset=\"0.61\" stop-color=\"#bc151b\"></stop><stop offset=\"0.78\" stop-color=\"#e01a21\"></stop><stop offset=\"0.91\" stop-color=\"#f71c24\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient></defs><title>dojo_square</title><g class=\"cls-1\"><g id=\"Layer_1\" data-name=\"Layer 1\"><line class=\"cls-2\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-3\" d=\"M42.28,150.4l.52.82A58,58,0,0,0,52,161.49a45.23,45.23,0,0,0,28.74,10.25c.65,0,1.31,0,2,0a67.32,67.32,0,0,0,21.13-5.26,67.38,67.38,0,0,1-9.09.83,36.92,36.92,0,0,1-27.44-12.17A66.82,66.82,0,0,1,42.28,150.4Z\"></path><path class=\"cls-4\" d=\"M80.79,80.88a45.4,45.4,0,0,1,38.89,21.94A37,37,0,0,0,84.43,94.7c8.29,4,19.66,7.08,35.28,8.15,0,0-.77-14.87-19.8-22.64-26.57-10.84-30.33-8.69-37.06-19.9a30.09,30.09,0,0,0,6,22.15A45.45,45.45,0,0,1,80.79,80.88Z\"></path><path class=\"cls-5\" d=\"M99.92,80.21c-9.1-3.71-15.52-5.9-20.3-7.62A33.4,33.4,0,0,0,84.54,81a45.42,45.42,0,0,1,35.13,21.78,36.87,36.87,0,0,0-20.54-9.34,109,109,0,0,0,20,9.32l.59,0S118.94,88,99.92,80.21Z\"></path><path class=\"cls-6\" d=\"M119.69,102.85h.1c.29-1.62,2.07-14.46-12.4-25.7C85.78,60.37,81.56,58.82,80.53,49.94a27.8,27.8,0,0,0-.91,22.65c4.78,1.72,11.21,3.91,20.3,7.62,19,7.77,19.8,22.64,19.8,22.64Z\"></path><path class=\"cls-7\" d=\"M185.28,88.22a33.64,33.64,0,0,1,22.08,8.23,29.8,29.8,0,0,1,19,8S208.22,78,176.19,89a41.72,41.72,0,0,0-8.2,4A33.64,33.64,0,0,1,185.28,88.22Z\"></path><path class=\"cls-8\" d=\"M185.28,88.22A33.62,33.62,0,0,0,168,93l.93-.56c-25.88,15.24-57.6,62.06-101.56,62.65h0a36.92,36.92,0,0,0,27.44,12.17,67.38,67.38,0,0,0,9.09-.83c28.6-11.79,56.09-40,68.55-53.64,11.56-12.67,24.22-17,34.91-16.34A33.64,33.64,0,0,0,185.28,88.22Z\"></path><path class=\"cls-9\" d=\"M118.48,179a20.94,20.94,0,0,0-.92,5.86,22.25,22.25,0,0,0,1,6.74,16.56,16.56,0,0,1,5.5-14.74c0-.17.09-.34.14-.51a20.37,20.37,0,0,1,8.91-11.47l-.08,0a37.84,37.84,0,0,0-4,1.53A20.87,20.87,0,0,0,118.48,179Z\"></path><path class=\"cls-10\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-11\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-12\" d=\"M137.8,201.88a20.44,20.44,0,0,1-13.68-25.12h0l0,.08a16.56,16.56,0,0,0-5.5,14.73,20.94,20.94,0,0,0,33.63,9.38A20.37,20.37,0,0,1,137.8,201.88Z\"></path><path class=\"cls-13\" d=\"M144.91,200.4c2.12-6.17,9-15.7,16.33-11.34,0,0,6,3.36,7.23-6.11,0,0,4.49,22.28-17.1,21.53,0,0,4.86-3.55,4.81-7.2A24.73,24.73,0,0,1,144.91,200.4Z\"></path><path class=\"cls-14\" d=\"M153.52,186.75c2.14-1.09,4.16-2.18,8.08-.44,3,1.35,6.88-3.94,3.56-8.66,0,0,.21,4.88-3.72,4.84A8.81,8.81,0,0,0,153.52,186.75Z\"></path><path class=\"cls-15\" d=\"M175.21,115.88c-5.17,7-12.75,12.95-13.64,14.39s1.5,6.11,5,6.45.82-1.36.52-3,1.06,1,5.27.42-1.53-2.2-1.14-4.33,4.74-6.17,6.47-10.25,4.7,0,3.18,3.18c-.6,1.26,4.81-3.54,2.08-7.21S178.22,111.77,175.21,115.88Z\"></path><path class=\"cls-15\" d=\"M160.47,131.28c-.76.73-3,2.37-3,2.37s2.19,3.05,5,3c0,0,.61-.29-.27-1.18S160.27,131.82,160.47,131.28Z\"></path><path class=\"cls-16\" d=\"M84.43,94.7c-7.35-3.56-12.27-7.88-15.54-12.24A45.42,45.42,0,0,0,42.28,150.4a66.82,66.82,0,0,0,25.09,4.67h0A37,37,0,0,1,84.43,94.7Z\"></path><line class=\"cls-17\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-18\" d=\"M84.52,81c2,2.91,7.81,7.94,14.63,12.44a36.87,36.87,0,0,1,20.52,9.33A45.42,45.42,0,0,0,84.52,81Z\"></path><path class=\"cls-19\" d=\"M84.52,81c-1.23-.1-2.48-.16-3.74-.16a45.45,45.45,0,0,0-11.89,1.58c3.27,4.36,8.19,8.67,15.54,12.24a36.72,36.72,0,0,1,14.72-1.22C92.33,89,86.54,83.95,84.52,81Z\"></path><path class=\"cls-20\" d=\"M109.73,91.38a33.29,33.29,0,0,0-12.21-7.29C100.46,89.66,103,91.38,109.73,91.38Z\"></path><path class=\"cls-6\" d=\"M96.89,67.66a63.16,63.16,0,0,1,6.54,4.58c.52.39-.93-3.55-2.62-4.3A7.5,7.5,0,0,0,96.89,67.66Z\"></path><path class=\"cls-6\" d=\"M105,73.37a70.75,70.75,0,0,1,6.5,4.64c.53.38-.9-3.56-2.57-4.33A7.5,7.5,0,0,0,105,73.37Z\"></path><path class=\"cls-6\" d=\"M112.55,79a19.59,19.59,0,0,1,3.52,4.39c.26.38.07-2.58-.92-3.42A5.28,5.28,0,0,0,112.55,79Z\"></path><path class=\"cls-21\" d=\"M77.55,151c-.2-.65,2.35-1.48,3-1.51a11.91,11.91,0,0,1,3.57,1.19,16.34,16.34,0,0,1-4.89,1A4.46,4.46,0,0,1,77.55,151Z\"></path><path class=\"cls-21\" d=\"M86.73,148.78c-.22-.51,1.75-1.38,2.29-1.46a9.58,9.58,0,0,1,3,.65,13.15,13.15,0,0,1-3.83,1.23A3.59,3.59,0,0,1,86.73,148.78Z\"></path><path class=\"cls-21\" d=\"M94.41,146c-.22-.4,1.32-1.29,1.76-1.41a7.92,7.92,0,0,1,2.48.27,10.87,10.87,0,0,1-3,1.35A3,3,0,0,1,94.41,146Z\"></path><path class=\"cls-21\" d=\"M100.52,143.19c-.23-.35,1.11-1.27,1.5-1.41a7.25,7.25,0,0,1,2.29.07,10,10,0,0,1-2.67,1.45A2.72,2.72,0,0,1,100.52,143.19Z\"></path><path class=\"cls-21\" d=\"M106.23,140.07c-.22-.29.9-1.16,1.24-1.3a6.31,6.31,0,0,1,2,0,8.66,8.66,0,0,1-2.25,1.39A2.36,2.36,0,0,1,106.23,140.07Z\"></path><path class=\"cls-21\" d=\"M68.34,151.69c-.11-.73,2.73-1.16,3.46-1.09a12.76,12.76,0,0,1,3.57,1.86,17.51,17.51,0,0,1-5.35.26A4.78,4.78,0,0,1,68.34,151.69Z\"></path><path class=\"cls-6\" d=\"M70.08,65.82c2,2.27,6.68,3.74,6.68,3.74A19,19,0,0,1,75.83,62c0-.18-5.75-.09-6.73-4.81C68.91,56.23,68.1,63.55,70.08,65.82Z\"></path><path class=\"cls-4\" d=\"M50.54,174.68a5.49,5.49,0,0,1,2.24-3.88l.19-.11a14,14,0,0,0-1.43-.25c-6.85-1-8.59,3.06-8.95,7.64,0,.26,0,.53,0,.78a8.31,8.31,0,0,1,7.89-4.2Z\"></path><path class=\"cls-4\" d=\"M58.88,173.19c-6.81-4.13-10.63-4.43-12.15,7.14,0,0,7.17-5.67,10.55-1.92,3.68,4.07,8.68.32,6.05-2.06A18.77,18.77,0,0,0,58.88,173.19Z\"></path><path class=\"cls-4\" d=\"M56.06,174.53c-3.86,2.57-3.86,8.62-3.86,8.62s7-3.81,6.5-6.19A2.93,2.93,0,0,0,56.06,174.53Z\"></path><path class=\"cls-4\" d=\"M24,127a5.49,5.49,0,0,1,4.43-.68l.2.08a14,14,0,0,0-.7-1.27c-3.49-6-7.76-4.79-11.56-2.21-.22.15-.43.31-.63.47a8.31,8.31,0,0,1,8.21,3.53Z\"></path><path class=\"cls-4\" d=\"M31.29,134.08c-2.48-9.82-4.47-13.62-14-6.83,0,0,8.13-2.34,9.06,9.22.44,5.47,5.69,6.57,5.63,3A18.77,18.77,0,0,0,31.29,134.08Z\"></path><path class=\"cls-4\" d=\"M27.83,128.82c-4.52-1.07-8.94,3.06-8.94,3.06s6.94-.24,7.78,4C27.14,138.23,27.83,128.82,27.83,128.82Z\"></path><path class=\"cls-22\" d=\"M172.45,112.79a55.39,55.39,0,0,1,15.49-12.5c5.64-3,13.66-4.84,18.5-4.61l1.85,1.59-1-.08a37.75,37.75,0,0,0-19,3.76A55,55,0,0,0,172.45,112.79Z\"></path><path class=\"cls-23\" d=\"M207.12,95.74a34.5,34.5,0,0,1,10.45,2.68,27.42,27.42,0,0,1,8.81,6,27.05,27.05,0,0,0-9.09-5.29,43.65,43.65,0,0,0-9-1.84l-1.84-1.59Z\"></path><path class=\"cls-24\" d=\"M124.52,175.47a27.43,27.43,0,0,1,3.11-1.9,25.35,25.35,0,0,1,2.31-1c.78-.34,1.58-.58,2.38-.84a45.63,45.63,0,0,1,9.84-1.81,95.67,95.67,0,0,1,19.84.78,194.33,194.33,0,0,0,19.66,1.89,66.25,66.25,0,0,0,19.6-1.93,66.44,66.44,0,0,1-19.6,2.3,194.82,194.82,0,0,1-19.75-1.52,94.77,94.77,0,0,0-19.65-.41,44.43,44.43,0,0,0-9.55,1.94c-.76.27-1.53.52-2.27.85a24,24,0,0,0-2.18,1,21.38,21.38,0,0,0-3.93,2.7l-.53.47A18.42,18.42,0,0,1,124.52,175.47Z\"></path><line class=\"cls-25\" x1=\"124.09\" y1=\"176.84\" x2=\"124.09\" y2=\"176.84\"></line><path class=\"cls-6\" d=\"M85.66,97.64c-6.36,1.4-5.37,6.45-5.37,6.45s2-2.43,13.09-3.74A52.36,52.36,0,0,1,85.66,97.64Z\"></path><path class=\"cls-26\" d=\"M118.59,191.58a16.4,16.4,0,0,1-.08-4.24,18.64,18.64,0,0,1,.91-4.18,18.86,18.86,0,0,1,1.87-3.9,19.81,19.81,0,0,1,2.78-3.38l.46-.42s-.63,2-.7,2.51a19.27,19.27,0,0,0-1.61,1.93,17.84,17.84,0,0,0-3.33,7.5A16.22,16.22,0,0,0,118.59,191.58Z\"></path><path class=\"cls-27\" d=\"M65.89,155.08c-3.61-4-6.65-10.29-7.95-16.2a36.79,36.79,0,0,1-.82-9.49l.14-2.38.33-2.36a23,23,0,0,1,.47-2.33,19.65,19.65,0,0,1,.6-2.3,35.6,35.6,0,0,1,3.83-8.64,39.45,39.45,0,0,1,2.68-3.89l1.53-1.8c.51-.6,1.1-1.13,1.64-1.69a37.2,37.2,0,0,1,7.47-5.68,39.82,39.82,0,0,1,8.62-3.62A39.67,39.67,0,0,0,76,98.56a36.78,36.78,0,0,0-7.22,5.83c-.52.57-1.08,1.11-1.56,1.71l-1.45,1.81a38.67,38.67,0,0,0-2.51,3.89,34.62,34.62,0,0,0-3.48,8.52,18.77,18.77,0,0,0-.52,2.24,21.9,21.9,0,0,0-.38,2.27l-.25,2.28-.06,2.3a35.25,35.25,0,0,0,1.06,9.07,36.17,36.17,0,0,0,8.62,15.83l.66.71S66.44,155.12,65.89,155.08Z\"></path><path class=\"cls-28\" d=\"M103.89,166.42A47.14,47.14,0,0,1,94,167.55,37.09,37.09,0,0,1,84,165.91,46.7,46.7,0,0,1,74.71,162a34.57,34.57,0,0,1-8.12-6.17l-.69-.74s2.38,0,3-.06a33.57,33.57,0,0,0,6.72,5.5,45.26,45.26,0,0,0,8.82,4.27A36.2,36.2,0,0,0,94,166.91,47.78,47.78,0,0,0,103.89,166.42Z\"></path></g></g></svg>"
+
+/***/ }),
+
+/***/ 916:
 /***/ (function(module, exports, __webpack_require__) {
 
 /* WEBPACK VAR INJECTION */(function(module, global) {var __WEBPACK_AMD_DEFINE_RESULT__;/*! https://mths.be/punycode v1.4.1 by @mathias */
@@ -7114,2107 +7913,6 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 
 /***/ }),
 
-/***/ 3642:
-/***/ (function(module, exports) {
-
-module.exports = __WEBPACK_EXTERNAL_MODULE_3642__;
-
-/***/ }),
-
-/***/ 3643:
-/***/ (function(module, exports) {
-
-module.exports = __WEBPACK_EXTERNAL_MODULE_3643__;
-
-/***/ }),
-
-/***/ 365:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M1.5 14.042h4.095a.5.5 0 0 0 0-1H1.5a.5.5 0 1 0 0 1zM7.983 2a.5.5 0 0 1 .517.5v7.483l3.136-3.326a.5.5 0 1 1 .728.686l-4 4.243a.499.499 0 0 1-.73-.004L3.635 7.343a.5.5 0 0 1 .728-.686L7.5 9.983V3H1.536C1.24 3 1 2.776 1 2.5s.24-.5.536-.5h6.447zM10.5 14.042h4.095a.5.5 0 0 0 0-1H10.5a.5.5 0 1 0 0 1z\"></path></g></svg>"
-
-/***/ }),
-
-/***/ 366:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M5 13.5H1a.5.5 0 1 0 0 1h4a.5.5 0 1 0 0-1zM12 13.5H8a.5.5 0 1 0 0 1h4a.5.5 0 1 0 0-1zM6.11 5.012A.427.427 0 0 1 6.21 5h7.083L9.646 1.354a.5.5 0 1 1 .708-.708l4.5 4.5a.498.498 0 0 1 0 .708l-4.5 4.5a.5.5 0 0 1-.708-.708L13.293 6H6.5v5.5a.5.5 0 1 1-1 0v-6a.5.5 0 0 1 .61-.488z\"></path></g></svg>"
-
-/***/ }),
-
-/***/ 3669:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-var _tree = __webpack_require__(3670);
-
-var _tree2 = _interopRequireDefault(_tree);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-module.exports = {
-  Tree: _tree2.default
-}; /* This Source Code Form is subject to the terms of the Mozilla Public
-    * License, v. 2.0. If a copy of the MPL was not distributed with this
-    * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-/***/ }),
-
-/***/ 367:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M13.297 6.912C12.595 4.39 10.167 2.5 7.398 2.5A5.898 5.898 0 0 0 1.5 8.398a.5.5 0 0 0 1 0A4.898 4.898 0 0 1 7.398 3.5c2.75 0 5.102 2.236 5.102 4.898v.004L8.669 7.029a.5.5 0 0 0-.338.942l4.462 1.598a.5.5 0 0 0 .651-.34.506.506 0 0 0 .02-.043l2-5a.5.5 0 1 0-.928-.372l-1.24 3.098z\"></path><circle cx=\"7\" cy=\"12\" r=\"1\"></circle></g></svg>"
-
-/***/ }),
-
-/***/ 3670:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _react = __webpack_require__(0);
-
-var _react2 = _interopRequireDefault(_react);
-
-var _reactDomFactories = __webpack_require__(3643);
-
-var _reactDomFactories2 = _interopRequireDefault(_reactDomFactories);
-
-var _propTypes = __webpack_require__(3642);
-
-var _propTypes2 = _interopRequireDefault(_propTypes);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-const { Component, createFactory } = _react2.default; /* This Source Code Form is subject to the terms of the Mozilla Public
-                                                       * License, v. 2.0. If a copy of the MPL was not distributed with this
-                                                       * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-__webpack_require__(3671);
-
-// depth
-const AUTO_EXPAND_DEPTH = 0;
-
-/**
- * An arrow that displays whether its node is expanded (▼) or collapsed
- * (▶). When its node has no children, it is hidden.
- */
-class ArrowExpander extends Component {
-  static get propTypes() {
-    return {
-      expanded: _propTypes2.default.bool
-    };
-  }
-
-  shouldComponentUpdate(nextProps, nextState) {
-    return this.props.expanded !== nextProps.expanded;
-  }
-
-  render() {
-    const { expanded } = this.props;
-
-    const classNames = ["arrow"];
-    if (expanded) {
-      classNames.push("expanded");
-    }
-    return _reactDomFactories2.default.img({
-      className: classNames.join(" ")
-    });
-  }
-}
-
-const treeIndent = _reactDomFactories2.default.span({ className: "tree-indent" }, "\u200B");
-
-class TreeNode extends Component {
-  static get propTypes() {
-    return {
-      id: _propTypes2.default.any.isRequired,
-      index: _propTypes2.default.number.isRequired,
-      depth: _propTypes2.default.number.isRequired,
-      focused: _propTypes2.default.bool.isRequired,
-      expanded: _propTypes2.default.bool.isRequired,
-      item: _propTypes2.default.any.isRequired,
-      isExpandable: _propTypes2.default.bool.isRequired,
-      onClick: _propTypes2.default.func,
-      renderItem: _propTypes2.default.func.isRequired
-    };
-  }
-
-  shouldComponentUpdate(nextProps) {
-    return this.props.item !== nextProps.item || this.props.focused !== nextProps.focused || this.props.expanded !== nextProps.expanded;
-  }
-
-  render() {
-    const {
-      depth,
-      id,
-      item,
-      focused,
-      expanded,
-      renderItem,
-      isExpandable
-    } = this.props;
-
-    const arrow = isExpandable ? ArrowExpanderFactory({
-      item,
-      expanded
-    }) : null;
-
-    let ariaExpanded;
-    if (this.props.isExpandable) {
-      ariaExpanded = false;
-    }
-    if (this.props.expanded) {
-      ariaExpanded = true;
-    }
-
-    const indents = Array.from({ length: depth }).fill(treeIndent);
-    const items = indents.concat(renderItem(item, depth, focused, arrow, expanded));
-
-    return _reactDomFactories2.default.div({
-      id,
-      className: `tree-node${focused ? " focused" : ""}`,
-      onClick: this.props.onClick,
-      role: "treeitem",
-      "aria-level": depth + 1,
-      "aria-expanded": ariaExpanded,
-      "data-expandable": this.props.isExpandable
-    }, ...items);
-  }
-}
-
-const ArrowExpanderFactory = createFactory(ArrowExpander);
-const TreeNodeFactory = createFactory(TreeNode);
-
-/**
- * Create a function that calls the given function `fn` only once per animation
- * frame.
- *
- * @param {Function} fn
- * @returns {Function}
- */
-function oncePerAnimationFrame(fn) {
-  let animationId = null;
-  let argsToPass = null;
-  return function (...args) {
-    argsToPass = args;
-    if (animationId !== null) {
-      return;
-    }
-
-    animationId = requestAnimationFrame(() => {
-      fn.call(this, ...argsToPass);
-      animationId = null;
-      argsToPass = null;
-    });
-  };
-}
-
-/**
- * A generic tree component. See propTypes for the public API.
- *
- * This tree component doesn't make any assumptions about the structure of your
- * tree data. Whether children are computed on demand, or stored in an array in
- * the parent's `_children` property, it doesn't matter. We only require the
- * implementation of `getChildren`, `getRoots`, `getParent`, and `isExpanded`
- * functions.
- *
- * This tree component is well tested and reliable. See the tests in ./tests
- * and its usage in the performance and memory panels in mozilla-central.
- *
- * This tree component doesn't make any assumptions about how to render items in
- * the tree. You provide a `renderItem` function, and this component will ensure
- * that only those items whose parents are expanded and which are visible in the
- * viewport are rendered. The `renderItem` function could render the items as a
- * "traditional" tree or as rows in a table or anything else. It doesn't
- * restrict you to only one certain kind of tree.
- *
- * The tree comes with basic styling for the indent, the arrow, as well as
- * hovered and focused styles which can be override in CSS.
- *
- * ### Example Usage
- *
- * Suppose we have some tree data where each item has this form:
- *
- *     {
- *       id: Number,
- *       label: String,
- *       parent: Item or null,
- *       children: Array of child items,
- *       expanded: bool,
- *     }
- *
- * Here is how we could render that data with this component:
- *
- *     class MyTree extends Component {
- *       static get propTypes() {
- *         // The root item of the tree, with the form described above.
- *         return {
- *           root: PropTypes.object.isRequired
- *         };
- *       },
- *
- *       render() {
- *         return Tree({
- *           itemHeight: 20, // px
- *
- *           getRoots: () => [this.props.root],
- *
- *           getParent: item => item.parent,
- *           getChildren: item => item.children,
- *           getKey: item => item.id,
- *           isExpanded: item => item.expanded,
- *
- *           renderItem: (item, depth, isFocused, arrow, isExpanded) => {
- *             let className = "my-tree-item";
- *             if (isFocused) {
- *               className += " focused";
- *             }
- *             return dom.div({
- *               className,
- *             },
- *               arrow,
- *               // And here is the label for this item.
- *               dom.span({ className: "my-tree-item-label" }, item.label)
- *             );
- *           },
- *
- *           onExpand: item => dispatchExpandActionToRedux(item),
- *           onCollapse: item => dispatchCollapseActionToRedux(item),
- *         });
- *       }
- *     }
- */
-class Tree extends Component {
-  static get propTypes() {
-    return {
-      // Required props
-
-      // A function to get an item's parent, or null if it is a root.
-      //
-      // Type: getParent(item: Item) -> Maybe<Item>
-      //
-      // Example:
-      //
-      //     // The parent of this item is stored in its `parent` property.
-      //     getParent: item => item.parent
-      getParent: _propTypes2.default.func.isRequired,
-
-      // A function to get an item's children.
-      //
-      // Type: getChildren(item: Item) -> [Item]
-      //
-      // Example:
-      //
-      //     // This item's children are stored in its `children` property.
-      //     getChildren: item => item.children
-      getChildren: _propTypes2.default.func.isRequired,
-
-      // A function which takes an item and ArrowExpander component instance and
-      // returns a component, or text, or anything else that React considers
-      // renderable.
-      //
-      // Type: renderItem(item: Item,
-      //                  depth: Number,
-      //                  isFocused: Boolean,
-      //                  arrow: ReactComponent,
-      //                  isExpanded: Boolean) -> ReactRenderable
-      //
-      // Example:
-      //
-      //     renderItem: (item, depth, isFocused, arrow, isExpanded) => {
-      //       let className = "my-tree-item";
-      //       if (isFocused) {
-      //         className += " focused";
-      //       }
-      //       return dom.div(
-      //         {
-      //           className,
-      //           style: { marginLeft: depth * 10 + "px" }
-      //         },
-      //         arrow,
-      //         dom.span({ className: "my-tree-item-label" }, item.label)
-      //       );
-      //     },
-      renderItem: _propTypes2.default.func.isRequired,
-
-      // A function which returns the roots of the tree (forest).
-      //
-      // Type: getRoots() -> [Item]
-      //
-      // Example:
-      //
-      //     // In this case, we only have one top level, root item. You could
-      //     // return multiple items if you have many top level items in your
-      //     // tree.
-      //     getRoots: () => [this.props.rootOfMyTree]
-      getRoots: _propTypes2.default.func.isRequired,
-
-      // A function to get a unique key for the given item. This helps speed up
-      // React's rendering a *TON*.
-      //
-      // Type: getKey(item: Item) -> String
-      //
-      // Example:
-      //
-      //     getKey: item => `my-tree-item-${item.uniqueId}`
-      getKey: _propTypes2.default.func.isRequired,
-
-      // A function to get whether an item is expanded or not. If an item is not
-      // expanded, then it must be collapsed.
-      //
-      // Type: isExpanded(item: Item) -> Boolean
-      //
-      // Example:
-      //
-      //     isExpanded: item => item.expanded,
-      isExpanded: _propTypes2.default.func.isRequired,
-
-      // Optional props
-
-      // The currently focused item, if any such item exists.
-      focused: _propTypes2.default.any,
-
-      // Handle when a new item is focused.
-      onFocus: _propTypes2.default.func,
-
-      // The depth to which we should automatically expand new items.
-      autoExpandDepth: _propTypes2.default.number,
-      // Should auto expand all new items or just the new items under the first
-      // root item.
-      autoExpandAll: _propTypes2.default.bool,
-
-      // Note: the two properties below are mutually exclusive. Only one of the
-      // label properties is necessary.
-      // ID of an element whose textual content serves as an accessible label
-      // for a tree.
-      labelledby: _propTypes2.default.string,
-      // Accessibility label for a tree widget.
-      label: _propTypes2.default.string,
-
-      // Optional event handlers for when items are expanded or collapsed.
-      // Useful for dispatching redux events and updating application state,
-      // maybe lazily loading subtrees from a worker, etc.
-      //
-      // Type:
-      //     onExpand(item: Item)
-      //     onCollapse(item: Item)
-      //
-      // Example:
-      //
-      //     onExpand: item => dispatchExpandActionToRedux(item)
-      onExpand: _propTypes2.default.func,
-      onCollapse: _propTypes2.default.func,
-      // Optional event handler called with the current focused node when the
-      // Enter key is pressed. Can be useful to allow further keyboard actions
-      // within the tree node.
-      onActivate: _propTypes2.default.func,
-      isExpandable: _propTypes2.default.func,
-      // Additional classes to add to the root element.
-      className: _propTypes2.default.string,
-      // style object to be applied to the root element.
-      style: _propTypes2.default.object
-    };
-  }
-
-  static get defaultProps() {
-    return {
-      autoExpandDepth: AUTO_EXPAND_DEPTH,
-      autoExpandAll: true
-    };
-  }
-
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      seen: new Set()
-    };
-
-    this._onExpand = oncePerAnimationFrame(this._onExpand).bind(this);
-    this._onCollapse = oncePerAnimationFrame(this._onCollapse).bind(this);
-    this._focusPrevNode = oncePerAnimationFrame(this._focusPrevNode).bind(this);
-    this._focusNextNode = oncePerAnimationFrame(this._focusNextNode).bind(this);
-    this._focusParentNode = oncePerAnimationFrame(this._focusParentNode).bind(this);
-    this._focusFirstNode = oncePerAnimationFrame(this._focusFirstNode).bind(this);
-    this._focusLastNode = oncePerAnimationFrame(this._focusLastNode).bind(this);
-
-    this._autoExpand = this._autoExpand.bind(this);
-    this._preventArrowKeyScrolling = this._preventArrowKeyScrolling.bind(this);
-    this._dfs = this._dfs.bind(this);
-    this._dfsFromRoots = this._dfsFromRoots.bind(this);
-    this._focus = this._focus.bind(this);
-    this._scrollNodeIntoView = this._scrollNodeIntoView.bind(this);
-    this._onBlur = this._onBlur.bind(this);
-    this._onKeyDown = this._onKeyDown.bind(this);
-    this._nodeIsExpandable = this._nodeIsExpandable.bind(this);
-    this._activateNode = oncePerAnimationFrame(this._activateNode).bind(this);
-  }
-
-  componentDidMount() {
-    this._autoExpand();
-    if (this.props.focused) {
-      this._scrollNodeIntoView(this.props.focused);
-      // Always keep the focus on the tree itself.
-      this.treeRef.focus();
-    }
-  }
-
-  componentWillReceiveProps(nextProps) {
-    this._autoExpand();
-  }
-
-  componentDidUpdate(prevProps, prevState) {
-    if (this.props.focused && prevProps.focused !== this.props.focused) {
-      this._scrollNodeIntoView(this.props.focused);
-      // Always keep the focus on the tree itself.
-      this.treeRef.focus();
-    }
-  }
-
-  _autoExpand() {
-    if (!this.props.autoExpandDepth) {
-      return;
-    }
-
-    // Automatically expand the first autoExpandDepth levels for new items. Do
-    // not use the usual DFS infrastructure because we don't want to ignore
-    // collapsed nodes.
-    const autoExpand = (item, currentDepth) => {
-      if (currentDepth >= this.props.autoExpandDepth || this.state.seen.has(item)) {
-        return;
-      }
-
-      this.props.onExpand(item);
-      this.state.seen.add(item);
-
-      const children = this.props.getChildren(item);
-      const length = children.length;
-      for (let i = 0; i < length; i++) {
-        autoExpand(children[i], currentDepth + 1);
-      }
-    };
-
-    const roots = this.props.getRoots();
-    const length = roots.length;
-    if (this.props.autoExpandAll) {
-      for (let i = 0; i < length; i++) {
-        autoExpand(roots[i], 0);
-      }
-    } else if (length != 0) {
-      autoExpand(roots[0], 0);
-    }
-  }
-
-  _preventArrowKeyScrolling(e) {
-    switch (e.key) {
-      case "ArrowUp":
-      case "ArrowDown":
-      case "ArrowLeft":
-      case "ArrowRight":
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.nativeEvent) {
-          if (e.nativeEvent.preventDefault) {
-            e.nativeEvent.preventDefault();
-          }
-          if (e.nativeEvent.stopPropagation) {
-            e.nativeEvent.stopPropagation();
-          }
-        }
-    }
-  }
-
-  /**
-   * Perform a pre-order depth-first search from item.
-   */
-  _dfs(item, maxDepth = Infinity, traversal = [], _depth = 0) {
-    traversal.push({ item, depth: _depth });
-
-    if (!this.props.isExpanded(item)) {
-      return traversal;
-    }
-
-    const nextDepth = _depth + 1;
-
-    if (nextDepth > maxDepth) {
-      return traversal;
-    }
-
-    const children = this.props.getChildren(item);
-    const length = children.length;
-    for (let i = 0; i < length; i++) {
-      this._dfs(children[i], maxDepth, traversal, nextDepth);
-    }
-
-    return traversal;
-  }
-
-  /**
-   * Perform a pre-order depth-first search over the whole forest.
-   */
-  _dfsFromRoots(maxDepth = Infinity) {
-    const traversal = [];
-
-    const roots = this.props.getRoots();
-    const length = roots.length;
-    for (let i = 0; i < length; i++) {
-      this._dfs(roots[i], maxDepth, traversal);
-    }
-
-    return traversal;
-  }
-
-  /**
-   * Expands current row.
-   *
-   * @param {Object} item
-   * @param {Boolean} expandAllChildren
-   */
-  _onExpand(item, expandAllChildren) {
-    if (this.props.onExpand) {
-      this.props.onExpand(item);
-
-      if (expandAllChildren) {
-        const children = this._dfs(item);
-        const length = children.length;
-        for (let i = 0; i < length; i++) {
-          this.props.onExpand(children[i].item);
-        }
-      }
-    }
-  }
-
-  /**
-   * Collapses current row.
-   *
-   * @param {Object} item
-   */
-  _onCollapse(item) {
-    if (this.props.onCollapse) {
-      this.props.onCollapse(item);
-    }
-  }
-
-  /**
-   * Sets the passed in item to be the focused item.
-   *
-   * @param {Object|undefined} item
-   *        The item to be focused, or undefined to focus no item.
-   *
-   * @param {Object|undefined} options
-   *        An options object which can contain:
-   *          - dir: "up" or "down" to indicate if we should scroll the element
-   *                 to the top or the bottom of the scrollable container when
-   *                 the element is off canvas.
-   */
-  _focus(item, options = {}) {
-    const { preventAutoScroll } = options;
-    if (item && !preventAutoScroll) {
-      this._scrollNodeIntoView(item, options);
-    }
-    if (this.props.onFocus) {
-      this.props.onFocus(item);
-    }
-  }
-
-  /**
-   * Sets the passed in item to be the focused item.
-   *
-   * @param {Object|undefined} item
-   *        The item to be scrolled to.
-   *
-   * @param {Object|undefined} options
-   *        An options object which can contain:
-   *          - dir: "up" or "down" to indicate if we should scroll the element
-   *                 to the top or the bottom of the scrollable container when
-   *                 the element is off canvas.
-   */
-  _scrollNodeIntoView(item, options = {}) {
-    if (item !== undefined) {
-      const treeElement = this.treeRef;
-      const element = document.getElementById(this.props.getKey(item));
-
-      if (element) {
-        const { top, bottom } = element.getBoundingClientRect();
-        const closestScrolledParent = node => {
-          if (node == null) {
-            return null;
-          }
-
-          if (node.scrollHeight > node.clientHeight) {
-            return node;
-          }
-          return closestScrolledParent(node.parentNode);
-        };
-        const scrolledParent = closestScrolledParent(treeElement);
-        const scrolledParentRect = scrolledParent ? scrolledParent.getBoundingClientRect() : null;
-        const isVisible = !scrolledParent || top >= scrolledParentRect.top && bottom <= scrolledParentRect.bottom;
-
-        if (!isVisible) {
-          const { alignTo } = options;
-          const scrollToTop = alignTo ? alignTo === "top" : !scrolledParentRect || top < scrolledParentRect.top;
-          element.scrollIntoView(scrollToTop);
-        }
-      }
-    }
-  }
-
-  /**
-   * Sets the state to have no focused item.
-   */
-  _onBlur() {
-    this._focus(undefined);
-  }
-
-  /**
-   * Handles key down events in the tree's container.
-   *
-   * @param {Event} e
-   */
-  _onKeyDown(e) {
-    if (this.props.focused == null) {
-      return;
-    }
-
-    // Allow parent nodes to use navigation arrows with modifiers.
-    if (e.altKey || e.ctrlKey || e.shiftKey || e.metaKey) {
-      return;
-    }
-
-    this._preventArrowKeyScrolling(e);
-
-    switch (e.key) {
-      case "ArrowUp":
-        this._focusPrevNode();
-        return;
-
-      case "ArrowDown":
-        this._focusNextNode();
-        return;
-
-      case "ArrowLeft":
-        if (this.props.isExpanded(this.props.focused) && this._nodeIsExpandable(this.props.focused)) {
-          this._onCollapse(this.props.focused);
-        } else {
-          this._focusParentNode();
-        }
-        return;
-
-      case "ArrowRight":
-        if (this._nodeIsExpandable(this.props.focused) && !this.props.isExpanded(this.props.focused)) {
-          this._onExpand(this.props.focused);
-        } else {
-          this._focusNextNode();
-        }
-        return;
-
-      case "Home":
-        this._focusFirstNode();
-        return;
-
-      case "End":
-        this._focusLastNode();
-        return;
-
-      case "Enter":
-        this._activateNode();
-    }
-  }
-
-  /**
-   * Sets the previous node relative to the currently focused item, to focused.
-   */
-  _focusPrevNode() {
-    // Start a depth first search and keep going until we reach the currently
-    // focused node. Focus the previous node in the DFS, if it exists. If it
-    // doesn't exist, we're at the first node already.
-
-    let prev;
-
-    const traversal = this._dfsFromRoots();
-    const length = traversal.length;
-    for (let i = 0; i < length; i++) {
-      const item = traversal[i].item;
-      if (item === this.props.focused) {
-        break;
-      }
-      prev = item;
-    }
-    if (prev === undefined) {
-      return;
-    }
-
-    this._focus(prev, { alignTo: "top" });
-  }
-
-  /**
-   * Handles the down arrow key which will focus either the next child
-   * or sibling row.
-   */
-  _focusNextNode() {
-    // Start a depth first search and keep going until we reach the currently
-    // focused node. Focus the next node in the DFS, if it exists. If it
-    // doesn't exist, we're at the last node already.
-    const traversal = this._dfsFromRoots();
-    const length = traversal.length;
-    let i = 0;
-
-    while (i < length) {
-      if (traversal[i].item === this.props.focused) {
-        break;
-      }
-      i++;
-    }
-
-    if (i + 1 < traversal.length) {
-      this._focus(traversal[i + 1].item, { alignTo: "bottom" });
-    }
-  }
-
-  /**
-   * Handles the left arrow key, going back up to the current rows'
-   * parent row.
-   */
-  _focusParentNode() {
-    const parent = this.props.getParent(this.props.focused);
-    if (!parent) {
-      this._focusPrevNode(this.props.focused);
-      return;
-    }
-
-    const traversal = this._dfsFromRoots();
-    const length = traversal.length;
-    let parentIndex = 0;
-    for (; parentIndex < length; parentIndex++) {
-      if (traversal[parentIndex].item === parent) {
-        break;
-      }
-    }
-
-    this._focus(parent, { alignTo: "top" });
-  }
-
-  _focusFirstNode() {
-    const traversal = this._dfsFromRoots();
-    this._focus(traversal[0].item, { alignTo: "top" });
-  }
-
-  _focusLastNode() {
-    const traversal = this._dfsFromRoots();
-    const lastIndex = traversal.length - 1;
-    this._focus(traversal[lastIndex].item, { alignTo: "bottom" });
-  }
-
-  _activateNode() {
-    if (this.props.onActivate) {
-      this.props.onActivate(this.props.focused);
-    }
-  }
-
-  _nodeIsExpandable(item) {
-    return this.props.isExpandable ? this.props.isExpandable(item) : !!this.props.getChildren(item).length;
-  }
-
-  render() {
-    const traversal = this._dfsFromRoots();
-    const { focused } = this.props;
-
-    const nodes = traversal.map((v, i) => {
-      const { item, depth } = traversal[i];
-      const key = this.props.getKey(item, i);
-      return TreeNodeFactory({
-        key,
-        id: key,
-        index: i,
-        item,
-        depth,
-        renderItem: this.props.renderItem,
-        focused: focused === item,
-        expanded: this.props.isExpanded(item),
-        isExpandable: this._nodeIsExpandable(item),
-        onExpand: this._onExpand,
-        onCollapse: this._onCollapse,
-        onClick: e => {
-          // We can stop the propagation since click handler on the node can be
-          // created in `renderItem`.
-          e.stopPropagation();
-
-          // Since the user just clicked the node, there's no need to check if
-          // it should be scrolled into view.
-          this._focus(item, { preventAutoScroll: true });
-          if (this.props.isExpanded(item)) {
-            this.props.onCollapse(item);
-          } else {
-            this.props.onExpand(item, e.altKey);
-          }
-        }
-      });
-    });
-
-    const style = Object.assign({}, this.props.style || {}, {
-      padding: 0,
-      margin: 0
-    });
-
-    return _reactDomFactories2.default.div({
-      className: `tree ${this.props.className ? this.props.className : ""}`,
-      ref: el => {
-        this.treeRef = el;
-      },
-      role: "tree",
-      tabIndex: "0",
-      onKeyDown: this._onKeyDown,
-      onKeyPress: this._preventArrowKeyScrolling,
-      onKeyUp: this._preventArrowKeyScrolling,
-      onFocus: ({ nativeEvent }) => {
-        if (focused || !nativeEvent || !this.treeRef) {
-          return;
-        }
-
-        const { relatedTarget } = nativeEvent;
-
-        // Only set default focus to the first tree node if the focus came
-        // from outside the tree (e.g. by tabbing to the tree from other
-        // external elements).
-        if (relatedTarget !== this.treeRef && !this.treeRef.contains(relatedTarget)) {
-          this._focus(traversal[0].item);
-        }
-      },
-      onBlur: this._onBlur,
-      "aria-label": this.props.label,
-      "aria-labelledby": this.props.labelledby,
-      "aria-activedescendant": focused && this.props.getKey(focused),
-      style
-    }, nodes);
-  }
-}
-
-exports.default = Tree;
-
-/***/ }),
-
-/***/ 3671:
-/***/ (function(module, exports) {
-
-// removed by extract-text-webpack-plugin
-
-/***/ }),
-
-/***/ 368:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M12.219 7c.345 0 .635.117.869.352.234.234.351.524.351.869 0 .351-.118.652-.356.903-.238.25-.526.376-.864.376-.332 0-.615-.125-.85-.376a1.276 1.276 0 0 1-.351-.903A1.185 1.185 0 0 1 12.218 7zM8.234 7c.345 0 .635.117.87.352.234.234.351.524.351.869 0 .351-.119.652-.356.903-.238.25-.526.376-.865.376-.332 0-.613-.125-.844-.376a1.286 1.286 0 0 1-.347-.903c0-.352.114-.643.342-.874.228-.231.51-.347.85-.347zM4.201 7c.339 0 .627.117.864.352.238.234.357.524.357.869 0 .351-.119.652-.357.903-.237.25-.525.376-.864.376-.338 0-.623-.125-.854-.376A1.286 1.286 0 0 1 3 8.221 1.185 1.185 0 0 1 4.201 7z\" fill-rule=\"evenodd\"></path></svg>"
-
-/***/ }),
-
-/***/ 369:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><g fill-rule=\"evenodd\"><path d=\"M3.233 11.25l-.417 1H1.712C.763 12.25 0 11.574 0 10.747V6.503C0 5.675.755 5 1.712 5h4.127l-.417 1H1.597C1.257 6 1 6.225 1 6.503v4.244c0 .277.267.503.597.503h1.636zM7.405 11.27L7 12.306c.865.01 2.212-.024 2.315-.04.112-.016.112-.016.185-.035.075-.02.156-.046.251-.082.152-.056.349-.138.592-.244.415-.182.962-.435 1.612-.744l.138-.066a179.35 179.35 0 0 0 2.255-1.094c1.191-.546 1.191-2.074-.025-2.632l-.737-.34a3547.554 3547.554 0 0 0-3.854-1.78c-.029.11-.065.222-.11.336l-.232.596c.894.408 4.56 2.107 4.56 2.107.458.21.458.596 0 .806L9.197 11.27H7.405zM4.462 14.692l5-12a.5.5 0 1 0-.924-.384l-5 12a.5.5 0 1 0 .924.384z\"></path></g></svg>"
-
-/***/ }),
-
-/***/ 370:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"#0b0b0b\"><path fill-opacity=\".3\" d=\"M12,3h2v10h-2V3z M5,9.9V6.1L8,8L5,9.9z\"></path><path d=\"M14,2H2C1.4,2,1,2.4,1,3v10c0,0.6,0.4,1,1,1h12c0.6,0,1-0.4,1-1V3C15,2.4,14.6,2,14,2z M2,13L2,13V3h0h9v10 H2L2,13z M14,13C14,13,14,13,14,13h-2V3h2c0,0,0,0,0,0V13z M8.5,7.2l-3-1.9C4.6,4.7,4,5,4,6.1v3.8c0,1.1,0.6,1.4,1.5,0.8l3-1.9 C9.5,8.3,9.5,7.8,8.5,7.2z M5,9.9V6.1L8,8L5,9.9z\"></path></svg>"
-
-/***/ }),
-
-/***/ 371:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 16 16\" stroke=\"none\" fillrule=\"evenodd\"><rect opacity=\"0.6\" x=\"1\" y=\"3\" width=\"2\" height=\"6\"></rect><rect opacity=\"0.6\" x=\"17\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"6\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"12\" y=\"3\" width=\"2\" height=\"6\"></rect><rect x=\"9\" y=\"3\" width=\"2\" height=\"6\"></rect><path d=\"M4.5,13 L15.5,13 L16,13 L16,12 L15.5,12 L4.5,12 L4,12 L4,13 L4.5,13 L4.5,13 Z\"></path><path d=\"M4,10.5 L4,12.5 L4,13 L5,13 L5,12.5 L5,10.5 L5,10 L4,10 L4,10.5 L4,10.5 Z\"></path><path d=\"M15,10.5 L15,12.5 L15,13 L16,13 L16,12.5 L16,10.5 L16,10 L15,10 L15,10.5 L15,10.5 Z\"></path></svg>"
-
-/***/ }),
-
-/***/ 372:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\"><path fill-rule=\"evenodd\" d=\"M8.5 8.793L5.854 6.146l-.04-.035L7.5 4.426c.2-.2.3-.4.3-.6 0-.2-.1-.4-.2-.6l-1-1c-.4-.3-.9-.3-1.2 0l-4.1 4.1c-.2.2-.3.4-.3.6 0 .2.1.4.2.6l1 1c.3.3.9.3 1.2 0l1.71-1.71.036.04L7.793 9.5l-3.647 3.646c-.195.196-.195.512 0 .708.196.195.512.195.708 0L8.5 10.207l3.646 3.647c.196.195.512.195.708 0 .195-.196.195-.512 0-.708L9.207 9.5l2.565-2.565L13.3 8.5c.1.1 2.3 1.1 2.7.7.4-.4-.3-2.7-.5-2.9l-1.1-1.1c.1-.1.2-.4.2-.6 0-.2-.1-.4-.2-.6l-.4-.4c-.3-.3-.8-.3-1.1 0l-1.5-1.4c-.2-.2-.3-.2-.5-.2s-.3.1-.5.2L9.2 3.4c-.2.1-.2.2-.2.4s.1.4.2.5l1.874 1.92L8.5 8.792z\"></path></svg>"
-
-/***/ }),
-
-/***/ 3721:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(process) {
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-const flag = __webpack_require__(52);
-
-function isBrowser() {
-  return typeof window == "object";
-}
-
-function isNode() {
-  return process && process.release && process.release.name == 'node';
-}
-
-function isDevelopment() {
-  if (!isNode() && isBrowser()) {
-    const href = window.location ? window.location.href : "";
-    return href.match(/^file:/) || href.match(/localhost:/);
-  }
-
-  return "production" != "production";
-}
-
-function isTesting() {
-  return flag.testing;
-}
-
-function isFirefoxPanel() {
-  return !isDevelopment();
-}
-
-function isFirefox() {
-  return (/firefox/i.test(navigator.userAgent)
-  );
-}
-
-module.exports = {
-  isDevelopment,
-  isTesting,
-  isFirefoxPanel,
-  isFirefox
-};
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(120)))
-
-/***/ }),
-
-/***/ 3728:
-/***/ (function(module, exports, __webpack_require__) {
-
-module.exports = __webpack_require__(3729);
-
-
-/***/ }),
-
-/***/ 3729:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.vendored = undefined;
-
-var _devtoolsComponents = __webpack_require__(3669);
-
-var devtoolsComponents = _interopRequireWildcard(_devtoolsComponents);
-
-var _devtoolsConfig = __webpack_require__(1355);
-
-var devtoolsConfig = _interopRequireWildcard(_devtoolsConfig);
-
-var _devtoolsContextmenu = __webpack_require__(1413);
-
-var devtoolsContextmenu = _interopRequireWildcard(_devtoolsContextmenu);
-
-var _devtoolsEnvironment = __webpack_require__(3721);
-
-var devtoolsEnvironment = _interopRequireWildcard(_devtoolsEnvironment);
-
-var _devtoolsModules = __webpack_require__(1376);
-
-var devtoolsModules = _interopRequireWildcard(_devtoolsModules);
-
-var _devtoolsUtils = __webpack_require__(1363);
-
-var devtoolsUtils = _interopRequireWildcard(_devtoolsUtils);
-
-var _fuzzaldrinPlus = __webpack_require__(161);
-
-var fuzzaldrinPlus = _interopRequireWildcard(_fuzzaldrinPlus);
-
-var _Transition = __webpack_require__(333);
-
-var transition = _interopRequireWildcard(_Transition);
-
-var _reselect = __webpack_require__(993);
-
-var reselect = _interopRequireWildcard(_reselect);
-
-var _url = __webpack_require__(334);
-
-var url = _interopRequireWildcard(_url);
-
-var _classnames = __webpack_require__(175);
-
-var _classnames2 = _interopRequireDefault(_classnames);
-
-var _devtoolsSplitter = __webpack_require__(1440);
-
-var _devtoolsSplitter2 = _interopRequireDefault(_devtoolsSplitter);
-
-var _Svg = __webpack_require__(1359);
-
-var _Svg2 = _interopRequireDefault(_Svg);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
-
-// We cannot directly export literals containing special characters
-// (eg. "my-module/Test") which is why they are nested in "vendored".
-// The keys of the vendored object should match the module names
-// !!! Should remain synchronized with .babel/transform-mc.js !!!
-const vendored = exports.vendored = {
-  classnames: _classnames2.default,
-  "devtools-components": devtoolsComponents,
-  "devtools-config": devtoolsConfig,
-  "devtools-contextmenu": devtoolsContextmenu,
-  "devtools-environment": devtoolsEnvironment,
-  "devtools-modules": devtoolsModules,
-  "devtools-splitter": _devtoolsSplitter2.default,
-  "devtools-utils": devtoolsUtils,
-  "fuzzaldrin-plus": fuzzaldrinPlus,
-  "react-transition-group/Transition": transition,
-  reselect,
-  // Svg is required via relative paths, so the key is not imported path.
-  // See .babel/transform-mc.js
-  Svg: _Svg2.default,
-  url
-};
-
-// Modules imported without destructuring
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-
-/**
- * Vendors.js is a file used to bundle and expose all dependencies needed to run
- * the transpiled debugger modules when running in Firefox.
- *
- * To make transpilation easier, a vendored module should always be imported in
- * same way:
- * - always with destructuring (import { a } from "modA";)
- * - always without destructuring (import modB from "modB")
- *
- * Both are fine, but cannot be mixed for the same module.
- */
-
-// Modules imported with destructuring
-
-/***/ }),
-
-/***/ 4:
-/***/ (function(module, exports) {
-
-module.exports = __WEBPACK_EXTERNAL_MODULE_4__;
-
-/***/ }),
-
-/***/ 52:
-/***/ (function(module, exports) {
-
-module.exports = __WEBPACK_EXTERNAL_MODULE_52__;
-
-/***/ }),
-
-/***/ 6:
-/***/ (function(module, exports, __webpack_require__) {
-
-var Symbol = __webpack_require__(7),
-    getRawTag = __webpack_require__(10),
-    objectToString = __webpack_require__(11);
-
-/** `Object#toString` result references. */
-var nullTag = '[object Null]',
-    undefinedTag = '[object Undefined]';
-
-/** Built-in value references. */
-var symToStringTag = Symbol ? Symbol.toStringTag : undefined;
-
-/**
- * The base implementation of `getTag` without fallbacks for buggy environments.
- *
- * @private
- * @param {*} value The value to query.
- * @returns {string} Returns the `toStringTag`.
- */
-function baseGetTag(value) {
-  if (value == null) {
-    return value === undefined ? undefinedTag : nullTag;
-  }
-  return (symToStringTag && symToStringTag in Object(value))
-    ? getRawTag(value)
-    : objectToString(value);
-}
-
-module.exports = baseGetTag;
-
-
-/***/ }),
-
-/***/ 66:
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-exports.decode = exports.parse = __webpack_require__(121);
-exports.encode = exports.stringify = __webpack_require__(122);
-
-
-/***/ }),
-
-/***/ 67:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseGet = __webpack_require__(68);
-
-/**
- * Gets the value at `path` of `object`. If the resolved value is
- * `undefined`, the `defaultValue` is returned in its place.
- *
- * @static
- * @memberOf _
- * @since 3.7.0
- * @category Object
- * @param {Object} object The object to query.
- * @param {Array|string} path The path of the property to get.
- * @param {*} [defaultValue] The value returned for `undefined` resolved values.
- * @returns {*} Returns the resolved value.
- * @example
- *
- * var object = { 'a': [{ 'b': { 'c': 3 } }] };
- *
- * _.get(object, 'a[0].b.c');
- * // => 3
- *
- * _.get(object, ['a', '0', 'b', 'c']);
- * // => 3
- *
- * _.get(object, 'a.b.c', 'default');
- * // => 'default'
- */
-function get(object, path, defaultValue) {
-  var result = object == null ? undefined : baseGet(object, path);
-  return result === undefined ? defaultValue : result;
-}
-
-module.exports = get;
-
-
-/***/ }),
-
-/***/ 68:
-/***/ (function(module, exports, __webpack_require__) {
-
-var castPath = __webpack_require__(69),
-    toKey = __webpack_require__(111);
-
-/**
- * The base implementation of `_.get` without support for default values.
- *
- * @private
- * @param {Object} object The object to query.
- * @param {Array|string} path The path of the property to get.
- * @returns {*} Returns the resolved value.
- */
-function baseGet(object, path) {
-  path = castPath(path, object);
-
-  var index = 0,
-      length = path.length;
-
-  while (object != null && index < length) {
-    object = object[toKey(path[index++])];
-  }
-  return (index && index == length) ? object : undefined;
-}
-
-module.exports = baseGet;
-
-
-/***/ }),
-
-/***/ 69:
-/***/ (function(module, exports, __webpack_require__) {
-
-var isArray = __webpack_require__(70),
-    isKey = __webpack_require__(71),
-    stringToPath = __webpack_require__(73),
-    toString = __webpack_require__(108);
-
-/**
- * Casts `value` to a path array if it's not one.
- *
- * @private
- * @param {*} value The value to inspect.
- * @param {Object} [object] The object to query keys on.
- * @returns {Array} Returns the cast property path array.
- */
-function castPath(value, object) {
-  if (isArray(value)) {
-    return value;
-  }
-  return isKey(value, object) ? [value] : stringToPath(toString(value));
-}
-
-module.exports = castPath;
-
-
-/***/ }),
-
-/***/ 7:
-/***/ (function(module, exports, __webpack_require__) {
-
-var root = __webpack_require__(8);
-
-/** Built-in value references. */
-var Symbol = root.Symbol;
-
-module.exports = Symbol;
-
-
-/***/ }),
-
-/***/ 70:
-/***/ (function(module, exports) {
-
-/**
- * Checks if `value` is classified as an `Array` object.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is an array, else `false`.
- * @example
- *
- * _.isArray([1, 2, 3]);
- * // => true
- *
- * _.isArray(document.body.children);
- * // => false
- *
- * _.isArray('abc');
- * // => false
- *
- * _.isArray(_.noop);
- * // => false
- */
-var isArray = Array.isArray;
-
-module.exports = isArray;
-
-
-/***/ }),
-
-/***/ 71:
-/***/ (function(module, exports, __webpack_require__) {
-
-var isArray = __webpack_require__(70),
-    isSymbol = __webpack_require__(72);
-
-/** Used to match property names within property paths. */
-var reIsDeepProp = /\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\\]|\\.)*?\1)\]/,
-    reIsPlainProp = /^\w*$/;
-
-/**
- * Checks if `value` is a property name and not a property path.
- *
- * @private
- * @param {*} value The value to check.
- * @param {Object} [object] The object to query keys on.
- * @returns {boolean} Returns `true` if `value` is a property name, else `false`.
- */
-function isKey(value, object) {
-  if (isArray(value)) {
-    return false;
-  }
-  var type = typeof value;
-  if (type == 'number' || type == 'symbol' || type == 'boolean' ||
-      value == null || isSymbol(value)) {
-    return true;
-  }
-  return reIsPlainProp.test(value) || !reIsDeepProp.test(value) ||
-    (object != null && value in Object(object));
-}
-
-module.exports = isKey;
-
-
-/***/ }),
-
-/***/ 72:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseGetTag = __webpack_require__(6),
-    isObjectLike = __webpack_require__(14);
-
-/** `Object#toString` result references. */
-var symbolTag = '[object Symbol]';
-
-/**
- * Checks if `value` is classified as a `Symbol` primitive or object.
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a symbol, else `false`.
- * @example
- *
- * _.isSymbol(Symbol.iterator);
- * // => true
- *
- * _.isSymbol('abc');
- * // => false
- */
-function isSymbol(value) {
-  return typeof value == 'symbol' ||
-    (isObjectLike(value) && baseGetTag(value) == symbolTag);
-}
-
-module.exports = isSymbol;
-
-
-/***/ }),
-
-/***/ 73:
-/***/ (function(module, exports, __webpack_require__) {
-
-var memoizeCapped = __webpack_require__(74);
-
-/** Used to match property names within property paths. */
-var rePropName = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|$))/g;
-
-/** Used to match backslashes in property paths. */
-var reEscapeChar = /\\(\\)?/g;
-
-/**
- * Converts `string` to a property path array.
- *
- * @private
- * @param {string} string The string to convert.
- * @returns {Array} Returns the property path array.
- */
-var stringToPath = memoizeCapped(function(string) {
-  var result = [];
-  if (string.charCodeAt(0) === 46 /* . */) {
-    result.push('');
-  }
-  string.replace(rePropName, function(match, number, quote, subString) {
-    result.push(quote ? subString.replace(reEscapeChar, '$1') : (number || match));
-  });
-  return result;
-});
-
-module.exports = stringToPath;
-
-
-/***/ }),
-
-/***/ 74:
-/***/ (function(module, exports, __webpack_require__) {
-
-var memoize = __webpack_require__(75);
-
-/** Used as the maximum memoize cache size. */
-var MAX_MEMOIZE_SIZE = 500;
-
-/**
- * A specialized version of `_.memoize` which clears the memoized function's
- * cache when it exceeds `MAX_MEMOIZE_SIZE`.
- *
- * @private
- * @param {Function} func The function to have its output memoized.
- * @returns {Function} Returns the new memoized function.
- */
-function memoizeCapped(func) {
-  var result = memoize(func, function(key) {
-    if (cache.size === MAX_MEMOIZE_SIZE) {
-      cache.clear();
-    }
-    return key;
-  });
-
-  var cache = result.cache;
-  return result;
-}
-
-module.exports = memoizeCapped;
-
-
-/***/ }),
-
-/***/ 75:
-/***/ (function(module, exports, __webpack_require__) {
-
-var MapCache = __webpack_require__(76);
-
-/** Error message constants. */
-var FUNC_ERROR_TEXT = 'Expected a function';
-
-/**
- * Creates a function that memoizes the result of `func`. If `resolver` is
- * provided, it determines the cache key for storing the result based on the
- * arguments provided to the memoized function. By default, the first argument
- * provided to the memoized function is used as the map cache key. The `func`
- * is invoked with the `this` binding of the memoized function.
- *
- * **Note:** The cache is exposed as the `cache` property on the memoized
- * function. Its creation may be customized by replacing the `_.memoize.Cache`
- * constructor with one whose instances implement the
- * [`Map`](http://ecma-international.org/ecma-262/7.0/#sec-properties-of-the-map-prototype-object)
- * method interface of `clear`, `delete`, `get`, `has`, and `set`.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Function
- * @param {Function} func The function to have its output memoized.
- * @param {Function} [resolver] The function to resolve the cache key.
- * @returns {Function} Returns the new memoized function.
- * @example
- *
- * var object = { 'a': 1, 'b': 2 };
- * var other = { 'c': 3, 'd': 4 };
- *
- * var values = _.memoize(_.values);
- * values(object);
- * // => [1, 2]
- *
- * values(other);
- * // => [3, 4]
- *
- * object.a = 2;
- * values(object);
- * // => [1, 2]
- *
- * // Modify the result cache.
- * values.cache.set(object, ['a', 'b']);
- * values(object);
- * // => ['a', 'b']
- *
- * // Replace `_.memoize.Cache`.
- * _.memoize.Cache = WeakMap;
- */
-function memoize(func, resolver) {
-  if (typeof func != 'function' || (resolver != null && typeof resolver != 'function')) {
-    throw new TypeError(FUNC_ERROR_TEXT);
-  }
-  var memoized = function() {
-    var args = arguments,
-        key = resolver ? resolver.apply(this, args) : args[0],
-        cache = memoized.cache;
-
-    if (cache.has(key)) {
-      return cache.get(key);
-    }
-    var result = func.apply(this, args);
-    memoized.cache = cache.set(key, result) || cache;
-    return result;
-  };
-  memoized.cache = new (memoize.Cache || MapCache);
-  return memoized;
-}
-
-// Expose `MapCache`.
-memoize.Cache = MapCache;
-
-module.exports = memoize;
-
-
-/***/ }),
-
-/***/ 76:
-/***/ (function(module, exports, __webpack_require__) {
-
-var mapCacheClear = __webpack_require__(77),
-    mapCacheDelete = __webpack_require__(102),
-    mapCacheGet = __webpack_require__(105),
-    mapCacheHas = __webpack_require__(106),
-    mapCacheSet = __webpack_require__(107);
-
-/**
- * Creates a map cache object to store key-value pairs.
- *
- * @private
- * @constructor
- * @param {Array} [entries] The key-value pairs to cache.
- */
-function MapCache(entries) {
-  var index = -1,
-      length = entries == null ? 0 : entries.length;
-
-  this.clear();
-  while (++index < length) {
-    var entry = entries[index];
-    this.set(entry[0], entry[1]);
-  }
-}
-
-// Add methods to `MapCache`.
-MapCache.prototype.clear = mapCacheClear;
-MapCache.prototype['delete'] = mapCacheDelete;
-MapCache.prototype.get = mapCacheGet;
-MapCache.prototype.has = mapCacheHas;
-MapCache.prototype.set = mapCacheSet;
-
-module.exports = MapCache;
-
-
-/***/ }),
-
-/***/ 77:
-/***/ (function(module, exports, __webpack_require__) {
-
-var Hash = __webpack_require__(78),
-    ListCache = __webpack_require__(93),
-    Map = __webpack_require__(101);
-
-/**
- * Removes all key-value entries from the map.
- *
- * @private
- * @name clear
- * @memberOf MapCache
- */
-function mapCacheClear() {
-  this.size = 0;
-  this.__data__ = {
-    'hash': new Hash,
-    'map': new (Map || ListCache),
-    'string': new Hash
-  };
-}
-
-module.exports = mapCacheClear;
-
-
-/***/ }),
-
-/***/ 78:
-/***/ (function(module, exports, __webpack_require__) {
-
-var hashClear = __webpack_require__(79),
-    hashDelete = __webpack_require__(89),
-    hashGet = __webpack_require__(90),
-    hashHas = __webpack_require__(91),
-    hashSet = __webpack_require__(92);
-
-/**
- * Creates a hash object.
- *
- * @private
- * @constructor
- * @param {Array} [entries] The key-value pairs to cache.
- */
-function Hash(entries) {
-  var index = -1,
-      length = entries == null ? 0 : entries.length;
-
-  this.clear();
-  while (++index < length) {
-    var entry = entries[index];
-    this.set(entry[0], entry[1]);
-  }
-}
-
-// Add methods to `Hash`.
-Hash.prototype.clear = hashClear;
-Hash.prototype['delete'] = hashDelete;
-Hash.prototype.get = hashGet;
-Hash.prototype.has = hashHas;
-Hash.prototype.set = hashSet;
-
-module.exports = Hash;
-
-
-/***/ }),
-
-/***/ 79:
-/***/ (function(module, exports, __webpack_require__) {
-
-var nativeCreate = __webpack_require__(80);
-
-/**
- * Removes all key-value entries from the hash.
- *
- * @private
- * @name clear
- * @memberOf Hash
- */
-function hashClear() {
-  this.__data__ = nativeCreate ? nativeCreate(null) : {};
-  this.size = 0;
-}
-
-module.exports = hashClear;
-
-
-/***/ }),
-
-/***/ 792:
-/***/ (function(module, exports) {
-
-var g;
-
-// This works in non-strict mode
-g = (function() {
-	return this;
-})();
-
-try {
-	// This works if eval is allowed (see CSP)
-	g = g || Function("return this")() || (1,eval)("this");
-} catch(e) {
-	// This works if the window reference is available
-	if(typeof window === "object")
-		g = window;
-}
-
-// g can still be undefined, but nothing to do about it...
-// We return undefined, instead of nothing here, so it's
-// easier to handle this case. if(!global) { ...}
-
-module.exports = g;
-
-
-/***/ }),
-
-/***/ 793:
-/***/ (function(module, exports) {
-
-module.exports = function(module) {
-	if(!module.webpackPolyfill) {
-		module.deprecate = function() {};
-		module.paths = [];
-		// module.parent = undefined by default
-		if(!module.children) module.children = [];
-		Object.defineProperty(module, "loaded", {
-			enumerable: true,
-			get: function() {
-				return module.l;
-			}
-		});
-		Object.defineProperty(module, "id", {
-			enumerable: true,
-			get: function() {
-				return module.i;
-			}
-		});
-		module.webpackPolyfill = 1;
-	}
-	return module;
-};
-
-
-/***/ }),
-
-/***/ 8:
-/***/ (function(module, exports, __webpack_require__) {
-
-var freeGlobal = __webpack_require__(9);
-
-/** Detect free variable `self`. */
-var freeSelf = typeof self == 'object' && self && self.Object === Object && self;
-
-/** Used as a reference to the global object. */
-var root = freeGlobal || freeSelf || Function('return this')();
-
-module.exports = root;
-
-
-/***/ }),
-
-/***/ 80:
-/***/ (function(module, exports, __webpack_require__) {
-
-var getNative = __webpack_require__(81);
-
-/* Built-in method references that are verified to be native. */
-var nativeCreate = getNative(Object, 'create');
-
-module.exports = nativeCreate;
-
-
-/***/ }),
-
-/***/ 806:
-/***/ (function(module, exports) {
-
-module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 256 256\"><defs><style>.cls-1{isolation:isolate;}.cls-17,.cls-2,.cls-25{fill:none;}.cls-17,.cls-2{stroke-miterlimit:10;}.cls-2{stroke-width:0.75px;stroke:url(#linear-gradient);}.cls-3{fill:url(#linear-gradient-2);}.cls-4{fill:#f15a24;}.cls-5{fill:#ed1c24;}.cls-6{fill:#c1272d;}.cls-7{fill:url(#linear-gradient-3);}.cls-8{fill:url(#linear-gradient-4);}.cls-9{fill:url(#linear-gradient-5);}.cls-10{fill:url(#linear-gradient-6);}.cls-11{opacity:0.49;fill:url(#linear-gradient-7);}.cls-12{fill:url(#linear-gradient-8);}.cls-13{fill:#2db5f9;}.cls-13,.cls-14{mix-blend-mode:screen;}.cls-14{fill:#5fd2ff;}.cls-15{fill:#219058;}.cls-16{fill:url(#linear-gradient-9);}.cls-17{stroke:#fff;stroke-width:1.87px;}.cls-18{fill:#f7b852;}.cls-19{fill:#ff8431;}.cls-20{fill:#fffb69;}.cls-21{fill:#44c688;}.cls-22{fill:#29b36e;}.cls-23{fill:#6fd191;}.cls-24{fill:#c83ad7;}.cls-26{fill:#fba9ff;}.cls-27{fill:#ff737d;}.cls-28{fill:#fdc666;}</style><linearGradient id=\"linear-gradient\" x1=\"67.45\" y1=\"154.72\" x2=\"67.29\" y2=\"155.43\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ff1d25\" stop-opacity=\"0.5\"></stop><stop offset=\"0.06\" stop-color=\"#ff1d25\" stop-opacity=\"0.54\"></stop><stop offset=\"0.37\" stop-color=\"#ff1d25\" stop-opacity=\"0.74\"></stop><stop offset=\"0.64\" stop-color=\"#ff1d25\" stop-opacity=\"0.88\"></stop><stop offset=\"0.86\" stop-color=\"#ff1d25\" stop-opacity=\"0.97\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient><linearGradient id=\"linear-gradient-2\" x1=\"73.09\" y1=\"170.74\" x2=\"73.09\" y2=\"153.5\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#ffdd42\"></stop><stop offset=\"1\" stop-color=\"#fb784b\"></stop></linearGradient><linearGradient id=\"linear-gradient-3\" x1=\"201.52\" y1=\"95.13\" x2=\"207.88\" y2=\"89.89\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#5bcb99\"></stop><stop offset=\"1\" stop-color=\"#85a8e8\"></stop></linearGradient><linearGradient id=\"linear-gradient-4\" x1=\"81.17\" y1=\"158.3\" x2=\"279.32\" y2=\"55.49\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#34e28b\"></stop><stop offset=\"1\"></stop></linearGradient><linearGradient id=\"linear-gradient-5\" x1=\"117.57\" y1=\"178.22\" x2=\"133.15\" y2=\"178.22\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#c297ff\"></stop><stop offset=\"1\" stop-color=\"#ae31bb\"></stop></linearGradient><linearGradient id=\"linear-gradient-6\" x1=\"54.05\" y1=\"253.29\" x2=\"251.08\" y2=\"99.63\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-color=\"#d23de2\"></stop></linearGradient><linearGradient id=\"linear-gradient-7\" x1=\"199.8\" y1=\"86.45\" x2=\"191.83\" y2=\"113.37\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"1\" stop-opacity=\"0\"></stop></linearGradient><linearGradient id=\"linear-gradient-8\" x1=\"126.87\" y1=\"190.63\" x2=\"182.9\" y2=\"204.2\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\" stop-color=\"#2db5f9\"></stop><stop offset=\"1\" stop-color=\"#092432\"></stop></linearGradient><linearGradient id=\"linear-gradient-9\" x1=\"83.08\" y1=\"49.55\" x2=\"46.06\" y2=\"151.24\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0\"></stop><stop offset=\"0.21\" stop-color=\"#48080a\"></stop><stop offset=\"0.42\" stop-color=\"#891014\"></stop><stop offset=\"0.61\" stop-color=\"#bc151b\"></stop><stop offset=\"0.78\" stop-color=\"#e01a21\"></stop><stop offset=\"0.91\" stop-color=\"#f71c24\"></stop><stop offset=\"1\" stop-color=\"#ff1d25\"></stop></linearGradient></defs><title>dojo_square</title><g class=\"cls-1\"><g id=\"Layer_1\" data-name=\"Layer 1\"><line class=\"cls-2\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-3\" d=\"M42.28,150.4l.52.82A58,58,0,0,0,52,161.49a45.23,45.23,0,0,0,28.74,10.25c.65,0,1.31,0,2,0a67.32,67.32,0,0,0,21.13-5.26,67.38,67.38,0,0,1-9.09.83,36.92,36.92,0,0,1-27.44-12.17A66.82,66.82,0,0,1,42.28,150.4Z\"></path><path class=\"cls-4\" d=\"M80.79,80.88a45.4,45.4,0,0,1,38.89,21.94A37,37,0,0,0,84.43,94.7c8.29,4,19.66,7.08,35.28,8.15,0,0-.77-14.87-19.8-22.64-26.57-10.84-30.33-8.69-37.06-19.9a30.09,30.09,0,0,0,6,22.15A45.45,45.45,0,0,1,80.79,80.88Z\"></path><path class=\"cls-5\" d=\"M99.92,80.21c-9.1-3.71-15.52-5.9-20.3-7.62A33.4,33.4,0,0,0,84.54,81a45.42,45.42,0,0,1,35.13,21.78,36.87,36.87,0,0,0-20.54-9.34,109,109,0,0,0,20,9.32l.59,0S118.94,88,99.92,80.21Z\"></path><path class=\"cls-6\" d=\"M119.69,102.85h.1c.29-1.62,2.07-14.46-12.4-25.7C85.78,60.37,81.56,58.82,80.53,49.94a27.8,27.8,0,0,0-.91,22.65c4.78,1.72,11.21,3.91,20.3,7.62,19,7.77,19.8,22.64,19.8,22.64Z\"></path><path class=\"cls-7\" d=\"M185.28,88.22a33.64,33.64,0,0,1,22.08,8.23,29.8,29.8,0,0,1,19,8S208.22,78,176.19,89a41.72,41.72,0,0,0-8.2,4A33.64,33.64,0,0,1,185.28,88.22Z\"></path><path class=\"cls-8\" d=\"M185.28,88.22A33.62,33.62,0,0,0,168,93l.93-.56c-25.88,15.24-57.6,62.06-101.56,62.65h0a36.92,36.92,0,0,0,27.44,12.17,67.38,67.38,0,0,0,9.09-.83c28.6-11.79,56.09-40,68.55-53.64,11.56-12.67,24.22-17,34.91-16.34A33.64,33.64,0,0,0,185.28,88.22Z\"></path><path class=\"cls-9\" d=\"M118.48,179a20.94,20.94,0,0,0-.92,5.86,22.25,22.25,0,0,0,1,6.74,16.56,16.56,0,0,1,5.5-14.74c0-.17.09-.34.14-.51a20.37,20.37,0,0,1,8.91-11.47l-.08,0a37.84,37.84,0,0,0-4,1.53A20.87,20.87,0,0,0,118.48,179Z\"></path><path class=\"cls-10\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-11\" d=\"M234.26,129.11a42.41,42.41,0,0,0-7.94-24.76,29.82,29.82,0,0,0-19-7.9A33.69,33.69,0,0,1,219.06,122c0,11.34-4.12,24.3-17.45,31.28-19.42,10.16-49.21,5.33-68.54,11.6l.08,0a20.37,20.37,0,0,0-8.91,11.47c-.05.17-.09.34-.14.51h0c5.67-5,16.84-8.54,38.63-5.73,15.56,2,27.93,2.55,38.54-.5a41.2,41.2,0,0,0,25.23-17h0A42.41,42.41,0,0,0,234.26,129.11Z\"></path><path class=\"cls-12\" d=\"M137.8,201.88a20.44,20.44,0,0,1-13.68-25.12h0l0,.08a16.56,16.56,0,0,0-5.5,14.73,20.94,20.94,0,0,0,33.63,9.38A20.37,20.37,0,0,1,137.8,201.88Z\"></path><path class=\"cls-13\" d=\"M144.91,200.4c2.12-6.17,9-15.7,16.33-11.34,0,0,6,3.36,7.23-6.11,0,0,4.49,22.28-17.1,21.53,0,0,4.86-3.55,4.81-7.2A24.73,24.73,0,0,1,144.91,200.4Z\"></path><path class=\"cls-14\" d=\"M153.52,186.75c2.14-1.09,4.16-2.18,8.08-.44,3,1.35,6.88-3.94,3.56-8.66,0,0,.21,4.88-3.72,4.84A8.81,8.81,0,0,0,153.52,186.75Z\"></path><path class=\"cls-15\" d=\"M175.21,115.88c-5.17,7-12.75,12.95-13.64,14.39s1.5,6.11,5,6.45.82-1.36.52-3,1.06,1,5.27.42-1.53-2.2-1.14-4.33,4.74-6.17,6.47-10.25,4.7,0,3.18,3.18c-.6,1.26,4.81-3.54,2.08-7.21S178.22,111.77,175.21,115.88Z\"></path><path class=\"cls-15\" d=\"M160.47,131.28c-.76.73-3,2.37-3,2.37s2.19,3.05,5,3c0,0,.61-.29-.27-1.18S160.27,131.82,160.47,131.28Z\"></path><path class=\"cls-16\" d=\"M84.43,94.7c-7.35-3.56-12.27-7.88-15.54-12.24A45.42,45.42,0,0,0,42.28,150.4a66.82,66.82,0,0,0,25.09,4.67h0A37,37,0,0,1,84.43,94.7Z\"></path><line class=\"cls-17\" x1=\"67.37\" y1=\"155.08\" x2=\"67.37\" y2=\"155.08\"></line><path class=\"cls-18\" d=\"M84.52,81c2,2.91,7.81,7.94,14.63,12.44a36.87,36.87,0,0,1,20.52,9.33A45.42,45.42,0,0,0,84.52,81Z\"></path><path class=\"cls-19\" d=\"M84.52,81c-1.23-.1-2.48-.16-3.74-.16a45.45,45.45,0,0,0-11.89,1.58c3.27,4.36,8.19,8.67,15.54,12.24a36.72,36.72,0,0,1,14.72-1.22C92.33,89,86.54,83.95,84.52,81Z\"></path><path class=\"cls-20\" d=\"M109.73,91.38a33.29,33.29,0,0,0-12.21-7.29C100.46,89.66,103,91.38,109.73,91.38Z\"></path><path class=\"cls-6\" d=\"M96.89,67.66a63.16,63.16,0,0,1,6.54,4.58c.52.39-.93-3.55-2.62-4.3A7.5,7.5,0,0,0,96.89,67.66Z\"></path><path class=\"cls-6\" d=\"M105,73.37a70.75,70.75,0,0,1,6.5,4.64c.53.38-.9-3.56-2.57-4.33A7.5,7.5,0,0,0,105,73.37Z\"></path><path class=\"cls-6\" d=\"M112.55,79a19.59,19.59,0,0,1,3.52,4.39c.26.38.07-2.58-.92-3.42A5.28,5.28,0,0,0,112.55,79Z\"></path><path class=\"cls-21\" d=\"M77.55,151c-.2-.65,2.35-1.48,3-1.51a11.91,11.91,0,0,1,3.57,1.19,16.34,16.34,0,0,1-4.89,1A4.46,4.46,0,0,1,77.55,151Z\"></path><path class=\"cls-21\" d=\"M86.73,148.78c-.22-.51,1.75-1.38,2.29-1.46a9.58,9.58,0,0,1,3,.65,13.15,13.15,0,0,1-3.83,1.23A3.59,3.59,0,0,1,86.73,148.78Z\"></path><path class=\"cls-21\" d=\"M94.41,146c-.22-.4,1.32-1.29,1.76-1.41a7.92,7.92,0,0,1,2.48.27,10.87,10.87,0,0,1-3,1.35A3,3,0,0,1,94.41,146Z\"></path><path class=\"cls-21\" d=\"M100.52,143.19c-.23-.35,1.11-1.27,1.5-1.41a7.25,7.25,0,0,1,2.29.07,10,10,0,0,1-2.67,1.45A2.72,2.72,0,0,1,100.52,143.19Z\"></path><path class=\"cls-21\" d=\"M106.23,140.07c-.22-.29.9-1.16,1.24-1.3a6.31,6.31,0,0,1,2,0,8.66,8.66,0,0,1-2.25,1.39A2.36,2.36,0,0,1,106.23,140.07Z\"></path><path class=\"cls-21\" d=\"M68.34,151.69c-.11-.73,2.73-1.16,3.46-1.09a12.76,12.76,0,0,1,3.57,1.86,17.51,17.51,0,0,1-5.35.26A4.78,4.78,0,0,1,68.34,151.69Z\"></path><path class=\"cls-6\" d=\"M70.08,65.82c2,2.27,6.68,3.74,6.68,3.74A19,19,0,0,1,75.83,62c0-.18-5.75-.09-6.73-4.81C68.91,56.23,68.1,63.55,70.08,65.82Z\"></path><path class=\"cls-4\" d=\"M50.54,174.68a5.49,5.49,0,0,1,2.24-3.88l.19-.11a14,14,0,0,0-1.43-.25c-6.85-1-8.59,3.06-8.95,7.64,0,.26,0,.53,0,.78a8.31,8.31,0,0,1,7.89-4.2Z\"></path><path class=\"cls-4\" d=\"M58.88,173.19c-6.81-4.13-10.63-4.43-12.15,7.14,0,0,7.17-5.67,10.55-1.92,3.68,4.07,8.68.32,6.05-2.06A18.77,18.77,0,0,0,58.88,173.19Z\"></path><path class=\"cls-4\" d=\"M56.06,174.53c-3.86,2.57-3.86,8.62-3.86,8.62s7-3.81,6.5-6.19A2.93,2.93,0,0,0,56.06,174.53Z\"></path><path class=\"cls-4\" d=\"M24,127a5.49,5.49,0,0,1,4.43-.68l.2.08a14,14,0,0,0-.7-1.27c-3.49-6-7.76-4.79-11.56-2.21-.22.15-.43.31-.63.47a8.31,8.31,0,0,1,8.21,3.53Z\"></path><path class=\"cls-4\" d=\"M31.29,134.08c-2.48-9.82-4.47-13.62-14-6.83,0,0,8.13-2.34,9.06,9.22.44,5.47,5.69,6.57,5.63,3A18.77,18.77,0,0,0,31.29,134.08Z\"></path><path class=\"cls-4\" d=\"M27.83,128.82c-4.52-1.07-8.94,3.06-8.94,3.06s6.94-.24,7.78,4C27.14,138.23,27.83,128.82,27.83,128.82Z\"></path><path class=\"cls-22\" d=\"M172.45,112.79a55.39,55.39,0,0,1,15.49-12.5c5.64-3,13.66-4.84,18.5-4.61l1.85,1.59-1-.08a37.75,37.75,0,0,0-19,3.76A55,55,0,0,0,172.45,112.79Z\"></path><path class=\"cls-23\" d=\"M207.12,95.74a34.5,34.5,0,0,1,10.45,2.68,27.42,27.42,0,0,1,8.81,6,27.05,27.05,0,0,0-9.09-5.29,43.65,43.65,0,0,0-9-1.84l-1.84-1.59Z\"></path><path class=\"cls-24\" d=\"M124.52,175.47a27.43,27.43,0,0,1,3.11-1.9,25.35,25.35,0,0,1,2.31-1c.78-.34,1.58-.58,2.38-.84a45.63,45.63,0,0,1,9.84-1.81,95.67,95.67,0,0,1,19.84.78,194.33,194.33,0,0,0,19.66,1.89,66.25,66.25,0,0,0,19.6-1.93,66.44,66.44,0,0,1-19.6,2.3,194.82,194.82,0,0,1-19.75-1.52,94.77,94.77,0,0,0-19.65-.41,44.43,44.43,0,0,0-9.55,1.94c-.76.27-1.53.52-2.27.85a24,24,0,0,0-2.18,1,21.38,21.38,0,0,0-3.93,2.7l-.53.47A18.42,18.42,0,0,1,124.52,175.47Z\"></path><line class=\"cls-25\" x1=\"124.09\" y1=\"176.84\" x2=\"124.09\" y2=\"176.84\"></line><path class=\"cls-6\" d=\"M85.66,97.64c-6.36,1.4-5.37,6.45-5.37,6.45s2-2.43,13.09-3.74A52.36,52.36,0,0,1,85.66,97.64Z\"></path><path class=\"cls-26\" d=\"M118.59,191.58a16.4,16.4,0,0,1-.08-4.24,18.64,18.64,0,0,1,.91-4.18,18.86,18.86,0,0,1,1.87-3.9,19.81,19.81,0,0,1,2.78-3.38l.46-.42s-.63,2-.7,2.51a19.27,19.27,0,0,0-1.61,1.93,17.84,17.84,0,0,0-3.33,7.5A16.22,16.22,0,0,0,118.59,191.58Z\"></path><path class=\"cls-27\" d=\"M65.89,155.08c-3.61-4-6.65-10.29-7.95-16.2a36.79,36.79,0,0,1-.82-9.49l.14-2.38.33-2.36a23,23,0,0,1,.47-2.33,19.65,19.65,0,0,1,.6-2.3,35.6,35.6,0,0,1,3.83-8.64,39.45,39.45,0,0,1,2.68-3.89l1.53-1.8c.51-.6,1.1-1.13,1.64-1.69a37.2,37.2,0,0,1,7.47-5.68,39.82,39.82,0,0,1,8.62-3.62A39.67,39.67,0,0,0,76,98.56a36.78,36.78,0,0,0-7.22,5.83c-.52.57-1.08,1.11-1.56,1.71l-1.45,1.81a38.67,38.67,0,0,0-2.51,3.89,34.62,34.62,0,0,0-3.48,8.52,18.77,18.77,0,0,0-.52,2.24,21.9,21.9,0,0,0-.38,2.27l-.25,2.28-.06,2.3a35.25,35.25,0,0,0,1.06,9.07,36.17,36.17,0,0,0,8.62,15.83l.66.71S66.44,155.12,65.89,155.08Z\"></path><path class=\"cls-28\" d=\"M103.89,166.42A47.14,47.14,0,0,1,94,167.55,37.09,37.09,0,0,1,84,165.91,46.7,46.7,0,0,1,74.71,162a34.57,34.57,0,0,1-8.12-6.17l-.69-.74s2.38,0,3-.06a33.57,33.57,0,0,0,6.72,5.5,45.26,45.26,0,0,0,8.82,4.27A36.2,36.2,0,0,0,94,166.91,47.78,47.78,0,0,0,103.89,166.42Z\"></path></g></g></svg>"
-
-/***/ }),
-
-/***/ 81:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseIsNative = __webpack_require__(82),
-    getValue = __webpack_require__(88);
-
-/**
- * Gets the native function at `key` of `object`.
- *
- * @private
- * @param {Object} object The object to query.
- * @param {string} key The key of the method to get.
- * @returns {*} Returns the function if it's native, else `undefined`.
- */
-function getNative(object, key) {
-  var value = getValue(object, key);
-  return baseIsNative(value) ? value : undefined;
-}
-
-module.exports = getNative;
-
-
-/***/ }),
-
-/***/ 82:
-/***/ (function(module, exports, __webpack_require__) {
-
-var isFunction = __webpack_require__(83),
-    isMasked = __webpack_require__(85),
-    isObject = __webpack_require__(84),
-    toSource = __webpack_require__(87);
-
-/**
- * Used to match `RegExp`
- * [syntax characters](http://ecma-international.org/ecma-262/7.0/#sec-patterns).
- */
-var reRegExpChar = /[\\^$.*+?()[\]{}|]/g;
-
-/** Used to detect host constructors (Safari). */
-var reIsHostCtor = /^\[object .+?Constructor\]$/;
-
-/** Used for built-in method references. */
-var funcProto = Function.prototype,
-    objectProto = Object.prototype;
-
-/** Used to resolve the decompiled source of functions. */
-var funcToString = funcProto.toString;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/** Used to detect if a method is native. */
-var reIsNative = RegExp('^' +
-  funcToString.call(hasOwnProperty).replace(reRegExpChar, '\\$&')
-  .replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g, '$1.*?') + '$'
-);
-
-/**
- * The base implementation of `_.isNative` without bad shim checks.
- *
- * @private
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a native function,
- *  else `false`.
- */
-function baseIsNative(value) {
-  if (!isObject(value) || isMasked(value)) {
-    return false;
-  }
-  var pattern = isFunction(value) ? reIsNative : reIsHostCtor;
-  return pattern.test(toSource(value));
-}
-
-module.exports = baseIsNative;
-
-
-/***/ }),
-
-/***/ 83:
-/***/ (function(module, exports, __webpack_require__) {
-
-var baseGetTag = __webpack_require__(6),
-    isObject = __webpack_require__(84);
-
-/** `Object#toString` result references. */
-var asyncTag = '[object AsyncFunction]',
-    funcTag = '[object Function]',
-    genTag = '[object GeneratorFunction]',
-    proxyTag = '[object Proxy]';
-
-/**
- * Checks if `value` is classified as a `Function` object.
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a function, else `false`.
- * @example
- *
- * _.isFunction(_);
- * // => true
- *
- * _.isFunction(/abc/);
- * // => false
- */
-function isFunction(value) {
-  if (!isObject(value)) {
-    return false;
-  }
-  // The use of `Object#toString` avoids issues with the `typeof` operator
-  // in Safari 9 which returns 'object' for typed arrays and other constructors.
-  var tag = baseGetTag(value);
-  return tag == funcTag || tag == genTag || tag == asyncTag || tag == proxyTag;
-}
-
-module.exports = isFunction;
-
-
-/***/ }),
-
-/***/ 84:
-/***/ (function(module, exports) {
-
-/**
- * Checks if `value` is the
- * [language type](http://www.ecma-international.org/ecma-262/7.0/#sec-ecmascript-language-types)
- * of `Object`. (e.g. arrays, functions, objects, regexes, `new Number(0)`, and `new String('')`)
- *
- * @static
- * @memberOf _
- * @since 0.1.0
- * @category Lang
- * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is an object, else `false`.
- * @example
- *
- * _.isObject({});
- * // => true
- *
- * _.isObject([1, 2, 3]);
- * // => true
- *
- * _.isObject(_.noop);
- * // => true
- *
- * _.isObject(null);
- * // => false
- */
-function isObject(value) {
-  var type = typeof value;
-  return value != null && (type == 'object' || type == 'function');
-}
-
-module.exports = isObject;
-
-
-/***/ }),
-
-/***/ 85:
-/***/ (function(module, exports, __webpack_require__) {
-
-var coreJsData = __webpack_require__(86);
-
-/** Used to detect methods masquerading as native. */
-var maskSrcKey = (function() {
-  var uid = /[^.]+$/.exec(coreJsData && coreJsData.keys && coreJsData.keys.IE_PROTO || '');
-  return uid ? ('Symbol(src)_1.' + uid) : '';
-}());
-
-/**
- * Checks if `func` has its source masked.
- *
- * @private
- * @param {Function} func The function to check.
- * @returns {boolean} Returns `true` if `func` is masked, else `false`.
- */
-function isMasked(func) {
-  return !!maskSrcKey && (maskSrcKey in func);
-}
-
-module.exports = isMasked;
-
-
-/***/ }),
-
-/***/ 86:
-/***/ (function(module, exports, __webpack_require__) {
-
-var root = __webpack_require__(8);
-
-/** Used to detect overreaching core-js shims. */
-var coreJsData = root['__core-js_shared__'];
-
-module.exports = coreJsData;
-
-
-/***/ }),
-
-/***/ 87:
-/***/ (function(module, exports) {
-
-/** Used for built-in method references. */
-var funcProto = Function.prototype;
-
-/** Used to resolve the decompiled source of functions. */
-var funcToString = funcProto.toString;
-
-/**
- * Converts `func` to its source code.
- *
- * @private
- * @param {Function} func The function to convert.
- * @returns {string} Returns the source code.
- */
-function toSource(func) {
-  if (func != null) {
-    try {
-      return funcToString.call(func);
-    } catch (e) {}
-    try {
-      return (func + '');
-    } catch (e) {}
-  }
-  return '';
-}
-
-module.exports = toSource;
-
-
-/***/ }),
-
-/***/ 88:
-/***/ (function(module, exports) {
-
-/**
- * Gets the value at `key` of `object`.
- *
- * @private
- * @param {Object} [object] The object to query.
- * @param {string} key The key of the property to get.
- * @returns {*} Returns the property value.
- */
-function getValue(object, key) {
-  return object == null ? undefined : object[key];
-}
-
-module.exports = getValue;
-
-
-/***/ }),
-
-/***/ 89:
-/***/ (function(module, exports) {
-
-/**
- * Removes `key` and its value from the hash.
- *
- * @private
- * @name delete
- * @memberOf Hash
- * @param {Object} hash The hash to modify.
- * @param {string} key The key of the value to remove.
- * @returns {boolean} Returns `true` if the entry was removed, else `false`.
- */
-function hashDelete(key) {
-  var result = this.has(key) && delete this.__data__[key];
-  this.size -= result ? 1 : 0;
-  return result;
-}
-
-module.exports = hashDelete;
-
-
-/***/ }),
-
-/***/ 9:
-/***/ (function(module, exports, __webpack_require__) {
-
-/* WEBPACK VAR INJECTION */(function(global) {/** Detect free variable `global` from Node.js. */
-var freeGlobal = typeof global == 'object' && global && global.Object === Object && global;
-
-module.exports = freeGlobal;
-
-/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(792)))
-
-/***/ }),
-
-/***/ 90:
-/***/ (function(module, exports, __webpack_require__) {
-
-var nativeCreate = __webpack_require__(80);
-
-/** Used to stand-in for `undefined` hash values. */
-var HASH_UNDEFINED = '__lodash_hash_undefined__';
-
-/** Used for built-in method references. */
-var objectProto = Object.prototype;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/**
- * Gets the hash value for `key`.
- *
- * @private
- * @name get
- * @memberOf Hash
- * @param {string} key The key of the value to get.
- * @returns {*} Returns the entry value.
- */
-function hashGet(key) {
-  var data = this.__data__;
-  if (nativeCreate) {
-    var result = data[key];
-    return result === HASH_UNDEFINED ? undefined : result;
-  }
-  return hasOwnProperty.call(data, key) ? data[key] : undefined;
-}
-
-module.exports = hashGet;
-
-
-/***/ }),
-
-/***/ 91:
-/***/ (function(module, exports, __webpack_require__) {
-
-var nativeCreate = __webpack_require__(80);
-
-/** Used for built-in method references. */
-var objectProto = Object.prototype;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/**
- * Checks if a hash value for `key` exists.
- *
- * @private
- * @name has
- * @memberOf Hash
- * @param {string} key The key of the entry to check.
- * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
- */
-function hashHas(key) {
-  var data = this.__data__;
-  return nativeCreate ? (data[key] !== undefined) : hasOwnProperty.call(data, key);
-}
-
-module.exports = hashHas;
-
-
-/***/ }),
-
 /***/ 919:
 /***/ (function(module, exports) {
 
@@ -9222,262 +7920,10 @@ module.exports = "<!-- This Source Code Form is subject to the terms of the Mozi
 
 /***/ }),
 
-/***/ 92:
-/***/ (function(module, exports, __webpack_require__) {
-
-var nativeCreate = __webpack_require__(80);
-
-/** Used to stand-in for `undefined` hash values. */
-var HASH_UNDEFINED = '__lodash_hash_undefined__';
-
-/**
- * Sets the hash `key` to `value`.
- *
- * @private
- * @name set
- * @memberOf Hash
- * @param {string} key The key of the value to set.
- * @param {*} value The value to set.
- * @returns {Object} Returns the hash instance.
- */
-function hashSet(key, value) {
-  var data = this.__data__;
-  this.size += this.has(key) ? 0 : 1;
-  data[key] = (nativeCreate && value === undefined) ? HASH_UNDEFINED : value;
-  return this;
-}
-
-module.exports = hashSet;
-
-
-/***/ }),
-
 /***/ 920:
 /***/ (function(module, exports) {
 
 module.exports = "<!-- This Source Code Form is subject to the terms of the Mozilla Public - License, v. 2.0. If a copy of the MPL was not distributed with this - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1792 1792\"><path d=\"M1395 736q0 13-10 23l-466 466q-10 10-23 10t-23-10l-466-466q-10-10-10-23t10-23l50-50q10-10 23-10t23 10l393 393 393-393q10-10 23-10t23 10l50 50q10 10 10 23z\" fill=\"#696969\"></path></svg>"
-
-/***/ }),
-
-/***/ 93:
-/***/ (function(module, exports, __webpack_require__) {
-
-var listCacheClear = __webpack_require__(94),
-    listCacheDelete = __webpack_require__(95),
-    listCacheGet = __webpack_require__(98),
-    listCacheHas = __webpack_require__(99),
-    listCacheSet = __webpack_require__(100);
-
-/**
- * Creates an list cache object.
- *
- * @private
- * @constructor
- * @param {Array} [entries] The key-value pairs to cache.
- */
-function ListCache(entries) {
-  var index = -1,
-      length = entries == null ? 0 : entries.length;
-
-  this.clear();
-  while (++index < length) {
-    var entry = entries[index];
-    this.set(entry[0], entry[1]);
-  }
-}
-
-// Add methods to `ListCache`.
-ListCache.prototype.clear = listCacheClear;
-ListCache.prototype['delete'] = listCacheDelete;
-ListCache.prototype.get = listCacheGet;
-ListCache.prototype.has = listCacheHas;
-ListCache.prototype.set = listCacheSet;
-
-module.exports = ListCache;
-
-
-/***/ }),
-
-/***/ 94:
-/***/ (function(module, exports) {
-
-/**
- * Removes all key-value entries from the list cache.
- *
- * @private
- * @name clear
- * @memberOf ListCache
- */
-function listCacheClear() {
-  this.__data__ = [];
-  this.size = 0;
-}
-
-module.exports = listCacheClear;
-
-
-/***/ }),
-
-/***/ 95:
-/***/ (function(module, exports, __webpack_require__) {
-
-var assocIndexOf = __webpack_require__(96);
-
-/** Used for built-in method references. */
-var arrayProto = Array.prototype;
-
-/** Built-in value references. */
-var splice = arrayProto.splice;
-
-/**
- * Removes `key` and its value from the list cache.
- *
- * @private
- * @name delete
- * @memberOf ListCache
- * @param {string} key The key of the value to remove.
- * @returns {boolean} Returns `true` if the entry was removed, else `false`.
- */
-function listCacheDelete(key) {
-  var data = this.__data__,
-      index = assocIndexOf(data, key);
-
-  if (index < 0) {
-    return false;
-  }
-  var lastIndex = data.length - 1;
-  if (index == lastIndex) {
-    data.pop();
-  } else {
-    splice.call(data, index, 1);
-  }
-  --this.size;
-  return true;
-}
-
-module.exports = listCacheDelete;
-
-
-/***/ }),
-
-/***/ 96:
-/***/ (function(module, exports, __webpack_require__) {
-
-var eq = __webpack_require__(97);
-
-/**
- * Gets the index at which the `key` is found in `array` of key-value pairs.
- *
- * @private
- * @param {Array} array The array to inspect.
- * @param {*} key The key to search for.
- * @returns {number} Returns the index of the matched value, else `-1`.
- */
-function assocIndexOf(array, key) {
-  var length = array.length;
-  while (length--) {
-    if (eq(array[length][0], key)) {
-      return length;
-    }
-  }
-  return -1;
-}
-
-module.exports = assocIndexOf;
-
-
-/***/ }),
-
-/***/ 97:
-/***/ (function(module, exports) {
-
-/**
- * Performs a
- * [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
- * comparison between two values to determine if they are equivalent.
- *
- * @static
- * @memberOf _
- * @since 4.0.0
- * @category Lang
- * @param {*} value The value to compare.
- * @param {*} other The other value to compare.
- * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
- * @example
- *
- * var object = { 'a': 1 };
- * var other = { 'a': 1 };
- *
- * _.eq(object, object);
- * // => true
- *
- * _.eq(object, other);
- * // => false
- *
- * _.eq('a', 'a');
- * // => true
- *
- * _.eq('a', Object('a'));
- * // => false
- *
- * _.eq(NaN, NaN);
- * // => true
- */
-function eq(value, other) {
-  return value === other || (value !== value && other !== other);
-}
-
-module.exports = eq;
-
-
-/***/ }),
-
-/***/ 98:
-/***/ (function(module, exports, __webpack_require__) {
-
-var assocIndexOf = __webpack_require__(96);
-
-/**
- * Gets the list cache value for `key`.
- *
- * @private
- * @name get
- * @memberOf ListCache
- * @param {string} key The key of the value to get.
- * @returns {*} Returns the entry value.
- */
-function listCacheGet(key) {
-  var data = this.__data__,
-      index = assocIndexOf(data, key);
-
-  return index < 0 ? undefined : data[index][1];
-}
-
-module.exports = listCacheGet;
-
-
-/***/ }),
-
-/***/ 99:
-/***/ (function(module, exports, __webpack_require__) {
-
-var assocIndexOf = __webpack_require__(96);
-
-/**
- * Checks if a list cache value for `key` exists.
- *
- * @private
- * @name has
- * @memberOf ListCache
- * @param {string} key The key of the entry to check.
- * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
- */
-function listCacheHas(key) {
-  return assocIndexOf(this.__data__, key) > -1;
-}
-
-module.exports = listCacheHas;
-
 
 /***/ }),
 

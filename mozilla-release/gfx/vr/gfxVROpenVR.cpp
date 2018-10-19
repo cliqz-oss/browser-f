@@ -287,24 +287,24 @@ VRDisplayOpenVR::GetSensorState()
     rot.Invert();
 
     result.flags |= VRDisplayCapabilityFlags::Cap_Orientation;
-    result.orientation[0] = rot.x;
-    result.orientation[1] = rot.y;
-    result.orientation[2] = rot.z;
-    result.orientation[3] = rot.w;
-    result.angularVelocity[0] = pose.vAngularVelocity.v[0];
-    result.angularVelocity[1] = pose.vAngularVelocity.v[1];
-    result.angularVelocity[2] = pose.vAngularVelocity.v[2];
+    result.pose.orientation[0] = rot.x;
+    result.pose.orientation[1] = rot.y;
+    result.pose.orientation[2] = rot.z;
+    result.pose.orientation[3] = rot.w;
+    result.pose.angularVelocity[0] = pose.vAngularVelocity.v[0];
+    result.pose.angularVelocity[1] = pose.vAngularVelocity.v[1];
+    result.pose.angularVelocity[2] = pose.vAngularVelocity.v[2];
 
     result.flags |= VRDisplayCapabilityFlags::Cap_Position;
-    result.position[0] = m._41;
-    result.position[1] = m._42;
-    result.position[2] = m._43;
-    result.linearVelocity[0] = pose.vVelocity.v[0];
-    result.linearVelocity[1] = pose.vVelocity.v[1];
-    result.linearVelocity[2] = pose.vVelocity.v[2];
+    result.pose.position[0] = m._41;
+    result.pose.position[1] = m._42;
+    result.pose.position[2] = m._43;
+    result.pose.linearVelocity[0] = pose.vVelocity.v[0];
+    result.pose.linearVelocity[1] = pose.vVelocity.v[1];
+    result.pose.linearVelocity[2] = pose.vVelocity.v[2];
   } else {
     // default to an identity quaternion
-    result.orientation[3] = 1.0f;
+    result.pose.orientation[3] = 1.0f;
   }
 
   result.CalcViewMatrices(headToEyeTransforms);
@@ -438,11 +438,10 @@ VRControllerOpenVR::VRControllerOpenVR(dom::GamepadHand aHand, uint32_t aDisplay
   MOZ_COUNT_CTOR_INHERITED(VRControllerOpenVR, VRControllerHost);
 
   VRControllerState& state = mControllerInfo.mControllerState;
-  strncpy(state.mControllerName, aId.BeginReading(), kVRControllerNameMaxLen);
-  state.mNumButtons = aNumButtons;
-  state.mNumAxes = aNumAxes;
-  state.mNumTriggers = aNumTriggers;
-  state.mNumHaptics = kNumOpenVRHaptcs;
+  strncpy(state.controllerName, aId.BeginReading(), kVRControllerNameMaxLen);
+  state.numButtons = aNumButtons;
+  state.numAxes = aNumAxes;
+  state.numHaptics = kNumOpenVRHaptcs;
 }
 
 VRControllerOpenVR::~VRControllerOpenVR()
@@ -466,31 +465,31 @@ VRControllerOpenVR::GetTrackedIndex()
 float
 VRControllerOpenVR::GetAxisMove(uint32_t aAxis)
 {
-  return mControllerInfo.mControllerState.mAxisValue[aAxis];
+  return mControllerInfo.mControllerState.axisValue[aAxis];
 }
 
 void
 VRControllerOpenVR::SetAxisMove(uint32_t aAxis, float aValue)
 {
-  mControllerInfo.mControllerState.mAxisValue[aAxis] = aValue;
+  mControllerInfo.mControllerState.axisValue[aAxis] = aValue;
 }
 
 void
 VRControllerOpenVR::SetTrigger(uint32_t aButton, float aValue)
 {
-  mControllerInfo.mControllerState.mTriggerValue[aButton] = aValue;
+  mControllerInfo.mControllerState.triggerValue[aButton] = aValue;
 }
 
 float
 VRControllerOpenVR::GetTrigger(uint32_t aButton)
 {
-  return mControllerInfo.mControllerState.mTriggerValue[aButton];
+  return mControllerInfo.mControllerState.triggerValue[aButton];
 }
 
 void
 VRControllerOpenVR::SetHand(dom::GamepadHand aHand)
 {
-  mControllerInfo.mControllerState.mHand = aHand;
+  mControllerInfo.mControllerState.hand = aHand;
 }
 
 void
@@ -798,16 +797,25 @@ VRSystemManagerOpenVR::HandleInput()
               buttonIdx = (buttonIdx == 0) ? 4 : 0;
             }
 
-            HandleAxisMove(i, axisIdx,
-                           state.rAxis[j].x);
+            if (!HandleAxisMove(i, axisIdx, state.rAxis[j].x)) {
+              RemoveControllers();
+              return;
+            }
             ++axisIdx;
-            HandleAxisMove(i, axisIdx,
-                           state.rAxis[j].y * yAxisInvert);
+
+            if (!HandleAxisMove(i, axisIdx, state.rAxis[j].y * yAxisInvert)) {
+              RemoveControllers();
+              return;
+            }
             ++axisIdx;
-            HandleButtonPress(i, buttonIdx,
-                              ::vr::ButtonMaskFromId(
-                                 static_cast<::vr::EVRButtonId>(::vr::k_EButton_Axis0 + j)),
-                                 state.ulButtonPressed, state.ulButtonTouched);
+
+            if (!HandleButtonPress(i, buttonIdx,
+                                   ::vr::ButtonMaskFromId(
+                                   static_cast<::vr::EVRButtonId>(::vr::k_EButton_Axis0 + j)),
+                                   state.ulButtonPressed, state.ulButtonTouched)) {
+              RemoveControllers();
+              return;
+            }
             ++buttonIdx;
 
             if (mIsWindowsMR) {
@@ -817,15 +825,24 @@ VRSystemManagerOpenVR::HandleInput()
             break;
           case vr::EVRControllerAxisType::k_eControllerAxis_Trigger:
             if (j <= 2) {
-              HandleTriggerPress(i, buttonIdx, triggerIdx, state.rAxis[j].x);
+              if (!HandleTriggerPress(i, buttonIdx, triggerIdx, state.rAxis[j].x)) {
+                RemoveControllers();
+                return;
+              }
               ++buttonIdx;
               ++triggerIdx;
             } else {
               // For SteamVR Knuckles.
-              HandleTriggerPress(i, buttonIdx, triggerIdx, state.rAxis[j].x);
+              if (!HandleTriggerPress(i, buttonIdx, triggerIdx, state.rAxis[j].x)) {
+                RemoveControllers();
+                return;
+              }
               ++buttonIdx;
               ++triggerIdx;
-              HandleTriggerPress(i, buttonIdx, triggerIdx, state.rAxis[j].y);
+              if (!HandleTriggerPress(i, buttonIdx, triggerIdx, state.rAxis[j].y)) {
+                RemoveControllers();
+                return;
+              }
               ++buttonIdx;
               ++triggerIdx;
             }
@@ -839,23 +856,32 @@ VRSystemManagerOpenVR::HandleInput()
                                          trackedIndex, ::vr::Prop_SupportedButtons_Uint64);
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_A)) {
-        HandleButtonPress(i, buttonIdx,
-                          BTN_MASK_FROM_ID(k_EButton_A),
-                          state.ulButtonPressed, state.ulButtonTouched);
+        if (!HandleButtonPress(i, buttonIdx,
+                               BTN_MASK_FROM_ID(k_EButton_A),
+                               state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_Grip)) {
-        HandleButtonPress(i, buttonIdx,
-                          BTN_MASK_FROM_ID(k_EButton_Grip),
-                          state.ulButtonPressed, state.ulButtonTouched);
+        if (!HandleButtonPress(i, buttonIdx,
+                              BTN_MASK_FROM_ID(k_EButton_Grip),
+                              state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_ApplicationMenu)) {
-        HandleButtonPress(i, buttonIdx,
-                          BTN_MASK_FROM_ID(k_EButton_ApplicationMenu),
-                          state.ulButtonPressed, state.ulButtonTouched);
+        if (!HandleButtonPress(i, buttonIdx,
+                               BTN_MASK_FROM_ID(k_EButton_ApplicationMenu),
+                               state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       if (mIsWindowsMR) {
@@ -865,30 +891,42 @@ VRSystemManagerOpenVR::HandleInput()
       }
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_DPad_Left)) {
-        HandleButtonPress(i, buttonIdx,
-                          BTN_MASK_FROM_ID(k_EButton_DPad_Left),
-                          state.ulButtonPressed, state.ulButtonTouched);
+        if (!HandleButtonPress(i, buttonIdx,
+                               BTN_MASK_FROM_ID(k_EButton_DPad_Left),
+                               state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_DPad_Up)) {
-        HandleButtonPress(i, buttonIdx,
+        if (!HandleButtonPress(i, buttonIdx,
                           BTN_MASK_FROM_ID(k_EButton_DPad_Up),
-                          state.ulButtonPressed, state.ulButtonTouched);
+                          state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_DPad_Right)) {
-        HandleButtonPress(i, buttonIdx,
-                          BTN_MASK_FROM_ID(k_EButton_DPad_Right),
-                          state.ulButtonPressed, state.ulButtonTouched);
+        if (!HandleButtonPress(i, buttonIdx,
+                               BTN_MASK_FROM_ID(k_EButton_DPad_Right),
+                               state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       if (supportedButtons &
           BTN_MASK_FROM_ID(k_EButton_DPad_Down)) {
-        HandleButtonPress(i, buttonIdx,
-                          BTN_MASK_FROM_ID(k_EButton_DPad_Down),
-                          state.ulButtonPressed, state.ulButtonTouched);
+        if (!HandleButtonPress(i, buttonIdx,
+                               BTN_MASK_FROM_ID(k_EButton_DPad_Down),
+                               state.ulButtonPressed, state.ulButtonTouched)) {
+          RemoveControllers();
+          return;
+        }
         ++buttonIdx;
       }
       MOZ_ASSERT(buttonIdx ==
@@ -942,7 +980,7 @@ VRSystemManagerOpenVR::HandleInput()
   }
 }
 
-void
+bool
 VRSystemManagerOpenVR::HandleButtonPress(uint32_t aControllerIdx,
                                          uint32_t aButton,
                                          uint64_t aButtonMask,
@@ -955,7 +993,7 @@ VRSystemManagerOpenVR::HandleButtonPress(uint32_t aControllerIdx,
   const uint64_t touchedDiff = (controller->GetButtonTouched() ^ aButtonTouched);
 
   if (!pressedDiff && !touchedDiff) {
-    return;
+    return true;
   }
 
   if (pressedDiff & aButtonMask ||
@@ -963,13 +1001,22 @@ VRSystemManagerOpenVR::HandleButtonPress(uint32_t aControllerIdx,
     // diff & (aButtonPressed, aButtonTouched) would be true while a new button pressed or
     // touched event, otherwise it is an old event and needs to notify
     // the button has been released.
+    if (MOZ_UNLIKELY(aButton >= controller->GetControllerInfo().GetNumButtons())) {
+      // FIXME: Removing crash log for Bug 1488573 to investigate unmatched count.
+      MOZ_CRASH_UNSAFE_PRINTF("OpenVR handleButton(aButton = %d, length = %d, controller: %s.)",
+                              aButton,
+                              controller->GetControllerInfo().GetNumButtons(),
+                              controller->GetControllerInfo().GetControllerName());
+      return false;
+    }
     NewButtonEvent(aControllerIdx, aButton, aButtonMask & aButtonPressed,
                    aButtonMask & aButtonTouched,
                    (aButtonMask & aButtonPressed) ? 1.0L : 0.0L);
   }
+  return true;
 }
 
-void
+bool
 VRSystemManagerOpenVR::HandleTriggerPress(uint32_t aControllerIdx,
                                           uint32_t aButton,
                                           uint32_t aTrigger,
@@ -986,13 +1033,22 @@ VRSystemManagerOpenVR::HandleTriggerPress(uint32_t aControllerIdx,
 
   // Avoid sending duplicated events in IPC channels.
   if (oldValue != aValue) {
+    if (MOZ_UNLIKELY(aButton >= controller->GetControllerInfo().GetNumButtons())) {
+      // FIXME: Removing crash log for Bug 1488573 to investigate unmatched count.
+      MOZ_CRASH_UNSAFE_PRINTF("OpenVR handleTrigger(aButton = %d, length = %d, controller: %s.)",
+                              aButton,
+                              controller->GetControllerInfo().GetNumButtons(),
+                              controller->GetControllerInfo().GetControllerName());
+      return false;
+    }
     NewButtonEvent(aControllerIdx, aButton, aValue > threshold,
                    aValue > threshold, aValue);
     controller->SetTrigger(aTrigger, aValue);
   }
+  return true;
 }
 
-void
+bool
 VRSystemManagerOpenVR::HandleAxisMove(uint32_t aControllerIdx, uint32_t aAxis,
                                       float aValue)
 {
@@ -1000,9 +1056,18 @@ VRSystemManagerOpenVR::HandleAxisMove(uint32_t aControllerIdx, uint32_t aAxis,
   MOZ_ASSERT(controller);
 
   if (controller->GetAxisMove(aAxis) != aValue) {
+    if (MOZ_UNLIKELY(aAxis >= controller->GetControllerInfo().GetNumAxes())) {
+      // FIXME: Removing crash log for Bug 1488573 to investigate unmatched count.
+      MOZ_CRASH_UNSAFE_PRINTF("OpenVR handleAxis(aAxis = %d, length = %d, controller: %s.)",
+                              aAxis,
+                              controller->GetControllerInfo().GetNumAxes(),
+                              controller->GetControllerInfo().GetControllerName());
+      return false;
+    }
     NewAxisMove(aControllerIdx, aAxis, aValue);
     controller->SetAxisMove(aAxis, aValue);
   }
+  return true;
 }
 
 void

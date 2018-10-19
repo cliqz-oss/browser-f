@@ -30,7 +30,7 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_0(MediaList)
 JSObject*
 MediaList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return MediaListBinding::Wrap(aCx, this, aGivenProto);
+  return MediaList_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -186,6 +186,19 @@ void
 MediaList::AppendMedium(const nsAString& aNewMedium, ErrorResult& aRv)
 {
   aRv = DoMediaChange([&]() { return Append(aNewMedium); });
+}
+
+MOZ_DEFINE_MALLOC_SIZE_OF(ServoMediaListMallocSizeOf)
+MOZ_DEFINE_MALLOC_ENCLOSING_SIZE_OF(ServoMediaListMallocEnclosingSizeOf)
+
+size_t
+MediaList::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  size_t n = 0;
+  n += Servo_MediaList_SizeOfIncludingThis(ServoMediaListMallocSizeOf,
+                                           ServoMediaListMallocEnclosingSizeOf,
+                                           mRawList);
+  return n;
 }
 
 } // namespace dom

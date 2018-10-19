@@ -13,6 +13,7 @@
 #include "jit/CompileInfo.h"
 #include "jit/JitAllocPolicy.h"
 #include "jit/JitSpewer.h"
+#include "jit/shared/Assembler-shared.h"
 #include "js/TrackedOptimizationInfo.h"
 #include "vm/TypeInference.h"
 
@@ -20,7 +21,13 @@ namespace js {
 
 namespace jit {
 
-struct NativeToTrackedOptimizations;
+struct NativeToTrackedOptimizations
+{
+    // [startOffset, endOffset]
+    CodeOffset startOffset;
+    CodeOffset endOffset;
+    const TrackedOptimizations* optimizations;
+};
 
 class OptimizationAttempt
 {
@@ -175,7 +182,6 @@ class UniqueTrackedOptimizations
         sorted_(cx)
     { }
 
-    MOZ_MUST_USE bool init() { return map_.init(); }
     MOZ_MUST_USE bool add(const TrackedOptimizations* optimizations);
 
     MOZ_MUST_USE bool sortByFrequency(JSContext* cx);

@@ -15,7 +15,7 @@ using namespace js::jit;
 namespace js {
 namespace jit {
 
-OptimizationLevelInfo IonOptimizations;
+const OptimizationLevelInfo IonOptimizations;
 
 const uint32_t OptimizationInfo::CompilerWarmupThreshold = 1000;
 const uint32_t OptimizationInfo::CompilerSmallFunctionWarmupThreshold = CompilerWarmupThreshold;
@@ -27,7 +27,6 @@ OptimizationInfo::initNormalOptimizationInfo()
 
     autoTruncate_ = true;
     eaa_ = true;
-    eagerSimdUnbox_ = true;
     edgeCaseAnalysis_ = true;
     eliminateRedundantChecks_ = true;
     inlineInterpreted_ = true;
@@ -69,7 +68,6 @@ OptimizationInfo::initWasmOptimizationInfo()
 
     ama_ = true;
     autoTruncate_ = false;
-    eagerSimdUnbox_ = false;           // wasm has no boxing / unboxing.
     edgeCaseAnalysis_ = false;
     eliminateRedundantChecks_ = false;
     scalarReplacement_ = false;        // wasm has no objects.

@@ -241,6 +241,7 @@ function dumpLogin(label, login) {
 }
 
 function getRecipeParent() {
+  // eslint-disable-next-line no-shadow
   var { LoginManagerParent } = SpecialPowers.Cu.import("resource://gre/modules/LoginManagerParent.jsm", {});
   if (!LoginManagerParent.recipeParentPromise) {
     return null;
@@ -347,7 +348,7 @@ function runChecksAfterCommonInit(aFunction = null) {
 
 // Code to run when loaded as a chrome script in tests via loadChromeScript
 if (this.addMessageListener) {
-  var SpecialPowers = { Cc, Ci, Cr, Cu, };
+  var SpecialPowers = { Cc, Ci, Cr, Cu };
   var ok, is;
   // Ignore ok/is in commonInit since they aren't defined in a chrome script.
   ok = is = () => {}; // eslint-disable-line no-native-reassign
@@ -420,7 +421,7 @@ if (this.addMessageListener) {
   SpecialPowers.pushPrefEnv({"set": [["signon.rememberSignons", true],
                                      ["signon.autofillForms.http", true],
                                      ["security.insecure_field_warning.contextual.enabled", false],
-                                     ["network.auth.non-web-content-triggered-resources-http-auth-allow", true]]
+                                     ["network.auth.non-web-content-triggered-resources-http-auth-allow", true]],
                            });
   SimpleTest.registerCleanupFunction(() => {
     SpecialPowers.popPrefEnv();
@@ -457,6 +458,7 @@ if (this.addMessageListener) {
   });
 
 
+  // eslint-disable-next-line no-shadow
   let { LoginHelper } = SpecialPowers.Cu.import("resource://gre/modules/LoginHelper.jsm", {});
   /**
    * Proxy for Services.logins (nsILoginManager).

@@ -356,12 +356,14 @@ def lib_path(target, c_compiler, vc_path, windows_sdk_dir, ucrt_sdk_dir, dia_sdk
         'x86': 'x86',
         'x86_64': 'x64',
         'arm': 'arm',
+        'aarch64': 'arm64',
     }.get(target.cpu)
 
     old_target = {
         'x86': '',
         'x86_64': 'amd64',
         'arm': 'arm',
+        'aarch64': 'arm64'
     }.get(target.cpu)
     if old_target is None:
         return
@@ -457,7 +459,11 @@ def valid_mt(path):
 set_config('MSMANIFEST_TOOL', depends(valid_mt)(lambda x: bool(x)))
 
 
-link = check_prog('LINKER', ('link.exe',), paths=toolchain_search_path)
+link = check_prog('LINKER', ('lld-link.exe', 'link.exe'),
+                  paths=toolchain_search_path)
+
+host_link = check_prog('HOST_LINKER', ('lld-link.exe', 'link.exe'),
+                       paths=toolchain_search_path)
 
 add_old_configure_assignment('LINKER', link)
 

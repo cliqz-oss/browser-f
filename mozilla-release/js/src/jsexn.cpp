@@ -23,6 +23,7 @@
 
 #include "gc/FreeOp.h"
 #include "gc/Marking.h"
+#include "js/AutoByteString.h"
 #include "js/CharacterEncoding.h"
 #include "js/UniquePtr.h"
 #include "js/Wrapper.h"
@@ -379,7 +380,7 @@ js::ComputeStackString(JSContext* cx)
         return nullptr;
 
     RootedString str(cx);
-    if (!BuildStackString(cx, stack, &str))
+    if (!BuildStackString(cx, cx->realm()->principals(), stack, &str))
         return nullptr;
 
     return str.get();
@@ -424,6 +425,19 @@ JS::ExceptionStackOrNull(HandleObject objArg)
     }
 
     return obj->as<ErrorObject>().stack();
+}
+
+JS_PUBLIC_API(uint64_t)
+JS::ExceptionTimeWarpTarget(JS::HandleValue value)
+{
+    if (!value.isObject())
+        return 0;
+
+    JSObject* obj = CheckedUnwrap(&value.toObject());
+    if (!obj || !obj->is<ErrorObject>())
+        return 0;
+
+    return obj->as<ErrorObject>().timeWarpTarget();
 }
 
 bool
@@ -689,13 +703,14 @@ js::ErrorToException(JSContext* cx, JSErrorReport* reportp,
     if (!report)
         return;
 
-    RootedObject errObject(cx, ErrorObject::create(cx, exnType, stack, fileName, lineNumber,
-                                                   columnNumber, std::move(report), messageStr));
+    ErrorObject* errObject = ErrorObject::create(cx, exnType, stack, fileName, lineNumber,
+                                                 columnNumber, std::move(report), messageStr);
     if (!errObject)
         return;
 
     // Throw it.
-    cx->setPendingException(ObjectValue(*errObject));
+    RootedValue errValue(cx, ObjectValue(*errObject));
+    cx->setPendingException(errValue);
 
     // Flag the error report passed in to indicate an exception was raised.
     reportp->flags |= JSREPORT_EXCEPTION;
@@ -1019,7 +1034,7 @@ JS::CreateError(JSContext* cx, JSExnType type, HandleObject stack, HandleString 
                     uint32_t lineNumber, uint32_t columnNumber, JSErrorReport* report,
                     HandleString message, MutableHandleValue rval)
 {
-    assertSameCompartment(cx, stack, fileName, message);
+    cx->check(stack, fileName, message);
     AssertObjectIsSavedFrameOrWrapper(cx, stack);
 
     js::UniquePtr<JSErrorReport> rep;

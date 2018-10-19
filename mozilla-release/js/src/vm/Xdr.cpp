@@ -6,6 +6,7 @@
 
 #include "vm/Xdr.h"
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/ScopeExit.h"
 
@@ -21,7 +22,7 @@
 #include "vm/TraceLogging.h"
 
 using namespace js;
-using mozilla::PodEqual;
+using mozilla::ArrayEqual;
 
 template<XDRMode mode>
 LifoAlloc&
@@ -116,7 +117,7 @@ VersionCheck(XDRState<mode>* xdr)
         MOZ_TRY(xdr->codeBytes(decodedBuildId.begin(), buildIdLength));
 
         // We do not provide binary compatibility with older scripts.
-        if (!PodEqual(decodedBuildId.begin(), buildId.begin(), buildIdLength))
+        if (!ArrayEqual(decodedBuildId.begin(), buildId.begin(), buildIdLength))
             return xdr->fail(JS::TranscodeResult_Failure_BadBuildId);
     }
 
@@ -244,14 +245,6 @@ XDRIncrementalEncoder::getTreeKey(JSFunction* fun) const
     }
 
     return AutoXDRTree::noKey;
-}
-
-bool
-XDRIncrementalEncoder::init()
-{
-    if (!tree_.init())
-        return false;
-    return true;
 }
 
 void
@@ -396,7 +389,7 @@ XDRIncrementalEncoder::linearize(JS::TranscodeBuffer& buffer)
         }
     }
 
-    tree_.finish();
+    tree_.clearAndCompact();
     slices_.clearAndFree();
     return Ok();
 }

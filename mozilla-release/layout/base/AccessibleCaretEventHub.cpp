@@ -39,7 +39,7 @@ namespace mozilla {
   AC_LOGV_BASE("AccessibleCaretEventHub (%p): " message, this, ##__VA_ARGS__);
 
 NS_IMPL_ISUPPORTS(AccessibleCaretEventHub, nsIReflowObserver, nsIScrollObserver,
-                  nsISelectionListener, nsISupportsWeakReference);
+                  nsISupportsWeakReference);
 
 // -----------------------------------------------------------------------------
 // NoActionState
@@ -383,8 +383,7 @@ AccessibleCaretEventHub::Init()
     mManager->OnFrameReconstruction();
   }
 
-  if (mInitialized || !mPresShell || !mPresShell->GetCanvasFrame() ||
-      !mPresShell->GetCanvasFrame()->GetCustomContentContainer()) {
+  if (mInitialized || !mPresShell || !mPresShell->GetCanvasFrame()) {
     return;
   }
 
@@ -554,7 +553,7 @@ AccessibleCaretEventHub::HandleTouchEvent(WidgetTouchEvent* aEvent)
                                        : mActiveTouchId);
   nsPoint point = GetTouchEventPosition(aEvent, id);
 
-  mManager->SetLastInputSource(MouseEventBinding::MOZ_SOURCE_TOUCH);
+  mManager->SetLastInputSource(MouseEvent_Binding::MOZ_SOURCE_TOUCH);
 
   switch (aEvent->mMessage) {
     case eTouchStart:
@@ -590,7 +589,7 @@ AccessibleCaretEventHub::HandleTouchEvent(WidgetTouchEvent* aEvent)
 nsEventStatus
 AccessibleCaretEventHub::HandleKeyboardEvent(WidgetKeyboardEvent* aEvent)
 {
-  mManager->SetLastInputSource(MouseEventBinding::MOZ_SOURCE_KEYBOARD);
+  mManager->SetLastInputSource(MouseEvent_Binding::MOZ_SOURCE_KEYBOARD);
 
   switch (aEvent->mMessage) {
     case eKeyUp:
@@ -620,7 +619,7 @@ AccessibleCaretEventHub::MoveDistanceIsLarge(const nsPoint& aPoint) const
 {
   nsPoint delta = aPoint - mPressPoint;
   return NS_hypot(delta.x, delta.y) >
-         nsPresContext::AppUnitsPerCSSPixel() * kMoveStartToleranceInPixel;
+         AppUnitsPerCSSPixel() * kMoveStartToleranceInPixel;
 }
 
 void
@@ -727,20 +726,22 @@ AccessibleCaretEventHub::ScrollPositionChanged()
   mState->OnScrollPositionChanged(this);
 }
 
-nsresult
-AccessibleCaretEventHub::NotifySelectionChanged(nsIDocument* aDoc,
-                                                dom::Selection* aSel,
-                                                int16_t aReason)
+void
+AccessibleCaretEventHub::OnSelectionChange(nsIDocument* aDoc,
+                                           dom::Selection* aSel,
+                                           int16_t aReason)
 {
   if (!mInitialized) {
-    return NS_OK;
+    return;
   }
 
   MOZ_ASSERT(mRefCnt.get() > 1, "Expect caller holds us as well!");
 
   AC_LOG("%s, state: %s, reason: %d", __FUNCTION__, mState->Name(), aReason);
+
+  // XXX Here we may be in a hot path.  So, if we could avoid this virtual call,
+  //     we should do so.
   mState->OnSelectionChanged(this, aDoc, aSel, aReason);
-  return NS_OK;
 }
 
 void

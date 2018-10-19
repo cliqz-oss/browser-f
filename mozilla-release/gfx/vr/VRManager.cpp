@@ -7,6 +7,7 @@
 
 #include "VRManager.h"
 #include "VRManagerParent.h"
+#include "VRGPUChild.h"
 #include "VRThread.h"
 #include "gfxVR.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -15,6 +16,7 @@
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/Unused.h"
+#include "mozilla/gfx/GPUParent.h"
 
 #include "gfxPrefs.h"
 #include "gfxVR.h"
@@ -29,6 +31,9 @@
 
 #include "gfxVRPuppet.h"
 #include "ipc/VRLayerParent.h"
+#if defined(XP_WIN) || defined(XP_MACOSX) || (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID))
+#include "service/VRService.h"
+#endif
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -45,6 +50,8 @@ VRManager::ManagerInit()
 {
   MOZ_ASSERT(NS_IsMainThread());
 
+  // TODO: We should make VRManager::ManagerInit
+  // be called when entering VR content pages.
   if (sVRManagerSingleton == nullptr) {
     sVRManagerSingleton = new VRManager();
     ClearOnShutdown(&sVRManagerSingleton);
@@ -55,6 +62,7 @@ VRManager::VRManager()
   : mInitialized(false)
   , mVRDisplaysRequested(false)
   , mVRControllersRequested(false)
+  , mVRServiceStarted(false)
 {
   MOZ_COUNT_CTOR(VRManager);
   MOZ_ASSERT(sVRManagerSingleton == nullptr);
@@ -74,31 +82,56 @@ VRManager::VRManager()
    * OSVR will be used if Oculus SDK and OpenVR don't detect any HMDS,
    * to support everyone else.
    */
-  mExternalManager = VRSystemManagerExternal::Create();
+
+#if defined(XP_WIN) || defined(XP_MACOSX) || (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID))
+  // The VR Service accesses all hardware from a separate process
+  // and replaces the other VRSystemManager when enabled.
+  if (!gfxPrefs::VRProcessEnabled()) {
+    mVRService = VRService::Create();
+  } else if (gfxPrefs::VRProcessEnabled() && XRE_IsGPUProcess()) {
+    gfx::GPUParent* gpu = GPUParent::GetSingleton();
+    MOZ_ASSERT(gpu);
+    Unused << gpu->SendCreateVRProcess();
+  }
+  if (mVRService) {
+    mExternalManager = VRSystemManagerExternal::Create(mVRService->GetAPIShmem());
+  }
   if (mExternalManager) {
+    mManagers.AppendElement(mExternalManager);
+  }
+#endif
+
+  if (!mExternalManager) {
+    mExternalManager = VRSystemManagerExternal::Create();
+    if (mExternalManager) {
       mManagers.AppendElement(mExternalManager);
+    }
   }
 
 #if defined(XP_WIN)
-  // The Oculus runtime is supported only on Windows
-  mgr = VRSystemManagerOculus::Create();
-  if (mgr) {
-    mManagers.AppendElement(mgr);
+  if (!mVRService) {
+    // The Oculus runtime is supported only on Windows
+    mgr = VRSystemManagerOculus::Create();
+    if (mgr) {
+      mManagers.AppendElement(mgr);
+    }
   }
 #endif
 
 #if defined(XP_WIN) || defined(XP_MACOSX) || (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID))
-  // OpenVR is cross platform compatible
-  mgr = VRSystemManagerOpenVR::Create();
-  if (mgr) {
-    mManagers.AppendElement(mgr);
-  }
-
-  // OSVR is cross platform compatible
-  mgr = VRSystemManagerOSVR::Create();
-  if (mgr) {
+  if (!mVRService) {
+    // OpenVR is cross platform compatible
+    mgr = VRSystemManagerOpenVR::Create();
+    if (mgr) {
       mManagers.AppendElement(mgr);
-  }
+    }
+
+    // OSVR is cross platform compatible
+    mgr = VRSystemManagerOSVR::Create();
+    if (mgr) {
+        mManagers.AppendElement(mgr);
+    }
+  } // !mVRService
 #endif
 
   // Enable gamepad extensions while VR is enabled.
@@ -123,7 +156,12 @@ VRManager::Destroy()
   for (uint32_t i = 0; i < mManagers.Length(); ++i) {
     mManagers[i]->Destroy();
   }
-
+#if defined(XP_WIN) || defined(XP_MACOSX) || (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID))
+  if (mVRService) {
+    mVRService->Stop();
+    mVRService = nullptr;
+  }
+#endif
   mInitialized = false;
 }
 
@@ -135,6 +173,23 @@ VRManager::Shutdown()
   for (uint32_t i = 0; i < mManagers.Length(); ++i) {
     mManagers[i]->Shutdown();
   }
+#if defined(XP_WIN) || defined(XP_MACOSX) || (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID))
+  if (mVRService) {
+    mVRService->Stop();
+  }
+  if (gfxPrefs::VRProcessEnabled() &&
+      VRGPUChild::IsCreated()) {
+    RefPtr<Runnable> task = NS_NewRunnableFunction(
+      "VRGPUChild::SendStopVRService",
+      [] () -> void {
+        VRGPUChild* vrGPUChild = VRGPUChild::Get();
+        vrGPUChild->SendStopVRService();
+    });
+
+    NS_DispatchToMainThread(task.forget());
+  }
+#endif
+  mVRServiceStarted = false;
 }
 
 void
@@ -321,6 +376,25 @@ VRManager::RefreshVRDisplays(bool aMustDispatch)
   * or interrupt other VR activities.
   */
   if (mVRDisplaysRequested || aMustDispatch) {
+#if defined(XP_WIN) || defined(XP_MACOSX) || (defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID))
+    // Tell VR process to start VR service.
+    if (gfxPrefs::VRProcessEnabled() && !mVRServiceStarted) {
+      RefPtr<Runnable> task = NS_NewRunnableFunction(
+        "VRGPUChild::SendStartVRService",
+        [] () -> void {
+          VRGPUChild* vrGPUChild = VRGPUChild::Get();
+          vrGPUChild->SendStartVRService();
+      });
+
+      NS_DispatchToMainThread(task.forget());
+      mVRServiceStarted = true;
+    } else if (!gfxPrefs::VRProcessEnabled()){
+      if (mVRService) {
+        mVRService->Start();
+        mVRServiceStarted = true;
+      }
+    }
+#endif
     EnumerateVRDisplays();
   }
 
@@ -564,6 +638,24 @@ VRManager::DispatchSubmitFrameResult(uint32_t aDisplayID, const VRSubmitFrameRes
 {
   for (auto iter = mVRManagerParents.Iter(); !iter.Done(); iter.Next()) {
     Unused << iter.Get()->GetKey()->SendDispatchSubmitFrameResult(aDisplayID, aResult);
+  }
+}
+
+void
+VRManager::StartVRNavigation(const uint32_t& aDisplayID)
+{
+  RefPtr<VRDisplayHost> display = GetDisplay(aDisplayID);
+  if (display) {
+    display->StartVRNavigation();
+  }
+}
+
+void
+VRManager::StopVRNavigation(const uint32_t& aDisplayID, const TimeDuration& aTimeout)
+{
+  RefPtr<VRDisplayHost> display = GetDisplay(aDisplayID);
+  if (display) {
+    display->StopVRNavigation(aTimeout);
   }
 }
 

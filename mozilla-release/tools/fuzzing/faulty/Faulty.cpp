@@ -283,7 +283,8 @@ Faulty::IsValidProcessType(void)
           || currentProcessType == GeckoProcessType_Content
           || currentProcessType == GeckoProcessType_GMPlugin
           || currentProcessType == GeckoProcessType_GPU
-          || currentProcessType == GeckoProcessType_PDFium)) {
+          || currentProcessType == GeckoProcessType_PDFium
+          || currentProcessType == GeckoProcessType_VR)) {
     // Fuzz inside any of the above child process only.
     isValidProcessType = true;
   } else if (targetChildren && targetParent) {
@@ -362,7 +363,7 @@ Faulty::MaybeCollectAndClosePipe(int aPipe, unsigned int aProbability)
   }
 
   if (aPipe > -1) {
-    FAULTY_LOG("Collecting pipe %d to bucket of pipes (count: %ld)",
+    FAULTY_LOG("Collecting pipe %d to bucket of pipes (count: %zu)",
                aPipe, mFds.size());
     mFds.insert(aPipe);
   }

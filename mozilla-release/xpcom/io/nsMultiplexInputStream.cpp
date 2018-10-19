@@ -261,7 +261,7 @@ nsMultiplexInputStream::AppendStream(nsIInputStream* aStream)
 
   MutexAutoLock lock(mLock);
 
-  StreamData* streamData = mStreams.AppendElement();
+  StreamData* streamData = mStreams.AppendElement(fallible);
   if (NS_WARN_IF(!streamData)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -317,7 +317,10 @@ nsMultiplexInputStream::Close()
     MutexAutoLock lock(mLock);
     uint32_t len = mStreams.Length();
     for (uint32_t i = 0; i < len; ++i) {
-      streams.AppendElement(mStreams[i].mStream);
+      if (NS_WARN_IF(!streams.AppendElement(mStreams[i].mStream, fallible))) {
+        mStatus = NS_BASE_STREAM_CLOSED;
+        return NS_ERROR_OUT_OF_MEMORY;
+      }
     }
     mStatus = NS_BASE_STREAM_CLOSED;
   }
@@ -424,7 +427,8 @@ nsMultiplexInputStream::Read(char* aBuf, uint32_t aCount, uint32_t* aResult)
     // XXX some streams return NS_BASE_STREAM_CLOSED to indicate EOF.
     // (This is a bug in those stream implementations)
     if (rv == NS_BASE_STREAM_CLOSED) {
-      NS_NOTREACHED("Input stream's Read method returned NS_BASE_STREAM_CLOSED");
+      MOZ_ASSERT_UNREACHABLE("Input stream's Read method returned "
+                             "NS_BASE_STREAM_CLOSED");
       rv = NS_OK;
       read = 0;
     } else if (NS_FAILED(rv)) {
@@ -478,7 +482,8 @@ nsMultiplexInputStream::ReadSegments(nsWriteSegmentFun aWriter, void* aClosure,
     // XXX some streams return NS_BASE_STREAM_CLOSED to indicate EOF.
     // (This is a bug in those stream implementations)
     if (rv == NS_BASE_STREAM_CLOSED) {
-      NS_NOTREACHED("Input stream's Read method returned NS_BASE_STREAM_CLOSED");
+      MOZ_ASSERT_UNREACHABLE("Input stream's Read method returned "
+                             "NS_BASE_STREAM_CLOSED");
       rv = NS_OK;
       read = 0;
     }
@@ -1263,10 +1268,10 @@ public:
     , mNegativeSize(false)
   {}
 
-  void
+  bool
   AddStream(nsIAsyncInputStreamLength* aStream)
   {
-    mPendingStreams.AppendElement(aStream);
+    return mPendingStreams.AppendElement(aStream, fallible);
   }
 
   bool
@@ -1408,7 +1413,9 @@ nsMultiplexInputStream::AsyncLengthWait(nsIInputStreamLengthCallback* aCallback,
     nsCOMPtr<nsIAsyncInputStreamLength> asyncStream =
       do_QueryInterface(mStreams[i].mStream);
     if (asyncStream) {
-      helper->AddStream(asyncStream);
+      if (NS_WARN_IF(!helper->AddStream(asyncStream))) {
+        return NS_ERROR_OUT_OF_MEMORY;
+      }
       continue;
     }
 

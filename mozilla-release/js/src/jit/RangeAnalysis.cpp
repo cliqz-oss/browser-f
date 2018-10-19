@@ -37,6 +37,8 @@ using mozilla::Swap;
 using JS::GenericNaN;
 using JS::ToInt32;
 
+// [SMDOC] IonMonkey Range Analysis
+//
 // This algorithm is based on the paper "Eliminating Range Checks Using
 // Static Single Assignment Form" by Gough and Klaren.
 //
@@ -1783,10 +1785,6 @@ GetTypedArrayRange(TempAllocator& alloc, Scalar::Type type)
       case Scalar::Int64:
       case Scalar::Float32:
       case Scalar::Float64:
-      case Scalar::Float32x4:
-      case Scalar::Int8x16:
-      case Scalar::Int16x8:
-      case Scalar::Int32x4:
       case Scalar::MaxTypedArrayViewType:
         break;
     }

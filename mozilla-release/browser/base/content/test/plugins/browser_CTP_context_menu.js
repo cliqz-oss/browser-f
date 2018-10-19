@@ -40,8 +40,7 @@ add_task(async function() {
     let bounds = plugin.getBoundingClientRect();
     let left = (bounds.left + bounds.right) / 2;
     let top = (bounds.top + bounds.bottom) / 2;
-    let utils = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = content.windowUtils;
     utils.sendMouseEvent("contextmenu", left, top, 2, 1, 0);
   });
 
@@ -58,10 +57,10 @@ add_task(async function() {
   // Activate the plugin via the context menu
   EventUtils.synthesizeMouseAtCenter(actMenuItem, {});
 
-  await promiseForCondition(() => !PopupNotifications.panel.dismissed && PopupNotifications.panel.firstChild);
+  await promiseForCondition(() => !PopupNotifications.panel.dismissed && PopupNotifications.panel.firstElementChild);
 
   // Activate the plugin
-  PopupNotifications.panel.firstChild.button.click();
+  PopupNotifications.panel.firstElementChild.button.click();
 
   // check plugin state
   pluginInfo = await promiseForPluginInfo("test", gBrowser.selectedBrowser);

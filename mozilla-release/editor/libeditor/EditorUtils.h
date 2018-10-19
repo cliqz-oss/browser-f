@@ -452,6 +452,31 @@ private:
 };
 
 /***************************************************************************
+ * stack based helper class for calling EditorBase::EndTransaction() after
+ * EditorBase::BeginTransaction().
+ ***************************************************************************/
+class MOZ_RAII AutoTransactionBatch final
+{
+private:
+  OwningNonNull<EditorBase> mEditorBase;
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+
+public:
+  explicit AutoTransactionBatch(EditorBase& aEditorBase
+                                MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : mEditorBase(aEditorBase)
+  {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+    mEditorBase->BeginTransactionInternal();
+  }
+
+  ~AutoTransactionBatch()
+  {
+    mEditorBase->EndTransactionInternal();
+  }
+};
+
+/***************************************************************************
  * stack based helper class for batching a collection of transactions inside a
  * placeholder transaction.
  */
@@ -572,28 +597,25 @@ protected:
 class MOZ_RAII AutoTransactionsConserveSelection final
 {
 public:
-  explicit AutoTransactionsConserveSelection(EditorBase* aEditorBase
+  explicit AutoTransactionsConserveSelection(EditorBase& aEditorBase
                                              MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
     : mEditorBase(aEditorBase)
-    , mOldState(true)
+    , mAllowedTransactionsToChangeSelection(
+        aEditorBase.AllowsTransactionsToChangeSelection())
   {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    if (mEditorBase) {
-      mOldState = mEditorBase->GetShouldTxnSetSelection();
-      mEditorBase->SetShouldTxnSetSelection(false);
-    }
+    mEditorBase.MakeThisAllowTransactionsToChangeSelection(false);
   }
 
   ~AutoTransactionsConserveSelection()
   {
-    if (mEditorBase) {
-      mEditorBase->SetShouldTxnSetSelection(mOldState);
-    }
+    mEditorBase.MakeThisAllowTransactionsToChangeSelection(
+                  mAllowedTransactionsToChangeSelection);
   }
 
 protected:
-  EditorBase* mEditorBase;
-  bool mOldState;
+  EditorBase& mEditorBase;
+  bool mAllowedTransactionsToChangeSelection;
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 

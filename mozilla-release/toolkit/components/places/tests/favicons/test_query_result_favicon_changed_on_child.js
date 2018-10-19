@@ -1,6 +1,6 @@
 /**
  * Test for bug 451499 <https://bugzilla.mozilla.org/show_bug.cgi?id=451499>:
- * Wrong folder icon appears on smart bookmarks.
+ * Wrong folder icon appears on queries.
  */
 
 "use strict";
@@ -11,7 +11,7 @@ add_task(async function test_query_result_favicon_changed_on_child() {
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
     title: "test_bookmark",
-    url: PAGE_URI
+    url: PAGE_URI,
   });
 
   // Get the last 10 bookmarks added to the menu or the toolbar.
@@ -45,7 +45,7 @@ add_task(async function test_query_result_favicon_changed_on_child() {
     nodeIconChanged(aNode) {
       do_throw("The icon should be set only for the page," +
                " not for the containing query.");
-    }
+    },
   };
   result.addObserver(resultObserver);
 
@@ -77,7 +77,7 @@ add_task(async function test_query_result_favicon_changed_not_affect_lastmodifie
   let bm = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.menuGuid,
     title: "test_bookmark",
-    url: PAGE_URI2
+    url: PAGE_URI2,
   });
 
   let result = PlacesUtils.getFolderContents(PlacesUtils.bookmarks.menuGuid);

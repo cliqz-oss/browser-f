@@ -28,10 +28,9 @@ ExtractWellSized(JSContext* cx, Buffer& cb)
     /* For medium/big buffers, avoid wasting more than 1/4 of the memory. */
     MOZ_ASSERT(capacity >= length);
     if (length > Buffer::sMaxInlineStorage && capacity - length > length / 4) {
-        CharT* tmp = cx->zone()->pod_realloc<CharT>(buf, capacity, length + 1);
+        CharT* tmp = cx->pod_realloc<CharT>(buf, capacity, length + 1);
         if (!tmp) {
             js_free(buf);
-            ReportOutOfMemory(cx);
             return nullptr;
         }
         buf = tmp;
@@ -84,7 +83,7 @@ FinishStringFlat(JSContext* cx, StringBuffer& sb, Buffer& cb)
     if (!buf)
         return nullptr;
 
-    JSFlatString* str = NewStringDontDeflate<CanGC>(cx, buf.get(), len);
+    JSFlatString* str = NewStringDontDeflate<CanGC>(cx, std::move(buf), len);
     if (!str)
         return nullptr;
 
@@ -94,7 +93,6 @@ FinishStringFlat(JSContext* cx, StringBuffer& sb, Buffer& cb)
      */
     cx->updateMallocCounter(sizeof(CharT) * len);
 
-    mozilla::Unused << buf.release();
     return str;
 }
 

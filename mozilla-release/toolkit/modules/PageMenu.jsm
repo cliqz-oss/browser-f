@@ -76,7 +76,7 @@ PageMenu.prototype = {
     let pos = insertionPoint.getAttribute(this.PAGEMENU_ATTR);
     if (pos == "start") {
       insertionPoint.insertBefore(fragment,
-                                  insertionPoint.firstChild);
+                                  insertionPoint.firstElementChild);
     } else if (pos.startsWith("#")) {
       insertionPoint.insertBefore(fragment, insertionPoint.querySelector(pos));
     } else {
@@ -105,7 +105,7 @@ PageMenu.prototype = {
             continue; // Ignore children without ids
           }
 
-          menuitem = document.createElement("menuitem");
+          menuitem = document.createXULElement("menuitem");
           if (child.checkbox) {
             menuitem.setAttribute("type", "checkbox");
             if (child.checked) {
@@ -127,16 +127,16 @@ PageMenu.prototype = {
           break;
 
         case "separator":
-          menuitem = document.createElement("menuseparator");
+          menuitem = document.createXULElement("menuseparator");
           break;
 
         case "menu":
-          menuitem = document.createElement("menu");
+          menuitem = document.createXULElement("menu");
           if (child.label) {
             menuitem.setAttribute("label", child.label);
           }
 
-          let menupopup = document.createElement("menupopup");
+          let menupopup = document.createXULElement("menupopup");
           menuitem.appendChild(menupopup);
 
           this.buildXULMenu(child, menupopup);
@@ -160,11 +160,10 @@ PageMenu.prototype = {
         this._builder.click(target.getAttribute(this.GENERATEDITEMID_ATTR));
       } else if (this._browser) {
         let win = target.ownerGlobal;
-        let windowUtils = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIDOMWindowUtils);
+        let windowUtils = win.windowUtils;
         this._browser.messageManager.sendAsyncMessage("ContextMenu:DoCustomCommand", {
           generatedItemId: target.getAttribute(this.GENERATEDITEMID_ATTR),
-          handlingUserInput: windowUtils.isHandlingUserInput
+          handlingUserInput: windowUtils.isHandlingUserInput,
         });
       }
     } else if (type == "popuphidden" && this._popup == target) {
@@ -181,12 +180,12 @@ PageMenu.prototype = {
 
   // Get the first child of the given element with the given tag name.
   getImmediateChild(element, tag) {
-    let child = element.firstChild;
+    let child = element.firstElementChild;
     while (child) {
       if (child.localName == tag) {
         return child;
       }
-      child = child.nextSibling;
+      child = child.nextElementSibling;
     }
     return null;
   },
@@ -198,7 +197,7 @@ PageMenu.prototype = {
     if (aPopup.hasAttribute(this.PAGEMENU_ATTR))
       return aPopup;
 
-    let element = aPopup.firstChild;
+    let element = aPopup.firstElementChild;
     while (element) {
       if (element.localName == "menu") {
         let popup = this.getImmediateChild(element, "menupopup");
@@ -209,7 +208,7 @@ PageMenu.prototype = {
           }
         }
       }
-      element = element.nextSibling;
+      element = element.nextElementSibling;
     }
 
     return null;
@@ -226,9 +225,9 @@ PageMenu.prototype = {
       let element = ungenerated[last];
       ungenerated.splice(last, 1);
 
-      let i = element.childNodes.length;
+      let i = element.children.length;
       while (i-- > 0) {
-        let child = element.childNodes[i];
+        let child = element.children[i];
         if (!child.hasAttribute(this.GENERATEDITEMID_ATTR)) {
           ungenerated.push(child);
           continue;
@@ -236,7 +235,7 @@ PageMenu.prototype = {
         element.removeChild(child);
       }
     }
-  }
+  },
 };
 
 // This object is expected to be used from a parent process.
@@ -272,7 +271,7 @@ PageMenuParent.prototype = {
    */
   addToPopup(aMenu, aBrowser, aPopup) {
     return this.buildAndAttachMenuWithObject(aMenu, aBrowser, aPopup);
-  }
+  },
 };
 
 // This object is expected to be used from a child process.
@@ -311,5 +310,5 @@ PageMenuChild.prototype = {
       this._builder.click(aId);
       this._builder = null;
     }
-  }
+  },
 };

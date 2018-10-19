@@ -64,8 +64,7 @@ const CookieCleaner = {
 
     return new Promise((aResolve, aReject) => {
       let count = 0;
-      while (aEnumerator.hasMoreElements()) {
-        let cookie = aEnumerator.getNext().QueryInterface(Ci.nsICookie2);
+      for (let cookie of aEnumerator) {
         if (aCb(cookie)) {
           Services.cookies.remove(cookie.host, cookie.name, cookie.path,
                                   false, cookie.originAttributes);
@@ -86,6 +85,13 @@ const CookieCleaner = {
 };
 
 const NetworkCacheCleaner = {
+  deleteByPrincipal(aPrincipal) {
+    return new Promise(aResolve => {
+      Services.cache2.asyncClearOrigin(aPrincipal);
+      aResolve();
+    });
+  },
+
   deleteAll() {
     return new Promise(aResolve => {
       Services.cache2.clear();
@@ -193,7 +199,7 @@ const PluginDataCleaner = {
     // elapsed, we proceed with the shutdown of Firefox.
     return Promise.race([
       Promise.all(promises),
-      new Promise(aResolve => setTimeout(aResolve, 10000 /* 10 seconds */))
+      new Promise(aResolve => setTimeout(aResolve, 10000 /* 10 seconds */)),
     ]);
   },
 };
@@ -459,7 +465,7 @@ const HistoryCleaner = {
   deleteByRange(aFrom, aTo) {
     return PlacesUtils.history.removeVisitsByFilter({
       beginDate: new Date(aFrom / 1000),
-      endDate: new Date(aTo / 1000)
+      endDate: new Date(aTo / 1000),
     });
   },
 
@@ -507,9 +513,7 @@ const AuthCacheCleaner = {
 const PermissionsCleaner = {
   deleteByHost(aHost, aOriginAttributes) {
     return new Promise(aResolve => {
-      let enumerator = Services.perms.enumerator;
-      while (enumerator.hasMoreElements()) {
-        let perm = enumerator.getNext().QueryInterface(Ci.nsIPermission);
+      for (let perm of Services.perms.enumerator) {
         try {
           if (eTLDService.hasRootDomain(perm.principal.URI.host, aHost)) {
             Services.perms.removePermission(perm);
@@ -550,7 +554,7 @@ const PreferencesCleaner = {
             aResolve();
           }
         },
-        handleError() {}
+        handleError() {},
       });
     });
   },
@@ -583,10 +587,8 @@ const SecuritySettingsCleaner = {
                         Ci.nsISiteSecurityService.HEADER_HPKP]) {
         // Also remove HSTS/HPKP/OMS information for subdomains by enumerating
         // the information in the site security service.
-        let enumerator = sss.enumerate(type);
-        while (enumerator.hasMoreElements()) {
-          let entry = enumerator.getNext();
-          let hostname = entry.QueryInterface(Ci.nsISiteSecurityState).hostname;
+        for (let entry of sss.enumerate(type)) {
+          let hostname = entry.hostname;
           if (eTLDService.hasRootDomain(hostname, aHost)) {
             // This uri is used as a key to remove the state.
             let uri = Services.io.newURI("https://" + hostname);
@@ -636,55 +638,55 @@ const FLAGS_MAP = [
    cleaner: NetworkCacheCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_IMAGE_CACHE,
-   cleaner: ImageCacheCleaner, },
+   cleaner: ImageCacheCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_PLUGIN_DATA,
-   cleaner: PluginDataCleaner, },
+   cleaner: PluginDataCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_DOWNLOADS,
-   cleaner: DownloadsCleaner, },
+   cleaner: DownloadsCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_PASSWORDS,
-   cleaner: PasswordsCleaner, },
+   cleaner: PasswordsCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_MEDIA_DEVICES,
-   cleaner: MediaDevicesCleaner, },
+   cleaner: MediaDevicesCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_APPCACHE,
-   cleaner: AppCacheCleaner, },
+   cleaner: AppCacheCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_DOM_QUOTA,
-   cleaner: QuotaCleaner, },
+   cleaner: QuotaCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_PREDICTOR_NETWORK_DATA,
-   cleaner: PredictorNetworkCleaner, },
+   cleaner: PredictorNetworkCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_DOM_PUSH_NOTIFICATIONS,
-   cleaner: PushNotificationsCleaner, },
+   cleaner: PushNotificationsCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_HISTORY,
-   cleaner: HistoryCleaner, },
+   cleaner: HistoryCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_SESSION_HISTORY,
-   cleaner: SessionHistoryCleaner, },
+   cleaner: SessionHistoryCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_AUTH_TOKENS,
-   cleaner: AuthTokensCleaner, },
+   cleaner: AuthTokensCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_AUTH_CACHE,
-   cleaner: AuthCacheCleaner, },
+   cleaner: AuthCacheCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_PERMISSIONS,
-   cleaner: PermissionsCleaner, },
+   cleaner: PermissionsCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_CONTENT_PREFERENCES,
-   cleaner: PreferencesCleaner, },
+   cleaner: PreferencesCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_SECURITY_SETTINGS,
-   cleaner: SecuritySettingsCleaner, },
+   cleaner: SecuritySettingsCleaner },
 
  { flag: Ci.nsIClearDataService.CLEAR_EME,
-   cleaner: EMECleaner, },
+   cleaner: EMECleaner },
 ];
 
 this.ClearDataService = function() {};

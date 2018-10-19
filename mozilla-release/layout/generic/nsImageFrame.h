@@ -106,6 +106,7 @@ public:
                           const Maybe<OnNonvisible>& aNonvisibleAction = Nothing()) override;
 
   void ResponsiveContentDensityChanged();
+  void SetupForContentURLRequest();
 
 #ifdef ACCESSIBILITY
   virtual mozilla::a11y::AccType AccessibleType() override;
@@ -148,8 +149,8 @@ public:
    * should get an image frame.  Note that this method is only used by the
    * frame constructor; it's only here because it uses gIconLoad for now.
    */
-  static bool ShouldCreateImageFrameFor(mozilla::dom::Element* aElement,
-                                        ComputedStyle* aComputedStyle);
+  static bool ShouldCreateImageFrameFor(const mozilla::dom::Element& aElement,
+                                        ComputedStyle& aStyle);
 
   ImgDrawResult DisplayAltFeedback(gfxContext& aRenderingContext,
                                 const nsRect& aDirtyRect,
@@ -180,13 +181,37 @@ public:
   virtual bool ReflowFinished() override;
   virtual void ReflowCallbackCanceled() override;
 
+  // The kind of image frame we are.
+  enum class Kind : uint8_t
+  {
+    // For an nsImageLoadingContent.
+    ImageElement,
+    // For css 'content: url(..)' on non-generated content.
+    ContentProperty,
+    // For a child of a ::before / ::after pseudo-element that had an url() item
+    // for the content property.
+    ContentPropertyAtIndex,
+  };
+
+  // Creates a suitable continuing frame for this frame.
+  nsImageFrame* CreateContinuingFrame(nsIPresShell*, ComputedStyle*) const;
+
 private:
   friend nsIFrame* NS_NewImageFrame(nsIPresShell*, ComputedStyle*);
-  explicit nsImageFrame(ComputedStyle* aStyle)
-    : nsImageFrame(aStyle, kClassID) {}
+  friend nsIFrame* NS_NewImageFrameForContentProperty(nsIPresShell*, ComputedStyle*);
+  friend nsIFrame* NS_NewImageFrameForGeneratedContentIndex(nsIPresShell*, ComputedStyle*);
+
+  nsImageFrame(ComputedStyle* aStyle, Kind aKind)
+    : nsImageFrame(aStyle, kClassID, aKind)
+  { }
+
+  nsImageFrame(ComputedStyle*, ClassID, Kind);
 
 protected:
-  nsImageFrame(ComputedStyle* aStyle, ClassID aID);
+  nsImageFrame(ComputedStyle* aStyle, ClassID aID)
+    : nsImageFrame(aStyle, aID, Kind::ImageElement)
+  { }
+
   virtual ~nsImageFrame();
 
   void EnsureIntrinsicSizeAndRatio();
@@ -338,12 +363,17 @@ private:
 
   RefPtr<nsImageListener> mListener;
 
+  // An image request created for content: url(..).
+  RefPtr<imgRequestProxy> mContentURLRequest;
+
   nsCOMPtr<imgIContainer> mImage;
   nsCOMPtr<imgIContainer> mPrevImage;
   nsSize mComputedSize;
   mozilla::IntrinsicSize mIntrinsicSize;
   nsSize mIntrinsicRatio;
 
+  const Kind mKind;
+  bool mContentURLRequestRegistered;
   bool mDisplayingIcon;
   bool mFirstFrameComplete;
   bool mReflowCallbackPosted;

@@ -11,6 +11,7 @@
 #include "mozilla/dom/WorkerPrivate.h"
 
 #include "jsapi.h"
+#include "js/StableStringChars.h"
 #include "xpcpublic.h"
 #include "nsIGlobalObject.h"
 #include "nsIDocShell.h"
@@ -490,6 +491,7 @@ AutoJSAPI::Init(nsIGlobalObject* aGlobalObject)
 bool
 AutoJSAPI::Init(JSObject* aObject)
 {
+  MOZ_ASSERT(!js::IsCrossCompartmentWrapper(aObject));
   return Init(xpc::NativeGlobal(aObject));
 }
 
@@ -568,6 +570,7 @@ AutoJSAPI::ReportException()
       errorGlobal = GetCurrentThreadWorkerGlobal();
     }
   }
+  MOZ_ASSERT(JS_IsGlobalObject(errorGlobal));
   JSAutoRealm ar(cx(), errorGlobal);
   JS::Rooted<JS::Value> exn(cx());
   js::ErrorReport jsReport(cx());
@@ -576,7 +579,7 @@ AutoJSAPI::ReportException()
     if (mIsMainThread) {
       RefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
 
-      RefPtr<nsGlobalWindowInner> win = xpc::WindowGlobalOrNull(errorGlobal);
+      RefPtr<nsGlobalWindowInner> win = xpc::WindowOrNull(errorGlobal);
       nsPIDOMWindowInner* inner = win ? win->AsInner() : nullptr;
       bool isChrome = nsContentUtils::IsSystemPrincipal(
         nsContentUtils::ObjectPrincipal(errorGlobal));
@@ -587,9 +590,10 @@ AutoJSAPI::ReportException()
         JS::RootingContext* rcx = JS::RootingContext::get(cx());
         DispatchScriptErrorEvent(inner, rcx, xpcReport, exn);
       } else {
-        JS::Rooted<JSObject*> stack(cx(),
-          xpc::FindExceptionStackForConsoleReport(inner, exn));
-        xpcReport->LogToConsoleWithStack(stack);
+        JS::Rooted<JSObject*> stack(cx());
+        JS::Rooted<JSObject*> stackGlobal(cx());
+        xpc::FindExceptionStackForConsoleReport(inner, exn, &stack, &stackGlobal);
+        xpcReport->LogToConsoleWithStack(stack, stackGlobal);
       }
     } else {
       // On a worker, we just use the worker error reporting mechanism and don't
@@ -651,6 +655,10 @@ AutoEntryScript::AutoEntryScript(nsIGlobalObject* aGlobalObject,
   // This relies on us having a cx() because the AutoJSAPI constructor already
   // ran.
   , mCallerOverride(cx())
+#ifdef MOZ_GECKO_PROFILER
+  , mAutoProfilerLabel("AutoEntryScript", aReason, __LINE__,
+                       js::ProfilingStackFrame::Category::JS)
+#endif
 {
   MOZ_ASSERT(aGlobalObject);
 
@@ -664,6 +672,8 @@ AutoEntryScript::AutoEntryScript(JSObject* aObject,
                                  bool aIsMainThread)
   : AutoEntryScript(xpc::NativeGlobal(aObject), aReason, aIsMainThread)
 {
+  // xpc::NativeGlobal uses JS::GetNonCCWObjectGlobal, which asserts that
+  // aObject is not a CCW.
 }
 
 AutoEntryScript::~AutoEntryScript()
@@ -691,8 +701,7 @@ AutoEntryScript::DocshellEntryMonitor::Entry(JSContext* aCx, JSFunction* aFuncti
     rootedScript = aScript;
   }
 
-  nsCOMPtr<nsPIDOMWindowInner> window =
-    do_QueryInterface(xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx)));
+  nsCOMPtr<nsPIDOMWindowInner> window = xpc::CurrentWindowOrNull(aCx);
   if (!window || !window->GetDocShell() ||
       !window->GetDocShell()->GetRecordProfileTimelineMarkers()) {
     return;
@@ -702,7 +711,7 @@ AutoEntryScript::DocshellEntryMonitor::Entry(JSContext* aCx, JSFunction* aFuncti
   nsString filename;
   uint32_t lineNumber = 0;
 
-  js::AutoStableStringChars functionName(aCx);
+  JS::AutoStableStringChars functionName(aCx);
   if (rootedFunction) {
     JS::Rooted<JSString*> displayId(aCx, JS_GetFunctionDisplayId(rootedFunction));
     if (displayId) {
@@ -736,8 +745,7 @@ AutoEntryScript::DocshellEntryMonitor::Entry(JSContext* aCx, JSFunction* aFuncti
 void
 AutoEntryScript::DocshellEntryMonitor::Exit(JSContext* aCx)
 {
-  nsCOMPtr<nsPIDOMWindowInner> window =
-    do_QueryInterface(xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx)));
+  nsCOMPtr<nsPIDOMWindowInner> window = xpc::CurrentWindowOrNull(aCx);
   // Not really worth checking GetRecordProfileTimelineMarkers here.
   if (window && window->GetDocShell()) {
     nsCOMPtr<nsIDocShell> docShellForJSRunToCompletion = window->GetDocShell();

@@ -289,8 +289,7 @@ var gPluginHandler = {
 
     if (plugins.length == 1) {
       let pluginInfo = plugins[0];
-      let chromeWin = window.QueryInterface(Ci.nsIDOMChromeWindow);
-      let isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(chromeWin);
+      let isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
 
       let active = pluginInfo.fallbackType == Ci.nsIObjectLoadingContent.PLUGIN_ACTIVE;
 
@@ -396,7 +395,7 @@ var gPluginHandler = {
       }
       let classifier = Cc["@mozilla.org/url-classifier/dbservice;1"]
         .getService(Ci.nsIURIClassifier);
-      classifier.asyncClassifyLocalWithTables(uri, tableName, (c, list) => {
+      classifier.asyncClassifyLocalWithTables(uri, tableName, [], [], (c, list) => {
         resolve(list.length > 0);
       });
     });
@@ -504,7 +503,7 @@ var gPluginHandler = {
             Services.perms.addFromPrincipal(principal,
                                             "plugin-hidden-notification",
                                             Services.perms.DENY_ACTION);
-          }
+          },
         },
         {
           label: gNavigatorBundle.getString("pluginActivateTrigger.label"),
@@ -519,8 +518,8 @@ var gPluginHandler = {
             if (curNotification) {
               curNotification.reshow();
             }
-          }
-        }
+          },
+        },
       ];
       function notificationCallback(type) {
         if (type == "dismissed") {
@@ -654,8 +653,7 @@ var gPluginHandler = {
                                                       iconURL, priority, buttons);
 
     // Add the "learn more" link.
-    let XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-    let link = notification.ownerDocument.createElementNS(XULNS, "label");
+    let link = notification.ownerDocument.createXULElement("label");
     link.className = "text-link";
     link.setAttribute("value", gNavigatorBundle.getString("crashedpluginsMessage.learnMore"));
     let crashurl = formatURL("app.support.baseURL", true);

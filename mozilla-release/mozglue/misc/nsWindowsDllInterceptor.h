@@ -8,10 +8,12 @@
 #define NS_WINDOWS_DLL_INTERCEPTOR_H_
 
 #include "mozilla/Assertions.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/NotNull.h"
+#include "mozilla/Move.h"
+#include "mozilla/Tuple.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/Types.h"
 #include "mozilla/UniquePtr.h"
@@ -82,16 +84,239 @@
 namespace mozilla {
 namespace interceptor {
 
+template <typename T>
+struct OriginalFunctionPtrTraits;
+
+template <typename R, typename... Args>
+struct OriginalFunctionPtrTraits<R (*)(Args...)>
+{
+  using ReturnType = R;
+};
+
+#if defined(_M_IX86)
+template <typename R, typename... Args>
+struct OriginalFunctionPtrTraits<R (__stdcall*)(Args...)>
+{
+  using ReturnType = R;
+};
+
+template <typename R, typename... Args>
+struct OriginalFunctionPtrTraits<R (__fastcall*)(Args...)>
+{
+  using ReturnType = R;
+};
+#endif // defined(_M_IX86)
+
+template <typename InterceptorT, typename FuncPtrT>
+class FuncHook final
+{
+public:
+  using ThisType = FuncHook<InterceptorT, FuncPtrT>;
+  using ReturnType = typename OriginalFunctionPtrTraits<FuncPtrT>::ReturnType;
+
+  constexpr FuncHook()
+    : mOrigFunc(nullptr)
+    , mInitOnce(INIT_ONCE_STATIC_INIT)
+  {
+  }
+
+  ~FuncHook() = default;
+
+  bool Set(InterceptorT& aInterceptor, const char* aName,
+           FuncPtrT aHookDest)
+  {
+    LPVOID addHookOk;
+    InitOnceContext ctx(this, &aInterceptor, aName, aHookDest, false);
+
+    return ::InitOnceExecuteOnce(&mInitOnce, &InitOnceCallback, &ctx,
+                                 &addHookOk) && addHookOk;
+  }
+
+  bool SetDetour(InterceptorT& aInterceptor, const char* aName,
+                 FuncPtrT aHookDest)
+  {
+    LPVOID addHookOk;
+    InitOnceContext ctx(this, &aInterceptor, aName, aHookDest, true);
+
+    return ::InitOnceExecuteOnce(&mInitOnce, &InitOnceCallback, &ctx,
+                                 &addHookOk) && addHookOk;
+  }
+
+  explicit operator bool() const
+  {
+    return !!mOrigFunc;
+  }
+
+  template <typename... ArgsType>
+  ReturnType operator()(ArgsType... aArgs) const
+  {
+    return mOrigFunc(std::forward<ArgsType>(aArgs)...);
+  }
+
+  FuncPtrT GetStub() const
+  {
+    return mOrigFunc;
+  }
+
+  // One-time init stuff cannot be moved or copied
+  FuncHook(const FuncHook&) = delete;
+  FuncHook(FuncHook&&) = delete;
+  FuncHook& operator=(const FuncHook&) = delete;
+  FuncHook& operator=(FuncHook&& aOther) = delete;
+
+private:
+  struct MOZ_RAII InitOnceContext final
+  {
+    InitOnceContext(ThisType* aHook, InterceptorT* aInterceptor,
+                    const char* aName, FuncPtrT aHookDest, bool aForceDetour)
+      : mHook(aHook)
+      , mInterceptor(aInterceptor)
+      , mName(aName)
+      , mHookDest(reinterpret_cast<void*>(aHookDest))
+      , mForceDetour(aForceDetour)
+    {
+    }
+
+    ThisType*     mHook;
+    InterceptorT* mInterceptor;
+    const char*   mName;
+    void*         mHookDest;
+    bool          mForceDetour;
+  };
+
+private:
+  bool Apply(InterceptorT* aInterceptor, const char* aName, void* aHookDest)
+  {
+    return aInterceptor->AddHook(aName, reinterpret_cast<intptr_t>(aHookDest),
+                                 reinterpret_cast<void**>(&mOrigFunc));
+  }
+
+  bool ApplyDetour(InterceptorT* aInterceptor, const char* aName,
+                   void* aHookDest)
+  {
+    return aInterceptor->AddDetour(aName, reinterpret_cast<intptr_t>(aHookDest),
+                                   reinterpret_cast<void**>(&mOrigFunc));
+  }
+
+  static BOOL CALLBACK
+  InitOnceCallback(PINIT_ONCE aInitOnce, PVOID aParam, PVOID* aOutContext)
+  {
+    MOZ_ASSERT(aOutContext);
+
+    bool result;
+    auto ctx = reinterpret_cast<InitOnceContext*>(aParam);
+    if (ctx->mForceDetour) {
+      result = ctx->mHook->ApplyDetour(ctx->mInterceptor, ctx->mName,
+                                       ctx->mHookDest);
+    } else {
+      result = ctx->mHook->Apply(ctx->mInterceptor, ctx->mName, ctx->mHookDest);
+    }
+
+    *aOutContext = result ? reinterpret_cast<PVOID>(1U << INIT_ONCE_CTX_RESERVED_BITS) : nullptr;
+    return TRUE;
+  }
+
+private:
+  FuncPtrT  mOrigFunc;
+  INIT_ONCE mInitOnce;
+};
+
+template <typename InterceptorT, typename FuncPtrT>
+class MOZ_ONLY_USED_TO_AVOID_STATIC_CONSTRUCTORS FuncHookCrossProcess final
+{
+public:
+  using ThisType = FuncHookCrossProcess<InterceptorT, FuncPtrT>;
+  using ReturnType = typename OriginalFunctionPtrTraits<FuncPtrT>::ReturnType;
+
+#if defined(DEBUG)
+  FuncHookCrossProcess() {}
+#endif // defined(DEBUG)
+
+  bool Set(HANDLE aProcess, InterceptorT& aInterceptor, const char* aName,
+           FuncPtrT aHookDest)
+  {
+    if (!aInterceptor.AddHook(aName, reinterpret_cast<intptr_t>(aHookDest),
+                              reinterpret_cast<void**>(&mOrigFunc))) {
+      return false;
+    }
+
+    return CopyStubToChildProcess(aProcess);
+  }
+
+  bool SetDetour(HANDLE aProcess, InterceptorT& aInterceptor, const char* aName,
+                 FuncPtrT aHookDest)
+  {
+    if (!aInterceptor.AddDetour(aName, reinterpret_cast<intptr_t>(aHookDest),
+                                reinterpret_cast<void**>(&mOrigFunc))) {
+      return false;
+    }
+
+    return CopyStubToChildProcess(aProcess);
+  }
+
+  explicit operator bool() const
+  {
+    return !!mOrigFunc;
+  }
+
+  /**
+   * NB: This operator is only meaningful when invoked in the target process!
+   */
+  template <typename... ArgsType>
+  ReturnType operator()(ArgsType... aArgs) const
+  {
+    return mOrigFunc(std::forward<ArgsType>(aArgs)...);
+  }
+
+#if defined(DEBUG)
+  FuncHookCrossProcess(const FuncHookCrossProcess&) = delete;
+  FuncHookCrossProcess(FuncHookCrossProcess&&) = delete;
+  FuncHookCrossProcess& operator=(const FuncHookCrossProcess&) = delete;
+  FuncHookCrossProcess& operator=(FuncHookCrossProcess&& aOther) = delete;
+#endif // defined(DEBUG)
+
+private:
+  bool CopyStubToChildProcess(HANDLE aProcess)
+  {
+    SIZE_T bytesWritten;
+    return !!::WriteProcessMemory(aProcess, &mOrigFunc, &mOrigFunc,
+                                  sizeof(mOrigFunc), &bytesWritten);
+  }
+
+private:
+  FuncPtrT  mOrigFunc;
+};
+
 enum
 {
   kDefaultTrampolineSize = 128
 };
 
+template <typename MMPolicyT, typename InterceptorT>
+struct TypeResolver;
+
+template <typename InterceptorT>
+struct TypeResolver<mozilla::interceptor::MMPolicyInProcess, InterceptorT>
+{
+  template <typename FuncPtrT>
+  using FuncHookType = FuncHook<InterceptorT, FuncPtrT>;
+};
+
+template <typename InterceptorT>
+struct TypeResolver<mozilla::interceptor::MMPolicyOutOfProcess, InterceptorT>
+{
+  template <typename FuncPtrT>
+  using FuncHookType = FuncHookCrossProcess<InterceptorT, FuncPtrT>;
+};
+
 template <typename VMPolicy =
             mozilla::interceptor::VMSharingPolicyShared<
               mozilla::interceptor::MMPolicyInProcess, kDefaultTrampolineSize>>
-class WindowsDllInterceptor final
+class WindowsDllInterceptor final : public TypeResolver<typename VMPolicy::MMPolicyT,
+                                                        WindowsDllInterceptor<VMPolicy>>
 {
+  typedef WindowsDllInterceptor<VMPolicy> ThisType;
+
   interceptor::WindowsDllDetourPatcher<VMPolicy> mDetourPatcher;
 #if defined(_M_IX86)
   interceptor::WindowsDllNopSpacePatcher<typename VMPolicy::MMPolicyT> mNopSpacePatcher;
@@ -160,6 +385,7 @@ public:
     // NB: We intentionally leak mModule
   }
 
+private:
   /**
    * Hook/detour the method aName from the DLL we set in Init so that it calls
    * aHookDest instead.  Returns the original method pointer in aOrigFunc
@@ -206,6 +432,11 @@ public:
   {
     // Generally, code should not call this method directly. Use AddHook unless
     // there is a specific need to avoid nop space patches.
+#if defined(_M_ARM64)
+    // XXX: this is just to get things compiling; we'll have to add real
+    // support at some future point.
+    return false;
+#endif
 
     if (!mModule) {
       return false;
@@ -219,7 +450,6 @@ public:
     return AddDetour(proc, aHookDest, aOrigFunc);
   }
 
-private:
   bool AddDetour(FARPROC aProc, intptr_t aHookDest, void** aOrigFunc)
   {
     MOZ_ASSERT(mModule && aProc);
@@ -230,6 +460,13 @@ private:
 
     return mDetourPatcher.AddHook(aProc, aHookDest, aOrigFunc);
   }
+
+private:
+  template <typename InterceptorT, typename FuncPtrT>
+  friend class FuncHook;
+
+  template <typename InterceptorT, typename FuncPtrT>
+  friend class FuncHookCrossProcess;
 };
 
 } // namespace interceptor

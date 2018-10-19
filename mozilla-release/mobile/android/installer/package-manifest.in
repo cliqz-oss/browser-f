@@ -22,6 +22,7 @@
 #endif
 @BINPATH@/dictionaries/*
 @BINPATH@/hyphenation/*
+@BINPATH@/localization/*
 
 [assets destdir="assets/@ANDROID_CPU_ARCH@"]
 #ifndef MOZ_STATIC_JS
@@ -188,6 +189,7 @@
 @BINPATH@/components/nsINIProcessor.js
 @BINPATH@/components/servicesComponents.manifest
 @BINPATH@/components/servicesSettings.manifest
+@BINPATH@/components/RemoteSettingsComponents.js
 
 #ifndef MOZ_GECKOVIEW_JAR
 @BINPATH@/components/TelemetryStartup.js
@@ -238,18 +240,18 @@
 @BINPATH@/components/mozIntl.manifest
 @BINPATH@/components/mozIntl.js
 
+@BINPATH@/components/mozDOMLocalization.js
+@BINPATH@/components/mozDOMLocalization.manifest
+
 ; Modules
 @BINPATH@/modules/*
+@BINPATH@/actors/*
 
 ; Safe Browsing
 @BINPATH@/components/nsURLClassifier.manifest
 @BINPATH@/components/nsUrlClassifierHashCompleter.js
 @BINPATH@/components/nsUrlClassifierListManager.js
 @BINPATH@/components/nsUrlClassifierLib.js
-
-; Private Browsing
-@BINPATH@/components/PrivateBrowsing.manifest
-@BINPATH@/components/PrivateBrowsingTrackingProtectionWhitelist.js
 
 ; Security Reports
 @BINPATH@/components/SecurityReporter.manifest
@@ -371,7 +373,6 @@
 @BINPATH@/components/PresentationRequestUIGlue.js
 @BINPATH@/components/PromptService.js
 @BINPATH@/components/SessionStore.js
-@BINPATH@/components/Snippets.js
 @BINPATH@/components/XPIDialogService.js
 #endif
 

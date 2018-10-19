@@ -4,10 +4,13 @@
 
 "use strict";
 
-let {FormAutofillParent} = ChromeUtils.import("resource://formautofill/FormAutofillParent.jsm", {});
-ChromeUtils.import("resource://formautofill/MasterPassword.jsm");
-ChromeUtils.import("resource://formautofill/FormAutofillStorage.jsm");
 ChromeUtils.import("resource://gre/modules/CreditCard.jsm");
+
+let FormAutofillParent;
+add_task(async function setup() {
+  ({FormAutofillParent} = ChromeUtils.import("resource://formautofill/FormAutofillParent.jsm", {}));
+  ChromeUtils.import("resource://formautofill/MasterPassword.jsm");
+});
 
 const TEST_ADDRESS_1 = {
   "given-name": "Timothy",
@@ -33,6 +36,7 @@ let TEST_CREDIT_CARD_1 = {
   "cc-number": "4111111111111111",
   "cc-exp-month": 4,
   "cc-exp-year": 2017,
+  "cc-type": "visa",
 };
 
 let TEST_CREDIT_CARD_2 = {
@@ -40,6 +44,7 @@ let TEST_CREDIT_CARD_2 = {
   "cc-number": "4929001587121045",
   "cc-exp-month": 2,
   "cc-exp-year": 2017,
+  "cc-type": "visa",
 };
 
 let target = {

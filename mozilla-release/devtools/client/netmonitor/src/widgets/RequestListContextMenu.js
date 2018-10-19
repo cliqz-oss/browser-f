@@ -17,7 +17,7 @@ const {
 loader.lazyRequireGetter(this, "Curl", "devtools/client/shared/curl", true);
 loader.lazyRequireGetter(this, "saveAs", "devtools/client/shared/file-saver", true);
 loader.lazyRequireGetter(this, "copyString", "devtools/shared/platform/clipboard", true);
-loader.lazyRequireGetter(this, "showMenu", "devtools/client/netmonitor/src/utils/menu", true);
+loader.lazyRequireGetter(this, "showMenu", "devtools/client/shared/components/menu/utils", true);
 loader.lazyRequireGetter(this, "openRequestInTab", "devtools/client/netmonitor/src/utils/firefox/open-request-in-tab", true);
 loader.lazyRequireGetter(this, "HarMenuUtils", "devtools/client/netmonitor/src/har/har-menu-utils", true);
 
@@ -70,8 +70,8 @@ class RequestListContextMenu {
 
     copySubmenu.push({
       id: "request-list-context-copy-post-data",
-      label: L10N.getStr("netmonitor.context.copyPostData"),
-      accesskey: L10N.getStr("netmonitor.context.copyPostData.accesskey"),
+      label: L10N.getFormatStr("netmonitor.context.copyRequestData", method),
+      accesskey: L10N.getStr("netmonitor.context.copyRequestData.accesskey"),
       // Menu item will be visible even if data hasn't arrived, so we need to check
       // *Available property and then fetch data lazily once user triggers the action.
       visible: !!(selectedRequest && (requestPostDataAvailable || requestPostData)),

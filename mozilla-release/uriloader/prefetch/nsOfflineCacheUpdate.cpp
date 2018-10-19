@@ -13,9 +13,9 @@
 #include "nsICachingChannel.h"
 #include "nsIContent.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/OfflineResourceListBinding.h"
 #include "nsIDocumentLoader.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMOfflineResourceList.h"
 #include "nsIDocument.h"
 #include "nsIObserverService.h"
 #include "nsIURL.h"
@@ -38,6 +38,7 @@
 #include "mozilla/Attributes.h"
 #include "nsContentUtils.h"
 #include "nsIPrincipal.h"
+#include "nsDiskCacheDeviceSQL.h"
 
 #include "nsXULAppAPI.h"
 
@@ -86,9 +87,8 @@ DropReferenceFromURL(nsCOMPtr<nsIURI>& aURI)
 {
     // XXXdholbert If this SetRef fails, callers of this method probably
     // want to call aURI->CloneIgnoringRef() and use the result of that.
-    return NS_MutateURI(aURI)
-             .SetRef(EmptyCString())
-             .Finalize(aURI);
+    nsCOMPtr<nsIURI> uri(aURI);
+    return NS_GetURIWithoutRef(uri, getter_AddRefs(aURI));
 }
 
 void
@@ -792,8 +792,7 @@ nsOfflineManifestItem::AddNamespace(uint32_t namespaceType,
     }
 
     nsCOMPtr<nsIApplicationCacheNamespace> ns =
-        do_CreateInstance(NS_APPLICATIONCACHENAMESPACE_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
+        new nsApplicationCacheNamespace();
 
     rv = ns->Init(namespaceType, namespaceSpec, data);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1247,7 +1246,7 @@ nsOfflineCacheUpdate::GetCacheKey(nsIURI *aURI, nsACString &aKey)
     aKey.Truncate();
 
     nsCOMPtr<nsIURI> newURI;
-    nsresult rv = aURI->CloneIgnoringRef(getter_AddRefs(newURI));
+    nsresult rv = NS_GetURIWithoutRef(aURI, getter_AddRefs(newURI));
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = newURI->GetAsciiSpec(aKey);
@@ -2285,13 +2284,13 @@ nsOfflineCacheUpdate::GetStatus(uint16_t *aStatus)
 {
     switch (mState) {
     case STATE_CHECKING :
-        *aStatus = nsIDOMOfflineResourceList::CHECKING;
+        *aStatus = dom::OfflineResourceList_Binding::CHECKING;
         return NS_OK;
     case STATE_DOWNLOADING :
-        *aStatus = nsIDOMOfflineResourceList::DOWNLOADING;
+        *aStatus = dom::OfflineResourceList_Binding::DOWNLOADING;
         return NS_OK;
     default :
-        *aStatus = nsIDOMOfflineResourceList::IDLE;
+        *aStatus = dom::OfflineResourceList_Binding::IDLE;
         return NS_OK;
     }
 

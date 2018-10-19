@@ -15,7 +15,8 @@
 
 #include "jspubtd.h"
 
-#include "js/StructuredClone.h"
+struct JSStructuredCloneReader;
+struct JSStructuredCloneWriter;
 
 namespace js {
     struct JS_PUBLIC_API(PerformanceGroup);
@@ -23,7 +24,9 @@ namespace js {
 
 struct JSPrincipals {
     /* Don't call "destroy"; use reference counting macros below. */
-    mozilla::Atomic<int32_t> refcount;
+    mozilla::Atomic<int32_t,
+                    mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> refcount;
 
 #ifdef JS_DEBUG
     /* A helper to facilitate principals debugging. */
@@ -65,10 +68,10 @@ typedef bool
 
 /*
  * Used to check if a CSP instance wants to disable eval() and friends.
- * See js_CheckCSPPermitsJSAction() in jsobj.
+ * See GlobalObject::isRuntimeCodeGenEnabled() in vm/GlobalObject.cpp.
  */
 typedef bool
-(* JSCSPEvalChecker)(JSContext* cx);
+(* JSCSPEvalChecker)(JSContext* cx, JS::HandleValue value);
 
 struct JSSecurityCallbacks {
     JSCSPEvalChecker           contentSecurityPolicyAllows;

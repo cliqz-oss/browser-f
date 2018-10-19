@@ -7,8 +7,6 @@
 
 /* globals EventEmitter */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                                "resource://gre/modules/PrivateBrowsingUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Services",
@@ -18,9 +16,12 @@ var {
   DefaultMap,
   DefaultWeakMap,
   ExtensionError,
-  defineLazyGetter,
   getWinUtils,
 } = ExtensionUtils;
+
+var {
+  defineLazyGetter,
+} = ExtensionCommon;
 
 /**
  * The platform-specific type of native tab objects, which are wrapped by
@@ -400,12 +401,12 @@ class TabBase {
 
   /**
    * @property {boolean} highlighted
-   *        Alias for `active`.
+   *        Returns true if the tab is highlighted.
    *        @readonly
    *        @abstract
    */
   get highlighted() {
-    return this.active;
+    throw new Error("Not implemented");
   }
 
   /**
@@ -458,6 +459,17 @@ class TabBase {
   get windowId() {
     throw new Error("Not implemented");
   }
+
+  /**
+   * @property {boolean} attention
+   *          Returns true if the tab is drawing attention.
+   *          @readonly
+   *          @abstract
+   */
+  get attention() {
+    throw new Error("Not implemented");
+  }
+
 
   /**
    * @property {boolean} isArticle
@@ -581,6 +593,7 @@ class TabBase {
       windowId: this.windowId,
       highlighted: this.highlighted,
       active: this.active,
+      attention: this.attention,
       pinned: this.pinned,
       status: this.status,
       hidden: this.hidden,
@@ -647,9 +660,9 @@ class TabBase {
    */
   _execute(context, details, kind, method) {
     let options = {
-      js: [],
-      css: [],
-      remove_css: method == "removeCSS",
+      jsPaths: [],
+      cssPaths: [],
+      removeCSS: method == "removeCSS",
     };
 
     // We require a `code` or a `file` property, but we can't accept both.
@@ -672,26 +685,26 @@ class TabBase {
       if (!this.extension.isExtensionURL(url)) {
         return Promise.reject({message: "Files to be injected must be within the extension"});
       }
-      options[kind].push(url);
+      options[`${kind}Paths`].push(url);
     }
     if (details.allFrames) {
-      options.all_frames = details.allFrames;
+      options.allFrames = details.allFrames;
     }
     if (details.frameId !== null) {
-      options.frame_id = details.frameId;
+      options.frameID = details.frameId;
     }
     if (details.matchAboutBlank) {
-      options.match_about_blank = details.matchAboutBlank;
+      options.matchAboutBlank = details.matchAboutBlank;
     }
     if (details.runAt !== null) {
-      options.run_at = details.runAt;
+      options.runAt = details.runAt;
     } else {
-      options.run_at = "document_idle";
+      options.runAt = "document_idle";
     }
     if (details.cssOrigin !== null) {
-      options.css_origin = details.cssOrigin;
+      options.cssOrigin = details.cssOrigin;
     } else {
-      options.css_origin = "author";
+      options.cssOrigin = "author";
     }
 
     options.wantReturnValue = true;
@@ -785,7 +798,7 @@ class WindowBase {
    *        @readonly
    */
   get xulWindow() {
-    return this.window.document.docShell.treeOwner
+    return this.window.docShell.treeOwner
                .QueryInterface(Ci.nsIInterfaceRequestor)
                .getInterface(Ci.nsIXULWindow);
   }
@@ -1045,6 +1058,15 @@ class WindowBase {
    * @returns {Iterator<TabBase>}
    */
   getTabs() {
+    throw new Error("Not implemented");
+  }
+
+  /**
+   * Returns an iterator of TabBase objects for each highlighted tab in this window.
+   *
+   * @returns {Iterator<TabBase>}
+   */
+  getHighlightedTabs() {
     throw new Error("Not implemented");
   }
 
@@ -1344,10 +1366,7 @@ class WindowTrackerBase extends EventEmitter {
     // fires for browser windows when they're in that in-between state, and just
     // before we register our own "domwindowcreated" listener.
 
-    let e = Services.wm.getEnumerator("");
-    while (e.hasMoreElements()) {
-      let window = e.getNext();
-
+    for (let window of Services.wm.getEnumerator("")) {
       let ok = includeIncomplete;
       if (window.document.readyState === "complete") {
         ok = this.isBrowserWindow(window);
@@ -1843,7 +1862,7 @@ class TabManagerBase {
     function* candidates(windowWrapper) {
       if (queryInfo) {
         let {active, highlighted, index} = queryInfo;
-        if (active === true || highlighted === true) {
+        if (active === true) {
           yield windowWrapper.activeTab;
           return;
         }
@@ -1852,6 +1871,10 @@ class TabManagerBase {
           if (tabWrapper) {
             yield tabWrapper;
           }
+          return;
+        }
+        if (highlighted === true) {
+          yield* windowWrapper.getHighlightedTabs();
           return;
         }
       }

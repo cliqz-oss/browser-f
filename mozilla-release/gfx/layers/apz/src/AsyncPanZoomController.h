@@ -517,6 +517,13 @@ public:
 
   bool OverscrollBehaviorAllowsSwipe() const;
 
+  //|Metrics()| and |Metrics() const| are getter functions that both return
+  //mScrollMetadata.mMetrics
+
+  const FrameMetrics& Metrics() const;
+  FrameMetrics& Metrics();
+
+
 private:
   // Get whether the horizontal content of the honoured target of auto-dir
   // scrolling starts from right to left. If you don't know of auto-dir
@@ -666,6 +673,23 @@ protected:
   nsEventStatus OnCancelTap(const TapGestureInput& aEvent);
 
   /**
+   * The following five methods modify the scroll offset. For the APZC
+   * representing the RCD-RSF, they also recalculate the offset of the layout
+   * viewport.
+   */
+
+  /**
+   * Scroll the scroll frame to an X,Y offset.
+   */
+  void SetScrollOffset(const CSSPoint& aOffset);
+
+  /**
+   * Scroll the scroll frame to an X,Y offset, clamping the resulting scroll
+   * offset to the scroll range.
+   */
+  void ClampAndSetScrollOffset(const CSSPoint& aOffset);
+
+  /**
    * Scroll the scroll frame by an X,Y offset.
    * The resulting scroll offset is not clamped to the scrollable rect;
    * the caller must ensure it stays within range.
@@ -674,9 +698,14 @@ protected:
 
   /**
    * Scroll the scroll frame by an X,Y offset, clamping the resulting
-   * scroll offset to the scrollable rect.
+   * scroll offset to the scroll range.
    */
   void ScrollByAndClamp(const CSSPoint& aOffset);
+
+  /**
+   * Copy the scroll offset and scroll generation from |aFrameMetrics|.
+   */
+  void CopyScrollInfoFrom(const FrameMetrics& aFrameMetrics);
 
   /**
    * Scales the viewport by an amount (note that it multiplies this scale in to
@@ -865,13 +894,12 @@ protected:
   PlatformSpecificStateBase* GetPlatformSpecificState();
 
 protected:
-  // Both |mFrameMetrics| and |mLastContentPaintMetrics| are protected by the
-  // monitor. Do not read from or modify either of them without locking.
+  // Both |mScrollMetadata| and |mLastContentPaintMetrics| are protected by the
+  // monitor. Do not read from or modify them without locking.
   ScrollMetadata mScrollMetadata;
-  FrameMetrics& mFrameMetrics;  // for convenience, refers to mScrollMetadata.mMetrics
 
-  // Protects |mFrameMetrics|, |mLastContentPaintMetrics|, and |mState|.
-  // Before manipulating |mFrameMetrics| or |mLastContentPaintMetrics|, the
+  // Protects |mScrollMetadata|, |mLastContentPaintMetrics| and |mState|.
+  // Before manipulating |mScrollMetadata| or |mLastContentPaintMetrics| the
   // monitor should be held. When setting |mState|, either the SetState()
   // function can be used, or the monitor can be held and then |mState| updated.
   // IMPORTANT: See the note about lock ordering at the top of APZCTreeManager.h.
@@ -909,7 +937,7 @@ private:
   FrameMetrics mExpectedGeckoMetrics;
 
   // These variables cache the layout viewport, scroll offset, and zoom stored
-  // in |mFrameMetrics| the last time SampleCompositedAsyncTransform() was
+  // in |Metrics()| the last time SampleCompositedAsyncTransform() was
   // called.
   CSSRect mCompositedLayoutViewport;
   CSSPoint mCompositedScrollOffset;
@@ -1020,12 +1048,27 @@ public:
   AsyncTransformComponentMatrix GetOverscrollTransform(AsyncTransformConsumer aMode) const;
 
   /**
+   * Returns the incremental transformation corresponding to the async
+   * panning/zooming of the layout viewport (unlike GetCurrentAsyncTransform,
+   * which deals with async movement of the visual viewport). That is, when
+   * this transform is multiplied with the layer's existing transform, it will
+   * make the layer appear with the desired pan/zoom amount.
+   */
+  AsyncTransform GetCurrentAsyncViewportTransform(AsyncTransformConsumer aMode) const;
+
+  /**
    * Returns the incremental transformation corresponding to the async pan/zoom
    * in progress. That is, when this transform is multiplied with the layer's
    * existing transform, it will make the layer appear with the desired pan/zoom
    * amount.
    */
   AsyncTransform GetCurrentAsyncTransform(AsyncTransformConsumer aMode) const;
+
+  /**
+   * Returns the incremental transformation corresponding to the async
+   * panning/zooming of the larger of the visual or layout viewport.
+   */
+  AsyncTransform GetCurrentAsyncTransformForFixedAdjustment(AsyncTransformConsumer aMode) const;
 
   /**
    * Returns the same transform as GetCurrentAsyncTransform(), but includes
@@ -1037,26 +1080,48 @@ private:
   /**
    * Samples the composited async transform, making the result of
    * |GetCurrentAsyncTransform(eForCompositing)| and similar functions reflect
-   * the async scroll offset and zoom stored in |mFrameMetrics|.
+   * the async scroll offset and zoom stored in |Metrics()|.
    *
    * Returns true if the newly sampled value is different from the previously
    * sampled value.
    *
    * (This is only relevant when |gfxPrefs::APZFrameDelayEnabled() == true|.
    * Otherwise, GetCurrentAsyncTransform() always reflects what's stored in
-   * |mFrameMetrics| immediately, without any delay.)
+   * |Metrics()| immediately, without any delay.)
    */
   bool SampleCompositedAsyncTransform();
 
   /*
    * Helper functions to query the async layout viewport, scroll offset, and
-   * zoom either directly from |mFrameMetrics|, or from cached variables that
+   * zoom either directly from |Metrics()|, or from cached variables that
    * store the required value from the last time it was sampled by calling
    * SampleCompositedAsyncTransform(), depending on who is asking.
    */
   CSSRect GetEffectiveLayoutViewport(AsyncTransformConsumer aMode) const;
   CSSPoint GetEffectiveScrollOffset(AsyncTransformConsumer aMode) const;
   CSSToParentLayerScale2D GetEffectiveZoom(AsyncTransformConsumer aMode) const;
+
+private:
+  friend class AutoApplyAsyncTestAttributes;
+
+  /**
+   * Applies |mTestAsyncScrollOffset| and |mTestAsyncZoom| to this
+   * AsyncPanZoomController. Calls |SampleCompositedAsyncTransform| to ensure
+   * that the GetCurrentAsync* functions consider the test offset and zoom in
+   * their computations.
+   *
+   * Returns false if neither test value is set, and true otherwise.
+   */
+  bool ApplyAsyncTestAttributes();
+
+  /**
+   * Sets this AsyncPanZoomController's FrameMetrics to |aPrevFrameMetrics| and
+   * calls |SampleCompositedAsyncTransform| to unapply any test values applied
+   * by |ApplyAsyncTestAttributes|.
+   *
+   * Returns false if neither test value is set, and true otherwise.
+   */
+  bool UnapplyAsyncTestAttributes(const FrameMetrics& aPrevFrameMetrics);
 
   /* ===================================================================
    * The functions and members in this section are used to manage
@@ -1185,6 +1250,7 @@ private:
   friend class GenericScrollAnimation;
   friend class WheelScrollAnimation;
   friend class KeyboardScrollAnimation;
+  friend class ZoomAnimation;
 
   friend class GenericOverscrollEffect;
   friend class WidgetOverscrollEffect;
@@ -1250,7 +1316,7 @@ public:
 
   bool IsRootContent() const {
     RecursiveMutexAutoLock lock(mRecursiveMutex);
-    return mFrameMetrics.IsRootContent();
+    return Metrics().IsRootContent();
   }
 
 private:
@@ -1404,7 +1470,7 @@ private:
   RefPtr<ipc::SharedMemoryBasic> mSharedFrameMetricsBuffer;
   CrossProcessMutex* mSharedLock;
   /**
-   * Called when ever mFrameMetrics is updated so that if it is being
+   * Called when ever Metrics() is updated so that if it is being
    * shared with the content process the shared FrameMetrics may be updated.
    */
   void UpdateSharedCompositorFrameMetrics();

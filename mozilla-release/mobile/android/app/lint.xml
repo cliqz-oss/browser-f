@@ -34,6 +34,7 @@
     <issue id="LongLogTag" severity="warning" />
     <issue id="MissingPermission" severity="warning" />
     <issue id="OnClick" severity="warning" />
+    <issue id="ProtectedPermissions" severity="warning" />
     <issue id="ReferenceType" severity="warning" />
     <issue id="ResourceAsColor" severity="warning" />
     <issue id="ResourceType" severity="warning" />
@@ -49,10 +50,11 @@
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/activitystream/ActivityStreamPreference.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/dlc/DownloadContentTelemetry.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/preferences/LocaleListPreference.java"/>
-        <ignore path="**/mobile/android/base/java/org/mozilla/gecko/media/MediaControlService.java"/>
+        <ignore path="**/mobile/android/base/java/org/mozilla/gecko/media/GeckoMediaControlAgent.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/PrintHelper.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/animation/PropertyAnimator.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/RemotePresentationService.java"/>
+        <ignore path="**/mobile/android/base/java/org/mozilla/gecko/VirtualPresentation.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/db/SharedBrowserDatabaseProvider.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/tabs/TabPanelBackButton.java"/>
         <ignore path="**/mobile/android/base/java/org/mozilla/gecko/toolbar/ToolbarEditText.java"/>
@@ -194,7 +196,6 @@
     <issue id="Proguard" severity="error" />
     <issue id="ProguardSplit" severity="error" />
     <issue id="PropertyEscape" severity="error" />
-    <issue id="ProtectedPermissions" severity="error" />
     <issue id="PxUsage" severity="error" />
     <issue id="Range" severity="error" />
     <issue id="RelativeOverlap" severity="error" />

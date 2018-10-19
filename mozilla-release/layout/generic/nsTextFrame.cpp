@@ -17,6 +17,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/Likely.h"
 #include "mozilla/MathAlgorithms.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/BinarySearch.h"
 #include "mozilla/IntegerRange.h"
@@ -425,7 +426,6 @@ protected:
 
   // Selection data
 
-  int16_t      mSelectionStatus; // see nsIDocument.h SetDisplaySelection()
   nscolor      mSelectionTextColor;
   nscolor      mSelectionBGColor;
   RefPtr<nsCSSShadowArray> mSelectionShadow;
@@ -1004,7 +1004,9 @@ public:
     mCommonAncestorWithLastFrame(nullptr),
     mMissingFonts(aPresContext->MissingFontRecorder()),
     mBidiEnabled(aPresContext->BidiEnabled()),
+    mStartOfLine(true),
     mSkipIncompleteTextRuns(false),
+    mCanStopOnThisLine(false),
     mWhichTextRun(aWhichTextRun),
     mNextRunContextInfo(nsTextFrameUtils::INCOMING_NONE),
     mCurrentRunContextInfo(nsTextFrameUtils::INCOMING_NONE) {
@@ -2462,32 +2464,11 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
 
   gfxSkipChars skipChars;
 
-  TextRunUserData dummyData;
-  TextRunMappedFlow dummyMappedFlow;
-  TextRunMappedFlow* userMappedFlows;
-  TextRunUserData* userData;
-  TextRunUserData* userDataToDestroy;
-  // If the situation is particularly simple (and common) we don't need to
-  // allocate userData.
-  if (mMappedFlows.Length() == 1 && !mMappedFlows[0].mEndFrame &&
-      mMappedFlows[0].mStartFrame->GetContentOffset() == 0) {
-    userData = &dummyData;
-    userMappedFlows = &dummyMappedFlow;
-    userDataToDestroy = nullptr;
-    dummyData.mMappedFlowCount = mMappedFlows.Length();
-    dummyData.mLastFlowIndex = 0;
-  } else {
-    userData = CreateUserData(mMappedFlows.Length());
-    userMappedFlows = reinterpret_cast<TextRunMappedFlow*>(userData + 1);
-    userDataToDestroy = userData;
-  }
-
-  const nsStyleText* textStyle = nullptr;
   for (uint32_t i = 0; i < mMappedFlows.Length(); ++i) {
     MappedFlow* mappedFlow = &mMappedFlows[i];
     nsTextFrame* f = mappedFlow->mStartFrame;
 
-    textStyle = f->StyleText();
+    const nsStyleText* textStyle = f->StyleText();
     nsTextFrameUtils::CompressionMode compression =
       GetCSSWhitespaceToCompressionMode(f, textStyle);
 
@@ -2497,12 +2478,6 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
     int32_t contentStart = mappedFlow->mStartFrame->GetContentOffset();
     int32_t contentEnd = mappedFlow->GetContentEnd();
     int32_t contentLength = contentEnd - contentStart;
-
-    TextRunMappedFlow* newFlow = &userMappedFlows[i];
-    newFlow->mStartFrame = mappedFlow->mStartFrame;
-    newFlow->mDOMOffsetToBeforeTransformOffset = skipChars.GetOriginalCharCount() -
-      mappedFlow->mStartFrame->GetContentOffset();
-    newFlow->mContentLength = contentLength;
 
     nsTextFrameUtils::Flags analysisFlags;
     if (frag->Is2b()) {
@@ -2519,7 +2494,6 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
         AutoTArray<uint8_t,BIG_TEXT_NODE_SIZE> tempBuf;
         uint8_t* bufStart = tempBuf.AppendElements(contentLength, fallible);
         if (!bufStart) {
-          DestroyUserData(userDataToDestroy);
           return false;
         }
         uint8_t* end = nsTextFrameUtils::TransformText(
@@ -2542,8 +2516,6 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
   // This is a bit annoying because it requires another loop over the frames
   // making up the textrun, but I don't see a way to avoid this.
   SetupBreakSinksForTextRun(aTextRun, buffer.Elements());
-
-  DestroyUserData(userDataToDestroy);
 
   return true;
 }
@@ -3129,6 +3101,7 @@ public:
       mLetterSpacing(LetterSpacing(aFrame, aTextStyle)),
       mHyphenWidth(-1),
       mOffsetFromBlockOriginForTabs(aOffsetFromBlockOriginForTabs),
+      mJustificationArrayStart(0),
       mReflowing(true),
       mWhichTextRun(aWhichTextRun)
   {
@@ -3153,6 +3126,7 @@ public:
       mLetterSpacing(LetterSpacing(aFrame)),
       mHyphenWidth(-1),
       mOffsetFromBlockOriginForTabs(0),
+      mJustificationArrayStart(0),
       mReflowing(false),
       mWhichTextRun(aWhichTextRun)
   {
@@ -3667,10 +3641,13 @@ PropertyProvider::GetHyphenationBreaks(Range aRange, HyphenType* aBreakBefore) c
   }
 
   if (mTextStyle->mHyphens == StyleHyphens::Auto) {
-    uint32_t currentFragOffset = mStart.GetOriginalOffset();
+    gfxSkipCharsIterator skipIter(mStart);
     for (uint32_t i = 0; i < aRange.Length(); ++i) {
-      if (IS_HYPHEN(mFrag->CharAt(currentFragOffset + i))) {
-        aBreakBefore[i] = HyphenType::Explicit;
+      if (IS_HYPHEN(mFrag->
+          CharAt(skipIter.ConvertSkippedToOriginal(aRange.start + i)))) {
+        if (i < aRange.Length() - 1) {
+          aBreakBefore[i + 1] = HyphenType::Explicit;
+        }
         continue;
       }
 
@@ -3785,7 +3762,13 @@ nsTextPaintStyle::nsTextPaintStyle(nsTextFrame* aFrame)
     mInitCommonColors(false),
     mInitSelectionColorsAndShadow(false),
     mResolveColors(true),
-    mHasSelectionShadow(false)
+    mSelectionTextColor(NS_RGBA(0, 0, 0, 0)),
+    mSelectionBGColor(NS_RGBA(0, 0, 0, 0)),
+    mHasSelectionShadow(false),
+    mSufficientContrast(0),
+    mFrameBackgroundColor(NS_RGBA(0, 0, 0, 0)),
+    mSystemFieldForegroundColor(NS_RGBA(0, 0, 0, 0)),
+    mSystemFieldBackgroundColor(NS_RGBA(0, 0, 0, 0))
 {
   for (uint32_t i = 0; i < ArrayLength(mSelectionStyle); i++)
     mSelectionStyle[i].mInit = false;
@@ -4651,7 +4634,7 @@ nsresult
 nsTextFrame::GetCursor(const nsPoint& aPoint,
                        nsIFrame::Cursor& aCursor)
 {
-  FillCursorInformationFromStyle(StyleUserInterface(), aCursor);
+  FillCursorInformationFromStyle(StyleUI(), aCursor);
   if (NS_STYLE_CURSOR_AUTO == aCursor.mCursor) {
     if (!IsSelectable(nullptr)) {
       aCursor.mCursor = NS_STYLE_CURSOR_DEFAULT;
@@ -5106,7 +5089,7 @@ nsDisplayText::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder
   gfx::Point deviceOffset = LayoutDevicePoint::FromAppUnits(
       mBounds.TopLeft(), appUnitsPerDevPixel).ToUnknownPoint();
 
-  RefPtr<TextDrawTarget> textDrawer = new TextDrawTarget(aBuilder, aSc, aManager, this, mBounds);
+  RefPtr<TextDrawTarget> textDrawer = new TextDrawTarget(aBuilder, aResources, aSc, aManager, this, mBounds);
   RefPtr<gfxContext> captureCtx = gfxContext::CreateOrNull(textDrawer, deviceOffset);
 
   RenderToContext(captureCtx, aDisplayListBuilder, true);
@@ -5221,7 +5204,7 @@ GetGeneratedContentOwner(nsIFrame* aFrame, bool* aIsBefore)
 {
   *aIsBefore = false;
   while (aFrame && (aFrame->GetStateBits() & NS_FRAME_GENERATED_CONTENT)) {
-    if (aFrame->Style()->GetPseudo() == nsCSSPseudoElements::before) {
+    if (aFrame->Style()->GetPseudo() == nsCSSPseudoElements::before()) {
       *aIsBefore = true;
     }
     aFrame = aFrame->GetParent();
@@ -6246,8 +6229,8 @@ nsTextFrame::PaintOneShadow(const PaintShadowParams& aParams,
   gfx::Point shadowOffset(aShadowDetails->mXOffset, aShadowDetails->mYOffset);
   nscoord blurRadius = std::max(aShadowDetails->mRadius, 0);
 
-  nscolor shadowColor = aShadowDetails->mHasColor ? aShadowDetails->mColor
-                                                  : aParams.foregroundColor;
+  nscolor shadowColor =
+    aShadowDetails->mColor.CalcColor(aParams.foregroundColor);
 
   if (auto* textDrawer = aParams.context->GetTextDrawer()) {
     wr::Shadow wrShadow;
@@ -8012,8 +7995,8 @@ IsAcceptableCaretPosition(const gfxSkipCharsIterator& aIter,
     return false;
   if (index > 0) {
     // Check whether the proposed position is in between the two halves of a
-    // surrogate pair, or before a Variation Selector character;
-    // if so, this is not a valid character boundary.
+    // surrogate pair, before a Variation Selector character, or within a
+    // ligated emoji sequence; if so, this is not a valid character boundary.
     // (In the case where we are respecting clusters, we won't actually get
     // this far because the low surrogate is also marked as non-clusterStart
     // so we'll return FALSE above.)
@@ -8023,7 +8006,9 @@ IsAcceptableCaretPosition(const gfxSkipCharsIterator& aIter,
 
     if (gfxFontUtils::IsVarSelector(ch) ||
         (NS_IS_LOW_SURROGATE(ch) && offs > 0 &&
-         NS_IS_HIGH_SURROGATE(frag->CharAt(offs - 1)))) {
+         NS_IS_HIGH_SURROGATE(frag->CharAt(offs - 1))) ||
+        (!aTextRun->IsLigatureGroupStart(index) &&
+         unicode::GetEmojiPresentation(ch) == unicode::EmojiDefault)) {
       return false;
     }
 
@@ -8034,11 +8019,12 @@ IsAcceptableCaretPosition(const gfxSkipCharsIterator& aIter,
       if (NS_IS_LOW_SURROGATE(ch2)) {
         ch = SURROGATE_TO_UCS4(ch, ch2);
         // If the character is a (Plane-14) variation selector,
-        // or a Regional Indicator character that is ligated with the previous
-        // character, this is not a valid boundary.
+        // or an emoji character that is ligated with the previous
+        // character (i.e. part of a Regional-Indicator flag pair,
+        // or an emoji-ZWJ sequence), this is not a valid boundary.
         if (gfxFontUtils::IsVarSelector(ch) ||
-            (gfxFontUtils::IsRegionalIndicator(ch) &&
-             !aTextRun->IsLigatureGroupStart(index))) {
+            (!aTextRun->IsLigatureGroupStart(index) &&
+             unicode::GetEmojiPresentation(ch) == unicode::EmojiDefault)) {
           return false;
         }
       }
@@ -8199,7 +8185,8 @@ ClusterIterator::NextCluster()
 
 ClusterIterator::ClusterIterator(nsTextFrame* aTextFrame, int32_t aPosition,
                                  int32_t aDirection, nsString& aContext)
-  : mTextFrame(aTextFrame), mDirection(aDirection), mCharIndex(-1)
+  : mTextFrame(aTextFrame), mDirection(aDirection), mCharIndex(-1),
+    mHaveWordBreak(false)
 {
   mIterator = aTextFrame->EnsureTextRun(nsTextFrame::eInflated);
   if (!aTextFrame->GetTextRun(nsTextFrame::eInflated)) {
@@ -8566,6 +8553,18 @@ nsTextFrame::AddInlineMinISizeForFlow(gfxContext *aRenderingContext,
     }
     aData->mCurrentLine += provider.GetFontMetrics()->EmHeight();
     aData->mTrailingWhitespace = 0;
+    return;
+  }
+
+  // If overflow-wrap is break-word, we can wrap everywhere.
+  if (StaticPrefs::layout_css_overflow_break_intrinsic_size() &&
+      textStyle->WordCanWrap(this)) {
+    aData->OptionallyBreak();
+    aData->mCurrentLine +=
+      textRun->GetMinAdvanceWidth(Range(start, flowEndInTextRun));
+    aData->mTrailingWhitespace = 0;
+    aData->mAtStartOfLine = false;
+    aData->OptionallyBreak();
     return;
   }
 

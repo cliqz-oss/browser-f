@@ -25,7 +25,7 @@ namespace dom {
 JSObject*
 SVGAElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SVGAElementBinding::Wrap(aCx, this, aGivenProto);
+  return SVGAElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 nsSVGElement::StringInfo SVGAElement::sStringInfo[3] =
@@ -212,14 +212,12 @@ void SVGAElement::SetText(const nsAString& aText, mozilla::ErrorResult& rv)
 
 nsresult
 SVGAElement::BindToTree(nsIDocument *aDocument, nsIContent *aParent,
-                        nsIContent *aBindingParent,
-                        bool aCompileEventHandlers)
+                        nsIContent *aBindingParent)
 {
   Link::ResetLinkState(false, Link::ElementHasHref());
 
   nsresult rv = SVGAElementBase::BindToTree(aDocument, aParent,
-                                            aBindingParent,
-                                            aCompileEventHandlers);
+                                            aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsIDocument* doc = GetComposedDoc();

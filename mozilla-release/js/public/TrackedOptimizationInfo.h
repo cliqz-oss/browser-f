@@ -73,6 +73,7 @@ namespace JS {
     _(Compare_SpecializedOnBaselineTypes)               \
     _(Compare_SharedCache)                              \
     _(Compare_Call)                                     \
+    _(Compare_Character)                                \
                                                         \
     _(Call_Inline)
 
@@ -134,7 +135,6 @@ namespace JS {
     _(UnknownProperty)                                                  \
     _(NoTemplateObject)                                                 \
     _(TemplateObjectIsUnboxedWithoutInlineElements)                     \
-    _(TemplateObjectIsPlainObjectWithDynamicSlots)                      \
     _(LengthTooBig)                                                     \
     _(SpeculationOnInputTypesFailed)                                    \
     _(RelationalCompare)                                                \
@@ -208,6 +208,7 @@ namespace JS {
     _(CantInlineNativeNoTemplateObj)                                    \
     _(CantInlineBound)                                                  \
     _(CantInlineNativeNoSpecialization)                                 \
+    _(CantInlineUnexpectedNewTarget)                                    \
     _(HasCommonInliningPath)                                            \
                                                                         \
     _(GenericSuccess)                                                   \

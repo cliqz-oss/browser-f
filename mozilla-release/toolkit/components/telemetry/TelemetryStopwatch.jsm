@@ -4,7 +4,6 @@
 
 var EXPORTED_SYMBOLS = ["TelemetryStopwatch"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(this, "Log",
   "resource://gre/modules/Log.jsm");
@@ -107,7 +106,7 @@ let Timers = {
     // empty. We accept that trade-off here, given that entries for short-lived
     // objects will go away when they are no longer referenced
     return true;
-  }
+  },
 };
 
 var TelemetryStopwatch = {
@@ -412,5 +411,5 @@ var TelemetryStopwatchImpl = {
     }
 
     return Timers.delete(histogram, object, key);
-  }
+  },
 };

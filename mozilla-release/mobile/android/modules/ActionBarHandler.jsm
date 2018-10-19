@@ -52,6 +52,16 @@ var ActionBarHandler = {
   handleEvent: function(e) {
     e.stopImmediatePropagation();
 
+    if (e.reason === "presscaret" || e.reason === "releasecaret") {
+      const dispatcher = this._getDispatcher(Services.focus.focusedWindow);
+      if (dispatcher) {
+        dispatcher.sendRequest({
+          type: "GeckoView:PinOnScreen",
+          pinned: e.reason === "presscaret",
+        });
+      }
+    }
+
     // Close an open ActionBar, if carets no longer logically visible.
     if (this._selectionID && !e.caretVisible) {
       this._uninit(false);
@@ -786,9 +796,7 @@ var ActionBarHandler = {
       return element.editor;
     }
 
-    return win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIWebNavigation).
-               QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIEditingSession).
-               getEditorForWindow(win);
+    return win.docShell.editingSession.getEditorForWindow(win);
   },
 
   /**
@@ -799,7 +807,7 @@ var ActionBarHandler = {
       return this._getEditor(element, win).selectionController;
     }
 
-    return win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIWebNavigation).
+    return win.docShell.
                QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsISelectionDisplay).
                QueryInterface(Ci.nsISelectionController);
   },

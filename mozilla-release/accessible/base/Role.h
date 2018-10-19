@@ -201,8 +201,8 @@ enum Role {
   ROW = 28,
 
   /**
-   * Represents a cell within a table. It is used for html:td,
-   * xul:tree cell and xul:listcell. Also, see TABLE.
+   * Represents a cell within a table. It is used for html:td and xul:tree cell.
+   * Also, see TABLE.
    */
   CELL = 29,
 
@@ -1025,7 +1025,19 @@ enum Role {
    */
   BLOCKQUOTE = 175,
 
-  LAST_ROLE = BLOCKQUOTE
+  /**
+   * Content previously deleted or proposed for deletion, e.g. in revision
+   * history or a content view providing suggestions from reviewers.
+   */
+  CONTENT_DELETION = 176,
+
+  /**
+   * Content previously inserted or proposed for insertion, e.g. in revision
+   * history or a content view providing suggestions from reviewers.
+   */
+  CONTENT_INSERTION = 177,
+
+  LAST_ROLE = CONTENT_INSERTION
 };
 
 } // namespace role

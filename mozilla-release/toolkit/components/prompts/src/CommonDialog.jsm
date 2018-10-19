@@ -5,7 +5,6 @@
 var EXPORTED_SYMBOLS = ["CommonDialog"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "EnableDelayHelper",
                                "resource://gre/modules/SharedPromptUtils.jsm");
 
@@ -169,7 +168,7 @@ CommonDialog.prototype = {
             this.delayHelper = new EnableDelayHelper({
                 disableDialog: () => this.setButtonsEnabledState(false),
                 enableDialog: () => this.setButtonsEnabledState(true),
-                focusTarget: this.ui.focusTarget
+                focusTarget: this.ui.focusTarget,
             });
         }
 

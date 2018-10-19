@@ -7,7 +7,6 @@
 var EXPORTED_SYMBOLS = ["SessionCookies"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", this);
 
 ChromeUtils.defineModuleGetter(this, "PrivacyLevel",
   "resource://gre/modules/sessionstore/PrivacyLevel.jsm");
@@ -24,7 +23,7 @@ var SessionCookies = Object.freeze({
 
   restore(cookies) {
     SessionCookiesInternal.restore(cookies);
-  }
+  },
 });
 
 /**
@@ -53,7 +52,7 @@ var SessionCookiesInternal = {
       let cookieObj = {
         host: cookie.host,
         path: cookie.path || "",
-        name: cookie.name || ""
+        name: cookie.name || "",
       };
 
       let originAttributes = cookie.originAttributes || {};
@@ -177,11 +176,10 @@ var SessionCookiesInternal = {
       return;
     }
 
-    let iter = Services.cookies.sessionEnumerator;
-    while (iter.hasMoreElements()) {
-      this._addCookie(iter.getNext());
+    for (let cookie of Services.cookies.sessionEnumerator) {
+      this._addCookie(cookie);
     }
-  }
+  },
 };
 
 /**
@@ -268,7 +266,7 @@ var CookieStore = {
       host: cookie.host,
       name: cookie.name,
       path: cookie.path,
-      attr: ChromeUtils.originAttributesToSuffix(cookie.originAttributes)
+      attr: ChromeUtils.originAttributesToSuffix(cookie.originAttributes),
     });
-  }
+  },
 };

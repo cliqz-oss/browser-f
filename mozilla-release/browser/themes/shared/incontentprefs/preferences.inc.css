@@ -193,6 +193,7 @@ button > hbox > label {
   font-weight: 600;
 }
 
+<<<<<<< HEAD
 #startupPageBox {
   padding-top: 32px;
 }
@@ -211,6 +212,28 @@ button > hbox > label {
   margin-inline-end: 0;
 }
 
+||||||| merged common ancestors
+=======
+.extension-controlled {
+  margin-top: 18px !important;
+  margin-bottom: 18px !important;
+  background: var(--grey-20);
+  border-radius: 5px;
+  -moz-padding-end: 10px;
+}
+
+.extension-controlled > description {
+  line-height: 16px;
+  background: url(chrome://browser/skin/identity-icon.svg) 10px 14px no-repeat;
+  padding: 10px;
+  -moz-padding-start: 30px;
+}
+
+.extension-controlled > description:-moz-locale-dir(rtl) {
+  background-position-x: right 10px;
+}
+
+>>>>>>> origin/upstream-releases
 .extension-controlled-icon {
   height: 20px;
   margin: 2px 0 6px;
@@ -238,6 +261,14 @@ button > hbox > label {
 
 #getStarted {
   font-size: 90%;
+}
+
+#activeLanguages {
+  height: 16em;
+}
+
+#activeLanguages > richlistitem {
+  padding: 0.3em;
 }
 
 #downloadFolder {
@@ -327,6 +358,11 @@ button > hbox > label {
 }
 
 /* Home Pane */
+#homepageGroup > .groupbox-title {
+  /* The Restore Defaults button will make this heading taller than the other
+   * sections, so lower the top margin to account for it. */
+  margin-top: 6px;
+}
 #homepageGroup menulist,
 #homepageGroup textbox {
   margin: 5px 0;
@@ -407,6 +443,10 @@ button > hbox > label {
   margin-bottom: 4px;
 }
 
+#trackingProtectionBox {
+  margin-top: 16px;
+}
+
 #doNotTrackLearnMoreBox {
   margin-top: 32px;
 }
@@ -425,8 +465,14 @@ button > hbox > label {
   justify-content: space-between;
 }
 
-#acceptCookies {
+#blockCookies,
+#keepRow {
   margin-top: 1.5em;
+}
+
+#blockCookiesWarning {
+  margin-top: 1.5em !important;
+  margin-bottom: -1em !important;
 }
 
 /* Collapse the non-active vboxes in decks to use only the height the
@@ -460,6 +506,7 @@ button > hbox > label {
   margin-bottom: 0;
 }
 
+<<<<<<< HEAD
 .mozilla-support-label-drm {
   margin-top: 0;
   margin-bottom: 0;
@@ -477,6 +524,13 @@ button > hbox > label {
   color: #999;
 }
 
+||||||| merged common ancestors
+=======
+.text-link[disabled="true"] {
+  pointer-events: none;
+}
+
+>>>>>>> origin/upstream-releases
 #showUpdateHistory {
   margin-inline-start: 0;
 }
@@ -859,7 +913,7 @@ button > hbox > label {
   border: 7px solid transparent;
   border-top-color: #d7b600;
   top: 100%;
-  offset-inline-start: calc(50% - 7px);
+  inset-inline-start: calc(50% - 7px);
 }
 
 .search-tooltip::after {
@@ -868,7 +922,7 @@ button > hbox > label {
   border: 6px solid transparent;
   border-top-color: #ffe900;
   top: 100%;
-  offset-inline-start: calc(50% - 6px);
+  inset-inline-start: calc(50% - 6px);
 }
 
 .search-tooltip-parent {
@@ -949,5 +1003,34 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 .proxy-port-input {
   width: calc(5ch + 22px); /* 5 chars + 11px padding on both sides */
 }
+<<<<<<< HEAD
 
 %include ./cliqz.home.inc.css
+||||||| merged common ancestors
+=======
+
+#defaultBrowserLanguage {
+  margin-inline-start: 0;
+  min-width: 20em;
+}
+
+#LanguagesDialog > .dialog-button-box > .dialog-button[dlgtype="help"],
+#BrowserLanguagesDialog > .dialog-button-box > .dialog-button[dlgtype="help"] {
+  margin-inline-start: 0;
+}
+
+#requestedLocales {
+  min-height: 200px;
+}
+
+#availableLanguages,
+#availableLocales {
+  margin: 0;
+  margin-inline-end: 4px;
+}
+
+.add-web-language,
+.add-browser-language {
+  margin: 0 4px;
+}
+>>>>>>> origin/upstream-releases

@@ -9,11 +9,10 @@ function TooltipTextProvider() {}
 
 TooltipTextProvider.prototype = {
   getNodeText(tipElement, textOut, directionOut) {
-    // Don't show the tooltip if the tooltip node is a document, browser, or disconnected.
+    // Don't show the tooltip if the tooltip node is a document or browser.
+    // Caller should ensure the node is in (composed) document.
     if (!tipElement || !tipElement.ownerDocument ||
-        tipElement.localName == "browser" ||
-        (tipElement.ownerDocument.compareDocumentPosition(tipElement) &
-         tipElement.ownerDocument.DOCUMENT_POSITION_DISCONNECTED)) {
+        tipElement.localName == "browser") {
       return false;
     }
 
@@ -123,7 +122,7 @@ TooltipTextProvider.prototype = {
         usedTipElement = tipElement;
       }
 
-      tipElement = tipElement.parentNode;
+      tipElement = tipElement.flattenedTreeParentNode;
     }
 
     return [titleText, XLinkTitleText, SVGTitleText, XULtooltiptextText].some(function(t) {

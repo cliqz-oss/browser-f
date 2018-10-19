@@ -57,7 +57,7 @@ AutoCompleteInput.prototype = {
   popup: {
     selectedIndex: -1,
     invalidate() {},
-    QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompletePopup])
+    QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompletePopup]),
   },
   popupOpen: false,
 
@@ -100,7 +100,7 @@ AutoCompleteInput.prototype = {
   onTextEntered: () => false,
   onTextReverted: () => false,
 
-  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteInput])
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIAutoCompleteInput]),
 };
 
 /**
@@ -109,7 +109,8 @@ AutoCompleteInput.prototype = {
  *
  * @param {Object} match The expected match for the result, in the following form:
  * {
- *   uri: {nsIURI} The expected uri.
+ *   uri: {String|nsIURI} The expected uri. Note: nsIURI should be considered
+ *        deprecated.
  *   title: {String} The title of the entry.
  *   tags: {String} The tags for the entry.
  *   style: {Array} The style of the entry.
@@ -120,6 +121,9 @@ AutoCompleteInput.prototype = {
  */
 async function _check_autocomplete_matches(match, result) {
   let { uri, tags, style } = match;
+  if (uri instanceof Ci.nsIURI) {
+    uri = uri.spec;
+  }
   let title = match.comment || match.title;
 
   if (tags)
@@ -130,7 +134,7 @@ async function _check_autocomplete_matches(match, result) {
     style = ["favicon"];
 
   let actual = { value: result.value, comment: result.comment };
-  let expected = { value: match.value || uri.spec, comment: title };
+  let expected = { value: match.value || uri, comment: title };
   info(`Checking match: ` +
        `actual=${JSON.stringify(actual)} ... ` +
        `expected=${JSON.stringify(expected)}`);
@@ -141,7 +145,7 @@ async function _check_autocomplete_matches(match, result) {
   let actualStyle = result.style.split(/\s+/).sort();
   if (style)
     Assert.equal(actualStyle.toString(), style.toString(), "Match should have expected style");
-  if (uri && uri.spec.startsWith("moz-action:")) {
+  if (uri && uri.startsWith("moz-action:")) {
     Assert.ok(actualStyle.includes("action"), "moz-action results should always have 'action' in their style");
   }
 
@@ -290,21 +294,16 @@ async function check_autocomplete(test) {
 }
 
 var addBookmark = async function(aBookmarkObj) {
-  Assert.ok(!!aBookmarkObj.uri, "Bookmark object contains an uri");
-  let parentId = aBookmarkObj.parentId ? aBookmarkObj.parentId
-                                       : PlacesUtils.unfiledBookmarksFolderId;
-
-  let bm = await PlacesUtils.bookmarks.insert({
-    parentGuid: (await PlacesUtils.promiseItemGuid(parentId)),
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     title: aBookmarkObj.title || "A bookmark",
-    url: aBookmarkObj.uri
+    url: aBookmarkObj.uri,
   });
-  await PlacesUtils.promiseItemId(bm.guid);
 
   if (aBookmarkObj.keyword) {
     await PlacesUtils.keywords.insert({ keyword: aBookmarkObj.keyword,
-                                        url: aBookmarkObj.uri.spec,
-                                        postData: aBookmarkObj.postData
+                                        url: aBookmarkObj.uri.spec ? aBookmarkObj.uri.spec : aBookmarkObj.uri,
+                                        postData: aBookmarkObj.postData,
                                       });
   }
 
@@ -513,7 +512,7 @@ function addAdaptiveFeedback(aUrl, aSearch) {
     popupOpen: true,
     selectedIndex: 0,
     getValueAt: () => aUrl,
-    searchString: aSearch
+    searchString: aSearch,
   };
   Services.obs.notifyObservers(thing, "autocomplete-will-enter-text");
   return promise;

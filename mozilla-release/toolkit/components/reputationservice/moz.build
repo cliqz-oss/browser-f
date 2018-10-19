@@ -22,6 +22,7 @@ XPIDL_MODULE = 'reputationservice'
 
 UNIFIED_SOURCES += [
     'ApplicationReputation.cpp',
+    'ApplicationReputationTelemetryUtils.cpp',
     'chromium/chrome/common/safe_browsing/csd.pb.cc',
     'LoginReputation.cpp',
     'LoginReputationIPC.cpp',
@@ -42,3 +43,6 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-shadow']
 
 include('/ipc/chromium/chromium-config.mozbuild')
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

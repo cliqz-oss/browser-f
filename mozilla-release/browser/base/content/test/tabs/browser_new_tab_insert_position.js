@@ -18,7 +18,7 @@ function promiseBrowserStateRestored(state) {
   // that the active tab is loaded and restored.
   let promise = Promise.all([
     TestUtils.topicObserved("sessionstore-browser-state-restored"),
-    BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored")
+    BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored"),
   ]);
   SessionStore.setBrowserState(state);
   return promise;
@@ -29,7 +29,7 @@ function promiseRemoveThenUndoCloseTab(tab) {
   // that the active tab is loaded and restored.
   let promise = Promise.all([
     TestUtils.topicObserved("sessionstore-closed-objects-changed"),
-    BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored")
+    BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored"),
   ]);
   BrowserTestUtils.removeTab(tab);
   SessionStore.undoCloseTab(window, 0);
@@ -154,7 +154,10 @@ async function doTest(aInsertRelatedAfterCurrent, aInsertAfterCurrent) {
   // loadTabs will insertAfterCurrent
   let nextTab = aInsertAfterCurrent ? gBrowser.selectedTab._tPos + 1 : gBrowser.tabs.length;
 
-  gBrowser.loadTabs(bulkLoad, true);
+  gBrowser.loadTabs(bulkLoad, {
+    inBackground: true,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
   await loadPromises;
   for (let i = nextTab, j = 0; j < bulkLoad.length; i++, j++) {
     is(gBrowser.tabs[i].linkedBrowser.currentURI.spec, bulkLoad[j], `bulkLoad tab pos ${i} matched`);

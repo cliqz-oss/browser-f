@@ -10,6 +10,7 @@ component_gc     = ('Core', 'JavaScript: GC')
 component_intl   = ('Core', 'JavaScript: Internationalization API')
 component_jit    = ('Core', 'JavaScript Engine: JIT')
 component_stl    = ('Core', 'JavaScript: Standard Library')
+component_wasm   = ('Core', 'Javascript: Web Assembly')
 
 FILES_PER_UNIFIED_FILE = 6
 
@@ -17,7 +18,7 @@ with Files('*'):
     BUG_COMPONENT = component_engine
 
 with Files('wasm/**'):
-    BUG_COMPONENT = component_jit
+    BUG_COMPONENT = component_wasm
 with Files('builtin/**'):
     BUG_COMPONENT = component_stl
 with Files('ctypes/**'):
@@ -123,13 +124,17 @@ EXPORTS += [
 
 EXPORTS.js += [
     '../public/AllocPolicy.h',
+    '../public/AutoByteString.h',
     '../public/CallArgs.h',
     '../public/CallNonGenericMethod.h',
     '../public/CharacterEncoding.h',
     '../public/Class.h',
+    '../public/CompilationAndEvaluation.h',
+    '../public/CompileOptions.h',
     '../public/Conversions.h',
     '../public/Date.h',
     '../public/Debug.h',
+    '../public/ErrorReport.h',
     '../public/GCAnnotations.h',
     '../public/GCAPI.h',
     '../public/GCHashTable.h',
@@ -140,7 +145,11 @@ EXPORTS.js += [
     '../public/HeapAPI.h',
     '../public/Id.h',
     '../public/Initialization.h',
+    '../public/JSON.h',
+    '../public/LocaleSensitive.h',
+    '../public/MemoryFunctions.h',
     '../public/MemoryMetrics.h',
+    '../public/OffThreadScriptCompilation.h',
     '../public/Principals.h',
     '../public/Printf.h',
     '../public/ProfilingFrameIterator.h',
@@ -152,13 +161,17 @@ EXPORTS.js += [
     '../public/RequiredDefines.h',
     '../public/Result.h',
     '../public/RootingAPI.h',
+    '../public/SavedFrameAPI.h',
     '../public/SliceBudget.h',
+    '../public/SourceBufferHolder.h',
+    '../public/StableStringChars.h',
     '../public/Stream.h',
     '../public/StructuredClone.h',
     '../public/SweepingAPI.h',
     '../public/TraceKind.h',
     '../public/TracingAPI.h',
     '../public/TrackedOptimizationInfo.h',
+    '../public/Transcoding.h',
     '../public/TypeDecls.h',
     '../public/UbiNode.h',
     '../public/UbiNodeBreadthFirst.h',
@@ -166,6 +179,7 @@ EXPORTS.js += [
     '../public/UbiNodeDominatorTree.h',
     '../public/UbiNodePostOrder.h',
     '../public/UbiNodeShortestPaths.h',
+    '../public/UbiNodeUtils.h',
     '../public/UniquePtr.h',
     '../public/Utility.h',
     '../public/Value.h',
@@ -195,7 +209,6 @@ UNIFIED_SOURCES += [
     'builtin/Promise.cpp',
     'builtin/Reflect.cpp',
     'builtin/ReflectParse.cpp',
-    'builtin/SIMD.cpp',
     'builtin/Stream.cpp',
     'builtin/String.cpp',
     'builtin/Symbol.cpp',
@@ -208,11 +221,24 @@ UNIFIED_SOURCES += [
     'ds/LifoAlloc.cpp',
     'ds/MemoryProtectionExceptionHandler.cpp',
     'frontend/BytecodeCompiler.cpp',
+    'frontend/BytecodeControlStructures.cpp',
     'frontend/BytecodeEmitter.cpp',
+    'frontend/CForEmitter.cpp',
+    'frontend/DoWhileEmitter.cpp',
+    'frontend/EmitterScope.cpp',
     'frontend/FoldConstants.cpp',
+    'frontend/ForInEmitter.cpp',
+    'frontend/ForOfEmitter.cpp',
+    'frontend/ForOfLoopControl.cpp',
+    'frontend/IfEmitter.cpp',
+    'frontend/JumpList.cpp',
     'frontend/NameFunctions.cpp',
     'frontend/ParseNode.cpp',
+    'frontend/SwitchEmitter.cpp',
+    'frontend/TDZCheckCache.cpp',
     'frontend/TokenStream.cpp',
+    'frontend/TryEmitter.cpp',
+    'frontend/WhileEmitter.cpp',
     'gc/Allocator.cpp',
     'gc/AtomMarking.cpp',
     'gc/Barrier.cpp',
@@ -238,7 +264,6 @@ UNIFIED_SOURCES += [
     'irregexp/RegExpParser.cpp',
     'irregexp/RegExpStack.cpp',
     'jit/AliasAnalysis.cpp',
-    'jit/AliasAnalysisShared.cpp',
     'jit/AlignmentMaskAnalysis.cpp',
     'jit/BacktrackingAllocator.cpp',
     'jit/Bailouts.cpp',
@@ -260,7 +285,6 @@ UNIFIED_SOURCES += [
     'jit/CodeGenerator.cpp',
     'jit/CompileWrappers.cpp',
     'jit/Disassembler.cpp',
-    'jit/EagerSimdUnbox.cpp',
     'jit/EdgeCaseAnalysis.cpp',
     'jit/EffectiveAddressAnalysis.cpp',
     'jit/ExecutableAllocator.cpp',
@@ -304,7 +328,6 @@ UNIFIED_SOURCES += [
     'jit/shared/CodeGenerator-shared.cpp',
     'jit/shared/Disassembler-shared.cpp',
     'jit/shared/Lowering-shared.cpp',
-    'jit/SharedIC.cpp',
     'jit/Sink.cpp',
     'jit/Snapshots.cpp',
     'jit/StupidAllocator.cpp',
@@ -400,8 +423,6 @@ UNIFIED_SOURCES += [
     'vm/Xdr.cpp',
     'wasm/AsmJS.cpp',
     'wasm/WasmBaselineCompile.cpp',
-    'wasm/WasmBinaryToAST.cpp',
-    'wasm/WasmBinaryToText.cpp',
     'wasm/WasmBuiltins.cpp',
     'wasm/WasmCode.cpp',
     'wasm/WasmCompile.cpp',
@@ -419,7 +440,6 @@ UNIFIED_SOURCES += [
     'wasm/WasmStubs.cpp',
     'wasm/WasmTable.cpp',
     'wasm/WasmTextToBinary.cpp',
-    'wasm/WasmTextUtils.cpp',
     'wasm/WasmTypes.cpp',
     'wasm/WasmValidate.cpp'
 ]
@@ -492,9 +512,9 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
         'jit/x86-shared/Assembler-x86-shared.cpp',
         'jit/x86-shared/AssemblerBuffer-x86-shared.cpp',
         'jit/x86-shared/BaselineCompiler-x86-shared.cpp',
-        'jit/x86-shared/BaselineIC-x86-shared.cpp',
         'jit/x86-shared/CodeGenerator-x86-shared.cpp',
         'jit/x86-shared/Lowering-x86-shared.cpp',
+        'jit/x86-shared/MacroAssembler-x86-shared-SIMD.cpp',
         'jit/x86-shared/MacroAssembler-x86-shared.cpp',
         'jit/x86-shared/MoveEmitter-x86-shared.cpp',
     ]
@@ -507,11 +527,9 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
             'jit/x64/Assembler-x64.cpp',
             'jit/x64/Bailouts-x64.cpp',
             'jit/x64/BaselineCompiler-x64.cpp',
-            'jit/x64/BaselineIC-x64.cpp',
             'jit/x64/CodeGenerator-x64.cpp',
             'jit/x64/Lowering-x64.cpp',
             'jit/x64/MacroAssembler-x64.cpp',
-            'jit/x64/SharedIC-x64.cpp',
             'jit/x64/Trampoline-x64.cpp',
         ]
     else:
@@ -520,11 +538,9 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
             'jit/x86/Assembler-x86.cpp',
             'jit/x86/Bailouts-x86.cpp',
             'jit/x86/BaselineCompiler-x86.cpp',
-            'jit/x86/BaselineIC-x86.cpp',
             'jit/x86/CodeGenerator-x86.cpp',
             'jit/x86/Lowering-x86.cpp',
             'jit/x86/MacroAssembler-x86.cpp',
-            'jit/x86/SharedIC-x86.cpp',
             'jit/x86/Trampoline-x86.cpp',
         ]
 elif CONFIG['JS_CODEGEN_ARM']:
@@ -534,14 +550,12 @@ elif CONFIG['JS_CODEGEN_ARM']:
         'jit/arm/Assembler-arm.cpp',
         'jit/arm/Bailouts-arm.cpp',
         'jit/arm/BaselineCompiler-arm.cpp',
-        'jit/arm/BaselineIC-arm.cpp',
         'jit/arm/CodeGenerator-arm.cpp',
         'jit/arm/disasm/Constants-arm.cpp',
         'jit/arm/disasm/Disasm-arm.cpp',
         'jit/arm/Lowering-arm.cpp',
         'jit/arm/MacroAssembler-arm.cpp',
         'jit/arm/MoveEmitter-arm.cpp',
-        'jit/arm/SharedIC-arm.cpp',
         'jit/arm/Trampoline-arm.cpp',
     ]
     if CONFIG['JS_SIMULATOR_ARM']:
@@ -559,13 +573,11 @@ elif CONFIG['JS_CODEGEN_ARM64']:
         'jit/arm64/Architecture-arm64.cpp',
         'jit/arm64/Assembler-arm64.cpp',
         'jit/arm64/Bailouts-arm64.cpp',
-        'jit/arm64/BaselineIC-arm64.cpp',
         'jit/arm64/CodeGenerator-arm64.cpp',
         'jit/arm64/Disassembler-arm64.cpp',
         'jit/arm64/Lowering-arm64.cpp',
         'jit/arm64/MacroAssembler-arm64.cpp',
         'jit/arm64/MoveEmitter-arm64.cpp',
-        'jit/arm64/SharedIC-arm64.cpp',
         'jit/arm64/Trampoline-arm64.cpp',
         'jit/arm64/vixl/Assembler-vixl.cpp',
         'jit/arm64/vixl/Cpu-vixl.cpp',
@@ -592,7 +604,6 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
         'jit/mips-shared/Assembler-mips-shared.cpp',
         'jit/mips-shared/Bailouts-mips-shared.cpp',
         'jit/mips-shared/BaselineCompiler-mips-shared.cpp',
-        'jit/mips-shared/BaselineIC-mips-shared.cpp',
         'jit/mips-shared/CodeGenerator-mips-shared.cpp',
         'jit/mips-shared/Lowering-mips-shared.cpp',
         'jit/mips-shared/MacroAssembler-mips-shared.cpp',
@@ -605,12 +616,10 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
             'jit/mips32/Assembler-mips32.cpp',
             'jit/mips32/Bailouts-mips32.cpp',
             'jit/mips32/BaselineCompiler-mips32.cpp',
-            'jit/mips32/BaselineIC-mips32.cpp',
             'jit/mips32/CodeGenerator-mips32.cpp',
             'jit/mips32/Lowering-mips32.cpp',
             'jit/mips32/MacroAssembler-mips32.cpp',
             'jit/mips32/MoveEmitter-mips32.cpp',
-            'jit/mips32/SharedIC-mips32.cpp',
             'jit/mips32/Trampoline-mips32.cpp',
         ]
         if CONFIG['JS_SIMULATOR_MIPS32']:
@@ -624,12 +633,10 @@ elif CONFIG['JS_CODEGEN_MIPS32'] or CONFIG['JS_CODEGEN_MIPS64']:
             'jit/mips64/Assembler-mips64.cpp',
             'jit/mips64/Bailouts-mips64.cpp',
             'jit/mips64/BaselineCompiler-mips64.cpp',
-            'jit/mips64/BaselineIC-mips64.cpp',
             'jit/mips64/CodeGenerator-mips64.cpp',
             'jit/mips64/Lowering-mips64.cpp',
             'jit/mips64/MacroAssembler-mips64.cpp',
             'jit/mips64/MoveEmitter-mips64.cpp',
-            'jit/mips64/SharedIC-mips64.cpp',
             'jit/mips64/Trampoline-mips64.cpp',
         ]
         if CONFIG['JS_SIMULATOR_MIPS64']:
@@ -694,11 +701,11 @@ FINAL_LIBRARY = 'js'
 
 if CONFIG['NIGHTLY_BUILD']:
     DEFINES['ENABLE_BINARYDATA'] = True
-    DEFINES['ENABLE_SIMD'] = True
     DEFINES['ENABLE_WASM_BULKMEM_OPS'] = True
     DEFINES['ENABLE_WASM_SATURATING_TRUNC_OPS'] = True
     DEFINES['ENABLE_WASM_THREAD_OPS'] = True
     DEFINES['ENABLE_WASM_GC'] = True
+    DEFINES['WASM_PRIVATE_REFTYPES'] = True
 
 if CONFIG['JS_BUILD_BINAST']:
     # Using SOURCES, as UNIFIED_SOURCES causes mysterious bugs on 32-bit platforms.

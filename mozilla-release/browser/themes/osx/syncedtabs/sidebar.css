@@ -6,13 +6,9 @@
 
 /* These styles are intended to mimic XUL trees and the XUL search box. */
 
-.content-container {
+body:not([lwt-sidebar]) .content-container {
   -moz-appearance: -moz-mac-source-list;
   -moz-font-smoothing-background-color: -moz-mac-source-list;
-}
-
-.item {
-  color: -moz-DialogText;
 }
 
 .item-title-container {
@@ -20,11 +16,6 @@
   align-items: center;
   height: 24px;
   font-size: 12px;
-}
-
-.item.selected > .item-title-container {
-  color: HighlightText;
-  font-weight: bold;
 }
 
 .item.selected > .item-title-container {
@@ -37,42 +28,10 @@
   -moz-font-smoothing-background-color: -moz-mac-active-source-list-selection;
 }
 
-.item.client .item-twisty-container {
-  min-width: 16px;
-  height: 16px;
-  background-image: url("chrome://global/skin/tree/arrow-expanded.svg");
-  -moz-context-properties: fill, fill-opacity;
-  fill: currentColor;
-  fill-opacity: 1;
-}
-
-.item.client.closed .item-twisty-container {
-  background-image: url("chrome://global/skin/tree/arrow-collapsed.svg");
-}
-
-.item.client.closed .item-twisty-container:dir(rtl) {
-  background-image: url("chrome://global/skin/tree/arrow-collapsed-rtl.svg");
-}
-
-.item.client.selected:focus .item-twisty-container {
-  fill-opacity: 1;
-}
-
 @media (-moz-mac-yosemite-theme: 0) {
-  .item.client.selected .item-twisty-container {
-    fill-opacity: 1;
-  }
-}
-
-
-@media (-moz-mac-yosemite-theme) {
   .item.selected > .item-title-container {
-    color: -moz-dialogtext;
-    font-weight: 500;
-  }
-
-  .item.selected:focus > .item-title-container {
     color: #fff;
+    font-weight: bold;
   }
 }
 

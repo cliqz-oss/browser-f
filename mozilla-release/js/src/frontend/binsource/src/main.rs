@@ -14,6 +14,8 @@ use binjs_meta::util:: { Reindentable, ToCases, ToStr };
 use std::collections::{ HashMap, HashSet };
 use std::fs::*;
 use std::io::{ Read, Write };
+use std::path::Path;
+use std::rc::Rc;
 
 use clap::{ App, Arg };
 
@@ -44,6 +46,9 @@ struct FieldRules {
     /// Things to add before the field, as part of a block, typically for
     /// cleanup.
     block_after_field: Option<String>,
+
+    /// Extra arguments passed to the method when parsing this field.
+    extra_args: Option<Rc<String>>,
 }
 
 #[derive(Clone, Default)]
@@ -62,7 +67,27 @@ struct NodeRules {
     inherits: Option<NodeName>,
 
     /// Override the result type for the method.
-    type_ok: Option<String>,
+    type_ok: Option<Rc<String>>,
+
+    /// Default value for the optional field.
+    default_value: Option<Rc<String>>,
+
+    /// Extra parameters for the method.
+    extra_params: Option<Rc<String>>,
+
+    /// Extra arguments passed to the method when parsing this interface.
+    extra_args: Option<Rc<String>>,
+
+    /// Things to add before calling the method when the optional field has
+    /// value.
+    some_before: Option<Rc<String>>,
+
+    /// Things to add after calling the method when the optional field has
+    /// value.
+    some_after: Option<Rc<String>>,
+
+    /// Replace the assignment when the option field has no value.
+    none_replace: Option<Rc<String>>,
 
     /// Stuff to add at start.
     init: Option<String>,
@@ -84,6 +109,21 @@ struct NodeRules {
 /// Extracted from the yaml file.
 #[derive(Default)]
 struct GlobalRules {
+    /// C++ class name of the parser class.
+    parser_class_name: Rc<String>,
+
+    /// The template part of the parser class.
+    parser_class_template: Rc<String>,
+
+    /// The return value of each method.
+    parser_type_ok: Rc<String>,
+
+    /// Default value for the optional field.
+    parser_default_value: Rc<String>,
+
+    /// Code to append the list item.
+    parser_list_append: Option<Rc<String>>,
+
     /// Header to add at the start of the .cpp file.
     cpp_header: Option<String>,
 
@@ -119,6 +159,11 @@ impl GlobalRules {
         let rules = yaml.as_hash()
             .expect("Rules are not a dictionary");
 
+        let mut parser_class_name = None;
+        let mut parser_class_template = None;
+        let mut parser_type_ok = None;
+        let mut parser_default_value = None;
+        let mut parser_list_append = None;
         let mut cpp_header = None;
         let mut cpp_footer = None;
         let mut hpp_class_header = None;
@@ -134,6 +179,19 @@ impl GlobalRules {
                 .expect("Could not convert node_key to string");
 
             match node_key {
+                "parser" => {
+                    update_rule_rc(&mut parser_class_name, &node_entries["class-name"])
+                        .unwrap_or_else(|_| panic!("Rule parser.class-name must be a string"));
+                    update_rule(&mut parser_class_template, &node_entries["class-template"])
+                        .unwrap_or_else(|_| panic!("Rule parser.class-template must be a string"));
+                    update_rule_rc(&mut parser_type_ok, &node_entries["type-ok"])
+                        .unwrap_or_else(|_| panic!("Rule parser.type-ok must be a string"));
+                    update_rule_rc(&mut parser_default_value, &node_entries["default-value"])
+                        .unwrap_or_else(|_| panic!("Rule parser.default-value must be a string"));
+                    update_rule_rc(&mut parser_list_append, &node_entries["list"]["append"])
+                        .unwrap_or_else(|_| panic!("Rule parser.list.append must be a string"));
+                    continue;
+                }
                 "cpp" => {
                     update_rule(&mut cpp_header, &node_entries["header"])
                         .unwrap_or_else(|_| panic!("Rule cpp.header must be a string"));
@@ -175,8 +233,26 @@ impl GlobalRules {
                         let name = node_item_entry.as_str()
                             .unwrap_or_else(|| panic!("Rule {}.{} must be a string", node_key, as_string));
                         let inherits = syntax.get_node_name(name)
-                            .unwrap_or_else(|| panic!("Unknown node name {}", node_key));
+                            .unwrap_or_else(|| panic!("Unknown node name {}", name));
                         node_rule.inherits = Some(inherits).cloned();
+                    }
+                    "extra-params" => {
+                        update_rule_rc(&mut node_rule.extra_params, node_item_entry)
+                            .unwrap_or_else(|()| panic!("Rule {}.{} must be a string", node_key, as_string));
+                    }
+                    "extra-args" => {
+                        update_rule_rc(&mut node_rule.extra_args, node_item_entry)
+                            .unwrap_or_else(|()| panic!("Rule {}.{} must be a string", node_key, as_string));
+                    }
+                    "some" => {
+                        update_rule_rc(&mut node_rule.some_before, &node_item_entry["before"])
+                            .unwrap_or_else(|()| panic!("Rule {}.{}.before must be a string", node_key, as_string));
+                        update_rule_rc(&mut node_rule.some_after, &node_item_entry["after"])
+                            .unwrap_or_else(|()| panic!("Rule {}.{}.after must be a string", node_key, as_string));
+                    }
+                    "none" => {
+                        update_rule_rc(&mut node_rule.none_replace, &node_item_entry["replace"])
+                            .unwrap_or_else(|()| panic!("Rule {}.{}.replace must be a string", node_key, as_string));
                     }
                     "init" => {
                         update_rule(&mut node_rule.init, node_item_entry)
@@ -191,7 +267,11 @@ impl GlobalRules {
                             .unwrap_or_else(|()| panic!("Rule {}.{} must be a string", node_key, as_string));
                     }
                     "type-ok" => {
-                        update_rule(&mut node_rule.type_ok, node_item_entry)
+                        update_rule_rc(&mut node_rule.type_ok, node_item_entry)
+                            .unwrap_or_else(|()| panic!("Rule {}.{} must be a string", node_key, as_string));
+                    }
+                    "default-value" => {
+                        update_rule_rc(&mut node_rule.default_value, node_item_entry)
                             .unwrap_or_else(|()| panic!("Rule {}.{} must be a string", node_key, as_string));
                     }
                     "fields" => {
@@ -234,6 +314,10 @@ impl GlobalRules {
                                     }
                                     "after" => {
                                         update_rule(&mut field_rule.after_field, &field_config_entry)
+                                            .unwrap_or_else(|()| panic!("Rule {}.fields.{}.{} must be a string", node_key, field_key, field_config_key));
+                                    }
+                                    "extra-args" => {
+                                        update_rule_rc(&mut field_rule.extra_args, &field_config_entry)
                                             .unwrap_or_else(|()| panic!("Rule {}.fields.{}.{} must be a string", node_key, field_key, field_config_key));
                                     }
                                     _ => {
@@ -281,6 +365,18 @@ impl GlobalRules {
         }
 
         Self {
+            parser_class_name: parser_class_name
+                .expect("parser.class-name should be specified"),
+            parser_class_template: Rc::new(if parser_class_template.is_some() {
+                format!("{} ", parser_class_template.unwrap())
+            } else {
+                "".to_string()
+            }),
+            parser_type_ok: parser_type_ok
+                .expect("parser.type-ok should be specified"),
+            parser_default_value: parser_default_value
+                .expect("parser.default-value should be specified"),
+            parser_list_append,
             cpp_header,
             cpp_footer,
             hpp_class_header,
@@ -300,6 +396,12 @@ impl GlobalRules {
             let NodeRules {
                 inherits: _,
                 type_ok,
+                default_value,
+                extra_params,
+                extra_args,
+                some_before,
+                some_after,
+                none_replace,
                 init,
                 append,
                 by_field,
@@ -308,6 +410,24 @@ impl GlobalRules {
             } = self.get(parent);
             if rules.type_ok.is_none() {
                 rules.type_ok = type_ok;
+            }
+            if rules.default_value.is_none() {
+                rules.default_value = default_value;
+            }
+            if rules.extra_params.is_none() {
+                rules.extra_params = extra_params;
+            }
+            if rules.extra_args.is_none() {
+                rules.extra_args = extra_args;
+            }
+            if rules.some_before.is_none() {
+                rules.some_before = some_before;
+            }
+            if rules.some_after.is_none() {
+                rules.some_after = some_after;
+            }
+            if rules.none_replace.is_none() {
+                rules.none_replace = none_replace;
             }
             if rules.init.is_none() {
                 rules.init = init;
@@ -352,6 +472,23 @@ struct OptionParserData {
     elements: NodeName,
 }
 
+/// What to use when calling the method to store the result value.
+enum MethodCallKind {
+    /// Use BINJS_MOZ_TRY_DECL if the result type is not "Ok",
+    /// use MOZ_TRY otherwise.
+    Decl,
+
+    /// Always use MOZ_TRY_DECL regardless of the result type.
+    AlwaysDecl,
+
+    /// Use MOZ_TRY_VAR if the result type is not "Ok",
+    /// use MOZ_TRY otherwise.
+    Var,
+
+    /// Always use MOZ_TRY_VAR regardless of the result type.
+    AlwaysVar,
+}
+
 /// The actual exporter.
 struct CPPExporter {
     /// The syntax to export.
@@ -370,6 +507,9 @@ struct CPPExporter {
     /// name of the symbol as part of `enum class BinVariant`
     /// (e.g. `UnaryOperatorDelete`).
     variants_by_symbol: HashMap<String, String>,
+
+    // A map from enum class names to the type.
+    enum_types: HashMap<NodeName, Rc<String>>,
 }
 
 impl CPPExporter {
@@ -412,7 +552,12 @@ impl CPPExporter {
         // (note that there is no guarantee of unicity – if collisions show up,
         // we may need to tweak the name generation algorithm).
         let mut enum_by_string : HashMap<String, Vec<NodeName>> = HashMap::new();
+        let mut enum_types : HashMap<NodeName, Rc<String>> = HashMap::new();
         for (name, enum_) in syntax.string_enums_by_name().iter() {
+            let type_ = format!("typename {parser_class_name}::{kind}",
+                                parser_class_name = rules.parser_class_name,
+                                kind = name.to_class_cases());
+            enum_types.insert(name.clone(), Rc::new(type_));
             for string in enum_.strings().iter() {
                 let vec = enum_by_string.entry(string.clone())
                     .or_insert_with(|| vec![]);
@@ -438,43 +583,145 @@ impl CPPExporter {
             list_parsers_to_generate,
             option_parsers_to_generate,
             variants_by_symbol,
+            enum_types,
         }
     }
 
 // ----- Generating the header
 
     /// Get the type representing a success for parsing this node.
-    fn get_type_ok(&self, name: &NodeName, default: &str) -> String {
+    fn get_type_ok(&self, name: &NodeName) -> Rc<String> {
+        // enum has its own rule.
+        if self.enum_types.contains_key(name) {
+            return self.enum_types.get(name).unwrap().clone();
+        }
+
         let rules_for_this_interface = self.rules.get(name);
         // If the override is provided, use it.
-        if let Some(ref type_ok) = rules_for_this_interface.type_ok {
-            return type_ok.to_string()
+        if let Some(type_ok) = rules_for_this_interface.type_ok {
+            return type_ok;
         }
-        default.to_string()
+        self.rules.parser_type_ok.clone()
+    }
+    fn get_default_value(&self, name: &NodeName) -> Rc<String> {
+        let rules_for_this_interface = self.rules.get(name);
+        // If the override is provided, use it.
+        if let Some(default_value) = rules_for_this_interface.default_value {
+            return default_value;
+        }
+        if let Some(type_ok) = rules_for_this_interface.type_ok {
+            if type_ok.as_str() == "Ok" {
+                return Rc::new("Ok()".to_string());
+            }
+        }
+        self.rules.parser_default_value.clone()
     }
 
-    fn get_method_signature(&self, name: &NodeName, default_type_ok: &str, prefix: &str, args: &str) -> String {
-        let type_ok = self.get_type_ok(name, default_type_ok);
+    fn get_method_signature(&self, name: &NodeName, prefix: &str, args: &str,
+                            extra_params: &Option<Rc<String>>) -> String {
+        let type_ok = self.get_type_ok(name);
         let kind = name.to_class_cases();
-        format!("    JS::Result<{type_ok}> parse{prefix}{kind}({args});\n",
+        let extra = match extra_params {
+            Some(s) => {
+                format!("{}\n{}",
+                        if args.len() > 0 {
+                            ","
+                        } else {
+                            ""
+                        },
+                        s.reindent("        "))
+            }
+            _ => {
+                "".to_string()
+            }
+        };
+        format!("    JS::Result<{type_ok}> parse{prefix}{kind}({args}{extra});\n",
             prefix = prefix,
             type_ok = type_ok,
             kind = kind,
             args = args,
+            extra = extra,
         )
     }
 
-    fn get_method_definition_start(&self, name: &NodeName, default_type_ok: &str, prefix: &str, args: &str) -> String {
-        let type_ok = self.get_type_ok(name, default_type_ok);
+    fn get_method_definition_start(&self, name: &NodeName, prefix: &str, args: &str,
+                                   extra_params: &Option<Rc<String>>) -> String {
+        let type_ok = self.get_type_ok(name);
         let kind = name.to_class_cases();
-        format!("template<typename Tok> JS::Result<{type_ok}>\nBinASTParser<Tok>::parse{prefix}{kind}({args})",
+        let extra = match extra_params {
+            Some(s) => {
+                format!("{}\n{}",
+                        if args.len() > 0 {
+                            ","
+                        } else {
+                            ""
+                        },
+                        s.reindent("        "))
+            }
+            _ => {
+                "".to_string()
+            }
+        };
+        format!("{parser_class_template}JS::Result<{type_ok}>\n{parser_class_name}::parse{prefix}{kind}({args}{extra})",
+            parser_class_template = self.rules.parser_class_template,
             prefix = prefix,
             type_ok = type_ok,
+            parser_class_name = self.rules.parser_class_name,
             kind = kind,
             args = args,
+            extra = extra,
         )
     }
 
+    fn get_method_call(&self, var_name: &str, name: &NodeName,
+                       prefix: &str, args: &str,
+                       extra_params: &Option<Rc<String>>,
+                       call_kind: MethodCallKind) -> String {
+        let type_ok_is_ok = match call_kind {
+            MethodCallKind::Decl | MethodCallKind::Var => {
+                self.get_type_ok(name).to_str() == "Ok"
+            }
+            MethodCallKind::AlwaysDecl | MethodCallKind::AlwaysVar => {
+                false
+            }
+        };
+        let extra = match extra_params {
+            Some(s) => {
+                format!("{}\n{}",
+                        if args.len() > 0 {
+                            ","
+                        } else {
+                            ""
+                        },
+                        s.reindent("    "))
+            }
+            _ => {
+                "".to_string()
+            }
+        };
+        let call = format!("parse{prefix}{name}({args}{extra})",
+                           prefix = prefix,
+                           name = name.to_class_cases(),
+                           args = args,
+                           extra = extra);
+
+        if type_ok_is_ok {
+            // Special case: `Ok` means that we shouldn't bind the return value.
+            format!("MOZ_TRY({call});",
+                    call = call)
+        } else {
+            match call_kind {
+                MethodCallKind::Decl | MethodCallKind::AlwaysDecl => {
+                    format!("BINJS_MOZ_TRY_DECL({var_name}, {call});",
+                            var_name = var_name, call = call)
+                }
+                MethodCallKind::Var | MethodCallKind::AlwaysVar => {
+                    format!("MOZ_TRY_VAR({var_name}, {call});",
+                            var_name = var_name, call = call)
+                }
+            }
+        }
+    }
 
     /// Declaring enums for kinds and fields.
     fn export_declare_kinds_and_fields_enums(&self, buffer: &mut String) {
@@ -585,12 +832,20 @@ enum class BinVariant {
         buffer.push_str("// Implementations are autogenerated\n");
         buffer.push_str("// `ParseNode*` may never be nullptr\n");
         for &(ref name, _) in &sums_of_interfaces {
-            let rendered = self.get_method_signature(name, "ParseNode*", "", "");
-            buffer.push_str(&rendered.reindent(""));
+            let rules_for_this_sum = self.rules.get(name);
+            let extra_params = rules_for_this_sum.extra_params;
+            let rendered = self.get_method_signature(name, "", "",
+                                                     &extra_params);
+            buffer.push_str(&rendered.reindent("")
+                            .newline_if_not_empty());
         }
         for (name, _) in sums_of_interfaces {
-            let rendered = self.get_method_signature(name, "ParseNode*", "Sum", "const size_t start, const BinKind kind, const BinFields& fields");
-            buffer.push_str(&rendered.reindent(""));
+            let rules_for_this_sum = self.rules.get(name);
+            let extra_params = rules_for_this_sum.extra_params;
+            let rendered = self.get_method_signature(name, "Sum", "const size_t start, const BinKind kind, const BinFields& fields",
+                                                     &extra_params);
+            buffer.push_str(&rendered.reindent("")
+                            .newline_if_not_empty());
         }
     }
 
@@ -606,8 +861,11 @@ enum class BinVariant {
         let mut inner_parsers = Vec::with_capacity(interfaces_by_name.len());
 
         for &(name, _) in &interfaces_by_name {
-            let outer = self.get_method_signature(name, "ParseNode*", "", "");
-            let inner = self.get_method_signature(name, "ParseNode*", "Interface", "const size_t start, const BinKind kind, const BinFields& fields");
+            let rules_for_this_interface = self.rules.get(name);
+            let extra_params = rules_for_this_interface.extra_params;
+            let outer = self.get_method_signature(name, "", "", &extra_params);
+            let inner = self.get_method_signature(name, "Interface", "const size_t start, const BinKind kind, const BinFields& fields",
+                                                  &extra_params);
             outer_parsers.push(outer.reindent(""));
             inner_parsers.push(inner.reindent(""));
         }
@@ -630,8 +888,7 @@ enum class BinVariant {
             .iter()
             .sorted_by(|a, b| str::cmp(a.0.to_str(), b.0.to_str()));
         for (kind, _) in string_enums_by_name {
-            let type_ok = format!("typename BinASTParser<Tok>::{kind}", kind = kind.to_class_cases());
-            let rendered = self.get_method_signature(kind, &type_ok, "", "");
+            let rendered = self.get_method_signature(kind, "", "", &None);
             buffer.push_str(&rendered.reindent(""));
             buffer.push_str("\n");
         }
@@ -641,7 +898,10 @@ enum class BinVariant {
         buffer.push_str("\n\n// ----- Lists (by lexicographical order)\n");
         buffer.push_str("// Implementations are autogenerated\n");
         for parser in &self.list_parsers_to_generate {
-            let rendered = self.get_method_signature(&parser.name, "ParseNode*", "", "");
+            let rules_for_this_node = self.rules.get(&parser.name);
+            let extra_params = rules_for_this_node.extra_params;
+            let rendered = self.get_method_signature(&parser.name, "", "",
+                                                     &extra_params);
             buffer.push_str(&rendered.reindent(""));
             buffer.push_str("\n");
         }
@@ -651,7 +911,10 @@ enum class BinVariant {
         buffer.push_str("\n\n// ----- Default values (by lexicographical order)\n");
         buffer.push_str("// Implementations are autogenerated\n");
         for parser in &self.option_parsers_to_generate {
-            let rendered = self.get_method_signature(&parser.name, "ParseNode*", "", "");
+            let rules_for_this_node = self.rules.get(&parser.name);
+            let extra_params = rules_for_this_node.extra_params;
+            let rendered = self.get_method_signature(&parser.name, "", "",
+                                                     &extra_params);
             buffer.push_str(&rendered.reindent(""));
             buffer.push_str("\n");
         }
@@ -700,6 +963,8 @@ impl CPPExporter {
     fn generate_implement_sum(&self, buffer: &mut String, name: &NodeName, nodes: &HashSet<NodeName>) {
         // Generate comments (FIXME: We should use the actual webidl, not the resolved sum)
         let rules_for_this_sum = self.rules.get(name);
+        let extra_params = rules_for_this_sum.extra_params;
+        let extra_args = rules_for_this_sum.extra_args;
         let nodes = nodes.iter()
             .sorted();
         let kind = name.to_class_cases();
@@ -719,14 +984,19 @@ impl CPPExporter {
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
 
-    BINJS_MOZ_TRY_DECL(result, parseSum{kind}(start, kind, fields));
+{call}
 
     MOZ_TRY(guard.done());
     return result;
 }}\n",
                 bnf = rendered_bnf,
-                kind = kind,
-                first_line = self.get_method_definition_start(name, "ParseNode*", "", "")
+                call = self.get_method_call("result", name,
+                                            "Sum", "start, kind, fields",
+                                            &extra_args,
+                                            MethodCallKind::AlwaysDecl)
+                    .reindent("    "),
+                first_line = self.get_method_definition_start(name, "", "",
+                                                              &extra_params)
         ));
 
         // Generate inner method
@@ -734,19 +1004,23 @@ impl CPPExporter {
         for node in nodes {
             buffer_cases.push_str(&format!("
       case BinKind::{variant_name}:
-        MOZ_TRY_VAR(result, parseInterface{class_name}(start, kind, fields));
-{arm_after}
-        break;",
-                class_name = node.to_class_cases(),
+{call}
+{arm_after}        break;",
+                call = self.get_method_call("result", node,
+                                            "Interface", "start, kind, fields",
+                                            &extra_args,
+                                            MethodCallKind::AlwaysVar)
+                    .reindent("        "),
                 variant_name = node.to_cpp_enum_case(),
                 arm_after = rules_for_this_sum.by_sum.get(&node)
                     .cloned()
-                    .unwrap_or_default().after_arm.reindent("        ")));
+                    .unwrap_or_default().after_arm.reindent("        ")
+                    .newline_if_not_empty()));
         }
         buffer.push_str(&format!("\n{first_line}
 {{
     {type_ok} result;
-    switch(kind) {{{cases}
+    switch (kind) {{{cases}
       default:
         return raiseInvalidKind(\"{kind}\", kind);
     }}
@@ -756,14 +1030,17 @@ impl CPPExporter {
 ",
             kind = kind,
             cases = buffer_cases,
-            first_line = self.get_method_definition_start(name, "ParseNode*", "Sum", "const size_t start, const BinKind kind, const BinFields& fields"),
-            type_ok = self.get_type_ok(name, "ParseNode*")
+            first_line = self.get_method_definition_start(name, "Sum", "const size_t start, const BinKind kind, const BinFields& fields",
+                                                          &extra_params),
+            type_ok = self.get_type_ok(name)
         ));
     }
 
     /// Generate the implementation of a single list parser
     fn generate_implement_list(&self, buffer: &mut String, parser: &ListParserData) {
         let rules_for_this_list = self.rules.get(&parser.name);
+        let extra_params = rules_for_this_list.extra_params;
+        let extra_args = rules_for_this_list.extra_args;
 
         // Warn if some rules are unused.
         for &(condition, name) in &[
@@ -778,7 +1055,8 @@ impl CPPExporter {
         }
 
         let kind = parser.name.to_class_cases();
-        let first_line = self.get_method_definition_start(&parser.name, "ParseNode*", "", "");
+        let first_line = self.get_method_definition_start(&parser.name, "", "",
+                                                          &extra_params);
 
         let init = match rules_for_this_list.init {
             Some(str) => str.reindent("    "),
@@ -797,8 +1075,13 @@ impl CPPExporter {
             }
         };
         let append = match rules_for_this_list.append {
-            Some(str) => format!("{}", str.reindent("        ")),
-            None => "        result->appendWithoutOrderAssumption(item);".to_string()
+            Some(str) => str.reindent("        ").newline_if_not_empty(),
+            None => {
+                match self.rules.parser_list_append {
+                    Some(ref str) => str.reindent("        ").newline_if_not_empty(),
+                    None => "".to_string(),
+                }
+            }
         };
 
 
@@ -812,9 +1095,8 @@ impl CPPExporter {
 {init}
 
     for (uint32_t i = 0; i < length; ++i) {{
-        BINJS_MOZ_TRY_DECL(item, parse{inner}());
-{append}
-    }}
+{call}
+{append}    }}
 
     MOZ_TRY(guard.done());
     return result;
@@ -827,7 +1109,11 @@ impl CPPExporter {
                     format!("\n    if (length == 0)\n         return raiseEmpty(\"{kind}\");\n",
                         kind = kind)
                 },
-            inner = parser.elements.to_class_cases(),
+            call = self.get_method_call("item",
+                                        &parser.elements, "", "",
+                                        &extra_args,
+                                        MethodCallKind::Decl)
+                .reindent("        "),
             init = init,
             append = append);
         buffer.push_str(&rendered);
@@ -838,6 +1124,8 @@ impl CPPExporter {
             parser.name.to_str(), parser.elements.to_str());
 
         let rules_for_this_node = self.rules.get(&parser.name);
+        let extra_params = rules_for_this_node.extra_params;
+        let extra_args = rules_for_this_node.extra_args;
 
         // Warn if some rules are unused.
         for &(condition, name) in &[
@@ -851,13 +1139,8 @@ impl CPPExporter {
             }
         }
 
-        let type_ok = self.get_type_ok(&parser.name, "ParseNode*");
-        let default_value =
-            if type_ok == "Ok" {
-                "Ok()"
-            } else {
-                "nullptr"
-            }.to_string();
+        let type_ok = self.get_type_ok(&parser.name);
+        let default_value = self.get_default_value(&parser.name);
 
         // At this stage, thanks to deanonymization, `contents`
         // is something like `OptionalFooBar`.
@@ -887,10 +1170,12 @@ impl CPPExporter {
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
     {type_ok} result;
     if (kind == BinKind::{null}) {{
-        result = {default_value};
-    }} else {{
+{none_block}
+    }} else if (kind == BinKind::{kind}) {{
         const auto start = tokenizer_->offset();
-        MOZ_TRY_VAR(result, parseInterface{contents}(start, kind, fields));
+{before}{call}{after}
+    }} else {{
+        return raiseInvalidKind(\"{kind}\", kind);
     }}
     MOZ_TRY(guard.done());
 
@@ -898,11 +1183,32 @@ impl CPPExporter {
 }}
 
 ",
-                    first_line = self.get_method_definition_start(&parser.name, "ParseNode*", "", ""),
+                    first_line = self.get_method_definition_start(&parser.name, "", "",
+                                                                  &extra_params),
                     null = self.syntax.get_null_name().to_cpp_enum_case(),
-                    contents = parser.elements.to_class_cases(),
+                    call = self.get_method_call("result",
+                                                &parser.elements,
+                                                "Interface", "start, kind, fields",
+                                                &extra_args,
+                                                MethodCallKind::AlwaysVar)
+                        .reindent("        "),
+                    before = rules_for_this_node.some_before
+                        .map_or_else(|| "".to_string(),
+                                     |s| s
+                                     .reindent("        ")
+                                     .newline_if_not_empty()),
+                    after = rules_for_this_node.some_after
+                        .map_or_else(|| "".to_string(),
+                                     |s| s
+                                     .reindent("        ")
+                                     .newline_if_not_empty()),
+                    none_block = rules_for_this_node.none_replace
+                        .map_or_else(|| format!("result = {default_value};",
+                                                default_value = default_value)
+                                            .reindent("        "),
+                                     |s| s.reindent("        ")),
                     type_ok = type_ok,
-                    default_value = default_value,
+                    kind = parser.elements.to_cpp_enum_case(),
                 ));
             }
             NamedType::Typedef(ref type_) => {
@@ -917,10 +1223,10 @@ impl CPPExporter {
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
     {type_ok} result;
     if (kind == BinKind::{null}) {{
-        result = {default_value};
+{none_block}
     }} else {{
         const auto start = tokenizer_->offset();
-        MOZ_TRY_VAR(result, parseSum{contents}(start, kind, fields));
+{before}{call}{after}
     }}
     MOZ_TRY(guard.done());
 
@@ -928,16 +1234,36 @@ impl CPPExporter {
 }}
 
 ",
-                            first_line = self.get_method_definition_start(&parser.name, "ParseNode*", "", ""),
-                            contents = parser.elements.to_class_cases(),
+                            first_line = self.get_method_definition_start(&parser.name, "", "",
+                                                                          &extra_params),
+                            call = self.get_method_call("result", &parser.elements,
+                                                        "Sum", "start, kind, fields",
+                                                        &extra_args,
+                                                        MethodCallKind::AlwaysVar)
+                                .reindent("        "),
+                            before = rules_for_this_node.some_before
+                                .map_or_else(|| "".to_string(),
+                                             |s| s
+                                             .reindent("        ")
+                                             .newline_if_not_empty()),
+                            after = rules_for_this_node.some_after
+                                .map_or_else(|| "".to_string(),
+                                             |s| s
+                                             .reindent("        ")
+                                             .newline_if_not_empty()),
+                            none_block = rules_for_this_node.none_replace
+                                .map_or_else(|| format!("result = {default_value};",
+                                                        default_value = default_value)
+                                                    .reindent("        "),
+                                             |s| s.reindent("        ")),
                             type_ok = type_ok,
-                            default_value = default_value,
                             null = self.syntax.get_null_name().to_cpp_enum_case(),
                         ));
                     }
                     &TypeSpec::String => {
                         let build_result = rules_for_this_node.init.reindent("    ");
-                        let first_line = self.get_method_definition_start(&parser.name, "ParseNode*", "", "");
+                        let first_line = self.get_method_definition_start(&parser.name, "", "",
+                                                                          &extra_params);
                         if build_result.len() == 0 {
                             buffer.push_str(&format!("{first_line}
 {{
@@ -974,6 +1300,8 @@ impl CPPExporter {
 
     fn generate_implement_interface(&self, buffer: &mut String, name: &NodeName, interface: &Interface) {
         let rules_for_this_interface = self.rules.get(name);
+        let extra_params = rules_for_this_interface.extra_params;
+        let extra_args = rules_for_this_interface.extra_args;
 
         for &(condition, rule_name) in &[
             (rules_for_this_interface.append.is_some(), "build:"),
@@ -988,7 +1316,6 @@ impl CPPExporter {
         buffer.push_str(&comment);
 
         // Generate public method
-        let kind = name.to_class_cases();
         buffer.push_str(&format!("{first_line}
 {{
     BinKind kind;
@@ -996,22 +1323,31 @@ impl CPPExporter {
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::{kind}) {{
+        return raiseInvalidKind(\"{kind}\", kind);
+    }}
     const auto start = tokenizer_->offset();
-
-    BINJS_MOZ_TRY_DECL(result, parseInterface{kind}(start, kind, fields));
+{call}
     MOZ_TRY(guard.done());
 
     return result;
 }}
 
 ",
-            first_line = self.get_method_definition_start(name, "ParseNode*", "", ""),
-            kind = kind
+            first_line = self.get_method_definition_start(name, "", "",
+                                                          &extra_params),
+            kind = name.to_cpp_enum_case(),
+            call = self.get_method_call("result", name,
+                                        "Interface", "start, kind, fields",
+                                        &extra_args,
+                                        MethodCallKind::AlwaysDecl)
+                .reindent("    ")
         ));
 
         // Generate aux method
         let number_of_fields = interface.contents().fields().len();
-        let first_line = self.get_method_definition_start(name, "ParseNode*", "Interface", "const size_t start, const BinKind kind, const BinFields& fields");
+        let first_line = self.get_method_definition_start(name, "Interface", "const size_t start, const BinKind kind, const BinFields& fields",
+                                                          &extra_params);
 
         let fields_type_list = format!("{{ {} }}", interface.contents()
             .fields()
@@ -1064,31 +1400,26 @@ impl CPPExporter {
                     (Some(format!("RootedAtom {var_name}(cx_);", var_name = var_name)),
                         Some(format!("MOZ_TRY_VAR({var_name}, tokenizer_->readAtom());", var_name = var_name)))
                 }
-                Some(IsNullable { content: Primitive::Interface(ref interface), ..})
-                    if &self.get_type_ok(interface.name(), "?") == "Ok" =>
-                {
-                    // Special case: `Ok` means that we shouldn't bind the return value.
-                    let typename = TypeName::type_(field.type_());
-                    (None,
-                        Some(format!("MOZ_TRY(parse{typename}());",
-                            typename = typename)))
-                }
                 _else => {
                     let typename = TypeName::type_(field.type_());
-                    if needs_block {
+                    let name = self.syntax.get_node_name(typename.to_str())
+                        .expect("NodeName for the field type should exist.");
+                    let field_extra_args = rules_for_this_field.extra_args;
+
+                    let (decl_var, call_kind) = if needs_block {
                         (Some(format!("{typename} {var_name};",
-                            var_name = var_name,
-                            typename = typename)),
-                            Some(format!("MOZ_TRY_VAR({var_name}, parse{typename}());",
-                            var_name = var_name,
-                            typename = typename)
-                        ))
+                                      var_name = var_name,
+                                      typename = typename)),
+                         MethodCallKind::Var)
                     } else {
                         (None,
-                            Some(format!("BINJS_MOZ_TRY_DECL({var_name}, parse{typename}());",
-                            var_name = var_name,
-                            typename = typename)))
-                    }
+                         MethodCallKind::Decl)
+                    };
+
+                    (decl_var,
+                     Some(self.get_method_call(var_name.to_str(),
+                                               &name, "", "", &field_extra_args,
+                                               call_kind)))
                 }
             };
 
@@ -1115,32 +1446,24 @@ impl CPPExporter {
                     };
                     if needs_block {
                         let parse_var = parse_var.reindent("        ");
-                        format!("{before_field}
-{decl_var}
-    {{
-{block_before_field}
-{parse_var}
-{block_after_field}
+                        format!("{before_field}{decl_var}    {{
+{block_before_field}{parse_var}{block_after_field}
     }}
 {after_field}",
-                            before_field = before_field.reindent("    "),
-                            decl_var = decl_var.reindent("    "),
-                            parse_var = parse_var.reindent("        "),
-                            after_field = after_field.reindent("    "),
-                            block_before_field = rules_for_this_field.block_before_field.reindent("        "),
-                            block_after_field = rules_for_this_field.block_after_field.reindent("        "))
+                            before_field = before_field.reindent("    ").newline_if_not_empty(),
+                            decl_var = decl_var.reindent("    ").newline_if_not_empty(),
+                            block_before_field = rules_for_this_field.block_before_field.reindent("        ").newline_if_not_empty(),
+                            parse_var = parse_var.reindent("        ").newline_if_not_empty(),
+                            block_after_field = rules_for_this_field.block_after_field.reindent("        "),
+                            after_field = after_field.reindent("    "))
                     } else {
                         // We have a before_field and an after_field. This will create newlines
                         // for them.
                         format!("
-{before_field}
-{decl_var}
-{parse_var}
-{after_field}
-",
-                            before_field = before_field.reindent("    "),
-                            decl_var = decl_var.reindent("    "),
-                            parse_var = parse_var.reindent("    "),
+{before_field}{decl_var}{parse_var}{after_field}",
+                            before_field = before_field.reindent("    ").newline_if_not_empty(),
+                            decl_var = decl_var.reindent("    ").newline_if_not_empty(),
+                            parse_var = parse_var.reindent("    ").newline_if_not_empty(),
                             after_field = after_field.reindent("    "))
                     }
                 }
@@ -1154,11 +1477,11 @@ impl CPPExporter {
         if build_result == "" {
             buffer.push_str(&format!("{first_line}
 {{
-    return raiseError(\"FIXME: Not implemented yet ({})\");
+    return raiseError(\"FIXME: Not implemented yet ({class_name})\");
 }}
 
 ",
-                kind = kind.to_str(),
+                class_name = name.to_class_cases(),
                 first_line = first_line,
             ));
         } else {
@@ -1170,27 +1493,24 @@ impl CPPExporter {
 #if defined(DEBUG)
     const BinField expected_fields[{number_of_fields}] = {fields_type_list};
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
-#endif // defined(DEBUG)
-",
+#endif // defined(DEBUG)",
                     fields_type_list = fields_type_list,
                     number_of_fields = number_of_fields)
             };
             buffer.push_str(&format!("{first_line}
 {{
     MOZ_ASSERT(kind == BinKind::{kind});
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 {check_fields}
 {pre}{fields_implem}
-{post}
-    return result;
+{post}    return result;
 }}
 
 ",
                 check_fields = check_fields,
                 fields_implem = fields_implem,
-                pre = init,
-                post = build_result,
+                pre = init.newline_if_not_empty(),
+                post = build_result.newline_if_not_empty(),
                 kind = name.to_cpp_enum_case(),
                 first_line = first_line,
             ));
@@ -1274,7 +1594,8 @@ impl CPPExporter {
 ",
                     rendered_doc = rendered_doc,
                     convert = convert,
-                    first_line = self.get_method_definition_start(kind, &format!("typename BinASTParser<Tok>::{kind}", kind = kind), "", "")
+                    first_line = self.get_method_definition_start(kind, "", "",
+                                                                  &None)
                 ));
             }
         }
@@ -1309,7 +1630,14 @@ fn update_rule(rule: &mut Option<String>, entry: &yaml_rust::Yaml) -> Result<Opt
         Err(())
     }
 }
-
+fn update_rule_rc(rule: &mut Option<Rc<String>>, entry: &yaml_rust::Yaml) -> Result<Option<()>, ()> {
+    let mut value = None;
+    let ret = update_rule(&mut value, entry)?;
+    if let Some(s) = value {
+        *rule = Some(Rc::new(s));
+    }
+    Ok(ret)
+}
 
 fn main() {
     env_logger::init();
@@ -1388,12 +1716,34 @@ fn main() {
     let global_rules = GlobalRules::new(&new_syntax, &yaml[0]);
     let exporter = CPPExporter::new(new_syntax, global_rules);
 
+    let get_file_content = |path: &str| {
+        if !Path::new(path).is_file() {
+            return None;
+        }
+
+        let mut f = File::open(path)
+            .expect("File not found");
+        let mut contents = String::new();
+        f.read_to_string(&mut contents)
+            .expect("Failed to read file");
+        Some(contents)
+    };
     let write_to = |description, arg, data: &String| {
         let dest_path = matches.value_of(arg)
             .unwrap();
-        println!("...exporting {description}: {path}",
+        print!("...exporting {description}: {path} ... ",
             description = description,
             path = dest_path);
+
+        if let Some(old_data) = get_file_content(dest_path) {
+            if old_data == *data {
+                // To avoid unnecessary rebuild, do not touch the file if the
+                // content is not updated.
+                println!("skip");
+                return;
+            }
+        };
+
         let mut dest = File::create(&dest_path)
             .unwrap_or_else(|e| panic!("Could not create {description} at {path}: {error}",
                             description = description,
@@ -1404,6 +1754,8 @@ fn main() {
                             description = description,
                             path = dest_path,
                             error = e));
+
+        println!("done");
     };
 
     write_to("C++ class header code", "OUT_HEADER_CLASS_FILE",

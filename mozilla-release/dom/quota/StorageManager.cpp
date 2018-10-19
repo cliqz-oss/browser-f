@@ -19,6 +19,8 @@
 #include "nsIQuotaRequests.h"
 #include "nsPIDOMWindow.h"
 
+using namespace mozilla::dom::quota;
+
 namespace mozilla {
 namespace dom {
 
@@ -358,7 +360,7 @@ ExecuteOpOnMainOrWorkerThread(nsIGlobalObject* aGlobal,
       RefPtr<EstimateWorkerMainThreadRunnable> runnnable =
         new EstimateWorkerMainThreadRunnable(promiseProxy->GetWorkerPrivate(),
                                              promiseProxy);
-      runnnable->Dispatch(Terminating, aRv);
+      runnnable->Dispatch(Canceling, aRv);
 
       break;
     }
@@ -367,7 +369,7 @@ ExecuteOpOnMainOrWorkerThread(nsIGlobalObject* aGlobal,
       RefPtr<PersistedWorkerMainThreadRunnable> runnnable =
         new PersistedWorkerMainThreadRunnable(promiseProxy->GetWorkerPrivate(),
                                               promiseProxy);
-      runnnable->Dispatch(Terminating, aRv);
+      runnnable->Dispatch(Canceling, aRv);
 
       break;
     }
@@ -878,7 +880,7 @@ JSObject*
 StorageManager::WrapObject(JSContext* aCx,
                            JS::Handle<JSObject*> aGivenProto)
 {
-  return StorageManagerBinding::Wrap(aCx, this, aGivenProto);
+  return StorageManager_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 } // namespace dom

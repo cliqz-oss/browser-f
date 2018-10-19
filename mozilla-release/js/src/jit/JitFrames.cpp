@@ -6,6 +6,8 @@
 
 #include "jit/JitFrames-inl.h"
 
+#include "mozilla/ScopeExit.h"
+
 #include "jsutil.h"
 
 #include "gc/Marking.h"
@@ -570,53 +572,28 @@ HandleExceptionBaseline(JSContext* cx, const JSJitFrameIter& frame, ResumeFromEx
     OnLeaveBaselineFrame(cx, frame, pc, rfe, frameOk);
 }
 
-struct AutoDeleteDebugModeOSRInfo
-{
-    BaselineFrame* frame;
-    explicit AutoDeleteDebugModeOSRInfo(BaselineFrame* frame) : frame(frame) { MOZ_ASSERT(frame); }
-    ~AutoDeleteDebugModeOSRInfo() { frame->deleteDebugModeOSRInfo(); }
-};
-
-struct AutoResetLastProfilerFrameOnReturnFromException
-{
-    JSContext* cx;
-    ResumeFromException* rfe;
-
-    AutoResetLastProfilerFrameOnReturnFromException(JSContext* cx, ResumeFromException* rfe)
-      : cx(cx), rfe(rfe) {}
-
-    ~AutoResetLastProfilerFrameOnReturnFromException() {
-        if (!cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(cx->runtime()))
-            return;
-
-        MOZ_ASSERT(cx->jitActivation == cx->profilingActivation());
-
-        void* lastProfilingFrame = getLastProfilingFrame();
-        cx->jitActivation->setLastProfilingFrame(lastProfilingFrame);
-    }
-
-    void* getLastProfilingFrame() {
-        switch (rfe->kind) {
-          case ResumeFromException::RESUME_ENTRY_FRAME:
-          case ResumeFromException::RESUME_WASM:
-            return nullptr;
-
-          // The following all return into baseline frames.
-          case ResumeFromException::RESUME_CATCH:
-          case ResumeFromException::RESUME_FINALLY:
-          case ResumeFromException::RESUME_FORCED_RETURN:
-            return rfe->framePointer + BaselineFrame::FramePointerOffset;
-
-          // When resuming into a bailed-out ion frame, use the bailout info to
-          // find the frame we are resuming into.
-          case ResumeFromException::RESUME_BAILOUT:
-            return rfe->bailoutInfo->incomingStack;
-        }
-
-        MOZ_CRASH("Invalid ResumeFromException type!");
+static void*
+GetLastProfilingFrame(ResumeFromException* rfe) {
+    switch (rfe->kind) {
+      case ResumeFromException::RESUME_ENTRY_FRAME:
+      case ResumeFromException::RESUME_WASM:
         return nullptr;
+
+      // The following all return into baseline frames.
+      case ResumeFromException::RESUME_CATCH:
+      case ResumeFromException::RESUME_FINALLY:
+      case ResumeFromException::RESUME_FORCED_RETURN:
+        return rfe->framePointer + BaselineFrame::FramePointerOffset;
+
+      // When resuming into a bailed-out ion frame, use the bailout info to
+      // find the frame we are resuming into.
+      case ResumeFromException::RESUME_BAILOUT:
+        return rfe->bailoutInfo->incomingStack;
     }
-};
+
+    MOZ_CRASH("Invalid ResumeFromException type!");
+    return nullptr;
+}
 
 void
 HandleExceptionWasm(JSContext* cx, wasm::WasmFrameIter* iter, ResumeFromException* rfe)
@@ -634,7 +611,15 @@ HandleException(ResumeFromException* rfe)
     JSContext* cx = TlsContext.get();
     TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
 
-    AutoResetLastProfilerFrameOnReturnFromException profFrameReset(cx, rfe);
+    auto resetProfilerFrame = mozilla::MakeScopeExit([=] {
+        if (!cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(cx->runtime()))
+            return;
+
+        MOZ_ASSERT(cx->jitActivation == cx->profilingActivation());
+
+        void* lastProfilingFrame = GetLastProfilingFrame(rfe);
+        cx->jitActivation->setLastProfilingFrame(lastProfilingFrame);
+    });
 
     rfe->kind = ResumeFromException::RESUME_ENTRY_FRAME;
 
@@ -661,13 +646,21 @@ HandleException(ResumeFromException* rfe)
     // iterating, we need a variant here that is automatically updated should
     // on-stack recompilation occur.
     DebugModeOSRVolatileJitFrameIter iter(cx);
-    while (!iter.done()) {
+    while (true) {
+        iter.skipNonScriptedJSFrames();
+        if (iter.done())
+            break;
+
         if (iter.isWasm()) {
             HandleExceptionWasm(cx, &iter.asWasm(), rfe);
             if (!iter.done())
                 ++iter;
             continue;
         }
+
+        // JIT code can enter same-compartment realms, so reset cx->realm to
+        // this frame's realm.
+        cx->setRealmForJitExceptionHandler(iter.realm());
 
         const JSJitFrameIter& frame = iter.asJSJit();
 
@@ -748,7 +741,9 @@ HandleException(ResumeFromException* rfe)
             // on-stack recompile info, we should free the allocated
             // RecompileInfo struct before we leave this block, as we will not
             // be returning to the recompile handler.
-            AutoDeleteDebugModeOSRInfo deleteDebugModeOSRInfo(frame.baselineFrame());
+            auto deleteDebugModeOSRInfo = mozilla::MakeScopeExit([=] {
+                frame.baselineFrame()->deleteDebugModeOSRInfo();
+            });
 
             if (rfe->kind != ResumeFromException::RESUME_ENTRY_FRAME &&
                 rfe->kind != ResumeFromException::RESUME_FORCED_RETURN)
@@ -870,7 +865,7 @@ TraceThisAndArguments(JSTracer* trc, const JSJitFrameIter& frame, JitFrameLayout
     size_t nformals = 0;
 
     JSFunction* fun = CalleeTokenToFunction(layout->calleeToken());
-    if (frame.type() != JitFrame_JSJitToWasm &&
+    if (frame.type() != FrameType::JSJitToWasm &&
         !frame.isExitFrameLayout<CalledFromJitExitFrameLayout>() &&
         !fun->nonLazyScript()->mayReadFrameArgsDirectly())
     {
@@ -1060,7 +1055,7 @@ TraceBaselineStubFrame(JSTracer* trc, const JSJitFrameIter& frame)
     // Trace the ICStub pointer stored in the stub frame. This is necessary
     // so that we don't destroy the stub code after unlinking the stub.
 
-    MOZ_ASSERT(frame.type() == JitFrame_BaselineStub);
+    MOZ_ASSERT(frame.type() == FrameType::BaselineStub);
     JitStubFrameLayout* layout = (JitStubFrameLayout*)frame.fp();
 
     if (ICStub* stub = layout->maybeStubPtr()) {
@@ -1072,7 +1067,7 @@ TraceBaselineStubFrame(JSTracer* trc, const JSJitFrameIter& frame)
 static void
 TraceIonICCallFrame(JSTracer* trc, const JSJitFrameIter& frame)
 {
-    MOZ_ASSERT(frame.type() == JitFrame_IonICCall);
+    MOZ_ASSERT(frame.type() == FrameType::IonICCall);
     IonICCallFrameLayout* layout = (IonICCallFrameLayout*)frame.fp();
     TraceRoot(trc, layout->stubCode(), "ion-ic-call-code");
 }
@@ -1172,6 +1167,12 @@ TraceJitExitFrame(JSTracer* trc, const JSJitFrameIter& frame)
         JitFrameLayout* jsLayout = layout->jsFrame();
         jsLayout->replaceCalleeToken(TraceCalleeToken(trc, jsLayout->calleeToken()));
         TraceThisAndArguments(trc, frame, jsLayout);
+        return;
+    }
+
+    if (frame.isExitFrameLayout<DirectWasmJitCallFrameLayout>()) {
+        // Nothing to do: we can't have object arguments (yet!) and the callee
+        // is traced elsewhere.
         return;
     }
 
@@ -1296,33 +1297,33 @@ TraceJitActivation(JSTracer* trc, JitActivation* activation)
         if (frames.isJSJit()) {
             const JSJitFrameIter& jitFrame = frames.asJSJit();
             switch (jitFrame.type()) {
-              case JitFrame_Exit:
+              case FrameType::Exit:
                 TraceJitExitFrame(trc, jitFrame);
                 break;
-              case JitFrame_BaselineJS:
+              case FrameType::BaselineJS:
                 jitFrame.baselineFrame()->trace(trc, jitFrame);
                 break;
-              case JitFrame_IonJS:
+              case FrameType::IonJS:
                 TraceIonJSFrame(trc, jitFrame);
                 break;
-              case JitFrame_BaselineStub:
+              case FrameType::BaselineStub:
                 TraceBaselineStubFrame(trc, jitFrame);
                 break;
-              case JitFrame_Bailout:
+              case FrameType::Bailout:
                 TraceBailoutFrame(trc, jitFrame);
                 break;
-              case JitFrame_Rectifier:
+              case FrameType::Rectifier:
                 TraceRectifierFrame(trc, jitFrame);
                 break;
-              case JitFrame_IonICCall:
+              case FrameType::IonICCall:
                 TraceIonICCallFrame(trc, jitFrame);
                 break;
-              case JitFrame_WasmToJSJit:
+              case FrameType::WasmToJSJit:
                 // Ignore: this is a special marker used to let the
                 // JitFrameIter know the frame above is a wasm frame, handled
                 // in the next iteration.
                 break;
-              case JitFrame_JSJitToWasm:
+              case FrameType::JSJitToWasm:
                 TraceJSJitToWasmFrame(trc, jitFrame);
                 break;
               default:
@@ -1349,7 +1350,7 @@ UpdateJitActivationsForMinorGC(JSRuntime* rt)
     JSContext* cx = rt->mainContextFromOwnThread();
     for (JitActivationIterator activations(cx); !activations.done(); ++activations) {
         for (OnlyJSJitFrameIter iter(activations); !iter.done(); ++iter) {
-            if (iter.frame().type() == JitFrame_IonJS)
+            if (iter.frame().type() == FrameType::IonJS)
                 UpdateIonJSFrameForMinorGC(rt, iter.frame());
         }
     }
@@ -1409,14 +1410,14 @@ GetPcScript(JSContext* cx, JSScript** scriptRes, jsbytecode** pcRes)
         hash = PcScriptCache::Hash(retAddr);
 
         // Lazily initialize the cache. The allocation may safely fail and will not GC.
-        if (MOZ_UNLIKELY(cx->ionPcScriptCache == nullptr)) {
-            cx->ionPcScriptCache = (PcScriptCache*)js_malloc(sizeof(struct PcScriptCache));
-            if (cx->ionPcScriptCache)
-                cx->ionPcScriptCache->clear(cx->runtime()->gc.gcNumber());
-        }
+        if (MOZ_UNLIKELY(cx->ionPcScriptCache == nullptr))
+            cx->ionPcScriptCache = MakeUnique<PcScriptCache>(cx->runtime()->gc.gcNumber());
 
-        if (cx->ionPcScriptCache && cx->ionPcScriptCache->get(cx->runtime(), hash, retAddr, scriptRes, pcRes))
+        if (cx->ionPcScriptCache.ref() &&
+            cx->ionPcScriptCache->get(cx->runtime(), hash, retAddr, scriptRes, pcRes))
+        {
             return;
+        }
     }
 
     // Lookup failed: undertake expensive process to recover the innermost inlined frame.
@@ -1434,7 +1435,7 @@ GetPcScript(JSContext* cx, JSScript** scriptRes, jsbytecode** pcRes)
         *pcRes = pc;
 
     // Add entry to cache.
-    if (retAddr && cx->ionPcScriptCache)
+    if (retAddr && cx->ionPcScriptCache.ref())
         cx->ionPcScriptCache->add(hash, retAddr, pc, *scriptRes);
 }
 
@@ -2330,7 +2331,7 @@ struct DumpOp {
     unsigned int i_;
     void operator()(const Value& v) {
         fprintf(stderr, "  actual (arg %d): ", i_);
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
         DumpValue(v);
 #else
         fprintf(stderr, "?\n");
@@ -2353,7 +2354,7 @@ InlineFrameIterator::dump() const
     if (isFunctionFrame()) {
         isFunction = true;
         fprintf(stderr, "  callee fun: ");
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
         DumpObject(callee(fallback));
 #else
         fprintf(stderr, "?\n");
@@ -2392,7 +2393,7 @@ InlineFrameIterator::dump() const
             }
         } else
             fprintf(stderr, "  slot %u: ", i);
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
         DumpValue(si.maybeRead(fallback));
 #else
         fprintf(stderr, "?\n");
@@ -2440,7 +2441,7 @@ AssertJitStackInvariants(JSContext* cx)
                 prevFrameSize = frameSize;
                 frameSize = callerFp - calleeFp;
 
-                if (frames.isScripted() && frames.prevType() == JitFrame_Rectifier) {
+                if (frames.isScripted() && frames.prevType() == FrameType::Rectifier) {
                     MOZ_RELEASE_ASSERT(frameSize % JitStackAlignment == 0,
                       "The rectifier frame should keep the alignment");
 
@@ -2481,12 +2482,12 @@ AssertJitStackInvariants(JSContext* cx)
 
                 // The stack is dynamically aligned by baseline stubs before calling
                 // any jitted code.
-                if (frames.prevType() == JitFrame_BaselineStub && isScriptedCallee) {
+                if (frames.prevType() == FrameType::BaselineStub && isScriptedCallee) {
                     MOZ_RELEASE_ASSERT(calleeFp % JitStackAlignment == 0,
                         "The baseline stub restores the stack alignment");
                 }
 
-                isScriptedCallee = frames.isScripted() || frames.type() == JitFrame_Rectifier;
+                isScriptedCallee = frames.isScripted() || frames.type() == FrameType::Rectifier;
             }
 
             MOZ_RELEASE_ASSERT(JSJitFrameIter::isEntry(frames.type()),

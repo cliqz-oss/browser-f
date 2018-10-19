@@ -11,7 +11,6 @@
 #include <cstdlib>
 #include <stdio.h>
 #include "prio.h"
-#include "nsExceptionHandler.h"
 #include "nsNPAPIPlugin.h"
 #include "nsNPAPIPluginStreamListener.h"
 #include "nsNPAPIPluginInstance.h"
@@ -50,6 +49,7 @@
 #include "nsIWritablePropertyBag2.h"
 #include "nsICategoryManager.h"
 #include "nsPluginStreamListenerPeer.h"
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/Element.h"
@@ -96,7 +96,6 @@
 #include "nsIImageLoadingContent.h"
 #include "mozilla/Preferences.h"
 #include "nsVersionComparator.h"
-#include "NullPrincipal.h"
 
 #include "mozilla/dom/Promise.h"
 
@@ -790,7 +789,13 @@ nsPluginHost::InstantiatePluginInstance(const nsACString& aMimeType, nsIURI* aUR
 #endif
 
   if (aMimeType.IsEmpty()) {
-    NS_NOTREACHED("Attempting to spawn a plugin with no mime type");
+    MOZ_ASSERT_UNREACHABLE("Attempting to spawn a plugin with no mime type");
+    return NS_ERROR_FAILURE;
+  }
+
+  // Plugins are not supported when recording or replaying executions.
+  // See bug 1483232.
+  if (recordreplay::IsRecordingOrReplaying()) {
     return NS_ERROR_FAILURE;
   }
 
@@ -1160,8 +1165,6 @@ nsPluginHost::GetPluginTags(uint32_t* aPluginCount, nsIPluginTag*** aResults)
 
   *aResults = static_cast<nsIPluginTag**>
                          (moz_xmalloc((fakeCount + count) * sizeof(**aResults)));
-  if (!*aResults)
-    return NS_ERROR_OUT_OF_MEMORY;
 
   *aPluginCount = count + fakeCount;
 
@@ -2771,16 +2774,15 @@ nsPluginHost::RegisterWithCategoryManager(const nsCString& aMimeType,
     return;
   }
 
-  const char *contractId =
-    "@mozilla.org/content/plugin/document-loader-factory;1";
+  NS_NAMED_LITERAL_CSTRING(contractId,
+                           "@mozilla.org/content/plugin/document-loader-factory;1");
 
   if (aType == ePluginRegister) {
     catMan->AddCategoryEntry("Gecko-Content-Viewers",
-                             aMimeType.get(),
+                             aMimeType,
                              contractId,
                              false, /* persist: broken by bug 193031 */
-                             mOverrideInternalTypes,
-                             nullptr);
+                             mOverrideInternalTypes);
   } else {
     if (aType == ePluginMaybeUnregister) {
       // Bail out if this type is still used by an enabled plugin
@@ -2794,12 +2796,10 @@ nsPluginHost::RegisterWithCategoryManager(const nsCString& aMimeType,
     // Only delete the entry if a plugin registered for it
     nsCString value;
     nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers",
-                                           aMimeType.get(),
-                                           getter_Copies(value));
-    if (NS_SUCCEEDED(rv) && strcmp(value.get(), contractId) == 0) {
+                                           aMimeType, value);
+    if (NS_SUCCEEDED(rv) && value == contractId) {
       catMan->DeleteCategoryEntry("Gecko-Content-Viewers",
-                                  aMimeType.get(),
-                                  true);
+                                  aMimeType, true);
     }
   }
 }
@@ -3641,8 +3641,7 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     int cntSingleLF = singleLF.Length();
     newBufferLen += cntSingleLF;
 
-    if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
-      return NS_ERROR_OUT_OF_MEMORY;
+    *outPostData = p = (char*)moz_xmalloc(newBufferLen);
 
     // deal with single LF
     const char *s = inPostData;
@@ -3670,8 +3669,7 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     // to keep ContentLenHeader+value followed by data
     uint32_t l = sizeof(ContentLenHeader) + sizeof(CRLFCRLF) + 32;
     newBufferLen = dataLen + l;
-    if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
-      return NS_ERROR_OUT_OF_MEMORY;
+    *outPostData = p = (char*)moz_xmalloc(newBufferLen);
     headersLen = snprintf(p, l,"%s: %u%s", ContentLenHeader, dataLen, CRLFCRLF);
     if (headersLen == l) { // if snprintf has ate all extra space consider this as an error
       free(p);

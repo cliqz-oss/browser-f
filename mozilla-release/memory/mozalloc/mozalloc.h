@@ -72,6 +72,17 @@ MFBT_API void* moz_xrealloc(void* ptr, size_t size)
 MFBT_API char* moz_xstrdup(const char* str)
     MOZ_ALLOCATOR;
 
+#if defined(HAVE_STRNDUP)
+MFBT_API char* moz_xstrndup(const char* str, size_t strsize)
+    MOZ_ALLOCATOR;
+#endif /* if defined(HAVE_STRNDUP) */
+
+MFBT_API void* moz_xmemdup(const void* ptr, size_t size)
+    MOZ_ALLOCATOR;
+
+MFBT_API void* moz_xmemalign(size_t boundary, size_t size)
+    MOZ_ALLOCATOR;
+
 MFBT_API size_t moz_malloc_usable_size(void *ptr);
 
 MFBT_API size_t moz_malloc_size_of(const void *ptr);
@@ -81,14 +92,6 @@ MFBT_API size_t moz_malloc_size_of(const void *ptr);
  * pointers into the middle of a live allocation.
  */
 MFBT_API size_t moz_malloc_enclosing_size_of(const void *ptr);
-
-#if defined(HAVE_STRNDUP)
-MFBT_API char* moz_xstrndup(const char* str, size_t strsize)
-    MOZ_ALLOCATOR;
-#endif /* if defined(HAVE_STRNDUP) */
-
-MFBT_API void* moz_xmemalign(size_t boundary, size_t size)
-    MOZ_ALLOCATOR;
 
 MOZ_END_EXTERN_C
 
@@ -106,11 +109,11 @@ MOZ_END_EXTERN_C
  *
  *   (1) the matching infallible operator delete immediately below
  *   (2) the matching system |operator delete(void*, std::nothrow)|
- *   (3) the matching system |operator delete(void*) throw(std::bad_alloc)|
+ *   (3) the matching system |operator delete(void*) noexcept(false)|
  *
- * NB: these are declared |throw(std::bad_alloc)|, though they will never
+ * NB: these are declared |noexcept(false)|, though they will never
  * throw that exception.  This declaration is consistent with the rule
- * that |::operator new() throw(std::bad_alloc)| will never return NULL.
+ * that |::operator new() noexcept(false)| will never return NULL.
  *
  * NB: mozilla::fallible can be used instead of std::nothrow.
  */
@@ -124,26 +127,6 @@ MOZ_END_EXTERN_C
 #  define MOZALLOC_EXPORT_NEW
 #endif
 
-#if defined(_MSC_VER)
-/*
- * Suppress build warning spam (bug 578546).
- */
-#if _MSC_VER < 1912
-#define MOZALLOC_THROW_IF_HAS_EXCEPTIONS
-#else
-#define MOZALLOC_THROW_IF_HAS_EXCEPTIONS throw()
-#endif
-#define MOZALLOC_THROW_BAD_ALLOC_IF_HAS_EXCEPTIONS
-#else
-/*
- * C++11 has deprecated exception-specifications in favour of |noexcept|.
- */
-#define MOZALLOC_THROW_IF_HAS_EXCEPTIONS noexcept(true)
-#define MOZALLOC_THROW_BAD_ALLOC_IF_HAS_EXCEPTIONS noexcept(false)
-#endif
-
-#define MOZALLOC_THROW_BAD_ALLOC MOZALLOC_THROW_BAD_ALLOC_IF_HAS_EXCEPTIONS
-
 MOZALLOC_EXPORT_NEW
 #if defined(__GNUC__) && !defined(__clang__) && defined(__SANITIZE_ADDRESS__)
 /* gcc's asan somehow doesn't like always_inline on this function. */
@@ -151,49 +134,49 @@ __attribute__((gnu_inline)) inline
 #else
 MOZ_ALWAYS_INLINE_EVEN_DEBUG
 #endif
-void* operator new(size_t size) MOZALLOC_THROW_BAD_ALLOC
+void* operator new(size_t size) noexcept(false)
 {
     return moz_xmalloc(size);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void* operator new(size_t size, const std::nothrow_t&) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void* operator new(size_t size, const std::nothrow_t&) noexcept(true)
 {
     return malloc_impl(size);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void* operator new[](size_t size) MOZALLOC_THROW_BAD_ALLOC
+void* operator new[](size_t size) noexcept(false)
 {
     return moz_xmalloc(size);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void* operator new[](size_t size, const std::nothrow_t&) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void* operator new[](size_t size, const std::nothrow_t&) noexcept(true)
 {
     return malloc_impl(size);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void operator delete(void* ptr) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void operator delete(void* ptr) noexcept(true)
 {
     return free_impl(ptr);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void operator delete(void* ptr, const std::nothrow_t&) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void operator delete(void* ptr, const std::nothrow_t&) noexcept(true)
 {
     return free_impl(ptr);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void operator delete[](void* ptr) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void operator delete[](void* ptr) noexcept(true)
 {
     return free_impl(ptr);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void operator delete[](void* ptr, const std::nothrow_t&) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void operator delete[](void* ptr, const std::nothrow_t&) noexcept(true)
 {
     return free_impl(ptr);
 }
@@ -202,13 +185,13 @@ void operator delete[](void* ptr, const std::nothrow_t&) MOZALLOC_THROW_IF_HAS_E
 // We provide the global sized delete overloads unconditionally because the
 // MSVC runtime headers do, despite compiling with /Zc:sizedDealloc-
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void operator delete(void* ptr, size_t /*size*/) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void operator delete(void* ptr, size_t /*size*/) noexcept(true)
 {
     return free_impl(ptr);
 }
 
 MOZALLOC_EXPORT_NEW MOZ_ALWAYS_INLINE_EVEN_DEBUG
-void operator delete[](void* ptr, size_t /*size*/) MOZALLOC_THROW_IF_HAS_EXCEPTIONS
+void operator delete[](void* ptr, size_t /*size*/) noexcept(true)
 {
     return free_impl(ptr);
 }
@@ -264,7 +247,8 @@ public:
         return static_cast<T*>(moz_xrealloc(aPtr, aNewSize * sizeof(T)));
     }
 
-    void free_(void* aPtr)
+    template <typename T>
+    void free_(T* aPtr, size_t aNumElems = 0)
     {
         free_impl(aPtr);
     }

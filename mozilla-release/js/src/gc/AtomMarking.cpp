@@ -15,7 +15,7 @@
 namespace js {
 namespace gc {
 
-// Atom Marking Overview
+// [SMDOC] GC Atom Marking
 //
 // Things in the atoms zone (which includes atomized strings and other things,
 // all of which we will refer to as 'atoms' here) may be pointed to freely by
@@ -219,7 +219,7 @@ AtomMarkingRuntime::atomIsMarked(Zone* zone, T* thing)
     MOZ_ASSERT(!IsInsideNursery(thing));
     MOZ_ASSERT(thing->zoneFromAnyThread()->isAtomsZone());
 
-    if (!zone->runtimeFromAnyThread()->permanentAtoms)
+    if (!zone->runtimeFromAnyThread()->permanentAtomsPopulated())
         return true;
 
     if (ThingIsPermanent(thing))

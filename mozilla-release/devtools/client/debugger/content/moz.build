@@ -6,6 +6,7 @@
 DIRS += [
     'actions',
     'reducers',
+    'tooltip',
     'views',
 ]
 

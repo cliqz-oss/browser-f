@@ -15,6 +15,9 @@
 #include "tls_filter.h"
 #include "tls_parser.h"
 
+// This is an internal header, used to get DTLS_1_3_DRAFT_VERSION.
+#include "ssl3prot.h"
+
 extern "C" {
 // This is not something that should make you happy.
 #include "libssl_internals.h"
@@ -53,7 +56,7 @@ static const uint8_t kCannedTls13ServerHello[] = {
     0x00, 0x1d, 0x00, 0x20, 0xc2, 0xcf, 0x23, 0x17, 0x64, 0x23, 0x03,
     0xf0, 0xfb, 0x45, 0x98, 0x26, 0xd1, 0x65, 0x24, 0xa1, 0x6c, 0xa9,
     0x80, 0x8f, 0x2c, 0xac, 0x0a, 0xea, 0x53, 0x3a, 0xcb, 0xe3, 0x08,
-    0x84, 0xae, 0x19, 0x00, 0x2b, 0x00, 0x02, 0x7f, kD13};
+    0x84, 0xae, 0x19, 0x00, 0x2b, 0x00, 0x02, 0x03, 0x04};
 
 TlsAgent::TlsAgent(const std::string& nm, Role rl, SSLProtocolVariant var)
     : name_(nm),
@@ -583,6 +586,7 @@ void TlsAgent::CheckAuthType(SSLAuthType auth,
   // switch statement because default label is different.
   switch (auth) {
     case ssl_auth_rsa_sign:
+    case ssl_auth_rsa_pss:
       EXPECT_EQ(ssl_auth_rsa_decrypt, csinfo_.authAlgorithm)
           << "authAlgorithm for RSA is always decrypt";
       break;
@@ -975,7 +979,7 @@ bool TlsAgent::SendEncryptedRecord(const std::shared_ptr<TlsCipherSpec>& spec,
   LOGV("Encrypting " << buf.len() << " bytes");
   // Ensure that we are doing TLS 1.3.
   EXPECT_GE(expected_version_, SSL_LIBRARY_VERSION_TLS_1_3);
-  TlsRecordHeader header(variant_, expected_version_, kTlsApplicationDataType,
+  TlsRecordHeader header(variant_, expected_version_, ssl_ct_application_data,
                          seq);
   DataBuffer padded = buf;
   padded.Write(padded.len(), ct, 1);
@@ -1104,7 +1108,7 @@ void TlsAgentTestBase::MakeRecord(SSLProtocolVariant variant, uint8_t type,
   if (variant == ssl_variant_stream) {
     index = out->Write(index, version, 2);
   } else if (version >= SSL_LIBRARY_VERSION_TLS_1_3 &&
-             type == kTlsApplicationDataType) {
+             type == ssl_ct_application_data) {
     uint32_t epoch = (sequence_number >> 48) & 0x3;
     uint32_t seqno = sequence_number & ((1ULL << 30) - 1);
     index = out->Write(index, (epoch << 30) | seqno, 4);
@@ -1157,10 +1161,10 @@ void TlsAgentTestBase::MakeTrivialHandshakeRecord(uint8_t hs_type,
                                                   size_t hs_len,
                                                   DataBuffer* out) {
   size_t index = 0;
-  index = out->Write(index, kTlsHandshakeType, 1);  // Content Type
-  index = out->Write(index, 3, 1);                  // Version high
-  index = out->Write(index, 1, 1);                  // Version low
-  index = out->Write(index, 4 + hs_len, 2);         // Length
+  index = out->Write(index, ssl_ct_handshake, 1);  // Content Type
+  index = out->Write(index, 3, 1);                 // Version high
+  index = out->Write(index, 1, 1);                 // Version low
+  index = out->Write(index, 4 + hs_len, 2);        // Length
 
   index = out->Write(index, hs_type, 1);  // Handshake record type.
   index = out->Write(index, hs_len, 3);   // Handshake length
@@ -1173,6 +1177,11 @@ DataBuffer TlsAgentTestBase::MakeCannedTls13ServerHello() {
   DataBuffer sh(kCannedTls13ServerHello, sizeof(kCannedTls13ServerHello));
   if (variant_ == ssl_variant_datagram) {
     sh.Write(0, SSL_LIBRARY_VERSION_DTLS_1_2_WIRE, 2);
+    // The version should be at the end.
+    uint32_t v;
+    EXPECT_TRUE(sh.Read(sh.len() - 2, 2, &v));
+    EXPECT_EQ(static_cast<uint32_t>(SSL_LIBRARY_VERSION_TLS_1_3), v);
+    sh.Write(sh.len() - 2, 0x7f00 | DTLS_1_3_DRAFT_VERSION, 2);
   }
   return sh;
 }

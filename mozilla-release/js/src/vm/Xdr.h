@@ -10,9 +10,12 @@
 #include "mozilla/EndianUtils.h"
 #include "mozilla/TypeTraits.h"
 
+#include "jsapi.h"
 #include "jsfriendapi.h"
 #include "NamespaceImports.h"
 
+#include "js/CompileOptions.h"
+#include "js/Transcoding.h"
 #include "js/TypeDecls.h"
 #include "vm/JSAtom.h"
 
@@ -252,7 +255,7 @@ class XDRState : public XDRCoderBase
     virtual LifoAlloc& lifoAlloc() const;
 
     virtual bool hasOptions() const { return false; }
-    virtual const ReadOnlyCompileOptions& options() {
+    virtual const JS::ReadOnlyCompileOptions& options() {
         MOZ_CRASH("does not have options");
     }
     virtual bool hasScriptSourceObjectOut() const { return false; }
@@ -475,7 +478,7 @@ using XDRDecoder = XDRState<XDR_DECODE>;
 
 class XDROffThreadDecoder : public XDRDecoder
 {
-    const ReadOnlyCompileOptions* options_;
+    const JS::ReadOnlyCompileOptions* options_;
     ScriptSourceObject** sourceObjectOut_;
     LifoAlloc& alloc_;
 
@@ -489,7 +492,7 @@ class XDROffThreadDecoder : public XDRDecoder
     // When providing a sourceObjectOut pointer, you have to ensure that it is
     // marked by the GC to avoid dangling pointers.
     XDROffThreadDecoder(JSContext* cx, LifoAlloc& alloc,
-                        const ReadOnlyCompileOptions* options,
+                        const JS::ReadOnlyCompileOptions* options,
                         ScriptSourceObject** sourceObjectOut,
                         const JS::TranscodeRange& range)
       : XDRDecoder(cx, range),
@@ -507,7 +510,7 @@ class XDROffThreadDecoder : public XDRDecoder
     }
 
     bool hasOptions() const override { return true; }
-    const ReadOnlyCompileOptions& options() override {
+    const JS::ReadOnlyCompileOptions& options() override {
         return *options_;
     }
     bool hasScriptSourceObjectOut() const override { return true; }
@@ -594,8 +597,6 @@ class XDRIncrementalEncoder : public XDREncoder
 
     AutoXDRTree::Key getTopLevelTreeKey() const override;
     AutoXDRTree::Key getTreeKey(JSFunction* fun) const override;
-
-    MOZ_MUST_USE bool init();
 
     void createOrReplaceSubTree(AutoXDRTree* child) override;
     void endSubTree() override;

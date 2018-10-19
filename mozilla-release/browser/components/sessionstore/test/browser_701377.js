@@ -3,7 +3,7 @@
 
 var state = {windows: [{tabs: [
   {entries: [{url: "http://example.com#1", triggeringPrincipal_base64}]},
-  {entries: [{url: "http://example.com#2", triggeringPrincipal_base64}], hidden: true}
+  {entries: [{url: "http://example.com#2", triggeringPrincipal_base64}], hidden: true},
 ]}]};
 
 function test() {
@@ -30,7 +30,7 @@ function test() {
 // ----------
 function newWindowWithState(aState, aCallback) {
   let opts = "chrome,all,dialog=no,height=800,width=800";
-  let win = window.openDialog(getBrowserURL(), "_blank", opts);
+  let win = window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank", opts);
 
   registerCleanupFunction(() => BrowserTestUtils.closeWindow(win));
 

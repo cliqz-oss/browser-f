@@ -13,6 +13,7 @@
 #include "jsexn.h"
 #include "jsfriendapi.h"
 
+#include "vm/GlobalObject.h"
 #include "vm/JSContext.h"
 
 #include "vm/JSContext-inl.h"
@@ -51,6 +52,13 @@ js::CompileError::throwError(JSContext* cx)
     // returns false, the top-level reporter will eventually receive the
     // uncaught exception report.
     ErrorToException(cx, this, nullptr, nullptr);
+}
+
+bool
+js::ReportExceptionClosure::operator()(JSContext* cx)
+{
+    cx->setPendingException(exn_);
+    return false;
 }
 
 bool
@@ -123,31 +131,8 @@ js::ReportCompileError(JSContext* cx, ErrorMetadata&& metadata, UniquePtr<JSErro
         err->throwError(cx);
 }
 
-namespace {
-
-class MOZ_STACK_CLASS ReportExceptionClosure
-  : public js::ScriptEnvironmentPreparer::Closure
-{
-  public:
-    explicit ReportExceptionClosure(HandleValue& exn)
-      : exn_(exn)
-    {
-    }
-
-    bool operator()(JSContext* cx) override
-    {
-        cx->setPendingException(exn_);
-        return false;
-    }
-
-  private:
-    HandleValue& exn_;
-};
-
-} // anonymous namespace
-
 void
-js::ReportErrorToGlobal(JSContext* cx, HandleObject global, HandleValue error)
+js::ReportErrorToGlobal(JSContext* cx, Handle<GlobalObject*> global, HandleValue error)
 {
     MOZ_ASSERT(!cx->isExceptionPending());
 #ifdef DEBUG
@@ -156,6 +141,6 @@ js::ReportErrorToGlobal(JSContext* cx, HandleObject global, HandleValue error)
         AssertSameCompartment(global, &error.toObject());
     }
 #endif // DEBUG
-    ReportExceptionClosure report(error);
+    js::ReportExceptionClosure report(error);
     PrepareScriptEnvironmentAndInvoke(cx, global, report);
 }

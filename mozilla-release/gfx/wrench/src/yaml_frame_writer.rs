@@ -228,6 +228,7 @@ fn write_stacking_context(
     let mut filters = vec![];
     for filter in filter_iter {
         match filter {
+            FilterOp::Identity => { filters.push(Yaml::String("identity".into())) }
             FilterOp::Blur(x) => { filters.push(Yaml::String(format!("blur({})", x))) }
             FilterOp::Brightness(x) => { filters.push(Yaml::String(format!("brightness({})", x))) }
             FilterOp::Contrast(x) => { filters.push(Yaml::String(format!("contrast({})", x))) }
@@ -590,6 +591,7 @@ impl YamlFrameWriter {
                     );
                 }
                 ResourceUpdate::DeleteFontInstance(_) => {}
+                ResourceUpdate::SetImageVisibleArea(..) => {}
             }
         }
     }
@@ -885,13 +887,34 @@ impl YamlFrameWriter {
                                 details.outset.left,
                             ];
                             yaml_node(&mut v, "width", f32_vec_yaml(&widths, true));
-                            str_node(&mut v, "border-type", "image");
 
                             match details.source {
                                 NinePatchBorderSource::Image(image_key) => {
+                                    str_node(&mut v, "border-type", "image");
                                     if let Some(path) = self.path_for_image(image_key) {
                                         path_node(&mut v, "image", &path);
                                     }
+                                }
+                                NinePatchBorderSource::Gradient(gradient) => {
+                                    str_node(&mut v, "gradient", "image");
+                                    point_node(&mut v, "start", &gradient.start_point);
+                                    point_node(&mut v, "end", &gradient.end_point);
+                                    let mut stops = vec![];
+                                    for stop in display_list.get(base.gradient_stops()) {
+                                        stops.push(Yaml::Real(stop.offset.to_string()));
+                                        stops.push(Yaml::String(color_to_string(stop.color)));
+                                    }
+                                    yaml_node(&mut v, "stops", Yaml::Array(stops));
+                                    bool_node(&mut v, "repeat", gradient.extend_mode == ExtendMode::Repeat);
+                                }
+                                NinePatchBorderSource::RadialGradient(gradient) => {
+                                    str_node(&mut v, "border-type", "radial-gradient");
+                                    radial_gradient_to_yaml(
+                                        &mut v,
+                                        &gradient,
+                                        base.gradient_stops(),
+                                        display_list
+                                    );
                                 }
                             }
 
@@ -923,59 +946,6 @@ impl YamlFrameWriter {
                                 RepeatMode::Round => str_node(&mut v, "repeat-vertical", "round"),
                                 RepeatMode::Space => str_node(&mut v, "repeat-vertical", "space"),
                             };
-                        }
-                        BorderDetails::Gradient(ref details) => {
-                            let widths: Vec<f32> = vec![
-                                item.widths.top,
-                                item.widths.right,
-                                item.widths.bottom,
-                                item.widths.left,
-                            ];
-                            let outset: Vec<f32> = vec![
-                                details.outset.top,
-                                details.outset.right,
-                                details.outset.bottom,
-                                details.outset.left,
-                            ];
-                            yaml_node(&mut v, "width", f32_vec_yaml(&widths, true));
-                            str_node(&mut v, "border-type", "gradient");
-                            point_node(&mut v, "start", &details.gradient.start_point);
-                            point_node(&mut v, "end", &details.gradient.end_point);
-                            let mut stops = vec![];
-                            for stop in display_list.get(base.gradient_stops()) {
-                                stops.push(Yaml::Real(stop.offset.to_string()));
-                                stops.push(Yaml::String(color_to_string(stop.color)));
-                            }
-                            yaml_node(&mut v, "stops", Yaml::Array(stops));
-                            bool_node(
-                                &mut v,
-                                "repeat",
-                                details.gradient.extend_mode == ExtendMode::Repeat,
-                            );
-                            yaml_node(&mut v, "outset", f32_vec_yaml(&outset, true));
-                        }
-                        BorderDetails::RadialGradient(ref details) => {
-                            let widths: Vec<f32> = vec![
-                                item.widths.top,
-                                item.widths.right,
-                                item.widths.bottom,
-                                item.widths.left,
-                            ];
-                            let outset: Vec<f32> = vec![
-                                details.outset.top,
-                                details.outset.right,
-                                details.outset.bottom,
-                                details.outset.left,
-                            ];
-                            yaml_node(&mut v, "width", f32_vec_yaml(&widths, true));
-                            str_node(&mut v, "border-type", "radial-gradient");
-                            yaml_node(&mut v, "outset", f32_vec_yaml(&outset, true));
-                            radial_gradient_to_yaml(
-                                &mut v,
-                                &details.gradient,
-                                base.gradient_stops(),
-                                display_list
-                            );
                         }
                     }
                 }

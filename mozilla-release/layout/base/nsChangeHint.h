@@ -222,14 +222,16 @@ enum nsChangeHint : uint32_t {
   nsChangeHint_AddOrRemoveTransform = 1 << 27,
 
   /**
-   * Indicates that the overflow-x and/or overflow-y property changed.
+   * Indicates that the presence of scrollbars might have changed.
+   *
+   * This happens when at least one of overflow-{x,y} properties changed.
    *
    * In most cases, this is equivalent to nsChangeHint_ReconstructFrame. But
    * in some special cases where the change is really targeting the viewport's
    * scrollframe, this is instead equivalent to nsChangeHint_AllReflowHints
    * (because the viewport always has an associated scrollframe).
    */
-  nsChangeHint_CSSOverflowChange = 1 << 28,
+  nsChangeHint_ScrollbarChange = 1 << 28,
 
   /**
    * Indicates that nsIFrame::UpdateWidgetProperties needs to be called.
@@ -356,7 +358,7 @@ inline nsChangeHint operator^=(nsChangeHint& aLeft, nsChangeHint aRight)
 #define nsChangeHint_Hints_NeverHandledForDescendants (    \
   nsChangeHint_BorderStyleNoneChange |                     \
   nsChangeHint_ChildrenOnlyTransform |                     \
-  nsChangeHint_CSSOverflowChange |                         \
+  nsChangeHint_ScrollbarChange |                           \
   nsChangeHint_InvalidateRenderingObservers |              \
   nsChangeHint_RecomputePosition |                         \
   nsChangeHint_UpdateBackgroundPosition |                  \
@@ -461,10 +463,27 @@ static_assert(!(nsChangeHint_Hints_AlwaysHandledForDescendants &
                nsChangeHint_NeutralChange |                \
                nsChangeHint_UpdateOpacityLayer |           \
                nsChangeHint_AddOrRemoveTransform |         \
+               nsChangeHint_UpdateContainingBlock |        \
+               nsChangeHint_UpdateOverflow |               \
                nsChangeHint_UpdatePostTransformOverflow  | \
                nsChangeHint_UpdateTransformLayer |         \
                nsChangeHint_UpdateUsesOpacity |            \
                nsChangeHint_VisibilityChange)
+
+// Change hints for added or removed transform style.
+//
+// If we've added or removed the transform property, we need to reconstruct the
+// frame to add or remove the view object, and also to handle abs-pos and
+// fixed-pos containers.
+//
+// We do not need to apply nsChangeHint_UpdateTransformLayer since
+// nsChangeHint_RepaintFrame will forcibly invalidate the frame area and
+// ensure layers are rebuilt (or removed).
+#define nsChangeHint_ComprehensiveAddOrRemoveTransform \
+  nsChangeHint(nsChangeHint_UpdateContainingBlock |    \
+               nsChangeHint_AddOrRemoveTransform |     \
+               nsChangeHint_UpdateOverflow |           \
+               nsChangeHint_RepaintFrame)
 
 // NB: Once we drop support for the old style system, this logic should be
 // inlined in the Servo style system to eliminate the FFI call.

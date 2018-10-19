@@ -32,10 +32,6 @@
 #include <mmsystem.h>
 #include <process.h>
 
-#ifdef __MINGW32__
-#include <immintrin.h> // for _mm_pause
-#endif
-
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/StackWalk_windows.h"
 #include "mozilla/WindowsVersion.h"
@@ -66,6 +62,10 @@ PopulateRegsFromContext(Registers& aRegs, CONTEXT* aContext)
   aRegs.mPC = reinterpret_cast<Address>(aContext->Eip);
   aRegs.mSP = reinterpret_cast<Address>(aContext->Esp);
   aRegs.mFP = reinterpret_cast<Address>(aContext->Ebp);
+#elif defined(GP_ARCH_arm64)
+  aRegs.mPC = reinterpret_cast<Address>(aContext->Pc);
+  aRegs.mSP = reinterpret_cast<Address>(aContext->Sp);
+  aRegs.mFP = reinterpret_cast<Address>(aContext->Fp);
 #else
  #error "bad arch"
 #endif
@@ -258,7 +258,7 @@ SamplerThread::SleepMicro(uint32_t aMicroseconds)
 
     // Then, spin until enough time has passed.
     while (TimeStamp::Now() < end) {
-      _mm_pause();
+      YieldProcessor();
     }
   }
 }
@@ -303,7 +303,8 @@ Registers::SyncPopulate()
 static WindowsDllInterceptor NtDllIntercept;
 
 typedef NTSTATUS (NTAPI *LdrUnloadDll_func)(HMODULE module);
-static LdrUnloadDll_func stub_LdrUnloadDll;
+static WindowsDllInterceptor::FuncHookType<LdrUnloadDll_func>
+  stub_LdrUnloadDll;
 
 static NTSTATUS NTAPI
 patched_LdrUnloadDll(HMODULE module)
@@ -318,7 +319,8 @@ patched_LdrUnloadDll(HMODULE module)
 typedef PVOID (WINAPI *LdrResolveDelayLoadedAPI_func)(PVOID ParentModuleBase,
   PVOID DelayloadDescriptor, PVOID FailureDllHook, PVOID FailureSystemHook,
   PVOID ThunkAddress, ULONG Flags);
-static LdrResolveDelayLoadedAPI_func stub_LdrResolveDelayLoadedAPI;
+static WindowsDllInterceptor::FuncHookType<LdrResolveDelayLoadedAPI_func>
+  stub_LdrResolveDelayLoadedAPI;
 
 static PVOID WINAPI
 patched_LdrResolveDelayLoadedAPI(PVOID ParentModuleBase,
@@ -336,20 +338,12 @@ patched_LdrResolveDelayLoadedAPI(PVOID ParentModuleBase,
 void
 InitializeWin64ProfilerHooks()
 {
-  static bool initialized = false;
-  if (initialized) {
-    return;
-  }
-  initialized = true;
-
   NtDllIntercept.Init("ntdll.dll");
-  NtDllIntercept.AddHook("LdrUnloadDll",
-                         reinterpret_cast<intptr_t>(patched_LdrUnloadDll),
-                         (void**)&stub_LdrUnloadDll);
+  stub_LdrUnloadDll.Set(NtDllIntercept, "LdrUnloadDll", &patched_LdrUnloadDll);
   if (IsWin8OrLater()) { // LdrResolveDelayLoadedAPI was introduced in Win8
-    NtDllIntercept.AddHook("LdrResolveDelayLoadedAPI",
-                           reinterpret_cast<intptr_t>(patched_LdrResolveDelayLoadedAPI),
-                           (void**)&stub_LdrResolveDelayLoadedAPI);
+    stub_LdrResolveDelayLoadedAPI.Set(NtDllIntercept,
+                                      "LdrResolveDelayLoadedAPI",
+                                      &patched_LdrResolveDelayLoadedAPI);
   }
 }
 #endif // defined(GP_PLAT_amd64_windows)

@@ -41,9 +41,6 @@ var EXPORTED_SYMBOLS = ["PlacesTransactions"];
  * GUIDs, both for input (e.g. for setting the parent folder for a new bookmark)
  * and for output (when the GUID for such a bookmark is propagated).
  *
- * When working in conjugation with older Places API which only expose item ids,
- * use PlacesUtils.promiseItemGuid for converting those to GUIDs (note that
- * for result nodes, the guid is available through their bookmarkGuid getter).
  * Should you need to convert GUIDs to item-ids, use PlacesUtils.promiseItemId.
  *
  * Constructing transactions
@@ -225,7 +222,7 @@ class TransactionsHistoryArray extends Array {
     let proxy = Object.freeze({
       transact() {
         return TransactionsManager.transact(this);
-      }
+      },
     });
     this.proxifiedToRaw.set(proxy, rawTransaction);
     return proxy;
@@ -431,7 +428,7 @@ var PlacesTransactions = {
    */
   get topRedoEntry() {
     return TransactionsHistory.topRedoEntry;
-  }
+  },
 };
 
 /**
@@ -501,7 +498,7 @@ Enqueuer.prototype = {
    */
   get promise() {
     return this._promise;
-  }
+  },
 };
 
 var TransactionsManager = {
@@ -659,7 +656,7 @@ var TransactionsManager = {
     } catch (ex) {
       console.error(ex, "Couldn't update undo commands.");
     }
-  }
+  },
 };
 
 /**
@@ -785,7 +782,7 @@ DefineTransaction.defineInputProps = function(names, validateFn, defaultValue) {
         return this.validateValue(input[name]);
       },
 
-      isArrayProperty: false
+      isArrayProperty: false,
     });
   }
 };
@@ -842,7 +839,7 @@ DefineTransaction.defineArrayInputProp = function(name, basePropertyName) {
       return [];
     },
 
-    isArrayProperty: true
+    isArrayProperty: true,
   });
 };
 
@@ -1110,7 +1107,7 @@ PT.NewBookmark.prototype = Object.seal({
       await createItem();
     };
     return info.guid;
-  }
+  },
 });
 
 /**
@@ -1177,7 +1174,7 @@ PT.NewFolder.prototype = Object.seal({
       await createItem();
     };
     return folderGuid;
-  }
+  },
 });
 
 /**
@@ -1197,7 +1194,7 @@ PT.NewSeparator.prototype = Object.seal({
     this.undo = PlacesUtils.bookmarks.remove.bind(PlacesUtils.bookmarks, info);
     this.redo = PlacesUtils.bookmarks.insert.bind(PlacesUtils.bookmarks, info);
     return info.guid;
-  }
+  },
 });
 
 /**
@@ -1240,7 +1237,7 @@ PT.NewLivemark.prototype = Object.seal({
       livemark = await createItem();
     };
     return livemark.guid;
-  }
+  },
 });
 
 /**
@@ -1277,7 +1274,7 @@ PT.Move.prototype = Object.seal({
     };
     this.redo = PlacesUtils.bookmarks.moveToFolder.bind(PlacesUtils.bookmarks, guids, newParentGuid, index);
     return guids;
-  }
+  },
 });
 
 /**
@@ -1297,7 +1294,7 @@ PT.EditTitle.prototype = Object.seal({
 
     this.undo = PlacesUtils.bookmarks.update.bind(PlacesUtils.bookmarks, originalInfo);
     this.redo = PlacesUtils.bookmarks.update.bind(PlacesUtils.bookmarks, updateInfo);
-  }
+  },
 });
 
 /**
@@ -1351,50 +1348,8 @@ PT.EditUrl.prototype = Object.seal({
     this.redo = async function() {
       updatedInfo = await updateItem();
     };
-  }
+  },
 });
-
-/**
- * Transaction for setting annotations for an item.
- *
- * Required Input Properties: guid, annotationObject
- */
-PT.Annotate = DefineTransaction(["guids", "annotations"]);
-PT.Annotate.prototype = {
-  async execute({ guids, annotations }) {
-    let undoAnnosForItemId = new Map();
-    for (let guid of guids) {
-      let itemId = await PlacesUtils.promiseItemId(guid);
-      let currentAnnos = await PlacesUtils.promiseAnnotationsForItem(itemId);
-
-      let undoAnnos = [];
-      for (let newAnno of annotations) {
-        let currentAnno = currentAnnos.find(a => a.name == newAnno.name);
-        if (currentAnno) {
-          undoAnnos.push(currentAnno);
-        } else {
-          // An unset value removes the annotation.
-          undoAnnos.push({ name: newAnno.name });
-        }
-      }
-      undoAnnosForItemId.set(itemId, undoAnnos);
-
-      PlacesUtils.setAnnotationsForItem(itemId, annotations);
-    }
-
-    this.undo = function() {
-      for (let [itemId, undoAnnos] of undoAnnosForItemId) {
-        PlacesUtils.setAnnotationsForItem(itemId, undoAnnos);
-      }
-    };
-    this.redo = async function() {
-      for (let guid of guids) {
-        let itemId = await PlacesUtils.promiseItemId(guid);
-        PlacesUtils.setAnnotationsForItem(itemId, annotations);
-      }
-    };
-  }
-};
 
 /**
  * Transaction for setting the keyword for a bookmark.
@@ -1421,7 +1376,7 @@ PT.EditKeyword.prototype = Object.seal({
       await PlacesUtils.keywords.insert({
         url,
         keyword,
-        postData: postData || (oldKeywordEntry ? oldKeywordEntry.postData : "")
+        postData: postData || (oldKeywordEntry ? oldKeywordEntry.postData : ""),
       });
     }
 
@@ -1433,7 +1388,7 @@ PT.EditKeyword.prototype = Object.seal({
         await PlacesUtils.keywords.insert(oldKeywordEntry);
       }
     };
-  }
+  },
 });
 
 /**
@@ -1485,7 +1440,7 @@ PT.SortByName.prototype = {
     this.redo = async function() {
       await PlacesUtils.bookmarks.reorder(guid, newOrderGuids);
     };
-  }
+  },
 };
 
 /**
@@ -1532,7 +1487,7 @@ PT.Remove.prototype = {
       }
     };
     this.redo = removeThem;
-  }
+  },
 };
 
 /**
@@ -1580,7 +1535,7 @@ PT.Tag.prototype = {
         await f();
       }
     };
-  }
+  },
 };
 
 /**
@@ -1628,7 +1583,7 @@ PT.Untag.prototype = {
         await f();
       }
     };
-  }
+  },
 };
 
 /**
@@ -1642,8 +1597,10 @@ PT.RenameTag.prototype = {
     // For now this is implemented by untagging and tagging all the bookmarks.
     // We should create a specialized bookmarking API to just rename the tag.
     let onUndo = [], onRedo = [];
-    let urls = PlacesUtils.tagging.getURIsForTag(oldTag);
-    if (urls.length > 0) {
+    let urls = new Set();
+    await PlacesUtils.bookmarks.fetch({tags: [oldTag]}, b => urls.add(b.url));
+    if (urls.size > 0) {
+      urls = Array.from(urls);
       let tagTxn = TransactionsHistory.getRawTransaction(
         PT.Tag({ urls, tags: [tag] })
       );
@@ -1718,7 +1675,7 @@ PT.RenameTag.prototype = {
         await f();
       }
     };
-  }
+  },
 };
 
 /**
@@ -1755,5 +1712,5 @@ PT.Copy.prototype = {
     };
 
     return newItemGuid;
-  }
+  },
 };

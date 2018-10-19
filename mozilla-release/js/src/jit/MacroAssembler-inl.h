@@ -218,6 +218,14 @@ MacroAssembler::callJit(TrampolinePtr code)
     return currentOffset();
 }
 
+uint32_t
+MacroAssembler::callJit(ImmPtr callee)
+{
+    AutoProfilerCallInstrumentation profiler(*this);
+    call(callee);
+    return currentOffset();
+}
+
 void
 MacroAssembler::makeFrameDescriptor(Register frameSizeReg, FrameType type, uint32_t headerSize)
 {
@@ -227,7 +235,7 @@ MacroAssembler::makeFrameDescriptor(Register frameSizeReg, FrameType type, uint3
     lshiftPtr(Imm32(FRAMESIZE_SHIFT), frameSizeReg);
 
     headerSize = EncodeFrameHeaderSize(headerSize);
-    orPtr(Imm32((headerSize << FRAME_HEADER_SIZE_SHIFT) | type), frameSizeReg);
+    orPtr(Imm32((headerSize << FRAME_HEADER_SIZE_SHIFT) | uint32_t(type)), frameSizeReg);
 }
 
 void
@@ -271,7 +279,7 @@ MacroAssembler::buildFakeExitFrame(Register scratch)
 {
     mozilla::DebugOnly<uint32_t> initialDepth = framePushed();
 
-    pushStaticFrameDescriptor(JitFrame_IonJS, ExitFrameLayout::Size());
+    pushStaticFrameDescriptor(FrameType::IonJS, ExitFrameLayout::Size());
     uint32_t retAddr = pushFakeReturnAddress(scratch);
 
     MOZ_ASSERT(framePushed() == initialDepth + ExitFrameLayout::Size());
@@ -637,8 +645,8 @@ MacroAssembler::branchTestNeedsIncrementalBarrier(Condition cond, Label* label)
 {
     MOZ_ASSERT(cond == Zero || cond == NonZero);
     CompileZone* zone = GetJitContext()->realm->zone();
-    AbsoluteAddress needsBarrierAddr(zone->addressOfNeedsIncrementalBarrier());
-    branchTest32(cond, needsBarrierAddr, Imm32(0x1), label);
+    const uint32_t* needsBarrierAddr = zone->addressOfNeedsIncrementalBarrier();
+    branchTest32(cond, AbsoluteAddress(needsBarrierAddr), Imm32(0x1), label);
 }
 
 void

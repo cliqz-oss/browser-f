@@ -12,6 +12,9 @@
 class nsIDocument;
 
 namespace mozilla {
+
+class AutoplayPermissionManager;
+
 namespace dom {
 
 class HTMLMediaElement;
@@ -21,9 +24,9 @@ class AudioContext;
  * AutoplayPolicy is used to manage autoplay logic for all kinds of media,
  * including MediaElement, Web Audio and Web Speech.
  *
- * Autoplay could be disable by turn off the pref "media.autoplay.enabled".
- * Once user disable autoplay, media could only be played if one of following
- * conditions is true.
+ * Autoplay could be disable by setting the pref "media.autoplay.default"
+ * to anything but nsIAutoplay::Allowed. Once user disables autoplay, media
+ * could only be played if one of following conditions is true.
  * 1) Owner document is activated by user gestures
  *    We restrict user gestures to "mouse click", "keyboard press" and "touch".
  * 2) Muted media content or video without audio content.
@@ -32,10 +35,23 @@ class AudioContext;
 class AutoplayPolicy
 {
 public:
-  static bool IsMediaElementAllowedToPlay(NotNull<HTMLMediaElement*> aElement);
+  // Returns whether a given media element is allowed to play.
+  static bool IsAllowedToPlay(const HTMLMediaElement& aElement);
+
+  // Returns true if a given media element would be allowed to play
+  // if block autoplay was enabled. If this returns false, it means we would
+  // either block or ask for permission.
+  // Note: this is for telemetry purposes, and doesn't check the prefs
+  // which enable/disable block autoplay. Do not use for blocking logic!
+  static bool WouldBeAllowedToPlayIfAutoplayDisabled(const HTMLMediaElement& aElement);
+
+  // Returns whether a given AudioContext is allowed to play.
   static bool IsAudioContextAllowedToPlay(NotNull<AudioContext*> aContext);
-private:
-  static bool IsDocumentAllowedToPlay(nsIDocument* aDoc);
+
+  // Returns the AutoplayPermissionManager that a given document must request on
+  // for autoplay permission.
+  static already_AddRefed<AutoplayPermissionManager> RequestFor(
+    const nsIDocument& aDocument);
 };
 
 } // namespace dom

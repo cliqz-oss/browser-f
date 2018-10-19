@@ -5,16 +5,23 @@
  * order to be used as a replacement for UniversalXPConnect
  */
 
-/* import-globals-from specialpowersAPI.js */
-/* globals addMessageListener, removeMessageListener, sendSyncMessage, sendAsyncMessage */
+/* globals bindDOMWindowUtils, SpecialPowersAPI */
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-function SpecialPowers(window) {
+Services.scriptloader.loadSubScript("resource://specialpowers/MozillaLogger.js", this);
+
+var EXPORTED_SYMBOLS = ["SpecialPowers", "attachSpecialPowersToWindow"];
+
+ChromeUtils.import("resource://specialpowers/specialpowersAPI.js", this);
+
+Cu.forcePermissiveCOWs();
+
+function SpecialPowers(window, mm) {
+  this.mm = mm;
+
   this.window = Cu.getWeakReference(window);
-  this._windowID = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIDOMWindowUtils)
-                         .currentInnerWindowID;
+  this._windowID = window.windowUtils.currentInnerWindowID;
   this._encounteredCrashDumpFiles = [];
   this._unexpectedCrashDumpFiles = { };
   this._crashDumpDir = null;
@@ -35,9 +42,7 @@ function SpecialPowers(window) {
                            "SPPrefService",
                            "SPProcessCrashService",
                            "SPSetTestPluginEnabledState",
-                           "SPCleanUpSTSData",
-                           "SPRequestDumpCoverageCounters",
-                           "SPRequestResetCoverageCounters"];
+                           "SPCleanUpSTSData"];
 
   this.SP_ASYNC_MESSAGES = ["SpecialPowers.Focus",
                             "SpecialPowers.Quit",
@@ -48,19 +53,21 @@ function SpecialPowers(window) {
                             "SPProcessCrashManagerWait",
                             "SPStartupExtension",
                             "SPUnloadExtension",
-                            "SPExtensionMessage"];
-  addMessageListener("SPPingService", this._messageListener);
-  addMessageListener("SpecialPowers.FilesCreated", this._messageListener);
-  addMessageListener("SpecialPowers.FilesError", this._messageListener);
+                            "SPExtensionMessage",
+                            "SPRequestDumpCoverageCounters",
+                            "SPRequestResetCoverageCounters"];
+  mm.addMessageListener("SPPingService", this._messageListener);
+  mm.addMessageListener("SpecialPowers.FilesCreated", this._messageListener);
+  mm.addMessageListener("SpecialPowers.FilesError", this._messageListener);
   let self = this;
   Services.obs.addObserver(function onInnerWindowDestroyed(subject, topic, data) {
     var id = subject.QueryInterface(Ci.nsISupportsPRUint64).data;
     if (self._windowID === id) {
       Services.obs.removeObserver(onInnerWindowDestroyed, "inner-window-destroyed");
       try {
-        removeMessageListener("SPPingService", self._messageListener);
-        removeMessageListener("SpecialPowers.FilesCreated", self._messageListener);
-        removeMessageListener("SpecialPowers.FilesError", self._messageListener);
+        mm.removeMessageListener("SPPingService", self._messageListener);
+        mm.removeMessageListener("SpecialPowers.FilesCreated", self._messageListener);
+        mm.removeMessageListener("SpecialPowers.FilesError", self._messageListener);
       } catch (e) {
         // Ignore the exception which the message manager has been destroyed.
         if (e.result != Cr.NS_ERROR_ILLEGAL_VALUE) {
@@ -85,33 +92,34 @@ SpecialPowers.prototype._sendSyncMessage = function(msgname, msg) {
   if (!this.SP_SYNC_MESSAGES.includes(msgname)) {
     dump("TEST-INFO | specialpowers.js |  Unexpected SP message: " + msgname + "\n");
   }
-  return sendSyncMessage(msgname, msg);
+  let result = this.mm.sendSyncMessage(msgname, msg);
+  return Cu.cloneInto(result, this);
 };
 
 SpecialPowers.prototype._sendAsyncMessage = function(msgname, msg) {
   if (!this.SP_ASYNC_MESSAGES.includes(msgname)) {
     dump("TEST-INFO | specialpowers.js |  Unexpected SP message: " + msgname + "\n");
   }
-  sendAsyncMessage(msgname, msg);
+  this.mm.sendAsyncMessage(msgname, msg);
 };
 
 SpecialPowers.prototype._addMessageListener = function(msgname, listener) {
-  addMessageListener(msgname, listener);
-  sendAsyncMessage("SPPAddNestedMessageListener", { name: msgname });
+  this.mm.addMessageListener(msgname, listener);
+  this.mm.sendAsyncMessage("SPPAddNestedMessageListener", { name: msgname });
 };
 
 SpecialPowers.prototype._removeMessageListener = function(msgname, listener) {
-  removeMessageListener(msgname, listener);
+  this.mm.removeMessageListener(msgname, listener);
 };
 
 SpecialPowers.prototype.registerProcessCrashObservers = function() {
-  addMessageListener("SPProcessCrashService", this._messageListener);
-  sendSyncMessage("SPProcessCrashService", { op: "register-observer" });
+  this.mm.addMessageListener("SPProcessCrashService", this._messageListener);
+  this.mm.sendSyncMessage("SPProcessCrashService", { op: "register-observer" });
 };
 
 SpecialPowers.prototype.unregisterProcessCrashObservers = function() {
-  removeMessageListener("SPProcessCrashService", this._messageListener);
-  sendSyncMessage("SPProcessCrashService", { op: "unregister-observer" });
+  this.mm.removeMessageListener("SPProcessCrashService", this._messageListener);
+  this.mm.sendSyncMessage("SPProcessCrashService", { op: "unregister-observer" });
 };
 
 SpecialPowers.prototype._messageReceived = function(aMessage) {
@@ -141,7 +149,7 @@ SpecialPowers.prototype._messageReceived = function(aMessage) {
       this._createFilesOnSuccess = null;
       this._createFilesOnError = null;
       if (createdHandler) {
-        createdHandler(aMessage.data);
+        createdHandler(Cu.cloneInto(aMessage.data, this.mm.content));
       }
       break;
 
@@ -159,7 +167,7 @@ SpecialPowers.prototype._messageReceived = function(aMessage) {
 };
 
 SpecialPowers.prototype.quit = function() {
-  sendAsyncMessage("SpecialPowers.Quit", {});
+  this.mm.sendAsyncMessage("SpecialPowers.Quit", {});
 };
 
 // fileRequests is an array of file requests. Each file request is an object.
@@ -174,18 +182,18 @@ SpecialPowers.prototype.createFiles = function(fileRequests, onCreation, onError
 
   this._createFilesOnSuccess = onCreation;
   this._createFilesOnError = onError;
-  sendAsyncMessage("SpecialPowers.CreateFiles", fileRequests);
+  this.mm.sendAsyncMessage("SpecialPowers.CreateFiles", fileRequests);
 };
 
 // Remove the files that were created using |SpecialPowers.createFiles()|.
 // This will be automatically called by |SimpleTest.finish()|.
 SpecialPowers.prototype.removeFiles = function() {
-  sendAsyncMessage("SpecialPowers.RemoveFiles", {});
+  this.mm.sendAsyncMessage("SpecialPowers.RemoveFiles", {});
 };
 
 SpecialPowers.prototype.executeAfterFlushingMessageQueue = function(aCallback) {
   this._pongHandlers.push(aCallback);
-  sendAsyncMessage("SPPingService", { op: "ping" });
+  this.mm.sendAsyncMessage("SPPingService", { op: "ping" });
 };
 
 SpecialPowers.prototype.nestedFrameSetup = function() {
@@ -217,9 +225,7 @@ SpecialPowers.prototype.nestedFrameSetup = function() {
           });
       });
 
-      mm.loadFrameScript("chrome://specialpowers/content/MozillaLogger.js", false);
-      mm.loadFrameScript("chrome://specialpowers/content/specialpowersAPI.js", false);
-      mm.loadFrameScript("chrome://specialpowers/content/specialpowers.js", false);
+      mm.loadFrameScript("resource://specialpowers/specialpowersFrameScript.js", false);
 
       let frameScript = "SpecialPowers.prototype.IsInNestedFrame=true;";
       mm.loadFrameScript("data:," + frameScript, false);
@@ -234,13 +240,13 @@ SpecialPowers.prototype.isServiceWorkerRegistered = function() {
 };
 
 // Attach our API to the window.
-function attachSpecialPowersToWindow(aWindow) {
+function attachSpecialPowersToWindow(aWindow, mm) {
   try {
     if ((aWindow !== null) &&
         (aWindow !== undefined) &&
         (aWindow.wrappedJSObject) &&
         !(aWindow.wrappedJSObject.SpecialPowers)) {
-      let sp = new SpecialPowers(aWindow);
+      let sp = new SpecialPowers(aWindow, mm);
       aWindow.wrappedJSObject.SpecialPowers = sp;
       if (sp.IsInNestedFrame) {
         sp.addPermission("allowXULXBL", true, aWindow.document);
@@ -251,25 +257,6 @@ function attachSpecialPowersToWindow(aWindow) {
   }
 }
 
-// This is a frame script, so it may be running in a content process.
-// In any event, it is targeted at a specific "tab", so we listen for
-// the DOMWindowCreated event to be notified about content windows
-// being created in this context.
-
-function SpecialPowersManager() {
-  addEventListener("DOMWindowCreated", this, false);
-}
-
-SpecialPowersManager.prototype = {
-  handleEvent: function handleEvent(aEvent) {
-    var window = aEvent.target.defaultView;
-    attachSpecialPowersToWindow(window);
-  }
-};
-
-
-var specialpowersmanager = new SpecialPowersManager();
-
 this.SpecialPowers = SpecialPowers;
 this.attachSpecialPowersToWindow = attachSpecialPowersToWindow;
 
@@ -278,5 +265,5 @@ this.attachSpecialPowersToWindow = attachSpecialPowersToWindow;
 if (typeof window != "undefined") {
   window.addMessageListener = function() {};
   window.removeMessageListener = function() {};
-  window.wrappedJSObject.SpecialPowers = new SpecialPowers(window);
+  window.wrappedJSObject.SpecialPowers = new SpecialPowers(window, window);
 }

@@ -9,13 +9,19 @@ SPHINX_TREES['crashreporter'] = 'docs'
 with Files('docs/**'):
     SCHEDULES.exclusive = ['docs']
 
+GENERATED_FILES += [
+    'CrashAnnotations.h',
+]
+
 EXPORTS += [
+    '!CrashAnnotations.h',
     'nsExceptionHandler.h',
 ]
 
 JAR_MANIFESTS += ['jar.mn']
 
 UNIFIED_SOURCES = [
+    'CrashAnnotations.cpp',
     'nsExceptionHandlerUtils.cpp',
 ]
 
@@ -44,6 +50,7 @@ if CONFIG['MOZ_CRASHREPORTER']:
             'google-breakpad/src/common/mac',
             'google-breakpad/src/processor',
             'google-breakpad/src/tools/mac/dump_syms',
+            'rust',
         ]
 
     elif CONFIG['OS_ARCH'] == 'Linux':
@@ -54,6 +61,7 @@ if CONFIG['MOZ_CRASHREPORTER']:
             'google-breakpad/src/common/linux',
             'google-breakpad/src/processor',
             'google-breakpad/src/tools/linux/dump_syms',
+            'rust',
         ]
 
 
@@ -123,6 +131,16 @@ else:
         'nsDummyExceptionHandler.cpp',
     ]
 
+# Generate CrashAnnotations.h
+crash_annotations = GENERATED_FILES['CrashAnnotations.h']
+crash_annotations.script = 'generate_crash_reporter_sources.py:emit_header'
+crash_annotations.inputs = [
+    'CrashAnnotations.h.in',
+    'CrashAnnotations.yaml',
+]
 
 with Files('**'):
     BUG_COMPONENT = ('Toolkit', 'Crash Reporting')
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

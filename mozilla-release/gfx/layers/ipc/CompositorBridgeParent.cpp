@@ -358,6 +358,7 @@ CompositorBridgeParent::CompositorBridgeParent(CompositorManagerParent* aManager
   , mOptions(aOptions)
   , mPauseCompositionMonitor("PauseCompositionMonitor")
   , mResumeCompositionMonitor("ResumeCompositionMonitor")
+  , mCompositorBridgeID(0)
   , mRootLayerTreeID{0}
   , mOverrideComposeReadiness(false)
   , mForceCompositionTask(nullptr)
@@ -376,7 +377,7 @@ void
 CompositorBridgeParent::InitSameProcess(widget::CompositorWidget* aWidget,
                                         const LayersId& aLayerTreeId)
 {
-  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(XRE_IsParentProcess() || recordreplay::IsRecordingOrReplaying());
   MOZ_ASSERT(NS_IsMainThread());
 
   mWidget = aWidget;
@@ -615,7 +616,7 @@ mozilla::ipc::IPCResult
 CompositorBridgeParent::RecvFlushRenderingAsync()
 {
   if (mWrBridge) {
-    mWrBridge->FlushRenderingAsync();
+    mWrBridge->FlushRendering(false);
     return IPC_OK();
   }
 
@@ -1044,7 +1045,12 @@ CompositorBridgeParent::CompositeToTarget(DrawTarget* aTarget, const gfx::IntRec
 
   TimeStamp time = mTestTime.valueOr(mCompositorScheduler->GetLastComposeTime());
   bool requestNextFrame = mCompositionManager->TransformShadowTree(time, mVsyncRate);
-  if (requestNextFrame) {
+
+  // Don't eagerly schedule new compositions here when recording or replaying.
+  // Recording/replaying processes schedule composites at the top of the main
+  // thread's event loop rather than via PVsync, which can cause the composites
+  // scheduled here to pile up without any drawing actually happening.
+  if (requestNextFrame && !recordreplay::IsRecordingOrReplaying()) {
     ScheduleComposition();
 #if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
     // If we have visible windowed plugins then we need to wait for content (and
@@ -1124,8 +1130,8 @@ CompositorBridgeParent::RecvRemotePluginsReady()
   }
   return IPC_OK();
 #else
-  NS_NOTREACHED("CompositorBridgeParent::RecvRemotePluginsReady calls "
-                "unexpected on this platform.");
+  MOZ_ASSERT_UNREACHABLE("CompositorBridgeParent::RecvRemotePluginsReady calls "
+                         "unexpected on this platform.");
   return IPC_FAIL_NO_REASON(this);
 #endif
 }
@@ -1327,6 +1333,7 @@ CompositorBridgeParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
   // Otherwise, it should be continually increasing.
   MOZ_ASSERT(aInfo.id() == TransactionId{1} || aInfo.id() > mPendingTransaction);
   mPendingTransaction = aInfo.id();
+  mRefreshStartTime = aInfo.refreshStart();
   mTxnStartTime = aInfo.transactionStart();
   mFwdTime = aInfo.fwdTime();
 
@@ -1635,14 +1642,14 @@ CompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<LayersBacken
 
   if (!mLayerManager) {
     NS_WARNING("Failed to initialise Compositor");
-    LayerTransactionParent* p = new LayerTransactionParent(/* aManager */ nullptr, this, /* aAnimStorage */ nullptr, mRootLayerTreeID);
+    LayerTransactionParent* p = new LayerTransactionParent(/* aManager */ nullptr, this, /* aAnimStorage */ nullptr, mRootLayerTreeID, mVsyncRate);
     p->AddIPDLReference();
     return p;
   }
 
   mCompositionManager = new AsyncCompositionManager(this, mLayerManager);
 
-  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, GetAnimationStorage(), mRootLayerTreeID);
+  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, GetAnimationStorage(), mRootLayerTreeID, mVsyncRate);
   p->AddIPDLReference();
   return p;
 }
@@ -1798,15 +1805,14 @@ CompositorBridgeParent::RecvAdoptChild(const LayersId& child)
     MOZ_ASSERT(mWrBridge);
     RefPtr<wr::WebRenderAPI> api = mWrBridge->GetWebRenderAPI();
     api = api->Clone();
-    childWrBridge->UpdateWebRender(mWrBridge->CompositorScheduler(),
+    wr::Epoch newEpoch = childWrBridge->UpdateWebRender(mWrBridge->CompositorScheduler(),
                                    api,
                                    mWrBridge->AsyncImageManager(),
-                                   GetAnimationStorage());
+                                   GetAnimationStorage(),
+                                   mWrBridge->GetTextureFactoryIdentifier());
     // Pretend we composited, since parent CompositorBridgeParent was replaced.
-    if (cpcp) {
-      TimeStamp now = TimeStamp::Now();
-      cpcp->DidComposite(child, now, now);
-    }
+    TimeStamp now = TimeStamp::Now();
+    NotifyPipelineRendered(childWrBridge->PipelineId(), newEpoch, now, now);
   }
 
   if (oldApzUpdater) {
@@ -1871,7 +1877,7 @@ CompositorBridgeParent::AllocPWebRenderBridgeParent(const wr::PipelineId& aPipel
   txn.SetRootPipeline(aPipelineId);
   api->SendTransaction(txn);
   RefPtr<CompositorAnimationStorage> animStorage = GetAnimationStorage();
-  mWrBridge = new WebRenderBridgeParent(this, aPipelineId, mWidget, nullptr, std::move(api), std::move(asyncMgr), std::move(animStorage));
+  mWrBridge = new WebRenderBridgeParent(this, aPipelineId, mWidget, nullptr, std::move(api), std::move(asyncMgr), std::move(animStorage), mVsyncRate);
   mWrBridge.get()->AddRef(); // IPDL reference
 
   *aIdNamespace = mWrBridge->GetIdNamespace();
@@ -1904,6 +1910,17 @@ CompositorBridgeParent::DeallocPWebRenderBridgeParent(PWebRenderBridgeParent* aA
   }
   parent->Release(); // IPDL reference
   return true;
+}
+
+void
+CompositorBridgeParent::NotifyMemoryPressure()
+{
+  if (mWrBridge) {
+    RefPtr<wr::WebRenderAPI> api = mWrBridge->GetWebRenderAPI();
+    if (api) {
+      api->NotifyMemoryPressure();
+    }
+  }
 }
 
 RefPtr<WebRenderBridgeParent>
@@ -2124,20 +2141,21 @@ CompositorBridgeParent::DidComposite(TimeStamp& aCompositeStart,
                                      TimeStamp& aCompositeEnd)
 {
   if (mWrBridge) {
-    NotifyDidComposite(mWrBridge->FlushPendingTransactionIds(), aCompositeStart, aCompositeEnd);
+    MOZ_ASSERT(false); // This should never get called for a WR compositor
   } else {
     NotifyDidComposite(mPendingTransaction, aCompositeStart, aCompositeEnd);
 #if defined(ENABLE_FRAME_LATENCY_LOG)
     if (mPendingTransaction.IsValid()) {
-      if (mTxnStartTime) {
-        uint32_t latencyMs = round((aCompositeEnd - mTxnStartTime).ToMilliseconds());
+      if (mRefreshStartTime) {
+        int32_t latencyMs = lround((aCompositeEnd - mRefreshStartTime).ToMilliseconds());
         printf_stderr("From transaction start to end of generate frame latencyMs %d this %p\n", latencyMs, this);
       }
       if (mFwdTime) {
-        uint32_t latencyMs = round((aCompositeEnd - mFwdTime).ToMilliseconds());
+        int32_t latencyMs = lround((aCompositeEnd - mFwdTime).ToMilliseconds());
         printf_stderr("From forwarding transaction to end of generate frame latencyMs %d this %p\n", latencyMs, this);
       }
     }
+    mRefreshStartTime = TimeStamp();
     mTxnStartTime = TimeStamp();
     mFwdTime = TimeStamp();
 #endif
@@ -2197,19 +2215,13 @@ CompositorBridgeParent::GetAsyncImagePipelineManager() const
 void
 CompositorBridgeParent::NotifyDidComposite(TransactionId aTransactionId, TimeStamp& aCompositeStart, TimeStamp& aCompositeEnd)
 {
+  MOZ_ASSERT(!mWrBridge); // We should be going through NotifyPipelineRendered instead
+
   Unused << SendDidComposite(LayersId{0}, aTransactionId, aCompositeStart, aCompositeEnd);
 
   if (mLayerManager) {
     nsTArray<ImageCompositeNotificationInfo> notifications;
     mLayerManager->ExtractImageCompositeNotifications(&notifications);
-    if (!notifications.IsEmpty()) {
-      Unused << ImageBridgeParent::NotifyImageComposites(notifications);
-    }
-  }
-
-  if (mWrBridge) {
-    nsTArray<ImageCompositeNotificationInfo> notifications;
-    mWrBridge->ExtractImageCompositeNotifications(&notifications);
     if (!notifications.IsEmpty()) {
       Unused << ImageBridgeParent::NotifyImageComposites(notifications);
     }
@@ -2351,6 +2363,14 @@ CompositorBridgeParent::NotifyWebRenderError(wr::WebRenderError aError)
 {
   MOZ_ASSERT(CompositorLoop() == MessageLoop::current());
   Unused << SendNotifyWebRenderError(aError);
+}
+
+void
+CompositorBridgeParent::NotifyWebRenderContextPurge()
+{
+  MOZ_ASSERT(CompositorLoop() == MessageLoop::current());
+  RefPtr<wr::WebRenderAPI> api = mWrBridge->GetWebRenderAPI();
+  api->ClearAllCaches();
 }
 
 #if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)

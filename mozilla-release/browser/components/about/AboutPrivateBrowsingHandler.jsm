@@ -6,8 +6,7 @@
 
 var EXPORTED_SYMBOLS = ["AboutPrivateBrowsingHandler"];
 
-ChromeUtils.import("resource://gre/modules/RemotePageManager.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm");
 
 var AboutPrivateBrowsingHandler = {
   _topics: [
@@ -38,7 +37,7 @@ var AboutPrivateBrowsingHandler = {
       }
       case "DontShowIntroPanelAgain": {
         let win = aMessage.target.browser.ownerGlobal;
-        win.TrackingProtection.dontShowIntroPanelAgain();
+        win.ContentBlocking.dontShowIntroPanelAgain();
         break;
       }
     }

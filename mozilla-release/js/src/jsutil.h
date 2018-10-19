@@ -153,18 +153,17 @@ Max(T t1, T t2)
 }
 
 template <typename T, typename U>
-static inline U
+static constexpr U
 ComputeByteAlignment(T bytes, U alignment)
 {
     static_assert(mozilla::IsUnsigned<U>::value,
                   "alignment amount must be unsigned");
 
-    MOZ_ASSERT(mozilla::IsPowerOfTwo(alignment));
     return (alignment - (bytes % alignment)) % alignment;
 }
 
 template <typename T, typename U>
-static inline T
+static constexpr T
 AlignBytes(T bytes, U alignment)
 {
     static_assert(mozilla::IsUnsigned<U>::value,
@@ -344,11 +343,13 @@ AlwaysPoison(void* ptr, uint8_t value, size_t num, MemCheckKind kind)
     SetMemCheckKind(ptr, num, kind);
 }
 
+// JSGC_DISABLE_POISONING environment variable
+extern bool gDisablePoisoning;
+
 static inline void
 Poison(void* ptr, uint8_t value, size_t num, MemCheckKind kind)
 {
-    static bool disablePoison = bool(getenv("JSGC_DISABLE_POISONING"));
-    if (!disablePoison)
+    if (!js::gDisablePoisoning)
         AlwaysPoison(ptr, value, num, kind);
 }
 

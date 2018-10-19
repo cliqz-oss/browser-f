@@ -5,7 +5,8 @@
 # file, you can obtain one at http://mozilla.org/MPL/2.0/.
 
 UNIFIED_SOURCES += [
-    'TestParserDialogOptions.cpp',
+    'TestContentUtils.cpp',
+    'TestMimeType.cpp',
     'TestPlainTextSerializer.cpp',
     'TestXPathGenerator.cpp',
 ]

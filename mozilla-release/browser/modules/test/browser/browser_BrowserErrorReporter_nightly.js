@@ -8,6 +8,8 @@
 ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm", this);
 ChromeUtils.import("resource:///modules/BrowserErrorReporter.jsm", this);
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm", this);
+ChromeUtils.import("resource://gre/modules/FileUtils.jsm", this);
+ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm", this);
 
 /* global sinon */
 Services.scriptloader.loadSubScript(new URL("head_BrowserErrorReporter.js", gTestPath).href, this);
@@ -36,6 +38,7 @@ add_task(async function testInitPastMessages() {
   );
   ok(errorWasLogged, "Reporter collects errors logged before initialization.");
 
+  reporter.uninit();
 });
 
 add_task(async function testNonErrorLogs() {
@@ -101,6 +104,15 @@ add_task(async function testSampling() {
   ok(
     fetchPassedError(fetchSpy, "undefined"),
     "A missing sourceName doesn't break reporting.",
+  );
+
+  await reporter.handleMessage(createScriptError({
+    message: "mozextension",
+    sourceName: "moz-extension://Bar/Foo.jsm",
+  }));
+  ok(
+    !fetchPassedError(fetchSpy, "mozextension"),
+    "moz-extension:// paths are sampled at 0% even if the default rate is 1.0.",
   );
 
   await SpecialPowers.pushPrefEnv({set: [
@@ -317,11 +329,10 @@ add_task(async function testFetchArguments() {
 
 add_task(async function testAddonIDMangle() {
   const fetchSpy = sinon.spy();
-  // Passing false here disables category checks on errors, which would
-  // otherwise block errors directly from extensions.
   const reporter = new BrowserErrorReporter({
     fetch: fetchSpy,
     chromeOnly: false,
+    sampleRates: new Map(),
     now: BrowserErrorReporter.getAppBuildIdDate(),
   });
   await SpecialPowers.pushPrefEnv({set: [
@@ -363,11 +374,10 @@ add_task(async function testAddonIDMangle() {
 
 add_task(async function testExtensionTag() {
   const fetchSpy = sinon.spy();
-  // Passing false here disables category checks on errors, which would
-  // otherwise block errors directly from extensions.
   const reporter = new BrowserErrorReporter({
     fetch: fetchSpy,
     chromeOnly: false,
+    sampleRates: new Map(),
     now: BrowserErrorReporter.getAppBuildIdDate(),
   });
   await SpecialPowers.pushPrefEnv({set: [
@@ -409,6 +419,11 @@ add_task(async function testExtensionTag() {
 });
 
 add_task(async function testScalars() {
+  // Do not bother testing telemetry scalars if they're already expired.
+  if (SCALARS_EXPIRED) {
+    return;
+  }
+
   const fetchStub = sinon.stub();
   const reporter = new BrowserErrorReporter({
     fetch: fetchStub,
@@ -457,4 +472,78 @@ add_task(async function testScalars() {
   );
 
   resetConsole();
+});
+
+add_task(async function testFilePathMangle() {
+  const fetchSpy = sinon.spy();
+  const reporter = new BrowserErrorReporter({fetch: fetchSpy});
+  await SpecialPowers.pushPrefEnv({set: [
+    [PREF_ENABLED, true],
+    [PREF_SAMPLE_RATE, "1.0"],
+  ]});
+
+  const greDir = Services.dirsvc.get("GreD", Ci.nsIFile).path;
+  const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
+
+  const message = createScriptError({
+    message: "Whatever",
+    sourceName: "file:///path/to/main.jsm",
+    stack: [
+      frame({source: "jar:file:///path/to/jar!/inside/jar.jsm"}),
+      frame({source: `file://${greDir}/defaults/prefs/channel-prefs.js`}),
+      frame({source: `file://${profileDir}/prefs.js`}),
+    ],
+  });
+  await reporter.handleMessage(message);
+
+  const call = fetchCallForMessage(fetchSpy, "Whatever");
+  const body = JSON.parse(call.args[1].body);
+  const exception = body.exception.values[0];
+  is(exception.module, "[UNKNOWN_LOCAL_FILEPATH]", "Unrecognized local file paths are mangled");
+
+  // Stackframe order is reversed from what is in the message.
+  const stackFrames = exception.stacktrace.frames;
+  is(
+    stackFrames[0].module, "[profileDir]/prefs.js",
+    "Paths within the profile directory are preserved but mangled",
+  );
+  is(
+    stackFrames[1].module, "[greDir]/defaults/prefs/channel-prefs.js",
+    "Paths within the GRE directory are preserved but mangled",
+  );
+  is(
+    stackFrames[2].module, "/inside/jar.jsm",
+    "Paths within jarfiles are extracted from the full jar: URL",
+  );
+});
+
+add_task(async function testFilePathMangleWhitespace() {
+  const fetchSpy = sinon.spy();
+
+  const greDir = Services.dirsvc.get("GreD", Ci.nsIFile);
+  const whitespaceDir = greDir.clone();
+  whitespaceDir.append("with whitespace");
+  const manglePrefixes = {
+    whitespace: whitespaceDir,
+  };
+
+  const reporter = new BrowserErrorReporter({fetch: fetchSpy, manglePrefixes});
+  await SpecialPowers.pushPrefEnv({set: [
+    [PREF_ENABLED, true],
+    [PREF_SAMPLE_RATE, "1.0"],
+  ]});
+
+  const message = createScriptError({
+    message: "Whatever",
+    sourceName: `file://${greDir.path}/with whitespace/remaining/file.jsm`,
+  });
+  await reporter.handleMessage(message);
+
+  const call = fetchCallForMessage(fetchSpy, "Whatever");
+  const body = JSON.parse(call.args[1].body);
+  const exception = body.exception.values[0];
+  is(
+    exception.module, "[whitespace]/remaining/file.jsm",
+    "Prefixes with whitespace are correctly mangled",
+  );
 });

@@ -20,6 +20,7 @@
 #include "nsUnicharUtils.h"
 #include "nsPointerHashKeys.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +55,7 @@ HashString(const nsACString& aStr)
  * nsUint32HashKey
  * nsUint64HashKey
  * nsFloatHashKey
+ * IntPtrHashKey
  * nsPtrHashKey
  * nsClearingPtrHashKey
  * nsVoidPtrHashKey
@@ -285,6 +287,35 @@ private:
 };
 
 /**
+ * hashkey wrapper using intptr_t KeyType
+ *
+ * @see nsTHashtable::EntryType for specification
+ */
+class IntPtrHashKey : public PLDHashEntryHdr
+{
+public:
+  typedef const intptr_t& KeyType;
+  typedef const intptr_t* KeyTypePointer;
+
+  explicit IntPtrHashKey(KeyTypePointer aKey) : mValue(*aKey) {}
+  IntPtrHashKey(const IntPtrHashKey& aToCopy) : mValue(aToCopy.mValue) {}
+  ~IntPtrHashKey() {}
+
+  KeyType GetKey() const { return mValue; }
+  bool KeyEquals(KeyTypePointer aKey) const { return *aKey == mValue; }
+
+  static KeyTypePointer KeyToPointer(KeyType aKey) { return &aKey; }
+  static PLDHashNumber HashKey(KeyTypePointer aKey)
+  {
+    return mozilla::HashGeneric(*aKey);
+  }
+  enum { ALLOW_MEMMOVE = true };
+
+private:
+  const intptr_t mValue;
+};
+
+/**
  * hashkey wrapper using nsISupports* KeyType
  *
  * @see nsTHashtable::EntryType for specification
@@ -443,6 +474,37 @@ private:
 };
 
 /**
+ * hashkey wrapper using nsID* KeyType
+ *
+ * @see nsTHashtable::EntryType for specification
+ */
+class nsIDPointerHashKey : public PLDHashEntryHdr
+{
+public:
+  typedef const nsID* KeyType;
+  typedef const nsID* KeyTypePointer;
+
+  explicit nsIDPointerHashKey(const nsID* aInID) : mID(aInID) {}
+  nsIDPointerHashKey(const nsIDPointerHashKey& aToCopy) : mID(aToCopy.mID) {}
+  ~nsIDPointerHashKey() = default;
+
+  KeyType GetKey() const { return mID; }
+  bool KeyEquals(KeyTypePointer aKey) const { return aKey->Equals(*mID); }
+
+  static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
+  static PLDHashNumber HashKey(KeyTypePointer aKey)
+  {
+    // Hash the nsID object's raw bytes.
+    return mozilla::HashBytes(aKey, sizeof(*aKey));
+  }
+
+  enum { ALLOW_MEMMOVE = true };
+
+private:
+  const nsID* mID;
+};
+
+/**
  * hashkey wrapper for "dependent" const char*; this class does not "own"
  * its string pointer.
  *
@@ -537,9 +599,9 @@ public:
   typedef const char16_t* KeyType;
   typedef const char16_t* KeyTypePointer;
 
-  explicit nsUnicharPtrHashKey(const char16_t* aKey) : mKey(NS_strdup(aKey)) {}
+  explicit nsUnicharPtrHashKey(const char16_t* aKey) : mKey(NS_xstrdup(aKey)) {}
   nsUnicharPtrHashKey(const nsUnicharPtrHashKey& aToCopy)
-    : mKey(NS_strdup(aToCopy.mKey))
+    : mKey(NS_xstrdup(aToCopy.mKey))
   {
   }
 

@@ -48,7 +48,6 @@
 
 #include "mozilla/Telemetry.h"
 
-#include "sqlite3.h"
 #include "mozilla/storage.h"
 #include "nsVariant.h"
 #include "mozilla/BasePrincipal.h"
@@ -218,7 +217,9 @@ nsOfflineCacheEvictionFunction::OnFunctionCall(mozIStorageValueArray *values, ns
 
   // If the key is currently locked, refuse to delete this row.
   if (mDevice->IsLocked(fullKey)) {
-    NS_ADDREF(*_retval = new IntegerVariant(SQLITE_IGNORE));
+    // This code thought it was performing the equivalent of invoking the SQL
+    // "RAISE(IGNORE)" function.  It was not.  Please see bug 1470961 and any
+    // follow-ups to understand the plan for correcting this bug.
     return NS_OK;
   }
 
@@ -751,7 +752,7 @@ nsApplicationCache::GetManifestURI(nsIURI **out)
   nsresult rv = NS_NewURI(getter_AddRefs(uri), mGroup);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = uri->CloneIgnoringRef(out);
+  rv = NS_GetURIWithNewRef(uri, EmptyCString(), out);
   NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
@@ -1371,7 +1372,7 @@ nsOfflineCacheDevice::BuildApplicationCacheGroupID(nsIURI *aManifestURL,
                                                    nsACString &_result)
 {
   nsCOMPtr<nsIURI> newURI;
-  nsresult rv = aManifestURL->CloneIgnoringRef(getter_AddRefs(newURI));
+  nsresult rv = NS_GetURIWithNewRef(aManifestURL, EmptyCString(), getter_AddRefs(newURI));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsAutoCString manifestSpec;
@@ -2341,14 +2342,9 @@ nsOfflineCacheDevice::RunSimpleQuery(mozIStorageStatement * statement,
 
   *count = valArray.Length();
   char **ret = static_cast<char **>(moz_xmalloc(*count * sizeof(char*)));
-  if (!ret) return NS_ERROR_OUT_OF_MEMORY;
 
   for (uint32_t i = 0; i <  *count; i++) {
-    ret[i] = NS_strdup(valArray[i].get());
-    if (!ret[i]) {
-      NS_FREE_XPCOM_ALLOCATED_POINTER_ARRAY(i, ret);
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
+    ret[i] = NS_xstrdup(valArray[i].get());
   }
 
   *values = ret;

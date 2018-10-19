@@ -5,6 +5,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.addExpression = addExpression;
 exports.autocomplete = autocomplete;
+exports.clearAutocomplete = clearAutocomplete;
 exports.clearExpressionError = clearExpressionError;
 exports.updateExpression = updateExpression;
 exports.deleteExpression = deleteExpression;
@@ -18,6 +19,8 @@ var _promise = require("./utils/middleware/promise");
 var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
 
 var _expressions = require("../utils/expressions");
+
+var _prefs = require("../utils/prefs");
 
 var _parser = require("../workers/parser/index");
 
@@ -83,6 +86,12 @@ function autocomplete(input, cursor) {
       input,
       result
     });
+  };
+}
+
+function clearAutocomplete() {
+  return {
+    type: "CLEAR_AUTOCOMPLETE"
   };
 }
 
@@ -177,11 +186,11 @@ function evaluateExpression(expression) {
       const {
         location
       } = frame;
-      const source = (0, _selectors.getSource)(getState(), location.sourceId);
-      const sourceId = source.get("id");
+      const source = (0, _selectors.getSourceFromId)(getState(), location.sourceId);
+      const sourceId = source.id;
       const selectedSource = (0, _selectors.getSelectedSource)(getState());
 
-      if (selectedSource && !(0, _devtoolsSourceMap.isGeneratedId)(sourceId) && !(0, _devtoolsSourceMap.isGeneratedId)(selectedSource.get("id"))) {
+      if (selectedSource && !(0, _devtoolsSourceMap.isGeneratedId)(sourceId) && !(0, _devtoolsSourceMap.isGeneratedId)(selectedSource.id)) {
         input = await dispatch(getMappedExpression(input));
       }
     }
@@ -208,11 +217,18 @@ function getMappedExpression(expression) {
     sourceMaps
   }) {
     const mappings = (0, _selectors.getSelectedScopeMappings)(getState());
+    const bindings = (0, _selectors.getSelectedFrameBindings)(getState()); // We bail early if we do not need to map the expression. This is important
+    // because mapping an expression can be slow if the parser worker is
+    // busy doing other work.
+    //
+    // 1. there are no mappings - we do not need to map original expressions
+    // 2. does not contain `await` - we do not need to map top level awaits
+    // 3. does not contain `=` - we do not need to map assignments
 
-    if (!mappings) {
+    if (!mappings && !expression.match(/(await|=)/)) {
       return expression;
     }
 
-    return parser.mapOriginalExpression(expression, mappings);
+    return parser.mapExpression(expression, mappings, bindings || [], _prefs.features.mapExpressionBindings, _prefs.features.mapAwaitExpression);
   };
 }

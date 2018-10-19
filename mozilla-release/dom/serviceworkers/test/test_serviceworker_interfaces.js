@@ -57,7 +57,6 @@ var ecmaGlobals =
     "RegExp",
     "Set",
     {name: "SharedArrayBuffer", disabled: true},
-    {name: "SIMD", nightly: true},
     "String",
     "Symbol",
     "SyntaxError",
@@ -160,6 +159,10 @@ var interfaceNamesInGlobalScope =
     "ImageBitmapRenderingContext",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "ImageData",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "MediaCapabilities",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "MediaCapabilitiesInfo",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MessageChannel",
 // IMPORTANT: Do not change this list without review from a DOM peer!

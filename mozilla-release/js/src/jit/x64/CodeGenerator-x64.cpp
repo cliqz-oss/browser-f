@@ -387,8 +387,6 @@ CodeGeneratorX64::wasmStore(const wasm::MemoryAccessDesc& access, const LAllocat
                             Operand dstAddr)
 {
     if (value->isConstant()) {
-        MOZ_ASSERT(!access.isSimd());
-
         masm.memoryBarrierBefore(access.sync());
 
         const MConstant* mir = value->toConstant();
@@ -411,10 +409,6 @@ CodeGeneratorX64::wasmStore(const wasm::MemoryAccessDesc& access, const LAllocat
           case Scalar::Int64:
           case Scalar::Float32:
           case Scalar::Float64:
-          case Scalar::Float32x4:
-          case Scalar::Int8x16:
-          case Scalar::Int16x8:
-          case Scalar::Int32x4:
           case Scalar::Uint8Clamped:
           case Scalar::MaxTypedArrayViewType:
             MOZ_CRASH("unexpected array type");
@@ -499,7 +493,6 @@ CodeGenerator::visitAsmJSLoadHeap(LAsmJSLoadHeap* ins)
     const LDefinition* out = ins->output();
 
     Scalar::Type accessType = mir->access().type();
-    MOZ_ASSERT(!Scalar::isSimdType(accessType));
 
     Operand srcAddr = ptr->isBogus()
                       ? Operand(HeapReg, mir->offset())
@@ -521,7 +514,6 @@ CodeGenerator::visitAsmJSStoreHeap(LAsmJSStoreHeap* ins)
     const LAllocation* value = ins->value();
 
     Scalar::Type accessType = mir->access().type();
-    MOZ_ASSERT(!Scalar::isSimdType(accessType));
 
     canonicalizeIfDeterministic(accessType, value);
 
@@ -549,11 +541,11 @@ CodeGenerator::visitWasmCompareExchangeHeap(LWasmCompareExchangeHeap* ins)
     BaseIndex srcAddr(HeapReg, ptr, TimesOne, mir->access().offset());
 
     if (accessType == Scalar::Int64) {
-        masm.compareExchange64(Synchronization::Full(), srcAddr, Register64(oldval),
-                               Register64(newval), ToOutRegister64(ins));
+        masm.wasmCompareExchange64(mir->access(), srcAddr, Register64(oldval),
+                                   Register64(newval), ToOutRegister64(ins));
     } else {
-        masm.compareExchange(accessType, Synchronization::Full(), srcAddr, oldval, newval,
-                             ToRegister(ins->output()));
+        masm.wasmCompareExchange(mir->access(), srcAddr, oldval, newval,
+                                 ToRegister(ins->output()));
     }
 }
 
@@ -571,11 +563,10 @@ CodeGenerator::visitWasmAtomicExchangeHeap(LWasmAtomicExchangeHeap* ins)
     BaseIndex srcAddr(HeapReg, ptr, TimesOne, mir->access().offset());
 
     if (accessType == Scalar::Int64) {
-        masm.atomicExchange64(Synchronization::Full(), srcAddr, Register64(value),
-                              ToOutRegister64(ins));
+        masm.wasmAtomicExchange64(mir->access(), srcAddr, Register64(value),
+                                  ToOutRegister64(ins));
     } else {
-        masm.atomicExchange(accessType, Synchronization::Full(), srcAddr, value,
-                            ToRegister(ins->output()));
+        masm.wasmAtomicExchange(mir->access(), srcAddr, value, ToRegister(ins->output()));
     }
 }
 
@@ -602,13 +593,11 @@ CodeGenerator::visitWasmAtomicBinopHeap(LWasmAtomicBinopHeap* ins)
         Register64 val = Register64(ToRegister(value));
         Register64 out = Register64(output);
         Register64 tmp = Register64(temp);
-        masm.atomicFetchOp64(Synchronization::Full(), op, val, srcAddr, tmp, out);
+        masm.wasmAtomicFetchOp64(mir->access(), op, val, srcAddr, tmp, out);
     } else if (value->isConstant()) {
-        masm.atomicFetchOp(accessType, Synchronization::Full(), op, Imm32(ToInt32(value)),
-                           srcAddr, temp, output);
+        masm.wasmAtomicFetchOp(mir->access(), op, Imm32(ToInt32(value)), srcAddr, temp, output);
     } else {
-        masm.atomicFetchOp(accessType, Synchronization::Full(), op, ToRegister(value),
-                           srcAddr, temp, output);
+        masm.wasmAtomicFetchOp(mir->access(), op, ToRegister(value), srcAddr, temp, output);
     }
 }
 
@@ -629,17 +618,16 @@ CodeGenerator::visitWasmAtomicBinopHeapForEffect(LWasmAtomicBinopHeapForEffect* 
 
     if (accessType == Scalar::Int64) {
         Register64 val = Register64(ToRegister(value));
-        masm.atomicEffectOp64(Synchronization::Full(), op, val, srcAddr);
+        masm.wasmAtomicEffectOp64(mir->access(), op, val, srcAddr);
     } else if (value->isConstant()) {
         Imm32 c(0);
         if (value->toConstant()->type() == MIRType::Int64)
             c = Imm32(ToInt64(value));
         else
             c = Imm32(ToInt32(value));
-        masm.atomicEffectOp(accessType, Synchronization::Full(), op, c, srcAddr, InvalidReg);
+        masm.wasmAtomicEffectOp(mir->access(), op, c, srcAddr, InvalidReg);
     } else {
-        masm.atomicEffectOp(accessType, Synchronization::Full(), op, ToRegister(value), srcAddr,
-                            InvalidReg);
+        masm.wasmAtomicEffectOp(mir->access(), op, ToRegister(value), srcAddr, InvalidReg);
     }
 }
 

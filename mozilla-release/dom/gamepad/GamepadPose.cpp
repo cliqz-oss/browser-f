@@ -35,19 +35,19 @@ GamepadPose::~GamepadPose()
 /* virtual */ JSObject*
 GamepadPose::WrapObject(JSContext* aJSContext, JS::Handle<JSObject*> aGivenProto)
 {
-  return GamepadPoseBinding::Wrap(aJSContext, this, aGivenProto);
+  return GamepadPose_Binding::Wrap(aJSContext, this, aGivenProto);
 }
 
 bool
 GamepadPose::HasOrientation() const
 {
-  return bool(mPoseState.flags & GamepadCapabilityFlags::Cap_Position);
+  return bool(mPoseState.flags & GamepadCapabilityFlags::Cap_Orientation);
 }
 
 bool
 GamepadPose::HasPosition() const
 {
-  return bool(mPoseState.flags & GamepadCapabilityFlags::Cap_Orientation);
+  return bool(mPoseState.flags & GamepadCapabilityFlags::Cap_Position);
 }
 
 void

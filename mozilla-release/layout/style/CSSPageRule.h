@@ -29,8 +29,10 @@ public:
   nsINode* GetParentObject() final;
 
 protected:
-  DeclarationBlock* GetCSSDeclaration(Operation aOperation) final;
-  nsresult SetCSSDeclaration(DeclarationBlock* aDecl) final;
+  mozilla::DeclarationBlock* GetOrCreateCSSDeclaration(
+    Operation aOperation, mozilla::DeclarationBlock** aCreated) final;
+  nsresult SetCSSDeclaration(DeclarationBlock* aDecl,
+                             MutationClosureData* aClosureData) final;
   nsIDocument* DocToUpdate() final;
   nsDOMCSSDeclaration::ParsingEnvironment
   GetParsingEnvironment(nsIPrincipal* aSubjectPrincipal) const final;
@@ -53,7 +55,10 @@ class CSSPageRule final : public css::Rule
 {
 public:
   CSSPageRule(RefPtr<RawServoPageRule> aRawRule,
-                uint32_t aLine, uint32_t aColumn);
+              StyleSheet* aSheet,
+              css::Rule* aParentRule,
+              uint32_t aLine,
+              uint32_t aColumn);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(
@@ -65,7 +70,7 @@ public:
   RawServoPageRule* Raw() const { return mRawRule; }
 
   // WebIDL interfaces
-  uint16_t Type() const final { return CSSRuleBinding::PAGE_RULE; }
+  uint16_t Type() const final { return CSSRule_Binding::PAGE_RULE; }
   void GetCssText(nsAString& aCssText) const final;
   nsICSSDeclaration* Style();
 

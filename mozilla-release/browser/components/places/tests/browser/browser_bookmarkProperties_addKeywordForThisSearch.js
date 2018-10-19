@@ -42,8 +42,8 @@ add_task(async function() {
       Assert.equal(entry.postData, "accenti%3D%E0%E8%EC%F2%F9&search%3D%25s", "POST data is correct");
 
       info("Check the charset has been saved");
-      let charset = await PlacesUtils.getCharsetForURI(NetUtil.newURI(TEST_URL));
-      Assert.equal(charset, "windows-1252", "charset is correct");
+      let pageInfo = await PlacesUtils.history.fetch(TEST_URL, {includeAnnotations: true});
+      Assert.equal(pageInfo.annotations.get(PlacesUtils.CHARSET_ANNO), "windows-1252", "charset is correct");
 
       // Now check getShortcutOrURI.
       let data = await getShortcutOrURIAndPostData("kw test");
@@ -57,7 +57,7 @@ add_task(async function reopen_same_field() {
   await PlacesUtils.keywords.insert({
     url: TEST_URL,
     keyword: "kw",
-    postData: "accenti%3D%E0%E8%EC%F2%F9&search%3D%25s"
+    postData: "accenti%3D%E0%E8%EC%F2%F9&search%3D%25s",
   });
   registerCleanupFunction(async function() {
     await PlacesUtils.keywords.remove("kw");
@@ -84,7 +84,7 @@ add_task(async function open_other_field() {
   await PlacesUtils.keywords.insert({
     url: TEST_URL,
     keyword: "kw2",
-    postData: "search%3D%25s"
+    postData: "search%3D%25s",
   });
   registerCleanupFunction(async function() {
     await PlacesUtils.keywords.remove("kw2");

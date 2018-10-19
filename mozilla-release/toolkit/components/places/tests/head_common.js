@@ -327,26 +327,6 @@ function visits_in_database(aURI) {
 }
 
 /**
- * Checks that we don't have any bookmark
- */
-function check_no_bookmarks() {
-  let query = PlacesUtils.history.getNewQuery();
-  let folders = [
-    PlacesUtils.bookmarks.toolbarFolder,
-    PlacesUtils.bookmarks.bookmarksMenuFolder,
-    PlacesUtils.bookmarks.unfiledBookmarksFolder,
-  ];
-  query.setFolders(folders, 3);
-  let options = PlacesUtils.history.getNewQueryOptions();
-  options.queryType = Ci.nsINavHistoryQueryOptions.QUERY_TYPE_BOOKMARKS;
-  let root = PlacesUtils.history.executeQuery(query, options).root;
-  root.containerOpen = true;
-  if (root.childCount != 0)
-    do_throw("Unable to remove all bookmarks");
-  root.containerOpen = false;
-}
-
-/**
  * Allows waiting for an observer notification once.
  *
  * @param aTopic
@@ -722,7 +702,7 @@ NavBookmarkObserver.prototype = {
   onItemMoved() {},
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavBookmarkObserver,
-  ])
+  ]),
 };
 
 /**
@@ -734,7 +714,6 @@ function NavHistoryObserver() {}
 NavHistoryObserver.prototype = {
   onBeginUpdateBatch() {},
   onEndUpdateBatch() {},
-  onVisits() {},
   onTitleChanged() {},
   onDeleteURI() {},
   onClearHistory() {},
@@ -742,7 +721,7 @@ NavHistoryObserver.prototype = {
   onDeleteVisits() {},
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryObserver,
-  ])
+  ]),
 };
 
 /**
@@ -771,7 +750,7 @@ NavHistoryResultObserver.prototype = {
   sortingChanged() {},
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavHistoryResultObserver,
-  ])
+  ]),
 };
 
 function checkBookmarkObject(info) {
@@ -870,7 +849,7 @@ async function compareFavicons(icon1, icon2, msg) {
     return new Promise((resolve, reject) => {
       NetUtil.asyncFetch({
         uri: icon.href, loadUsingSystemPrincipal: true,
-        contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE_FAVICON
+        contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE_FAVICON,
       }, function(inputStream, status) {
           if (!Components.isSuccessCode(status))
             reject();
@@ -888,25 +867,25 @@ async function compareFavicons(icon1, icon2, msg) {
 }
 
 /**
- * Get the internal "root" folder name for an item, specified by its itemId.
- * If the itemId does not point to a root folder, null is returned.
+ * Get the internal "root" folder name for an item, specified by its itemGuid.
+ * If the itemGuid does not point to a root folder, null is returned.
  *
- * @param aItemId
- *        the item id.
- * @return the internal-root name for the root folder, if aItemId points
+ * @param itemGuid
+ *        the item guid.
+ * @return the internal-root name for the root folder, if itemGuid points
  * to such folder, null otherwise.
  */
-function mapItemIdToInternalRootName(aItemId) {
-  switch (aItemId) {
-    case PlacesUtils.placesRootId:
+function mapItemGuidToInternalRootName(itemGuid) {
+  switch (itemGuid) {
+    case PlacesUtils.bookmarks.rootGuid:
       return "placesRoot";
-    case PlacesUtils.bookmarksMenuFolderId:
+    case PlacesUtils.bookmarks.menuGuid:
       return "bookmarksMenuFolder";
-    case PlacesUtils.toolbarFolderId:
+    case PlacesUtils.bookmarks.toolbarGuid:
       return "toolbarFolder";
-    case PlacesUtils.unfiledBookmarksFolderId:
+    case PlacesUtils.bookmarks.unfiledGuid:
       return "unfiledBookmarksFolder";
-    case PlacesUtils.mobileFolderId:
+    case PlacesUtils.bookmarks.mobileGuid:
       return "mobileFolder";
   }
   return null;
@@ -935,4 +914,62 @@ async function setupPlacesDatabase(aFileName, aDestFileName = DB_FILENAME) {
 
   await OS.File.copy(src, dest);
   return dest;
+}
+
+/**
+ * Gets the URLs of pages that have a particular annotation.
+ *
+ * @param {String} name The name of the annotation to search for.
+ * @return An array of URLs found.
+ */
+function getPagesWithAnnotation(name) {
+  return PlacesUtils.promiseDBConnection().then(async db => {
+    let rows = await db.execute(`
+      SELECT h.url FROM moz_anno_attributes n
+      JOIN moz_annos a ON n.id = a.anno_attribute_id
+      JOIN moz_places h ON h.id = a.place_id
+      WHERE n.name = :name
+    `, {name});
+
+    return rows.map(row => row.getResultByName("url"));
+  });
+}
+
+/**
+ * Gets the URLs of pages that have a particular annotation.
+ *
+ * @param {String} name The name of the annotation to search for.
+ * @return An array of GUIDs found.
+ */
+function getItemsWithAnnotation(name) {
+  return PlacesUtils.promiseDBConnection().then(async db => {
+    let rows = await db.execute(`
+      SELECT b.guid FROM moz_anno_attributes n
+      JOIN moz_items_annos a ON n.id = a.anno_attribute_id
+      JOIN moz_bookmarks b ON b.id = a.item_id
+      WHERE n.name = :name
+    `, {name});
+
+    return rows.map(row => row.getResultByName("guid"));
+  });
+}
+
+/**
+ * Checks there are no orphan page annotations in the database, and no
+ * orphan anno attribute names.
+ */
+async function assertNoOrphanPageAnnotations() {
+  let db = await PlacesUtils.promiseDBConnection();
+
+  let rows = await db.execute(`
+    SELECT place_id FROM moz_annos
+    WHERE place_id NOT IN (SELECT id FROM moz_places)
+  `);
+
+  Assert.equal(rows.length, 0, "Should not have any orphan page annotations");
+
+  rows = await db.execute(`
+    SELECT id FROM moz_anno_attributes
+    WHERE id NOT IN (SELECT anno_attribute_id FROM moz_annos) AND
+          id NOT IN (SELECT anno_attribute_id FROM moz_items_annos)`);
 }

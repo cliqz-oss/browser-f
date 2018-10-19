@@ -43,7 +43,8 @@ enum ShaderFeatures {
   ENABLE_MASK=0x800,
   ENABLE_NO_PREMUL_ALPHA=0x1000,
   ENABLE_DEAA=0x2000,
-  ENABLE_DYNAMIC_GEOMETRY=0x4000
+  ENABLE_DYNAMIC_GEOMETRY=0x4000,
+  ENABLE_MASK_TEXTURE_RECT=0x8000,
 };
 
 class KnownUniform {
@@ -73,6 +74,7 @@ public:
     RenderColor,
     TexCoordMultiplier,
     CbCrTexCoordMultiplier,
+    MaskCoordMultiplier,
     TexturePass2,
     ColorMatrix,
     ColorMatrixVector,
@@ -158,7 +160,7 @@ public:
       return false;
     }
 
-    NS_NOTREACHED("cnt must be 1 2 3 4 9 or 16");
+    MOZ_ASSERT_UNREACHABLE("cnt must be 1 2 3 4 9 or 16");
     return false;
   }
 
@@ -222,6 +224,7 @@ public:
 
   void SetRenderColor(bool aEnabled);
   void SetTextureTarget(GLenum aTarget);
+  void SetMaskTextureTarget(GLenum aTarget);
   void SetRBSwap(bool aEnabled);
   void SetNoAlpha(bool aEnabled);
   void SetOpacity(bool aEnabled);
@@ -489,6 +492,11 @@ public:
     SetUniform(KnownUniform::CbCrTexCoordMultiplier, 2, f);
   }
 
+  void SetMaskCoordMultiplier(float aWidth, float aHeight) {
+    float f[] = {aWidth, aHeight};
+    SetUniform(KnownUniform::MaskCoordMultiplier, 2, f);
+  }
+
   void SetYUVColorSpace(YUVColorSpace aYUVColorSpace);
 
   // Set whether we want the component alpha shader to return the color
@@ -563,7 +571,7 @@ protected:
       case 4: mGL->fUniform4fv(ku.mLocation, 1, ku.mValue.f16v); break;
       case 16: mGL->fUniform4fv(ku.mLocation, 4, ku.mValue.f16v); break;
       default:
-        NS_NOTREACHED("Bogus aLength param");
+        MOZ_ASSERT_UNREACHABLE("Bogus aLength param");
       }
     }
   }

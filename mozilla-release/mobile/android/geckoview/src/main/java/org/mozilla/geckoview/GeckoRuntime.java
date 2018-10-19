@@ -15,6 +15,7 @@ import android.util.Log;
 
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.GeckoAppShell;
+import org.mozilla.gecko.GeckoScreenOrientation;
 import org.mozilla.gecko.GeckoThread;
 import org.mozilla.gecko.PrefsHelper;
 import org.mozilla.gecko.util.BundleEventListener;
@@ -25,6 +26,8 @@ import org.mozilla.gecko.util.ThreadUtils;
 import java.io.File;
 
 public final class GeckoRuntime implements Parcelable {
+    public static final String PREF_CRASH_REPORTING_JOB_ID = "PrefGeckoCrashReportingJobId";
+
     private static final String LOGTAG = "GeckoRuntime";
     private static final boolean DEBUG = false;
 
@@ -48,7 +51,7 @@ public final class GeckoRuntime implements Parcelable {
         if (sDefaultRuntime == null) {
             sDefaultRuntime = new GeckoRuntime();
             sDefaultRuntime.attachTo(context);
-            sDefaultRuntime.init(new GeckoRuntimeSettings());
+            sDefaultRuntime.init(context, new GeckoRuntimeSettings());
         }
 
         return sDefaultRuntime;
@@ -84,7 +87,7 @@ public final class GeckoRuntime implements Parcelable {
         }
     };
 
-    /* package */ boolean init(final @NonNull GeckoRuntimeSettings settings) {
+    /* package */ boolean init(final @NonNull Context context, final @NonNull GeckoRuntimeSettings settings) {
         if (DEBUG) {
             Log.d(LOGTAG, "init");
         }
@@ -104,6 +107,14 @@ public final class GeckoRuntime implements Parcelable {
         if (settings.getPauseForDebuggerEnabled()) {
             flags |= GeckoThread.FLAG_DEBUGGING;
         }
+
+        GeckoAppShell.setDisplayDensityOverride(settings.getDisplayDensityOverride());
+        GeckoAppShell.setDisplayDpiOverride(settings.getDisplayDpiOverride());
+        GeckoAppShell.setScreenSizeOverride(settings.getScreenSizeOverride());
+
+        final int crashReportingJobId = settings.getCrashReportingServiceJobId();
+        settings.getExtras().putInt(
+                GeckoRuntimeSettings.EXTRA_CRASH_REPORTING_JOB_ID, crashReportingJobId);
 
         if (!GeckoThread.initMainProcess(/* profile */ null, settings.getArguments(),
                                          settings.getExtras(), flags)) {
@@ -166,7 +177,7 @@ public final class GeckoRuntime implements Parcelable {
         final GeckoRuntime runtime = new GeckoRuntime();
         runtime.attachTo(context);
 
-        if (!runtime.init(settings)) {
+        if (!runtime.init(context, settings)) {
             throw new IllegalStateException("Failed to initialize GeckoRuntime");
         }
 
@@ -246,6 +257,22 @@ public final class GeckoRuntime implements Parcelable {
      */
     @NonNull public File getProfileDir() {
         return GeckoThread.getActiveProfile().getDir();
+    }
+
+    /**
+     * Notify Gecko that the screen orientation has changed.
+     */
+    public void orientationChanged() {
+        GeckoScreenOrientation.getInstance().update();
+    }
+
+    /**
+     * Notify Gecko that the screen orientation has changed.
+     * @param newOrientation The new screen orientation, as retrieved e.g. from the current
+     *                       {@link android.content.res.Configuration}.
+     */
+    public void orientationChanged(int newOrientation) {
+        GeckoScreenOrientation.getInstance().update(newOrientation);
     }
 
     @Override // Parcelable

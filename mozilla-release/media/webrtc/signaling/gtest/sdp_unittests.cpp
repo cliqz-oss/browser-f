@@ -22,6 +22,7 @@
 #include "signaling/src/sdp/SipccSdpParser.h"
 #include "signaling/src/sdp/SdpMediaSection.h"
 #include "signaling/src/sdp/SdpAttribute.h"
+#include "signaling/src/sdp/ParsingResultComparer.h"
 
 extern "C" {
 #include "signaling/src/sdp/sipcc/sdp.h"
@@ -34,6 +35,7 @@ extern "C" {
 #define CRLF "\r\n"
 
 #define SKIP_TEST_WITH_RUST_PARSER if (!::testing::get<1>(GetParam())) {return;}
+#define SKIP_TEST_WITH_SIPCC_PARSER if (IsParsingWithSipccParser()) {return;}
 
 using namespace mozilla;
 
@@ -1872,7 +1874,7 @@ const std::string kBasicAudioVideoOffer =
 "a=ssrc:5150" CRLF
 "m=video 9 RTP/SAVPF 120 121 122 123" CRLF
 "c=IN IP6 ::1" CRLF
-"a=fingerprint:sha-1 DF:FA:FB:08:3B:3C:54:1D:D7:D4:05:77:A0:72:9B:14:08:6D:0F:4C:2E:AC:8A:FD:0A:8E:99:BF:5D:E8:3C:E7" CRLF
+"a=fingerprint:sha-1 DF:FA:FB:08:3B:3C:54:1D:D7:D4:05:77:A0:72:9B:14:08:6D:0F:4C" CRLF
 "a=mid:second" CRLF
 "a=rtpmap:120 VP8/90000" CRLF
 "a=fmtp:120 max-fs=3600;max-fr=30" CRLF
@@ -1903,10 +1905,12 @@ const std::string kBasicAudioVideoOffer =
 "a=end-of-candidates" CRLF
 "a=ssrc:1111 foo" CRLF
 "a=ssrc:1111 foo:bar" CRLF
+"a=ssrc:1111 msid:1d0cdb4e-5934-4f0f-9f88-40392cb60d31 315b086a-5cb6-4221-89de-caf0b038c79d" CRLF
 "a=imageattr:120 send * recv *" CRLF
 "a=imageattr:121 send [x=640,y=480] recv [x=640,y=480]" CRLF
-"a=simulcast:recv pt=120;121" CRLF
-"a=rid:bar recv pt=96;max-width=800;max-height=600" CRLF
+"a=rid:bar recv pt=120;max-width=800;max-height=600" CRLF
+"a=rid:bar123 recv max-width=1920;max-height=1080" CRLF
+"a=simulcast:recv rid=bar;bar123" CRLF
 "m=audio 9 RTP/SAVPF 0" CRLF
 "a=mid:third" CRLF
 "a=rtpmap:0 PCMU/8000" CRLF
@@ -2053,7 +2057,7 @@ TEST_P(NewSdpTest, CheckFingerprint) {
       fingerprints.mFingerprints[0].hashFunc)
     << "Wrong hash function";
   ASSERT_EQ("DF:FA:FB:08:3B:3C:54:1D:D7:D4:05:77:A0:72:9B:14:"
-            "08:6D:0F:4C:2E:AC:8A:FD:0A:8E:99:BF:5D:E8:3C:E7",
+            "08:6D:0F:4C",
             SdpFingerprintAttributeList::FormatFingerprint(
                 fingerprints.mFingerprints[0].fingerprint))
     << "Wrong fingerprint";
@@ -2071,7 +2075,6 @@ TEST_P(NewSdpTest, CheckIdentity) {
 }
 
 TEST_P(NewSdpTest, CheckDtlsMessage) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432920
   ParseSdp(kBasicAudioVideoOffer);
   ASSERT_TRUE(!!mSdp) << "Parse failed: " << GetParseErrors();
   ASSERT_TRUE(mSdp->GetAttributeList().HasAttribute(
@@ -2155,11 +2158,15 @@ TEST_P(NewSdpTest, CheckSsrc)
   ASSERT_TRUE(mSdp->GetMediaSection(1).GetAttributeList().HasAttribute(
       SdpAttribute::kSsrcAttribute));
   ssrcs = mSdp->GetMediaSection(1).GetAttributeList().GetSsrc().mSsrcs;
-  ASSERT_EQ(2U, ssrcs.size());
+  ASSERT_EQ(3U, ssrcs.size());
   ASSERT_EQ(1111U, ssrcs[0].ssrc);
   ASSERT_EQ("foo", ssrcs[0].attribute);
   ASSERT_EQ(1111U, ssrcs[1].ssrc);
   ASSERT_EQ("foo:bar", ssrcs[1].attribute);
+  ASSERT_EQ(1111U, ssrcs[2].ssrc);
+  ASSERT_EQ("msid:1d0cdb4e-5934-4f0f-9f88-40392cb60d31 "
+                 "315b086a-5cb6-4221-89de-caf0b038c79d",
+            ssrcs[2].attribute);
 }
 
 TEST_P(NewSdpTest, CheckRtpmap) {
@@ -2487,7 +2494,7 @@ static const std::string kVideoWithRedAndUlpfecSdp =
   "t=0 0" CRLF
   "m=video 9 RTP/SAVPF 97 120 121 122 123" CRLF
   "c=IN IP6 ::1" CRLF
-  "a=fingerprint:sha-1 DF:FA:FB:08:3B:3C:54:1D:D7:D4:05:77:A0:72:9B:14:08:6D:0F:4C:2E:AC:8A:FD:0A:8E:99:BF:5D:E8:3C:E7" CRLF
+  "a=fingerprint:sha-1 DF:FA:FB:08:3B:3C:54:1D:D7:D4:05:77:A0:72:9B:14:08:6D:0F:4C" CRLF
   "a=rtpmap:97 H264/90000" CRLF
   "a=fmtp:97 profile-level-id=42a01e" CRLF
   "a=rtpmap:120 VP8/90000" CRLF
@@ -2817,7 +2824,6 @@ TEST_P(NewSdpTest, CheckDirections) {
 }
 
 TEST_P(NewSdpTest, CheckCandidates) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432920
   ParseSdp(kBasicAudioVideoOffer);
   ASSERT_TRUE(!!mSdp) << "Parse failed: " << GetParseErrors();
   ASSERT_EQ(3U, mSdp->GetMediaSectionCount()) << "Wrong number of media sections";
@@ -2895,8 +2901,7 @@ TEST_P(NewSdpTest, CheckMsid) {
   ASSERT_EQ("", msids3.mMsids[0].appdata);
 }
 
-TEST_P(NewSdpTest, CheckRid)
-{
+TEST_P(NewSdpTest, CheckRid) {
   ParseSdp(kBasicAudioVideoOffer);
   ASSERT_TRUE(!!mSdp);
   ASSERT_EQ(3U, mSdp->GetMediaSectionCount()) << "Wrong number of media sections";
@@ -2913,13 +2918,20 @@ TEST_P(NewSdpTest, CheckRid)
   const SdpRidAttributeList& rids =
     mSdp->GetMediaSection(1).GetAttributeList().GetRid();
 
-  ASSERT_EQ(1U, rids.mRids.size());
+  ASSERT_EQ(2U, rids.mRids.size());
+
   ASSERT_EQ("bar", rids.mRids[0].id);
   ASSERT_EQ(sdp::kRecv, rids.mRids[0].direction);
   ASSERT_EQ(1U, rids.mRids[0].formats.size());
-  ASSERT_EQ(96U, rids.mRids[0].formats[0]);
+  ASSERT_EQ(120U, rids.mRids[0].formats[0]);
   ASSERT_EQ(800U, rids.mRids[0].constraints.maxWidth);
   ASSERT_EQ(600U, rids.mRids[0].constraints.maxHeight);
+
+  ASSERT_EQ("bar123", rids.mRids[1].id);
+  ASSERT_EQ(sdp::kRecv, rids.mRids[1].direction);
+  ASSERT_EQ(0U, rids.mRids[1].formats.size());
+  ASSERT_EQ(1920U, rids.mRids[1].constraints.maxWidth);
+  ASSERT_EQ(1080U, rids.mRids[1].constraints.maxHeight);
 }
 
 TEST_P(NewSdpTest, CheckMediaLevelIceUfrag) {
@@ -2958,8 +2970,6 @@ TEST_P(NewSdpTest, CheckMediaLevelIcePwd) {
 }
 
 TEST_P(NewSdpTest, CheckGroups) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1444354
-
   ParseSdp(kBasicAudioVideoOffer);
   const SdpGroupAttributeList& group = mSdp->GetAttributeList().GetGroup();
   const SdpGroupAttributeList::Group& group1 = group.mGroups[0];
@@ -3039,6 +3049,7 @@ const std::string kBasicAudioVideoDataOffer =
 "a=rtcp-fb:97 nack pli" CRLF
 "a=rtcp-fb:97 ccm fir" CRLF
 "a=rtcp-fb:* ccm tmmbr" CRLF
+"a=rtcp-fb:120 transport-cc" CRLF
 "a=setup:actpass" CRLF
 "a=rtcp-mux" CRLF
 "m=application 9 DTLS/SCTP 5000" CRLF
@@ -3125,7 +3136,13 @@ TEST_P(NewSdpTest, CheckRtcpFb) {
   auto& video_attrs = mSdp->GetMediaSection(1).GetAttributeList();
   ASSERT_TRUE(video_attrs.HasAttribute(SdpAttribute::kRtcpFbAttribute));
   auto& rtcpfbs = video_attrs.GetRtcpFb().mFeedbacks;
-  ASSERT_EQ(20U, rtcpfbs.size());
+
+  if (IsParsingWithSipccParser()) {
+    ASSERT_EQ(20U, rtcpfbs.size());
+  } else {
+    ASSERT_EQ(21U, rtcpfbs.size());
+  }
+
   CheckRtcpFb(rtcpfbs[0], "120", SdpRtcpFbAttributeList::kAck, "rpsi");
   CheckRtcpFb(rtcpfbs[1], "120", SdpRtcpFbAttributeList::kAck, "app", "foo");
   CheckRtcpFb(rtcpfbs[2], "120", SdpRtcpFbAttributeList::kNack, "");
@@ -3146,6 +3163,10 @@ TEST_P(NewSdpTest, CheckRtcpFb) {
   CheckRtcpFb(rtcpfbs[17], "97",  SdpRtcpFbAttributeList::kNack, "pli");
   CheckRtcpFb(rtcpfbs[18], "97", SdpRtcpFbAttributeList::kCcm, "fir");
   CheckRtcpFb(rtcpfbs[19], "*", SdpRtcpFbAttributeList::kCcm, "tmmbr");
+
+  if (!IsParsingWithSipccParser()) {
+    CheckRtcpFb(rtcpfbs[20], "120", SdpRtcpFbAttributeList::kTransCC, "");
+  }
 }
 
 TEST_P(NewSdpTest, CheckRtcp) {
@@ -3217,9 +3238,7 @@ TEST_P(NewSdpTest, CheckImageattr)
   ASSERT_EQ(480U, imageattr_1.recvSets[0].yRange.discreteValues.front());
 }
 
-TEST_P(NewSdpTest, CheckSimulcast)
-{
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432920
+TEST_P(NewSdpTest, CheckSimulcast) {
   ParseSdp(kBasicAudioVideoOffer);
   ASSERT_TRUE(!!mSdp);
   ASSERT_EQ(3U, mSdp->GetMediaSectionCount()) << "Wrong number of media sections";
@@ -3239,15 +3258,14 @@ TEST_P(NewSdpTest, CheckSimulcast)
   ASSERT_EQ(2U, simulcast.recvVersions.size());
   ASSERT_EQ(0U, simulcast.sendVersions.size());
   ASSERT_EQ(1U, simulcast.recvVersions[0].choices.size());
-  ASSERT_EQ("120", simulcast.recvVersions[0].choices[0]);
+  ASSERT_EQ("bar", simulcast.recvVersions[0].choices[0]);
   ASSERT_EQ(1U, simulcast.recvVersions[1].choices.size());
-  ASSERT_EQ("121", simulcast.recvVersions[1].choices[0]);
-  ASSERT_EQ(SdpSimulcastAttribute::Versions::kPt,
+  ASSERT_EQ("bar123", simulcast.recvVersions[1].choices[0]);
+  ASSERT_EQ(SdpSimulcastAttribute::Versions::kRid,
             simulcast.recvVersions.type);
 }
 
 TEST_P(NewSdpTest, CheckSctpmap) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432922
   ParseSdp(kBasicAudioVideoDataOffer);
   ASSERT_TRUE(!!mSdp) << "Parse failed: " << GetParseErrors();
   ASSERT_EQ(3U, mSdp->GetMediaSectionCount())
@@ -3269,6 +3287,18 @@ TEST_P(NewSdpTest, CheckSctpmap) {
               16,
               appsec.GetFormats()[0],
               sctpmap);
+}
+
+TEST_P(NewSdpTest, CheckMaxPtime) {
+  ParseSdp(kBasicAudioVideoOffer);
+  ASSERT_TRUE(!!mSdp) << "Parse failed: " << GetParseErrors();
+  ASSERT_EQ(3U, mSdp->GetMediaSectionCount())
+    << "Wrong number of media sections";
+
+  ASSERT_TRUE(mSdp->GetMediaSection(0)
+                          .GetAttributeList()
+                          .HasAttribute(SdpAttribute::kMaxptimeAttribute));
+  ASSERT_EQ(mSdp->GetMediaSection(0).GetAttributeList().GetMaxptime(), 20U);
 }
 
 const std::string kNewSctpportOfferDraft21 =
@@ -3707,29 +3737,6 @@ TEST_P(NewSdpTest, CheckSsrcInSessionLevel) {
   }
 }
 
-const std::string kSsrcGroupInSessionSDP =
-"v=0" CRLF
-"o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
-"s=SIP Call" CRLF
-"c=IN IP4 224.0.0.1/100/12" CRLF
-"t=0 0" CRLF
-"a=ssrc-group:FID 5000" CRLF
-"m=video 9 RTP/SAVPF 120" CRLF
-"c=IN IP4 0.0.0.0" CRLF
-"a=rtpmap:120 VP8/90000" CRLF;
-
-// This may or may not parse, but if it does, the errant attribute
-// should be ignored.
-TEST_P(NewSdpTest, CheckSsrcGroupInSessionLevel) {
-  ParseSdp(kSsrcGroupInSessionSDP, false);
-  if (mSdp) {
-    ASSERT_FALSE(mSdp->GetMediaSection(0).GetAttributeList().HasAttribute(
-          SdpAttribute::kSsrcGroupAttribute));
-    ASSERT_FALSE(mSdp->GetAttributeList().HasAttribute(
-          SdpAttribute::kSsrcGroupAttribute));
-  }
-}
-
 const std::string kMalformedImageattr =
 "v=0" CRLF
 "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
@@ -3743,7 +3750,6 @@ const std::string kMalformedImageattr =
 
 TEST_P(NewSdpTest, CheckMalformedImageattr)
 {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432930
   if (::testing::get<0>(GetParam())) {
     // Don't do a parse/serialize before running this test
     return;
@@ -3754,7 +3760,6 @@ TEST_P(NewSdpTest, CheckMalformedImageattr)
 }
 
 TEST_P(NewSdpTest, ParseInvalidSimulcastNoSuchSendRid) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432931
   ParseSdp("v=0" CRLF
            "o=- 4294967296 2 IN IP4 127.0.0.1" CRLF
            "s=SIP Call" CRLF
@@ -3764,13 +3769,13 @@ TEST_P(NewSdpTest, ParseInvalidSimulcastNoSuchSendRid) {
            "m=video 56436 RTP/SAVPF 120" CRLF
            "a=rtpmap:120 VP8/90000" CRLF
            "a=sendrecv" CRLF
-           "a=simulcast: send rid=9" CRLF,
+           "a=simulcast: send rid=9" CRLF
+           "a=rid:9 recv max-width=800;max-height=600" CRLF,
            false);
   ASSERT_NE("", GetParseErrors());
 }
 
 TEST_P(NewSdpTest, ParseInvalidSimulcastNoSuchRecvRid) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432932
   ParseSdp("v=0" CRLF
            "o=- 4294967296 2 IN IP4 127.0.0.1" CRLF
            "s=SIP Call" CRLF
@@ -3780,23 +3785,8 @@ TEST_P(NewSdpTest, ParseInvalidSimulcastNoSuchRecvRid) {
            "m=video 56436 RTP/SAVPF 120" CRLF
            "a=rtpmap:120 VP8/90000" CRLF
            "a=sendrecv" CRLF
-           "a=simulcast: recv rid=9" CRLF,
-           false);
-  ASSERT_NE("", GetParseErrors());
-}
-
-TEST_P(NewSdpTest, ParseInvalidSimulcastNoSuchPt) {
-  SKIP_TEST_WITH_RUST_PARSER; // See Bug 1432933
-  ParseSdp("v=0" CRLF
-           "o=- 4294967296 2 IN IP4 127.0.0.1" CRLF
-           "s=SIP Call" CRLF
-           "c=IN IP4 198.51.100.7" CRLF
-           "b=CT:5000" CRLF
-           "t=0 0" CRLF
-           "m=video 56436 RTP/SAVPF 120" CRLF
-           "a=rtpmap:120 VP8/90000" CRLF
-           "a=sendrecv" CRLF
-           "a=simulcast: send pt=9" CRLF,
+           "a=simulcast: recv rid=9" CRLF
+           "a=rid:9 send max-width=800;max-height=600" CRLF,
            false);
   ASSERT_NE("", GetParseErrors());
 }
@@ -3811,7 +3801,7 @@ TEST_P(NewSdpTest, ParseInvalidSimulcastNotSending) {
            "m=video 56436 RTP/SAVPF 120" CRLF
            "a=rtpmap:120 VP8/90000" CRLF
            "a=recvonly" CRLF
-           "a=simulcast: send pt=120" CRLF,
+           "a=simulcast: send rid=120" CRLF,
            false);
   ASSERT_NE("", GetParseErrors());
 }
@@ -3826,7 +3816,24 @@ TEST_P(NewSdpTest, ParseInvalidSimulcastNotReceiving) {
            "m=video 56436 RTP/SAVPF 120" CRLF
            "a=rtpmap:120 VP8/90000" CRLF
            "a=sendonly" CRLF
-           "a=simulcast: recv pt=120" CRLF,
+           "a=simulcast: recv rid=120" CRLF,
+           false);
+  ASSERT_NE("", GetParseErrors());
+}
+
+TEST_P(NewSdpTest, ParseInvalidRidNoSuchPt) {
+  SKIP_TEST_WITH_SIPCC_PARSER
+  ParseSdp("v=0" CRLF
+           "o=- 4294967296 2 IN IP4 127.0.0.1" CRLF
+           "s=SIP Call" CRLF
+           "c=IN IP4 198.51.100.7" CRLF
+           "b=CT:5000" CRLF
+           "t=0 0" CRLF
+           "m=video 56436 RTP/SAVPF 120" CRLF
+           "a=rtpmap:120 VP8/90000" CRLF
+           "a=sendrecv" CRLF
+           "a=simulcast: recv rid=9" CRLF
+           "a=rid:9 recv pt=101;max-width=800;max-height=600" CRLF,
            false);
   ASSERT_NE("", GetParseErrors());
 }
@@ -4055,6 +4062,158 @@ TEST_P(NewSdpTest, CheckAddMediaSection) {
     ASSERT_EQ(5U, mSdp->GetMediaSectionCount())
       << "Wrong number of media sections after adding media section";
   }
+}
+
+TEST_P(NewSdpTest, CheckAddDataChannel_Draft05) {
+  // Parse any valid sdp with a media section
+  ParseSdp("v=0" CRLF
+           "o=- 4294967296 2 IN IP4 127.0.0.1" CRLF
+           "s=SIP Call" CRLF
+           "c=IN IP4 198.51.100.7" CRLF
+           "b=CT:5000" CRLF
+           "t=0 0" CRLF
+           "m=application 56436 DTLS/SCTP 5000" CRLF);
+
+  ASSERT_TRUE(!!mSdp) << "Parse failed: " << GetParseErrors();
+  ASSERT_EQ(1U, mSdp->GetMediaSectionCount());
+
+  auto& mediaSection = mSdp->GetMediaSection(0);
+  mediaSection.AddDataChannel("webrtc-datachannel", 6000, 16, 0);
+
+  ASSERT_FALSE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kMaxMessageSizeAttribute));
+  ASSERT_TRUE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kSctpmapAttribute));
+  ASSERT_TRUE(mediaSection.GetAttributeList().GetSctpmap().HasEntry("6000"));
+  ASSERT_EQ(16U, mediaSection.GetAttributeList().
+                 GetSctpmap().GetFirstEntry().streams);
+  ASSERT_EQ("webrtc-datachannel", mediaSection.GetAttributeList().
+                                  GetSctpmap().GetFirstEntry().name);
+
+  mediaSection.AddDataChannel("webrtc-datachannel", 15000, 8, 1800);
+
+  ASSERT_TRUE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kMaxMessageSizeAttribute));
+  ASSERT_EQ(1800U, mediaSection.GetAttributeList().GetMaxMessageSize());
+  ASSERT_TRUE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kSctpmapAttribute));
+  ASSERT_TRUE(mediaSection.GetAttributeList().GetSctpmap().HasEntry("15000"));
+  ASSERT_EQ(8U, mediaSection.GetAttributeList().
+                GetSctpmap().GetFirstEntry().streams);
+}
+
+TEST_P(NewSdpTest, CheckAddDataChannel) {
+  ParseSdp("v=0" CRLF
+           "o=- 4294967296 2 IN IP4 127.0.0.1" CRLF
+           "s=SIP Call" CRLF
+           "c=IN IP4 198.51.100.7" CRLF
+           "b=CT:5000" CRLF
+           "t=0 0" CRLF
+           "m=application 56436 UDP/DTLS/SCTP webrtc-datachannel" CRLF);
+
+  ASSERT_TRUE(!!mSdp) << "Parse failed: " << GetParseErrors();
+  ASSERT_EQ(1U, mSdp->GetMediaSectionCount());
+
+  auto& mediaSection = mSdp->GetMediaSection(0);
+  mediaSection.AddDataChannel("webrtc-datachannel", 6000, 16, 0);
+
+  ASSERT_FALSE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kMaxMessageSizeAttribute));
+  ASSERT_TRUE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kSctpPortAttribute));
+  ASSERT_EQ(6000U, mediaSection.GetAttributeList().GetSctpPort());
+
+  mediaSection.AddDataChannel("webrtc-datachannel", 15000, 8, 1800);
+
+  ASSERT_TRUE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kMaxMessageSizeAttribute));
+  ASSERT_EQ(1800U, mediaSection.GetAttributeList().GetMaxMessageSize());
+  ASSERT_TRUE(mediaSection.GetAttributeList().
+              HasAttribute(SdpAttribute::kSctpPortAttribute));
+  ASSERT_EQ(15000U, mediaSection.GetAttributeList().GetSctpPort());
+}
+
+TEST(NewSdpTestNoFixture, CheckParsingResultComparer) {
+  auto check_comparison = [] (const std::string sdp_string) {
+    SipccSdpParser sipccParser;
+    RsdparsaSdpParser rustParser;
+
+    auto sipccSdp = sipccParser.Parse(sdp_string);
+    auto rustSdp = rustParser.Parse(sdp_string);
+
+    ParsingResultComparer comparer;
+    return comparer.Compare(*rustSdp, *sipccSdp, sdp_string);
+  };
+
+  ASSERT_TRUE(check_comparison(kBasicAudioVideoOffer));
+  ASSERT_TRUE(check_comparison(kH264AudioVideoOffer));
+
+  // Check the Fmtp comprison
+  const std::string kBasicOpusFmtp1 =
+  "v=0" CRLF
+  "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
+  "s=SIP Call" CRLF
+  "c=IN IP4 224.0.0.1/100/12" CRLF
+  "t=0 0" CRLF
+  "m=video 9 RTP/SAVPF 120" CRLF
+  "a=rtpmap:120 opus/48000" CRLF
+  "a=fmtp:120 stereo=1;useinbandfec=1" CRLF;
+  ASSERT_TRUE(check_comparison(kBasicOpusFmtp1));
+
+  const std::string kBasicOpusFmtp2 =
+  "v=0" CRLF
+  "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
+  "s=SIP Call" CRLF
+  "c=IN IP4 224.0.0.1/100/12" CRLF
+  "t=0 0" CRLF
+  "m=video 9 RTP/SAVPF 120" CRLF
+  "a=rtpmap:120 opus/48000" CRLF
+  "a=fmtp:120 useinbandfec=1;stereo=1;maxplaybackrate=32000" CRLF;
+  ASSERT_TRUE(check_comparison(kBasicOpusFmtp2));
+
+  const std::string kBasicVP8Fmtp1 =
+  "v=0" CRLF
+  "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
+  "s=SIP Call" CRLF
+  "c=IN IP4 224.0.0.1/100/12" CRLF
+  "t=0 0" CRLF
+  "m=video 9 RTP/SAVPF 120" CRLF
+  "a=rtpmap:120 VP8/90000" CRLF
+  "a=fmtp:120 max-fs=3600;max-fr=60" CRLF;
+  ASSERT_TRUE(check_comparison(kBasicVP8Fmtp1));
+  //
+  const std::string kBasicVP8Fmtp2 =
+  "v=0" CRLF
+  "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
+  "s=SIP Call" CRLF
+  "c=IN IP4 224.0.0.1/100/12" CRLF
+  "t=0 0" CRLF
+  "m=video 9 RTP/SAVPF 120" CRLF
+  "a=rtpmap:120 VP8/90000" CRLF
+  "a=fmtp:120 max-fr=60;max-fs=3600" CRLF;
+  ASSERT_TRUE(check_comparison(kBasicVP8Fmtp2));
+
+  const std::string kBasicH264Fmtp1 =
+  "v=0" CRLF
+  "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
+  "s=SIP Call" CRLF
+  "c=IN IP4 224.0.0.1/100/12" CRLF
+  "t=0 0" CRLF
+  "m=video 9 RTP/SAVPF 120" CRLF
+  "a=rtpmap:120 H264/90000" CRLF
+  "a=fmtp:120 profile-level-id=42a01e;level_asymmetry_allowed=1" CRLF;
+  ASSERT_TRUE(check_comparison(kBasicH264Fmtp1));
+
+  const std::string kBasicH264Fmtp2 =
+  "v=0" CRLF
+  "o=Mozilla-SIPUA-35.0a1 5184 0 IN IP4 0.0.0.0" CRLF
+  "s=SIP Call" CRLF
+  "c=IN IP4 224.0.0.1/100/12" CRLF
+  "t=0 0" CRLF
+  "m=video 9 RTP/SAVPF 120" CRLF
+  "a=rtpmap:120 H264/90000" CRLF
+  "a=fmtp:120 level_asymmetry_allowed=1;profile-level-id=42a01e;max_fs=3600" CRLF;
+  ASSERT_TRUE(check_comparison(kBasicH264Fmtp2));
 }
 
 TEST(NewSdpTestNoFixture, CheckAttributeTypeSerialize) {
@@ -4983,18 +5142,18 @@ TEST(NewSdpTestNoFixture, CheckSimulcastSerialize)
   std::ostringstream os;
 
   SdpSimulcastAttribute simulcast;
-  simulcast.recvVersions.type = SdpSimulcastAttribute::Versions::kPt;
+  simulcast.recvVersions.type = SdpSimulcastAttribute::Versions::kRid;
   simulcast.recvVersions.push_back(SdpSimulcastAttribute::Version());
   simulcast.recvVersions.back().choices.push_back("8");
   simulcast.Serialize(os);
-  ASSERT_EQ("a=simulcast: recv pt=8" CRLF, os.str());
+  ASSERT_EQ("a=simulcast: recv rid=8" CRLF, os.str());
   os.str("");
 
+  simulcast.sendVersions.type = SdpSimulcastAttribute::Versions::kRid;
   simulcast.sendVersions.push_back(SdpSimulcastAttribute::Version());
   simulcast.sendVersions.back().choices.push_back("9");
   simulcast.Serialize(os);
-  ASSERT_EQ("a=simulcast: send rid=9 recv pt=8" CRLF, os.str());
-  os.str("");
+  ASSERT_EQ("a=simulcast: send rid=9 recv rid=8" CRLF, os.str());
 }
 
 static SdpSimulcastAttribute

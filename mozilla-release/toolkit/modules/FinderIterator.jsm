@@ -8,7 +8,6 @@ var EXPORTED_SYMBOLS = ["FinderIterator"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Timer.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "NLP", "resource://gre/modules/NLP.jsm");
 ChromeUtils.defineModuleGetter(this, "Rect", "resource://gre/modules/Geometry.jsm");
@@ -577,7 +576,7 @@ var FinderIterator = {
 
     // Casting `window.frames` to an Iterator doesn't work, so we're stuck with
     // a plain, old for-loop.
-    let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    let dwu = window.windowUtils;
     for (let i = 0, l = window.frames.length; i < l; ++i) {
       let frame = window.frames[i];
       // Don't count matches in hidden frames; get the frame element rect and
@@ -607,9 +606,7 @@ var FinderIterator = {
     // Ranges may also be passed in, so fetch its window.
     if (ChromeUtils.getClassName(windowOrRange) === "Range")
       window = windowOrRange.startContainer.ownerGlobal;
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
-                 .QueryInterface(Ci.nsIDocShell);
+    return window.docShell;
   },
 
   /**
@@ -646,5 +643,5 @@ var FinderIterator = {
     } while (node);
 
     return isInsideLink;
-  }
+  },
 };

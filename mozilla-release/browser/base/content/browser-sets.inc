@@ -9,7 +9,9 @@
 #endif
 #endif
 
-  <stringbundleset id="stringbundleset">
+  <stringbundleset id="stringbundleset"
+                   string-bookmarkthispage="&bookmarkThisPageCmd.label;"
+                   string-editthisbookmark="&editThisBookmarkCmd.label;">
     <stringbundle id="bundle_brand" src="chrome://branding/locale/brand.properties"/>
     <stringbundle id="bundle_shell" src="chrome://browser/locale/shellservice.properties"/>
     <stringbundle id="bundle_preferences" src="chrome://browser/locale/preferences/preferences.properties"/>
@@ -39,6 +41,7 @@
     <command id="cmd_closeWindow" oncommand="BrowserTryToCloseWindow()"/>
     <command id="cmd_toggleMute" oncommand="gBrowser.selectedTab.toggleMuteAudio()"/>
     <command id="cmd_CustomizeToolbars" oncommand="gCustomizeMode.enter()"/>
+    <command id="cmd_toggleOfflineStatus" oncommand="BrowserOffline.toggleOfflineStatus();"/>
     <command id="cmd_quitApplication" oncommand="goQuitApplication()"/>
 
 #include ../../../toolkit/content/editMenuCommands.inc.xul
@@ -61,11 +64,11 @@
 #endif
     <!-- work-around bug 392512 -->
     <command id="Browser:AddBookmarkAs"
-             oncommand="PlacesCommandHook.bookmarkPage(gBrowser.selectedBrowser, true);"/>
+             oncommand="PlacesCommandHook.bookmarkPage();"/>
     <!-- The command disabled state must be manually updated through
          PlacesCommandHook.updateBookmarkAllTabsCommand() -->
     <command id="Browser:BookmarkAllTabs"
-             oncommand="PlacesCommandHook.bookmarkCurrentPages();"/>
+             oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueCurrentPages);"/>
     <command id="Browser:Home"    oncommand="BrowserHome();"/>
     <command id="Browser:Back"    oncommand="BrowserBack();" disabled="true"/>
     <command id="Browser:BackOrBackDuplicate" oncommand="BrowserBack(event);" disabled="true">
@@ -94,7 +97,7 @@
     <command id="cmd_gestureRotateRight" oncommand="gGestureSupport.rotate(event.sourceEvent)"/>
     <command id="cmd_gestureRotateEnd" oncommand="gGestureSupport.rotateEnd()"/>
     <command id="Browser:OpenLocation" oncommand="openLocation();"/>
-    <command id="Browser:RestoreLastSession" oncommand="restoreLastSession();" disabled="true"/>
+    <command id="Browser:RestoreLastSession" oncommand="SessionStore.restoreLastSession();" disabled="true"/>
     <command id="Browser:NewUserContextTab" oncommand="openNewUserContextTab(event.sourceEvent);"/>
     <command id="Browser:OpenAboutContainers" oncommand="openPreferences('paneContainers', {origin: 'ContainersCommand'});"/>
 
@@ -102,6 +105,9 @@
     <command id="Tools:Downloads" oncommand="BrowserDownloadsUI();"/>
     <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/plugin');"/>
     <command id="Tools:Sanitize" oncommand="Sanitizer.showUI(window);"/>
+    <command id="Tools:RecordExecution" oncommand="BeginRecordExecution()"/>
+    <command id="Tools:SaveRecording" oncommand="SaveRecordedExecution()"/>
+    <command id="Tools:ReplayExecution" oncommand="BeginReplayExecution()"/>
     <command id="Tools:PrivateBrowsing"
       oncommand="OpenBrowserWindow({private: true});"/>
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
@@ -123,45 +129,10 @@
 #include ../../components/places/content/placesCommands.inc.xul
 
   <broadcasterset id="mainBroadcasterSet">
-    <broadcaster id="viewBookmarksSidebar" autoCheck="false" label="&bookmarksButton.label;"
-                 type="checkbox" group="sidebar"
-                 sidebarurl="chrome://browser/content/places/bookmarksSidebar.xul"
-                 oncommand="SidebarUI.toggle('viewBookmarksSidebar');"/>
-
-    <broadcaster id="viewHistorySidebar" autoCheck="false" sidebartitle="&historyButton.label;"
-                 type="checkbox" group="sidebar"
-                 sidebarurl="chrome://browser/content/places/historySidebar.xul"
-                 oncommand="SidebarUI.toggle('viewHistorySidebar');"/>
-
-    <broadcaster id="viewWebPanelsSidebar" autoCheck="false"
-                 type="checkbox" group="sidebar" sidebarurl="chrome://browser/content/web-panels.xul"
-                 oncommand="SidebarUI.toggle('viewWebPanelsSidebar');"/>
-
-    <broadcaster id="bookmarkThisPageBroadcaster"
-                 label="&bookmarkThisPageCmd.label;"
-                 bookmarklabel="&bookmarkThisPageCmd.label;"
-                 editlabel="&editThisBookmarkCmd.label;"/>
-
-    <!-- popup blocking menu items -->
-    <broadcaster id="blockedPopupAllowSite"
-                 accesskey="&allowPopups.accesskey;"
-                 oncommand="gPopupBlockerObserver.toggleAllowPopupsForSite(event);"/>
-    <broadcaster id="blockedPopupEditSettings"
-#ifdef XP_WIN
-                 label="&editPopupSettings.label;"
-#else
-                 label="&editPopupSettingsUnix.label;"
-#endif
-                 accesskey="&editPopupSettings.accesskey;"
-                 oncommand="gPopupBlockerObserver.editPopupSettings();"/>
-    <broadcaster id="blockedPopupDontShowMessage"
-                 accesskey="&dontShowMessage.accesskey;"
-                 type="checkbox"
-                 oncommand="gPopupBlockerObserver.dontShowMessage();"/>
-    <broadcaster id="blockedPopupsSeparator"/>
     <broadcaster id="isImage"/>
     <broadcaster id="canViewSource"/>
     <broadcaster id="isFrameImage"/>
+<<<<<<< HEAD
     <broadcaster id="singleFeedMenuitemState" disabled="true"/>
     <broadcaster id="multipleFeedsMenuState" hidden="true"/>
 
@@ -194,6 +165,38 @@
     <broadcaster id="reportPhishingBroadcaster" disabled="true"/>
     <broadcaster id="reportPhishingErrorBroadcaster" disabled="true"/>
     <broadcaster id="trackingProtectionBroadcaster" enabled="false"/>
+||||||| merged common ancestors
+    <broadcaster id="singleFeedMenuitemState" disabled="true"/>
+    <broadcaster id="multipleFeedsMenuState" hidden="true"/>
+
+    <!-- Sync broadcasters -->
+    <!-- A broadcaster of a number of attributes suitable for "sync now" UI -
+        A 'syncstatus' attribute is set while actively syncing, and the label
+        attribute which changes from "sync now" to "syncing" etc. -->
+    <broadcaster id="sync-status" onmouseover="gSync.refreshSyncButtonsTooltip();"/>
+    <!-- broadcasters of the "hidden" attribute to reflect setup state for
+         menus -->
+    <broadcaster id="sync-setup-state" hidden="true"/>
+    <broadcaster id="sync-unverified-state" hidden="true"/>
+    <broadcaster id="sync-syncnow-state" hidden="true"/>
+    <broadcaster id="sync-reauth-state" hidden="true"/>
+    <broadcaster id="viewTabsSidebar" autoCheck="false" sidebartitle="&syncedTabs.sidebar.label;"
+                 type="checkbox" group="sidebar"
+                 sidebarurl="chrome://browser/content/syncedtabs/sidebar.xhtml"
+                 oncommand="SidebarUI.toggle('viewTabsSidebar');"/>
+    <broadcaster id="workOfflineMenuitemState"/>
+
+    <broadcaster id="devtoolsMenuBroadcaster_PageSource"
+                 label="&pageSourceCmd.label;"
+                 key="key_viewSource"
+                 command="View:PageSource">
+      <observes element="canViewSource" attribute="disabled"/>
+    </broadcaster>
+    <broadcaster id="reportPhishingBroadcaster" disabled="true"/>
+    <broadcaster id="reportPhishingErrorBroadcaster" disabled="true"/>
+    <broadcaster id="trackingProtectionBroadcaster" enabled="false"/>
+=======
+>>>>>>> origin/upstream-releases
   </broadcasterset>
 
   <keyset id="mainKeyset">
@@ -321,16 +324,16 @@
     <key id="addBookmarkAsKb" key="&bookmarkThisPageCmd.commandkey;" command="Browser:AddBookmarkAs" modifiers="accel"/>
 # Accel+Shift+A-F are reserved on GTK
 #ifndef MOZ_WIDGET_GTK
-    <key id="bookmarkAllTabsKb" key="&bookmarkThisPageCmd.commandkey;" oncommand="PlacesCommandHook.bookmarkCurrentPages();" modifiers="accel,shift"/>
+    <key id="bookmarkAllTabsKb" key="&bookmarkThisPageCmd.commandkey;" oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueCurrentPages);" modifiers="accel,shift"/>
     <key id="manBookmarkKb" key="&bookmarksCmd.commandkey;" command="Browser:ShowAllBookmarks" modifiers="accel,shift"/>
 #else
     <key id="manBookmarkKb" key="&bookmarksGtkCmd.commandkey;" command="Browser:ShowAllBookmarks" modifiers="accel,shift"/>
 #endif
-    <key id="viewBookmarksSidebarKb" key="&bookmarksCmd.commandkey;" command="viewBookmarksSidebar" modifiers="accel"/>
+    <key id="viewBookmarksSidebarKb" key="&bookmarksCmd.commandkey;" oncommand="SidebarUI.toggle('viewBookmarksSidebar');" modifiers="accel"/>
 #ifdef XP_WIN
 # Cmd+I is conventially mapped to Info on MacOS X, thus it should not be
 # overridden for other purposes there.
-    <key id="viewBookmarksSidebarWinKb" key="&bookmarksWinCmd.commandkey;" command="viewBookmarksSidebar" modifiers="accel"/>
+    <key id="viewBookmarksSidebarWinKb" key="&bookmarksWinCmd.commandkey;" oncommand="SidebarUI.toggle('viewBookmarksSidebar');" modifiers="accel"/>
 #endif
 
     <key id="key_stop" keycode="VK_ESCAPE" command="Browser:Stop"/>
@@ -346,7 +349,7 @@
 #else
          modifiers="accel"
 #endif
-         command="viewHistorySidebar"/>
+         oncommand="SidebarUI.toggle('viewHistorySidebar');"/>
 
     <key id="key_fullZoomReduce"  key="&fullZoomReduceCmd.commandkey;"   command="cmd_fullZoomReduce"  modifiers="accel"/>
     <key                          key="&fullZoomReduceCmd.commandkey2;"  command="cmd_fullZoomReduce"  modifiers="accel"/>
@@ -380,9 +383,7 @@
 #endif
          reserved="true"/>
 
-#ifdef FULL_BROWSER_WINDOW
     <key id="key_undoCloseTab" command="History:UndoCloseTab" key="&tabCmd.commandkey;" modifiers="accel,shift"/>
-#endif
     <key id="key_undoCloseWindow" command="History:UndoCloseWindow" key="&newNavigatorCmd.key;" modifiers="accel,shift"/>
 
 #ifdef XP_GNOME

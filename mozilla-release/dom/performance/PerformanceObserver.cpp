@@ -12,6 +12,7 @@
 #include "mozilla/dom/PerformanceObserverBinding.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
+#include "nsIScriptError.h"
 #include "nsPIDOMWindow.h"
 #include "nsQueryObject.h"
 #include "nsString.h"
@@ -99,7 +100,7 @@ PerformanceObserver::Constructor(const GlobalObject& aGlobal,
 JSObject*
 PerformanceObserver::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PerformanceObserverBinding::Wrap(aCx, this, aGivenProto);
+  return PerformanceObserver_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -134,18 +135,17 @@ PerformanceObserver::QueueEntry(PerformanceEntry* aEntry)
   mQueuedEntries.AppendElement(aEntry);
 }
 
-static const char16_t *const sValidTypeNames[3] = {
+static const char16_t *const sValidTypeNames[4] = {
+  u"navigation",
   u"mark",
   u"measure",
   u"resource",
 };
 
 void
-PerformanceObserver::Observe(const PerformanceObserverInit& aOptions,
-                             ErrorResult& aRv)
+PerformanceObserver::Observe(const PerformanceObserverInit& aOptions)
 {
   if (aOptions.mEntryTypes.IsEmpty()) {
-    aRv.Throw(NS_ERROR_DOM_TYPE_ERR);
     return;
   }
 
@@ -159,8 +159,37 @@ PerformanceObserver::Observe(const PerformanceObserverInit& aOptions,
     }
   }
 
+  nsAutoString invalidTypesJoined;
+  bool addComma = false;
+  for (const auto& type : aOptions.mEntryTypes) {
+    if (!validEntryTypes.Contains<nsString>(type)) {
+      if (addComma) {
+        invalidTypesJoined.AppendLiteral(", ");
+      }
+      addComma = true;
+      invalidTypesJoined.Append(type);
+    }
+  }
+
+  if (!invalidTypesJoined.IsEmpty()) {
+    if (!NS_IsMainThread()) {
+      nsTArray<nsString> params;
+      params.AppendElement(invalidTypesJoined);
+      WorkerPrivate::ReportErrorToConsole("UnsupportedEntryTypesIgnored",
+                                          params);
+    } else {
+      nsCOMPtr<nsPIDOMWindowInner> ownerWindow =
+        do_QueryInterface(mOwner);
+      nsIDocument* document = ownerWindow->GetExtantDoc();
+      const char16_t* params[] = { invalidTypesJoined.get() };
+      nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                      NS_LITERAL_CSTRING("DOM"), document,
+                                      nsContentUtils::eDOM_PROPERTIES,
+                                      "UnsupportedEntryTypesIgnored", params, 1);
+    }
+  }
+
   if (validEntryTypes.IsEmpty()) {
-    aRv.Throw(NS_ERROR_DOM_TYPE_ERR);
     return;
   }
 

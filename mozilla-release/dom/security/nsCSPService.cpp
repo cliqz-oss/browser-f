@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Logging.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
 #include "nsIURI.h"
@@ -16,21 +18,16 @@
 #include "nsError.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsAsyncRedirectVerifyHelper.h"
-#include "mozilla/Preferences.h"
 #include "nsIScriptError.h"
 #include "nsContentUtils.h"
 #include "nsContentPolicyUtils.h"
 
 using namespace mozilla;
 
-/* Keeps track of whether or not CSP is enabled */
-bool CSPService::sCSPEnabled = true;
-
 static LazyLogModule gCspPRLog("CSP");
 
 CSPService::CSPService()
 {
-  Preferences::AddBoolVarCache(&sCSPEnabled, "security.csp.enable");
 }
 
 CSPService::~CSPService()
@@ -152,7 +149,8 @@ CSPService::ShouldLoad(nsIURI *aContentLocation,
   // Please note, the correct way to opt-out of CSP using a custom
   // protocolHandler is to set one of the nsIProtocolHandler flags
   // that are whitelistet in subjectToCSP()
-  if (!sCSPEnabled || !subjectToCSP(aContentLocation, contentType)) {
+  if (!StaticPrefs::security_csp_enable() ||
+      !subjectToCSP(aContentLocation, contentType)) {
     return NS_OK;
   }
 
@@ -184,13 +182,13 @@ CSPService::ShouldLoad(nsIURI *aContentLocation,
 
     if (preloadCsp) {
       // obtain the enforcement decision
-      // (don't pass aExtra, we use that slot for redirects)
       rv = preloadCsp->ShouldLoad(contentType,
                                   aContentLocation,
                                   requestOrigin,
                                   requestContext,
                                   aMimeTypeGuess,
-                                  nullptr, // aExtra
+                                  nullptr, // no redirect, aOriginal URL is null.
+                                  aLoadInfo->GetSendCSPViolationEvents(),
                                   aDecision);
       NS_ENSURE_SUCCESS(rv, rv);
 
@@ -209,13 +207,13 @@ CSPService::ShouldLoad(nsIURI *aContentLocation,
 
   if (csp) {
     // obtain the enforcement decision
-    // (don't pass aExtra, we use that slot for redirects)
     rv = csp->ShouldLoad(contentType,
                          aContentLocation,
                          requestOrigin,
                          requestContext,
                          aMimeTypeGuess,
-                         nullptr,
+                         nullptr, // no redirect, aOriginal URL is null.
+                         aLoadInfo->GetSendCSPViolationEvents(),
                          aDecision);
     NS_ENSURE_SUCCESS(rv, rv);
   }
@@ -284,7 +282,8 @@ CSPService::AsyncOnChannelRedirect(nsIChannel *oldChannel,
   // protocolHandler is to set one of the nsIProtocolHandler flags
   // that are whitelistet in subjectToCSP()
   nsContentPolicyType policyType = loadInfo->InternalContentPolicyType();
-  if (!sCSPEnabled || !subjectToCSP(newUri, policyType)) {
+  if (!StaticPrefs::security_csp_enable() ||
+      !subjectToCSP(newUri, policyType)) {
     return NS_OK;
   }
 
@@ -320,13 +319,14 @@ CSPService::AsyncOnChannelRedirect(nsIChannel *oldChannel,
     loadInfo->LoadingPrincipal()->GetPreloadCsp(getter_AddRefs(preloadCsp));
 
     if (preloadCsp) {
-      // Pass  originalURI as aExtra to indicate the redirect
+      // Pass  originalURI to indicate the redirect
       preloadCsp->ShouldLoad(policyType,     // load type per nsIContentPolicy (uint32_t)
                              newUri,         // nsIURI
                              nullptr,        // nsIURI
                              requestContext, // nsISupports
                              EmptyCString(), // ACString - MIME guess
-                             originalUri,    // aExtra
+                             originalUri,    // Original nsIURI
+                             true,           // aSendViolationReports
                              &aDecision);
 
       // if the preload policy already denied the load, then there
@@ -344,13 +344,14 @@ CSPService::AsyncOnChannelRedirect(nsIChannel *oldChannel,
   loadInfo->LoadingPrincipal()->GetCsp(getter_AddRefs(csp));
 
   if (csp) {
-    // Pass  originalURI as aExtra to indicate the redirect
+    // Pass  originalURI to indicate the redirect
     csp->ShouldLoad(policyType,     // load type per nsIContentPolicy (uint32_t)
                     newUri,         // nsIURI
                     nullptr,        // nsIURI
                     requestContext, // nsISupports
                     EmptyCString(), // ACString - MIME guess
-                    originalUri,    // aExtra
+                    originalUri,    // Original nsIURI
+                    true,           // aSendViolationReports
                     &aDecision);
   }
 

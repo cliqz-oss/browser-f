@@ -23,8 +23,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(Storage)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Storage)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMStorage)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMStorage)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
 Storage::Storage(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal)
@@ -67,7 +66,7 @@ Storage::CanUseStorage(nsIPrincipal& aSubjectPrincipal)
 /* virtual */ JSObject*
 Storage::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return StorageBinding::Wrap(aCx, this, aGivenProto);
+  return Storage_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 namespace {

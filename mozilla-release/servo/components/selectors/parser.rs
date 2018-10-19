@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use attr::{AttrSelectorOperator, AttrSelectorWithNamespace, ParsedAttrSelectorOperation};
-use attr::{NamespaceConstraint, ParsedCaseSensitivity, SELECTOR_WHITESPACE};
+use attr::{AttrSelectorOperator, AttrSelectorWithOptionalNamespace};
+use attr::{NamespaceConstraint, ParsedAttrSelectorOperation};
+use attr::{ParsedCaseSensitivity, SELECTOR_WHITESPACE};
 use bloom::BLOOM_HASH_MASK;
 use builder::{SelectorBuilder, SpecificityAndFlags};
 use context::QuirksMode;
@@ -19,6 +20,7 @@ use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Debug, Display, Write};
 use std::iter::Rev;
 use std::slice;
+use thin_slice::ThinBoxedSlice;
 pub use visitor::{SelectorVisitor, Visit};
 
 /// A trait that represents a pseudo-element.
@@ -45,6 +47,8 @@ pub trait NonTSPseudoClass: Sized + ToCss {
     fn is_active_or_hover(&self) -> bool;
 }
 
+/// Returns a Cow::Borrowed if `s` is already ASCII lowercase, and a
+/// Cow::Owned if `s` had to be converted into ASCII lowercase.
 fn to_ascii_lowercase(s: &str) -> Cow<str> {
     if let Some(first_uppercase) = s.bytes().position(|byte| byte >= b'A' && byte <= b'Z') {
         let mut string = s.to_owned();
@@ -428,7 +432,6 @@ where
             },
             AttributeInNoNamespace {
                 ref local_name,
-                ref local_name_lower,
                 never_matches,
                 ..
             } if !never_matches =>
@@ -436,14 +439,22 @@ where
                 if !visitor.visit_attribute_selector(
                     &NamespaceConstraint::Specific(&namespace_empty_string::<Impl>()),
                     local_name,
-                    local_name_lower,
+                    local_name,
                 ) {
                     return false;
                 }
             },
             AttributeOther(ref attr_selector) if !attr_selector.never_matches => {
+                let empty_string;
+                let namespace = match attr_selector.namespace() {
+                    Some(ns) => ns,
+                    None => {
+                        empty_string = ::parser::namespace_empty_string::<Impl>();
+                        NamespaceConstraint::Specific(&empty_string)
+                    }
+                };
                 if !visitor.visit_attribute_selector(
-                    &attr_selector.namespace(),
+                    &namespace,
                     &attr_selector.local_name,
                     &attr_selector.local_name_lower,
                 ) {
@@ -815,16 +826,16 @@ pub enum Component<Impl: SelectorImpl> {
         local_name: Impl::LocalName,
         local_name_lower: Impl::LocalName,
     },
+    // Used only when local_name is already lowercase.
     AttributeInNoNamespace {
         local_name: Impl::LocalName,
-        local_name_lower: Impl::LocalName,
         operator: AttrSelectorOperator,
         value: Impl::AttrValue,
         case_sensitivity: ParsedCaseSensitivity,
         never_matches: bool,
     },
     // Use a Box in the less common cases with more data to keep size_of::<Component>() small.
-    AttributeOther(Box<AttrSelectorWithNamespace<Impl>>),
+    AttributeOther(Box<AttrSelectorWithOptionalNamespace<Impl>>),
 
     /// Pseudo-classes
     ///
@@ -836,7 +847,7 @@ pub enum Component<Impl: SelectorImpl> {
     /// need to think about how this should interact with
     /// visit_complex_selector, and what the consumers of those APIs should do
     /// about the presence of combinators in negation.
-    Negation(Box<[Component<Impl>]>),
+    Negation(ThinBoxedSlice<Component<Impl>>),
     FirstChild,
     LastChild,
     OnlyChild,
@@ -948,7 +959,7 @@ impl<Impl: SelectorImpl> Debug for Component<Impl> {
         self.to_css(f)
     }
 }
-impl<Impl: SelectorImpl> Debug for AttrSelectorWithNamespace<Impl> {
+impl<Impl: SelectorImpl> Debug for AttrSelectorWithOptionalNamespace<Impl> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.to_css(f)
     }
@@ -995,8 +1006,7 @@ impl<Impl: SelectorImpl> ToCss for Selector<Impl> {
 
         let mut combinators = self.iter_raw_match_order()
             .rev()
-            .filter(|x| x.is_combinator())
-            .peekable();
+            .filter_map(|x| x.as_combinator());
         let compound_selectors = self.iter_raw_match_order()
             .as_slice()
             .split(|x| x.is_combinator())
@@ -1007,72 +1017,74 @@ impl<Impl: SelectorImpl> ToCss for Selector<Impl> {
             debug_assert!(!combinators_exhausted);
 
             // https://drafts.csswg.org/cssom/#serializing-selectors
+            if compound.is_empty() {
+                continue;
+            }
 
-            if !compound.is_empty() {
-                // 1. If there is only one simple selector in the compound selectors
-                //    which is a universal selector, append the result of
-                //    serializing the universal selector to s.
-                //
-                // Check if `!compound.empty()` first--this can happen if we have
-                // something like `... > ::before`, because we store `>` and `::`
-                // both as combinators internally.
-                //
-                // If we are in this case, after we have serialized the universal
-                // selector, we skip Step 2 and continue with the algorithm.
-                let (can_elide_namespace, first_non_namespace) = match &compound[0] {
-                    &Component::ExplicitAnyNamespace |
-                    &Component::ExplicitNoNamespace |
-                    &Component::Namespace(_, _) => (false, 1),
-                    &Component::DefaultNamespace(_) => (true, 1),
-                    _ => (true, 0),
-                };
-                let mut perform_step_2 = true;
-                if first_non_namespace == compound.len() - 1 {
-                    match (combinators.peek(), &compound[first_non_namespace]) {
-                        // We have to be careful here, because if there is a
-                        // pseudo element "combinator" there isn't really just
-                        // the one simple selector. Technically this compound
-                        // selector contains the pseudo element selector as well
-                        // -- Combinator::PseudoElement, just like
-                        // Combinator::SlotAssignment, don't exist in the
-                        // spec.
-                        (Some(&&Component::Combinator(Combinator::PseudoElement)), _) |
-                        (Some(&&Component::Combinator(Combinator::SlotAssignment)), _) => (),
-                        (_, &Component::ExplicitUniversalType) => {
-                            // Iterate over everything so we serialize the namespace
-                            // too.
-                            for simple in compound.iter() {
-                                simple.to_css(dest)?;
-                            }
-                            // Skip step 2, which is an "otherwise".
-                            perform_step_2 = false;
-                        },
-                        (_, _) => (),
-                    }
-                }
-
-                // 2. Otherwise, for each simple selector in the compound selectors
-                //    that is not a universal selector of which the namespace prefix
-                //    maps to a namespace that is not the default namespace
-                //    serialize the simple selector and append the result to s.
-                //
-                // See https://github.com/w3c/csswg-drafts/issues/1606, which is
-                // proposing to change this to match up with the behavior asserted
-                // in cssom/serialize-namespaced-type-selectors.html, which the
-                // following code tries to match.
-                if perform_step_2 {
-                    for simple in compound.iter() {
-                        if let Component::ExplicitUniversalType = *simple {
-                            // Can't have a namespace followed by a pseudo-element
-                            // selector followed by a universal selector in the same
-                            // compound selector, so we don't have to worry about the
-                            // real namespace being in a different `compound`.
-                            if can_elide_namespace {
-                                continue;
-                            }
+            // 1. If there is only one simple selector in the compound selectors
+            //    which is a universal selector, append the result of
+            //    serializing the universal selector to s.
+            //
+            // Check if `!compound.empty()` first--this can happen if we have
+            // something like `... > ::before`, because we store `>` and `::`
+            // both as combinators internally.
+            //
+            // If we are in this case, after we have serialized the universal
+            // selector, we skip Step 2 and continue with the algorithm.
+            let (can_elide_namespace, first_non_namespace) = match compound[0] {
+                Component::ExplicitAnyNamespace |
+                Component::ExplicitNoNamespace |
+                Component::Namespace(..) => (false, 1),
+                Component::DefaultNamespace(..) => (true, 1),
+                _ => (true, 0),
+            };
+            let mut perform_step_2 = true;
+            let next_combinator = combinators.next();
+            if first_non_namespace == compound.len() - 1 {
+                match (next_combinator, &compound[first_non_namespace]) {
+                    // We have to be careful here, because if there is a
+                    // pseudo element "combinator" there isn't really just
+                    // the one simple selector. Technically this compound
+                    // selector contains the pseudo element selector as well
+                    // -- Combinator::PseudoElement, just like
+                    // Combinator::SlotAssignment, don't exist in the
+                    // spec.
+                    (Some(Combinator::PseudoElement), _) |
+                    (Some(Combinator::SlotAssignment), _) => (),
+                    (_, &Component::ExplicitUniversalType) => {
+                        // Iterate over everything so we serialize the namespace
+                        // too.
+                        for simple in compound.iter() {
+                            simple.to_css(dest)?;
                         }
-                        simple.to_css(dest)?;
+                        // Skip step 2, which is an "otherwise".
+                        perform_step_2 = false;
+                    },
+                    _ => (),
+                }
+            }
+
+            // 2. Otherwise, for each simple selector in the compound selectors
+            //    that is not a universal selector of which the namespace prefix
+            //    maps to a namespace that is not the default namespace
+            //    serialize the simple selector and append the result to s.
+            //
+            // See https://github.com/w3c/csswg-drafts/issues/1606, which is
+            // proposing to change this to match up with the behavior asserted
+            // in cssom/serialize-namespaced-type-selectors.html, which the
+            // following code tries to match.
+            if perform_step_2 {
+                for simple in compound.iter() {
+                    if let Component::ExplicitUniversalType = *simple {
+                        // Can't have a namespace followed by a pseudo-element
+                        // selector followed by a universal selector in the same
+                        // compound selector, so we don't have to worry about the
+                        // real namespace being in a different `compound`.
+                        if can_elide_namespace {
+                            continue;
+                        }
                     }
+                    simple.to_css(dest)?;
                 }
             }
 
@@ -1081,7 +1093,7 @@ impl<Impl: SelectorImpl> ToCss for Selector<Impl> {
             //    ">", "+", "~", ">>", "||", as appropriate, followed by another
             //    single SPACE (U+0020) if the combinator was not whitespace, to
             //    s.
-            match combinators.next() {
+            match next_combinator {
                 Some(c) => c.to_css(dest)?,
                 None => combinators_exhausted = true,
             };
@@ -1237,18 +1249,19 @@ impl<Impl: SelectorImpl> ToCss for Component<Impl> {
     }
 }
 
-impl<Impl: SelectorImpl> ToCss for AttrSelectorWithNamespace<Impl> {
+impl<Impl: SelectorImpl> ToCss for AttrSelectorWithOptionalNamespace<Impl> {
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result
     where
         W: fmt::Write,
     {
         dest.write_char('[')?;
         match self.namespace {
-            NamespaceConstraint::Specific((ref prefix, _)) => {
+            Some(NamespaceConstraint::Specific((ref prefix, _))) => {
                 display_to_css_identifier(prefix, dest)?;
                 dest.write_char('|')?
             },
-            NamespaceConstraint::Any => dest.write_str("*|")?,
+            Some(NamespaceConstraint::Any) => dest.write_str("*|")?,
+            None => {}
         }
         display_to_css_identifier(&self.local_name, dest)?;
         match self.operation {
@@ -1627,8 +1640,8 @@ where
             let local_name = local_name.as_ref().into();
             if let Some(namespace) = namespace {
                 return Ok(Component::AttributeOther(Box::new(
-                    AttrSelectorWithNamespace {
-                        namespace: namespace,
+                    AttrSelectorWithOptionalNamespace {
+                        namespace: Some(namespace),
                         local_name: local_name,
                         local_name_lower: local_name_lower,
                         operation: ParsedAttrSelectorOperation::Exists,
@@ -1684,6 +1697,7 @@ where
 
     let value = value.as_ref().into();
     let local_name_lower;
+    let local_name_is_ascii_lowercase;
     {
         let local_name_lower_cow = to_ascii_lowercase(&local_name);
         if let ParsedCaseSensitivity::CaseSensitive = case_sensitivity {
@@ -1698,15 +1712,16 @@ where
             }
         }
         local_name_lower = local_name_lower_cow.as_ref().into();
+        local_name_is_ascii_lowercase = matches!(local_name_lower_cow, Cow::Borrowed(..));
     }
     let local_name = local_name.as_ref().into();
-    if let Some(namespace) = namespace {
+    if namespace.is_some() || !local_name_is_ascii_lowercase {
         Ok(Component::AttributeOther(Box::new(
-            AttrSelectorWithNamespace {
-                namespace: namespace,
-                local_name: local_name,
-                local_name_lower: local_name_lower,
-                never_matches: never_matches,
+            AttrSelectorWithOptionalNamespace {
+                namespace,
+                local_name,
+                local_name_lower,
+                never_matches,
                 operation: ParsedAttrSelectorOperation::WithValue {
                     operator: operator,
                     case_sensitivity: case_sensitivity,
@@ -1717,7 +1732,6 @@ where
     } else {
         Ok(Component::AttributeInNoNamespace {
             local_name: local_name,
-            local_name_lower: local_name_lower,
             operator: operator,
             value: value,
             case_sensitivity: case_sensitivity,
@@ -1784,7 +1798,7 @@ where
     }
 
     // Success.
-    Ok(Component::Negation(sequence.into_vec().into_boxed_slice()))
+    Ok(Component::Negation(sequence.into_vec().into_boxed_slice().into()))
 }
 
 /// simple_selector_sequence
@@ -2624,7 +2638,7 @@ pub mod tests {
                     vec![
                         Component::DefaultNamespace(MATHML.into()),
                         Component::Negation(
-                            vec![Component::Class(DummyAtom::from("cl"))].into_boxed_slice(),
+                            vec![Component::Class(DummyAtom::from("cl"))].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 1, 0),
@@ -2641,7 +2655,7 @@ pub mod tests {
                             vec![
                                 Component::DefaultNamespace(MATHML.into()),
                                 Component::ExplicitUniversalType,
-                            ].into_boxed_slice(),
+                            ].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 0),
@@ -2661,7 +2675,7 @@ pub mod tests {
                                     name: DummyAtom::from("e"),
                                     lower_name: DummyAtom::from("e"),
                                 }),
-                            ].into_boxed_slice(),
+                            ].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 1),
@@ -2675,7 +2689,6 @@ pub mod tests {
                     vec![
                         Component::AttributeInNoNamespace {
                             local_name: DummyAtom::from("attr"),
-                            local_name_lower: DummyAtom::from("attr"),
                             operator: AttrSelectorOperator::DashMatch,
                             value: DummyAtom::from("foo"),
                             never_matches: false,
@@ -2769,7 +2782,7 @@ pub mod tests {
                 Selector::from_vec(
                     vec![
                         Component::Negation(
-                            vec![Component::ID(DummyAtom::from("provel"))].into_boxed_slice(),
+                            vec![Component::ID(DummyAtom::from("provel"))].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(1, 0, 0),
@@ -2788,7 +2801,7 @@ pub mod tests {
                                     name: DummyAtom::from("circle"),
                                     lower_name: DummyAtom::from("circle"),
                                 }),
-                            ].into_boxed_slice(),
+                            ].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 1),
@@ -2802,7 +2815,7 @@ pub mod tests {
                 Selector::from_vec(
                     vec![
                         Component::Negation(
-                            vec![Component::ExplicitUniversalType].into_boxed_slice(),
+                            vec![Component::ExplicitUniversalType].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 0),
@@ -2818,7 +2831,7 @@ pub mod tests {
                             vec![
                                 Component::ExplicitNoNamespace,
                                 Component::ExplicitUniversalType,
-                            ].into_boxed_slice(),
+                            ].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 0),
@@ -2833,7 +2846,7 @@ pub mod tests {
                 Selector::from_vec(
                     vec![
                         Component::Negation(
-                            vec![Component::ExplicitUniversalType].into_boxed_slice(),
+                            vec![Component::ExplicitUniversalType].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 0),
@@ -2849,7 +2862,7 @@ pub mod tests {
                             vec![
                                 Component::Namespace(DummyAtom("svg".into()), SVG.into()),
                                 Component::ExplicitUniversalType,
-                            ].into_boxed_slice(),
+                            ].into_boxed_slice().into(),
                         ),
                     ],
                     specificity(0, 0, 0),

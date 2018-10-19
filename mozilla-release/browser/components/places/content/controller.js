@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* import-globals-from ../../../base/content/utilityOverlay.js */
 /* import-globals-from ../PlacesUIUtils.jsm */
-/* import-globals-from ../../../../toolkit/content/globalOverlay.js */
 /* import-globals-from ../../../../toolkit/components/places/PlacesUtils.jsm */
 /* import-globals-from ../../../../toolkit/components/places/PlacesTransactions.jsm */
 
@@ -58,7 +58,7 @@ PlacesInsertionPoint.prototype = {
 
   get isTag() {
     return typeof(this.tagName) == "string";
-  }
+  },
 };
 
 /**
@@ -89,7 +89,7 @@ PlacesController.prototype = {
   disableUserActions: false,
 
   QueryInterface: ChromeUtils.generateQI([
-    Ci.nsIClipboardOwner
+    Ci.nsIClipboardOwner,
   ]),
 
   // nsIClipboardOwner
@@ -273,11 +273,9 @@ PlacesController.prototype = {
       let node = this._view.selectedNode;
       PlacesUIUtils.showBookmarkDialog({ action: "add",
                                          type: "bookmark",
-                                         hiddenRows: [ "keyword",
-                                                       "location",
-                                                       "loadInSidebar" ],
+                                         hiddenRows: [ "keyword", "location" ],
                                          uri: Services.io.newURI(node.uri),
-                                         title: node.title
+                                         title: node.title,
                                        }, window.top);
       break;
     }
@@ -566,8 +564,8 @@ PlacesController.prototype = {
     var separator = null;
     var visibleItemsBeforeSep = false;
     var usableItemCount = 0;
-    for (var i = 0; i < aPopup.childNodes.length; ++i) {
-      var item = aPopup.childNodes[i];
+    for (var i = 0; i < aPopup.children.length; ++i) {
+      var item = aPopup.children[i];
       if (item.getAttribute("ignoreitem") == "true") {
         continue;
       }
@@ -651,7 +649,7 @@ PlacesController.prototype = {
 
     PlacesUIUtils.showBookmarkDialog({ action: "edit",
                                        node,
-                                       hiddenRows: [ "folderPicker" ]
+                                       hiddenRows: [ "folderPicker" ],
                                      }, window.top);
   },
 
@@ -700,7 +698,7 @@ PlacesController.prototype = {
       PlacesUIUtils.showBookmarkDialog({ action: "add",
                                          type: aType,
                                          defaultInsertionPoint: ip,
-                                         hiddenRows: [ "folderPicker" ]
+                                         hiddenRows: [ "folderPicker" ],
                                        }, window.top);
     if (bookmarkGuid) {
       this._view.selectItems([bookmarkGuid], false);
@@ -812,8 +810,9 @@ PlacesController.prototype = {
         // child of the "Tags" query in the library, in all other places we
         // must only remove the query node.
         let tag = node.title;
-        let URIs = PlacesUtils.tagging.getURIsForTag(tag);
-        transactions.push(PlacesTransactions.Untag({ tag, urls: URIs }));
+        let urls = new Set();
+        await PlacesUtils.bookmarks.fetch({tags: [tag]}, b => urls.add(b.url));
+        transactions.push(PlacesTransactions.Untag({ tag, urls: Array.from(urls) }));
       } else if (PlacesUtils.nodeIsURI(node) &&
                  PlacesUtils.nodeIsQuery(node.parent) &&
                  PlacesUtils.asQuery(node.parent).queryOptions.queryType ==
@@ -915,7 +914,7 @@ PlacesController.prototype = {
       // end up removing more history than requested.
       await PlacesUtils.history.removeByFilter({
         beginDate: PlacesUtils.toDate(beginTime + 1000),
-        endDate: PlacesUtils.toDate(endTime)
+        endDate: PlacesUtils.toDate(endTime),
       });
     }
   },
@@ -1432,7 +1431,7 @@ var PlacesControllerDragHelper = {
         nodes.push({
           uri: spec,
           title: data.label,
-          type: PlacesUtils.TYPE_X_MOZ_URL
+          type: PlacesUtils.TYPE_X_MOZ_URL,
         });
       } else {
         throw new Error("bogus data was passed as a tab");

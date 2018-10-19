@@ -180,7 +180,15 @@ public:
   /**
    * Return the unique identifier of the accessible.
    */
-  void* UniqueID() { return static_cast<void*>(this); }
+  void* UniqueID() {
+    // When recording or replaying, use an ID which will be consistent when
+    // recording/replaying (pointer values are not consistent), so that IPC
+    // messages from the parent process can be handled when replaying.
+    if (recordreplay::IsRecordingOrReplaying()) {
+      return reinterpret_cast<void*>(recordreplay::ThingIndex(this));
+    }
+    return static_cast<void*>(this);
+  }
 
   /**
    * Return language associated with the accessible.
@@ -901,9 +909,10 @@ public:
 
   /**
    * Return true if the accessible state change is processed by handling proper
-   * DOM UI event, if otherwise then false. For example, HTMLCheckboxAccessible
-   * process nsIDocumentObserver::ContentStateChanged instead
-   * 'CheckboxStateChange' event.
+   * DOM UI event, if otherwise then false. For example, CheckboxAccessible
+   * created for HTML:input@type="checkbox" will process
+   * nsIDocumentObserver::ContentStateChanged instead of 'CheckboxStateChange'
+   * event.
    */
   bool NeedsDOMUIEvent() const
     { return !(mStateFlags & eIgnoreDOMUIEvent); }
@@ -939,13 +948,6 @@ public:
    */
   bool HasNameDependentParent() const
     { return mContextFlags & eHasNameDependentParent; }
-
-  /**
-   * Return true if aria-hidden="true" is applied to the accessible or inherited
-   * from the parent.
-   */
-  bool IsARIAHidden() const { return mContextFlags & eARIAHidden; }
-  void SetARIAHidden(bool aIsDefined);
 
   /**
    * Return true if the element is inside an alert.
@@ -1048,8 +1050,7 @@ protected:
    */
   enum ContextFlags {
     eHasNameDependentParent = 1 << 0, // Parent's name depends on this accessible.
-    eARIAHidden = 1 << 1,
-    eInsideAlert = 1 << 2,
+    eInsideAlert = 1 << 1,
 
     eLastContextFlag = eInsideAlert
   };
@@ -1142,7 +1143,7 @@ protected:
   int32_t mIndexInParent;
 
   static const uint8_t kStateFlagsBits = 12;
-  static const uint8_t kContextFlagsBits = 3;
+  static const uint8_t kContextFlagsBits = 2;
   static const uint8_t kTypeBits = 6;
   static const uint8_t kGenericTypesBits = 16;
 

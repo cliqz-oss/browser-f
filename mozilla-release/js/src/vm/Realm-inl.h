@@ -11,6 +11,7 @@
 
 #include "gc/Barrier.h"
 #include "gc/Marking.h"
+#include "vm/GlobalObject.h"
 #include "vm/Iteration.h"
 
 #include "vm/JSContext-inl.h"
@@ -73,17 +74,16 @@ js::AutoRealm::~AutoRealm()
     cx_->leaveRealm(origin_);
 }
 
-js::AutoAtomsZone::AutoAtomsZone(JSContext* cx, js::AutoLockForExclusiveAccess& lock)
+js::AutoAllocInAtomsZone::AutoAllocInAtomsZone(JSContext* cx)
   : cx_(cx),
-    origin_(cx->realm()),
-    lock_(lock)
+    origin_(cx->realm())
 {
-    cx_->enterAtomsZone(lock);
+    cx_->enterAtomsZone();
 }
 
-js::AutoAtomsZone::~AutoAtomsZone()
+js::AutoAllocInAtomsZone::~AutoAllocInAtomsZone()
 {
-    cx_->leaveAtomsZone(origin_, lock_);
+    cx_->leaveAtomsZone(origin_);
 }
 
 js::AutoRealmUnchecked::AutoRealmUnchecked(JSContext* cx, JS::Realm* target)

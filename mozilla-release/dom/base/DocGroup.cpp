@@ -78,14 +78,14 @@ DocGroup::ReportPerformanceInfo()
 #else
   uint32_t pid = getpid();
 #endif
-  uint64_t wid = 0;
-  uint64_t pwid = 0;
+  uint64_t windowID = 0;
   uint16_t count = 0;
   uint64_t duration = 0;
-  nsCString host = NS_LITERAL_CSTRING("None");
+  bool isTopLevel = false;
+  nsCString host;
 
+  // iterating on documents until we find the top window
   for (const auto& document : *this) {
-    // grabbing the host name of the first document
     nsCOMPtr<nsIDocument> doc = do_QueryInterface(document);
     MOZ_ASSERT(doc);
     nsCOMPtr<nsIURI> docURI = doc->GetDocumentURI();
@@ -93,23 +93,29 @@ DocGroup::ReportPerformanceInfo()
       continue;
     }
     docURI->GetHost(host);
-    wid = doc->OuterWindowID();
-
-    // getting the top window id - if not possible
-    // pwid gets the same value than wid
-    pwid = wid;
-    nsPIDOMWindowInner* win = doc->GetInnerWindow();
-    if (win) {
-      nsPIDOMWindowOuter* outer = win->GetOuterWindow();
-      if (outer) {
-        nsCOMPtr<nsPIDOMWindowOuter> top = outer->GetTop();
-        if (top) {
-          pwid = top->WindowID();
-        }
-      }
+    // If the host is empty, using the url
+    if (host.IsEmpty()) {
+      host = docURI->GetSpecOrDefault();
     }
+    // looking for the top level document URI
+    nsPIDOMWindowOuter* win = doc->GetWindow();
+    if (!win) {
+      continue;
+    }
+    nsPIDOMWindowOuter* outer = win->GetOuterWindow();
+    if (!outer) {
+      continue;
+    }
+    nsCOMPtr<nsPIDOMWindowOuter> top = outer->GetTop();
+    if (!top) {
+      continue;
+    }
+    windowID = top->WindowID();
+    isTopLevel = outer->IsTopLevelWindow();
+    break;
   }
 
+  MOZ_ASSERT(!host.IsEmpty());
   duration = mPerformanceCounter->GetExecutionDuration();
   FallibleTArray<CategoryDispatch> items;
 
@@ -120,13 +126,12 @@ DocGroup::ReportPerformanceInfo()
     CategoryDispatch item = CategoryDispatch(index, count);
     if (!items.AppendElement(item, fallible)) {
       NS_ERROR("Could not complete the operation");
-      return PerformanceInfo(host, pid, wid, pwid, duration, false, items);
+      break;
     }
   }
 
-  // setting back all counters to zero
-  mPerformanceCounter->ResetPerformanceCounters();
-  return PerformanceInfo(host, pid, wid, pwid, duration, false, items);
+  return PerformanceInfo(host, pid, windowID, duration, mPerformanceCounter->GetID(),
+                         false, isTopLevel, items);
 }
 
 nsresult

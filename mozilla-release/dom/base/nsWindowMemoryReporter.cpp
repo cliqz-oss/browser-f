@@ -25,6 +25,7 @@
 #endif
 
 using namespace mozilla;
+using namespace mozilla::dom;
 
 StaticRefPtr<nsWindowMemoryReporter> sWindowReporter;
 
@@ -343,12 +344,24 @@ CollectWindowReports(nsGlobalWindowInner *aWindow,
               mDOMPerformanceResourceEntries,
               "Memory used for performance resource entries.");
 
+  REPORT_SIZE("/dom/media-query-lists", mDOMMediaQueryLists,
+              "Memory used by MediaQueryList objects for the window's "
+              "document.");
+
   REPORT_SIZE("/dom/other", mDOMOtherSize,
               "Memory used by a window's DOM that isn't measured by the "
               "other 'dom/' numbers.");
 
   REPORT_SIZE("/layout/style-sheets", mLayoutStyleSheetsSize,
-              "Memory used by style sheets within a window.");
+              "Memory used by document style sheets within a window.");
+
+  REPORT_SIZE("/layout/shadow-dom/style-sheets", mLayoutShadowDomStyleSheetsSize,
+              "Memory used by Shadow DOM style sheets within a window.");
+
+  // TODO(emilio): We might want to split this up between invalidation map /
+  // element-and-pseudos / revalidation too just like the style set.
+  REPORT_SIZE("/layout/shadow-dom/author-styles", mLayoutShadowDomAuthorStyles,
+              "Memory used by Shadow DOM computed rule data within a window.");
 
   REPORT_SIZE("/layout/pres-shell", mLayoutPresShellSize,
               "Memory used by layout's PresShell, along with any structures "
@@ -409,10 +422,6 @@ CollectWindowReports(nsGlobalWindowInner *aWindow,
 
   REPORT_SIZE("/layout/computed-values/visited", mLayoutComputedValuesVisited,
               "Memory used by ComputedValues objects used for visited styles.");
-
-  REPORT_SIZE("/layout/computed-values/stale", mLayoutComputedValuesStale,
-              "Memory used by ComputedValues and style structs it holds that "
-              "is no longer used but still alive.");
 
   REPORT_SIZE("/property-tables", mPropertyTablesSize,
               "Memory used for the property tables within a window.");

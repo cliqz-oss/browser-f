@@ -14,6 +14,7 @@ module.exports = {
     addWeakMessageListener: false,
     atob: false,
     btoa: false,
+    chromeOuterWindowID: false,
     content: false,
     docShell: false,
     privateNoteIntentionalCrash: false,
@@ -27,6 +28,9 @@ module.exports = {
     RPMGetBoolPref: false,
     RPMSetBoolPref: false,
     RPMGetFormatURLPref: false,
-    RPMIsWindowPrivate: false
+    RPMIsWindowPrivate: false,
+    RPMSendAsyncMessage: false,
+    RPMAddMessageListener: false,
+    RPMRemoveMessageListener: false
   }
 };

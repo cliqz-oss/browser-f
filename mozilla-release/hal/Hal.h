@@ -10,12 +10,11 @@
 #include "base/basictypes.h"
 #include "base/platform_thread.h"
 #include "nsTArray.h"
-#include "mozilla/dom/battery/Types.h"
-#include "mozilla/dom/network/Types.h"
-#include "mozilla/dom/power/Types.h"
-#include "mozilla/dom/ScreenOrientation.h"
 #include "mozilla/hal_sandbox/PHal.h"
+#include "mozilla/HalBatteryInformation.h"
+#include "mozilla/HalNetworkInformation.h"
 #include "mozilla/HalScreenConfiguration.h"
+#include "mozilla/HalWakeLockInformation.h"
 #include "mozilla/HalTypes.h"
 #include "mozilla/Types.h"
 
@@ -45,6 +44,17 @@ class WindowIdentifier;
 } // namespace hal
 
 namespace MOZ_HAL_NAMESPACE {
+
+/**
+ * Initializes the HAL. This must be called before any other HAL function.
+ */
+void Init();
+
+/**
+ * Shuts down the HAL. Besides freeing all the used resources this will check
+ * that all observers have been properly deregistered and assert if not.
+ */
+void Shutdown();
 
 /**
  * Turn the default vibrator device on/off per the pattern specified
@@ -81,17 +91,19 @@ void Vibrate(const nsTArray<uint32_t>& pattern,
 void CancelVibrate(nsPIDOMWindowInner* aWindow);
 void CancelVibrate(const hal::WindowIdentifier &id);
 
-/**
- * Inform the battery backend there is a new battery observer.
- * @param aBatteryObserver The observer that should be added.
- */
-void RegisterBatteryObserver(BatteryObserver* aBatteryObserver);
+#define MOZ_DEFINE_HAL_OBSERVER(name_)                              \
+/**                                                                 \
+ * Inform the backend there is a new |name_| observer.              \
+ * @param aObserver The observer that should be added.              \
+ */                                                                 \
+void Register##name_##Observer(hal::name_##Observer* aObserver);    \
+/**                                                                 \
+ * Inform the backend a |name_| observer unregistered.              \
+ * @param aObserver The observer that should be removed.            \
+ */                                                                 \
+void Unregister##name_##Observer(hal::name_##Observer* aObserver);
 
-/**
- * Inform the battery backend a battery observer unregistered.
- * @param aBatteryObserver The observer that should be removed.
- */
-void UnregisterBatteryObserver(BatteryObserver* aBatteryObserver);
+MOZ_DEFINE_HAL_OBSERVER(Battery);
 
 /**
  * Returns the current battery information.
@@ -143,17 +155,7 @@ void EnableSensorNotifications(hal::SensorType aSensor);
 void DisableSensorNotifications(hal::SensorType aSensor);
 
 
-/**
- * Inform the network backend there is a new network observer.
- * @param aNetworkObserver The observer that should be added.
- */
-void RegisterNetworkObserver(NetworkObserver* aNetworkObserver);
-
-/**
- * Inform the network backend a network observer unregistered.
- * @param aNetworkObserver The observer that should be removed.
- */
-void UnregisterNetworkObserver(NetworkObserver* aNetworkObserver);
+MOZ_DEFINE_HAL_OBSERVER(Network);
 
 /**
  * Returns the current network information.
@@ -180,17 +182,7 @@ void EnableWakeLockNotifications();
  */
 void DisableWakeLockNotifications();
 
-/**
- * Inform the wake lock backend there is a new wake lock observer.
- * @param aWakeLockObserver The observer that should be added.
- */
-void RegisterWakeLockObserver(WakeLockObserver* aObserver);
-
-/**
- * Inform the wake lock backend a wake lock observer unregistered.
- * @param aWakeLockObserver The observer that should be removed.
- */
-void UnregisterWakeLockObserver(WakeLockObserver* aObserver);
+MOZ_DEFINE_HAL_OBSERVER(WakeLock);
 
 /**
  * Adjust a wake lock's counts on behalf of a given process.
@@ -226,17 +218,7 @@ void GetWakeLockInfo(const nsAString &aTopic, hal::WakeLockInformation *aWakeLoc
  */
 void NotifyWakeLockChange(const hal::WakeLockInformation& aWakeLockInfo);
 
-/**
- * Inform the backend there is a new screen configuration observer.
- * @param aScreenConfigurationObserver The observer that should be added.
- */
-void RegisterScreenConfigurationObserver(hal::ScreenConfigurationObserver* aScreenConfigurationObserver);
-
-/**
- * Inform the backend a screen configuration observer unregistered.
- * @param aScreenConfigurationObserver The observer that should be removed.
- */
-void UnregisterScreenConfigurationObserver(hal::ScreenConfigurationObserver* aScreenConfigurationObserver);
+MOZ_DEFINE_HAL_OBSERVER(ScreenConfiguration);
 
 /**
  * Returns the current screen configuration.
@@ -253,7 +235,7 @@ void NotifyScreenConfigurationChange(const hal::ScreenConfiguration& aScreenConf
  * Lock the screen orientation to the specific orientation.
  * @return Whether the lock has been accepted.
  */
-MOZ_MUST_USE bool LockScreenOrientation(const dom::ScreenOrientationInternal& aOrientation);
+MOZ_MUST_USE bool LockScreenOrientation(const hal::ScreenOrientation& aOrientation);
 
 /**
  * Unlock the screen orientation.

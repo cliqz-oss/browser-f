@@ -25,8 +25,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   E10SUtils: "resource://gre/modules/E10SUtils.jsm",
   ExtensionData: "resource://gre/modules/Extension.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
-  OS: "resource://gre/modules/osfile.jsm",
+  MessageManagerProxy: "resource://gre/modules/MessageManagerProxy.jsm",
   NativeApp: "resource://gre/modules/NativeMessaging.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   Schemas: "resource://gre/modules/Schemas.jsm",
 });
@@ -43,14 +44,13 @@ var {
   CanOfAPIs,
   SchemaAPIManager,
   SpreadArgs,
+  defineLazyGetter,
 } = ExtensionCommon;
 
 var {
   DefaultMap,
   DefaultWeakMap,
   ExtensionError,
-  MessageManagerProxy,
-  defineLazyGetter,
   promiseDocumentLoaded,
   promiseEvent,
   promiseObserved,
@@ -60,6 +60,7 @@ const BASE_SCHEMA = "chrome://extensions/content/schemas/manifest.json";
 const CATEGORY_EXTENSION_MODULES = "webextension-modules";
 const CATEGORY_EXTENSION_SCHEMAS = "webextension-schemas";
 const CATEGORY_EXTENSION_SCRIPTS = "webextension-scripts";
+const TIMING_ENABLED_PREF = "extensions.webextensions.enablePerformanceCounters";
 
 let schemaURLs = new Set();
 
@@ -109,8 +110,8 @@ let apiManager = new class extends SchemaAPIManager {
   }
 
   getModuleJSONURLs() {
-    return Array.from(XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_MODULES),
-                      ([name, url]) => url);
+    return Array.from(Services.catMan.enumerateCategory(CATEGORY_EXTENSION_MODULES),
+                      ({value}) => value);
   }
 
   // Loads all the ext-*.js scripts currently registered.
@@ -124,7 +125,7 @@ let apiManager = new class extends SchemaAPIManager {
       () => this.loadModuleJSON(this.getModuleJSONURLs()));
 
     let scriptURLs = [];
-    for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS)) {
+    for (let {value} of Services.catMan.enumerateCategory(CATEGORY_EXTENSION_SCRIPTS)) {
       scriptURLs.push(value);
     }
 
@@ -140,10 +141,10 @@ let apiManager = new class extends SchemaAPIManager {
 
       // Load order matters here. The base manifest defines types which are
       // extended by other schemas, so needs to be loaded first.
-      return Schemas.load(BASE_SCHEMA, AppConstants.DEBUG).then(() => {
+      return Schemas.load(BASE_SCHEMA).then(() => {
         let promises = [];
-        for (let [/* name */, url] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCHEMAS)) {
-          promises.push(Schemas.load(url));
+        for (let {value} of Services.catMan.enumerateCategory(CATEGORY_EXTENSION_SCHEMAS)) {
+          promises.push(Schemas.load(value));
         }
         for (let [url, {content}] of this.schemaURLs) {
           promises.push(Schemas.load(url, content));
@@ -151,7 +152,9 @@ let apiManager = new class extends SchemaAPIManager {
         for (let url of schemaURLs) {
           promises.push(Schemas.load(url));
         }
-        return Promise.all(promises);
+        return Promise.all(promises).then(() => {
+          Schemas.updateSharedSchemas();
+        });
       });
     })();
 
@@ -468,7 +471,7 @@ ProxyMessenger = {
       // connected to the tab's top-level message manager. To deal with
       // this, we find the options <browser> for the tab, and use that
       // directly, insteead.
-      if (browser.currentURI.cloneIgnoringRef().spec === "about:addons") {
+      if (browser.currentURI.specIgnoringRef === "about:addons") {
         let optionsBrowser = browser.contentDocument.querySelector(".inline-options-browser");
         if (optionsBrowser) {
           browser = optionsBrowser;
@@ -520,7 +523,7 @@ GlobalManager = {
       Components.utils.import("resource://gre/modules/Services.jsm");
 
       Services.obs.notifyObservers(this, "tab-content-frameloader-created", "");
-    `, false);
+    `, false, true);
 
     let viewType = browser.getAttribute("webextension-view-type");
     if (viewType) {
@@ -658,8 +661,7 @@ class ExtensionPageContextParent extends ProxyContextParent {
   // The window that contains this context. This may change due to moving tabs.
   get xulWindow() {
     let win = this.xulBrowser.ownerGlobal;
-    return win.document.docShell.rootTreeItem
-              .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+    return win.docShell.rootTreeItem.domWindow;
   }
 
   get currentWindow() {
@@ -747,21 +749,20 @@ class DevToolsExtensionPageContextParent extends ExtensionPageContextParent {
 }
 
 ParentAPIManager = {
-  proxyContexts: new Map(),
+  // stores dispatches counts per web extension and API
+  performanceCounters: new DefaultMap(() => new DefaultMap(() => ({duration: 0, calls: 0}))),
 
-  parentMessageManagers: new Set(),
+  proxyContexts: new Map(),
 
   init() {
     Services.obs.addObserver(this, "message-manager-close");
-    Services.obs.addObserver(this, "ipc:content-created");
 
     Services.mm.addMessageListener("API:CreateProxyContext", this);
     Services.mm.addMessageListener("API:CloseProxyContext", this, true);
     Services.mm.addMessageListener("API:Call", this);
     Services.mm.addMessageListener("API:AddListener", this);
     Services.mm.addMessageListener("API:RemoveListener", this);
-
-    this.schemaHook = this.schemaHook.bind(this);
+    XPCOMUtils.defineLazyPreferenceGetter(this, "_timingEnabled", TIMING_ENABLED_PREF, false);
   },
 
   attachMessageManager(extension, processMessageManager) {
@@ -783,23 +784,6 @@ ParentAPIManager = {
           extension.parentMessageManager = null;
         }
       }
-
-      this.parentMessageManagers.delete(mm);
-    } else if (topic === "ipc:content-created") {
-      let mm = subject.QueryInterface(Ci.nsIInterfaceRequestor)
-                      .getInterface(Ci.nsIMessageSender);
-      if (mm.remoteType === E10SUtils.EXTENSION_REMOTE_TYPE) {
-        this.parentMessageManagers.add(mm);
-        mm.sendAsyncMessage("Schema:Add", Schemas.schemaJSON);
-
-        Schemas.schemaHook = this.schemaHook;
-      }
-    }
-  },
-
-  schemaHook(schemas) {
-    for (let mm of this.parentMessageManagers) {
-      mm.sendAsyncMessage("Schema:Add", schemas);
     }
   },
 
@@ -896,6 +880,26 @@ ParentAPIManager = {
     }
   },
 
+  storeExecutionTime(webExtensionId, apiPath, duration) {
+    let apiCounter = this.performanceCounters.get(webExtensionId).get(apiPath);
+    apiCounter.duration += duration;
+    apiCounter.calls += 1;
+  },
+
+  async withTiming(data, callable) {
+    if (!this._timingEnabled) {
+      return callable();
+    }
+    let webExtId = data.childId.split(".")[0];
+    let start = Cu.now();
+    try {
+      return callable();
+    } finally {
+      let end = Cu.now();
+      this.storeExecutionTime(webExtId, data.path, end - start);
+    }
+  },
+
   async call(data, target) {
     let context = this.getContextById(data.childId);
     if (context.parentMessageManager !== target.messageManager) {
@@ -921,8 +925,11 @@ ParentAPIManager = {
       let args = data.args;
       let pendingBrowser = context.pendingEventBrowser;
       let fun = await context.apiCan.asyncFindAPIPath(data.path);
-      let result = context.withPendingBrowser(pendingBrowser,
-                                              () => fun(...args));
+      let result = this.withTiming(data, () => {
+        return context.withPendingBrowser(pendingBrowser,
+                                          () => fun(...args));
+      });
+
       if (data.callId) {
         result = result || Promise.resolve();
 
@@ -1070,14 +1077,12 @@ class HiddenXULWindow {
     // The windowless browser is a thin wrapper around a docShell that keeps
     // its related resources alive. It implements nsIWebNavigation and
     // forwards its methods to the underlying docShell, but cannot act as a
-    // docShell itself. Calling `getInterface(nsIDocShell)` gives us the
+    // docShell itself.  Getting .docShell gives us the
     // underlying docShell, and `QueryInterface(nsIWebNavigation)` gives us
     // access to the webNav methods that are already available on the
     // windowless browser, but contrary to appearances, they are not the same
     // object.
-    this.chromeShell = this._windowlessBrowser
-                           .QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDocShell)
+    this.chromeShell = this._windowlessBrowser.docShell
                            .QueryInterface(Ci.nsIWebNavigation);
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
@@ -1118,7 +1123,7 @@ class HiddenXULWindow {
 
     const chromeDoc = this.chromeDocument;
 
-    const browser = chromeDoc.createElement("browser");
+    const browser = chromeDoc.createXULElement("browser");
     browser.setAttribute("type", "content");
     browser.setAttribute("disableglobalhistory", "true");
     browser.sameProcessAsFrameLoader = groupFrameLoader;
@@ -1537,7 +1542,7 @@ let IconDetails = {
     return {size, icon: DEFAULT};
   },
 
-  convertImageURLToDataURL(imageURL, contentWindow, browserWindow, size = 18) {
+  convertImageURLToDataURL(imageURL, contentWindow, browserWindow, size = 16) {
     return new Promise((resolve, reject) => {
       let image = new contentWindow.Image();
       image.onload = function() {

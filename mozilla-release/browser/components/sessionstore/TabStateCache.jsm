@@ -41,7 +41,7 @@ var TabStateCache = Object.freeze({
    */
   update(browserOrTab, newData) {
     TabStateCacheInternal.update(browserOrTab, newData);
-  }
+  },
 });
 
 var TabStateCacheInternal = {
@@ -77,17 +77,23 @@ var TabStateCacheInternal = {
 
     let storage = data.storage;
     for (let domain of Object.keys(change)) {
-      for (let key of Object.keys(change[domain])) {
-        let value = change[domain][key];
-        if (value === null) {
-          if (storage[domain] && storage[domain][key]) {
-            delete storage[domain][key];
+      if (!change[domain]) {
+        // We were sent null in place of the change object, which means
+        // we should delete session storage entirely for this domain.
+        delete storage[domain];
+      } else {
+        for (let key of Object.keys(change[domain])) {
+          let value = change[domain][key];
+          if (value === null) {
+            if (storage[domain] && storage[domain][key]) {
+              delete storage[domain][key];
+            }
+          } else {
+            if (!storage[domain]) {
+              storage[domain] = {};
+            }
+            storage[domain][key] = value;
           }
-        } else {
-          if (!storage[domain]) {
-            storage[domain] = {};
-          }
-          storage[domain][key] = value;
         }
       }
     }
@@ -163,5 +169,5 @@ var TabStateCacheInternal = {
     }
 
     this._data.set(browserOrTab.permanentKey, data);
-  }
+  },
 };

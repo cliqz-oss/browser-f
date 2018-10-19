@@ -12,8 +12,7 @@ const kValues = ["long text", "long text 2", "long text 3"];
 const isWindows = Services.appinfo.OS == "WINNT";
 const mouseDown = isWindows ? 2 : 1;
 const mouseUp = isWindows ? 4 : 2;
-const utils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindowUtils);
+const utils = window.windowUtils;
 const scale = utils.screenPixelsPerCSSPixel;
 
 function synthesizeNativeMouseClick(aElement) {
@@ -91,7 +90,7 @@ add_task(async function init() {
                                    });
     searchbar.FormHistory.update(addOps, {
       handleCompletion: resolve,
-      handleError: reject
+      handleError: reject,
     });
   });
 });
@@ -201,7 +200,7 @@ add_no_popup_task(async function right_click_doesnt_open_popup() {
   gURLBar.focus();
   textbox.value = "foo";
 
-  let contextPopup = document.getAnonymousElementByAttribute(textbox.inputField.parentNode, "anonid", "input-box-contextmenu");
+  let contextPopup = textbox.inputField.parentNode.menupopup;
   let promise = promiseEvent(contextPopup, "popupshown");
   context_click(textbox);
   await promise;
@@ -303,9 +302,7 @@ add_task(async function contextmenu_closes_popup() {
 
   await promise;
 
-  let contextPopup =
-    document.getAnonymousElementByAttribute(textbox.inputField.parentNode,
-                                            "anonid", "input-box-contextmenu");
+  let contextPopup = textbox.inputField.parentNode.menupopup;
   promise = promiseEvent(contextPopup, "popuphidden");
   contextPopup.hidePopup();
   await promise;

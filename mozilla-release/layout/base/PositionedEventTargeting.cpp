@@ -112,16 +112,16 @@ GetPrefsFor(EventClassID aEventClassID)
     prefs->mRegistered = true;
 
     nsPrintfCString enabledPref("ui.%s.radius.enabled", prefBranch);
-    Preferences::AddBoolVarCache(&prefs->mEnabled, enabledPref.get(), false);
+    Preferences::AddBoolVarCache(&prefs->mEnabled, enabledPref, false);
 
     nsPrintfCString visitedWeightPref("ui.%s.radius.visitedWeight", prefBranch);
-    Preferences::AddUintVarCache(&prefs->mVisitedWeight, visitedWeightPref.get(), 100);
+    Preferences::AddUintVarCache(&prefs->mVisitedWeight, visitedWeightPref, 100);
 
     static const char prefNames[4][9] =
       { "topmm", "rightmm", "bottommm", "leftmm" };
     for (int32_t i = 0; i < 4; ++i) {
       nsPrintfCString radiusPref("ui.%s.radius.%s", prefBranch, prefNames[i]);
-      Preferences::AddUintVarCache(&prefs->mSideRadii[i], radiusPref.get(), 0);
+      Preferences::AddUintVarCache(&prefs->mSideRadii[i], radiusPref, 0);
     }
 
     if (aEventClassID == eMouseEventClass) {
@@ -132,7 +132,7 @@ GetPrefsFor(EventClassID aEventClassID)
     }
 
     nsPrintfCString repositionPref("ui.%s.radius.reposition", prefBranch);
-    Preferences::AddBoolVarCache(&prefs->mRepositionEventCoords, repositionPref.get(), false);
+    Preferences::AddBoolVarCache(&prefs->mRepositionEventCoords, repositionPref, false);
 
     // These values were formerly set by ui.zoomedview preferences.
     prefs->mTouchClusterDetectionEnabled = false;
@@ -241,7 +241,6 @@ GetClickableAncestor(nsIFrame* aFrame, nsAtom* stopAt = nullptr, nsAutoString* a
                                     nsGkAtoms::checkbox,
                                     nsGkAtoms::radio,
                                     nsGkAtoms::menu,
-                                    nsGkAtoms::menubutton,
                                     nsGkAtoms::menuitem,
                                     nsGkAtoms::menulist,
                                     nsGkAtoms::scrollbarbutton,
@@ -580,7 +579,7 @@ FindFrameTargetedByInputEvent(WidgetGUIEvent* aEvent,
   if (aEvent->mClass == eMouseEventClass &&
       prefs->mTouchOnly &&
       aEvent->AsMouseEvent()->inputSource !=
-        MouseEventBinding::MOZ_SOURCE_TOUCH) {
+        MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
     PET_LOG("Mouse input event is not from a touch source\n");
     return target;
   }

@@ -163,7 +163,7 @@ add_task(async function searchWith() {
   await waitForAutocompleteResultAt(0);
   assertState(0, -1, typedValue);
 
-  let item = gURLBar.popup.richlistbox.firstChild;
+  let item = gURLBar.popup.richlistbox.firstElementChild;
   Assert.equal(item._actionText.textContent,
                "Search with " + Services.search.currentEngine.name,
                "Sanity check: first result's action text");
@@ -235,7 +235,7 @@ add_task(async function collapsedOneOffs() {
   let engines = Services.search.getVisibleEngines()
                                .filter(e => e.name != Services.search.currentEngine.name);
   await SpecialPowers.pushPrefEnv({"set": [
-    [ "browser.search.hiddenOneOffs", engines.map(e => e.name).join(",") ]
+    [ "browser.search.hiddenOneOffs", engines.map(e => e.name).join(",") ],
   ]});
 
   let typedValue = "foo";

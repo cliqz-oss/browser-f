@@ -30,6 +30,7 @@ using namespace mozilla::image;
 using namespace mozilla::layers;
 
 nsButtonFrameRenderer::nsButtonFrameRenderer()
+  : mFrame(nullptr)
 {
   MOZ_COUNT_CTOR(nsButtonFrameRenderer);
 }
@@ -574,7 +575,7 @@ nsButtonFrameRenderer::ReResolveStyles(nsPresContext* aPresContext)
 
   // get styles assigned to -moz-focus-inner (ie dotted border on Windows)
   mInnerFocusStyle =
-    styleSet->ProbePseudoElementStyle(mFrame->GetContent()->AsElement(),
+    styleSet->ProbePseudoElementStyle(*mFrame->GetContent()->AsElement(),
                                       CSSPseudoElementType::mozFocusInner,
                                       context);
 }

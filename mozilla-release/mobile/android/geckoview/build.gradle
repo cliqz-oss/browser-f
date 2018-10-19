@@ -43,6 +43,12 @@ def computeVersionCode() {
     return code;
 }
 
+def computeVersionNumber() {
+  def appVersion = getAppVersionWithoutMilestone()
+  def parts = appVersion.split('\\.')
+  return parts[0] + "." + parts[1] + "." + getBuildId()
+}
+
 // Mimic Python: open(os.path.join(buildconfig.topobjdir, 'buildid.h')).readline().split()[2]
 def getBuildId() {
     return file("${topobjdir}/buildid.h").getText('utf-8').split()[2]
@@ -200,9 +206,9 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:1.10.19'
 
     androidTestImplementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    androidTestImplementation 'com.android.support.test:runner:0.5'
-    androidTestImplementation 'com.android.support.test:rules:0.5'
-    androidTestImplementation 'com.android.support.test.espresso:espresso-core:2.2.2'
+    androidTestImplementation 'com.android.support.test:runner:1.0.1'
+    androidTestImplementation 'com.android.support.test:rules:1.0.1'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.1'
     androidTestImplementation "com.android.support:support-annotations:$support_library_version"
 }
 
@@ -224,7 +230,9 @@ android.libraryVariants.all { variant ->
     def javadoc = task "javadoc${name.capitalize()}"(type: Javadoc) {
         description = "Generate Javadoc for build variant $name"
         destinationDir = new File(destinationDir, variant.baseName)
-        classpath = files(variant.javaCompile.classpath.files)
+        doFirst {
+            classpath = files(variant.javaCompile.classpath.files)
+        }
 
         source = files(variant.javaCompile.source)
         exclude '**/R.java', '**/BuildConfig.java'
@@ -271,14 +279,9 @@ apply plugin: 'maven'
 
 uploadArchives {
     repositories.mavenDeployer {
-        pom.groupId = 'org.mozilla'
+        pom.groupId = 'org.mozilla.geckoview'
         pom.artifactId = "geckoview-${mozconfig.substs.MOZ_UPDATE_CHANNEL}-${mozconfig.substs.ANDROID_CPU_ARCH}"
-
-        if (mozconfig.substs.RELEASE_OR_BETA == 'true') {
-            pom.version = mozconfig.substs.MOZ_APP_VERSION
-        } else {
-            pom.version = getAppVersionWithoutMilestone() + "." + getBuildId()
-        }
+        pom.version = computeVersionNumber()
 
         pom.project {
             licenses {
@@ -364,4 +367,77 @@ task("generateSDKBindings", type: JavaExec) {
     workingDir "${topsrcdir}/widget/android/bindings"
 
     dependsOn project(':annotations').jar
+}
+
+apply from: "${topsrcdir}/mobile/android/gradle/jacoco_dependencies.gradle"
+if (project.hasProperty('enable_code_coverage')) {
+    apply from: "${topsrcdir}/mobile/android/gradle/jacoco_for_junit.gradle"
+}
+
+// Set up code coverage for tests on emulators.
+if (mozconfig.substs.MOZ_JAVA_CODE_COVERAGE) {
+    apply plugin: "jacoco"
+    jacoco {
+        toolVersion = "${project.jacoco_version}"
+    }
+
+    android {
+        jacoco {
+            version = "$jacoco_version"
+        }
+        buildTypes {
+            debug {
+                testCoverageEnabled true
+            }
+        }
+    }
+
+    configurations {
+        // This configuration is used for dependencies that are not needed at compilation or
+        // runtime, but need to be exported as artifacts of the build for usage on the testing
+        // machines.
+        coverageDependency
+    }
+
+    dependencies {
+        // This is required both in the instrumented application classes and the test classes,
+        // so `api` has to be used instead of `androidTestImplementation`.
+        api "org.jacoco:org.jacoco.agent:$jacoco_version:runtime"
+
+        coverageDependency ("org.jacoco:org.jacoco.cli:$jacoco_version:nodeps") {
+            exclude group: 'org.ow2.asm', module: '*'
+        }
+    }
+
+    // This task is used by `mach android archive-geckoview-coverage-artifacts`.
+    task copyCoverageDependencies(type: Copy) {
+        from(configurations.coverageDependency) {
+            include 'org.jacoco.cli-*-nodeps.jar'
+            rename { _ -> 'target.jacoco-cli.jar' }
+        }
+        into "$buildDir/coverage"
+    }
+
+    // Generate tasks to archive compiled classfiles for later use with JaCoCo report generation.
+    // One of these tasks is used by `mach android archive-geckoview-coverage-artifacts`.
+    android.libraryVariants.all { variant ->
+        def name = variant.name
+        def compileTask = tasks.getByName("compile${name.capitalize()}JavaWithJavac")
+        task "archiveClassfiles${name.capitalize()}"(type: Zip, dependsOn: compileTask) {
+            description = "Archive compiled classfiles for $name in order to export them as code coverage artifacts."
+            def fileFilter = ['**/androidTest/**',
+                              '**/test/**',
+                              '**/R.class',
+                              '**/R$*.class',
+                              '**/BuildConfig.*',
+                              '**/Manifest*.*',
+                              '**/*Test*.*',
+                              'android/**/*.*']
+            from fileTree(dir: compileTask.destinationDir, excludes: fileFilter)
+            destinationDir = file("${buildDir}/coverage")
+            // Note: This task assumes only one variant of archiveClassfiles* will be used.
+            // Running multiple variants of this task will overwrite the output archive.
+            archiveName = 'target.geckoview_classfiles.zip'
+        }
+    }
 }

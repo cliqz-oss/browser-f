@@ -16,7 +16,7 @@ namespace jit {
 
 static constexpr Register StackPointer { Registers::invalid_reg };
 static constexpr Register FramePointer { Registers::invalid_reg };
-static constexpr Register ReturnReg { Registers::invalid_reg };
+static constexpr Register ReturnReg { Registers::invalid_reg2 };
 static constexpr FloatRegister ReturnFloat32Reg = { FloatRegisters::invalid_reg };
 static constexpr FloatRegister ReturnDoubleReg = { FloatRegisters::invalid_reg };
 static constexpr FloatRegister ReturnSimd128Reg = { FloatRegisters::invalid_reg };
@@ -68,6 +68,7 @@ static constexpr Register64 ReturnReg64(InvalidReg);
 static constexpr Register ABINonArgReg0 { Registers::invalid_reg };
 static constexpr Register ABINonArgReg1 { Registers::invalid_reg };
 static constexpr Register ABINonArgReg2 { Registers::invalid_reg };
+static constexpr Register ABINonArgReg3 { Registers::invalid_reg };
 static constexpr Register ABINonArgReturnReg0 { Registers::invalid_reg };
 static constexpr Register ABINonArgReturnReg1 { Registers::invalid_reg };
 static constexpr Register ABINonVolatileReg { Registers::invalid_reg };
@@ -75,7 +76,8 @@ static constexpr Register ABINonArgReturnVolatileReg { Registers::invalid_reg };
 
 static constexpr FloatRegister ABINonArgDoubleReg = { FloatRegisters::invalid_reg };
 
-static constexpr Register WasmTableCallScratchReg { Registers::invalid_reg };
+static constexpr Register WasmTableCallScratchReg0 { Registers::invalid_reg };
+static constexpr Register WasmTableCallScratchReg1 { Registers::invalid_reg };
 static constexpr Register WasmTableCallSigReg { Registers::invalid_reg };
 static constexpr Register WasmTableCallIndexReg { Registers::invalid_reg };
 static constexpr Register WasmTlsReg { Registers::invalid_reg };
@@ -273,21 +275,10 @@ class MacroAssemblerNone : public Assembler
     template <typename T, typename S> void move64(T, S) { MOZ_CRASH(); }
     template <typename T> CodeOffset movWithPatch(T, Register) { MOZ_CRASH(); }
 
-    template <typename T> void loadInt32x1(T, FloatRegister dest) { MOZ_CRASH(); }
-    template <typename T> void loadInt32x2(T, FloatRegister dest) { MOZ_CRASH(); }
-    template <typename T> void loadInt32x3(T, FloatRegister dest) { MOZ_CRASH(); }
-    template <typename T> void loadInt32x4(T, FloatRegister dest) { MOZ_CRASH(); }
-    template <typename T> void loadFloat32x3(T, FloatRegister dest) { MOZ_CRASH(); }
-    template <typename T> void loadFloat32x4(T, FloatRegister dest) { MOZ_CRASH(); }
-
     template <typename T> void loadPtr(T, Register) { MOZ_CRASH(); }
     template <typename T> void load32(T, Register) { MOZ_CRASH(); }
     template <typename T> void loadFloat32(T, FloatRegister) { MOZ_CRASH(); }
     template <typename T> void loadDouble(T, FloatRegister) { MOZ_CRASH(); }
-    template <typename T> void loadAlignedSimd128Int(T, FloatRegister) { MOZ_CRASH(); }
-    template <typename T> void loadUnalignedSimd128Int(T, FloatRegister) { MOZ_CRASH(); }
-    template <typename T> void loadAlignedSimd128Float(T, FloatRegister) { MOZ_CRASH(); }
-    template <typename T> void loadUnalignedSimd128Float(T, FloatRegister) { MOZ_CRASH(); }
     template <typename T> void loadPrivate(T, Register) { MOZ_CRASH(); }
     template <typename T> void load8SignExtend(T, Register) { MOZ_CRASH(); }
     template <typename T> void load8ZeroExtend(T, Register) { MOZ_CRASH(); }
@@ -300,18 +291,8 @@ class MacroAssemblerNone : public Assembler
     template <typename T, typename S> void store32_NoSecondScratch(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void storeFloat32(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void storeDouble(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeAlignedSimd128Int(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeUnalignedSimd128Int(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeAlignedSimd128Float(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeUnalignedSimd128Float(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void store8(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void store16(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeInt32x1(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeInt32x2(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeInt32x3(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeInt32x4(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeFloat32x3(T, S) { MOZ_CRASH(); }
-    template <typename T, typename S> void storeFloat32x4(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void store64(T, S) { MOZ_CRASH(); }
 
     template <typename T> void computeEffectiveAddress(T, Register) { MOZ_CRASH(); }

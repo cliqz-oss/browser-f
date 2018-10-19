@@ -40,6 +40,8 @@
 #include "mozilla/HashFunctions.h"
 #include "mozilla/Move.h"
 
+#include "js/HashTable.h"
+
 namespace js {
 
 namespace detail {
@@ -124,7 +126,7 @@ class OrderedHashTable
         uint32_t capacity = uint32_t(buckets * fillFactor());
         Data* dataAlloc = alloc.template pod_malloc<Data>(capacity);
         if (!dataAlloc) {
-            alloc.free_(tableAlloc);
+            alloc.free_(tableAlloc, buckets);
             return false;
         }
 
@@ -135,15 +137,15 @@ class OrderedHashTable
         dataLength = 0;
         dataCapacity = capacity;
         liveCount = 0;
-        hashShift = HashNumberSizeBits - initialBucketsLog2();
+        hashShift = js::kHashNumberBits - initialBucketsLog2();
         MOZ_ASSERT(hashBuckets() == buckets);
         return true;
     }
 
     ~OrderedHashTable() {
         forEachRange<Range::onTableDestroyed>();
-        alloc.free_(hashTable);
-        freeData(data, dataLength);
+        alloc.free_(hashTable, hashBuckets());
+        freeData(data, dataLength, dataCapacity);
     }
 
     /* Return the number of elements in the table. */
@@ -248,7 +250,9 @@ class OrderedHashTable
         if (dataLength != 0) {
             Data** oldHashTable = hashTable;
             Data* oldData = data;
+            uint32_t oldHashBuckets = hashBuckets();
             uint32_t oldDataLength = dataLength;
+            uint32_t oldDataCapacity = dataCapacity;
 
             hashTable = nullptr;
             if (!init()) {
@@ -257,8 +261,8 @@ class OrderedHashTable
                 return false;
             }
 
-            alloc.free_(oldHashTable);
-            freeData(oldData, oldDataLength);
+            alloc.free_(oldHashTable, oldHashBuckets);
+            freeData(oldData, oldDataLength, oldDataCapacity);
             forEachRange<&Range::onClear>();
         }
 
@@ -616,13 +620,13 @@ class OrderedHashTable
 
   public:
     HashNumber prepareHash(const Lookup& l) const {
-        return ScrambleHashCode(Ops::hash(l, hcs));
+        return mozilla::ScrambleHashCode(Ops::hash(l, hcs));
     }
 
   private:
     /* The size of hashTable, in elements. Always a power of two. */
     uint32_t hashBuckets() const {
-        return 1 << (HashNumberSizeBits - hashShift);
+        return 1 << (js::kHashNumberBits - hashShift);
     }
 
     static void destroyData(Data* data, uint32_t length) {
@@ -630,9 +634,9 @@ class OrderedHashTable
             (--p)->~Data();
     }
 
-    void freeData(Data* data, uint32_t length) {
+    void freeData(Data* data, uint32_t length, uint32_t capacity) {
         destroyData(data, length);
-        alloc.free_(data);
+        alloc.free_(data, capacity);
     }
 
     Data* lookup(const Lookup& l, HashNumber h) {
@@ -694,7 +698,7 @@ class OrderedHashTable
         }
 
         size_t newHashBuckets =
-            size_t(1) << (HashNumberSizeBits - newHashShift);
+            size_t(1) << (js::kHashNumberBits - newHashShift);
         Data** newHashTable = alloc.template pod_malloc<Data*>(newHashBuckets);
         if (!newHashTable)
             return false;
@@ -704,7 +708,7 @@ class OrderedHashTable
         uint32_t newCapacity = uint32_t(newHashBuckets * fillFactor());
         Data* newData = alloc.template pod_malloc<Data>(newCapacity);
         if (!newData) {
-            alloc.free_(newHashTable);
+            alloc.free_(newHashTable, newHashBuckets);
             return false;
         }
 
@@ -720,8 +724,8 @@ class OrderedHashTable
         }
         MOZ_ASSERT(wp == newData + liveCount);
 
-        alloc.free_(hashTable);
-        freeData(data, dataLength);
+        alloc.free_(hashTable, hashBuckets());
+        freeData(data, dataLength, dataCapacity);
 
         hashTable = newHashTable;
         data = newData;

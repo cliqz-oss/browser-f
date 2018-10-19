@@ -245,7 +245,8 @@
   <string name="pref_use_system_font_size">&pref_use_system_font_size;</string>
   <string name="pref_use_system_font_size_summary">&pref_use_system_font_size_summary;</string>
   <string name="pref_media_autoplay_enabled">&pref_media_autoplay_enabled;</string>
-  <string name="pref_media_autoplay_enabled_summary">&pref_media_autoplay_enabled_summary;</string>
+  <string name="pref_media_autoplay_allow">&pref_media_autoplay_allow;</string>
+  <string name="pref_media_autoplay_block">&pref_media_autoplay_block;</string>
   <string name="pref_zoom_force_enabled">&pref_zoom_force_enabled;</string>
   <string name="pref_zoom_force_enabled_summary">&pref_zoom_force_enabled_summary;</string>
   <string name="pref_voice_input">&pref_voice_input;</string>
@@ -342,6 +343,7 @@
   <string name="datareporting_crashreporter_summary">&datareporting_crashreporter_summary;</string>
   <string name="datareporting_wifi_title">&datareporting_wifi_title2;</string>
   <string name="datareporting_wifi_geolocation_summary">&datareporting_wifi_geolocation_summary4;</string>
+  <string name="datareporting_stumbler_notification_title">&datareporting_stumbler_notification_title;</string>
 
   <string name="search">&search;</string>
   <string name="reload">&reload;</string>
@@ -599,10 +601,7 @@
 
   <string name="unsupported_sdk_version">&unsupported_sdk_version;</string>
   <string name="corrupt_apk">&corrupt_apk;</string>
-  <string name="eol_notification_title">&eol_notification_title2;</string>
-  <string name="eol_notification_summary">&eol_notification_summary;</string>
   <!-- https://support.mozilla.org/1/mobile/%VERSION%/%OS%/%LOCALE%/honeycomb -->
-  <string name="eol_notification_url">https://support.mozilla.org/1/mobile/&formatS1;/&formatS2;/&formatS3;/unsupported-version</string>
 
   <string name="whatsnew_notification_title">&whatsnew_notification_title;</string>
   <string name="whatsnew_notification_summary">&whatsnew_notification_summary;</string>
@@ -643,4 +642,17 @@
   <string name="pwa_add_to_launcher_badge">&pwa_add_to_launcher_badge2;</string>
   <string name="pwa_onboarding_sumo">&pwa_onboarding_sumo;</string>
   <string name="pwa_continue_to_website">&pwa_continue_to_website;</string>
+
+  <string name="pip_play_button_title">&pip_play_button_title;</string>
+  <string name="pip_play_button_description">&pip_play_button_description;</string>
+  <string name="pip_pause_button_title">&pip_pause_button_title;</string>
+  <string name="pip_pause_button_description">&pip_pause_button_description;</string>
+
+  <string name="default_notification_channel">&default_notification_channel;</string>
+  <string name="mls_notification_channel">&mls_notification_channel;</string>
+  <string name="media_notification_channel">&media_notification_channel;</string>
+  <string name="download_notification_channel">&download_notification_channel;</string>
+  <string name="leanplum_default_notifications_channel">&leanplum_default_notifications_channel;</string>
+  <string name="updater_notification_channel">&updater_notification_channel;</string>
+  <string name="synced_tabs_notification_channel">&synced_tabs_notification_channel;</string>
 </resources>

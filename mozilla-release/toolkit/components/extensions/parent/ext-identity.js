@@ -5,7 +5,7 @@
 ChromeUtils.defineModuleGetter(this, "Services",
                                "resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyGlobalGetters(this, ["URL", "XMLHttpRequest"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["XMLHttpRequest"]);
 
 var {
   promiseDocumentLoaded,
@@ -52,7 +52,7 @@ const openOAuthWindow = (details, redirectURI) => {
   args.appendElement(supportsStringPrefURL);
 
   let window = Services.ww.openWindow(null,
-                                      Services.prefs.getCharPref("browser.chromeURL"),
+                                      AppConstants.BROWSER_CHROME_URL,
                                       "launchWebAuthFlow_dialog",
                                       "chrome,location=yes,centerscreen,dialog=no,resizable=yes,scrollbars=yes",
                                       args);
@@ -94,23 +94,7 @@ this.identity = class extends ExtensionAPI {
   getAPI(context) {
     return {
       identity: {
-        launchWebAuthFlow: function(details) {
-          // In OAuth2 the url should have a redirect_uri param, parse the url and grab it
-          let url, redirectURI;
-          try {
-            url = new URL(details.url);
-          } catch (e) {
-            return Promise.reject({message: "details.url is invalid"});
-          }
-          try {
-            redirectURI = new URL(url.searchParams.get("redirect_uri"));
-            if (!redirectURI) {
-              return Promise.reject({message: "redirect_uri is missing"});
-            }
-          } catch (e) {
-            return Promise.reject({message: "redirect_uri is invalid"});
-          }
-
+        launchWebAuthFlowInParent: function(details, redirectURI) {
           // If the request is automatically redirected the user has already
           // authorized and we do not want to show the window.
           return checkRedirected(details.url, redirectURI).catch((requestError) => {

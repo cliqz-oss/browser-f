@@ -40,6 +40,8 @@ ChromeUtils.defineModuleGetter(this, "CustomizableUI",
                                "resource:///modules/CustomizableUI.jsm");
 ChromeUtils.defineModuleGetter(this, "CustomizableWidgets",
                                "resource:///modules/CustomizableWidgets.jsm");
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 // We don't want to spend time initializing the full loader here so we create
 // our own lazy require.
@@ -430,9 +432,9 @@ DevToolsStartup.prototype = {
         if (doc.getElementById("PanelUI-developerItems")) {
           return;
         }
-        const view = doc.createElement("panelview");
+        const view = doc.createXULElement("panelview");
         view.id = "PanelUI-developerItems";
-        const panel = doc.createElement("vbox");
+        const panel = doc.createXULElement("vbox");
         panel.setAttribute("class", "panel-subview-body");
         view.appendChild(panel);
         doc.getElementById("PanelUI-multiView").appendChild(view);
@@ -469,7 +471,7 @@ DevToolsStartup.prototype = {
     const {document} = window;
 
     // Create the menu item.
-    const item = document.createElement("menuitem");
+    const item = document.createXULElement("menuitem");
     item.id = "enableDeveloperTools";
     item.setAttribute("label", StartupBundle.GetStringFromName("enableDevTools.label"));
     item.setAttribute("accesskey",
@@ -498,9 +500,7 @@ DevToolsStartup.prototype = {
    * item.
    */
   onEnabledPrefChanged() {
-    const enumerator = Services.wm.getEnumerator("navigator:browser");
-    while (enumerator.hasMoreElements()) {
-      const window = enumerator.getNext();
+    for (const window of Services.wm.getEnumerator("navigator:browser")) {
       if (window.gBrowserInit && window.gBrowserInit.delayedStartupFinished) {
         this.updateDevToolsMenuItems(window);
       }
@@ -567,7 +567,7 @@ DevToolsStartup.prototype = {
       return;
     }
 
-    const keyset = doc.createElement("keyset");
+    const keyset = doc.createXULElement("keyset");
     keyset.setAttribute("id", "devtoolsKeyset");
 
     for (const key of KeyShortcuts) {
@@ -599,7 +599,7 @@ DevToolsStartup.prototype = {
 
   // Create a <xul:key> DOM Element
   createKey(doc, { id, toolId, shortcut, modifiers: mod }, oncommand) {
-    const k = doc.createElement("key");
+    const k = doc.createXULElement("key");
     k.id = "key_" + (id || toolId);
 
     if (shortcut.startsWith("VK_")) {
@@ -689,7 +689,7 @@ DevToolsStartup.prototype = {
     }
 
     // Set relatedToCurrent: true to open the tab next to the current one.
-    gBrowser.selectedTab = gBrowser.addTab(url, {relatedToCurrent: true});
+    gBrowser.selectedTab = gBrowser.addTrustedTab(url, {relatedToCurrent: true});
   },
 
   handleConsoleFlag: function(cmdLine) {
@@ -839,6 +839,18 @@ DevToolsStartup.prototype = {
     }
   },
 
+  /**
+   * Send entry point telemetry explaining how the devtools were launched. This
+   * functionality also lives inside `devtools/client/framework/browser-menus.js`
+   * because this codepath is only used the first time a toolbox is opened for a
+   * tab.
+   *
+   * @param {String} reason
+   *        One of "KeyShortcut", "SystemMenu", "HamburgerMenu", "ContextMenu",
+   *        "CommandLine".
+   * @param {String} key
+   *        The key used by a key shortcut.
+   */
   sendEntryPointTelemetry(reason, key = "") {
     if (!reason) {
       return;
@@ -948,16 +960,32 @@ const JsonView = {
       // Save original contents
       chrome.saveBrowser(browser);
     } else {
+      if (!message.data.startsWith("blob:null") || !browser.contentPrincipal.isNullPrincipal) {
+        Cu.reportError("Got invalid request to save JSON data");
+        return;
+      }
       // The following code emulates saveBrowser, but:
       // - Uses the given blob URL containing the custom contents to save.
       // - Obtains the file name from the URL of the document, not the blob.
+      // - avoids passing the document and explicitly passes system principal.
+      //   We have a blob created by a null principal to save, and the null
+      //   principal is from the child. Null principals don't survive crossing
+      //   over IPC, so there's no other principal that'll work.
       const persistable = browser.frameLoader;
       persistable.startPersistence(0, {
         onDocumentReady(doc) {
           const uri = chrome.makeURI(doc.documentURI, doc.characterSet);
           const filename = chrome.getDefaultFileName(undefined, uri, doc, null);
-          chrome.internalSave(message.data, doc, filename, null, doc.contentType,
-            false, null, null, null, doc, false, null, undefined);
+          chrome.internalSave(message.data, null, filename, null, doc.contentType,
+            false /* bypass cache */,
+            null, /* filepicker title key */
+            null, /* file chosen */
+            null, /* referrer */
+            null, /* initiating document */
+            false, /* don't skip prompt for a location */
+            null, /* cache key */
+            PrivateBrowsingUtils.isBrowserPrivate(browser), /* private browsing ? */
+            Services.scriptSecurityManager.getSystemPrincipal());
         },
         onError(status) {
           throw new Error("JSON Viewer's onSave failed in startPersistence");

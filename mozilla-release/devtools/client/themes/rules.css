@@ -154,6 +154,10 @@
   margin-left: -25px;
 }
 
+.ruleview-computed > .ruleview-namecontainer {
+  margin: 0;
+}
+
 .ruleview-propertyvaluecontainer {
   cursor: text;
   padding-right: 5px;
@@ -283,12 +287,6 @@
   border-bottom-color: transparent;
 }
 
-@media (min-resolution: 1.1dppx) {
-  .ruleview-warning {
-    background-image: url(images/alerticon-warning@2x.png);
-  }
-}
-
 .ruleview-overridden-rule-filter {
   background-image: url(chrome://devtools/skin/images/filter.svg#filterinput);
   background-size: 11px 11px;
@@ -327,6 +325,12 @@
   display: inline-block;
   width: 13px;
   height: 12px;
+}
+
+@media (min-resolution: 1.1dppx) {
+  .ruleview-warning {
+    background-image: url(images/alerticon-warning@2x.png);
+  }
 }
 
 .ruleview-rule:not(:hover) .ruleview-enableproperty {
@@ -396,6 +400,10 @@
 
 .ruleview-overridden-item:last-child:after {
   display: none;
+}
+
+.ruleview-overridden-item .ruleview-namecontainer {
+  margin-left: 0;
 }
 
 .ruleview-flex,
@@ -523,8 +531,11 @@
   border-left-color: var(--theme-highlight-green);
 }
 
+.ruleview-highlight > .ruleview-expander,
 .ruleview-highlight > .ruleview-namecontainer,
-.ruleview-highlight > .ruleview-propertyvaluecontainer {
+.ruleview-highlight > .ruleview-propertyvaluecontainer,
+.ruleview-highlight > .ruleview-rule-source-label,
+.ruleview-highlight > .ruleview-selector {
   background-color: var(--rule-highlight-background-color);
 }
 

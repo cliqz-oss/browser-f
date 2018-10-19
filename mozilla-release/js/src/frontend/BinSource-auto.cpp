@@ -65,14 +65,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumArrowExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ArrowExpression", kind);
@@ -107,26 +105,21 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumAssignmentTarget(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceArrayAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::AssignmentTargetIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetIdentifier(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::ObjectAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceObjectAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::StaticMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberAssignmentTarget(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("AssignmentTarget", kind);
@@ -162,30 +155,24 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumAssignmentTargetOrAssignmentTargetWithInitializer(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceArrayAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::AssignmentTargetIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetIdentifier(start, kind, fields));
-
         break;
       case BinKind::AssignmentTargetWithInitializer:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetWithInitializer(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::ObjectAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceObjectAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::StaticMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberAssignmentTarget(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("AssignmentTargetOrAssignmentTargetWithInitializer", kind);
@@ -217,14 +204,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumAssignmentTargetPattern(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceArrayAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::ObjectAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceObjectAssignmentTarget(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("AssignmentTargetPattern", kind);
@@ -256,14 +241,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumAssignmentTargetProperty(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::AssignmentTargetPropertyIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetPropertyIdentifier(start, kind, fields));
-
         break;
       case BinKind::AssignmentTargetPropertyProperty:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetPropertyProperty(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("AssignmentTargetProperty", kind);
@@ -296,18 +279,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumBinding(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayBinding:
         MOZ_TRY_VAR(result, parseInterfaceArrayBinding(start, kind, fields));
-
         break;
       case BinKind::BindingIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceBindingIdentifier(start, kind, fields));
-
         break;
       case BinKind::ObjectBinding:
         MOZ_TRY_VAR(result, parseInterfaceObjectBinding(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Binding", kind);
@@ -341,22 +321,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumBindingOrBindingWithInitializer(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayBinding:
         MOZ_TRY_VAR(result, parseInterfaceArrayBinding(start, kind, fields));
-
         break;
       case BinKind::BindingIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceBindingIdentifier(start, kind, fields));
-
         break;
       case BinKind::BindingWithInitializer:
         MOZ_TRY_VAR(result, parseInterfaceBindingWithInitializer(start, kind, fields));
-
         break;
       case BinKind::ObjectBinding:
         MOZ_TRY_VAR(result, parseInterfaceObjectBinding(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("BindingOrBindingWithInitializer", kind);
@@ -388,14 +364,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumBindingPattern(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayBinding:
         MOZ_TRY_VAR(result, parseInterfaceArrayBinding(start, kind, fields));
-
         break;
       case BinKind::ObjectBinding:
         MOZ_TRY_VAR(result, parseInterfaceObjectBinding(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("BindingPattern", kind);
@@ -427,14 +401,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumBindingProperty(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::BindingPropertyIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceBindingPropertyIdentifier(start, kind, fields));
-
         break;
       case BinKind::BindingPropertyProperty:
         MOZ_TRY_VAR(result, parseInterfaceBindingPropertyProperty(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("BindingProperty", kind);
@@ -469,26 +441,21 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumExportDeclaration(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::Export:
         MOZ_TRY_VAR(result, parseInterfaceExport(start, kind, fields));
-
         break;
       case BinKind::ExportAllFrom:
         MOZ_TRY_VAR(result, parseInterfaceExportAllFrom(start, kind, fields));
-
         break;
       case BinKind::ExportDefault:
         MOZ_TRY_VAR(result, parseInterfaceExportDefault(start, kind, fields));
-
         break;
       case BinKind::ExportFrom:
         MOZ_TRY_VAR(result, parseInterfaceExportFrom(start, kind, fields));
-
         break;
       case BinKind::ExportLocals:
         MOZ_TRY_VAR(result, parseInterfaceExportLocals(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ExportDeclaration", kind);
@@ -548,126 +515,96 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Expression", kind);
@@ -728,130 +665,99 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumExpressionOrSuper(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::Super:
         MOZ_TRY_VAR(result, parseInterfaceSuper(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ExpressionOrSuper", kind);
@@ -912,130 +818,99 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumExpressionOrTemplateElement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::TemplateElement:
         MOZ_TRY_VAR(result, parseInterfaceTemplateElement(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ExpressionOrTemplateElement", kind);
@@ -1071,30 +946,24 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumForInOfBindingOrAssignmentTarget(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceArrayAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::AssignmentTargetIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetIdentifier(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::ForInOfBinding:
         MOZ_TRY_VAR(result, parseInterfaceForInOfBinding(start, kind, fields));
-
         break;
       case BinKind::ObjectAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceObjectAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::StaticMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberAssignmentTarget(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ForInOfBindingOrAssignmentTarget", kind);
@@ -1155,130 +1024,99 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumFunctionBodyOrExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::FunctionBody:
         MOZ_TRY_VAR(result, parseInterfaceFunctionBody(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("FunctionBodyOrExpression", kind);
@@ -1310,14 +1148,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumFunctionDeclaration(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionDeclaration(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("FunctionDeclaration", kind);
@@ -1380,138 +1216,105 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumFunctionDeclarationOrClassDeclarationOrExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceClassDeclaration(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("FunctionDeclarationOrClassDeclarationOrExpression", kind);
@@ -1545,22 +1348,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumFunctionDeclarationOrClassDeclarationOrVariableDeclaration(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ClassDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceClassDeclaration(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::VariableDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceVariableDeclaration(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("FunctionDeclarationOrClassDeclarationOrVariableDeclaration", kind);
@@ -1592,14 +1391,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumFunctionExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("FunctionExpression", kind);
@@ -1631,14 +1428,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumGetter(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerGetter:
         MOZ_TRY_VAR(result, parseInterfaceEagerGetter(start, kind, fields));
-
         break;
       case BinKind::SkippableGetter:
         MOZ_TRY_VAR(result, parseInterfaceSkippableGetter(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Getter", kind);
@@ -1670,14 +1465,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumImportDeclaration(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::Import:
         MOZ_TRY_VAR(result, parseInterfaceImport(start, kind, fields));
-
         break;
       case BinKind::ImportNamespace:
         MOZ_TRY_VAR(result, parseInterfaceImportNamespace(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ImportDeclaration", kind);
@@ -1738,130 +1531,99 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumImportDeclarationOrExportDeclarationOrStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::Block:
         MOZ_TRY_VAR(result, parseInterfaceBlock(start, kind, fields));
-
         break;
       case BinKind::BreakStatement:
         MOZ_TRY_VAR(result, parseInterfaceBreakStatement(start, kind, fields));
-
         break;
       case BinKind::ClassDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceClassDeclaration(start, kind, fields));
-
         break;
       case BinKind::ContinueStatement:
         MOZ_TRY_VAR(result, parseInterfaceContinueStatement(start, kind, fields));
-
         break;
       case BinKind::DebuggerStatement:
         MOZ_TRY_VAR(result, parseInterfaceDebuggerStatement(start, kind, fields));
-
         break;
       case BinKind::DoWhileStatement:
         MOZ_TRY_VAR(result, parseInterfaceDoWhileStatement(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::EmptyStatement:
         MOZ_TRY_VAR(result, parseInterfaceEmptyStatement(start, kind, fields));
-
         break;
       case BinKind::Export:
         MOZ_TRY_VAR(result, parseInterfaceExport(start, kind, fields));
-
         break;
       case BinKind::ExportAllFrom:
         MOZ_TRY_VAR(result, parseInterfaceExportAllFrom(start, kind, fields));
-
         break;
       case BinKind::ExportDefault:
         MOZ_TRY_VAR(result, parseInterfaceExportDefault(start, kind, fields));
-
         break;
       case BinKind::ExportFrom:
         MOZ_TRY_VAR(result, parseInterfaceExportFrom(start, kind, fields));
-
         break;
       case BinKind::ExportLocals:
         MOZ_TRY_VAR(result, parseInterfaceExportLocals(start, kind, fields));
-
         break;
       case BinKind::ExpressionStatement:
         MOZ_TRY_VAR(result, parseInterfaceExpressionStatement(start, kind, fields));
-
         break;
       case BinKind::ForInStatement:
         MOZ_TRY_VAR(result, parseInterfaceForInStatement(start, kind, fields));
-
         break;
       case BinKind::ForOfStatement:
         MOZ_TRY_VAR(result, parseInterfaceForOfStatement(start, kind, fields));
-
         break;
       case BinKind::ForStatement:
         MOZ_TRY_VAR(result, parseInterfaceForStatement(start, kind, fields));
-
         break;
       case BinKind::IfStatement:
         MOZ_TRY_VAR(result, parseInterfaceIfStatement(start, kind, fields));
-
         break;
       case BinKind::Import:
         MOZ_TRY_VAR(result, parseInterfaceImport(start, kind, fields));
-
         break;
       case BinKind::ImportNamespace:
         MOZ_TRY_VAR(result, parseInterfaceImportNamespace(start, kind, fields));
-
         break;
       case BinKind::LabelledStatement:
         MOZ_TRY_VAR(result, parseInterfaceLabelledStatement(start, kind, fields));
-
         break;
       case BinKind::ReturnStatement:
         MOZ_TRY_VAR(result, parseInterfaceReturnStatement(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::SwitchStatement:
         MOZ_TRY_VAR(result, parseInterfaceSwitchStatement(start, kind, fields));
-
         break;
       case BinKind::SwitchStatementWithDefault:
         MOZ_TRY_VAR(result, parseInterfaceSwitchStatementWithDefault(start, kind, fields));
-
         break;
       case BinKind::ThrowStatement:
         MOZ_TRY_VAR(result, parseInterfaceThrowStatement(start, kind, fields));
-
         break;
       case BinKind::TryCatchStatement:
         MOZ_TRY_VAR(result, parseInterfaceTryCatchStatement(start, kind, fields));
-
         break;
       case BinKind::TryFinallyStatement:
         MOZ_TRY_VAR(result, parseInterfaceTryFinallyStatement(start, kind, fields));
-
         break;
       case BinKind::VariableDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceVariableDeclaration(start, kind, fields));
-
         break;
       case BinKind::WhileStatement:
         MOZ_TRY_VAR(result, parseInterfaceWhileStatement(start, kind, fields));
-
         break;
       case BinKind::WithStatement:
         MOZ_TRY_VAR(result, parseInterfaceWithStatement(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ImportDeclarationOrExportDeclarationOrStatement", kind);
@@ -1896,26 +1658,21 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumIterationStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::DoWhileStatement:
         MOZ_TRY_VAR(result, parseInterfaceDoWhileStatement(start, kind, fields));
-
         break;
       case BinKind::ForInStatement:
         MOZ_TRY_VAR(result, parseInterfaceForInStatement(start, kind, fields));
-
         break;
       case BinKind::ForOfStatement:
         MOZ_TRY_VAR(result, parseInterfaceForOfStatement(start, kind, fields));
-
         break;
       case BinKind::ForStatement:
         MOZ_TRY_VAR(result, parseInterfaceForStatement(start, kind, fields));
-
         break;
       case BinKind::WhileStatement:
         MOZ_TRY_VAR(result, parseInterfaceWhileStatement(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("IterationStatement", kind);
@@ -1950,26 +1707,21 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumLiteral(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Literal", kind);
@@ -2001,14 +1753,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumMethod(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerMethod:
         MOZ_TRY_VAR(result, parseInterfaceEagerMethod(start, kind, fields));
-
         break;
       case BinKind::SkippableMethod:
         MOZ_TRY_VAR(result, parseInterfaceSkippableMethod(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Method", kind);
@@ -2044,30 +1794,24 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumMethodDefinition(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerGetter:
         MOZ_TRY_VAR(result, parseInterfaceEagerGetter(start, kind, fields));
-
         break;
       case BinKind::EagerMethod:
         MOZ_TRY_VAR(result, parseInterfaceEagerMethod(start, kind, fields));
-
         break;
       case BinKind::EagerSetter:
         MOZ_TRY_VAR(result, parseInterfaceEagerSetter(start, kind, fields));
-
         break;
       case BinKind::SkippableGetter:
         MOZ_TRY_VAR(result, parseInterfaceSkippableGetter(start, kind, fields));
-
         break;
       case BinKind::SkippableMethod:
         MOZ_TRY_VAR(result, parseInterfaceSkippableMethod(start, kind, fields));
-
         break;
       case BinKind::SkippableSetter:
         MOZ_TRY_VAR(result, parseInterfaceSkippableSetter(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("MethodDefinition", kind);
@@ -2105,38 +1849,30 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumObjectProperty(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::DataProperty:
         MOZ_TRY_VAR(result, parseInterfaceDataProperty(start, kind, fields));
-
         break;
       case BinKind::EagerGetter:
         MOZ_TRY_VAR(result, parseInterfaceEagerGetter(start, kind, fields));
-
         break;
       case BinKind::EagerMethod:
         MOZ_TRY_VAR(result, parseInterfaceEagerMethod(start, kind, fields));
-
         break;
       case BinKind::EagerSetter:
         MOZ_TRY_VAR(result, parseInterfaceEagerSetter(start, kind, fields));
-
         break;
       case BinKind::ShorthandProperty:
         MOZ_TRY_VAR(result, parseInterfaceShorthandProperty(start, kind, fields));
-
         break;
       case BinKind::SkippableGetter:
         MOZ_TRY_VAR(result, parseInterfaceSkippableGetter(start, kind, fields));
-
         break;
       case BinKind::SkippableMethod:
         MOZ_TRY_VAR(result, parseInterfaceSkippableMethod(start, kind, fields));
-
         break;
       case BinKind::SkippableSetter:
         MOZ_TRY_VAR(result, parseInterfaceSkippableSetter(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("ObjectProperty", kind);
@@ -2170,24 +1906,22 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumParameter(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayBinding:
         MOZ_TRY_VAR(result, parseInterfaceArrayBinding(start, kind, fields));
-
         break;
       case BinKind::BindingIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceBindingIdentifier(start, kind, fields));
-        BINJS_TRY(parseContext_->positionalFormalParameterNames().append(result->pn_atom));
+        if (!parseContext_->positionalFormalParameterNames().append(result->pn_atom))
+            return raiseOOM();
         if (parseContext_->isFunctionBox())
             parseContext_->functionBox()->length++;
         break;
       case BinKind::BindingWithInitializer:
         MOZ_TRY_VAR(result, parseInterfaceBindingWithInitializer(start, kind, fields));
-
         break;
       case BinKind::ObjectBinding:
         MOZ_TRY_VAR(result, parseInterfaceObjectBinding(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Parameter", kind);
@@ -2219,14 +1953,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumProgram(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::Module:
         MOZ_TRY_VAR(result, parseInterfaceModule(start, kind, fields));
-
         break;
       case BinKind::Script:
         MOZ_TRY_VAR(result, parseInterfaceScript(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Program", kind);
@@ -2258,14 +1990,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumPropertyName(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ComputedPropertyName:
         MOZ_TRY_VAR(result, parseInterfaceComputedPropertyName(start, kind, fields));
-
         break;
       case BinKind::LiteralPropertyName:
         MOZ_TRY_VAR(result, parseInterfaceLiteralPropertyName(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("PropertyName", kind);
@@ -2297,14 +2027,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumSetter(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::EagerSetter:
         MOZ_TRY_VAR(result, parseInterfaceEagerSetter(start, kind, fields));
-
         break;
       case BinKind::SkippableSetter:
         MOZ_TRY_VAR(result, parseInterfaceSkippableSetter(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Setter", kind);
@@ -2337,18 +2065,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumSimpleAssignmentTarget(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::AssignmentTargetIdentifier:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentTargetIdentifier(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberAssignmentTarget(start, kind, fields));
-
         break;
       case BinKind::StaticMemberAssignmentTarget:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberAssignmentTarget(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("SimpleAssignmentTarget", kind);
@@ -2409,130 +2134,99 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumSpreadElementOrExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::SpreadElement:
         MOZ_TRY_VAR(result, parseInterfaceSpreadElement(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("SpreadElementOrExpression", kind);
@@ -2586,102 +2280,78 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::Block:
         MOZ_TRY_VAR(result, parseInterfaceBlock(start, kind, fields));
-
         break;
       case BinKind::BreakStatement:
         MOZ_TRY_VAR(result, parseInterfaceBreakStatement(start, kind, fields));
-
         break;
       case BinKind::ClassDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceClassDeclaration(start, kind, fields));
-
         break;
       case BinKind::ContinueStatement:
         MOZ_TRY_VAR(result, parseInterfaceContinueStatement(start, kind, fields));
-
         break;
       case BinKind::DebuggerStatement:
         MOZ_TRY_VAR(result, parseInterfaceDebuggerStatement(start, kind, fields));
-
         break;
       case BinKind::DoWhileStatement:
         MOZ_TRY_VAR(result, parseInterfaceDoWhileStatement(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::EmptyStatement:
         MOZ_TRY_VAR(result, parseInterfaceEmptyStatement(start, kind, fields));
-
         break;
       case BinKind::ExpressionStatement:
         MOZ_TRY_VAR(result, parseInterfaceExpressionStatement(start, kind, fields));
-
         break;
       case BinKind::ForInStatement:
         MOZ_TRY_VAR(result, parseInterfaceForInStatement(start, kind, fields));
-
         break;
       case BinKind::ForOfStatement:
         MOZ_TRY_VAR(result, parseInterfaceForOfStatement(start, kind, fields));
-
         break;
       case BinKind::ForStatement:
         MOZ_TRY_VAR(result, parseInterfaceForStatement(start, kind, fields));
-
         break;
       case BinKind::IfStatement:
         MOZ_TRY_VAR(result, parseInterfaceIfStatement(start, kind, fields));
-
         break;
       case BinKind::LabelledStatement:
         MOZ_TRY_VAR(result, parseInterfaceLabelledStatement(start, kind, fields));
-
         break;
       case BinKind::ReturnStatement:
         MOZ_TRY_VAR(result, parseInterfaceReturnStatement(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionDeclaration(start, kind, fields));
-
         break;
       case BinKind::SwitchStatement:
         MOZ_TRY_VAR(result, parseInterfaceSwitchStatement(start, kind, fields));
-
         break;
       case BinKind::SwitchStatementWithDefault:
         MOZ_TRY_VAR(result, parseInterfaceSwitchStatementWithDefault(start, kind, fields));
-
         break;
       case BinKind::ThrowStatement:
         MOZ_TRY_VAR(result, parseInterfaceThrowStatement(start, kind, fields));
-
         break;
       case BinKind::TryCatchStatement:
         MOZ_TRY_VAR(result, parseInterfaceTryCatchStatement(start, kind, fields));
-
         break;
       case BinKind::TryFinallyStatement:
         MOZ_TRY_VAR(result, parseInterfaceTryFinallyStatement(start, kind, fields));
-
         break;
       case BinKind::VariableDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceVariableDeclaration(start, kind, fields));
-
         break;
       case BinKind::WhileStatement:
         MOZ_TRY_VAR(result, parseInterfaceWhileStatement(start, kind, fields));
-
         break;
       case BinKind::WithStatement:
         MOZ_TRY_VAR(result, parseInterfaceWithStatement(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("Statement", kind);
@@ -2742,130 +2412,99 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseSumVariableDeclarationOrExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     ParseNode* result;
-    switch(kind) {
+    switch (kind) {
       case BinKind::ArrayExpression:
         MOZ_TRY_VAR(result, parseInterfaceArrayExpression(start, kind, fields));
-
         break;
       case BinKind::AssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::AwaitExpression:
         MOZ_TRY_VAR(result, parseInterfaceAwaitExpression(start, kind, fields));
-
         break;
       case BinKind::BinaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceBinaryExpression(start, kind, fields));
-
         break;
       case BinKind::CallExpression:
         MOZ_TRY_VAR(result, parseInterfaceCallExpression(start, kind, fields));
-
         break;
       case BinKind::ClassExpression:
         MOZ_TRY_VAR(result, parseInterfaceClassExpression(start, kind, fields));
-
         break;
       case BinKind::CompoundAssignmentExpression:
         MOZ_TRY_VAR(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
-
         break;
       case BinKind::ComputedMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceComputedMemberExpression(start, kind, fields));
-
         break;
       case BinKind::ConditionalExpression:
         MOZ_TRY_VAR(result, parseInterfaceConditionalExpression(start, kind, fields));
-
         break;
       case BinKind::EagerArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerArrowExpression(start, kind, fields));
-
         break;
       case BinKind::EagerFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::IdentifierExpression:
         MOZ_TRY_VAR(result, parseInterfaceIdentifierExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralBooleanExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralInfinityExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNullExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNullExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralNumericExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralRegExpExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
-
         break;
       case BinKind::LiteralStringExpression:
         MOZ_TRY_VAR(result, parseInterfaceLiteralStringExpression(start, kind, fields));
-
         break;
       case BinKind::NewExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewExpression(start, kind, fields));
-
         break;
       case BinKind::NewTargetExpression:
         MOZ_TRY_VAR(result, parseInterfaceNewTargetExpression(start, kind, fields));
-
         break;
       case BinKind::ObjectExpression:
         MOZ_TRY_VAR(result, parseInterfaceObjectExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableArrowExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
-
         break;
       case BinKind::SkippableFunctionExpression:
         MOZ_TRY_VAR(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
-
         break;
       case BinKind::StaticMemberExpression:
         MOZ_TRY_VAR(result, parseInterfaceStaticMemberExpression(start, kind, fields));
-
         break;
       case BinKind::TemplateExpression:
         MOZ_TRY_VAR(result, parseInterfaceTemplateExpression(start, kind, fields));
-
         break;
       case BinKind::ThisExpression:
         MOZ_TRY_VAR(result, parseInterfaceThisExpression(start, kind, fields));
-
         break;
       case BinKind::UnaryExpression:
         MOZ_TRY_VAR(result, parseInterfaceUnaryExpression(start, kind, fields));
-
         break;
       case BinKind::UpdateExpression:
         MOZ_TRY_VAR(result, parseInterfaceUpdateExpression(start, kind, fields));
-
         break;
       case BinKind::VariableDeclaration:
         MOZ_TRY_VAR(result, parseInterfaceVariableDeclaration(start, kind, fields));
-
         break;
       case BinKind::YieldExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldExpression(start, kind, fields));
-
         break;
       case BinKind::YieldStarExpression:
         MOZ_TRY_VAR(result, parseInterfaceYieldStarExpression(start, kind, fields));
-
         break;
       default:
         return raiseInvalidKind("VariableDeclarationOrExpression", kind);
@@ -2890,8 +2529,10 @@ BinASTParser<Tok>::parseNull()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::_Null) {
+        return raiseInvalidKind("_Null", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceNull(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -2919,8 +2560,10 @@ BinASTParser<Tok>::parseArrayAssignmentTarget()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ArrayAssignmentTarget) {
+        return raiseInvalidKind("ArrayAssignmentTarget", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceArrayAssignmentTarget(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -2948,8 +2591,10 @@ BinASTParser<Tok>::parseArrayBinding()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ArrayBinding) {
+        return raiseInvalidKind("ArrayBinding", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceArrayBinding(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -2976,8 +2621,10 @@ BinASTParser<Tok>::parseArrayExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ArrayExpression) {
+        return raiseInvalidKind("ArrayExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceArrayExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -2988,19 +2635,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceArrayExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ArrayExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Elements };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(elements, parseListOfOptionalSpreadElementOrExpression());
-
 
     auto result = elements;
     return result;
@@ -3022,8 +2664,10 @@ BinASTParser<Tok>::parseAssertedBlockScope()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssertedBlockScope) {
+        return raiseInvalidKind("AssertedBlockScope", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssertedBlockScope(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3034,25 +2678,20 @@ template<typename Tok> JS::Result<Ok>
 BinASTParser<Tok>::parseInterfaceAssertedBlockScope(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::AssertedBlockScope);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::LexicallyDeclaredNames, BinField::CapturedNames, BinField::HasDirectEval };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     MOZ_TRY(parseAndUpdateScopeNames(*parseContext_->innermostScope(), DeclarationKind::Let));
     MOZ_TRY(parseAndUpdateCapturedNames(kind));
-
-
 
     BINJS_MOZ_TRY_DECL(hasDirectEval, tokenizer_->readBool());
     if (hasDirectEval) {
         parseContext_->sc()->setHasDirectEval();
         parseContext_->sc()->setBindingsAccessedDynamically();
     }
-
     if (hasDirectEval && parseContext_->isFunctionBox() && !parseContext_->sc()->strict()) {
         // In non-strict mode code, direct calls to eval can
         // add variables to the call object.
@@ -3078,8 +2717,10 @@ BinASTParser<Tok>::parseAssertedParameterScope()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssertedParameterScope) {
+        return raiseInvalidKind("AssertedParameterScope", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssertedParameterScope(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3090,14 +2731,12 @@ template<typename Tok> JS::Result<Ok>
 BinASTParser<Tok>::parseInterfaceAssertedParameterScope(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::AssertedParameterScope);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::ParameterNames, BinField::CapturedNames, BinField::HasDirectEval };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement* inStatement = parseContext_->innermostStatement();
 
     // If we are in a `CatchClause`, the binding is a implicit CatchParameter
@@ -3109,14 +2748,11 @@ BinASTParser<Tok>::parseInterfaceAssertedParameterScope(const size_t start, cons
         MOZ_TRY(parseAndUpdateScopeNames(parseContext_->functionScope(), DeclarationKind::PositionalFormalParameter));
     MOZ_TRY(parseAndUpdateCapturedNames(kind));
 
-
-
     BINJS_MOZ_TRY_DECL(hasDirectEval, tokenizer_->readBool());
     if (hasDirectEval) {
         parseContext_->sc()->setHasDirectEval();
         parseContext_->sc()->setBindingsAccessedDynamically();
     }
-
     if (hasDirectEval && parseContext_->isFunctionBox() && !parseContext_->sc()->strict()) {
         // In non-strict mode code, direct calls to eval can
         // add variables to the call object.
@@ -3143,8 +2779,10 @@ BinASTParser<Tok>::parseAssertedVarScope()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssertedVarScope) {
+        return raiseInvalidKind("AssertedVarScope", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssertedVarScope(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3155,26 +2793,21 @@ template<typename Tok> JS::Result<Ok>
 BinASTParser<Tok>::parseInterfaceAssertedVarScope(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::AssertedVarScope);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[4] = { BinField::LexicallyDeclaredNames, BinField::VarDeclaredNames, BinField::CapturedNames, BinField::HasDirectEval };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     MOZ_TRY(parseAndUpdateScopeNames(*parseContext_->innermostScope(), DeclarationKind::Let));
     MOZ_TRY(parseAndUpdateScopeNames(parseContext_->varScope(), DeclarationKind::Var));
     MOZ_TRY(parseAndUpdateCapturedNames(kind));
-
-
 
     BINJS_MOZ_TRY_DECL(hasDirectEval, tokenizer_->readBool());
     if (hasDirectEval) {
         parseContext_->sc()->setHasDirectEval();
         parseContext_->sc()->setBindingsAccessedDynamically();
     }
-
     if (hasDirectEval && parseContext_->isFunctionBox() && !parseContext_->sc()->strict()) {
         // In non-strict mode code, direct calls to eval can
         // add variables to the call object.
@@ -3199,8 +2832,10 @@ BinASTParser<Tok>::parseAssignmentExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssignmentExpression) {
+        return raiseInvalidKind("AssignmentExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssignmentExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3211,24 +2846,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceAssignmentExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::AssignmentExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Binding, BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(binding, parseAssignmentTarget());
 
-
-
-
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
-
 
     BINJS_TRY_DECL(result, factory_.newAssignment(ParseNodeKind::Assign, binding, expression));
     return result;
@@ -3248,8 +2875,10 @@ BinASTParser<Tok>::parseAssignmentTargetIdentifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssignmentTargetIdentifier) {
+        return raiseInvalidKind("AssignmentTargetIdentifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssignmentTargetIdentifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3260,19 +2889,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceAssignmentTargetIdentifier(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::AssignmentTargetIdentifier);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Name };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom name(cx_);
     MOZ_TRY_VAR(name, tokenizer_->readAtom());
-
 
     if (!IsIdentifier(name))
         return raiseError("Invalid identifier");
@@ -3296,8 +2921,10 @@ BinASTParser<Tok>::parseAssignmentTargetPropertyIdentifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssignmentTargetPropertyIdentifier) {
+        return raiseInvalidKind("AssignmentTargetPropertyIdentifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssignmentTargetPropertyIdentifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3325,8 +2952,10 @@ BinASTParser<Tok>::parseAssignmentTargetPropertyProperty()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssignmentTargetPropertyProperty) {
+        return raiseInvalidKind("AssignmentTargetPropertyProperty", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssignmentTargetPropertyProperty(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3354,8 +2983,10 @@ BinASTParser<Tok>::parseAssignmentTargetWithInitializer()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AssignmentTargetWithInitializer) {
+        return raiseInvalidKind("AssignmentTargetWithInitializer", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAssignmentTargetWithInitializer(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3382,8 +3013,10 @@ BinASTParser<Tok>::parseAwaitExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::AwaitExpression) {
+        return raiseInvalidKind("AwaitExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceAwaitExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3412,8 +3045,10 @@ BinASTParser<Tok>::parseBinaryExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::BinaryExpression) {
+        return raiseInvalidKind("BinaryExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBinaryExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3424,29 +3059,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceBinaryExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::BinaryExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Operator, BinField::Left, BinField::Right };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(operator_, parseBinaryOperator());
-
-
-
 
     BINJS_MOZ_TRY_DECL(left, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(right, parseExpression());
-
 
     ParseNodeKind pnk;
     switch (operator_) {
@@ -3558,8 +3182,10 @@ BinASTParser<Tok>::parseBindingIdentifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::BindingIdentifier) {
+        return raiseInvalidKind("BindingIdentifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBindingIdentifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3570,19 +3196,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceBindingIdentifier(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::BindingIdentifier);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Name };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom name(cx_);
     MOZ_TRY_VAR(name, tokenizer_->readAtom());
-
 
     if (!IsIdentifier(name))
         return raiseError("Invalid identifier");
@@ -3605,8 +3227,10 @@ BinASTParser<Tok>::parseBindingPropertyIdentifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::BindingPropertyIdentifier) {
+        return raiseInvalidKind("BindingPropertyIdentifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBindingPropertyIdentifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3634,8 +3258,10 @@ BinASTParser<Tok>::parseBindingPropertyProperty()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::BindingPropertyProperty) {
+        return raiseInvalidKind("BindingPropertyProperty", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBindingPropertyProperty(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3663,8 +3289,10 @@ BinASTParser<Tok>::parseBindingWithInitializer()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::BindingWithInitializer) {
+        return raiseInvalidKind("BindingWithInitializer", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBindingWithInitializer(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3692,8 +3320,10 @@ BinASTParser<Tok>::parseBlock()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Block) {
+        return raiseInvalidKind("Block", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBlock(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3704,26 +3334,19 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceBlock(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::Block);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Scope, BinField::Statements };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement stmt(parseContext_, StatementKind::Block);
     ParseContext::Scope currentScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(currentScope.init(parseContext_));
 
-
     MOZ_TRY(parseOptionalAssertedBlockScope());
 
-
-
-
     BINJS_MOZ_TRY_DECL(statements, parseListOfStatement());
-
 
     MOZ_TRY(checkClosedVars(currentScope));
     BINJS_TRY_DECL(bindings, NewLexicalScopeData(cx_, currentScope, alloc_, parseContext_));
@@ -3745,8 +3368,10 @@ BinASTParser<Tok>::parseBreakStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::BreakStatement) {
+        return raiseInvalidKind("BreakStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceBreakStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3757,14 +3382,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceBreakStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::BreakStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Label };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     RootedAtom label(cx_);
     MOZ_TRY_VAR(label, tokenizer_->readMaybeAtom());
 
@@ -3802,8 +3425,10 @@ BinASTParser<Tok>::parseCallExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::CallExpression) {
+        return raiseInvalidKind("CallExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceCallExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3814,24 +3439,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceCallExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::CallExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Callee, BinField::Arguments };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(callee, parseExpressionOrSuper());
 
-
-
-
     BINJS_MOZ_TRY_DECL(arguments, parseArguments());
-
 
     auto op = JSOP_CALL;
     // Check for direct calls to `eval`.
@@ -3845,9 +3462,8 @@ BinASTParser<Tok>::parseInterfaceCallExpression(const size_t start, const BinKin
             op = parseContext_->sc()->strict() ? JSOP_STRICTEVAL : JSOP_EVAL;
         }
     }
-    auto result = arguments;
-    result->setKind(ParseNodeKind::Call);
-    result->prepend(callee);
+
+    BINJS_TRY_DECL(result, factory_.newCall(callee, arguments));
     result->setOp(op);
     return result;
 }
@@ -3868,8 +3484,10 @@ BinASTParser<Tok>::parseCatchClause()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::CatchClause) {
+        return raiseInvalidKind("CatchClause", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceCatchClause(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3880,31 +3498,21 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceCatchClause(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::CatchClause);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::BindingScope, BinField::Binding, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement stmt(parseContext_, StatementKind::Catch);
     ParseContext::Scope currentScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(currentScope.init(parseContext_));
 
-
     MOZ_TRY(parseOptionalAssertedParameterScope());
-
-
-
 
     BINJS_MOZ_TRY_DECL(binding, parseBinding());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseBlock());
-
 
     BINJS_TRY_DECL(bindings, NewLexicalScopeData(cx_, currentScope, alloc_, parseContext_));
     BINJS_TRY_DECL(result, factory_.newLexicalScope(*bindings, body));
@@ -3928,8 +3536,10 @@ BinASTParser<Tok>::parseClassDeclaration()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ClassDeclaration) {
+        return raiseInvalidKind("ClassDeclaration", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceClassDeclaration(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3957,8 +3567,10 @@ BinASTParser<Tok>::parseClassElement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ClassElement) {
+        return raiseInvalidKind("ClassElement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceClassElement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -3987,8 +3599,10 @@ BinASTParser<Tok>::parseClassExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ClassExpression) {
+        return raiseInvalidKind("ClassExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceClassExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4017,8 +3631,10 @@ BinASTParser<Tok>::parseCompoundAssignmentExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::CompoundAssignmentExpression) {
+        return raiseInvalidKind("CompoundAssignmentExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceCompoundAssignmentExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4029,29 +3645,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceCompoundAssignmentExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::CompoundAssignmentExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Operator, BinField::Binding, BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(operator_, parseCompoundAssignmentOperator());
-
-
-
 
     BINJS_MOZ_TRY_DECL(binding, parseSimpleAssignmentTarget());
 
-
-
-
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
-
 
     ParseNodeKind pnk;
     switch (operator_){
@@ -4111,8 +3716,10 @@ BinASTParser<Tok>::parseComputedMemberAssignmentTarget()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ComputedMemberAssignmentTarget) {
+        return raiseInvalidKind("ComputedMemberAssignmentTarget", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceComputedMemberAssignmentTarget(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4123,26 +3730,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceComputedMemberAssignmentTarget(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ComputedMemberAssignmentTarget);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Object, BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(object, parseExpressionOrSuper());
-
-
-
 
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
 
-
-    BINJS_TRY_DECL(result, factory_.newPropertyByValue(object, expression, start));
+    BINJS_TRY_DECL(result, factory_.newPropertyByValue(object, expression, tokenizer_->offset()));
     return result;
 }
 
@@ -4161,8 +3760,10 @@ BinASTParser<Tok>::parseComputedMemberExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ComputedMemberExpression) {
+        return raiseInvalidKind("ComputedMemberExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceComputedMemberExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4173,26 +3774,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceComputedMemberExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ComputedMemberExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Object, BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(object, parseExpressionOrSuper());
-
-
-
 
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
 
-
-    BINJS_TRY_DECL(result, factory_.newPropertyByValue(object, expression, start));
+    BINJS_TRY_DECL(result, factory_.newPropertyByValue(object, expression, tokenizer_->offset()));
     return result;
 }
 
@@ -4210,8 +3803,10 @@ BinASTParser<Tok>::parseComputedPropertyName()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ComputedPropertyName) {
+        return raiseInvalidKind("ComputedPropertyName", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceComputedPropertyName(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4240,8 +3835,10 @@ BinASTParser<Tok>::parseConditionalExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ConditionalExpression) {
+        return raiseInvalidKind("ConditionalExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceConditionalExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4252,29 +3849,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceConditionalExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ConditionalExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Test, BinField::Consequent, BinField::Alternate };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(test, parseExpression());
-
-
-
 
     BINJS_MOZ_TRY_DECL(consequent, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(alternate, parseExpression());
-
 
     BINJS_TRY_DECL(result, factory_.newConditional(test, consequent, alternate));
     return result;
@@ -4294,8 +3880,10 @@ BinASTParser<Tok>::parseContinueStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ContinueStatement) {
+        return raiseInvalidKind("ContinueStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceContinueStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4306,14 +3894,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceContinueStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ContinueStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Label };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     RootedAtom label(cx_);
     MOZ_TRY_VAR(label, tokenizer_->readMaybeAtom());
 
@@ -4351,8 +3937,10 @@ BinASTParser<Tok>::parseDataProperty()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::DataProperty) {
+        return raiseInvalidKind("DataProperty", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceDataProperty(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4363,24 +3951,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceDataProperty(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::DataProperty);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Name, BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(name, parsePropertyName());
 
-
-
-
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
-
 
     if (!factory_.isUsableAsObjectPropertyName(name))
         return raiseError("DataProperty key kind");
@@ -4402,8 +3982,10 @@ BinASTParser<Tok>::parseDebuggerStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::DebuggerStatement) {
+        return raiseInvalidKind("DebuggerStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceDebuggerStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4430,8 +4012,10 @@ BinASTParser<Tok>::parseDirective()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Directive) {
+        return raiseInvalidKind("Directive", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceDirective(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4442,19 +4026,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceDirective(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::Directive);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::RawValue };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom rawValue(cx_);
     MOZ_TRY_VAR(rawValue, tokenizer_->readAtom());
-
 
     TokenPos pos = tokenizer_->pos(start);
     BINJS_TRY_DECL(result, factory_.newStringLiteral(rawValue, pos));
@@ -4476,8 +4056,10 @@ BinASTParser<Tok>::parseDoWhileStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::DoWhileStatement) {
+        return raiseInvalidKind("DoWhileStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceDoWhileStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4488,24 +4070,17 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceDoWhileStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::DoWhileStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Test, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement stmt(parseContext_, StatementKind::DoLoop);
-
 
     BINJS_MOZ_TRY_DECL(test, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newDoWhileStatement(body, test, tokenizer_->pos(start)));
     return result;
@@ -4529,8 +4104,10 @@ BinASTParser<Tok>::parseEagerArrowExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EagerArrowExpression) {
+        return raiseInvalidKind("EagerArrowExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEagerArrowExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4563,8 +4140,10 @@ BinASTParser<Tok>::parseEagerFunctionDeclaration()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EagerFunctionDeclaration) {
+        return raiseInvalidKind("EagerFunctionDeclaration", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEagerFunctionDeclaration(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4575,29 +4154,19 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceEagerFunctionDeclaration(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::EagerFunctionDeclaration);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[7] = { BinField::IsAsync, BinField::IsGenerator, BinField::Name, BinField::ParameterScope, BinField::BodyScope, BinField::Params, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     const auto syntax = FunctionSyntaxKind::Statement;
-
 
     BINJS_MOZ_TRY_DECL(isAsync, tokenizer_->readBool());
 
-
-
-
     BINJS_MOZ_TRY_DECL(isGenerator, tokenizer_->readBool());
 
-
-
-
     BINJS_MOZ_TRY_DECL(name, parseBindingIdentifier());
-
 
     BINJS_MOZ_TRY_DECL(funbox, buildFunctionBox(
         isGenerator ? GeneratorKind::Generator
@@ -4614,24 +4183,13 @@ BinASTParser<Tok>::parseInterfaceEagerFunctionDeclaration(const size_t start, co
 
     ParseContext::Scope lexicalScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(lexicalScope.init(parseContext_));
-
     MOZ_TRY(parseOptionalAssertedParameterScope());
-
-
-
 
     MOZ_TRY(parseOptionalAssertedVarScope());
 
-
-
-
     BINJS_MOZ_TRY_DECL(params, parseFormalParameters());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseFunctionBody());
-
 
     BINJS_TRY_DECL(lexicalScopeData, NewLexicalScopeData(cx_, lexicalScope, alloc_, parseContext_));
     BINJS_TRY_VAR(body, factory_.newLexicalScope(*lexicalScopeData, body));
@@ -4659,8 +4217,10 @@ BinASTParser<Tok>::parseEagerFunctionExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EagerFunctionExpression) {
+        return raiseInvalidKind("EagerFunctionExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEagerFunctionExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4671,29 +4231,19 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceEagerFunctionExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::EagerFunctionExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[7] = { BinField::IsAsync, BinField::IsGenerator, BinField::Name, BinField::ParameterScope, BinField::BodyScope, BinField::Params, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     const auto syntax = FunctionSyntaxKind::Expression;
-
 
     BINJS_MOZ_TRY_DECL(isAsync, tokenizer_->readBool());
 
-
-
-
     BINJS_MOZ_TRY_DECL(isGenerator, tokenizer_->readBool());
 
-
-
-
     BINJS_MOZ_TRY_DECL(name, parseOptionalBindingIdentifier());
-
 
     BINJS_MOZ_TRY_DECL(funbox, buildFunctionBox(
         isGenerator ? GeneratorKind::Generator
@@ -4710,24 +4260,13 @@ BinASTParser<Tok>::parseInterfaceEagerFunctionExpression(const size_t start, con
 
     ParseContext::Scope lexicalScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(lexicalScope.init(parseContext_));
-
     MOZ_TRY(parseOptionalAssertedParameterScope());
-
-
-
 
     MOZ_TRY(parseOptionalAssertedVarScope());
 
-
-
-
     BINJS_MOZ_TRY_DECL(params, parseFormalParameters());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseFunctionBody());
-
 
     BINJS_TRY_DECL(lexicalScopeData, NewLexicalScopeData(cx_, lexicalScope, alloc_, parseContext_));
     BINJS_TRY_VAR(body, factory_.newLexicalScope(*lexicalScopeData, body));
@@ -4751,8 +4290,10 @@ BinASTParser<Tok>::parseEagerGetter()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EagerGetter) {
+        return raiseInvalidKind("EagerGetter", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEagerGetter(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4763,16 +4304,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceEagerGetter(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::EagerGetter);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Name, BinField::BodyScope, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
-
-
 
     BINJS_MOZ_TRY_DECL(name, parsePropertyName());
     BINJS_MOZ_TRY_DECL(funbox, buildFunctionBox(
@@ -4788,18 +4325,11 @@ BinASTParser<Tok>::parseInterfaceEagerGetter(const size_t start, const BinKind k
 
     ParseContext::Scope lexicalScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(lexicalScope.init(parseContext_));
-
-
-
     MOZ_TRY(parseOptionalAssertedVarScope());
-
-
-
 
     BINJS_MOZ_TRY_DECL(body, parseFunctionBody());
 
-
-    ParseNode* params = new_<ListNode>(ParseNodeKind::ParamsBody, tokenizer_->pos(start));
+    BINJS_TRY_DECL(params, new_<ListNode>(ParseNodeKind::ParamsBody, tokenizer_->pos(start)));
     BINJS_MOZ_TRY_DECL(method, buildFunction(start, kind, name, params, body, funbox));
     BINJS_TRY_DECL(result, factory_.newObjectMethodOrPropertyDefinition(name, method, AccessorType::Getter));
     return result;
@@ -4825,8 +4355,10 @@ BinASTParser<Tok>::parseEagerMethod()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EagerMethod) {
+        return raiseInvalidKind("EagerMethod", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEagerMethod(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4837,29 +4369,19 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceEagerMethod(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::EagerMethod);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[7] = { BinField::IsAsync, BinField::IsGenerator, BinField::Name, BinField::ParameterScope, BinField::BodyScope, BinField::Params, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     const auto syntax = FunctionSyntaxKind::Method;
-
 
     BINJS_MOZ_TRY_DECL(isAsync, tokenizer_->readBool());
 
-
-
-
     BINJS_MOZ_TRY_DECL(isGenerator, tokenizer_->readBool());
 
-
-
-
     BINJS_MOZ_TRY_DECL(name, parsePropertyName());
-
 
     BINJS_MOZ_TRY_DECL(funbox, buildFunctionBox(
         isGenerator ? GeneratorKind::Generator
@@ -4876,24 +4398,13 @@ BinASTParser<Tok>::parseInterfaceEagerMethod(const size_t start, const BinKind k
 
     ParseContext::Scope lexicalScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(lexicalScope.init(parseContext_));
-
     MOZ_TRY(parseOptionalAssertedParameterScope());
-
-
-
 
     MOZ_TRY(parseOptionalAssertedVarScope());
 
-
-
-
     BINJS_MOZ_TRY_DECL(params, parseFormalParameters());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseFunctionBody());
-
 
     BINJS_MOZ_TRY_DECL(method, buildFunction(start, kind, name, params, body, funbox));
     BINJS_TRY_DECL(result, factory_.newObjectMethodOrPropertyDefinition(name, method, AccessorType::None));
@@ -4918,8 +4429,10 @@ BinASTParser<Tok>::parseEagerSetter()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EagerSetter) {
+        return raiseInvalidKind("EagerSetter", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEagerSetter(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -4930,16 +4443,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceEagerSetter(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::EagerSetter);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[5] = { BinField::Name, BinField::ParameterScope, BinField::BodyScope, BinField::Param, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
-
-
 
     BINJS_MOZ_TRY_DECL(name, parsePropertyName());
     BINJS_MOZ_TRY_DECL(funbox, buildFunctionBox(
@@ -4955,28 +4464,15 @@ BinASTParser<Tok>::parseInterfaceEagerSetter(const size_t start, const BinKind k
 
     ParseContext::Scope lexicalScope(cx_, parseContext_, usedNames_);
     BINJS_TRY(lexicalScope.init(parseContext_));
-
-
-
     MOZ_TRY(parseOptionalAssertedParameterScope());
-
-
-
 
     MOZ_TRY(parseOptionalAssertedVarScope());
 
-
-
-
     BINJS_MOZ_TRY_DECL(param, parseParameter());
-
-
-
 
     BINJS_MOZ_TRY_DECL(body, parseFunctionBody());
 
-
-    ParseNode* params = new_<ListNode>(ParseNodeKind::ParamsBody, param->pn_pos);
+    BINJS_TRY_DECL(params, new_<ListNode>(ParseNodeKind::ParamsBody, param->pn_pos));
     factory_.addList(params, param);
     BINJS_MOZ_TRY_DECL(method, buildFunction(start, kind, name, params, body, funbox));
     BINJS_TRY_DECL(result, factory_.newObjectMethodOrPropertyDefinition(name, method, AccessorType::Setter));
@@ -4996,8 +4492,10 @@ BinASTParser<Tok>::parseEmptyStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::EmptyStatement) {
+        return raiseInvalidKind("EmptyStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceEmptyStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5008,8 +4506,7 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceEmptyStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::EmptyStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 MOZ_TRY(tokenizer_->checkFields0(kind, fields));
 
     BINJS_TRY_DECL(result, factory_.newEmptyStatement(tokenizer_->pos(start)));
@@ -5030,8 +4527,10 @@ BinASTParser<Tok>::parseExport()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Export) {
+        return raiseInvalidKind("Export", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExport(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5058,8 +4557,10 @@ BinASTParser<Tok>::parseExportAllFrom()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExportAllFrom) {
+        return raiseInvalidKind("ExportAllFrom", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExportAllFrom(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5086,8 +4587,10 @@ BinASTParser<Tok>::parseExportDefault()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExportDefault) {
+        return raiseInvalidKind("ExportDefault", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExportDefault(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5115,8 +4618,10 @@ BinASTParser<Tok>::parseExportFrom()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExportFrom) {
+        return raiseInvalidKind("ExportFrom", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExportFrom(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5144,8 +4649,10 @@ BinASTParser<Tok>::parseExportFromSpecifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExportFromSpecifier) {
+        return raiseInvalidKind("ExportFromSpecifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExportFromSpecifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5173,8 +4680,10 @@ BinASTParser<Tok>::parseExportLocalSpecifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExportLocalSpecifier) {
+        return raiseInvalidKind("ExportLocalSpecifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExportLocalSpecifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5201,8 +4710,10 @@ BinASTParser<Tok>::parseExportLocals()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExportLocals) {
+        return raiseInvalidKind("ExportLocals", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExportLocals(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5229,8 +4740,10 @@ BinASTParser<Tok>::parseExpressionStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ExpressionStatement) {
+        return raiseInvalidKind("ExpressionStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceExpressionStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5241,19 +4754,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceExpressionStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ExpressionStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
-
 
     BINJS_TRY_DECL(result, factory_.newExprStatement(expression, tokenizer_->offset()));
     return result;
@@ -5274,8 +4782,10 @@ BinASTParser<Tok>::parseForInOfBinding()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ForInOfBinding) {
+        return raiseInvalidKind("ForInOfBinding", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceForInOfBinding(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5286,24 +4796,17 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceForInOfBinding(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ForInOfBinding);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Kind, BinField::Binding };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     AutoVariableDeclarationKind kindGuard(this);
-
 
     BINJS_MOZ_TRY_DECL(kind_, parseVariableDeclarationKind());
 
-
-
-
     BINJS_MOZ_TRY_DECL(binding, parseBinding());
-
 
     // Restored by `kindGuard`.
     variableDeclarationKind_ = kind_;
@@ -5333,8 +4836,10 @@ BinASTParser<Tok>::parseForInStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ForInStatement) {
+        return raiseInvalidKind("ForInStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceForInStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5345,14 +4850,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceForInStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ForInStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Left, BinField::Right, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement stmt(parseContext_, StatementKind::ForInLoop);
 
     // Implicit scope around the `for`, used to store `for (let x in  ...)`
@@ -5361,19 +4864,11 @@ BinASTParser<Tok>::parseInterfaceForInStatement(const size_t start, const BinKin
     ParseContext::Scope scope(cx_, parseContext_, usedNames_);
     BINJS_TRY(scope.init(parseContext_));
 
-
     BINJS_MOZ_TRY_DECL(left, parseForInOfBindingOrAssignmentTarget());
-
-
-
 
     BINJS_MOZ_TRY_DECL(right, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseStatement());
-
 
     BINJS_TRY_DECL(forHead, factory_.newForInOrOfHead(ParseNodeKind::ForIn, left, right, tokenizer_->pos(start)));
     BINJS_TRY_DECL(result, factory_.newForStatement(start, forHead, body, /*flags*/ 0));
@@ -5401,8 +4896,10 @@ BinASTParser<Tok>::parseForOfStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ForOfStatement) {
+        return raiseInvalidKind("ForOfStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceForOfStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5432,8 +4929,10 @@ BinASTParser<Tok>::parseForStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ForStatement) {
+        return raiseInvalidKind("ForStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceForStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5444,14 +4943,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceForStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ForStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[4] = { BinField::Init, BinField::Test, BinField::Update, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement stmt(parseContext_, StatementKind::ForLoop);
 
     // Implicit scope around the `for`, used to store `for (let x; ...; ...)`
@@ -5460,24 +4957,13 @@ BinASTParser<Tok>::parseInterfaceForStatement(const size_t start, const BinKind 
     ParseContext::Scope scope(cx_, parseContext_, usedNames_);
     BINJS_TRY(scope.init(parseContext_));
 
-
     BINJS_MOZ_TRY_DECL(init, parseOptionalVariableDeclarationOrExpression());
-
-
-
 
     BINJS_MOZ_TRY_DECL(test, parseOptionalExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(update, parseOptionalExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseStatement());
-
 
     BINJS_TRY_DECL(forHead, factory_.newForHead(init, test, update, tokenizer_->pos(start)));
     BINJS_TRY_DECL(result, factory_.newForStatement(start, forHead, body, /* iflags = */ 0));
@@ -5504,8 +4990,10 @@ BinASTParser<Tok>::parseFormalParameters()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::FormalParameters) {
+        return raiseInvalidKind("FormalParameters", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceFormalParameters(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5516,24 +5004,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceFormalParameters(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::FormalParameters);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Items, BinField::Rest };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(items, parseListOfParameter());
 
-
-
-
     BINJS_MOZ_TRY_DECL(rest, parseOptionalBinding());
-
 
     auto result = items;
     if (rest) {
@@ -5558,8 +5038,10 @@ BinASTParser<Tok>::parseFunctionBody()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::FunctionBody) {
+        return raiseInvalidKind("FunctionBody", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceFunctionBody(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5570,24 +5052,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceFunctionBody(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::FunctionBody);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Directives, BinField::Statements };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(directives, parseListOfDirective());
 
-
-
-
     BINJS_MOZ_TRY_DECL(statements, parseListOfStatement());
-
 
     BINJS_MOZ_TRY_DECL(result, appendDirectivesToBody(/* body = */ statements, /* directives = */ directives));
     return result;
@@ -5607,8 +5081,10 @@ BinASTParser<Tok>::parseIdentifierExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::IdentifierExpression) {
+        return raiseInvalidKind("IdentifierExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceIdentifierExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5619,19 +5095,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceIdentifierExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::IdentifierExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Name };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom name(cx_);
     MOZ_TRY_VAR(name, tokenizer_->readAtom());
-
 
     if (!IsIdentifier(name))
         return raiseError("Invalid identifier");
@@ -5656,8 +5128,10 @@ BinASTParser<Tok>::parseIfStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::IfStatement) {
+        return raiseInvalidKind("IfStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceIfStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5668,29 +5142,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceIfStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::IfStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Test, BinField::Consequent, BinField::Alternate };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(test, parseExpression());
-
-
-
 
     BINJS_MOZ_TRY_DECL(consequent, parseStatement());
 
-
-
-
     BINJS_MOZ_TRY_DECL(alternate, parseOptionalStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newIfStatement(start, test, consequent, alternate));
     return result;
@@ -5712,8 +5175,10 @@ BinASTParser<Tok>::parseImport()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Import) {
+        return raiseInvalidKind("Import", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceImport(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5742,8 +5207,10 @@ BinASTParser<Tok>::parseImportNamespace()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ImportNamespace) {
+        return raiseInvalidKind("ImportNamespace", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceImportNamespace(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5771,8 +5238,10 @@ BinASTParser<Tok>::parseImportSpecifier()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ImportSpecifier) {
+        return raiseInvalidKind("ImportSpecifier", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceImportSpecifier(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5800,8 +5269,10 @@ BinASTParser<Tok>::parseLabelledStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LabelledStatement) {
+        return raiseInvalidKind("LabelledStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLabelledStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5812,26 +5283,19 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLabelledStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LabelledStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Label, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom label(cx_);
     MOZ_TRY_VAR(label, tokenizer_->readAtom());
     if (!IsIdentifier(label))
         return raiseError("Invalid identifier");
     ParseContext::LabelStatement stmt(parseContext_, label);
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newLabeledStatement(label->asPropertyName(), body, start));
     return result;
@@ -5851,8 +5315,10 @@ BinASTParser<Tok>::parseLiteralBooleanExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralBooleanExpression) {
+        return raiseInvalidKind("LiteralBooleanExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralBooleanExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5863,19 +5329,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLiteralBooleanExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LiteralBooleanExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Value };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(value, tokenizer_->readBool());
-
 
     BINJS_TRY_DECL(result, factory_.newBooleanLiteral(value, tokenizer_->pos(start)));
     return result;
@@ -5894,8 +5355,10 @@ BinASTParser<Tok>::parseLiteralInfinityExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralInfinityExpression) {
+        return raiseInvalidKind("LiteralInfinityExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralInfinityExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5921,8 +5384,10 @@ BinASTParser<Tok>::parseLiteralNullExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralNullExpression) {
+        return raiseInvalidKind("LiteralNullExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralNullExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5933,8 +5398,7 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLiteralNullExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LiteralNullExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 MOZ_TRY(tokenizer_->checkFields0(kind, fields));
 
     BINJS_TRY_DECL(result, factory_.newNullLiteral(tokenizer_->pos(start)));
@@ -5955,8 +5419,10 @@ BinASTParser<Tok>::parseLiteralNumericExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralNumericExpression) {
+        return raiseInvalidKind("LiteralNumericExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralNumericExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -5967,19 +5433,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLiteralNumericExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LiteralNumericExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Value };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(value, tokenizer_->readDouble());
-
 
     BINJS_TRY_DECL(result, factory_.newNumber(value, DecimalPoint::HasDecimal, tokenizer_->pos(start)));
     return result;
@@ -5999,8 +5460,10 @@ BinASTParser<Tok>::parseLiteralPropertyName()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralPropertyName) {
+        return raiseInvalidKind("LiteralPropertyName", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralPropertyName(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6011,19 +5474,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLiteralPropertyName(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LiteralPropertyName);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Value };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom value(cx_);
     MOZ_TRY_VAR(value, tokenizer_->readAtom());
-
 
     ParseNode* result;
     uint32_t index;
@@ -6049,8 +5508,10 @@ BinASTParser<Tok>::parseLiteralRegExpExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralRegExpExpression) {
+        return raiseInvalidKind("LiteralRegExpExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralRegExpExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6061,19 +5522,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLiteralRegExpExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LiteralRegExpExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Pattern, BinField::Flags };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom pattern(cx_);
     MOZ_TRY_VAR(pattern, tokenizer_->readAtom());
-
     Chars flags(cx_);
     MOZ_TRY(tokenizer_->readChars(flags));
 
@@ -6119,8 +5576,10 @@ BinASTParser<Tok>::parseLiteralStringExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::LiteralStringExpression) {
+        return raiseInvalidKind("LiteralStringExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceLiteralStringExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6131,19 +5590,15 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceLiteralStringExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::LiteralStringExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Value };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
     RootedAtom value(cx_);
     MOZ_TRY_VAR(value, tokenizer_->readAtom());
-
 
     BINJS_TRY_DECL(result, factory_.newStringLiteral(value, tokenizer_->pos(start)));
     return result;
@@ -6165,8 +5620,10 @@ BinASTParser<Tok>::parseModule()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Module) {
+        return raiseInvalidKind("Module", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceModule(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6194,8 +5651,10 @@ BinASTParser<Tok>::parseNewExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::NewExpression) {
+        return raiseInvalidKind("NewExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceNewExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6206,29 +5665,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceNewExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::NewExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Callee, BinField::Arguments };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(callee, parseExpression());
-
-
-
 
     BINJS_MOZ_TRY_DECL(arguments, parseArguments());
 
-
-    auto result = arguments;
-    result->setKind(ParseNodeKind::New);
-    result->prepend(callee);
-    result->setOp(JSOP_NEW);
+    BINJS_TRY_DECL(result, factory_.newNewExpression(tokenizer_->pos(start).begin, callee, arguments));
     return result;
 }
 
@@ -6245,8 +5693,10 @@ BinASTParser<Tok>::parseNewTargetExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::NewTargetExpression) {
+        return raiseInvalidKind("NewTargetExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceNewTargetExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6273,8 +5723,10 @@ BinASTParser<Tok>::parseObjectAssignmentTarget()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ObjectAssignmentTarget) {
+        return raiseInvalidKind("ObjectAssignmentTarget", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceObjectAssignmentTarget(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6301,8 +5753,10 @@ BinASTParser<Tok>::parseObjectBinding()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ObjectBinding) {
+        return raiseInvalidKind("ObjectBinding", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceObjectBinding(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6329,8 +5783,10 @@ BinASTParser<Tok>::parseObjectExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ObjectExpression) {
+        return raiseInvalidKind("ObjectExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceObjectExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6341,19 +5797,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceObjectExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ObjectExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Properties };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(properties, parseListOfObjectProperty());
-
 
     auto result = properties;
     return result;
@@ -6373,8 +5824,10 @@ BinASTParser<Tok>::parseReturnStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ReturnStatement) {
+        return raiseInvalidKind("ReturnStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceReturnStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6385,14 +5838,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceReturnStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ReturnStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     if (!parseContext_->isFunctionBox()) {
         // Return statements are permitted only inside functions.
         return raiseInvalidKind("Toplevel Statement", kind);
@@ -6400,9 +5851,7 @@ BinASTParser<Tok>::parseInterfaceReturnStatement(const size_t start, const BinKi
 
     parseContext_->functionBox()->usesReturn = true;
 
-
     BINJS_MOZ_TRY_DECL(expression, parseOptionalExpression());
-
 
     BINJS_TRY_DECL(result, factory_.newReturnStatement(expression, tokenizer_->pos(start)));
     return result;
@@ -6424,8 +5873,10 @@ BinASTParser<Tok>::parseScript()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Script) {
+        return raiseInvalidKind("Script", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceScript(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6436,29 +5887,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceScript(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::Script);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Scope, BinField::Directives, BinField::Statements };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     MOZ_TRY(parseOptionalAssertedVarScope());
-
-
-
 
     BINJS_MOZ_TRY_DECL(directives, parseListOfDirective());
 
-
-
-
     BINJS_MOZ_TRY_DECL(statements, parseListOfStatement());
-
 
     MOZ_TRY(checkClosedVars(parseContext_->varScope())); BINJS_MOZ_TRY_DECL(result, appendDirectivesToBody(/* body = */ statements, /* directives = */ directives));
     return result;
@@ -6478,8 +5918,10 @@ BinASTParser<Tok>::parseShorthandProperty()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ShorthandProperty) {
+        return raiseInvalidKind("ShorthandProperty", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceShorthandProperty(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6490,19 +5932,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceShorthandProperty(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ShorthandProperty);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Name };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(name, parseIdentifierExpression());
-
 
     if (!factory_.isUsableAsObjectPropertyName(name))
         BINJS_TRY_VAR(name, factory_.newObjectLiteralPropertyName(name->name(), tokenizer_->pos(start)));
@@ -6525,8 +5962,10 @@ BinASTParser<Tok>::parseSkippableArrowExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SkippableArrowExpression) {
+        return raiseInvalidKind("SkippableArrowExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSkippableArrowExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6553,8 +5992,10 @@ BinASTParser<Tok>::parseSkippableFunctionDeclaration()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SkippableFunctionDeclaration) {
+        return raiseInvalidKind("SkippableFunctionDeclaration", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSkippableFunctionDeclaration(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6581,8 +6022,10 @@ BinASTParser<Tok>::parseSkippableFunctionExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SkippableFunctionExpression) {
+        return raiseInvalidKind("SkippableFunctionExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSkippableFunctionExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6609,8 +6052,10 @@ BinASTParser<Tok>::parseSkippableGetter()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SkippableGetter) {
+        return raiseInvalidKind("SkippableGetter", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSkippableGetter(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6637,8 +6082,10 @@ BinASTParser<Tok>::parseSkippableMethod()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SkippableMethod) {
+        return raiseInvalidKind("SkippableMethod", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSkippableMethod(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6665,8 +6112,10 @@ BinASTParser<Tok>::parseSkippableSetter()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SkippableSetter) {
+        return raiseInvalidKind("SkippableSetter", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSkippableSetter(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6693,8 +6142,10 @@ BinASTParser<Tok>::parseSpreadElement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SpreadElement) {
+        return raiseInvalidKind("SpreadElement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSpreadElement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6722,8 +6173,10 @@ BinASTParser<Tok>::parseStaticMemberAssignmentTarget()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::StaticMemberAssignmentTarget) {
+        return raiseInvalidKind("StaticMemberAssignmentTarget", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceStaticMemberAssignmentTarget(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6734,26 +6187,24 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceStaticMemberAssignmentTarget(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::StaticMemberAssignmentTarget);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Object, BinField::Property };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
-
-
+    size_t nameStart;
 
     BINJS_MOZ_TRY_DECL(object, parseExpressionOrSuper());
-
-
-
     RootedAtom property(cx_);
-    MOZ_TRY_VAR(property, tokenizer_->readAtom());
+    {
+        nameStart = tokenizer_->offset();
+        MOZ_TRY_VAR(property, tokenizer_->readAtom());
 
+    }
 
-    BINJS_TRY_DECL(result, factory_.newPropertyAccess(object, property->asPropertyName(), start));
+    BINJS_TRY_DECL(name, factory_.newPropertyName(property->asPropertyName(), tokenizer_->pos(nameStart)));
+    BINJS_TRY_DECL(result, factory_.newPropertyAccess(object, name));
     return result;
 }
 
@@ -6772,8 +6223,10 @@ BinASTParser<Tok>::parseStaticMemberExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::StaticMemberExpression) {
+        return raiseInvalidKind("StaticMemberExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceStaticMemberExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6784,26 +6237,24 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceStaticMemberExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::StaticMemberExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Object, BinField::Property };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
-
-
+    size_t nameStart;
 
     BINJS_MOZ_TRY_DECL(object, parseExpressionOrSuper());
-
-
-
     RootedAtom property(cx_);
-    MOZ_TRY_VAR(property, tokenizer_->readAtom());
+    {
+        nameStart = tokenizer_->offset();
+        MOZ_TRY_VAR(property, tokenizer_->readAtom());
 
+    }
 
-    BINJS_TRY_DECL(result, factory_.newPropertyAccess(object, property->asPropertyName(), start));
+    BINJS_TRY_DECL(name, factory_.newPropertyName(property->asPropertyName(), tokenizer_->pos(nameStart)));
+    BINJS_TRY_DECL(result, factory_.newPropertyAccess(object, name));
     return result;
 }
 
@@ -6820,8 +6271,10 @@ BinASTParser<Tok>::parseSuper()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::Super) {
+        return raiseInvalidKind("Super", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSuper(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6849,8 +6302,10 @@ BinASTParser<Tok>::parseSwitchCase()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SwitchCase) {
+        return raiseInvalidKind("SwitchCase", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSwitchCase(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6861,24 +6316,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceSwitchCase(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::SwitchCase);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Test, BinField::Consequent };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(test, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(consequent, parseListOfStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newCaseOrDefault(start, test, consequent));
     return result;
@@ -6898,8 +6345,10 @@ BinASTParser<Tok>::parseSwitchDefault()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SwitchDefault) {
+        return raiseInvalidKind("SwitchDefault", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSwitchDefault(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6910,19 +6359,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceSwitchDefault(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::SwitchDefault);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Consequent };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(consequent, parseListOfStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newCaseOrDefault(start, nullptr, consequent));
     return result;
@@ -6943,8 +6387,10 @@ BinASTParser<Tok>::parseSwitchStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SwitchStatement) {
+        return raiseInvalidKind("SwitchStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSwitchStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -6955,27 +6401,19 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceSwitchStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::SwitchStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Discriminant, BinField::Cases };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(discriminant, parseExpression());
-
-
-
 
     BINJS_MOZ_TRY_DECL(cases, parseListOfSwitchCase());
 
-
     BINJS_TRY_DECL(scope, factory_.newLexicalScope(nullptr, cases));
-    BINJS_TRY_DECL(result, factory_.newSwitchStatement(start, discriminant, scope));
+    BINJS_TRY_DECL(result, factory_.newSwitchStatement(start, discriminant, scope, false));
     return result;
 }
 
@@ -6996,8 +6434,10 @@ BinASTParser<Tok>::parseSwitchStatementWithDefault()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::SwitchStatementWithDefault) {
+        return raiseInvalidKind("SwitchStatementWithDefault", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceSwitchStatementWithDefault(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7008,34 +6448,20 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceSwitchStatementWithDefault(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::SwitchStatementWithDefault);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[4] = { BinField::Discriminant, BinField::PreDefaultCases, BinField::DefaultCase, BinField::PostDefaultCases };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(discriminant, parseExpression());
-
-
-
 
     BINJS_MOZ_TRY_DECL(preDefaultCases, parseListOfSwitchCase());
 
-
-
-
     BINJS_MOZ_TRY_DECL(defaultCase, parseSwitchDefault());
 
-
-
-
     BINJS_MOZ_TRY_DECL(postDefaultCases, parseListOfSwitchCase());
-
 
     // Concatenate `preDefaultCase`, `defaultCase`, `postDefaultCase`
     auto cases = preDefaultCases;
@@ -7047,7 +6473,7 @@ BinASTParser<Tok>::parseInterfaceSwitchStatementWithDefault(const size_t start, 
         iter = next;
     }
     BINJS_TRY_DECL(scope, factory_.newLexicalScope(nullptr, cases));
-    BINJS_TRY_DECL(result, factory_.newSwitchStatement(start, discriminant, scope));
+    BINJS_TRY_DECL(result, factory_.newSwitchStatement(start, discriminant, scope, true));
     return result;
 }
 
@@ -7065,8 +6491,10 @@ BinASTParser<Tok>::parseTemplateElement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::TemplateElement) {
+        return raiseInvalidKind("TemplateElement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceTemplateElement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7094,8 +6522,10 @@ BinASTParser<Tok>::parseTemplateExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::TemplateExpression) {
+        return raiseInvalidKind("TemplateExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceTemplateExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7121,8 +6551,10 @@ BinASTParser<Tok>::parseThisExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ThisExpression) {
+        return raiseInvalidKind("ThisExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceThisExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7133,8 +6565,7 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceThisExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ThisExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 MOZ_TRY(tokenizer_->checkFields0(kind, fields));
 
     if (parseContext_->isFunctionBox())
@@ -7166,8 +6597,10 @@ BinASTParser<Tok>::parseThrowStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::ThrowStatement) {
+        return raiseInvalidKind("ThrowStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceThrowStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7178,19 +6611,14 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceThrowStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::ThrowStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[1] = { BinField::Expression };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(expression, parseExpression());
-
 
     BINJS_TRY_DECL(result, factory_.newThrowStatement(expression, tokenizer_->pos(start)));
     return result;
@@ -7211,8 +6639,10 @@ BinASTParser<Tok>::parseTryCatchStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::TryCatchStatement) {
+        return raiseInvalidKind("TryCatchStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceTryCatchStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7223,15 +6653,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceTryCatchStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::TryCatchStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Body, BinField::CatchClause };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
-
     ParseNode* body;
     {
         ParseContext::Statement stmt(parseContext_, StatementKind::Try);
@@ -7241,12 +6668,9 @@ BinASTParser<Tok>::parseInterfaceTryCatchStatement(const size_t start, const Bin
 
     }
 
-
-
     BINJS_MOZ_TRY_DECL(catchClause, parseCatchClause());
 
-
-    BINJS_TRY_DECL(result, factory_.newTryStatement(start, body, catchClause, /* finally = */ nullptr));
+    BINJS_TRY_DECL(result, factory_.newTryStatement(start, body, catchClause, /* finallyBlock = */ nullptr));
     return result;
 }
 
@@ -7266,8 +6690,10 @@ BinASTParser<Tok>::parseTryFinallyStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::TryFinallyStatement) {
+        return raiseInvalidKind("TryFinallyStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceTryFinallyStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7278,15 +6704,12 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceTryFinallyStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::TryFinallyStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::Body, BinField::CatchClause, BinField::Finalizer };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
-
     ParseNode* body;
     {
         ParseContext::Statement stmt(parseContext_, StatementKind::Try);
@@ -7296,11 +6719,7 @@ BinASTParser<Tok>::parseInterfaceTryFinallyStatement(const size_t start, const B
 
     }
 
-
-
     BINJS_MOZ_TRY_DECL(catchClause, parseOptionalCatchClause());
-
-
     ParseNode* finalizer;
     {
         ParseContext::Statement stmt(parseContext_, StatementKind::Finally);
@@ -7329,8 +6748,10 @@ BinASTParser<Tok>::parseUnaryExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::UnaryExpression) {
+        return raiseInvalidKind("UnaryExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceUnaryExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7341,24 +6762,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceUnaryExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::UnaryExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Operator, BinField::Operand };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(operator_, parseUnaryOperator());
 
-
-
-
     BINJS_MOZ_TRY_DECL(operand, parseExpression());
-
 
     ParseNodeKind pnk;
     switch (operator_) {
@@ -7422,8 +6835,10 @@ BinASTParser<Tok>::parseUpdateExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::UpdateExpression) {
+        return raiseInvalidKind("UpdateExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceUpdateExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7434,29 +6849,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceUpdateExpression(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::UpdateExpression);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[3] = { BinField::IsPrefix, BinField::Operator, BinField::Operand };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(isPrefix, tokenizer_->readBool());
-
-
-
 
     BINJS_MOZ_TRY_DECL(operator_, parseUpdateOperator());
 
-
-
-
     BINJS_MOZ_TRY_DECL(operand, parseSimpleAssignmentTarget());
-
 
     ParseNodeKind pnk;
     switch (operator_) {
@@ -7488,8 +6892,10 @@ BinASTParser<Tok>::parseVariableDeclaration()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::VariableDeclaration) {
+        return raiseInvalidKind("VariableDeclaration", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceVariableDeclaration(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7500,25 +6906,18 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceVariableDeclaration(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::VariableDeclaration);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Kind, BinField::Declarators };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     AutoVariableDeclarationKind kindGuard(this);
-
 
     BINJS_MOZ_TRY_DECL(kind_, parseVariableDeclarationKind());
     // Restored by `kindGuard`.
     variableDeclarationKind_ = kind_;
-
-
-
     BINJS_MOZ_TRY_DECL(declarators, parseListOfVariableDeclarator());
-
 
     // By specification, the list may not be empty.
     if (declarators->pn_count == 0)
@@ -7556,8 +6955,10 @@ BinASTParser<Tok>::parseVariableDeclarator()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::VariableDeclarator) {
+        return raiseInvalidKind("VariableDeclarator", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceVariableDeclarator(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7568,24 +6969,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceVariableDeclarator(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::VariableDeclarator);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Binding, BinField::Init };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(binding, parseBinding());
 
-
-
-
     BINJS_MOZ_TRY_DECL(init, parseOptionalExpression());
-
 
     ParseNode* result;
     if (binding->isKind(ParseNodeKind::Name)) {
@@ -7623,8 +7016,10 @@ BinASTParser<Tok>::parseWhileStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::WhileStatement) {
+        return raiseInvalidKind("WhileStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceWhileStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7635,24 +7030,17 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceWhileStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::WhileStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Test, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
-
     ParseContext::Statement stmt(parseContext_, StatementKind::WhileLoop);
-
 
     BINJS_MOZ_TRY_DECL(test, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newWhileStatement(start, test, body));
     return result;
@@ -7673,8 +7061,10 @@ BinASTParser<Tok>::parseWithStatement()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::WithStatement) {
+        return raiseInvalidKind("WithStatement", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceWithStatement(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7685,24 +7075,16 @@ template<typename Tok> JS::Result<ParseNode*>
 BinASTParser<Tok>::parseInterfaceWithStatement(const size_t start, const BinKind kind, const BinFields& fields)
 {
     MOZ_ASSERT(kind == BinKind::WithStatement);
-    CheckRecursionLimit(cx_);
-
+    BINJS_TRY(CheckRecursionLimit(cx_));
 
 #if defined(DEBUG)
     const BinField expected_fields[2] = { BinField::Object, BinField::Body };
     MOZ_TRY(tokenizer_->checkFields(kind, fields, expected_fields));
 #endif // defined(DEBUG)
 
-
-
-
     BINJS_MOZ_TRY_DECL(object, parseExpression());
 
-
-
-
     BINJS_MOZ_TRY_DECL(body, parseStatement());
-
 
     BINJS_TRY_DECL(result, factory_.newWithStatement(start, object, body));
     return result;
@@ -7722,8 +7104,10 @@ BinASTParser<Tok>::parseYieldExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::YieldExpression) {
+        return raiseInvalidKind("YieldExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceYieldExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -7750,8 +7134,10 @@ BinASTParser<Tok>::parseYieldStarExpression()
     AutoTaggedTuple guard(*tokenizer_);
 
     MOZ_TRY(tokenizer_->enterTaggedTuple(kind, fields, guard));
+    if (kind != BinKind::YieldStarExpression) {
+        return raiseInvalidKind("YieldStarExpression", kind);
+    }
     const auto start = tokenizer_->offset();
-
     BINJS_MOZ_TRY_DECL(result, parseInterfaceYieldStarExpression(start, kind, fields));
     MOZ_TRY(guard.done());
 
@@ -8001,11 +7387,11 @@ BinASTParser<Tok>::parseArguments()
 
     const auto start = tokenizer_->offset();
     MOZ_TRY(tokenizer_->enterList(length, guard));
-    BINJS_TRY_DECL(result, factory_.newList(ParseNodeKind::ParamsBody, tokenizer_->pos(start)));
+    BINJS_TRY_DECL(result, factory_.newList(ParseNodeKind::Arguments, tokenizer_->pos(start)));
 
     for (uint32_t i = 0; i < length; ++i) {
         BINJS_MOZ_TRY_DECL(item, parseSpreadElementOrExpression());
-        factory_.addList(/* list = */ result, /* child = */ item);
+        factory_.addList(/* list = */ result, /* kid = */ item);
     }
 
     MOZ_TRY(guard.done());
@@ -8146,11 +7532,11 @@ BinASTParser<Tok>::parseListOfParameter()
 
     const auto start = tokenizer_->offset();
     MOZ_TRY(tokenizer_->enterList(length, guard));
-    ParseNode* result = new_<ListNode>(ParseNodeKind::ParamsBody, tokenizer_->pos(start));
+    BINJS_TRY_DECL(result, new_<ListNode>(ParseNodeKind::ParamsBody, tokenizer_->pos(start)));
 
     for (uint32_t i = 0; i < length; ++i) {
         BINJS_MOZ_TRY_DECL(item, parseParameter());
-        factory_.addList(/* list = */ result, /* item = */ item);
+        factory_.addList(/* list = */ result, /* kid = */ item);
     }
 
     MOZ_TRY(guard.done());
@@ -8228,9 +7614,11 @@ BinASTParser<Tok>::parseOptionalAssertedBlockScope()
     Ok result;
     if (kind == BinKind::_Null) {
         result = Ok();
-    } else {
+    } else if (kind == BinKind::AssertedBlockScope) {
         const auto start = tokenizer_->offset();
         MOZ_TRY_VAR(result, parseInterfaceAssertedBlockScope(start, kind, fields));
+    } else {
+        return raiseInvalidKind("AssertedBlockScope", kind);
     }
     MOZ_TRY(guard.done());
 
@@ -8248,9 +7636,11 @@ BinASTParser<Tok>::parseOptionalAssertedParameterScope()
     Ok result;
     if (kind == BinKind::_Null) {
         result = Ok();
-    } else {
+    } else if (kind == BinKind::AssertedParameterScope) {
         const auto start = tokenizer_->offset();
         MOZ_TRY_VAR(result, parseInterfaceAssertedParameterScope(start, kind, fields));
+    } else {
+        return raiseInvalidKind("AssertedParameterScope", kind);
     }
     MOZ_TRY(guard.done());
 
@@ -8268,9 +7658,11 @@ BinASTParser<Tok>::parseOptionalAssertedVarScope()
     Ok result;
     if (kind == BinKind::_Null) {
         result = Ok();
-    } else {
+    } else if (kind == BinKind::AssertedVarScope) {
         const auto start = tokenizer_->offset();
         MOZ_TRY_VAR(result, parseInterfaceAssertedVarScope(start, kind, fields));
+    } else {
+        return raiseInvalidKind("AssertedVarScope", kind);
     }
     MOZ_TRY(guard.done());
 
@@ -8328,9 +7720,11 @@ BinASTParser<Tok>::parseOptionalBindingIdentifier()
     ParseNode* result;
     if (kind == BinKind::_Null) {
         result = nullptr;
-    } else {
+    } else if (kind == BinKind::BindingIdentifier) {
         const auto start = tokenizer_->offset();
         MOZ_TRY_VAR(result, parseInterfaceBindingIdentifier(start, kind, fields));
+    } else {
+        return raiseInvalidKind("BindingIdentifier", kind);
     }
     MOZ_TRY(guard.done());
 
@@ -8368,9 +7762,11 @@ BinASTParser<Tok>::parseOptionalCatchClause()
     ParseNode* result;
     if (kind == BinKind::_Null) {
         result = nullptr;
-    } else {
+    } else if (kind == BinKind::CatchClause) {
         const auto start = tokenizer_->offset();
         MOZ_TRY_VAR(result, parseInterfaceCatchClause(start, kind, fields));
+    } else {
+        return raiseInvalidKind("CatchClause", kind);
     }
     MOZ_TRY(guard.done());
 

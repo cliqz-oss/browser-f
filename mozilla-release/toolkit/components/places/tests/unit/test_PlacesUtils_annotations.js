@@ -4,15 +4,15 @@
 "use strict";
 
 const TEST_ANNOTATIONS = [{
-  name: "fake/annotation1",
+  name: PlacesUtils.LMANNO_FEEDURI,
   value: "test",
   flags: 0,
-  expires: Ci.nsIAnnotationService.EXPIRE_MONTHS,
+  expires: Ci.nsIAnnotationService.EXPIRE_NEVER,
 }, {
-  name: "fake/annotation2",
+  name: PlacesUtils.LMANNO_SITEURI,
   value: "test2",
   flags: 0,
-  expires: Ci.nsIAnnotationService.EXPIRE_DAYS,
+  expires: Ci.nsIAnnotationService.EXPIRE_NEVER,
 }];
 
 function checkAnnotations(annotations, expectedAnnotations) {
@@ -34,11 +34,11 @@ add_task(async function test_getAnnotationsForItem() {
     }, {
       title: "one annotations",
       url: "http://example.com/1",
-      annos: [TEST_ANNOTATIONS[0]]
+      annos: [TEST_ANNOTATIONS[0]],
     }, {
       title: "two annotations",
       url: "http://example.com/2",
-      annos: TEST_ANNOTATIONS
+      annos: TEST_ANNOTATIONS,
     }],
   });
 

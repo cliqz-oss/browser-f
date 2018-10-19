@@ -13,8 +13,11 @@ ChromeUtils.defineModuleGetter(this, "BrowserWindowTracker",
 
 var {
   ExtensionError,
-  defineLazyGetter,
 } = ExtensionUtils;
+
+var {
+  defineLazyGetter,
+} = ExtensionCommon;
 
 const READER_MODE_PREFIX = "about:reader";
 
@@ -31,8 +34,8 @@ const getSender = (extension, target, sender) => {
     // page-open listener below).
     tabId = sender.tabId;
     delete sender.tabId;
-  } else if (ExtensionUtils.instanceOf(target, "XULElement") ||
-             ExtensionUtils.instanceOf(target, "HTMLIFrameElement")) {
+  } else if (ExtensionCommon.instanceOf(target, "XULFrameElement") ||
+             ExtensionCommon.instanceOf(target, "HTMLIFrameElement")) {
     tabId = tabTracker.getBrowserData(target).tabId;
   }
 
@@ -51,7 +54,11 @@ global.tabGetSender = getSender;
 extensions.on("uninstalling", (msg, extension) => {
   if (extension.uninstallURL) {
     let browser = windowTracker.topWindow.gBrowser;
-    browser.addTab(extension.uninstallURL, {relatedToCurrent: true});
+    browser.addTab(extension.uninstallURL, {
+      disallowInheritPrincipal: true,
+      relatedToCurrent: true,
+      triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+    });
   }
 });
 
@@ -220,6 +227,16 @@ global.TabContext = class extends EventEmitter {
   }
 };
 
+// This promise is used to wait for the search service to be initialized.
+// None of the code in the WebExtension modules requests that initialization.
+// It is assumed that it is started at some point. If tests start to fail
+// because this promise never resolves, that's likely the cause.
+XPCOMUtils.defineLazyGetter(global, "searchInitialized", () => {
+  if (Services.search.isInitialized) {
+    return Promise.resolve();
+  }
+  return ExtensionUtils.promiseObserved("browser-search-service", (_, data) => data == "init-complete");
+});
 
 class WindowTracker extends WindowTrackerBase {
   addProgressListener(window, listener) {
@@ -268,6 +285,7 @@ class TabTracker extends TabTrackerBase {
     windowTracker.addListener("TabClose", this);
     windowTracker.addListener("TabOpen", this);
     windowTracker.addListener("TabSelect", this);
+    windowTracker.addListener("TabMultiSelect", this);
     windowTracker.addOpenListener(this._handleWindowOpen);
     windowTracker.addCloseListener(this._handleWindowClose);
 
@@ -439,6 +457,16 @@ class TabTracker extends TabTrackerBase {
           this.emitActivated(nativeTab);
         });
         break;
+
+      case "TabMultiSelect":
+        if (this.has("tabs-highlighted")) {
+          // Because we are delaying calling emitCreated above, we also need to
+          // delay sending this event because it shouldn't fire before onCreated.
+          Promise.resolve().then(() => {
+            this.emitHighlighted(event.target.ownerGlobal);
+          });
+        }
+        break;
     }
   }
 
@@ -497,6 +525,9 @@ class TabTracker extends TabTrackerBase {
 
       // emitActivated to trigger tab.onActivated/tab.onHighlighted for a newly opened window.
       this.emitActivated(window.gBrowser.tabs[0]);
+      if (this.has("tabs-highlighted")) {
+        this.emitHighlighted(window);
+      }
     }
   }
 
@@ -529,6 +560,19 @@ class TabTracker extends TabTrackerBase {
     this.emit("tab-activated", {
       tabId: this.getId(nativeTab),
       windowId: windowTracker.getId(nativeTab.ownerGlobal)});
+  }
+
+  /**
+   * Emits a "tabs-highlighted" event for the given tab element.
+   *
+   * @param {ChromeWindow} window
+   *        The window in which the active tab or the set of multiselected tabs changed.
+   * @private
+   */
+  emitHighlighted(window) {
+    let tabIds = window.gBrowser.selectedTabs.map(tab => this.getId(tab));
+    let windowId = windowTracker.getId(window);
+    this.emit("tabs-highlighted", {tabIds, windowId});
   }
 
   /**
@@ -599,7 +643,7 @@ class TabTracker extends TabTrackerBase {
       if (browser.ownerDocument.documentURI === "about:addons") {
         // When we're loaded into a <browser> inside about:addons, we need to go up
         // one more level.
-        browser = browser.ownerDocument.docShell.chromeEventHandler;
+        browser = browser.ownerGlobal.docShell.chromeEventHandler;
 
         ({gBrowser} = browser.ownerGlobal);
       } else {
@@ -633,6 +677,10 @@ Object.assign(global, {tabTracker, windowTracker});
 class Tab extends TabBase {
   get _favIconUrl() {
     return this.window.gBrowser.getIcon(this.nativeTab);
+  }
+
+  get attention() {
+    return this.nativeTab.getAttribute("attention") === "true";
   }
 
   get audible() {
@@ -705,6 +753,11 @@ class Tab extends TabBase {
 
   get active() {
     return this.nativeTab.selected;
+  }
+
+  get highlighted() {
+    let {selected, multiselected} = this.nativeTab;
+    return selected || multiselected;
   }
 
   get selected() {
@@ -930,6 +983,13 @@ class Window extends WindowBase {
 
     for (let nativeTab of this.window.gBrowser.tabs) {
       yield tabManager.getWrapper(nativeTab);
+    }
+  }
+
+  * getHighlightedTabs() {
+    let {tabManager} = this.extension;
+    for (let tab of this.window.gBrowser.selectedTabs) {
+      yield tabManager.getWrapper(tab);
     }
   }
 

@@ -1,10 +1,9 @@
 import argparse
-import ast
 import os
 import sys
 from collections import OrderedDict
 from distutils.spawn import find_executable
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import config
 import wpttest
@@ -81,9 +80,13 @@ scheme host and port.""")
     mode_group.add_argument("--list-tests", action="store_true",
                             default=False,
                             help="List all tests that will run")
-    mode_group.add_argument("--verify", action="store_true",
-                            default=False,
-                            help="Run a stability check on the selected tests")
+    stability_group = mode_group.add_mutually_exclusive_group()
+    stability_group.add_argument("--verify", action="store_true",
+                                 default=False,
+                                 help="Run a stability check on the selected tests")
+    stability_group.add_argument("--stability", action="store_true",
+                                 default=False,
+                                 help=argparse.SUPPRESS)
     mode_group.add_argument("--verify-log-full", action="store_true",
                             default=False,
                             help="Output per-iteration test results when running verify")
@@ -551,8 +554,12 @@ def create_parser_update(product_choices=None):
     parser.add_argument("--stability", nargs="?", action="store", const="unstable", default=None,
         help=("Reason for disabling tests. When updating test results, disable tests that have "
               "inconsistent results across many runs with the given reason."))
-    parser.add_argument("--continue", action="store_true", help="Continue a previously started run of the update script")
-    parser.add_argument("--abort", action="store_true", help="Clear state from a previous incomplete run of the update script")
+    parser.add_argument("--no-store-state", action="store_false", dest="store_state",
+                        help="Store state so that steps can be resumed after failure")
+    parser.add_argument("--continue", action="store_true",
+                        help="Continue a previously started run of the update script")
+    parser.add_argument("--abort", action="store_true",
+                        help="Clear state from a previous incomplete run of the update script")
     parser.add_argument("--exclude", action="store", nargs="*",
                         help="List of glob-style paths to exclude when syncing tests")
     parser.add_argument("--include", action="store", nargs="*",

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "mozilla/Maybe.h"
 #include "mozilla/ipc/SharedMemory.h"
+#include "mozilla/layers/PTextureChild.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
 
 namespace mozilla {
@@ -279,6 +280,18 @@ IpcResourceUpdateQueue::AddExternalImage(wr::ExternalImageId aExtId, wr::ImageKe
   mUpdates.AppendElement(layers::OpAddExternalImage(aExtId, aKey));
 }
 
+void
+IpcResourceUpdateQueue::PushExternalImageForTexture(wr::ExternalImageId aExtId,
+                                                    wr::ImageKey aKey,
+                                                    layers::TextureClient* aTexture,
+                                                    bool aIsUpdate)
+{
+  MOZ_ASSERT(aTexture);
+  MOZ_ASSERT(aTexture->GetIPDLActor());
+  MOZ_RELEASE_ASSERT(aTexture->GetIPDLActor()->GetIPCChannel() == mWriter.WrBridge()->GetIPCChannel());
+  mUpdates.AppendElement(layers::OpPushExternalImageForTexture(aExtId, aKey, nullptr, aTexture->GetIPDLActor(), aIsUpdate));
+}
+
 bool
 IpcResourceUpdateQueue::UpdateImageBuffer(ImageKey aKey,
                                           const ImageDescriptor& aDescriptor,
@@ -304,6 +317,20 @@ IpcResourceUpdateQueue::UpdateBlobImage(ImageKey aKey,
   }
   mUpdates.AppendElement(layers::OpUpdateBlobImage(aDescriptor, bytes, aKey, aDirtyRect));
   return true;
+}
+
+void
+IpcResourceUpdateQueue::UpdateExternalImage(wr::ExternalImageId aExtId,
+                                            wr::ImageKey aKey,
+                                            ImageIntRect aDirtyRect)
+{
+  mUpdates.AppendElement(layers::OpUpdateExternalImage(aExtId, aKey, aDirtyRect));
+}
+
+void
+IpcResourceUpdateQueue::SetImageVisibleArea(ImageKey aKey, const gfx::Rect& aArea)
+{
+  mUpdates.AppendElement(layers::OpSetImageVisibleArea(aArea, aKey));
 }
 
 void

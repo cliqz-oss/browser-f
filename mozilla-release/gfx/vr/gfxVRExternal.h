@@ -36,6 +36,8 @@ protected:
   VRHMDSensorState GetSensorState() override;
   void StartPresentation() override;
   void StopPresentation() override;
+  void StartVRNavigation() override;
+  void StopVRNavigation(const TimeDuration& aTimeout) override;
 
   bool SubmitFrame(const layers::SurfaceDescriptor& aTexture,
                    uint64_t aFrameId,
@@ -45,6 +47,7 @@ protected:
 public:
   explicit VRDisplayExternal(const VRDisplayState& aDisplayState);
   void Refresh();
+  const VRControllerState& GetLastControllerState(uint32_t aStateIndex) const;
 protected:
   virtual ~VRDisplayExternal();
   void Destroy();
@@ -52,22 +55,20 @@ protected:
 private:
   bool PopulateLayerTexture(const layers::SurfaceDescriptor& aTexture,
                             VRLayerTextureType* aTextureType,
-                            void** aTextureHandle);
+                            VRLayerTextureHandle* aTextureHandle);
+  void PushState(bool aNotifyCond = false);
+#if defined(MOZ_WIDGET_ANDROID)
+  bool PullState(const std::function<bool()>& aWaitCondition = nullptr);
+  void PostVRTask();
+  void RunVRTask();
+#else
+  bool PullState();
+#endif
 
   VRTelemetry mTelemetry;
-  bool mIsPresenting;
+  TimeStamp mVRNavigationTransitionEnd;
+  VRBrowserState mBrowserState;
   VRHMDSensorState mLastSensorState;
-};
-
-class VRControllerExternal : public VRControllerHost
-{
-public:
-  explicit VRControllerExternal(dom::GamepadHand aHand, uint32_t aDisplayID, uint32_t aNumButtons,
-                              uint32_t aNumTriggers, uint32_t aNumAxes,
-                              const nsCString& aId);
-
-protected:
-  virtual ~VRControllerExternal();
 };
 
 } // namespace impl
@@ -95,8 +96,17 @@ public:
                              double aDuration,
                              const VRManagerPromise& aPromise) override;
   virtual void StopVibrateHaptic(uint32_t aControllerIdx) override;
-  bool PullState(VRDisplayState* aDisplayState, VRHMDSensorState* aSensorState = nullptr);
-  void PushState(VRBrowserState* aBrowserState);
+#if defined(MOZ_WIDGET_ANDROID)
+  bool PullState(VRDisplayState* aDisplayState,
+                 VRHMDSensorState* aSensorState = nullptr,
+                 VRControllerState* aControllerState = nullptr,
+                 const std::function<bool()>& aWaitCondition = nullptr);
+#else
+  bool PullState(VRDisplayState* aDisplayState,
+                 VRHMDSensorState* aSensorState = nullptr,
+                 VRControllerState* aControllerState = nullptr);
+#endif
+  void PushState(VRBrowserState* aBrowserState, const bool aNotifyCond = false);
 
 protected:
   explicit VRSystemManagerExternal(VRExternalShmem* aAPIShmem = nullptr);
@@ -105,18 +115,20 @@ protected:
 private:
   // there can only be one
   RefPtr<impl::VRDisplayExternal> mDisplay;
-  nsTArray<RefPtr<impl::VRControllerExternal>> mExternalController;
 #if defined(XP_MACOSX)
   int mShmemFD;
 #elif defined(XP_WIN)
-  HANDLE mShmemFile;
+  base::ProcessHandle mShmemFile;
 #elif defined(MOZ_WIDGET_ANDROID)
   bool mDoShutdown;
   bool mExternalStructFailed;
+  bool mEnumerationCompleted;
 #endif
 
   volatile VRExternalShmem* mExternalShmem;
+#if !defined(MOZ_WIDGET_ANDROID)
   bool mSameProcess;
+#endif
 
   void OpenShmem();
   void CloseShmem();

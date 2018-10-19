@@ -28,7 +28,11 @@ _mochitest_summary = {
 TinderBoxPrintRe = {
     "mochitest_summary": _mochitest_summary,
     "mochitest-chrome_summary": _mochitest_summary,
-    "mochitest-gl_summary": _mochitest_summary,
+    "mochitest-webgl1-core_summary": _mochitest_summary,
+    "mochitest-webgl1-ext_summary": _mochitest_summary,
+    "mochitest-webgl2-core_summary": _mochitest_summary,
+    "mochitest-webgl2-ext_summary": _mochitest_summary,
+    "mochitest-webgl2-deqp_summary": _mochitest_summary,
     "mochitest-media_summary": _mochitest_summary,
     "mochitest-plain-clipboard_summary": _mochitest_summary,
     "mochitest-plain-gpu_summary": _mochitest_summary,
@@ -110,7 +114,7 @@ TinderBoxPrintRe = {
     "harness_error": {
         'full_regex': re.compile(r"(?:TEST-UNEXPECTED-FAIL|PROCESS-CRASH) \| .* \| (application crashed|missing output line for total leaks!|negative leaks caught!|\d+ bytes leaked)"),  # NOQA: E501
         'minimum_regex': re.compile(r'''(TEST-UNEXPECTED|PROCESS-CRASH)'''),
-        'retry_regex': re.compile(r'''(FAIL-SHOULD-RETRY|No space left on device|ADBError|ADBProcessError|ADBTimeoutError|DMError|Connection to the other side was lost in a non-clean fashion|program finished with exit code 80|INFRA-ERROR|twisted.spread.pb.PBConnectionLost|_dl_open: Assertion|Timeout exceeded for _runCmd call)''')  # NOQA: E501
+        'retry_regex': re.compile(r'''(FAIL-SHOULD-RETRY|No space left on device|ADBError|ADBProcessError|ADBTimeoutError|program finished with exit code 80|INFRA-ERROR)''')  # NOQA: E501
     },
 }
 

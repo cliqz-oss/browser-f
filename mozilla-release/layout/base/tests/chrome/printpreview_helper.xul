@@ -24,7 +24,7 @@ var file = Cc["@mozilla.org/file/directory_service;1"]
 filePath = file.path;
 
 function printpreview() {
-  gWbp = window.frames[1].document.docShell.printPreview;
+  gWbp = window.frames[1].docShell.printPreview;
   var listener = {
     onLocationChange: function(webProgress, request, location, flags) { },
     onProgressChange: function(webProgress, request, curSelfProgress, 
@@ -60,7 +60,7 @@ function printpreview() {
 }
 
 function exitprintpreview() {
-  window.frames[1].document.docShell.printPreview.exitPrintPreview();
+  window.frames[1].docShell.printPreview.exitPrintPreview();
 }
 
 function finish() {
@@ -91,8 +91,7 @@ function runTests()
 }
 
 function compareCanvases() {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDOMWindowUtils)
+  return window.windowUtils
                .compareCanvases(document.getElementsByTagName("canvas")[0],
                                 document.getElementsByTagName("canvas")[1],
                                 {}) == 0;
@@ -280,6 +279,70 @@ function runTest7() {
   ctx2.drawWindow(window.frames[1], 0, 0, 400, 400, "rgb(255,255,255)");
   exitprintpreview();
   ok(compareCanvases(), "Printing light DOM and shadow DOM should create same output");
+
+  requestAnimationFrame(function() { setTimeout(runTest8); } );
+}
+
+async function runTest8() {
+  // Test that fonts loaded with CSS and JS are printed the same.
+  const iframeElement = document.getElementsByTagName("iframe")[0];
+
+  // First, snapshot the page with font defined in CSS.
+  await new Promise((resolve) => {
+    iframeElement.addEventListener("load", resolve, { capture: true, once: true });
+    iframeElement.setAttribute("src", "printpreview_font_api_ref.html");
+  });
+  printpreview();
+  ctx1.drawWindow(window.frames[1], 0, 0, 400, 400, "rgb(255,255,255)");
+  exitprintpreview();
+
+  // Second, snapshot the page with font loaded in JS.
+  await new Promise((resolve) => {
+    iframeElement.addEventListener("message", resolve, { capture: true, once: true });
+    iframeElement.setAttribute("src", "printpreview_font_api.html");
+  });
+  printpreview();
+  ctx2.drawWindow(window.frames[1], 0, 0, 400, 400, "rgb(255,255,255)");
+  exitprintpreview();
+  ok(compareCanvases(), "Printing pages with fonts loaded from CSS and JS should be the same.");
+
+  requestAnimationFrame(function() { setTimeout(runTest9); } );
+}
+
+// Test for bug 1487649
+async function runTest9() {
+  window.frames[0].document.body.innerHTML = `
+    <svg width="100" height="100">
+      <rect width='100' height='100' fill='lime'/>
+    </svg>
+  `;
+
+  printpreview();
+  ctx1.drawWindow(window.frames[1], 0, 0, 400, 400, "rgb(255,255,255)");
+  exitprintpreview();
+
+  window.frames[0].document.body.innerHTML = `
+    <svg width="100" height="100">
+      <defs>
+        <g id="useme">
+          <rect width='100' height='100' fill='lime'/>
+        </g>
+      </defs>
+      <use />
+    </svg>
+  `;
+
+  // Set the attribute explicitly because this is a chrome document, and the
+  // href attribute would get sanitized.
+  window.frames[0].document.querySelector("use").setAttribute("href", "#useme");
+
+  // Ensure the <use> shadow tree is created so we test what we want to test.
+  window.frames[0].document.body.offsetTop;
+
+  printpreview();
+  ctx2.drawWindow(window.frames[1], 0, 0, 400, 400, "rgb(255,255,255)");
+  exitprintpreview();
+  ok(compareCanvases(), "Printing <use> subtrees should create same output");
 
   finish();
 }

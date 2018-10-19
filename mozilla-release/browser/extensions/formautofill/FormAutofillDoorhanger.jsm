@@ -7,19 +7,17 @@
  * the doorhager UI for formautofill related features.
  */
 
-/* exported FormAutofillDoorhanger */
-
 "use strict";
 
 var EXPORTED_SYMBOLS = ["FormAutofillDoorhanger"];
 
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://formautofill/FormAutofill.jsm");
 ChromeUtils.import("resource://formautofill/FormAutofillUtils.jsm");
 
 this.log = null;
-FormAutofillUtils.defineLazyLogGetter(this, EXPORTED_SYMBOLS[0]);
+FormAutofill.defineLazyLogGetter(this, EXPORTED_SYMBOLS[0]);
 
 const GetStringFromName = FormAutofillUtils.stringBundle.GetStringFromName;
 const formatStringFromName = FormAutofillUtils.stringBundle.formatStringFromName;
@@ -238,7 +236,7 @@ let FormAutofillDoorhanger = {
    */
   _appendPrivacyPanelLink(content, message, link) {
     let chromeDoc = content.ownerDocument;
-    let privacyLinkElement = chromeDoc.createElement("label");
+    let privacyLinkElement = chromeDoc.createXULElement("label");
     privacyLinkElement.className = "text-link";
     privacyLinkElement.setAttribute("useoriginprincipal", true);
     privacyLinkElement.setAttribute("href", link || "about:preferences#privacy");
@@ -259,19 +257,19 @@ let FormAutofillDoorhanger = {
     let chromeDoc = content.ownerDocument;
     let docFragment = chromeDoc.createDocumentFragment();
 
-    let descriptionLabelElement = chromeDoc.createElement("label");
+    let descriptionLabelElement = chromeDoc.createXULElement("label");
     descriptionLabelElement.setAttribute("value", descriptionLabel);
     docFragment.appendChild(descriptionLabelElement);
 
-    let descriptionWrapper = chromeDoc.createElement("hbox");
+    let descriptionWrapper = chromeDoc.createXULElement("hbox");
     descriptionWrapper.className = "desc-message-box";
 
     if (descriptionIcon) {
-      let descriptionIconElement = chromeDoc.createElement("image");
+      let descriptionIconElement = chromeDoc.createXULElement("image");
       descriptionWrapper.appendChild(descriptionIconElement);
     }
 
-    let descriptionElement = chromeDoc.createElement("description");
+    let descriptionElement = chromeDoc.createXULElement("description");
     descriptionWrapper.appendChild(descriptionElement);
     docFragment.appendChild(descriptionWrapper);
 
@@ -303,7 +301,7 @@ let FormAutofillDoorhanger = {
       let notificationPopupBox =
         chromeDoc.getElementById("notification-popup-box");
       // Icon shown on URL bar
-      let anchorElement = chromeDoc.createElement("image");
+      let anchorElement = chromeDoc.createXULElement("image");
       anchorElement.id = id;
       anchorElement.setAttribute("src", URL);
       anchorElement.classList.add("notification-anchor-icon");
@@ -385,7 +383,7 @@ let FormAutofillDoorhanger = {
         const notificationElementId = notificationId + "-notification";
         const notification = chromeDoc.getElementById(notificationElementId);
         const notificationContent = notification.querySelector("popupnotificationcontent") ||
-                                    chromeDoc.createElement("popupnotificationcontent");
+                                    chromeDoc.createXULElement("popupnotificationcontent");
         if (!notification.contains(notificationContent)) {
           notificationContent.setAttribute("orient", "vertical");
           this._appendDescription(notificationContent, descriptionLabel, descriptionIcon);

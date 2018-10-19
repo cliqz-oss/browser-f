@@ -162,7 +162,7 @@ struct ParamTraits<mozilla::mscom::COMPtrHolder<Interface, _IID>>
     const bool sIsStreamPreservationNeeded = false;
 #endif // defined(MOZ_CONTENT_SANDBOX)
 
-    paramType::EnvType env;
+    typename paramType::EnvType env;
 
     mozilla::mscom::ProxyStreamFlags flags = sIsStreamPreservationNeeded ?
          mozilla::mscom::ProxyStreamFlags::ePreservable :
@@ -206,12 +206,13 @@ struct ParamTraits<mozilla::mscom::COMPtrHolder<Interface, _IID>>
       }
     }
 
-    paramType::EnvType env;
+    typename paramType::EnvType env;
 
     mozilla::mscom::ProxyStream proxyStream(_IID, buf.get(), length, &env);
     if (!proxyStream.IsValid()) {
-      CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProxyStreamValid"),
-                                         NS_LITERAL_CSTRING("false"));
+      CrashReporter::AnnotateCrashReport(
+        CrashReporter::Annotation::ProxyStreamValid,
+        NS_LITERAL_CSTRING("false"));
       return false;
     }
 

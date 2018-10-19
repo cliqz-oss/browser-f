@@ -437,24 +437,36 @@ Statistics::formatDetailedDescription() const
   HeapSize: %.3f MiB\n\
   Chunk Delta (magnitude): %+d  (%d)\n\
   Arenas Relocated: %.3f MiB\n\
+  Trigger: %s\n\
 ";
+
+    char thresholdBuffer[100] = "n/a";
+    if (thresholdTriggered) {
+        SprintfLiteral(thresholdBuffer, "%.3f MiB of %.3f MiB threshold\n",
+                       triggerAmount / 1024.0 / 1024.0,
+                       triggerThreshold / 1024.0 / 1024.0);
+    }
+
     char buffer[1024];
-    SprintfLiteral(buffer, format,
-                   ExplainInvocationKind(gckind),
-                   ExplainReason(slices_[0].reason),
-                   nonincremental() ? "no - " : "yes",
-                   nonincremental() ? ExplainAbortReason(nonincrementalReason_) : "",
-                   zoneStats.collectedZoneCount, zoneStats.zoneCount, zoneStats.sweptZoneCount,
-                   zoneStats.collectedCompartmentCount, zoneStats.compartmentCount,
-                   zoneStats.sweptCompartmentCount,
-                   getCount(STAT_MINOR_GC),
-                   getCount(STAT_STOREBUFFER_OVERFLOW),
-                   mmu20 * 100., mmu50 * 100.,
-                   t(sccTotal), t(sccLongest),
-                   double(preBytes) / bytesPerMiB,
-                   getCount(STAT_NEW_CHUNK) - getCount(STAT_DESTROY_CHUNK),
-                   getCount(STAT_NEW_CHUNK) + getCount(STAT_DESTROY_CHUNK),
-                   double(ArenaSize * getCount(STAT_ARENA_RELOCATED)) / bytesPerMiB);
+    SprintfLiteral(
+        buffer, format,
+        ExplainInvocationKind(gckind),
+        ExplainReason(slices_[0].reason),
+        nonincremental() ? "no - " : "yes",
+        nonincremental() ? ExplainAbortReason(nonincrementalReason_) : "",
+        zoneStats.collectedZoneCount, zoneStats.zoneCount, zoneStats.sweptZoneCount,
+        zoneStats.collectedCompartmentCount, zoneStats.compartmentCount,
+        zoneStats.sweptCompartmentCount,
+        getCount(STAT_MINOR_GC),
+        getCount(STAT_STOREBUFFER_OVERFLOW),
+        mmu20 * 100., mmu50 * 100.,
+        t(sccTotal), t(sccLongest),
+        double(preBytes) / bytesPerMiB,
+        getCount(STAT_NEW_CHUNK) - getCount(STAT_DESTROY_CHUNK),
+        getCount(STAT_NEW_CHUNK) + getCount(STAT_DESTROY_CHUNK),
+        double(ArenaSize * getCount(STAT_ARENA_RELOCATED)) / bytesPerMiB,
+        thresholdBuffer);
+
     return DuplicateString(buffer);
 }
 
@@ -740,6 +752,7 @@ Statistics::Statistics(JSRuntime* rt)
     gcTimerFile(nullptr),
     gcDebugFile(nullptr),
     nonincrementalReason_(gc::AbortReason::None),
+    allocsSinceMinorGC({0, 0}),
     preBytes(0),
     thresholdTriggered(false),
     triggerAmount(0.0),
@@ -1034,6 +1047,8 @@ Statistics::endNurseryCollection(JS::gcreason::Reason reason)
                                      JS::GCNurseryProgress::GC_NURSERY_COLLECTION_END,
                                      reason);
     }
+
+    allocsSinceMinorGC = {0, 0};
 }
 
 void
@@ -1051,7 +1066,7 @@ Statistics::beginSlice(const ZoneGCStats& zoneStats, JSGCInvocationKind gckind,
 
     if (!slices_.emplaceBack(budget,
                              reason,
-                             TimeStamp::Now(),
+                             ReallyNow(),
                              GetPageFaultCount(),
                              runtime->gc.state()))
     {
@@ -1083,7 +1098,7 @@ Statistics::endSlice()
 
     if (!aborted) {
         auto& slice = slices_.back();
-        slice.end = TimeStamp::Now();
+        slice.end = ReallyNow();
         slice.endFaults = GetPageFaultCount();
         slice.finalState = runtime->gc.state();
 
@@ -1246,7 +1261,7 @@ Statistics::resumePhases()
     {
         Phase resumePhase = suspendedPhases.popCopy();
         if (resumePhase == Phase::MUTATOR)
-            timedGCTime += TimeStamp::Now() - timedGCStart;
+            timedGCTime += ReallyNow() - timedGCStart;
         recordPhaseBegin(resumePhase);
     }
 }
@@ -1277,7 +1292,7 @@ Statistics::recordPhaseBegin(Phase phase)
     Phase current = currentPhase();
     MOZ_ASSERT(phases[phase].parent == current);
 
-    TimeStamp now = TimeStamp::Now();
+    TimeStamp now = ReallyNow();
 
     if (current != Phase::NONE) {
         MOZ_ASSERT(now >= phaseStartTimes[currentPhase()], "Inconsistent time data; see bug 1400153");
@@ -1299,7 +1314,7 @@ Statistics::recordPhaseEnd(Phase phase)
 
     MOZ_ASSERT(phaseStartTimes[phase]);
 
-    TimeStamp now = TimeStamp::Now();
+    TimeStamp now = ReallyNow();
 
     // Make sure this phase ends after it starts.
     MOZ_ASSERT(now >= phaseStartTimes[phase], "Inconsistent time data; see bug 1400153");
@@ -1383,7 +1398,7 @@ Statistics::recordParallelPhase(PhaseKind phaseKind, TimeDuration duration)
 TimeStamp
 Statistics::beginSCC()
 {
-    return TimeStamp::Now();
+    return ReallyNow();
 }
 
 void
@@ -1392,7 +1407,7 @@ Statistics::endSCC(unsigned scc, TimeStamp start)
     if (scc >= sccTimes.length() && !sccTimes.resize(scc + 1))
         return;
 
-    sccTimes[scc] += TimeStamp::Now() - start;
+    sccTimes[scc] += ReallyNow() - start;
 }
 
 /*
@@ -1517,4 +1532,3 @@ Statistics::printTotalProfileTimes()
         printProfileTimes(totalTimes_);
     }
 }
-

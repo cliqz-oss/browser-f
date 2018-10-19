@@ -30,7 +30,7 @@ var CustomizationHandler = {
   _customizationStarting() {
     // Disable the toolbar context menu items
     let menubar = document.getElementById("main-menubar");
-    for (let childNode of menubar.childNodes)
+    for (let childNode of menubar.children)
       childNode.setAttribute("disabled", true);
 
     let cmd = document.getElementById("cmd_CustomizeToolbars");
@@ -45,8 +45,6 @@ var CustomizationHandler = {
     // Update global UI elements that may have been added or removed
     if (aDetails.changed) {
       gURLBar = document.getElementById("urlbar");
-
-      gHomeButton.updateTooltip();
 
       if (AppConstants.platform != "macosx")
         updateEditUIVisibility();
@@ -71,11 +69,11 @@ var CustomizationHandler = {
 
     // Re-enable parts of the UI we disabled during the dialog
     let menubar = document.getElementById("main-menubar");
-    for (let childNode of menubar.childNodes)
+    for (let childNode of menubar.children)
       childNode.setAttribute("disabled", false);
     let cmd = document.getElementById("cmd_CustomizeToolbars");
     cmd.removeAttribute("disabled");
 
     gBrowser.selectedBrowser.focus();
-  }
+  },
 };

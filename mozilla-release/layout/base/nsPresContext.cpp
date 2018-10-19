@@ -150,18 +150,6 @@ nsPresContext::IsDOMPaintEventPending()
 }
 
 void
-nsPresContext::PrefChangedCallback(const char* aPrefName, void* instance_data)
-{
-  RefPtr<nsPresContext>  presContext =
-    static_cast<nsPresContext*>(instance_data);
-
-  NS_ASSERTION(presContext, "bad instance data");
-  if (presContext) {
-    presContext->PreferenceChanged(aPrefName);
-  }
-}
-
-void
 nsPresContext::ForceReflowForFontInfoUpdate()
 {
   // We can trigger reflow by pretending a font.* preference has changed;
@@ -193,6 +181,7 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
     mLastFontInflationScreenSize(gfxSize(-1.0, -1.0)),
     mCurAppUnitsPerDevPixel(0),
     mAutoQualityMinFontSizePixelsPref(0),
+    mLangService(nsLanguageAtomService::GetService()),
     // origin nscoord_MIN is impossible, so the first ResizeReflow always fires
     mLastResizeEventVisibleArea(nsRect(nscoord_MIN, nscoord_MIN,
                                        NS_UNCONSTRAINEDSIZE,
@@ -208,8 +197,8 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
     mFocusBackgroundColor(mBackgroundColor),
     mFocusTextColor(mDefaultColor),
     mBodyTextColor(mDefaultColor),
-    mViewportScrollbarOverrideElement(nullptr),
-    mViewportStyleScrollbar(NS_STYLE_OVERFLOW_AUTO, NS_STYLE_OVERFLOW_AUTO),
+    mViewportScrollOverrideElement(nullptr),
+    mViewportScrollStyles(NS_STYLE_OVERFLOW_AUTO, NS_STYLE_OVERFLOW_AUTO),
     mFocusRingWidth(1),
     mExistThrottledUpdates(false),
     // mImageAnimationMode is initialised below, in constructor body
@@ -220,9 +209,6 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
     mFramesConstructed(0),
     mFramesReflowed(0),
     mInteractionTimeEnabled(true),
-    mTelemetryScrollLastY(0),
-    mTelemetryScrollMaxY(0),
-    mTelemetryScrollTotalY(0),
     mHasPendingInterrupt(false),
     mPendingInterruptFromTest(false),
     mInterruptsEnabled(false),
@@ -247,6 +233,7 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
     mPendingThemeChanged(false),
     mPendingUIResolutionChanged(false),
     mPrefChangePendingNeedsReflow(false),
+    mPostedPrefChangedRunnable(false),
     mIsEmulatingMedia(false),
     mIsGlyph(false),
     mUsesRootEMUnits(false),
@@ -292,6 +279,30 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
   }
 }
 
+static const char* gExactCallbackPrefs[] = {
+  "browser.underline_anchors",
+  "browser.anchor_color",
+  "browser.active_color",
+  "browser.visited_color",
+  "image.animation_mode",
+  "dom.send_after_paint_to_content",
+  "layout.css.dpi",
+  "layout.css.devPixelsPerPx",
+  "nglayout.debug.paint_flashing",
+  "nglayout.debug.paint_flashing_chrome",
+  kUseStandinsForNativeColors,
+  "intl.accept_languages",
+  nullptr,
+};
+
+static const char* gPrefixCallbackPrefs[] = {
+  "font.",
+  "browser.display.",
+  "bidi.",
+  "gfx.font_rendering.",
+  nullptr,
+};
+
 void
 nsPresContext::Destroy()
 {
@@ -303,54 +314,12 @@ nsPresContext::Destroy()
   }
 
   // Unregister preference callbacks
-  Preferences::UnregisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                        "font.",
-                                        this);
-  Preferences::UnregisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                        "browser.display.",
-                                        this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "browser.underline_anchors",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "browser.anchor_color",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "browser.active_color",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "browser.visited_color",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "image.animation_mode",
-                                  this);
-  Preferences::UnregisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                        "bidi.",
-                                        this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "dom.send_after_paint_to_content",
-                                  this);
-  Preferences::UnregisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                        "gfx.font_rendering.",
-                                        this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "layout.css.dpi",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "layout.css.devPixelsPerPx",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "nglayout.debug.paint_flashing",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "nglayout.debug.paint_flashing_chrome",
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  kUseStandinsForNativeColors,
-                                  this);
-  Preferences::UnregisterCallback(nsPresContext::PrefChangedCallback,
-                                  "intl.accept_languages",
-                                  this);
+  Preferences::UnregisterPrefixCallbacks(
+    PREF_CHANGE_METHOD(nsPresContext::PreferenceChanged),
+    gPrefixCallbackPrefs, this);
+  Preferences::UnregisterCallbacks(
+    PREF_CHANGE_METHOD(nsPresContext::PreferenceChanged),
+    gExactCallbackPrefs, this);
 
   mRefreshDriver = nullptr;
 }
@@ -883,57 +852,13 @@ nsPresContext::Init(nsDeviceContext* aDeviceContext)
     }
   }
 
-  mLangService = nsLanguageAtomService::GetService();
-
   // Register callbacks so we're notified when the preferences change
-  Preferences::RegisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                      "font.",
-                                      this);
-  Preferences::RegisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                      "browser.display.",
-                                      this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "browser.underline_anchors",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "browser.anchor_color",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "browser.active_color",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "browser.visited_color",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "image.animation_mode",
-                                this);
-  Preferences::RegisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                      "bidi.",
-                                      this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "dom.send_after_paint_to_content",
-                                this);
-  Preferences::RegisterPrefixCallback(nsPresContext::PrefChangedCallback,
-                                      "gfx.font_rendering.",
-                                      this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "layout.css.dpi",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "layout.css.devPixelsPerPx",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "nglayout.debug.paint_flashing",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "nglayout.debug.paint_flashing_chrome",
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                kUseStandinsForNativeColors,
-                                this);
-  Preferences::RegisterCallback(nsPresContext::PrefChangedCallback,
-                                "intl.accept_languages",
-                                this);
+  Preferences::RegisterPrefixCallbacks(
+    PREF_CHANGE_METHOD(nsPresContext::PreferenceChanged),
+    gPrefixCallbackPrefs, this);
+  Preferences::RegisterCallbacks(
+    PREF_CHANGE_METHOD(nsPresContext::PreferenceChanged),
+    gExactCallbackPrefs, this);
 
   nsresult rv = mEventManager->Init();
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1206,6 +1131,7 @@ nsPresContext::CompatibilityModeChanged()
   }
 
   mQuirkSheetAdded = needsQuirkSheet;
+  mShell->ApplicableStylesChanged();
 }
 
 // Helper function for setting Anim Mode on image
@@ -1409,7 +1335,7 @@ nsPresContext::ScreenSizeInchesForFontInflation(bool* aChanged)
 }
 
 static bool
-CheckOverflow(const nsStyleDisplay* aDisplay, ScrollbarStyles* aStyles)
+CheckOverflow(const nsStyleDisplay* aDisplay, ScrollStyles* aStyles)
 {
   if (aDisplay->mOverflowX == NS_STYLE_OVERFLOW_VISIBLE &&
       aDisplay->mScrollBehavior == NS_STYLE_SCROLL_BEHAVIOR_AUTO &&
@@ -1425,17 +1351,17 @@ CheckOverflow(const nsStyleDisplay* aDisplay, ScrollbarStyles* aStyles)
   }
 
   if (aDisplay->mOverflowX == NS_STYLE_OVERFLOW_CLIP) {
-    *aStyles = ScrollbarStyles(NS_STYLE_OVERFLOW_HIDDEN,
-                               NS_STYLE_OVERFLOW_HIDDEN, aDisplay);
+    *aStyles = ScrollStyles(NS_STYLE_OVERFLOW_HIDDEN,
+                            NS_STYLE_OVERFLOW_HIDDEN, aDisplay);
   } else {
-    *aStyles = ScrollbarStyles(aDisplay);
+    *aStyles = ScrollStyles(aDisplay);
   }
   return true;
 }
 
 static Element*
-GetPropagatedScrollbarStylesForViewport(nsPresContext* aPresContext,
-                                        ScrollbarStyles *aStyles)
+GetPropagatedScrollStylesForViewport(nsPresContext* aPresContext,
+                                     ScrollStyles *aStyles)
 {
   nsIDocument* document = aPresContext->Document();
   Element* docElement = document->GetRootElement();
@@ -1485,16 +1411,16 @@ GetPropagatedScrollbarStylesForViewport(nsPresContext* aPresContext,
 }
 
 Element*
-nsPresContext::UpdateViewportScrollbarStylesOverride()
+nsPresContext::UpdateViewportScrollStylesOverride()
 {
   // Start off with our default styles, and then update them as needed.
-  mViewportStyleScrollbar = ScrollbarStyles(NS_STYLE_OVERFLOW_AUTO,
-                                            NS_STYLE_OVERFLOW_AUTO);
-  mViewportScrollbarOverrideElement = nullptr;
+  mViewportScrollStyles = ScrollStyles(NS_STYLE_OVERFLOW_AUTO,
+                                       NS_STYLE_OVERFLOW_AUTO);
+  mViewportScrollOverrideElement = nullptr;
   // Don't propagate the scrollbar state in printing or print preview.
   if (!IsPaginated()) {
-    mViewportScrollbarOverrideElement =
-      GetPropagatedScrollbarStylesForViewport(this, &mViewportStyleScrollbar);
+    mViewportScrollOverrideElement =
+      GetPropagatedScrollStylesForViewport(this, &mViewportScrollStyles);
   }
 
   nsIDocument* document = Document();
@@ -1505,30 +1431,30 @@ nsPresContext::UpdateViewportScrollbarStylesOverride()
     // the styles are from, so that the state of those elements is not
     // affected across fullscreen change.
     if (fullscreenElement != document->GetRootElement() &&
-        fullscreenElement != mViewportScrollbarOverrideElement) {
-      mViewportStyleScrollbar = ScrollbarStyles(NS_STYLE_OVERFLOW_HIDDEN,
-                                                NS_STYLE_OVERFLOW_HIDDEN);
+        fullscreenElement != mViewportScrollOverrideElement) {
+      mViewportScrollStyles = ScrollStyles(NS_STYLE_OVERFLOW_HIDDEN,
+                                           NS_STYLE_OVERFLOW_HIDDEN);
     }
   }
-  return mViewportScrollbarOverrideElement;
+  return mViewportScrollOverrideElement;
 }
 
 bool
-nsPresContext::ElementWouldPropagateScrollbarStyles(Element* aElement)
+nsPresContext::ElementWouldPropagateScrollStyles(const Element& aElement)
 {
   MOZ_ASSERT(IsPaginated(), "Should only be called on paginated contexts");
-  if (aElement->GetParent() && !aElement->IsHTMLElement(nsGkAtoms::body)) {
+  if (aElement.GetParent() && !aElement.IsHTMLElement(nsGkAtoms::body)) {
     // We certainly won't be propagating from this element.
     return false;
   }
 
-  // Go ahead and just call GetPropagatedScrollbarStylesForViewport, but update
-  // a dummy ScrollbarStyles we don't care about.  It'll do a bit of extra work,
+  // Go ahead and just call GetPropagatedScrollStylesForViewport, but update
+  // a dummy ScrollStyles we don't care about.  It'll do a bit of extra work,
   // but saves us having to have more complicated code or more code duplication;
   // in practice we will make this call quite rarely, because we checked for all
   // the common cases above.
-  ScrollbarStyles dummy(NS_STYLE_OVERFLOW_AUTO, NS_STYLE_OVERFLOW_AUTO);
-  return GetPropagatedScrollbarStylesForViewport(this, &dummy) == aElement;
+  ScrollStyles dummy(NS_STYLE_OVERFLOW_AUTO, NS_STYLE_OVERFLOW_AUTO);
+  return GetPropagatedScrollStylesForViewport(this, &dummy) == &aElement;
 }
 
 void
@@ -1831,7 +1757,7 @@ nsPresContext::RefreshSystemMetrics()
   // properly reflected in computed style data), system fonts (whose
   // changes are not), and -moz-appearance (whose changes likewise are
   // not), so we need to recascade for the first, and reflow for the rest.
-  MediaFeatureValuesChanged({
+  MediaFeatureValuesChangedAllDocuments({
     eRestyle_ForceDescendants,
     NS_STYLE_HINT_REFLOW,
     MediaFeatureChangeReason::SystemMetricsChange,

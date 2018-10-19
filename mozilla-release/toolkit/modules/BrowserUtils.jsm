@@ -7,7 +7,6 @@
 
 var EXPORTED_SYMBOLS = [ "BrowserUtils" ];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
@@ -180,12 +179,12 @@ var BrowserUtils = {
       y += win.mozInnerScreenY;
     }
 
-    let fullZoom = win.getInterface(Ci.nsIDOMWindowUtils).fullZoom;
+    let fullZoom = win.windowUtils.fullZoom;
     rect = {
       left: x * fullZoom,
       top: y * fullZoom,
       width: rect.width * fullZoom,
-      height: rect.height * fullZoom
+      height: rect.height * fullZoom,
     };
 
     return rect;
@@ -291,12 +290,10 @@ var BrowserUtils = {
    *
    * @param elt
    *        The element that is focused
-   * @param win
-   *        The window that is focused
-   *
    */
-  shouldFastFind(elt, win) {
+  shouldFastFind(elt) {
     if (elt) {
+      let win = elt.ownerGlobal;
       if (elt instanceof win.HTMLInputElement && elt.mozIsTextField(false))
         return false;
 
@@ -371,7 +368,7 @@ var BrowserUtils = {
    */
   async setToolbarButtonHeightProperty(element) {
     let window = element.ownerGlobal;
-    let dwu = window.getInterface(Ci.nsIDOMWindowUtils);
+    let dwu = window.windowUtils;
     let toolbarItem = element;
     let urlBarContainer = element.closest("#urlbar-container");
     if (urlBarContainer) {
@@ -425,9 +422,7 @@ var BrowserUtils = {
    * @return {nsIDOMWindow}
    */
   getRootWindow(docShell) {
-    return docShell.QueryInterface(Ci.nsIDocShellTreeItem)
-      .sameTypeRootTreeItem.QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsIDOMWindow);
+    return docShell.sameTypeRootTreeItem.domWindow;
   },
 
   /**
@@ -562,12 +557,10 @@ var BrowserUtils = {
 
   // Iterates through every docshell in the window and calls PermitUnload.
   canCloseWindow(window) {
-    let docShell = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIWebNavigation);
-    let node = docShell.QueryInterface(Ci.nsIDocShellTreeItem);
-    for (let i = 0; i < node.childCount; ++i) {
-      let docShell = node.getChildAt(i).QueryInterface(Ci.nsIDocShell);
-      let contentViewer = docShell.contentViewer;
+    let docShell = window.docShell;
+    for (let i = 0; i < docShell.childCount; ++i) {
+      let childShell = docShell.getChildAt(i).QueryInterface(Ci.nsIDocShell);
+      let contentViewer = childShell.contentViewer;
       if (contentViewer && !contentViewer.permitUnload()) {
         return false;
       }
@@ -606,7 +599,10 @@ var BrowserUtils = {
       // Try to fetch a charset from History.
       try {
         // Will return an empty string if character-set is not found.
-        charset = await PlacesUtils.getCharsetForURI(this.makeURI(url));
+        let pageInfo = await PlacesUtils.history.fetch(url, {includeAnnotations: true});
+        if (pageInfo && pageInfo.annotations.has(PlacesUtils.CHARSET_ANNO)) {
+          charset = pageInfo.annotations.get(PlacesUtils.CHARSET_ANNO);
+        }
       } catch (ex) {
         // makeURI() throws if url is invalid.
         Cu.reportError(ex);

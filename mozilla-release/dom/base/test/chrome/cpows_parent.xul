@@ -247,7 +247,7 @@
         // as an XPCOM interface.  But elements are losing all their XPCOM
         // interfaces, so let's use an object that will likely stay an XPCOM
         // one.
-        let docshell = savedElement.ownerDocument.docShell;
+        let docshell = savedElement.ownerGlobal.docShell;
         ok(docshell, "We should have a docshell here!");
 
         let secureUI = Cc['@mozilla.org/secure_browser_ui;1']
@@ -302,7 +302,7 @@
          Cu.getGlobalForObject(unprivilegedObject),
          "all parent->child CPOWs should live in the same scope");
       let cpowLocation = Cu.getRealmLocation(getUnprivilegedObject);
-      ok(/Privileged Junk/.test(cpowLocation),
+      ok(/shared JSM global/.test(cpowLocation),
          "parent->child CPOWs should live in the privileged junk scope: " + cpowLocation);
 
       // Make sure that parent->child CPOWs point through a privileged scope in the child

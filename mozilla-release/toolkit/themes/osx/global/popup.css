@@ -9,6 +9,7 @@ panel {
   -moz-appearance: menupopup;
   -moz-font-smoothing-background-color: -moz-mac-menupopup;
   background-color: Menu;
+  color: MenuText;
 }
 
 menupopup > menu > menupopup {
@@ -88,30 +89,11 @@ panel[type="arrow"][side="right"] {
   margin-left: -1px;
 }
 
-/* ::::: tooltip ::::: */
-
-tooltip {
-  -moz-appearance: tooltip;
-  -moz-font-smoothing-background-color: -moz-mac-tooltip;
-  margin-top: 18px;
-  padding: 2px 3px;
-  max-width: 40em;
-  color: InfoText;
-  font: message-box;
-  cursor: default;
-}
-
-tooltip[titletip="true"] {
- /* See bug 32157 comment 128
-  * margin: -2px 0px 0px -3px;
-  */
-  max-width: none;
-}
-
 /* rules for popups associated with menulists */
 
 menulist > menupopup {
   min-width: 0px;
+  padding: 4px 0;
 }
 
 menulist > menupopup:not([position]) {
@@ -119,16 +101,8 @@ menulist > menupopup:not([position]) {
   margin-top: -2px;
 }
 
-menulist[editable="true"] > menupopup {
-  -moz-appearance: none;
-}
-
 menulist > menupopup > .popup-internal-box {
   padding: 0;
-}
-
-menulist:not([editable="true"]) > menupopup {
-  padding: 4px 0;
 }
 
 menupopup[customoptionstyling="true"] {

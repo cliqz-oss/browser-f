@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 ar{
-    Version{"2.1.39.20"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"التوقيت العالمي المنسق"}
+        }
+        "Europe:Dublin"{
+            ld{"توقيت أيرلندا الرسمي"}
+        }
+        "Europe:London"{
+            ld{"توقيت بريطانيا الصيفي"}
+        }
         "meta:Afghanistan"{
             ls{"توقيت أفغانستان"}
         }

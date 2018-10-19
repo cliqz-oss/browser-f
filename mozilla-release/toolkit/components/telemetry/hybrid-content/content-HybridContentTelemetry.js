@@ -93,13 +93,14 @@ var HybridContentTelemetryListener = {
    *                      {name: "apiEndpoint", data: { ... endpoint specific data ... }}
    */
   handleEvent(event) {
-    if (!this._hybridContentEnabled) {
-      this._log.trace("handleEvent - hybrid content telemetry is disabled.");
-      return;
-    }
-
-    if (!this.isTrustedOrigin(event)) {
-      this._log.warn("handleEvent - accessing telemetry from an untrusted origin.");
+    const originNotTrusted = !this.isTrustedOrigin(event);
+    if (!this._hybridContentEnabled || originNotTrusted) {
+      this._log.warn(`handleEvent - hct disabled ${!this._hybridContentEnabled}, `
+                     + `untrusted origin ${originNotTrusted}.`);
+      let errorEvent = Cu.cloneInto({bubbles: true, detail: {}}, content);
+      content.document.dispatchEvent(
+        new content.document.defaultView.CustomEvent("mozTelemetryUntrustedOrigin", errorEvent)
+      );
       return;
     }
 
@@ -150,11 +151,13 @@ var HybridContentTelemetryListener = {
     }
 
     // Finally send the message down to the page.
+    let event = Cu.cloneInto({
+      bubbles: true,
+      detail: {canUpload: aMessage.data.canUpload},
+    }, content);
+
     content.document.dispatchEvent(
-      new content.document.defaultView.CustomEvent("mozTelemetryPolicyChange", {
-        bubbles: true,
-        detail: {canUpload: aMessage.data.canUpload}
-      })
+      new content.document.defaultView.CustomEvent("mozTelemetryPolicyChange", event)
     );
   },
 };

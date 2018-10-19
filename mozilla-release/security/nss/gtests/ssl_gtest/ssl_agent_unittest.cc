@@ -34,7 +34,7 @@ const static uint8_t kCannedTls13ClientHello[] = {
     0xc2, 0xb3, 0xc6, 0x80, 0x72, 0x86, 0x08, 0x86, 0x8f, 0x52, 0xc5, 0xcb,
     0xbf, 0x2a, 0xb5, 0x59, 0x64, 0xcc, 0x0c, 0x49, 0x95, 0x36, 0xe4, 0xd9,
     0x2f, 0xd4, 0x24, 0x66, 0x71, 0x6f, 0x5d, 0x70, 0xe2, 0xa0, 0xea, 0x26,
-    0x00, 0x2b, 0x00, 0x03, 0x02, 0x7f, kD13, 0x00, 0x0d, 0x00, 0x20, 0x00,
+    0x00, 0x2b, 0x00, 0x03, 0x02, 0x03, 0x04, 0x00, 0x0d, 0x00, 0x20, 0x00,
     0x1e, 0x04, 0x03, 0x05, 0x03, 0x06, 0x03, 0x02, 0x03, 0x08, 0x04, 0x08,
     0x05, 0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x06, 0x01, 0x02, 0x01, 0x04,
     0x02, 0x05, 0x02, 0x06, 0x02, 0x02, 0x02};
@@ -64,8 +64,8 @@ TEST_P(TlsAgentTestClient13, CannedHello) {
   auto sh = MakeCannedTls13ServerHello();
   MakeHandshakeMessage(kTlsHandshakeServerHello, sh.data(), sh.len(),
                        &server_hello);
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
-             server_hello.data(), server_hello.len(), &buffer);
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3, server_hello.data(),
+             server_hello.len(), &buffer);
   ProcessMessage(buffer, TlsAgent::STATE_CONNECTING);
 }
 
@@ -79,8 +79,8 @@ TEST_P(TlsAgentTestClient13, EncryptedExtensionsInClear) {
                        &encrypted_extensions, 1);
   server_hello.Append(encrypted_extensions);
   DataBuffer buffer;
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
-             server_hello.data(), server_hello.len(), &buffer);
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3, server_hello.data(),
+             server_hello.len(), &buffer);
   EnsureInit();
   ExpectAlert(kTlsAlertUnexpectedMessage);
   ProcessMessage(buffer, TlsAgent::STATE_ERROR,
@@ -97,11 +97,11 @@ TEST_F(TlsAgentStreamTestClient, EncryptedExtensionsInClearTwoPieces) {
                        &encrypted_extensions, 1);
   server_hello.Append(encrypted_extensions);
   DataBuffer buffer;
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
-             server_hello.data(), kFirstFragmentSize, &buffer);
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3, server_hello.data(),
+             kFirstFragmentSize, &buffer);
 
   DataBuffer buffer2;
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3,
              server_hello.data() + kFirstFragmentSize,
              server_hello.len() - kFirstFragmentSize, &buffer2);
 
@@ -129,11 +129,11 @@ TEST_F(TlsAgentDgramTestClient, EncryptedExtensionsInClearTwoPieces) {
                        &encrypted_extensions, 1);
   server_hello_frag2.Append(encrypted_extensions);
   DataBuffer buffer;
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3,
              server_hello_frag1.data(), server_hello_frag1.len(), &buffer);
 
   DataBuffer buffer2;
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3,
              server_hello_frag2.data(), server_hello_frag2.len(), &buffer2, 1);
 
   EnsureInit();
@@ -150,7 +150,7 @@ TEST_F(TlsAgentDgramTestClient, AckWithBogusLengthField) {
   // Length doesn't match
   const uint8_t ackBuf[] = {0x00, 0x08, 0x00};
   DataBuffer record;
-  MakeRecord(variant_, kTlsAckType, SSL_LIBRARY_VERSION_TLS_1_2, ackBuf,
+  MakeRecord(variant_, ssl_ct_ack, SSL_LIBRARY_VERSION_TLS_1_2, ackBuf,
              sizeof(ackBuf), &record, 0);
   agent_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_3,
                           SSL_LIBRARY_VERSION_TLS_1_3);
@@ -164,7 +164,7 @@ TEST_F(TlsAgentDgramTestClient, AckWithNonEvenLength) {
   // Length isn't a multiple of 8
   const uint8_t ackBuf[] = {0x00, 0x01, 0x00};
   DataBuffer record;
-  MakeRecord(variant_, kTlsAckType, SSL_LIBRARY_VERSION_TLS_1_2, ackBuf,
+  MakeRecord(variant_, ssl_ct_ack, SSL_LIBRARY_VERSION_TLS_1_2, ackBuf,
              sizeof(ackBuf), &record, 0);
   agent_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_3,
                           SSL_LIBRARY_VERSION_TLS_1_3);
@@ -196,7 +196,7 @@ TEST_F(TlsAgentStreamTestClient, Set0RttOptionThenRead) {
   agent_->StartConnect();
   agent_->Set0RttEnabled(true);
   DataBuffer buffer;
-  MakeRecord(kTlsApplicationDataType, SSL_LIBRARY_VERSION_TLS_1_3,
+  MakeRecord(ssl_ct_application_data, SSL_LIBRARY_VERSION_TLS_1_3,
              reinterpret_cast<const uint8_t *>(k0RttData), strlen(k0RttData),
              &buffer);
   ExpectAlert(kTlsAlertUnexpectedMessage);
@@ -214,10 +214,10 @@ TEST_F(TlsAgentStreamTestServer, Set0RttOptionClientHelloThenRead) {
   agent_->StartConnect();
   agent_->Set0RttEnabled(true);
   DataBuffer buffer;
-  MakeRecord(kTlsHandshakeType, SSL_LIBRARY_VERSION_TLS_1_3,
+  MakeRecord(ssl_ct_handshake, SSL_LIBRARY_VERSION_TLS_1_3,
              kCannedTls13ClientHello, sizeof(kCannedTls13ClientHello), &buffer);
   ProcessMessage(buffer, TlsAgent::STATE_CONNECTING);
-  MakeRecord(kTlsApplicationDataType, SSL_LIBRARY_VERSION_TLS_1_3,
+  MakeRecord(ssl_ct_application_data, SSL_LIBRARY_VERSION_TLS_1_3,
              reinterpret_cast<const uint8_t *>(k0RttData), strlen(k0RttData),
              &buffer);
   ExpectAlert(kTlsAlertBadRecordMac);

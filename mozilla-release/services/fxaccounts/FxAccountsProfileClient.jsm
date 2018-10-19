@@ -9,7 +9,6 @@
 
 var EXPORTED_SYMBOLS = ["FxAccountsProfileClient", "FxAccountsProfileClientError"];
 
-ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
 ChromeUtils.import("resource://gre/modules/FxAccounts.jsm");
 ChromeUtils.import("resource://services-common/rest.js");
@@ -186,7 +185,7 @@ this.FxAccountsProfileClient.prototype = {
     }
     return {
       body,
-      etag: request.response.headers.etag
+      etag: request.response.headers.etag,
     };
   },
 
@@ -202,7 +201,7 @@ this.FxAccountsProfileClient.prototype = {
   fetchProfile(etag) {
     log.debug("FxAccountsProfileClient: Requested profile");
     return this._createRequest("/profile", "GET", etag);
-  }
+  },
 };
 
 /**

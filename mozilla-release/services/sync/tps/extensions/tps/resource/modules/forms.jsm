@@ -29,7 +29,7 @@ var FormDB = {
         },
         handleCompletion(reason) {
           resolve();
-        }
+        },
       };
       FormHistory.update(data, handlers);
     });
@@ -94,7 +94,7 @@ var FormDB = {
         },
         handleCompletion(reason) {
           resolve(result);
-        }
+        },
       };
       FormHistory.search(["guid", "lastUsed", "firstUsed"], { fieldname, value }, handlers);
     });
@@ -126,8 +126,9 @@ function FormData(props, msSinceEpoch) {
   this.usSinceEpoch = msSinceEpoch * 1000;
 
   for (var prop in props) {
-    if (prop in this)
+    if (prop in this) {
       this[prop] = props[prop];
+    }
   }
 }
 

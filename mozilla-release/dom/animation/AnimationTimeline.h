@@ -23,6 +23,8 @@
 #undef GetCurrentTime
 #endif
 
+class nsIDocument;
+
 namespace mozilla {
 namespace dom {
 
@@ -58,6 +60,13 @@ public:
   // script.
   Nullable<double> GetCurrentTimeAsDouble() const {
     return AnimationUtils::TimeDurationToDouble(GetCurrentTime());
+  }
+
+  TimeStamp GetCurrentTimeAsTimeStamp() const {
+    Nullable<TimeDuration> currentTime = GetCurrentTime();
+    return !currentTime.IsNull()
+      ? ToTimeStamp(currentTime.Value())
+      : TimeStamp();
   }
 
   /**
@@ -103,6 +112,8 @@ public:
   }
 
   virtual void RemoveAnimation(Animation* aAnimation);
+
+  virtual nsIDocument* GetDocument() const = 0;
 
 protected:
   nsCOMPtr<nsIGlobalObject> mWindow;

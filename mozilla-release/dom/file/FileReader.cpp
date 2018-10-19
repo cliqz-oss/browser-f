@@ -27,6 +27,7 @@
 #include "nsError.h"
 #include "nsNetUtil.h"
 #include "xpcpublic.h"
+#include "nsReadableUtils.h"
 
 namespace mozilla {
 namespace dom {
@@ -234,7 +235,7 @@ FileReader::OnLoadEndArrayBuffer()
   // XXX Code selected arbitrarily
   mError =
     new DOMException(NS_ERROR_DOM_INVALID_STATE_ERR, errorMsg,
-                     errorNameC, DOMExceptionBinding::INVALID_STATE_ERR);
+                     errorNameC, DOMException_Binding::INVALID_STATE_ERR);
 
   FreeDataAndDispatchError();
 }
@@ -265,13 +266,8 @@ void
 PopulateBufferForBinaryString(char16_t* aDest, const char* aSource,
                               uint32_t aCount)
 {
-  const unsigned char* source = (const unsigned char*)aSource;
-  char16_t* end = aDest + aCount;
-  while (aDest != end) {
-    *aDest = *source;
-    ++aDest;
-    ++source;
-  }
+  // Zero-extend each char to char16_t.
+  ConvertLatin1toUTF16(MakeSpan(aSource, aCount), MakeSpan(aDest, aCount));
 }
 
 nsresult
@@ -527,7 +523,7 @@ FileReader::GetAsDataURL(Blob *aBlob,
 /* virtual */ JSObject*
 FileReader::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return FileReaderBinding::Wrap(aCx, this, aGivenProto);
+  return FileReader_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

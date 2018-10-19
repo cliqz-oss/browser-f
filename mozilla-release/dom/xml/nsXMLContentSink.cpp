@@ -93,7 +93,8 @@ NS_NewXMLContentSink(nsIXMLContentSink** aResult,
 }
 
 nsXMLContentSink::nsXMLContentSink()
-  : mTextLength(0)
+  : mState(eXMLContentSinkState_InProlog)
+  , mTextLength(0)
   , mNotifyLevel(0)
   , mPrettyPrintXML(true)
   , mPrettyPrintHasSpecialRoot(0)
@@ -481,7 +482,8 @@ FindIsAttrValue(const char16_t** aAtts, const char16_t** aResult)
 
 nsresult
 nsXMLContentSink::CreateElement(const char16_t** aAtts, uint32_t aAttsCount,
-                                mozilla::dom::NodeInfo* aNodeInfo, uint32_t aLineNumber,
+                                mozilla::dom::NodeInfo* aNodeInfo,
+                                uint32_t aLineNumber, uint32_t aColumnNumber,
                                 nsIContent** aResult, bool* aAppendContent,
                                 FromParser aFromParser)
 {
@@ -512,6 +514,7 @@ nsXMLContentSink::CreateElement(const char16_t** aAtts, uint32_t aAttsCount,
     nsCOMPtr<nsIScriptElement> sele = do_QueryInterface(content);
     if (sele) {
       sele->SetScriptLineNumber(aLineNumber);
+      sele->SetScriptColumnNumber(aColumnNumber);
       sele->SetCreatorParser(GetParser());
     } else {
       MOZ_ASSERT(nsNameSpaceManager::GetInstance()->mSVGDisabled, "Node didn't QI to script, but SVG wasn't disabled.");
@@ -549,6 +552,7 @@ nsXMLContentSink::CreateElement(const char16_t** aAtts, uint32_t aAttsCount,
       }
       if (!aNodeInfo->Equals(nsGkAtoms::link, kNameSpaceID_XHTML)) {
         ssle->SetLineNumber(aFromParser ? aLineNumber : 0);
+        ssle->SetColumnNumber(aFromParser ? aColumnNumber : 0);
       }
     }
   }
@@ -988,10 +992,11 @@ NS_IMETHODIMP
 nsXMLContentSink::HandleStartElement(const char16_t *aName,
                                      const char16_t **aAtts,
                                      uint32_t aAttsCount,
-                                     uint32_t aLineNumber)
+                                     uint32_t aLineNumber,
+                                     uint32_t aColumnNumber)
 {
   return HandleStartElement(aName, aAtts, aAttsCount, aLineNumber,
-                            true);
+                            aColumnNumber, true);
 }
 
 nsresult
@@ -999,6 +1004,7 @@ nsXMLContentSink::HandleStartElement(const char16_t *aName,
                                      const char16_t **aAtts,
                                      uint32_t aAttsCount,
                                      uint32_t aLineNumber,
+                                     uint32_t aColumnNumber,
                                      bool aInterruptable)
 {
   MOZ_ASSERT(aAttsCount % 2 == 0, "incorrect aAttsCount");
@@ -1033,7 +1039,7 @@ nsXMLContentSink::HandleStartElement(const char16_t *aName,
                                            nsINode::ELEMENT_NODE);
 
   result = CreateElement(aAtts, aAttsCount, nodeInfo, aLineNumber,
-                         getter_AddRefs(content), &appendContent,
+                         aColumnNumber, getter_AddRefs(content), &appendContent,
                          FROM_PARSER_NETWORK);
   NS_ENSURE_SUCCESS(result, result);
 

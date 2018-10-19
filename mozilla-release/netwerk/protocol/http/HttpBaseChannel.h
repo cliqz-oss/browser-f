@@ -211,7 +211,8 @@ public:
   NS_IMETHOD GetTopLevelOuterContentWindowId(uint64_t *aWindowId) override;
   NS_IMETHOD SetTopLevelOuterContentWindowId(uint64_t aWindowId) override;
   NS_IMETHOD GetIsTrackingResource(bool* aIsTrackingResource) override;
-  NS_IMETHOD OverrideTrackingResource(bool aIsTracking) override;
+  NS_IMETHOD GetIsThirdPartyTrackingResource(bool* aIsTrackingResource) override;
+  NS_IMETHOD OverrideTrackingFlagsForDocumentCookieAccessor(nsIHttpChannel* aDocumentChannel) override;
 
   // nsIHttpChannelInternal
   NS_IMETHOD GetDocumentURI(nsIURI **aDocumentURI) override;
@@ -268,6 +269,9 @@ public:
   NS_IMETHOD SetIntegrityMetadata(const nsAString& aIntegrityMetadata) override;
   NS_IMETHOD GetLastRedirectFlags(uint32_t *aValue) override;
   NS_IMETHOD SetLastRedirectFlags(uint32_t aValue) override;
+  NS_IMETHOD GetNavigationStartTimeStamp(TimeStamp* aTimeStamp) override;
+  NS_IMETHOD SetNavigationStartTimeStamp(TimeStamp aTimeStamp) override;
+  NS_IMETHOD CancelForTrackingProtection() override;
 
   inline void CleanRedirectCacheChainIfNecessary()
   {
@@ -376,7 +380,7 @@ public: /* Necko internal use only... */
     // |EnsureUploadStreamIsCloneableComplete| to main thread.
     virtual void OnCopyComplete(nsresult aStatus);
 
-    void SetIsTrackingResource();
+    void SetIsTrackingResource(bool aIsThirdParty);
 
     const uint64_t& ChannelId() const
     {
@@ -449,6 +453,7 @@ protected:
   // bundle calling OMR observers and marking flag into one function
   inline void CallOnModifyRequestObservers() {
     gHttpHandler->OnModifyRequest(this);
+    MOZ_ASSERT(!mRequestObserversCalled);
     mRequestObserversCalled = true;
   }
 
@@ -534,11 +539,28 @@ private:
   MaybeResumeAsyncOpen();
 
 protected:
-  // Use Release-Acquire ordering to ensure the OMT ODA is ignored while channel
-  // is canceled on main thread.
-  Atomic<bool, ReleaseAcquire> mCanceled;
+  nsCString mSpec; // ASCII encoded URL spec
+  nsCString mContentTypeHint;
+  nsCString mContentCharsetHint;
+  nsCString mUserSetCookieHeader;
+  // HTTP Upgrade Data
+  nsCString mUpgradeProtocol;
+  // Resumable channel specific data
+  nsCString mEntityID;
+  // The initiator type (for this resource) - how was the resource referenced in
+  // the HTML file.
+  nsString mInitiatorType;
+  // Holds the name of the preferred alt-data type.
+  nsCString mPreferredCachedAltDataType;
+  // Holds the name of the alternative data type the channel returned.
+  nsCString mAvailableCachedAltDataType;
+  nsString mIntegrityMetadata;
 
-  nsTArray<Pair<nsString, nsString>> mSecurityConsoleMessages;
+  // Classified channel's matched information
+  nsCString mMatchedList;
+  nsCString mMatchedProvider;
+  nsCString mMatchedFullHash;
+
 
   nsCOMPtr<nsISupports>             mOwner;
 
@@ -552,29 +574,66 @@ protected:
   RefPtr<nsHttpConnectionInfo>      mConnectionInfo;
   nsCOMPtr<nsIProxyInfo>            mProxyInfo;
   nsCOMPtr<nsISupports>             mSecurityInfo;
+  nsCOMPtr<nsIHttpUpgradeListener> mUpgradeProtocolCallback;
+  nsAutoPtr<nsString> mContentDispositionFilename;
+  nsCOMPtr<nsIConsoleReportCollector> mReportCollector;
 
-  nsCString                         mSpec; // ASCII encoded URL spec
-  nsCString                         mContentTypeHint;
-  nsCString                         mContentCharsetHint;
-  nsCString                         mUserSetCookieHeader;
+  RefPtr<nsHttpHandler> mHttpHandler;  // keep gHttpHandler alive
+  nsAutoPtr<nsTArray<nsCString> > mRedirectedCachekeys;
+  nsCOMPtr<nsIRequestContext> mRequestContext;
 
   NetAddr                           mSelfAddr;
   NetAddr                           mPeerAddr;
 
-  // HTTP Upgrade Data
-  nsCString                        mUpgradeProtocol;
-  nsCOMPtr<nsIHttpUpgradeListener> mUpgradeProtocolCallback;
+  nsTArray<Pair<nsString, nsString>> mSecurityConsoleMessages;
+  nsTArray<nsCString>               mUnsafeHeaders;
 
-  // Resumable channel specific data
-  nsCString                         mEntityID;
+  // A time value equal to the starting time of the fetch that initiates the
+  // redirect.
+  mozilla::TimeStamp                mRedirectStartTimeStamp;
+  // A time value equal to the time immediately after receiving the last byte of
+  // the response of the last redirect.
+  mozilla::TimeStamp                mRedirectEndTimeStamp;
+
+  PRTime                            mChannelCreationTime;
+  TimeStamp                         mChannelCreationTimestamp;
+  TimeStamp                         mAsyncOpenTime;
+  TimeStamp                         mCacheReadStart;
+  TimeStamp                         mCacheReadEnd;
+  TimeStamp                         mLaunchServiceWorkerStart;
+  TimeStamp                         mLaunchServiceWorkerEnd;
+  TimeStamp                         mDispatchFetchEventStart;
+  TimeStamp                         mDispatchFetchEventEnd;
+  TimeStamp                         mHandleFetchEventStart;
+  TimeStamp                         mHandleFetchEventEnd;
+  // copied from the transaction before we null out mTransaction
+  // so that the timing can still be queried from OnStopRequest
+  TimingStruct                      mTransactionTimings;
+
   uint64_t                          mStartPos;
+  uint64_t mTransferSize;
+  uint64_t mDecodedBodySize;
+  uint64_t mEncodedBodySize;
+  uint64_t mRequestContextID;
+  // ID of the top-level document's inner window this channel is being
+  // originated from.
+  uint64_t mContentWindowId;
+  uint64_t mTopLevelOuterContentWindowId;
+  int64_t mAltDataLength;
+  uint64_t mChannelId;
+  uint64_t mReqContentLength;
 
   Atomic<nsresult, ReleaseAcquire>  mStatus;
+
+  // Use Release-Acquire ordering to ensure the OMT ODA is ignored while channel
+  // is canceled on main thread.
+  Atomic<bool, ReleaseAcquire> mCanceled;
+  Atomic<bool, ReleaseAcquire> mIsFirstPartyTrackingResource;
+  Atomic<bool, ReleaseAcquire> mIsThirdPartyTrackingResource;
+
   uint32_t                          mLoadFlags;
   uint32_t                          mCaps;
   uint32_t                          mClassOfService;
-  int16_t                           mPriority;
-  uint8_t                           mRedirectionLimit;
 
   uint32_t                          mUpgradeToSecure            : 1;
   uint32_t                          mApplyConversion            : 1;
@@ -624,6 +683,11 @@ protected:
   // callback, passing the stream length value.
   uint32_t                          mAsyncOpenWaitingForStreamLength : 1;
 
+  // Defaults to true.  This is set to false when it is no longer possible
+  // to upgrade the request to a secure channel.
+  uint32_t                          mUpgradableToSecure : 1;
+
+
   // An opaque flags for non-standard behavior of the TLS system.
   // It is unlikely this will need to be set outside of telemetry studies
   // relating to the TLS implementation.
@@ -635,74 +699,54 @@ protected:
   // Per channel transport window override (0 means no override)
   uint32_t                          mInitialRwin;
 
-  nsAutoPtr<nsTArray<nsCString> >   mRedirectedCachekeys;
-
   uint32_t                          mProxyResolveFlags;
 
   uint32_t                          mContentDispositionHint;
-  nsAutoPtr<nsString>               mContentDispositionFilename;
-
-  RefPtr<nsHttpHandler>           mHttpHandler;  // keep gHttpHandler alive
-
   uint32_t                          mReferrerPolicy;
 
+  uint32_t mCorsMode;
+  uint32_t mRedirectMode;
+
+  // If this channel was created as the result of a redirect, then this value
+  // will reflect the redirect flags passed to the SetupReplacementChannel()
+  // method.
+  uint32_t mLastRedirectFlags;
+
+  int16_t                           mPriority;
+  uint8_t                           mRedirectionLimit;
+
   // Performance tracking
-  // The initiator type (for this resource) - how was the resource referenced in
-  // the HTML file.
-  nsString                          mInitiatorType;
   // Number of redirects that has occurred.
   int8_t                            mRedirectCount;
   // Number of internal redirects that has occurred.
   int8_t                            mInternalRedirectCount;
-  // A time value equal to the starting time of the fetch that initiates the
-  // redirect.
-  mozilla::TimeStamp                mRedirectStartTimeStamp;
-  // A time value equal to the time immediately after receiving the last byte of
-  // the response of the last redirect.
-  mozilla::TimeStamp                mRedirectEndTimeStamp;
-
-  PRTime                            mChannelCreationTime;
-  TimeStamp                         mChannelCreationTimestamp;
-  TimeStamp                         mAsyncOpenTime;
-  TimeStamp                         mCacheReadStart;
-  TimeStamp                         mCacheReadEnd;
-  TimeStamp                         mLaunchServiceWorkerStart;
-  TimeStamp                         mLaunchServiceWorkerEnd;
-  TimeStamp                         mDispatchFetchEventStart;
-  TimeStamp                         mDispatchFetchEventEnd;
-  TimeStamp                         mHandleFetchEventStart;
-  TimeStamp                         mHandleFetchEventEnd;
-  // copied from the transaction before we null out mTransaction
-  // so that the timing can still be queried from OnStopRequest
-  TimingStruct                      mTransactionTimings;
 
   bool                              mAsyncOpenTimeOverriden;
   bool                              mForcePending;
 
   bool mCorsIncludeCredentials;
-  uint32_t mCorsMode;
-  uint32_t mRedirectMode;
 
   // These parameters are used to ensure that we do not call OnStartRequest and
   // OnStopRequest more than once.
   bool mOnStartRequestCalled;
   bool mOnStopRequestCalled;
 
-  // Defaults to true.  This is set to false when it is no longer possible
-  // to upgrade the request to a secure channel.
-  uint32_t                          mUpgradableToSecure : 1;
-
   // Defaults to false. Is set to true at the begining of OnStartRequest.
   // Used to ensure methods can't be called before OnStartRequest.
   bool mAfterOnStartRequestBegun;
 
-  uint64_t mTransferSize;
-  uint64_t mDecodedBodySize;
-  uint64_t mEncodedBodySize;
+  bool mRequireCORSPreflight;
 
-  uint64_t mRequestContextID;
+  // This flag will be true if the consumer is requesting alt-data AND the
+  // consumer is in the child process.
+  bool mAltDataForChild;
+
+  bool mForceMainDocumentChannel;
+  // This is set true if the channel is waiting for the
+  // InputStreamLengthHelper::GetAsyncLength callback.
+  bool mPendingInputStreamLengthOperation;
+
   bool EnsureRequestContextID();
-  nsCOMPtr<nsIRequestContext> mRequestContext;
   bool EnsureRequestContext();
 
   // Adds/removes this channel as a non-tailed request in its request context
@@ -711,49 +755,7 @@ protected:
   void AddAsNonTailRequest();
   void RemoveAsNonTailRequest();
 
-  // ID of the top-level document's inner window this channel is being
-  // originated from.
-  uint64_t mContentWindowId;
-
-  uint64_t mTopLevelOuterContentWindowId;
   void EnsureTopLevelOuterContentWindowId();
-
-  bool                              mRequireCORSPreflight;
-  nsTArray<nsCString>               mUnsafeHeaders;
-
-  nsCOMPtr<nsIConsoleReportCollector> mReportCollector;
-
-  // Holds the name of the preferred alt-data type.
-  nsCString mPreferredCachedAltDataType;
-  // Holds the name of the alternative data type the channel returned.
-  nsCString mAvailableCachedAltDataType;
-  int64_t   mAltDataLength;
-  // This flag will be true if the consumer is requesting alt-data AND the
-  // consumer is in the child process.
-  bool mAltDataForChild;
-
-  bool mForceMainDocumentChannel;
-  Atomic<bool, ReleaseAcquire> mIsTrackingResource;
-
-  uint64_t mChannelId;
-
-  // If this channel was created as the result of a redirect, then this value
-  // will reflect the redirect flags passed to the SetupReplacementChannel()
-  // method.
-  uint32_t mLastRedirectFlags;
-
-  uint64_t mReqContentLength;
-
-  nsString mIntegrityMetadata;
-
-  // Classified channel's matched information
-  nsCString mMatchedList;
-  nsCString mMatchedProvider;
-  nsCString mMatchedFullHash;
-
-  // This is set true if the channel is waiting for the
-  // InputStreamLengthHelper::GetAsyncLength callback.
-  bool mPendingInputStreamLengthOperation;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(HttpBaseChannel, HTTP_BASE_CHANNEL_IID)

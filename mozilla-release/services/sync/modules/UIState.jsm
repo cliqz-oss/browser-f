@@ -17,7 +17,6 @@
 var EXPORTED_SYMBOLS = ["UIState"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "Weave",
                                "resource://services-sync/main.js");
 
@@ -33,6 +32,7 @@ const TOPICS = [
   "fxaccounts:onlogin", // Defined in FxAccountsCommon, pulling it is expensive.
   "fxaccounts:onlogout",
   "fxaccounts:profilechange",
+  "fxaccounts:statechange",
 ];
 
 const ON_UPDATE = "sync-ui-state:update";
@@ -43,7 +43,7 @@ const STATUS_NOT_VERIFIED = "not_verified";
 const STATUS_SIGNED_IN = "signed_in";
 
 const DEFAULT_STATE = {
-  status: STATUS_NOT_CONFIGURED
+  status: STATUS_NOT_CONFIGURED,
 };
 
 const UIStateInternal = {
@@ -229,7 +229,7 @@ const UIStateInternal = {
   set fxAccounts(mockFxAccounts) {
     delete this.fxAccounts;
     this.fxAccounts = mockFxAccounts;
-  }
+  },
 };
 
 ChromeUtils.defineModuleGetter(UIStateInternal, "fxAccounts",
@@ -280,5 +280,5 @@ var UIState = {
    */
   reset() {
     this._internal.reset();
-  }
+  },
 };

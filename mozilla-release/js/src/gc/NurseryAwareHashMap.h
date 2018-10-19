@@ -90,8 +90,8 @@ class NurseryAwareHashMap
     using Entry = typename MapType::Entry;
 
     explicit NurseryAwareHashMap(AllocPolicy a = AllocPolicy()) : map(a) {}
-
-    MOZ_MUST_USE bool init(uint32_t len = 16) { return map.init(len); }
+    explicit NurseryAwareHashMap(size_t length) : map(length) {}
+    NurseryAwareHashMap(AllocPolicy a, size_t length) : map(a, length) {}
 
     bool empty() const { return map.empty(); }
     Ptr lookup(const Lookup& l) const { return map.lookup(l); }
@@ -101,11 +101,11 @@ class NurseryAwareHashMap
         explicit Enum(NurseryAwareHashMap& namap) : MapType::Enum(namap.map) {}
     };
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
-        return map.sizeOfExcludingThis(mallocSizeOf) +
+        return map.shallowSizeOfExcludingThis(mallocSizeOf) +
                nurseryEntries.sizeOfExcludingThis(mallocSizeOf);
     }
     size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
-        return map.sizeOfIncludingThis(mallocSizeOf) +
+        return map.shallowSizeOfIncludingThis(mallocSizeOf) +
                nurseryEntries.sizeOfIncludingThis(mallocSizeOf);
     }
 

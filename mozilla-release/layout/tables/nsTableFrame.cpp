@@ -675,7 +675,7 @@ nsTableFrame::CreateSyntheticColGroupFrame()
 
   RefPtr<ComputedStyle> colGroupStyle;
   colGroupStyle = shell->StyleSet()->
-    ResolveNonInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableColGroup);
+    ResolveNonInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableColGroup());
   // Create a col group frame
   nsTableColGroupFrame* newFrame =
     NS_NewTableColGroupFrame(shell, colGroupStyle);
@@ -734,7 +734,7 @@ nsTableFrame::AppendAnonymousColFrames(nsTableColGroupFrame* aColGroupFrame,
     // col group
     nsIContent* iContent = aColGroupFrame->GetContent();
     RefPtr<ComputedStyle> computedStyle = shell->StyleSet()->
-      ResolveNonInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableCol);
+      ResolveNonInheritingAnonymousBoxStyle(nsCSSAnonBoxes::tableCol());
     // ASSERTION to check for bug 54454 sneaking back in...
     NS_ASSERTION(iContent, "null content in CreateAnonymousColFrames");
 
@@ -2558,7 +2558,7 @@ nsTableFrame::AppendFrames(ChildListID     aListID,
       InsertRowGroups(nsFrameList::Slice(mFrames, f, nullptr));
     } else {
       // Nothing special to do, just add the frame to our child list
-      NS_NOTREACHED("How did we get here?  Frame construction screwed up");
+      MOZ_ASSERT_UNREACHABLE("How did we get here? Frame construction screwed up");
       mFrames.AppendFrame(nullptr, f);
     }
   }
@@ -2733,7 +2733,7 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
     InsertRowGroups(newRowGroups);
   } else {
     NS_ASSERTION(aListID == kPrincipalList, "unexpected child list");
-    NS_NOTREACHED("How did we even get here?");
+    MOZ_ASSERT_UNREACHABLE("How did we even get here?");
     // Just insert the frame and don't worry about reflowing it
     mFrames.InsertFrames(nullptr, aPrevFrame, aFrameList);
     return;
@@ -3070,7 +3070,7 @@ nsTableFrame::OrderRowGroups(RowGroupArray& aChildren,
       aChildren.AppendElement(rowGroup);
       break;
     default:
-      NS_NOTREACHED("How did this produce an nsTableRowGroupFrame?");
+      MOZ_ASSERT_UNREACHABLE("How did this produce an nsTableRowGroupFrame?");
       // Just ignore it
       break;
     }
@@ -4569,6 +4569,9 @@ BCMapCellInfo::BCMapCellInfo(nsTableFrame* aTableFrame)
   , mNumTableCols(aTableFrame->GetColCount())
   , mTableBCData(mTableFrame->GetProperty(TableBCProperty()))
   , mTableWM(aTableFrame->Style())
+  , mCurrentRowFrame(nullptr)
+  , mCurrentColGroupFrame(nullptr)
+  , mCurrentColFrame(nullptr)
 {
   ResetCellInfo();
 }
@@ -4653,7 +4656,13 @@ private:
 
 BCMapCellIterator::BCMapCellIterator(nsTableFrame* aTableFrame,
                                      const TableArea& aDamageArea)
-  : mTableFrame(aTableFrame)
+  : mRowGroupStart(0)
+  , mRowGroupEnd(0)
+  , mCellMap(nullptr)
+  , mTableFrame(aTableFrame)
+  , mRowGroup(nullptr)
+  , mPrevRow(nullptr)
+  , mIsNewRow(false)
 {
   mTableCellMap  = aTableFrame->GetCellMap();
 
@@ -5299,7 +5308,7 @@ struct BCCornerInfo
   uint32_t  hasDashDot:1;   // does a dashed, dotted segment enter the corner, they cannot be beveled
   uint32_t  numSegs:3;      // number of segments entering corner
   uint32_t  bevel:1;        // is the corner beveled (uses the above two fields together with subWidth)
-  uint32_t  unused:1;
+  // one bit is unused
 };
 
 void
@@ -6797,7 +6806,32 @@ BCPaintBorderIterator::BCPaintBorderIterator(nsTableFrame* aTable)
   : mTable(aTable)
   , mTableFirstInFlow(static_cast<nsTableFrame*>(aTable->FirstInFlow()))
   , mTableCellMap(aTable->GetCellMap())
+  , mCellMap(nullptr)
   , mTableWM(aTable->Style())
+  , mPrevRg(nullptr)
+  , mRg(nullptr)
+  , mIsRepeatedHeader(false)
+  , mIsRepeatedFooter(false)
+  , mStartRg(nullptr)
+  , mRgIndex(0)
+  , mFifRgFirstRowIndex(0)
+  , mRgFirstRowIndex(0)
+  , mRgLastRowIndex(0)
+  , mColIndex(0)
+  , mRowIndex(0)
+  , mIsNewRow(false)
+  , mAtEnd(false)
+  , mPrevRow(nullptr)
+  , mRow(nullptr)
+  , mStartRow(nullptr)
+  , mPrevCell(nullptr)
+  , mCell(nullptr)
+  , mPrevCellData(nullptr)
+  , mCellData(nullptr)
+  , mBCData(nullptr)
+  , mInitialOffsetI(0)
+  , mNextOffsetB(0)
+  , mPrevInlineSegBSize(0)
 {
   mBlockDirInfo    = nullptr;
   LogicalMargin childAreaOffset = mTable->GetChildAreaOffset(mTableWM, nullptr);
@@ -7217,6 +7251,11 @@ CalcHorCornerOffset(nsPresContext* aPresContext,
 }
 
 BCBlockDirSeg::BCBlockDirSeg()
+  : mFirstRowGroup(nullptr)
+  , mFirstRow(nullptr)
+  , mBEndInlineSegBSize(0)
+  , mBEndOffset(0)
+  , mIsBEndBevel(false)
 {
   mCol = nullptr;
   mFirstCell = mLastCell = mAjaCell = nullptr;
@@ -7546,6 +7585,11 @@ BCBlockDirSeg::IncludeCurrentBorder(BCPaintBorderIterator& aIter)
 }
 
 BCInlineDirSeg::BCInlineDirSeg()
+  : mIsIEndBevel(false)
+  , mIEndBevelOffset(0)
+  , mIEndBevelSide(eLogicalSideBStart)
+  , mEndOffset(0)
+  , mOwner(eTableOwner)
 {
   mOffsetI = mOffsetB = mLength = mWidth =  mIStartBevelOffset = 0;
   mIStartBevelSide = eLogicalSideBStart;
@@ -8157,7 +8201,7 @@ nsTableFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult)
 {
   nsIFrame* wrapper = GetParent();
   MOZ_ASSERT(wrapper->Style()->GetPseudo() ==
-               nsCSSAnonBoxes::tableWrapper,
+               nsCSSAnonBoxes::tableWrapper(),
              "What happened to our parent?");
   aResult.AppendElement(
     OwnedAnonBox(wrapper, &UpdateStyleOfOwnedAnonBoxesForTableWrapper));
@@ -8170,12 +8214,12 @@ nsTableFrame::UpdateStyleOfOwnedAnonBoxesForTableWrapper(
   ServoRestyleState& aRestyleState)
 {
   MOZ_ASSERT(aWrapperFrame->Style()->GetPseudo() ==
-               nsCSSAnonBoxes::tableWrapper,
+               nsCSSAnonBoxes::tableWrapper(),
              "What happened to our parent?");
 
   RefPtr<ComputedStyle> newStyle =
     aRestyleState.StyleSet().ResolveInheritingAnonymousBoxStyle(
-      nsCSSAnonBoxes::tableWrapper, aOwningFrame->Style());
+      nsCSSAnonBoxes::tableWrapper(), aOwningFrame->Style());
 
   // Figure out whether we have an actual change.  It's important that we do
   // this, even though all the wrapper's changes are due to properties it

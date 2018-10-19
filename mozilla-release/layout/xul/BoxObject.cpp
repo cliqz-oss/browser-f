@@ -125,7 +125,7 @@ BoxObject::GetPresShell(bool aFlushLayout)
     return nullptr;
   }
 
-  nsCOMPtr<nsIDocument> doc = mContent->GetUncomposedDoc();
+  nsCOMPtr<nsIDocument> doc = mContent->GetComposedDoc();
   if (!doc) {
     return nullptr;
   }
@@ -472,7 +472,7 @@ BoxObject::GetParentObject() const
 JSObject*
 BoxObject::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return BoxObjectBinding::Wrap(aCx, this, aGivenProto);
+  return BoxObject_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 Element*

@@ -150,7 +150,7 @@ var pktUI = (function() {
         if (pktApi.getSignupPanelTabTestVariant() == "v2") {
             let site = Services.prefs.getCharPref("extensions.pocket.site");
             openTabWithUrl("https://" + site + "/firefox_learnmore?s=ffi&t=autoredirect&tv=page_learnmore&src=ff_ext",
-                           Services.scriptSecurityManager.getSystemPrincipal());
+                           Services.scriptSecurityManager.createNullPrincipal({}));
 
             // force the panel closed before it opens
             getPanel().hidePopup();
@@ -199,7 +199,7 @@ var pktUI = (function() {
                     },
                     onHide: panelDidHide,
                     width: inOverflowMenu ? overflowMenuWidth : 300,
-                    height: startheight
+                    height: startheight,
             });
         });
     }
@@ -239,7 +239,7 @@ var pktUI = (function() {
                         // TODO: Pass key for localized error in error object
                         let error = {
                             message: "Only links can be saved",
-                            localizedKey: "onlylinkssaved"
+                            localizedKey: "onlylinkssaved",
                         };
                         pktUIMessaging.sendErrorMessageToPanel(panelId, saveLinkMessageId, error);
                         return;
@@ -249,7 +249,7 @@ var pktUI = (function() {
                     if (!navigator.onLine) {
                         // TODO: Pass key for localized error in error object
                         let error = {
-                            message: "You must be connected to the Internet in order to save to Pocket. Please connect to the Internet and try again."
+                            message: "You must be connected to the Internet in order to save to Pocket. Please connect to the Internet and try again.",
                         };
                         pktUIMessaging.sendErrorMessageToPanel(panelId, saveLinkMessageId, error);
                         return;
@@ -267,7 +267,7 @@ var pktUI = (function() {
                                 accountState,
                                 displayName,
                                 item,
-                                ho2
+                                ho2,
                             };
                             pktUIMessaging.sendMessageToPanel(panelId, saveLinkMessageId, successResponse);
                             _lastAddSucceeded = true;
@@ -287,7 +287,7 @@ var pktUI = (function() {
 
                             // Send error message to panel
                             pktUIMessaging.sendErrorMessageToPanel(panelId, saveLinkMessageId, panelError);
-                        }
+                        },
                     };
 
                     // Add title if given
@@ -300,7 +300,7 @@ var pktUI = (function() {
                 },
                 onHide: panelDidHide,
                 width: inOverflowMenu ? overflowMenuWidth : savePanelWidth,
-                height: startheight
+                height: startheight,
             });
         });
     }
@@ -337,7 +337,7 @@ var pktUI = (function() {
 
         resizePanel({
             width: options.width,
-            height: options.height
+            height: options.height,
         });
         return _panelId;
     }
@@ -428,7 +428,7 @@ var pktUI = (function() {
                     err.fallback_title = getCurrentTitle();
                     err.fallback_domain = new URL(getCurrentUrl()).hostname;
                     pktUIMessaging.sendResponseMessageToPanel(panelId, _getArticleInfoMessageId, err);
-                }
+                },
             });
         });
 
@@ -441,7 +441,7 @@ var pktUI = (function() {
                 },
                 error(err, req) {
                     pktUIMessaging.sendResponseMessageToPanel(panelId, _getMobileDownloadMessageId, err);
-                }
+                },
             });
         });
 
@@ -471,7 +471,7 @@ var pktUI = (function() {
             pktApi.getTags(function(tags, usedTags) {
                 pktUIMessaging.sendResponseMessageToPanel(panelId, _getTagsMessageId, {
                     tags,
-                    usedTags
+                    usedTags,
                 });
             });
         });
@@ -485,14 +485,14 @@ var pktUI = (function() {
                     var successResponse = {
                         status: "success",
                         value: {
-                            suggestedTags
-                        }
+                            suggestedTags,
+                        },
                     };
                     pktUIMessaging.sendResponseMessageToPanel(panelId, _getSuggestedTagsMessageId, successResponse);
                 },
                 error(error, response) {
                     pktUIMessaging.sendErrorResponseMessageToPanel(panelId, _getSuggestedTagsMessageId, error);
-                }
+                },
             });
         });
 
@@ -506,7 +506,7 @@ var pktUI = (function() {
                 },
                 error(error, response) {
                     pktUIMessaging.sendErrorResponseMessageToPanel(panelId, _addTagsMessageId, error);
-                }
+                },
             });
         });
 
@@ -522,7 +522,7 @@ var pktUI = (function() {
                 },
                 error(error, response) {
                     pktUIMessaging.sendErrorResponseMessageToPanel(panelId, _deleteItemMessageId, error);
-                }
+                },
             });
         });
 
@@ -530,9 +530,7 @@ var pktUI = (function() {
         pktUIMessaging.addMessageListener(iframe, _initL10NMessageId, function(panelId, data) {
             var strings = {};
             var bundle = Services.strings.createBundle("chrome://pocket/locale/pocket.properties");
-            var e = bundle.getSimpleEnumeration();
-            while (e.hasMoreElements()) {
-                var str = e.getNext().QueryInterface(Ci.nsIPropertyElement);
+            for (let str of bundle.getSimpleEnumeration()) {
                 if (str.key in data) {
                     strings[str.key] = bundle.formatStringFromName(str.key, data[str.key], data[str.key].length);
                 } else {
@@ -563,17 +561,15 @@ var pktUI = (function() {
         if (!PrivateBrowsingUtils.isWindowPrivate(recentWindow) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing) {
           recentWindow.openWebLinkIn(url, "tab", {
-            triggeringPrincipal: aTriggeringPrincipal
+            triggeringPrincipal: aTriggeringPrincipal,
           });
           return;
         }
 
-        let windows = Services.wm.getEnumerator("navigator:browser");
-        while (windows.hasMoreElements()) {
-          let win = windows.getNext();
+        for (let win of Services.wm.getEnumerator("navigator:browser")) {
           if (!PrivateBrowsingUtils.isWindowPrivate(win)) {
             win.openWebLinkIn(url, "tab", {
-              triggeringPrincipal: aTriggeringPrincipal
+              triggeringPrincipal: aTriggeringPrincipal,
             });
             return;
           }
@@ -581,7 +577,7 @@ var pktUI = (function() {
 
         // If there were no non-private windows opened already.
         recentWindow.openWebLinkIn(url, "window", {
-          triggeringPrincipal: aTriggeringPrincipal
+          triggeringPrincipal: aTriggeringPrincipal,
         });
     }
 
@@ -644,7 +640,7 @@ var pktUI = (function() {
         pocketPanelDidHide,
 
         tryToSaveUrl,
-        tryToSaveCurrentPage
+        tryToSaveCurrentPage,
     };
 }());
 
@@ -782,6 +778,6 @@ var pktUIMessaging = (function() {
         sendMessageToPanel,
         sendResponseMessageToPanel,
         sendErrorMessageToPanel,
-        sendErrorResponseMessageToPanel
+        sendErrorResponseMessageToPanel,
     };
 }());

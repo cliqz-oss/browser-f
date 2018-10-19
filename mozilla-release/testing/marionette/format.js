@@ -7,19 +7,20 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const {Log} = ChromeUtils.import("chrome://marionette/content/log.js", {});
+const {MarionettePrefs} = ChromeUtils.import("chrome://marionette/content/prefs.js", {});
 
 XPCOMUtils.defineLazyGetter(this, "log", Log.get);
 
 this.EXPORTED_SYMBOLS = ["pprint", "truncate"];
 
+const ELEMENT_NODE = 1;
 const MAX_STRING_LENGTH = 250;
 
 /**
  * Pretty-print values passed to template strings.
  *
- * Usage:
+ * Usage::
  *
- * <pre><code>
  *     const {pprint} = Cu.import("chrome://marionette/content/error.js", {});
  *     let bool = {value: true};
  *     pprint`Expected boolean, got ${bool}`;
@@ -31,13 +32,12 @@ const MAX_STRING_LENGTH = 250;
  *
  *     pprint`Current window: ${window}`;
  *     => '[object Window https://www.mozilla.org/]'
- * </code></pre>
  */
 function pprint(ss, ...values) {
   function pretty(val) {
     let proto = Object.prototype.toString.call(val);
-
-    if (val && val.nodeType === 1) {
+    if (typeof val == "object" && val !== null &&
+        "nodeType" in val && val.nodeType === ELEMENT_NODE) {
       return prettyElement(val);
     } else if (["[object Window]", "[object ChromeWindow]"].includes(proto)) {
       return prettyWindowGlobal(val);
@@ -114,15 +114,15 @@ this.pprint = pprint;
  * like "X <...> Y", where X and Y are half the number of characters
  * of the maximum string length from either side of the string.
  *
- * Usage:
+ * If the `marionette.log.truncate` preference is false, this
+ * function acts as a no-op.
  *
- * <pre><code>
+ * Usage::
+ *
  *     truncate`Hello ${"x".repeat(260)}!`;
  *     // Hello xxx ... xxx!
- * </code></pre>
  *
- * Functions named <code>toJSON</code> or <code>toString</code>
- * on objects will be called.
+ * Functions named `toJSON` or `toString` on objects will be called.
  */
 function truncate(strings, ...values) {
   function walk(obj) {
@@ -136,10 +136,12 @@ function truncate(strings, ...values) {
         return obj;
 
       case "[object String]":
-        if (obj.length > MAX_STRING_LENGTH) {
-          let s1 = obj.substring(0, (MAX_STRING_LENGTH / 2));
-          let s2 = obj.substring(obj.length - (MAX_STRING_LENGTH / 2));
-          return `${s1} ... ${s2}`;
+        if (MarionettePrefs.truncateLog) {
+          if (obj.length > MAX_STRING_LENGTH) {
+            let s1 = obj.substring(0, (MAX_STRING_LENGTH / 2));
+            let s2 = obj.substring(obj.length - (MAX_STRING_LENGTH / 2));
+            return `${s1} ... ${s2}`;
+          }
         }
         return obj;
 

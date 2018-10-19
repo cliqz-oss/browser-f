@@ -138,7 +138,6 @@ ARCHIVE_FILES = {
             'base': '',
             'manifests': [
                 'testing/marionette/harness/marionette_harness/tests/unit-tests.ini',
-                'testing/marionette/harness/marionette_harness/tests/webapi-tests.ini',
             ],
             # We also need the manifests and harness_unit tests
             'pattern': 'testing/marionette/harness/marionette_harness/tests/**',
@@ -220,6 +219,12 @@ ARCHIVE_FILES = {
             'base': 'testing/web-platform/tests/tools/wptserve',
             'pattern': '**',
             'dest': 'tools/wptserve',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/web-platform/tests/tools/third_party',
+            'pattern': '**',
+            'dest': 'tools/wpt_third_party',
         },
         {
             'source': buildconfig.topsrcdir,
@@ -574,7 +579,7 @@ def find_files(archive):
 
     if archive == 'common':
         # Construct entries ensuring all our generated harness files are
-        # packaged in the common tests zip.
+        # packaged in the common tests archive.
         packaged_paths = set()
         for entry in OBJDIR_TEST_FILES.values():
             pat = mozpath.join(entry['base'], entry['pattern'])

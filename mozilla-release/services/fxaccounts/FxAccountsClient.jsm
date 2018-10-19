@@ -4,7 +4,6 @@
 
 var EXPORTED_SYMBOLS = ["FxAccountsClient"];
 
-ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://services-common/utils.js");
 ChromeUtils.import("resource://services-common/hawkclient.js");
@@ -288,7 +287,7 @@ this.FxAccountsClient.prototype = {
 
       return {
         kA: keyAWrapB.slice(0, 32),
-        wrapKB: keyAWrapB.slice(32)
+        wrapKB: keyAWrapB.slice(32),
       };
     });
   },
@@ -381,6 +380,8 @@ this.FxAccountsClient.prototype = {
    *         Device type (mobile|desktop)
    * @param  [options]
    *         Extra device options
+   * @param  [options.availableCommands]
+   *         Available commands for this device
    * @param  [options.pushCallback]
    *         `pushCallback` push endpoint callback
    * @param  [options.pushPublicKey]
@@ -409,6 +410,7 @@ this.FxAccountsClient.prototype = {
       body.pushPublicKey = options.pushPublicKey;
       body.pushAuthKey = options.pushAuthKey;
     }
+    body.availableCommands = options.availableCommands;
 
     return this._request(path, "POST", creds, body);
   },
@@ -437,7 +439,7 @@ this.FxAccountsClient.prototype = {
     const body = {
       to: deviceIds || "all",
       payload,
-      TTL
+      TTL,
     };
     if (excludedIds) {
       body.excluded = excludedIds;
@@ -447,15 +449,15 @@ this.FxAccountsClient.prototype = {
   },
 
   /**
-   * Retrieves messages from our device's message box.
+   * Retrieves pending commands for our device.
    *
-   * @method getMessages
+   * @method getCommands
    * @param  sessionTokenHex - Session token obtained from signIn
    * @param  [index] - If specified, only messages received after the one who
    *                   had that index will be retrieved.
    * @param  [limit] - Maximum number of messages to retrieve.
    */
-  getMessages(sessionTokenHex, {index, limit}) {
+  getCommands(sessionTokenHex, {index, limit}) {
     const params = new URLSearchParams();
     if (index != undefined) {
       params.set("index", index);
@@ -463,29 +465,29 @@ this.FxAccountsClient.prototype = {
     if (limit != undefined) {
       params.set("limit", limit);
     }
-    const path = `/account/device/messages?${params.toString()}`;
+    const path = `/account/device/commands?${params.toString()}`;
     return this._request(path, "GET",
       deriveHawkCredentials(sessionTokenHex, "sessionToken"));
   },
 
   /**
-   * Stores a message in the recipient's message box.
+   * Invokes a command on another device.
    *
-   * @method sendMessage
+   * @method invokeCommand
    * @param  sessionTokenHex - Session token obtained from signIn
-   * @param  topic
-   * @param  to - Recipient device ID.
-   * @param  data
+   * @param  command - Name of the command to invoke
+   * @param  target - Recipient device ID.
+   * @param  payload
    * @return Promise
    *         Resolves to the request's response, (which should be an empty object)
    */
-  sendMessage(sessionTokenHex, topic, to, data) {
+  invokeCommand(sessionTokenHex, command, target, payload) {
     const body = {
-      topic,
-      to,
-      data
+      command,
+      target,
+      payload,
     };
-    return this._request("/account/devices/messages", "POST",
+    return this._request("/account/devices/invoke_command", "POST",
       deriveHawkCredentials(sessionTokenHex, "sessionToken"), body);
   },
 
@@ -501,8 +503,8 @@ this.FxAccountsClient.prototype = {
    *         Device name
    * @param  [options]
    *         Extra device options
-   * @param  options.capabilities
-   *         Device capabilities
+   * @param  [options.availableCommands]
+   *         Available commands for this device
    * @param  [options.pushCallback]
    *         `pushCallback` push endpoint callback
    * @param  [options.pushPublicKey]
@@ -528,7 +530,7 @@ this.FxAccountsClient.prototype = {
       body.pushPublicKey = options.pushPublicKey;
       body.pushAuthKey = options.pushAuthKey;
     }
-    body.capabilities = options.capabilities;
+    body.availableCommands = options.availableCommands;
 
     return this._request(path, "POST", creds, body);
   },

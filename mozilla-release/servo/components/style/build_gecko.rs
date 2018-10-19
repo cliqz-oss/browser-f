@@ -120,7 +120,6 @@ mod bindings {
         let mut file = File::open(&path).unwrap();
         let mut content = String::new();
         file.read_to_string(&mut content).unwrap();
-        println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
         added_paths.insert(path);
         // Find all includes and add them recursively
         for cap in INCLUDE_RE.captures_iter(&content) {
@@ -182,14 +181,21 @@ mod bindings {
             // Disable rust unions, because we replace some types inside of
             // them.
             let mut builder = Builder::default().rust_target(RustTarget::Stable_1_0);
-            let rustfmt_path = env::var_os("MOZ_AUTOMATION")
-                .and_then(|_| env::var_os("TOOLTOOL_DIR").or_else(|| env::var_os("MOZ_SRC")))
-                .map(PathBuf::from);
 
-            builder = match rustfmt_path {
-                Some(path) => builder.with_rustfmt(path.join("rustc").join("bin").join("rustfmt")),
-                None => builder.rustfmt_bindings(env::var_os("STYLO_RUSTFMT_BINDINGS").is_some()),
-            };
+            let rustfmt_path = env::var_os("RUSTFMT")
+                // This can be replaced with
+                // > .filter(|p| !p.is_empty()).map(PathBuf::from)
+                // once we can use 1.27+.
+                .and_then(|p| {
+                    if p.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(p))
+                    }
+                });
+            if let Some(path) = rustfmt_path {
+                builder = builder.with_rustfmt(path);
+            }
 
             for dir in SEARCH_PATHS.iter() {
                 builder = builder.clang_arg("-I").clang_arg(dir.to_str().unwrap());
@@ -279,6 +285,7 @@ mod bindings {
                 );
             },
         };
+
         for fixup in fixups.iter() {
             result = Regex::new(&fixup.pat)
                 .unwrap()
@@ -399,11 +406,7 @@ mod bindings {
     fn generate_structs() {
         let builder = Builder::get_initial_builder()
             .enable_cxx_namespaces()
-            .with_codegen_config(CodegenConfig {
-                types: true,
-                vars: true,
-                ..CodegenConfig::nothing()
-            });
+            .with_codegen_config(CodegenConfig::TYPES | CodegenConfig::VARS);
         let mut fixups = vec![];
         let builder = BuilderWithConfig::new(builder, CONFIG["structs"].as_table().unwrap())
             .handle_common(&mut fixups)
@@ -493,10 +496,7 @@ mod bindings {
     fn generate_bindings() {
         let builder = Builder::get_initial_builder()
             .disable_name_namespacing()
-            .with_codegen_config(CodegenConfig {
-                functions: true,
-                ..CodegenConfig::nothing()
-            });
+            .with_codegen_config(CodegenConfig::FUNCTIONS);
         let config = CONFIG["bindings"].as_table().unwrap();
         let mut structs_types = HashSet::new();
         let mut fixups = vec![];
@@ -594,6 +594,10 @@ mod bindings {
             generate_structs(),
             generate_bindings(),
             generate_atoms(),
+        }
+
+        for path in ADDED_PATHS.lock().unwrap().iter() {
+            println!("cargo:rerun-if-changed={}", path.to_str().unwrap());
         }
     }
 }

@@ -30,7 +30,7 @@ addMessageListener(TEST_MSG, msg => {
 
     content.dispatchEvent(
       new content.CustomEvent(CLIENT_EVENT_TYPE, {
-        detail: msg.data,
+        detail: Cu.cloneInto(msg.data, content),
       })
     );
 
@@ -52,8 +52,8 @@ var webProgressListener;
 
 function waitForLoadAndStopIt(expectedURL) {
   return new Promise(resolve => {
-    let webProgress = content.document.docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                                               .getInterface(Ci.nsIWebProgress);
+    let webProgress = content.docShell.QueryInterface(Ci.nsIInterfaceRequestor)
+                                      .getInterface(Ci.nsIWebProgress);
     webProgressListener = {
       onStateChange(webProg, req, flags, status) {
         if (req instanceof Ci.nsIChannel) {

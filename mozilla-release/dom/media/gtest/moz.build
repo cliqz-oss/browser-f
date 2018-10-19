@@ -4,6 +4,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+include('/media/webrtc/webrtc.mozbuild')
+
+
+LOCAL_INCLUDES += [
+    '/media/webrtc/signaling/src/common',
+    '/media/webrtc/trunk'
+]
+
 UNIFIED_SOURCES += [
     'MockMediaResource.cpp',
     'TestAudioBuffers.cpp',
@@ -12,6 +20,7 @@ UNIFIED_SOURCES += [
     'TestAudioPacketizer.cpp',
     'TestAudioSegment.cpp',
     'TestAudioTrackEncoder.cpp',
+    'TestBitWriter.cpp',
     'TestBlankVideoDataCreator.cpp',
     'TestCDMStorage.cpp',
     'TestDataMutex.cpp',
@@ -35,6 +44,11 @@ if CONFIG['MOZ_WEBM_ENCODER']:
     UNIFIED_SOURCES += [
         'TestVideoTrackEncoder.cpp',
         'TestWebMWriter.cpp',
+    ]
+
+if CONFIG['MOZ_WEBRTC']:
+    UNIFIED_SOURCES += [
+        'TestAudioDeviceEnumerator.cpp',
     ]
 
 TEST_HARNESS_FILES.gtest += [
@@ -78,3 +92,9 @@ FINAL_LIBRARY = 'xul-gtest'
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+
+if CONFIG['CC_TYPE'] == 'clang':
+    CXXFLAGS += ['-Wno-unused-private-field']
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

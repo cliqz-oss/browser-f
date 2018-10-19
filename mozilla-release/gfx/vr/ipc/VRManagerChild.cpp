@@ -44,6 +44,7 @@ VRManagerChild::VRManagerChild()
   , mBackend(layers::LayersBackend::LAYERS_NONE)
   , mPromiseID(0)
   , mVRMockDisplay(nullptr)
+  , mLastControllerState{}
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -442,6 +443,15 @@ VRManagerChild::RunFrameRequestCallbacks()
 }
 
 void
+VRManagerChild::NotifyPresentationGenerationChanged(uint32_t aDisplayID) {
+  nsContentUtils::AddScriptRunner(NewRunnableMethod<uint32_t>(
+    "gfx::VRManagerChild::NotifyPresentationGenerationChangedInternal",
+    this,
+    &VRManagerChild::NotifyPresentationGenerationChangedInternal,
+    aDisplayID));
+}
+
+void
 VRManagerChild::FireDOMVRDisplayMountedEvent(uint32_t aDisplayID)
 {
   nsContentUtils::AddScriptRunner(NewRunnableMethod<uint32_t>(
@@ -551,6 +561,15 @@ VRManagerChild::FireDOMVRDisplayConnectEventsForLoadInternal(uint32_t aDisplayID
                                                             dom::VREventObserver* aObserver)
 {
   aObserver->NotifyVRDisplayConnect(aDisplayID);
+}
+
+void
+VRManagerChild::NotifyPresentationGenerationChangedInternal(uint32_t aDisplayID) {
+  nsTArray<RefPtr<dom::VREventObserver>> listeners;
+  listeners = mListeners;
+  for (auto& listener : listeners) {
+    listener->NotifyPresentationGenerationChanged(aDisplayID);
+  }
 }
 
 void

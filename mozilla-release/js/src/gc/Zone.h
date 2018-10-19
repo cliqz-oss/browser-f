@@ -11,15 +11,14 @@
 #include "mozilla/HashFunctions.h"
 
 #include "gc/FindSCCs.h"
-#include "gc/GCRuntime.h"
 #include "js/GCHashTable.h"
 #include "vm/MallocProvider.h"
-#include "vm/RegExpShared.h"
 #include "vm/Runtime.h"
 
 namespace js {
 
 class Debugger;
+class RegExpZone;
 
 namespace jit {
 class JitZone;
@@ -99,6 +98,8 @@ class MOZ_NON_TEMPORARY_CLASS FunctionToStringCache
 
 namespace JS {
 
+// [SMDOC] GC Zones
+//
 // A zone is a collection of compartments. Every compartment belongs to exactly
 // one zone. In Firefox, there is roughly one zone per tab along with a system
 // zone for everything else. Zones mainly serve as boundaries for garbage
@@ -158,7 +159,8 @@ class Zone : public JS::shadow::Zone,
         Pending,
         Active
     };
-    mozilla::Atomic<HelperThreadUse> helperThreadUse_;
+    mozilla::Atomic<HelperThreadUse, mozilla::SequentiallyConsistent,
+                    mozilla::recordreplay::Behavior::DontPreserve> helperThreadUse_;
 
     // The helper thread context with exclusive access to this zone, if
     // usedByHelperThread(), or nullptr when on the main thread.
@@ -215,12 +217,8 @@ class Zone : public JS::shadow::Zone,
     }
 
     MOZ_MUST_USE void* onOutOfMemory(js::AllocFunction allocFunc, size_t nbytes,
-                                     void* reallocPtr = nullptr) {
-        if (!js::CurrentThreadCanAccessRuntime(runtime_))
-            return nullptr;
-        return runtimeFromMainThread()->onOutOfMemory(allocFunc, nbytes, reallocPtr);
-    }
-    void reportAllocationOverflow() { js::ReportAllocationOverflow(nullptr); }
+                                     void* reallocPtr = nullptr);
+    void reportAllocationOverflow();
 
     void beginSweepTypes(bool releaseTypes);
 
@@ -256,13 +254,6 @@ class Zone : public JS::shadow::Zone,
             return needsIncrementalBarrier();
     }
 
-    // If this returns true, all object tracing must be done with a GC marking
-    // tracer.
-    bool requireGCTracer() const {
-        JSRuntime* rt = runtimeFromAnyThread();
-        return RuntimeHeapIsMajorCollecting() && !rt->gc.isHeapCompacting() && gcState_ != NoGC;
-    }
-
     bool shouldMarkInZone() const {
         return needsIncrementalBarrier() || isGCMarking();
     }
@@ -270,12 +261,6 @@ class Zone : public JS::shadow::Zone,
     // Get a number that is incremented whenever this zone is collected, and
     // possibly at other times too.
     uint64_t gcNumber();
-
-    bool compileBarriers() const { return compileBarriers(needsIncrementalBarrier()); }
-    bool compileBarriers(bool needsIncrementalBarrier) const {
-        return needsIncrementalBarrier ||
-               runtimeFromMainThread()->hasZealMode(js::gc::ZealMode::VerifierPre);
-    }
 
     void setNeedsIncrementalBarrier(bool needs);
     const uint32_t* addressOfNeedsIncrementalBarrier() const { return &needsIncrementalBarrier_; }
@@ -289,6 +274,10 @@ class Zone : public JS::shadow::Zone,
     void prepareForCompacting();
 
 #ifdef DEBUG
+    // If this returns true, all object tracing must be done with a GC marking
+    // tracer.
+    bool requireGCTracer() const;
+
     // For testing purposes, return the index of the sweep group which this zone
     // was swept in in the last GC.
     unsigned lastSweepGroupIndex() { return gcLastSweepGroupIndex; }
@@ -336,6 +325,20 @@ class Zone : public JS::shadow::Zone,
     js::ZoneData<bool> suppressAllocationMetadataBuilder;
 
     js::gc::ArenaLists arenas;
+
+  private:
+    // Number of allocations since the most recent minor GC for this thread.
+    mozilla::Atomic<uint32_t, mozilla::Relaxed, mozilla::recordreplay::Behavior::DontPreserve>
+        tenuredAllocsSinceMinorGC_;
+
+  public:
+    void addTenuredAllocsSinceMinorGC(uint32_t allocs) {
+        tenuredAllocsSinceMinorGC_ += allocs;
+    }
+
+    uint32_t getAndResetTenuredAllocsSinceMinorGC() {
+        return tenuredAllocsSinceMinorGC_.exchange(0);
+    }
 
     js::TypeZone types;
 
@@ -426,24 +429,16 @@ class Zone : public JS::shadow::Zone,
         if (MOZ_LIKELY(trigger == js::gc::NoTrigger) || trigger <= counter.triggered())
             return;
 
-        if (!js::CurrentThreadCanAccessRuntime(rt))
-            return;
-
-        bool wouldInterruptGC = rt->gc.isIncrementalGCInProgress() && !isCollecting();
-        if (wouldInterruptGC && !counter.shouldResetIncrementalGC(rt->gc.tunables))
-            return;
-
-        if (!rt->gc.triggerZoneGC(this, JS::gcreason::TOO_MUCH_MALLOC,
-                                  counter.bytes(), counter.maxBytes()))
-        {
-            return;
-        }
-
-        counter.recordTrigger(trigger);
+        maybeTriggerGCForTooMuchMalloc(counter, trigger);
     }
 
+    void maybeTriggerGCForTooMuchMalloc(js::gc::MemoryCounter& counter,
+                                        js::gc::TriggerKind trigger);
+
+    js::MainThreadData<js::UniquePtr<js::RegExpZone>> regExps_;
+
   public:
-    js::RegExpZone regExps;
+    js::RegExpZone& regExps() { return *regExps_.ref(); }
 
     JS::WeakCache<TypeDescrObjectSet>& typeDescrObjects() { return typeDescrObjects_.ref(); }
 
@@ -465,20 +460,9 @@ class Zone : public JS::shadow::Zone,
         updateMemoryCounter(jitCodeCounter, nbytes);
     }
 
-    void updateAllGCMallocCountersOnGCStart() {
-        gcMallocCounter.updateOnGCStart();
-        jitCodeCounter.updateOnGCStart();
-    }
-    void updateAllGCMallocCountersOnGCEnd(const js::AutoLockGC& lock) {
-        auto& gc = runtimeFromAnyThread()->gc;
-        gcMallocCounter.updateOnGCEnd(gc.tunables, lock);
-        jitCodeCounter.updateOnGCEnd(gc.tunables, lock);
-    }
-    js::gc::TriggerKind shouldTriggerGCForTooMuchMalloc() {
-        auto& gc = runtimeFromAnyThread()->gc;
-        return std::max(gcMallocCounter.shouldTriggerGC(gc.tunables),
-                        jitCodeCounter.shouldTriggerGC(gc.tunables));
-    }
+    void updateAllGCMallocCountersOnGCStart();
+    void updateAllGCMallocCountersOnGCEnd(const js::AutoLockGC& lock);
+    js::gc::TriggerKind shouldTriggerGCForTooMuchMalloc();
 
     void keepAtoms() {
         keepAtomsCount++;
@@ -587,111 +571,34 @@ class Zone : public JS::shadow::Zone,
     js::MainThreadData<unsigned> gcLastSweepGroupIndex;
 #endif
 
-    static js::HashNumber UniqueIdToHash(uint64_t uid) {
-        return mozilla::HashGeneric(uid);
-    }
+    static js::HashNumber UniqueIdToHash(uint64_t uid);
 
     // Creates a HashNumber based on getUniqueId. Returns false on OOM.
-    MOZ_MUST_USE bool getHashCode(js::gc::Cell* cell, js::HashNumber* hashp) {
-        uint64_t uid;
-        if (!getOrCreateUniqueId(cell, &uid))
-            return false;
-        *hashp = UniqueIdToHash(uid);
-        return true;
-    }
+    MOZ_MUST_USE bool getHashCode(js::gc::Cell* cell, js::HashNumber* hashp);
 
     // Gets an existing UID in |uidp| if one exists.
-    MOZ_MUST_USE bool maybeGetUniqueId(js::gc::Cell* cell, uint64_t* uidp) {
-        MOZ_ASSERT(uidp);
-        MOZ_ASSERT(js::CurrentThreadCanAccessZone(this));
-
-        // Get an existing uid, if one has been set.
-        auto p = uniqueIds().lookup(cell);
-        if (p)
-            *uidp = p->value();
-
-        return p.found();
-    }
+    MOZ_MUST_USE bool maybeGetUniqueId(js::gc::Cell* cell, uint64_t* uidp);
 
     // Puts an existing UID in |uidp|, or creates a new UID for this Cell and
     // puts that into |uidp|. Returns false on OOM.
-    MOZ_MUST_USE bool getOrCreateUniqueId(js::gc::Cell* cell, uint64_t* uidp) {
-        MOZ_ASSERT(uidp);
-        MOZ_ASSERT(js::CurrentThreadCanAccessZone(this) || js::CurrentThreadIsPerformingGC());
+    MOZ_MUST_USE bool getOrCreateUniqueId(js::gc::Cell* cell, uint64_t* uidp);
 
-        // Get an existing uid, if one has been set.
-        auto p = uniqueIds().lookupForAdd(cell);
-        if (p) {
-            *uidp = p->value();
-            return true;
-        }
-
-        MOZ_ASSERT(js::CurrentThreadCanAccessZone(this));
-
-        // Set a new uid on the cell.
-        *uidp = js::gc::NextCellUniqueId(runtimeFromAnyThread());
-        if (!uniqueIds().add(p, cell, *uidp))
-            return false;
-
-        // If the cell was in the nursery, hopefully unlikely, then we need to
-        // tell the nursery about it so that it can sweep the uid if the thing
-        // does not get tenured.
-        if (IsInsideNursery(cell) &&
-            !runtimeFromMainThread()->gc.nursery().addedUniqueIdToCell(cell))
-        {
-            uniqueIds().remove(cell);
-            return false;
-        }
-
-        return true;
-    }
-
-    js::HashNumber getHashCodeInfallible(js::gc::Cell* cell) {
-        return UniqueIdToHash(getUniqueIdInfallible(cell));
-    }
-
-    uint64_t getUniqueIdInfallible(js::gc::Cell* cell) {
-        uint64_t uid;
-        js::AutoEnterOOMUnsafeRegion oomUnsafe;
-        if (!getOrCreateUniqueId(cell, &uid))
-            oomUnsafe.crash("failed to allocate uid");
-        return uid;
-    }
+    js::HashNumber getHashCodeInfallible(js::gc::Cell* cell);
+    uint64_t getUniqueIdInfallible(js::gc::Cell* cell);
 
     // Return true if this cell has a UID associated with it.
-    MOZ_MUST_USE bool hasUniqueId(js::gc::Cell* cell) {
-        MOZ_ASSERT(js::CurrentThreadCanAccessZone(this) || js::CurrentThreadIsPerformingGC());
-        return uniqueIds().has(cell);
-    }
+    MOZ_MUST_USE bool hasUniqueId(js::gc::Cell* cell);
 
     // Transfer an id from another cell. This must only be called on behalf of a
     // moving GC. This method is infallible.
-    void transferUniqueId(js::gc::Cell* tgt, js::gc::Cell* src) {
-        MOZ_ASSERT(src != tgt);
-        MOZ_ASSERT(!IsInsideNursery(tgt));
-        MOZ_ASSERT(js::CurrentThreadCanAccessRuntime(runtimeFromMainThread()));
-        MOZ_ASSERT(js::CurrentThreadCanAccessZone(this));
-        MOZ_ASSERT(!uniqueIds().has(tgt));
-        uniqueIds().rekeyIfMoved(src, tgt);
-    }
+    void transferUniqueId(js::gc::Cell* tgt, js::gc::Cell* src);
 
     // Remove any unique id associated with this Cell.
-    void removeUniqueId(js::gc::Cell* cell) {
-        MOZ_ASSERT(js::CurrentThreadCanAccessZone(this));
-        uniqueIds().remove(cell);
-    }
+    void removeUniqueId(js::gc::Cell* cell);
 
     // When finished parsing off-thread, transfer any UIDs we created in the
     // off-thread zone into the target zone.
-    void adoptUniqueIds(JS::Zone* source) {
-        js::AutoEnterOOMUnsafeRegion oomUnsafe;
-        for (js::gc::UniqueIdMap::Enum e(source->uniqueIds()); !e.empty(); e.popFront()) {
-            MOZ_ASSERT(!uniqueIds().has(e.front().key()));
-            if (!uniqueIds().put(e.front().key(), e.front().value()))
-                oomUnsafe.crash("failed to transfer unique ids from off-thread");
-        }
-        source->uniqueIds().clear();
-    }
+    void adoptUniqueIds(JS::Zone* source);
 
 #ifdef JSGC_HASH_TABLE_CHECKS
     // Assert that the UniqueId table has been redirected successfully.
@@ -707,28 +614,6 @@ class Zone : public JS::shadow::Zone,
 
     // Delete an empty compartment after its contents have been merged.
     void deleteEmptyCompartment(JS::Compartment* comp);
-
-    /*
-     * This variation of calloc will call the large-allocation-failure callback
-     * on OOM and retry the allocation.
-     */
-    template <typename T>
-    T* pod_callocCanGC(size_t numElems) {
-        T* p = pod_calloc<T>(numElems);
-        if (MOZ_LIKELY(!!p))
-            return p;
-        size_t bytes;
-        if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
-            reportAllocationOverflow();
-            return nullptr;
-        }
-        JSRuntime* rt = runtimeFromMainThread();
-        p = static_cast<T*>(rt->onOutOfMemoryCanGC(js::AllocFunction::Calloc, bytes));
-        if (!p)
-            return nullptr;
-        updateMallocCounter(bytes);
-        return p;
-    }
 
     // Non-zero if the storage underlying any typed object in this zone might
     // be detached. This is stored in Zone because IC stubs bake in a pointer
@@ -760,47 +645,50 @@ class Zone : public JS::shadow::Zone,
 
 namespace js {
 
-template <typename T>
-inline T*
-ZoneAllocPolicy::maybe_pod_malloc(size_t numElems)
+/*
+ * Allocation policy that uses Zone::pod_malloc and friends, so that memory
+ * pressure is accounted for on the zone. This is suitable for memory associated
+ * with GC things allocated in the zone.
+ *
+ * Since it doesn't hold a JSContext (those may not live long enough), it can't
+ * report out-of-memory conditions itself; the caller must check for OOM and
+ * take the appropriate action.
+ *
+ * FIXME bug 647103 - replace these *AllocPolicy names.
+ */
+class ZoneAllocPolicy
 {
-    return zone->maybe_pod_malloc<T>(numElems);
-}
+    JS::Zone* const zone;
 
-template <typename T>
-inline T*
-ZoneAllocPolicy::maybe_pod_calloc(size_t numElems)
-{
-    return zone->maybe_pod_calloc<T>(numElems);
-}
+  public:
+    MOZ_IMPLICIT ZoneAllocPolicy(JS::Zone* z) : zone(z) {}
 
-template <typename T>
-inline T*
-ZoneAllocPolicy::maybe_pod_realloc(T* p, size_t oldSize, size_t newSize)
-{
-    return zone->maybe_pod_realloc<T>(p, oldSize, newSize);
-}
+    template <typename T> T* maybe_pod_malloc(size_t numElems) {
+        return zone->maybe_pod_malloc<T>(numElems);
+    }
+    template <typename T> T* maybe_pod_calloc(size_t numElems) {
+        return zone->maybe_pod_calloc<T>(numElems);
+    }
+    template <typename T> T* maybe_pod_realloc(T* p, size_t oldSize, size_t newSize) {
+        return zone->maybe_pod_realloc<T>(p, oldSize, newSize);
+    }
+    template <typename T> T* pod_malloc(size_t numElems) {
+        return zone->pod_malloc<T>(numElems);
+    }
+    template <typename T> T* pod_calloc(size_t numElems) {
+        return zone->pod_calloc<T>(numElems);
+    }
+    template <typename T> T* pod_realloc(T* p, size_t oldSize, size_t newSize) {
+        return zone->pod_realloc<T>(p, oldSize, newSize);
+    }
 
-template <typename T>
-inline T*
-ZoneAllocPolicy::pod_malloc(size_t numElems)
-{
-    return zone->pod_malloc<T>(numElems);
-}
+    template <typename T> void free_(T* p, size_t numElems = 0) { js_free(p); }
+    void reportAllocOverflow() const {}
 
-template <typename T>
-inline T*
-ZoneAllocPolicy::pod_calloc(size_t numElems)
-{
-    return zone->pod_calloc<T>(numElems);
-}
-
-template <typename T>
-inline T*
-ZoneAllocPolicy::pod_realloc(T* p, size_t oldSize, size_t newSize)
-{
-    return zone->pod_realloc<T>(p, oldSize, newSize);
-}
+    MOZ_MUST_USE bool checkSimulatedOOM() const {
+        return !js::oom::ShouldFailWithOOM();
+    }
+};
 
 } // namespace js
 

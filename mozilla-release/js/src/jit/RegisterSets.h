@@ -19,10 +19,13 @@ namespace js {
 namespace jit {
 
 struct AnyRegister {
-    typedef uint32_t Code;
+    typedef uint8_t Code;
 
-    static const uint32_t Total = Registers::Total + FloatRegisters::Total;
-    static const uint32_t Invalid = UINT_MAX;
+    static const uint8_t Total = Registers::Total + FloatRegisters::Total;
+    static const uint8_t Invalid = UINT8_MAX;
+
+    static_assert(size_t(Registers::Total) + FloatRegisters::Total <= UINT8_MAX,
+                  "Number of registers must fit in uint8_t");
 
   private:
     Code code_;
@@ -36,7 +39,7 @@ struct AnyRegister {
     explicit AnyRegister(FloatRegister fpu) {
         code_ = fpu.code() + Registers::Total;
     }
-    static AnyRegister FromCode(uint32_t i) {
+    static AnyRegister FromCode(uint8_t i) {
         MOZ_ASSERT(i < Total);
         AnyRegister r;
         r.code_ = i;
@@ -72,7 +75,7 @@ struct AnyRegister {
     bool volatile_() const {
         return isFloat() ? fpu().volatile_() : gpr().volatile_();
     }
-    AnyRegister aliased(uint32_t aliasIdx) const {
+    AnyRegister aliased(uint8_t aliasIdx) const {
         AnyRegister ret;
         if (isFloat())
             ret = AnyRegister(fpu().aliased(aliasIdx));
@@ -81,7 +84,7 @@ struct AnyRegister {
         MOZ_ASSERT_IF(aliasIdx == 0, ret == *this);
         return ret;
     }
-    uint32_t numAliased() const {
+    uint8_t numAliased() const {
         if (isFloat())
             return fpu().numAliased();
         return gpr().numAliased();
@@ -125,7 +128,7 @@ class ValueOperand
     Register payloadReg() const {
         return payload_;
     }
-    bool aliases(Register reg) const {
+    constexpr bool aliases(Register reg) const {
         return type_ == reg || payload_ == reg;
     }
     Register payloadOrValueReg() const {
@@ -149,7 +152,7 @@ class ValueOperand
     Register valueReg() const {
         return value_;
     }
-    bool aliases(Register reg) const {
+    constexpr bool aliases(Register reg) const {
         return value_ == reg;
     }
     Register payloadOrValueReg() const {
@@ -466,6 +469,8 @@ class RegisterSet {
     }
 };
 
+// [SMDOC] JIT Register-Set overview
+//
 // There are 2 use cases for register sets:
 //
 //   1. To serve as a pool of allocatable register. This is useful for working
@@ -504,6 +509,8 @@ class AllocatableSet;
 template <typename RegisterSet>
 class LiveSet;
 
+// [SMDOC] JIT Register-Set (Allocatable)
+//
 // Base accessors classes have the minimal set of raw methods to manipulate the register set
 // given as parameter in a consistent manner.  These methods are:
 //
@@ -620,6 +627,8 @@ class AllocatableSetAccessors<RegisterSet>
 };
 
 
+// [SMDOC] JIT Register-Set (Live)
+//
 // The LiveSet accessors are used to collect a list of allocated
 // registers. Taking or adding a register should *not* consider the aliases, as
 // we care about interpreting the registers with the correct type.  For example,
@@ -744,13 +753,13 @@ class SpecializedRegSet : public Accessors
 
     using Parent::addUnchecked;
     void add(RegType reg) {
-        MOZ_ASSERT(!has(reg));
+        MOZ_ASSERT(!this->has(reg));
         addUnchecked(reg);
     }
 
     using Parent::takeUnchecked;
     void take(RegType reg) {
-        MOZ_ASSERT(has(reg));
+        MOZ_ASSERT(this->has(reg));
         takeUnchecked(reg);
     }
 
@@ -783,7 +792,7 @@ class SpecializedRegSet : public Accessors
 
     template <RegTypeName Name = RegSet::DefaultType>
     RegType getAnyExcluding(RegType preclude) {
-        if (!has(preclude))
+        if (!this->has(preclude))
             return getAny<Name>();
 
         take(preclude);
@@ -823,9 +832,9 @@ class SpecializedRegSet : public Accessors
 
     bool aliases(ValueOperand v) const {
 #ifdef JS_NUNBOX32
-        return has(v.typeReg()) || has(v.payloadReg());
+        return this->has(v.typeReg()) || this->has(v.payloadReg());
 #else
-        return has(v.valueReg());
+        return this->has(v.valueReg());
 #endif
     }
 
@@ -868,7 +877,7 @@ class SpecializedRegSet<Accessors, RegisterSet> : public Accessors
 
     using Parent::has;
     bool has(AnyRegister reg) const {
-        return reg.isFloat() ? has(reg.fpu()) : has(reg.gpr());
+        return reg.isFloat() ? this->has(reg.fpu()) : this->has(reg.gpr());
     }
 
     template <RegTypeName Name>
@@ -887,11 +896,11 @@ class SpecializedRegSet<Accessors, RegisterSet> : public Accessors
     }
 
     void add(Register reg) {
-        MOZ_ASSERT(!has(reg));
+        MOZ_ASSERT(!this->has(reg));
         addUnchecked(reg);
     }
     void add(FloatRegister reg) {
-        MOZ_ASSERT(!has(reg));
+        MOZ_ASSERT(!this->has(reg));
         addUnchecked(reg);
     }
     void add(AnyRegister reg) {
@@ -917,7 +926,7 @@ class SpecializedRegSet<Accessors, RegisterSet> : public Accessors
         takeUnchecked(reg);
     }
     void take(FloatRegister reg) {
-        MOZ_ASSERT(has(reg));
+        MOZ_ASSERT(this->has(reg));
         takeUnchecked(reg);
     }
     void take(AnyRegister reg) {

@@ -17,6 +17,7 @@
 #include "js/Date.h"
 #include "js/Proxy.h"
 #include "js/RootingAPI.h"
+#include "js/StableStringChars.h"
 #include "js/Wrapper.h"
 #include "proxy/DeadObjectProxy.h"
 #include "vm/Debugger.h"
@@ -36,21 +37,13 @@
 using namespace js;
 using namespace js::gc;
 
+using JS::AutoStableStringChars;
+
 Compartment::Compartment(Zone* zone)
   : zone_(zone),
-    runtime_(zone->runtimeFromAnyThread())
+    runtime_(zone->runtimeFromAnyThread()),
+    crossCompartmentWrappers(0)
 {}
-
-bool
-Compartment::init(JSContext* cx)
-{
-    if (!crossCompartmentWrappers.init(0)) {
-        ReportOutOfMemory(cx);
-        return false;
-    }
-
-    return true;
-}
 
 #ifdef JSGC_HASH_TABLE_CHECKS
 
@@ -131,22 +124,14 @@ CopyStringPure(JSContext* cx, JSString* str)
         if (!copiedChars)
             return nullptr;
 
-        auto* rawCopiedChars = copiedChars.release();
-        auto* result = NewString<CanGC>(cx, rawCopiedChars, len);
-        if (!result)
-            js_free(rawCopiedChars);
-        return result;
+        return NewString<CanGC>(cx, std::move(copiedChars), len);
     }
 
     UniqueTwoByteChars copiedChars = str->asRope().copyTwoByteCharsZ(cx);
     if (!copiedChars)
         return nullptr;
 
-    auto* rawCopiedChars = copiedChars.release();
-    auto* result = NewStringDontDeflate<CanGC>(cx, rawCopiedChars, len);
-    if (!result)
-        js_free(rawCopiedChars);
-    return result;
+    return NewStringDontDeflate<CanGC>(cx, std::move(copiedChars), len);
 }
 
 bool
@@ -363,7 +348,7 @@ Compartment::rewrap(JSContext* cx, MutableHandleObject obj, HandleObject existin
 }
 
 bool
-Compartment::wrap(JSContext* cx, MutableHandle<PropertyDescriptor> desc)
+Compartment::wrap(JSContext* cx, MutableHandle<JS::PropertyDescriptor> desc)
 {
     if (!wrap(cx, desc.object()))
         return false;

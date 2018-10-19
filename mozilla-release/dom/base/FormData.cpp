@@ -103,7 +103,7 @@ FormData::GetEncodedSubmission(nsIURI* aURI,
                                nsIInputStream** aPostDataStream,
                                nsCOMPtr<nsIURI>& aOutURI)
 {
-  NS_NOTREACHED("Shouldn't call FormData::GetEncodedSubmission");
+  MOZ_ASSERT_UNREACHABLE("Shouldn't call FormData::GetEncodedSubmission");
   return NS_OK;
 }
 
@@ -328,7 +328,7 @@ FormData::SetNameDirectoryPair(FormDataTuple* aData,
 /* virtual */ JSObject*
 FormData::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return FormDataBinding::Wrap(aCx, this, aGivenProto);
+  return FormData_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 /* static */ already_AddRefed<FormData>

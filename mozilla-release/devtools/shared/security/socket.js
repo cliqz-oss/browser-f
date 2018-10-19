@@ -353,7 +353,7 @@ function _isInputAlive(input) {
  */
 function _storeCertOverride(s, host, port) {
   // eslint-disable-next-line no-shadow
-  const cert = s.securityInfo.QueryInterface(Ci.nsISSLStatusProvider)
+  const cert = s.securityInfo.QueryInterface(Ci.nsITransportSecurityInfo)
               .SSLStatus.serverCert;
   const overrideBits = Ci.nsICertOverrideService.ERROR_UNTRUSTED |
                      Ci.nsICertOverrideService.ERROR_MISMATCH;
@@ -436,12 +436,15 @@ SocketListener.prototype = {
       if (self.isPortBased) {
         const port = Number(self.portOrPath);
         self._socket.initSpecialConnection(port, flags, backlog);
-      } else {
+      } else if (self.portOrPath.startsWith("/")) {
         const file = nsFile(self.portOrPath);
         if (file.exists()) {
           file.remove(false);
         }
         self._socket.initWithFilename(file, parseInt("666", 8), backlog);
+      } else {
+        // Path isn't absolute path, so we use abstract socket address
+        self._socket.initWithAbstractAddress(self.portOrPath, backlog);
       }
       await self._setAdditionalSocketOptions();
       self._socket.asyncListen(self);
@@ -482,7 +485,6 @@ SocketListener.prototype = {
   async _setAdditionalSocketOptions() {
     if (this.encryption) {
       this._socket.serverCert = await cert.local.getOrCreate();
-      this._socket.setSessionCache(false);
       this._socket.setSessionTickets(false);
       const requestCert = Ci.nsITLSServerSocket.REQUEST_NEVER;
       this._socket.setRequestClientCertificate(requestCert);

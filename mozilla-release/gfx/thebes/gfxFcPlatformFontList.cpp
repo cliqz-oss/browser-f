@@ -130,14 +130,14 @@ GetFaceNames(FcPattern* aFont, const nsAString& aFamilyName,
     // get the Postscript name
     FcChar8* psname;
     if (FcPatternGetString(aFont, FC_POSTSCRIPT_NAME, 0, &psname) == FcResultMatch) {
-        AppendUTF8toUTF16(ToCharPtr(psname), aPostscriptName);
+      AppendUTF8toUTF16(MakeStringSpan(ToCharPtr(psname)), aPostscriptName);
     }
 
     // get the canonical fullname (i.e. en name or first name)
     uint32_t en = FindCanonicalNameIndex(aFont, FC_FULLNAMELANG);
     FcChar8* fullname;
     if (FcPatternGetString(aFont, FC_FULLNAME, en, &fullname) == FcResultMatch) {
-        AppendUTF8toUTF16(ToCharPtr(fullname), aFullname);
+      AppendUTF8toUTF16(MakeStringSpan(ToCharPtr(fullname)), aFullname);
     }
 
     // if have fullname, done
@@ -154,7 +154,7 @@ GetFaceNames(FcPattern* aFont, const nsAString& aFamilyName,
     FcChar8* stylename = nullptr;
     FcPatternGetString(aFont, FC_STYLE, en, &stylename);
     if (stylename) {
-        AppendUTF8toUTF16(ToCharPtr(stylename), style);
+      AppendUTF8toUTF16(MakeStringSpan(ToCharPtr(stylename)), style);
     }
 
     if (!style.IsEmpty() && !style.EqualsLiteral("Regular")) {
@@ -1458,11 +1458,16 @@ already_AddRefed<ScaledFont>
 gfxFontconfigFont::GetScaledFont(mozilla::gfx::DrawTarget *aTarget)
 {
     if (!mAzureScaledFont) {
+        NativeFont nativeFont;
+        nativeFont.mType = NativeFontType::FONTCONFIG_PATTERN;
+        nativeFont.mFont = GetPattern();
+
         mAzureScaledFont =
-            Factory::CreateScaledFontForFontconfigFont(GetCairoScaledFont(),
-                                                       GetPattern(),
-                                                       GetUnscaledFont(),
-                                                       GetAdjustedSize());
+          Factory::CreateScaledFontForNativeFont(nativeFont,
+                                                 GetUnscaledFont(),
+                                                 GetAdjustedSize(),
+                                                 GetCairoScaledFont());
+        InitializeScaledFont();
     }
 
     RefPtr<ScaledFont> scaledFont(mAzureScaledFont);
@@ -1538,7 +1543,7 @@ gfxFcPlatformFontList::AddFontSetFamilies(FcFontSet* aFontSet,
             continue;
         }
 
-#ifdef MOZ_CONTENT_SANDBOX
+#if defined(MOZ_CONTENT_SANDBOX) && defined (XP_LINUX)
         // Skip any fonts that will be blocked by the content-process sandbox
         // policy.
         if (aPolicy && !(aPolicy->Lookup(reinterpret_cast<const char*>(path)) &
@@ -1573,7 +1578,7 @@ gfxFcPlatformFontList::AddPatternToFontList(FcPattern* aFont,
 
         // add new family if one doesn't already exist
         aFamilyName.Truncate();
-        AppendUTF8toUTF16(ToCharPtr(canonical), aFamilyName);
+        AppendUTF8toUTF16(MakeStringSpan(ToCharPtr(canonical)), aFamilyName);
         nsAutoString keyName(aFamilyName);
         ToLowerCase(keyName);
 
@@ -1700,7 +1705,7 @@ gfxFcPlatformFontList::InitFontListForPlatform()
 
     UniquePtr<SandboxPolicy> policy;
 
-#ifdef MOZ_CONTENT_SANDBOX
+#if defined(MOZ_CONTENT_SANDBOX) && defined (XP_LINUX)
     // If read sandboxing is enabled, create a temporary SandboxPolicy to
     // check font paths; use a fake PID to avoid picking up any PID-specific
     // rules by accident.
@@ -1805,7 +1810,7 @@ GetSystemFontList(nsTArray<nsString>& aListOfFonts, nsAtom *aLangGroup)
 
         // Remove duplicates...
         nsAutoString strFamily;
-        AppendUTF8toUTF16(family, strFamily);
+        AppendUTF8toUTF16(MakeStringSpan(family), strFamily);
         if (aListOfFonts.Contains(strFamily)) {
             continue;
         }
@@ -1841,7 +1846,7 @@ gfxFcPlatformFontList::GetFontList(nsAtom *aLangGroup,
              aGenericFamily.LowerCaseEqualsLiteral("fantasy"))
         serif = sansSerif = true;
     else
-        NS_NOTREACHED("unexpected CSS generic font family");
+        MOZ_ASSERT_UNREACHABLE("unexpected CSS generic font family");
 
     // The first in the list becomes the default in
     // FontBuilder.readFontSelection() if the preference-selected font is not

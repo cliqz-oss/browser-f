@@ -1,14 +1,16 @@
+/* -*- js-indent-level: 2; indent-tabs-mode: nil -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
+const Services = require("Services");
 const { createElement, createFactory } = require("devtools/client/shared/vendor/react");
 const ReactDOM = require("devtools/client/shared/vendor/react-dom");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
 
 const actions = require("devtools/client/webconsole/actions/index");
-const { createContextMenu } = require("devtools/client/webconsole/utils/context-menu");
+const { createContextMenu, createEditContextMenu } = require("devtools/client/webconsole/utils/context-menu");
 const { configureStore } = require("devtools/client/webconsole/store");
 const { isPacketPrivate } = require("devtools/client/webconsole/utils/messages");
 const { getAllMessagesById, getMessage } = require("devtools/client/webconsole/selectors/messages");
@@ -35,9 +37,13 @@ function WebConsoleOutputWrapper(parentNode, hud, toolbox, owner, document) {
   this.queuedRequestUpdates = [];
   this.throttledDispatchPromise = null;
 
-  this._telemetry = new Telemetry();
+  this.telemetry = new Telemetry();
 
-  store = configureStore(this.hud);
+  store = configureStore(this.hud, {
+    // We may not have access to the toolbox (e.g. in the browser console).
+    sessionId: this.toolbox && this.toolbox.sessionId || -1,
+    telemetry: this.telemetry,
+  });
 }
 
 WebConsoleOutputWrapper.prototype = {
@@ -109,6 +115,12 @@ WebConsoleOutputWrapper.prototype = {
           if (hud && hud.owner && hud.owner.viewSource) {
             hud.owner.viewSource(frame.url, frame.line);
           }
+        },
+        recordTelemetryEvent: (eventName, extra = {}) => {
+          this.telemetry.recordEvent("devtools.main", eventName, "webconsole", null, {
+            ...extra,
+            "session_id": this.toolbox && this.toolbox.sessionId || -1
+          });
         }
       };
 
@@ -140,8 +152,11 @@ WebConsoleOutputWrapper.prototype = {
 
         const sidebarTogglePref = store.getState().prefs.sidebarToggle;
         const openSidebar = sidebarTogglePref ? (messageId) => {
-          store.dispatch(actions.showObjectInSidebar(rootActorId, messageId));
+          store.dispatch(actions.showMessageObjectInSidebar(rootActorId, messageId));
         } : null;
+
+        const messageData = getMessage(store.getState(), message.messageId);
+        const executionPoint = messageData && messageData.executionPoint;
 
         const menu = createContextMenu(this.hud, this.parentNode, {
           actor,
@@ -150,9 +165,21 @@ WebConsoleOutputWrapper.prototype = {
           message,
           serviceContainer,
           openSidebar,
-          rootActorId
+          rootActorId,
+          executionPoint,
+          toolbox: this.toolbox,
         });
 
+        // Emit the "menu-open" event for testing.
+        menu.once("open", () => this.emit("menu-open"));
+        menu.popup(screenX, screenY, { doc: this.owner.chromeWindow.document });
+
+        return menu;
+      };
+
+      serviceContainer.openEditContextMenu = (e) => {
+        const { screenX, screenY } = e;
+        const menu = createEditContextMenu();
         // Emit the "menu-open" event for testing.
         menu.once("open", () => this.emit("menu-open"));
         menu.popup(screenX, screenY, { doc: this.owner.chromeWindow.document });
@@ -163,18 +190,29 @@ WebConsoleOutputWrapper.prototype = {
       if (this.toolbox) {
         Object.assign(serviceContainer, {
           onViewSourceInDebugger: frame => {
-            this.toolbox.viewSourceInDebugger(frame.url, frame.line).then(() =>
-              this.hud.emit("source-in-debugger-opened")
-            );
+            this.toolbox.viewSourceInDebugger(frame.url, frame.line).then(() => {
+              this.telemetry.recordEvent("devtools.main", "jump_to_source", "webconsole",
+                                         null, { "session_id": this.toolbox.sessionId }
+              );
+              this.hud.emit("source-in-debugger-opened");
+            });
           },
           onViewSourceInScratchpad: frame => this.toolbox.viewSourceInScratchpad(
             frame.url,
             frame.line
-          ),
+          ).then(() => {
+            this.telemetry.recordEvent("devtools.main", "jump_to_source", "webconsole",
+                                       null, { "session_id": this.toolbox.sessionId }
+            );
+          }),
           onViewSourceInStyleEditor: frame => this.toolbox.viewSourceInStyleEditor(
             frame.url,
             frame.line
-          ),
+          ).then(() => {
+            this.telemetry.recordEvent("devtools.main", "jump_to_source", "webconsole",
+                                       null, { "session_id": this.toolbox.sessionId }
+            );
+          }),
           openNetworkPanel: (requestId) => {
             return this.toolbox.selectTool("netmonitor").then((panel) => {
               return panel.panelWin.Netmonitor.inspectRequest(requestId);
@@ -192,7 +230,7 @@ WebConsoleOutputWrapper.prototype = {
               : null;
           },
           openNodeInInspector: async (grip) => {
-            const onSelectInspector = this.toolbox.selectTool("inspector");
+            const onSelectInspector = this.toolbox.selectTool("inspector", "inspect_dom");
             const onGripNodeToFront = this.toolbox.highlighterUtils.gripToNodeFront(grip);
             const [
               front,
@@ -214,7 +252,8 @@ WebConsoleOutputWrapper.prototype = {
         hud,
         onFirstMeaningfulPaint: resolve,
         closeSplitConsole: this.closeSplitConsole.bind(this),
-        jstermCodeMirror: store.getState().prefs.jstermCodeMirror,
+        jstermCodeMirror: store.getState().prefs.jstermCodeMirror
+          && !Services.appinfo.accessibilityEnabled,
       });
 
       // Render the root Application component.
@@ -398,8 +437,13 @@ WebConsoleOutputWrapper.prototype = {
         store.dispatch(actions.messagesAdd(this.queuedMessageAdds));
 
         const length = this.queuedMessageAdds.length;
-        this._telemetry.addEventProperty(
-          "devtools.main", "enter", "webconsole", null, "message_count", length);
+
+        // This telemetry event is only useful when we have a toolbox so only
+        // send it when we have one.
+        if (this.toolbox) {
+          this.telemetry.addEventProperty(
+            "devtools.main", "enter", "webconsole", null, "message_count", length);
+        }
 
         this.queuedMessageAdds = [];
 

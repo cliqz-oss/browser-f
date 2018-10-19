@@ -158,10 +158,6 @@ class MIRGenerator
         return needsOverrecursedCheck_;
     }
 
-    // Traverses the graph to find if there's any SIMD instruction. Costful but
-    // the value is cached, so don't worry about calling it several times.
-    bool usesSimd();
-
     bool modifiesFrameArguments() const {
         return modifiesFrameArguments_;
     }
@@ -185,13 +181,12 @@ class MIRGenerator
     MIRGraph* graph_;
     AbortReasonOr<Ok> offThreadStatus_;
     ObjectGroupVector abortedPreliminaryGroups_;
-    mozilla::Atomic<bool, mozilla::Relaxed> cancelBuild_;
+    mozilla::Atomic<bool, mozilla::Relaxed,
+                    mozilla::recordreplay::Behavior::DontPreserve> cancelBuild_;
 
     uint32_t wasmMaxStackArgBytes_;
     bool needsOverrecursedCheck_;
     bool needsStaticStackAlignment_;
-    bool usesSimd_;
-    bool cachedUsesSimd_;
 
     // Keep track of whether frame arguments are modified during execution.
     // RegAlloc needs to know this as spilling values back to their register

@@ -10,7 +10,7 @@ ChromeUtils.import("resource://gre/modules/TelemetryTimestamps.jsm");
 ChromeUtils.import("resource://gre/modules/TelemetryController.jsm");
 ChromeUtils.import("resource://gre/modules/TelemetryArchive.jsm");
 ChromeUtils.import("resource://gre/modules/TelemetryUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Preferences.jsm");
+ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AppConstants",
@@ -128,12 +128,7 @@ function sectionalizeObject(obj) {
  * Obtain the main DOMWindow for the current context.
  */
 function getMainWindow() {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIWebNavigation)
-               .QueryInterface(Ci.nsIDocShellTreeItem)
-               .rootTreeItem
-               .QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDOMWindow);
+  return window.docShell.rootTreeItem.domWindow;
 }
 
 /**
@@ -206,8 +201,7 @@ var Settings = {
     }
   },
 
-  getStatusStringForSetting(setting) {
-    let enabled = Preferences.get(setting.pref, setting.defaultPrefValue);
+  getStatusString(enabled) {
     let status = bundle.GetStringFromName(enabled ? "telemetryUploadEnabled" : "telemetryUploadDisabled");
     return status;
   },
@@ -217,7 +211,7 @@ var Settings = {
    */
   render() {
     let settingsExplanation = document.getElementById("settings-explanation");
-    let uploadEnabled = this.getStatusStringForSetting(this.SETTINGS[0]);
+    let uploadEnabled = this.getStatusString(TelemetrySend.sendingEnabled());
     let extendedEnabled = Services.telemetry.canRecordExtended;
     let collectedData = bundle.GetStringFromName(extendedEnabled ? "prereleaseData" : "releaseData");
     let explanation = bundle.GetStringFromName("settingsExplanation");
@@ -433,7 +427,7 @@ var PingPicker = {
       const pingDate = new Date(p.timestampCreated);
       const datetimeText = new Services.intl.DateTimeFormat(undefined, {
           dateStyle: "short",
-          timeStyle: "medium"
+          timeStyle: "medium",
         }).format(pingDate);
       const pingName = `${datetimeText}, ${p.type}`;
 
@@ -831,7 +825,7 @@ var SlowSQL = {
     let colTextElement = document.createTextNode(aColText);
     colElement.appendChild(colTextElement);
     aRowElement.appendChild(colElement);
-  }
+  },
 };
 
 var StackRenderer = {
@@ -918,7 +912,7 @@ var StackRenderer = {
 
     div.appendChild(titleElement);
     div.appendChild(document.createElement("br"));
-  }
+  },
 };
 
 var RawPayloadData = {
@@ -935,7 +929,7 @@ var RawPayloadData = {
     document.getElementById("payload-json-viewer").addEventListener("click", (e) => {
       openJsonInFirefoxJsonViewer(JSON.stringify(gPingData.payload, null, 2));
     });
-  }
+  },
 };
 
 function SymbolicationRequest(aPrefix, aRenderHeader,
@@ -1035,7 +1029,7 @@ var CapturedStacks = {
     let key = captures[index][0];
     let cardinality = captures[index][2];
     StackRenderer.renderHeader("captured-stacks", [key, cardinality]);
-  }
+  },
 };
 
 var Histogram = {
@@ -1110,7 +1104,7 @@ var Histogram = {
         pretty_average: 0,
         max: 0,
         sample_count: 0,
-        sum: 0
+        sum: 0,
       };
     }
 
@@ -1126,7 +1120,7 @@ var Histogram = {
       pretty_average: average,
       max: max_value,
       sample_count,
-      sum: aHgram.sum
+      sum: aHgram.sum,
     };
 
     return result;
@@ -1210,7 +1204,7 @@ var Search = {
   // A list of ids of sections that do not support search.
   blacklist: [
     "late-writes-section",
-    "raw-payload-section"
+    "raw-payload-section",
   ],
 
   // Pass if: all non-empty array items match (case-sensitive)
@@ -1415,7 +1409,7 @@ var Search = {
       }
     });
     this.updateNoResults(text, noSearchResults);
-  }
+  },
 };
 
 /*
@@ -1510,7 +1504,7 @@ var GenericTable = {
 
   defaultHeadings: [
     bundle.GetStringFromName("keysHeader"),
-    bundle.GetStringFromName("valuesHeader")
+    bundle.GetStringFromName("valuesHeader"),
   ],
 
   /**
@@ -1802,7 +1796,7 @@ function displayProcessesSelector(selectedSection) {
     "keyed-scalars-section",
     "histograms-section",
     "keyed-histograms-section",
-    "events-section"
+    "events-section",
   ];
   let processes = document.getElementById("processes");
   processes.hidden = !whitelist.includes(selectedSection);

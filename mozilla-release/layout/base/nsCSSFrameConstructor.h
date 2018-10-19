@@ -15,7 +15,9 @@
 #include "mozilla/ArenaAllocator.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/RestyleManager.h"
+#include "mozilla/ScrollStyles.h"
 
 #include "nsCOMPtr.h"
 #include "nsILayoutHistoryState.h"
@@ -23,7 +25,6 @@
 #include "nsCounterManager.h"
 #include "nsIAnonymousContentCreator.h"
 #include "nsFrameManager.h"
-#include "ScrollbarStyles.h"
 
 struct nsFrameItems;
 struct nsStyleDisplay;
@@ -46,6 +47,7 @@ class ComputedStyle;
 namespace dom {
 
 class CharacterData;
+class Text;
 class FlattenedChildIterator;
 
 } // namespace dom
@@ -57,6 +59,7 @@ public:
   typedef mozilla::ComputedStyle ComputedStyle;
   typedef mozilla::CSSPseudoElementType CSSPseudoElementType;
   typedef mozilla::dom::Element Element;
+  typedef mozilla::dom::Text Text;
 
   // FIXME(emilio): Is this really needed?
   friend class mozilla::RestyleManager;
@@ -67,7 +70,7 @@ public:
   }
 
   // get the alternate text for a content node
-  static void GetAlternateTextFor(mozilla::dom::Element* aContent,
+  static void GetAlternateTextFor(Element* aContent,
                                   nsAtom* aTag,  // content object's tag
                                   nsAString& aAltText);
 
@@ -327,7 +330,7 @@ public:
    *
    * Returns whether a reconstruct was posted for any ancestor.
    */
-  bool DestroyFramesFor(mozilla::dom::Element* aElement);
+  bool DestroyFramesFor(Element* aElement);
 
   // Request to create a continuing frame.  This method never returns null.
   nsIFrame* CreateContinuingFrame(nsPresContext*    aPresContext,
@@ -348,12 +351,6 @@ public:
    * ancestor that isn't display:contents.
    */
   nsContainerFrame* GetContentInsertionFrameFor(nsIContent* aContent);
-
-  void CreateListBoxContent(nsContainerFrame* aParentFrame,
-                            nsIFrame*         aPrevFrame,
-                            nsIContent*       aChild,
-                            nsIFrame**        aResult,
-                            bool              aIsAppend);
 
   // GetInitialContainingBlock() is deprecated in favor of GetRootElementFrame();
   // nsIFrame* GetInitialContainingBlock() { return mRootElementFrame; }
@@ -412,7 +409,6 @@ private:
                                    ComputedStyle* aComputedStyle,
                                    bool aSuppressWhiteSpaceOptimizations,
                                    nsContainerFrame* aParentFrame,
-                                   nsTArray<nsIAnonymousContentCreator::ContentInfo>* aAnonChildren,
                                    FrameConstructionItemList& aItems);
 
   // Construct the frames for the document element.  This can return null if the
@@ -429,7 +425,8 @@ private:
    * CreateAttributeContent creates a single content/frame combination for an
    * |attr(foo)| generated content.
    *
-   * @param aParentContent the parent content for the generated content
+   * @param aParentContent the parent content for the generated content (that
+   * is, the originating element).
    * @param aParentFrame the parent frame for the generated frame
    * @param aAttrNamespace the namespace of the attribute in question
    * @param aAttrName the localname of the attribute
@@ -439,7 +436,7 @@ private:
    * @param [out] aNewContent the content node we create
    * @param [out] aNewFrame the new frame we create
    */
-  void CreateAttributeContent(mozilla::dom::Element* aParentContent,
+  void CreateAttributeContent(const Element& aParentContent,
                               nsIFrame* aParentFrame,
                               int32_t aAttrNamespace,
                               nsAtom* aAttrName,
@@ -461,21 +458,21 @@ private:
    * Create a content node for the given generated content style.
    * The caller takes care of making it SetIsNativeAnonymousRoot, binding it
    * to the document, and creating frames for it.
-   * @param aParentContent is the node that has the before/after style
+   * @param aOriginatingElement is the node that has the before/after style.
    * @param aComputedStyle is the 'before' or 'after' pseudo-element style.
    * @param aContentIndex is the index of the content item to create
    */
   already_AddRefed<nsIContent> CreateGeneratedContent(nsFrameConstructorState& aState,
-                                                      mozilla::dom::Element* aParentContent,
-                                                      ComputedStyle* aComputedStyle,
-                                                      uint32_t        aContentIndex);
+                                                      const Element& aOriginatingElement,
+                                                      ComputedStyle& aComputedStyle,
+                                                      uint32_t aContentIndex);
 
-  // aFrame may be null; this method doesn't use it directly in any case.
-  void CreateGeneratedContentItem(nsFrameConstructorState&   aState,
-                                  nsContainerFrame*          aFrame,
-                                  mozilla::dom::Element*     aContent,
-                                  ComputedStyle*             aComputedStyle,
-                                  CSSPseudoElementType       aPseudoElement,
+  // aParentFrame may be null; this method doesn't use it directly in any case.
+  void CreateGeneratedContentItem(nsFrameConstructorState& aState,
+                                  nsContainerFrame* aParentFrame,
+                                  Element& aOriginatingElement,
+                                  ComputedStyle&,
+                                  CSSPseudoElementType aPseudoElement,
                                   FrameConstructionItemList& aItems);
 
   // This method can change aFrameList: it can chop off the beginning and put
@@ -596,7 +593,7 @@ private:
   */
   struct FrameConstructionData;
   typedef const FrameConstructionData*
-    (* FrameConstructionDataGetter)(Element*, ComputedStyle*);
+    (* FrameConstructionDataGetter)(const Element&, ComputedStyle&);
 
   /* A constructor function that's used for complicated construction tasks.
      This is expected to create the new frame, initialize it, add whatever
@@ -786,14 +783,63 @@ private:
      pseudo-frames as needed */
   static const PseudoParentData sPseudoParentData[eParentTypeCount];
 
+  // The information that concerns the frame constructor after loading an XBL
+  // binding.
+  //
+  // This is expected to just be used temporarily to aggregate the different
+  // objects that LoadXBLBindingIfNeeded returns.
+  struct MOZ_STACK_CLASS XBLBindingLoadInfo
+  {
+    RefPtr<ComputedStyle> mStyle;
+    mozilla::UniquePtr<PendingBinding> mPendingBinding;
+    nsAtom* mTag = nullptr;
+
+    // For the 'no binding loaded' case.
+    XBLBindingLoadInfo(nsIContent&, ComputedStyle&);
+
+    // For the case we actually load an XBL binding.
+    XBLBindingLoadInfo(already_AddRefed<ComputedStyle> aStyle,
+                       mozilla::UniquePtr<PendingBinding> aPendingBinding,
+                       nsAtom* aTag);
+
+    // For the error case.
+    XBLBindingLoadInfo();
+  };
+
+  // Returns null mStyle / mTag members to signal an error.
+  XBLBindingLoadInfo LoadXBLBindingIfNeeded(nsIContent&,
+                                            ComputedStyle&,
+                                            uint32_t aFlags);
+
+  const FrameConstructionData* FindDataForContent(nsIContent&,
+                                                  ComputedStyle&,
+                                                  nsIFrame* aParentFrame,
+                                                  nsAtom* aTag,
+                                                  uint32_t aFlags);
+
+  // aParentFrame might be null.  If it is, that means it was an inline frame.
+  static const FrameConstructionData* FindTextData(const Text&,
+                                                   nsIFrame* aParentFrame);
+  const FrameConstructionData* FindElementData(const Element&,
+                                               ComputedStyle&,
+                                               nsIFrame* aParentFrame,
+                                               nsAtom* aTag,
+                                               uint32_t aFlags);
+  const FrameConstructionData* FindElementTagData(const Element&,
+                                                  ComputedStyle&,
+                                                  nsIFrame* aParentFrame,
+                                                  nsAtom* aTag,
+                                                  uint32_t aFlags);
+
   /* A function that takes an integer, content, style, and array of
      FrameConstructionDataByInts and finds the appropriate frame construction
      data to use and returns it.  This can return null if none of the integers
      match or if the matching integer has a FrameConstructionDataGetter that
      returns null. */
   static const FrameConstructionData*
-    FindDataByInt(int32_t aInt, Element* aElement,
-                  ComputedStyle* aComputedStyle,
+    FindDataByInt(int32_t aInt,
+                  const Element&,
+                  ComputedStyle&,
                   const FrameConstructionDataByInt* aDataPtr,
                   uint32_t aDataLength);
 
@@ -807,8 +853,9 @@ private:
    * actually match, aTagFound will be true, even if the return value is null.
    */
   static const FrameConstructionData*
-    FindDataByTag(nsAtom* aTag, Element* aElement,
-                  ComputedStyle* aComputedStyle,
+    FindDataByTag(nsAtom* aTag,
+                  const Element& aElement,
+                  ComputedStyle& aComputedStyle,
                   const FrameConstructionDataByTag* aDataPtr,
                   uint32_t aDataLength);
 
@@ -850,14 +897,12 @@ private:
                                       nsIContent* aContent,
                                       PendingBinding* aPendingBinding,
                                       already_AddRefed<ComputedStyle>&& aComputedStyle,
-                                      bool aSuppressWhiteSpaceOptimizations,
-                                      nsTArray<nsIAnonymousContentCreator::ContentInfo>* aAnonChildren)
+                                      bool aSuppressWhiteSpaceOptimizations)
     {
       FrameConstructionItem* item =
         new (aFCtor) FrameConstructionItem(aFCData, aContent,
                                            aPendingBinding, aComputedStyle,
-                                           aSuppressWhiteSpaceOptimizations,
-                                           aAnonChildren);
+                                           aSuppressWhiteSpaceOptimizations);
       mItems.insertBack(item);
       ++mItemCount;
       ++mDesiredParentCounts[item->DesiredParentType()];
@@ -870,14 +915,12 @@ private:
                                        nsIContent* aContent,
                                        PendingBinding* aPendingBinding,
                                        already_AddRefed<ComputedStyle>&& aComputedStyle,
-                                       bool aSuppressWhiteSpaceOptimizations,
-                                       nsTArray<nsIAnonymousContentCreator::ContentInfo>* aAnonChildren)
+                                       bool aSuppressWhiteSpaceOptimizations)
     {
       FrameConstructionItem* item =
         new (aFCtor) FrameConstructionItem(aFCData, aContent,
                                            aPendingBinding, aComputedStyle,
-                                           aSuppressWhiteSpaceOptimizations,
-                                           aAnonChildren);
+                                           aSuppressWhiteSpaceOptimizations);
       mItems.insertFront(item);
       ++mItemCount;
       ++mDesiredParentCounts[item->DesiredParentType()];
@@ -1099,34 +1142,23 @@ private:
    * frame constructor state.  You probably want to use
    * AutoFrameConstructionItem instead of this struct. */
   struct FrameConstructionItem final
-    : public mozilla::LinkedListElement<FrameConstructionItem> {
+    : public mozilla::LinkedListElement<FrameConstructionItem>
+  {
     FrameConstructionItem(const FrameConstructionData* aFCData,
                           nsIContent* aContent,
                           PendingBinding* aPendingBinding,
                           already_AddRefed<ComputedStyle>& aComputedStyle,
-                          bool aSuppressWhiteSpaceOptimizations,
-                          nsTArray<nsIAnonymousContentCreator::ContentInfo>* aAnonChildren) :
-      mFCData(aFCData), mContent(aContent),
+                          bool aSuppressWhiteSpaceOptimizations)
+    : mFCData(aFCData), mContent(aContent),
       mPendingBinding(aPendingBinding), mComputedStyle(aComputedStyle),
       mSuppressWhiteSpaceOptimizations(aSuppressWhiteSpaceOptimizations),
       mIsText(false), mIsGeneratedContent(false),
       mIsAnonymousContentCreatorContent(false),
       mIsRootPopupgroup(false), mIsAllInline(false), mIsBlock(false),
-      mHasInlineEnds(false), mIsPopup(false),
-      mIsLineParticipant(false), mIsForSVGAElement(false)
+      mIsPopup(false),
+      mIsLineParticipant(false)
     {
       MOZ_COUNT_CTOR(FrameConstructionItem);
-      if (aAnonChildren) {
-        NS_ASSERTION(!(mFCData->mBits & FCDATA_FUNC_IS_FULL_CTOR) ||
-                     mFCData->mFullConstructor ==
-                       &nsCSSFrameConstructor::ConstructInline,
-                     "This is going to fail");
-        NS_ASSERTION(!(mFCData->mBits & FCDATA_USE_CHILD_ITEMS),
-                     "nsIAnonymousContentCreator::CreateAnonymousContent "
-                     "implementations should not output a list where the "
-                     "items have children in this case");
-        mAnonChildren.SwapElements(*aAnonChildren);
-      }
     }
 
     void* operator new(size_t, nsCSSFrameConstructor* aFCtor)
@@ -1167,22 +1199,6 @@ private:
     // Child frame construction items.
     FrameConstructionItemList mChildItems;
 
-    // ContentInfo list for children that have yet to have
-    // FrameConstructionItem objects created for them. This exists because
-    // AddFrameConstructionItemsInternal needs a valid frame, but in the case
-    // that nsIAnonymousContentCreator::CreateAnonymousContent returns items
-    // that have their own children (so we have a tree of ContentInfo objects
-    // rather than a flat list) we don't yet have a frame to provide to
-    // AddFrameConstructionItemsInternal in order to create the items for the
-    // grandchildren. That prevents FrameConstructionItems from being created
-    // for these grandchildren (and any descendants that they may have),
-    // otherwise they could have been added to the mChildItems member of their
-    // parent FrameConstructionItem. As it is, the grandchildren ContentInfo
-    // list has to be stored in this mAnonChildren member in order to delay
-    // construction of the FrameConstructionItems for the grandchildren until
-    // a frame has been created for their parent item.
-    nsTArray<nsIAnonymousContentCreator::ContentInfo> mAnonChildren;
-
     // The FrameConstructionData to use.
     const FrameConstructionData* mFCData;
     // The nsIContent node to use when initializing the new frame.
@@ -1221,18 +1237,11 @@ private:
     // they might still be blocks (and in particular, out-of-flows that didn't
     // find a containing block).
     bool mIsBlock:1;
-    // Whether construction from this item will give leading and trailing
-    // inline frames.  This is equal to mIsAllInline, except for inline frame
-    // items, where it's always true, whereas mIsAllInline might be false due
-    // to {ib} splits.
-    bool mHasInlineEnds:1;
     // Whether construction from this item will create a popup that needs to
     // go into the global popup items.
     bool mIsPopup:1;
     // Whether this item should be treated as a line participant
     bool mIsLineParticipant:1;
-    // Whether this item is for an SVG <a> element
-    bool mIsForSVGAElement:1;
 
   private:
     // Not allocated from the general heap - instead, use the new/Delete APIs
@@ -1420,11 +1429,6 @@ private:
                                   const nsStyleDisplay* aStyleDisplay,
                                   nsFrameItems& aFrameItems);
 
-  // aParentFrame might be null.  If it is, that means it was an
-  // inline frame.
-  static const FrameConstructionData* FindTextData(nsIFrame* aParentFrame,
-                                                   nsIContent* aTextContent);
-
   void ConstructTextFrame(const FrameConstructionData* aData,
                           nsFrameConstructorState& aState,
                           nsIContent*              aContent,
@@ -1450,22 +1454,16 @@ private:
   // null if aElement is not HTML.
   // aParentFrame might be null.  If it is, that means it was an
   // inline frame.
-  static const FrameConstructionData* FindHTMLData(Element* aContent,
-                                                   nsAtom* aTag,
-                                                   int32_t aNameSpaceID,
+  static const FrameConstructionData* FindHTMLData(const Element&,
                                                    nsIFrame* aParentFrame,
-                                                   ComputedStyle* aComputedStyle);
+                                                   ComputedStyle&);
   // HTML data-finding helper functions
-  static const FrameConstructionData*
-    FindImgData(Element* aElement, ComputedStyle* aComputedStyle);
-  static const FrameConstructionData*
-    FindImgControlData(Element* aElement, ComputedStyle* aComputedStyle);
-  static const FrameConstructionData*
-    FindInputData(Element* aElement, ComputedStyle* aComputedStyle);
-  static const FrameConstructionData*
-    FindObjectData(Element* aElement, ComputedStyle* aComputedStyle);
-  static const FrameConstructionData*
-    FindCanvasData(Element* aElement, ComputedStyle* aComputedStyle);
+  static const FrameConstructionData* FindImgData(const Element&, ComputedStyle&);
+  static const FrameConstructionData* FindGeneratedImageData(const Element&, ComputedStyle&);
+  static const FrameConstructionData* FindImgControlData(const Element&, ComputedStyle&);
+  static const FrameConstructionData* FindInputData(const Element&, ComputedStyle&);
+  static const FrameConstructionData* FindObjectData(const Element&, ComputedStyle&);
+  static const FrameConstructionData* FindCanvasData(const Element&, ComputedStyle&);
 
   /* Construct a frame from the given FrameConstructionItem.  This function
      will handle adding the frame to frame lists, processing children, setting
@@ -1506,7 +1504,6 @@ private:
                                          bool                     aSuppressWhiteSpaceOptimizations,
                                          ComputedStyle*           aComputedStyle,
                                          uint32_t                 aFlags,
-                                         nsTArray<nsIAnonymousContentCreator::ContentInfo>* aAnonChildren,
                                          FrameConstructionItemList& aItems);
 
   /**
@@ -1540,48 +1537,37 @@ private:
                              nsFrameItems& aBlockItems,
                              nsFrameItems& aNewItems);
 
-  // Function to find FrameConstructionData for aContent.  Will return
-  // null if aContent is not MathML.
-  static const FrameConstructionData* FindMathMLData(Element* aElement,
-                                                     nsAtom* aTag,
-                                                     int32_t aNameSpaceID,
-                                                     ComputedStyle* aComputedStyle);
+  // Function to find FrameConstructionData for an element.  Will return
+  // null if the element is not MathML.
+  static const FrameConstructionData* FindMathMLData(const Element&, ComputedStyle&);
 
-  // Function to find FrameConstructionData for aContent.  Will return
-  // null if aContent is not XUL.
-  static const FrameConstructionData* FindXULTagData(Element* aElement,
+  // Function to find FrameConstructionData for an element.  Will return
+  // null if the element is not XUL.
+  //
+  // NOTE(emilio): This gets the overloaded tag and namespace id since they can
+  // be overriden by extends="" in XBL.
+  static const FrameConstructionData* FindXULTagData(const Element&,
                                                      nsAtom* aTag,
-                                                     int32_t aNameSpaceID,
-                                                     ComputedStyle* aComputedStyle);
+                                                     ComputedStyle&);
   // XUL data-finding helper functions and structures
 #ifdef MOZ_XUL
-  static const FrameConstructionData*
-    FindPopupGroupData(Element* aElement, ComputedStyle* aComputedStyle);
+  static const FrameConstructionData* FindPopupGroupData(const Element&, ComputedStyle&);
   // sXULTextBoxData used for both labels and descriptions
   static const FrameConstructionData sXULTextBoxData;
-  static const FrameConstructionData*
-    FindXULLabelData(Element* aElement, ComputedStyle* aComputedStyle);
-  static const FrameConstructionData*
-    FindXULDescriptionData(Element* aElement, ComputedStyle* aComputedStyle);
+  static const FrameConstructionData* FindXULLabelData(const Element&, ComputedStyle&);
+  static const FrameConstructionData* FindXULDescriptionData(const Element&, ComputedStyle&);
 #ifdef XP_MACOSX
-  static const FrameConstructionData*
-    FindXULMenubarData(Element* aElement, ComputedStyle* aComputedStyle);
+  static const FrameConstructionData* FindXULMenubarData(const Element&, ComputedStyle&);
 #endif /* XP_MACOSX */
-  static const FrameConstructionData*
-    FindXULListBoxBodyData(Element* aElement, ComputedStyle* aComputedStyle);
-  static const FrameConstructionData*
-    FindXULListItemData(Element* aElement, ComputedStyle* aComputedStyle);
 #endif /* MOZ_XUL */
 
-  // Function to find FrameConstructionData for aContent using one of the XUL
-  // display types.  Will return null if aDisplay doesn't have a XUL display
+  // Function to find FrameConstructionData for an element using one of the XUL
+  // display types.  Will return null if the style doesn't have a XUL display
   // type.  This function performs no other checks, so should only be called if
-  // we know for sure that the content is not something that should get a frame
+  // we know for sure that the element is not something that should get a frame
   // constructed by tag.
-  static const FrameConstructionData*
-    FindXULDisplayData(const nsStyleDisplay* aDisplay,
-                       Element* aElement,
-                       ComputedStyle* aComputedStyle);
+  static const FrameConstructionData* FindXULDisplayData(const nsStyleDisplay&,
+                                                         const Element&);
 
   /**
    * Constructs an outer frame, an anonymous child that wraps its real
@@ -1617,19 +1603,16 @@ private:
                             const nsStyleDisplay*    aDisplay,
                             nsFrameItems&            aFrameItems);
 
-  static const FrameConstructionData* FindSVGData(Element* aElement,
-                                                  nsAtom* aTag,
-                                                  int32_t aNameSpaceID,
+  static const FrameConstructionData* FindSVGData(const Element&,
                                                   nsIFrame* aParentFrame,
                                                   bool aIsWithinSVGText,
                                                   bool aAllowsTextPathChild,
-                                                  ComputedStyle* aComputedStyle);
+                                                  ComputedStyle&);
 
-  /* Not static because it does PropagateScrollToViewport.  If this
-     changes, make this static */
-  const FrameConstructionData*
-    FindDisplayData(const nsStyleDisplay* aDisplay, Element* aElement,
-                    ComputedStyle* aComputedStyle);
+  // Not static because it does PropagateScrollToViewport.  If this
+  // changes, make this static.
+  const FrameConstructionData* FindDisplayData(const nsStyleDisplay&,
+                                               const Element&);
 
   /**
    * Construct a scrollable block frame
@@ -1681,7 +1664,7 @@ private:
   void AddFCItemsForAnonymousContent(
             nsFrameConstructorState& aState,
             nsContainerFrame* aFrame,
-            nsTArray<nsIAnonymousContentCreator::ContentInfo>& aAnonymousItems,
+            const nsTArray<nsIAnonymousContentCreator::ContentInfo>& aAnonymousItems,
             FrameConstructionItemList& aItemsToConstruct,
             uint32_t aExtraFlags = 0);
 
@@ -1845,6 +1828,22 @@ private:
                                    ComputedStyle* aComputedStyle,
                                    bool*          aHaveFirstLetterStyle,
                                    bool*          aHaveFirstLineStyle);
+
+
+  // Initialize aBlockFrame, and wrap it in a ColumnSetFrame if needed.
+  //
+  // If a ColumnSetFrame needs to be created, then this function will create
+  // one, and set aBlockFrame as its child (with an updated "columnContent"
+  // ComputedStyle() pointer), and initialize both frames. Otherwise, it
+  // initializes aBlockFrame.
+  //
+  // @return the new ColumnSetFrame if needed; otherwise aBlockFrame.
+  nsContainerFrame* InitAndWrapInColumnSetFrameIfNeeded(
+    nsFrameConstructorState& aState,
+    nsIContent* aContent,
+    nsContainerFrame* aParentFrame,
+    nsContainerFrame* aBlockFrame,
+    ComputedStyle* aComputedStyle);
 
   // |aContentParentFrame| should be null if it's really the same as
   // |aParentFrame|.
@@ -2064,12 +2063,11 @@ private:
    * @param aIter should be positioned such that aIter.GetPreviousChild()
    *          is the first content to search for frames
    * @param aTargetContentDisplay the CSS display enum for the content aIter
-   *          points to if already known, UNSET_DISPLAY otherwise. It will be
-   *          filled in if needed.
+   *          points to if already known. It will be filled in if needed.
    */
   template<SiblingDirection>
   nsIFrame* FindSibling(const mozilla::dom::FlattenedChildIterator& aIter,
-                        mozilla::StyleDisplay& aTargetContentDisplay);
+                        mozilla::Maybe<mozilla::StyleDisplay>& aTargetContentDisplay);
 
   // Helper for the implementation of FindSibling.
   //
@@ -2078,14 +2076,14 @@ private:
   nsIFrame* FindSiblingInternal(
     mozilla::dom::FlattenedChildIterator&,
     nsIContent* aTargetContent,
-    mozilla::StyleDisplay& aTargetContentDisplay);
+    mozilla::Maybe<mozilla::StyleDisplay>& aTargetContentDisplay);
 
   // An alias of FindSibling<SiblingDirection::Forward>.
   nsIFrame* FindNextSibling(const mozilla::dom::FlattenedChildIterator& aIter,
-                            mozilla::StyleDisplay& aTargetContentDisplay);
+                            mozilla::Maybe<mozilla::StyleDisplay>& aTargetContentDisplay);
   // An alias of FindSibling<SiblingDirection::Backwards>.
   nsIFrame* FindPreviousSibling(const mozilla::dom::FlattenedChildIterator& aIter,
-                                mozilla::StyleDisplay& aTargetContentDisplay);
+                                mozilla::Maybe<mozilla::StyleDisplay>& aTargetContentDisplay);
 
   // Given a potential first-continuation sibling frame for aTargetContent,
   // verify that it is an actual valid sibling for it, and return the
@@ -2093,7 +2091,7 @@ private:
   // inserted next to.
   nsIFrame* AdjustSiblingFrame(nsIFrame* aSibling,
                                nsIContent* aTargetContent,
-                               mozilla::StyleDisplay& aTargetContentDisplay,
+                               mozilla::Maybe<mozilla::StyleDisplay>& aTargetContentDisplay,
                                SiblingDirection aDirection);
 
   // Find the right previous sibling for an insertion.  This also updates the
@@ -2122,7 +2120,7 @@ private:
   // may be constructed based on tag, not based on aDisplay!
   bool IsValidSibling(nsIFrame*              aSibling,
                       nsIContent*            aContent,
-                      mozilla::StyleDisplay& aDisplay);
+                      mozilla::Maybe<mozilla::StyleDisplay>& aDisplay);
 
   void QuotesDirty();
   void CountersDirty();

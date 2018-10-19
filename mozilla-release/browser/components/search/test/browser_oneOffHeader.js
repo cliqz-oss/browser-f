@@ -19,18 +19,17 @@ var header =
 function getHeaderText() {
   let headerChild = header.selectedPanel;
   while (headerChild.hasChildNodes()) {
-    headerChild = headerChild.firstChild;
+    headerChild = headerChild.firstElementChild;
   }
   let headerStrings = [];
-  for (let label = headerChild; label; label = label.nextSibling) {
+  for (let label = headerChild; label; label = label.nextElementSibling) {
     headerStrings.push(label.value);
   }
   return headerStrings.join("");
 }
 
 const msg = isMac ? 5 : 1;
-const utils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindowUtils);
+const utils = window.windowUtils;
 const scale = utils.screenPixelsPerCSSPixel;
 function synthesizeNativeMouseMove(aElement) {
   let rect = aElement.getBoundingClientRect();

@@ -8,6 +8,7 @@
 
 #include "jsapi.h"
 
+#include "js/AutoByteString.h"
 #include "vm/Interpreter.h" // For InstanceOfOperator
 
 #include "vm/JSObject-inl.h"
@@ -35,7 +36,7 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
     if (!current.object()) {
         // Step 2a-b,e.  As |O| is always undefined, steps 2c-d fall away.
         if (!extensible) {
-            static const char* DETAILS_NOT_EXTENSIBLE =
+            static const char DETAILS_NOT_EXTENSIBLE[] =
                 "proxy can't report an extensible object as non-extensible";
             *errorDetails = DETAILS_NOT_EXTENSIBLE;
         }
@@ -73,7 +74,7 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
     if (!current.configurable()) {
         // Step 5a.
         if (desc.hasConfigurable() && desc.configurable()) {
-            static const char* DETAILS_CANT_REPORT_NC_AS_C =
+            static const char DETAILS_CANT_REPORT_NC_AS_C[] =
                 "proxy can't report an existing non-configurable property as configurable";
             *errorDetails = DETAILS_CANT_REPORT_NC_AS_C;
             return true;
@@ -81,7 +82,7 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
 
         // Step 5b.
         if (desc.hasEnumerable() && desc.enumerable() != current.enumerable()) {
-            static const char* DETAILS_ENUM_DIFFERENT =
+            static const char DETAILS_ENUM_DIFFERENT[] =
                 "proxy can't report a different 'enumerable' from target when target is not configurable";
             *errorDetails = DETAILS_ENUM_DIFFERENT;
             return true;
@@ -96,7 +97,7 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
     if (current.isDataDescriptor() != desc.isDataDescriptor()) {
         // Steps 7a, 11.  As |O| is always undefined, steps 2b-c fall away.
         if (!current.configurable()) {
-            static const char* DETAILS_CURRENT_NC_DIFF_TYPE =
+            static const char DETAILS_CURRENT_NC_DIFF_TYPE[] =
                 "proxy can't report a different descriptor type when target is not configurable";
             *errorDetails = DETAILS_CURRENT_NC_DIFF_TYPE;
         }
@@ -108,7 +109,7 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
         MOZ_ASSERT(desc.isDataDescriptor()); // by step 7
         if (!current.configurable() && !current.writable()) {
             if (desc.hasWritable() && desc.writable()) {
-                static const char* DETAILS_CANT_REPORT_NW_AS_W =
+                static const char DETAILS_CANT_REPORT_NW_AS_W[] =
                     "proxy can't report a non-configurable, non-writable property as writable";
                 *errorDetails = DETAILS_CANT_REPORT_NW_AS_W;
                 return true;
@@ -119,7 +120,7 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
                 if (!SameValue(cx, desc.value(), current.value(), &same))
                     return false;
                 if (!same) {
-                    static const char* DETAILS_DIFFERENT_VALUE =
+                    static const char DETAILS_DIFFERENT_VALUE[] =
                         "proxy must report the same value for the non-writable, non-configurable property";
                     *errorDetails = DETAILS_DIFFERENT_VALUE;
                     return true;
@@ -137,12 +138,12 @@ IsCompatiblePropertyDescriptor(JSContext* cx, bool extensible, Handle<PropertyDe
     if (current.configurable())
         return true;
     if (desc.hasSetterObject() && (desc.setter() != current.setter())) {
-        static const char* DETAILS_SETTERS_DIFFERENT =
+        static const char DETAILS_SETTERS_DIFFERENT[] =
             "proxy can't report different setters for a currently non-configurable property";
         *errorDetails = DETAILS_SETTERS_DIFFERENT;
     }
     else if (desc.hasGetterObject() && (desc.getter() != current.getter())) {
-        static const char* DETAILS_GETTERS_DIFFERENT =
+        static const char DETAILS_GETTERS_DIFFERENT[] =
             "proxy can't report different getters for a currently non-configurable property";
         *errorDetails = DETAILS_GETTERS_DIFFERENT;
     }
@@ -656,7 +657,7 @@ ScriptedProxyHandler::defineProperty(JSContext* cx, HandleObject proxy, HandleId
 
         // Step 16b.
         if (settingConfigFalse && targetDesc.configurable()) {
-            static const char* DETAILS_CANT_REPORT_C_AS_NC =
+            static const char DETAILS_CANT_REPORT_C_AS_NC[] =
                 "proxy can't define an existing configurable property as non-configurable";
             return js::Throw(cx, id, JSMSG_CANT_DEFINE_INVALID, DETAILS_CANT_REPORT_C_AS_NC);
         }
@@ -749,9 +750,7 @@ ScriptedProxyHandler::ownPropertyKeys(JSContext* cx, HandleObject proxy, AutoIdV
         return false;
 
     // Steps 9, 18.
-    Rooted<GCHashSet<jsid>> uncheckedResultKeys(cx, GCHashSet<jsid>(cx));
-    if (!uncheckedResultKeys.init(trapResult.length()))
-        return false;
+    Rooted<GCHashSet<jsid>> uncheckedResultKeys(cx, GCHashSet<jsid>(cx, trapResult.length()));
 
     for (size_t i = 0, len = trapResult.length(); i < len; i++) {
         MOZ_ASSERT(!JSID_IS_VOID(trapResult[i]));

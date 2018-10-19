@@ -14,6 +14,7 @@ const TOOL_URL = "chrome://devtools/content/responsive.html/index.xhtml";
 loader.lazyRequireGetter(this, "DebuggerClient", "devtools/shared/client/debugger-client", true);
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
 loader.lazyRequireGetter(this, "throttlingProfiles", "devtools/client/shared/components/throttling/profiles");
+loader.lazyRequireGetter(this, "SettingOnboardingTooltip", "devtools/client/responsive.html/setting-onboarding-tooltip");
 loader.lazyRequireGetter(this, "swapToInnerBrowser", "devtools/client/responsive.html/browser/swap", true);
 loader.lazyRequireGetter(this, "startup", "devtools/client/responsive.html/utils/window", true);
 loader.lazyRequireGetter(this, "message", "devtools/client/responsive.html/utils/message");
@@ -27,6 +28,7 @@ loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
 
 const RELOAD_CONDITION_PREF_PREFIX = "devtools.responsive.reloadConditions.";
 const RELOAD_NOTIFICATION_PREF = "devtools.responsive.reloadNotification.enabled";
+const SHOW_SETTING_TOOLTIP_PREF = "devtools.responsive.show-setting-tooltip";
 
 function debug(msg) {
   // console.log(`RDM manager: ${msg}`);
@@ -377,6 +379,12 @@ ResponsiveUI.prototype = {
     debug("Wait until RDP server connect");
     await this.connectToServer();
 
+    // Show the settings onboarding tooltip
+    if (Services.prefs.getBoolPref(SHOW_SETTING_TOOLTIP_PREF)) {
+      this.settingOnboardingTooltip =
+        new SettingOnboardingTooltip(ui.toolWindow.document);
+    }
+
     // Non-blocking message to tool UI to start any delayed init activities
     message.post(this.toolWindow, "post-init");
 
@@ -436,6 +444,11 @@ ResponsiveUI.prototype = {
       }
     }
 
+    if (this.settingOnboardingTooltip) {
+      this.settingOnboardingTooltip.destroy();
+      this.settingOnboardingTooltip = null;
+    }
+
     // Destroy local state
     const swap = this.swap;
     this.browserWindow = null;
@@ -478,8 +491,7 @@ ResponsiveUI.prototype = {
   showReloadNotification() {
     if (Services.prefs.getBoolPref(RELOAD_NOTIFICATION_PREF, false)) {
       showNotification(this.browserWindow, this.tab, {
-        msg: l10n.getFormatStr("responsive.reloadNotification.description",
-                               l10n.getStr("responsive.reloadConditions.label")),
+        msg: l10n.getStr("responsive.reloadNotification.description2"),
       });
       Services.prefs.setBoolPref(RELOAD_NOTIFICATION_PREF, false);
     }

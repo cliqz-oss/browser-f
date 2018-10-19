@@ -7,6 +7,7 @@
 #define GFX_FONTMISSINGGLYPHS_H
 
 #include "mozilla/Attributes.h"
+#include "mozilla/gfx/MatrixFwd.h"
 #include "mozilla/gfx/Rect.h"
 
 namespace mozilla {
@@ -24,6 +25,7 @@ class gfxFontMissingGlyphs final
 {
     typedef mozilla::gfx::DrawTarget DrawTarget;
     typedef mozilla::gfx::Float Float;
+    typedef mozilla::gfx::Matrix Matrix;
     typedef mozilla::gfx::Pattern Pattern;
     typedef mozilla::gfx::Rect Rect;
 
@@ -52,6 +54,10 @@ public:
      */
     static Float GetDesiredMinWidth(uint32_t aChar,
                                     uint32_t aAppUnitsPerDevUnit);
+
+    static void Purge();
+
+    static void Shutdown();
 };
 
 #endif

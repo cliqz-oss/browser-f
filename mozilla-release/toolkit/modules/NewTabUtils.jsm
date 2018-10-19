@@ -8,7 +8,7 @@ var EXPORTED_SYMBOLS = ["NewTabUtils"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.importGlobalProperties(["btoa"]);
+Cu.importGlobalProperties(["btoa", "URL"]);
 
 // Android tests don't import these properly, so guard against that
 let shortURL = {};
@@ -195,7 +195,7 @@ LinksStorage.prototype = {
     for (let key in this._prefs) {
       this.remove(key);
     }
-  }
+  },
 };
 
 
@@ -301,7 +301,7 @@ var AllPages = {
   },
 
   QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
-                                          Ci.nsISupportsWeakReference])
+                                          Ci.nsISupportsWeakReference]),
 };
 
 /**
@@ -530,7 +530,7 @@ var BlockedLinks = {
         }
       }
     }
-  }
+  },
 };
 
 /**
@@ -561,6 +561,9 @@ var PlacesProvider = {
    */
   init: function PlacesProvider_init() {
     PlacesUtils.history.addObserver(this, true);
+    this._placesObserver =
+      new PlacesWeakCallbackWrapper(this.handlePlacesEvents.bind(this));
+    PlacesObservers.addListener(["page-visited"], this._placesObserver);
   },
 
   /**
@@ -623,7 +626,7 @@ var PlacesProvider = {
         }
 
         aCallback(links);
-      }
+      },
     };
 
     // Execute the query.
@@ -668,11 +671,11 @@ var PlacesProvider = {
     }
   },
 
-  onVisits(aVisits) {
+  handlePlacesEvents(aEvents) {
     if (!this._batchProcessingDepth) {
-      for (let visit of aVisits) {
-        if (visit.visitCount == 1 && visit.lastKnownTitle) {
-          this.onTitleChanged(visit.uri, visit.lastKnownTitle, visit.guid);
+      for (let event of aEvents) {
+        if (event.visitCount == 1 && event.lastKnownTitle) {
+          this.onTitleChanged(event.url, event.lastKnownTitle, event.pageGuid);
         }
       }
     }
@@ -723,9 +726,12 @@ var PlacesProvider = {
    * Called by the history service.
    */
   onTitleChanged: function PlacesProvider_onTitleChanged(aURI, aNewTitle, aGUID) {
+    if (aURI instanceof Ci.nsIURI) {
+      aURI = aURI.spec;
+    }
     this._callObservers("onLinkChanged", {
-      url: aURI.spec,
-      title: aNewTitle
+      url: aURI,
+      title: aNewTitle,
     });
   },
 
@@ -804,7 +810,7 @@ var ActivityStreamProvider = {
     return Object.assign({
       bookmarkType: PlacesUtils.bookmarks.TYPE_BOOKMARK,
       limit: this._adjustLimitForBlocked(aOptions),
-      tagsFolderId: PlacesUtils.tagsFolderId
+      tagsFolderId: PlacesUtils.tagsFolderId,
     }, aParams);
   },
 
@@ -820,13 +826,14 @@ var ActivityStreamProvider = {
   _processHighlights(aLinks, aOptions, aType) {
     // Filter out blocked if necessary
     if (!aOptions.ignoreBlocked) {
-      aLinks = aLinks.filter(link => !BlockedLinks.isBlocked(link));
+      aLinks = aLinks.filter(link =>
+        !BlockedLinks.isBlocked(link.pocket_id ? {url: link.open_url} : link));
     }
 
     // Limit the results to the requested number and set a type corresponding to
     // which query selected it
     return aLinks.slice(0, aOptions.numItems).map(item => Object.assign(item, {
-      type: aType
+      type: aType,
     }));
   },
 
@@ -927,7 +934,7 @@ var ActivityStreamProvider = {
         },
         error(error) {
           reject(error);
-        }
+        },
       });
     });
   },
@@ -944,7 +951,7 @@ var ActivityStreamProvider = {
     const requestData = {
       detailType: "complete",
       count: aOptions.numItems,
-      since: pocketSecondsAgo
+      since: pocketSecondsAgo,
     };
     let data;
     try {
@@ -970,8 +977,15 @@ var ActivityStreamProvider = {
                     title: item.resolved_title,
                     url: item.resolved_url,
                     pocket_id: item.item_id,
-                    open_url: item.open_url
+                    open_url: item.open_url,
                   }));
+
+  // Append the query param to let Pocket know this item came from highlights
+  for (let item of items) {
+    let url = new URL(item.open_url);
+    url.searchParams.append("src", "fx_new_tab");
+    item.open_url = url.href;
+  }
 
     return this._processHighlights(items, aOptions, "pocket");
   },
@@ -988,7 +1002,7 @@ var ActivityStreamProvider = {
     const options = Object.assign({
       bookmarkSecondsAgo: ACTIVITY_STREAM_DEFAULT_RECENT,
       ignoreBlocked: false,
-      numItems: ACTIVITY_STREAM_DEFAULT_LIMIT
+      numItems: ACTIVITY_STREAM_DEFAULT_LIMIT,
     }, aOptions || {});
 
     const sqlQuery = `
@@ -1017,8 +1031,8 @@ var ActivityStreamProvider = {
     return this._processHighlights(await this.executePlacesQuery(sqlQuery, {
       columns: [...this._highlightsColumns, "date_added"],
       params: this._getCommonParams(options, {
-        dateAddedThreshold: (Date.now() - options.bookmarkSecondsAgo * 1000) * 1000
-      })
+        dateAddedThreshold: (Date.now() - options.bookmarkSecondsAgo * 1000) * 1000,
+      }),
     }), options, "bookmark");
   },
 
@@ -1040,7 +1054,7 @@ var ActivityStreamProvider = {
       params: {
         tags_folder: PlacesUtils.tagsFolderId,
         type_bookmark: PlacesUtils.bookmarks.TYPE_BOOKMARK,
-      }
+      },
     });
 
     return result[0][0];
@@ -1077,7 +1091,7 @@ var ActivityStreamProvider = {
 
     return this._processHighlights(await this.executePlacesQuery(sqlQuery, {
       columns: this._highlightsColumns,
-      params: this._getCommonParams(options)
+      params: this._getCommonParams(options),
     }), options, "history");
   },
 
@@ -1088,6 +1102,8 @@ var ActivityStreamProvider = {
    *   {bool} ignoreBlocked: Do not filter out blocked links.
    *   {int}  numItems: Maximum number of items to return.
    *   {int}  topsiteFrecency: Minimum amount of frecency for a site.
+   *   {bool} onePerDomain: Dedupe the resulting list.
+   *   {bool} includeFavicon: Include favicons if available.
    *
    * @returns {Promise} Returns a promise with the array of links as payload.
    */
@@ -1095,13 +1111,17 @@ var ActivityStreamProvider = {
     const options = Object.assign({
       ignoreBlocked: false,
       numItems: ACTIVITY_STREAM_DEFAULT_LIMIT,
-      topsiteFrecency: ACTIVITY_STREAM_DEFAULT_FRECENCY
+      topsiteFrecency: ACTIVITY_STREAM_DEFAULT_FRECENCY,
+      onePerDomain: true,
+      includeFavicon: true,
     }, aOptions || {});
 
     // Double the item count in case the host is deduped between with www or
     // not-www (i.e., 2 hosts) and an extra buffer for multiple pages per host.
     const origNumItems = options.numItems;
-    options.numItems *= 2 * 10;
+    if (options.onePerDomain) {
+      options.numItems *= 2 * 10;
+    }
 
     // Keep this query fast with frecency-indexed lookups (even with excess
     // rows) and shift the more complex logic to post-processing afterwards
@@ -1113,7 +1133,8 @@ var ActivityStreamProvider = {
         last_visit_date / 1000 AS lastVisitDate,
         rev_host,
         title,
-        url
+        url,
+        "history" as type
       FROM moz_places h
       WHERE frecency >= :frecencyThreshold
         ${this._commonPlacesWhere}
@@ -1128,19 +1149,24 @@ var ActivityStreamProvider = {
         "guid",
         "lastVisitDate",
         "title",
-        "url"
+        "url",
+        "type",
       ],
       params: this._getCommonParams(options, {
-        frecencyThreshold: options.topsiteFrecency
-      })
+        frecencyThreshold: options.topsiteFrecency,
+      }),
     });
 
     // Determine if the other link is "better" (larger frecency, more recent,
     // lexicographically earlier url)
     function isOtherBetter(link, other) {
-      return other.frecency > link.frecency ||
-        (other.frecency === link.frecency && other.lastVisitDate > link.lastVisitDate ||
-         other.lastVisitDate === link.lastVisitDate && other.url < link.url);
+      if (other.frecency === link.frecency) {
+        if (other.lastVisitDate === link.lastVisitDate) {
+          return other.url < link.url;
+        }
+        return other.lastVisitDate > link.lastVisitDate;
+      }
+      return other.frecency > link.frecency;
     }
 
     // Update a host Map with the better link
@@ -1166,32 +1192,37 @@ var ActivityStreamProvider = {
       });
     }
 
-    // Clean up the returned links by removing blocked, deduping, etc.
-    const exactHosts = new Map();
-    for (const link of links) {
-      if (!options.ignoreBlocked && BlockedLinks.isBlocked(link)) {
-        continue;
+    // Remove any blocked links.
+    if (!options.ignoreBlocked) {
+      links = links.filter(link => !BlockedLinks.isBlocked(link));
+    }
+
+    if (options.onePerDomain) {
+      // De-dup the links.
+      const exactHosts = new Map();
+      for (const link of links) {
+        // First we want to find the best link for an exact host
+        setBetterLink(exactHosts, link, url => url.match(/:\/\/([^\/]+)/));
       }
 
-      link.type = "history";
+      // Clean up exact hosts to dedupe as non-www hosts
+      const hosts = new Map();
+      for (const link of exactHosts.values()) {
+        setBetterLink(hosts, link, url => url.match(/:\/\/(?:www\.)?([^\/]+)/),
+          // Combine frecencies when deduping these links
+          (targetLink, otherLink) => {
+            targetLink.frecency = link.frecency + otherLink.frecency;
+          });
+      }
 
-      // First we want to find the best link for an exact host
-      setBetterLink(exactHosts, link, url => url.match(/:\/\/([^\/]+)/));
+      links = [...hosts.values()];
     }
-
-    // Clean up exact hosts to dedupe as non-www hosts
-    const hosts = new Map();
-    for (const link of exactHosts.values()) {
-      setBetterLink(hosts, link, url => url.match(/:\/\/(?:www\.)?([^\/]+)/),
-        // Combine frecencies when deduping these links
-        (targetLink, otherLink) => {
-          targetLink.frecency = link.frecency + otherLink.frecency;
-        });
-    }
-
     // Pick out the top links using the same comparer as before
-    links = [...hosts.values()].sort(isOtherBetter).slice(0, origNumItems);
+    links = links.sort(isOtherBetter).slice(0, origNumItems);
 
+    if (!options.includeFavicon) {
+      return links;
+    }
     // Get the favicons as data URI for now (until we use the favicon protocol)
     return this._faviconBytesToDataURI(await this._addFavicons(links));
   },
@@ -1262,7 +1293,7 @@ var ActivityStreamProvider = {
       throw new Error(queryError);
     }
     return items;
-  }
+  },
 };
 
 /**
@@ -1298,18 +1329,14 @@ var ActivityStreamLinks = {
    * @param {Object} aData
    *          aData.url The url to bookmark
    *          aData.title The title of the page to bookmark
-   * @param {Browser} aBrowser
-   *          a <browser> element
+   * @param {Window} aBrowserWindow
+   *          The current browser chrome window
    *
    * @returns {Promise} Returns a promise set to an object representing the bookmark
    */
-  addBookmark(aData, aBrowser) {
+  addBookmark(aData, aBrowserWindow) {
       const {url, title} = aData;
-      return aBrowser.ownerGlobal.PlacesCommandHook.bookmarkPage(
-              aBrowser,
-              true,
-              url,
-              title);
+      return aBrowserWindow.PlacesCommandHook.bookmarkLink(url, title);
   },
 
   /**
@@ -1394,7 +1421,7 @@ var ActivityStreamLinks = {
       pktApi.addLink(aUrl, {
         title: aTitle,
         success,
-        error
+        error,
       });
     });
   },
@@ -1471,7 +1498,7 @@ var ActivityStreamLinks = {
    */
   async getTopSites(aOptions = {}) {
     return ActivityStreamProvider.getTopFrecentSites(aOptions);
-  }
+  },
 };
 
 /**
@@ -1955,7 +1982,7 @@ var Links = {
   },
 
   QueryInterface: ChromeUtils.generateQI([Ci.nsIObserver,
-                                          Ci.nsISupportsWeakReference])
+                                          Ci.nsISupportsWeakReference]),
 };
 
 Links.compareLinks = Links.compareLinks.bind(Links);
@@ -1986,7 +2013,7 @@ var Telemetry = {
       { histogram: "NEWTAB_PAGE_PINNED_SITES_COUNT",
         value: PinnedLinks.links.length },
       { histogram: "NEWTAB_PAGE_BLOCKED_SITES_COUNT",
-        value: Object.keys(BlockedLinks.links).length }
+        value: Object.keys(BlockedLinks.links).length },
     ];
 
     probes.forEach(function Telemetry_collect_forEach(aProbe) {
@@ -2000,7 +2027,7 @@ var Telemetry = {
    */
   observe: function Telemetry_observe(aSubject, aTopic, aData) {
     this._collect();
-  }
+  },
 };
 
 /**
@@ -2036,7 +2063,7 @@ var LinkChecker = {
       // We got a weird URI or one that would inherit the caller's principal.
       return false;
     }
-  }
+  },
 };
 
 var ExpirationFilter = {
@@ -2062,7 +2089,7 @@ var ExpirationFilter = {
 
       aCallback(urls);
     });
-  }
+  },
 };
 
 /**
@@ -2169,5 +2196,5 @@ var NewTabUtils = {
   blockedLinks: BlockedLinks,
   placesProvider: PlacesProvider,
   activityStreamLinks: ActivityStreamLinks,
-  activityStreamProvider: ActivityStreamProvider
+  activityStreamProvider: ActivityStreamProvider,
 };

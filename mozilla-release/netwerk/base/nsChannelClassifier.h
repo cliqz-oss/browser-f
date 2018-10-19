@@ -40,6 +40,8 @@ public:
 
     // Helper function to check a tracking URI against the whitelist
     nsresult IsTrackerWhitelisted(nsIURI* aWhiteListURI,
+                                  bool aUseTrackingTable,
+                                  bool aUseAnnotationTable,
                                   nsIURIClassifierCallback* aCallback);
 
     // Called once we actually classified an URI. (An additional whitelist
@@ -55,7 +57,7 @@ public:
     nsresult CheckIsTrackerWithLocalTable(std::function<void()>&& aCallback);
 
     // Helper function to create a whitelist URL.
-    already_AddRefed<nsIURI> CreateWhiteListURI() const;
+    nsresult CreateWhiteListURI(nsIURI** aURI) const;
 
     already_AddRefed<nsIChannel> GetChannel();
 
@@ -78,8 +80,6 @@ private:
     nsresult StartInternal();
     // Helper function to check a URI against the hostname whitelist
     bool IsHostnameWhitelisted(nsIURI *aUri, const nsACString &aWhitelisted);
-    // Checks that the channel was loaded by the URI currently loaded in aDoc
-    static bool SameLoadingURI(nsIDocument *aDoc, nsIChannel *aChannel);
     // Note this function will be also used to decide whether or not to enable
     // channel annotation. When |aAnnotationsOnly| is true, this function
     // is called by ShouldEnableTrackingAnnotation(). Otherwise, this is called

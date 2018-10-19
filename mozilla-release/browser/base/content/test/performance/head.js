@@ -14,8 +14,7 @@ ChromeUtils.defineModuleGetter(this, "PlacesTestUtils",
  *        The window in which the frame tree needs to be marked as dirty.
  */
 function dirtyFrame(win) {
-  let dwu = win.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDOMWindowUtils);
+  let dwu = win.windowUtils;
   try {
     dwu.ensureDirtyRootFrame();
   } catch (e) {
@@ -55,12 +54,10 @@ async function recordReflows(testPromise, win = window) {
     },
 
     QueryInterface: ChromeUtils.generateQI([Ci.nsIReflowObserver,
-                                            Ci.nsISupportsWeakReference])
+                                            Ci.nsISupportsWeakReference]),
   };
 
-  let docShell = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIWebNavigation)
-                    .QueryInterface(Ci.nsIDocShell);
+  let docShell = win.docShell;
   docShell.addWeakReflowObserver(observer);
 
   let dirtyFrameFn = event => {
@@ -235,8 +232,7 @@ function forceImmediateToolbarOverflowHandling(win) {
     overflowableToolbar._lazyResizeHandler.disarm();
     // Ensure the root frame is dirty before resize so that, if we're
     // in the middle of a reflow test, we record the reflows deterministically.
-    let dwu = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIDOMWindowUtils);
+    let dwu = win.windowUtils;
     dwu.ensureDirtyRootFrame();
     overflowableToolbar._onLazyResize();
   }
@@ -307,7 +303,10 @@ async function createTabs(howMany) {
     uris.push("about:blank");
   }
 
-  gBrowser.loadTabs(uris, true, false);
+  gBrowser.loadTabs(uris, {
+    inBackground: true,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
 
   await BrowserTestUtils.waitForCondition(() => {
     return Array.from(gBrowser.tabs).every(tab => tab._fullyOpen);

@@ -455,21 +455,6 @@ nsSMILCSSValueType::Interpolate(const nsSMILValue& aStartVal,
                              aResult);
 }
 
-// Helper function to extract presContext
-static nsPresContext*
-GetPresContextForElement(Element* aElem)
-{
-  nsIDocument* doc = aElem->GetUncomposedDoc();
-  if (!doc) {
-    // This can happen if we process certain types of restyles mid-sample
-    // and remove anonymous animated content from the document as a result.
-    // See bug 534975.
-    return nullptr;
-  }
-  return doc->GetPresContext();
-}
-
-
 static ServoAnimationValues
 ValueFromStringHelper(nsCSSPropertyID aPropID,
                       Element* aTargetElement,
@@ -479,7 +464,7 @@ ValueFromStringHelper(nsCSSPropertyID aPropID,
 {
   ServoAnimationValues result;
 
-  nsIDocument* doc = aTargetElement->GetUncomposedDoc();
+  nsIDocument* doc = aTargetElement->GetComposedDoc();
   if (!doc) {
     return result;
   }
@@ -512,18 +497,19 @@ nsSMILCSSValueType::ValueFromString(nsCSSPropertyID aPropID,
                                     bool* aIsContextSensitive)
 {
   MOZ_ASSERT(aValue.IsNull(), "Outparam should be null-typed");
-  nsPresContext* presContext = GetPresContextForElement(aTargetElement);
+  nsPresContext* presContext =
+    nsContentUtils::GetContextForContent(aTargetElement);
   if (!presContext) {
     NS_WARNING("Not parsing animation value; unable to get PresContext");
     return;
   }
 
-  nsIDocument* doc = aTargetElement->GetUncomposedDoc();
+  nsIDocument* doc = aTargetElement->GetComposedDoc();
   if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr,
                                                 doc->NodePrincipal(),
                                                 nullptr,
                                                 doc->GetDocumentURI(),
-                                                0, aString, nullptr)) {
+                                                0, 0, aString, nullptr)) {
     return;
   }
 
@@ -556,7 +542,7 @@ nsSMILCSSValueType::ValueFromAnimationValue(nsCSSPropertyID aPropID,
 {
   nsSMILValue result;
 
-  nsIDocument* doc = aTargetElement->GetUncomposedDoc();
+  nsIDocument* doc = aTargetElement->GetComposedDoc();
   // We'd like to avoid serializing |aValue| if possible, and since the
   // string passed to CSPAllowsInlineStyle is only used for reporting violations
   // and an intermediate CSS value is not likely to be particularly useful
@@ -567,7 +553,8 @@ nsSMILCSSValueType::ValueFromAnimationValue(nsCSSPropertyID aPropID,
                                                 doc->NodePrincipal(),
                                                 nullptr,
                                                 doc->GetDocumentURI(),
-                                                0, kPlaceholderText, nullptr)) {
+                                                0, 0, kPlaceholderText,
+                                                nullptr)) {
     return result;
   }
 

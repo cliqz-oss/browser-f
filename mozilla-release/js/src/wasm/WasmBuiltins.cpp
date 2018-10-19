@@ -168,6 +168,10 @@ wasm::HandleThrow(JSContext* cx, WasmFrameIter& iter)
     RootedWasmInstanceObject keepAlive(cx, iter.instance()->object());
 
     for (; !iter.done(); ++iter) {
+        // Wasm code can enter same-compartment realms, so reset cx->realm to
+        // this frame's realm.
+        cx->setRealmForJitExceptionHandler(iter.instance()->realm());
+
         if (!iter.debugEnabled())
             continue;
 
@@ -257,8 +261,6 @@ WasmHandleTrap()
         return ReportError(cx, JSMSG_WASM_IND_CALL_TO_NULL);
       case Trap::IndirectCallBadSig:
         return ReportError(cx, JSMSG_WASM_IND_CALL_BAD_SIG);
-      case Trap::ImpreciseSimdConversion:
-        return ReportError(cx, JSMSG_SIMD_FAILED_CONVERSION);
       case Trap::OutOfBounds:
         return ReportError(cx, JSMSG_WASM_OUT_OF_BOUNDS);
       case Trap::UnalignedAccess:
@@ -284,20 +286,6 @@ WasmHandleTrap()
     }
 
     MOZ_CRASH("unexpected trap");
-}
-
-static void
-WasmReportOutOfBounds()
-{
-    JSContext* cx = TlsContext.get();
-    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_OUT_OF_BOUNDS);
-}
-
-static void
-WasmReportUnalignedAccess()
-{
-    JSContext* cx = TlsContext.get();
-    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_UNALIGNED_ACCESS);
 }
 
 static void
@@ -515,12 +503,6 @@ AddressOf(SymbolicAddress imm, ABIFunctionType* abiType)
       case SymbolicAddress::HandleTrap:
         *abiType = Args_General0;
         return FuncCast(WasmHandleTrap, *abiType);
-      case SymbolicAddress::ReportOutOfBounds:
-        *abiType = Args_General0;
-        return FuncCast(WasmReportOutOfBounds, *abiType);
-      case SymbolicAddress::ReportUnalignedAccess:
-        *abiType = Args_General0;
-        return FuncCast(WasmReportUnalignedAccess, *abiType);
       case SymbolicAddress::ReportInt64JSCall:
         *abiType = Args_General0;
         return FuncCast(WasmReportInt64JSCall, *abiType);
@@ -673,6 +655,11 @@ AddressOf(SymbolicAddress imm, ABIFunctionType* abiType)
       case SymbolicAddress::MemFill:
         *abiType = Args_General4;
         return FuncCast(Instance::memFill, *abiType);
+#ifdef ENABLE_WASM_GC
+      case SymbolicAddress::PostBarrier:
+        *abiType = Args_General2;
+        return FuncCast(Instance::postBarrier, *abiType);
+#endif
 #if defined(JS_CODEGEN_MIPS32)
       case SymbolicAddress::js_jit_gAtomic64Lock:
         return &js::jit::gAtomic64Lock;
@@ -693,8 +680,6 @@ wasm::NeedsBuiltinThunk(SymbolicAddress sym)
       case SymbolicAddress::HandleDebugTrap:          // GenerateDebugTrapStub
       case SymbolicAddress::HandleThrow:              // GenerateThrowStub
       case SymbolicAddress::HandleTrap:               // GenerateTrapExit
-      case SymbolicAddress::ReportOutOfBounds:        // GenerateOutOfBoundsExit
-      case SymbolicAddress::ReportUnalignedAccess:    // GenerateUnalignedExit
       case SymbolicAddress::CallImport_Void:          // GenerateImportInterpExit
       case SymbolicAddress::CallImport_I32:
       case SymbolicAddress::CallImport_I64:
@@ -751,6 +736,9 @@ wasm::NeedsBuiltinThunk(SymbolicAddress sym)
       case SymbolicAddress::ReportInt64JSCall:
       case SymbolicAddress::MemCopy:
       case SymbolicAddress::MemFill:
+#ifdef ENABLE_WASM_GC
+      case SymbolicAddress::PostBarrier:
+#endif
         return true;
       case SymbolicAddress::Limit:
         break;
@@ -798,8 +786,8 @@ wasm::NeedsBuiltinThunk(SymbolicAddress sym)
     _(ecmaPow, MathPow)            \
 
 #define DEFINE_UNARY_FLOAT_WRAPPER(func, _)        \
-    static float func##_uncached_f32(float x) {    \
-        return float(func##_uncached(double(x)));  \
+    static float func##_impl_f32(float x) {    \
+        return float(func##_impl(double(x)));  \
     }
 
 #define DEFINE_BINARY_FLOAT_WRAPPER(func, _)       \
@@ -838,17 +826,14 @@ using TypedNativeToFuncPtrMap =
 static bool
 PopulateTypedNatives(TypedNativeToFuncPtrMap* typedNatives)
 {
-    if (!typedNatives->init())
-        return false;
-
 #define ADD_OVERLOAD(funcName, native, abiType)                                           \
     if (!typedNatives->putNew(TypedNative(InlinableNative::native, abiType),              \
                               FuncCast(funcName, abiType)))                               \
         return false;
 
 #define ADD_UNARY_OVERLOADS(funcName, native)                                             \
-    ADD_OVERLOAD(funcName##_uncached, native, Args_Double_Double)                         \
-    ADD_OVERLOAD(funcName##_uncached_f32, native, Args_Float32_Float32)
+    ADD_OVERLOAD(funcName##_impl, native, Args_Double_Double)                         \
+    ADD_OVERLOAD(funcName##_impl_f32, native, Args_Float32_Float32)
 
 #define ADD_BINARY_OVERLOADS(funcName, native)                                            \
     ADD_OVERLOAD(funcName, native, Args_Double_DoubleDouble)                              \
@@ -957,9 +942,6 @@ wasm::EnsureBuiltinThunksInitialized()
     if (!PopulateTypedNatives(&typedNatives))
         return false;
 
-    if (!thunks->typedNativeToCodeRange.init())
-        return false;
-
     for (TypedNativeToFuncPtrMap::Range r = typedNatives.all(); !r.empty(); r.popFront()) {
         TypedNative typedNative = r.front().key();
 
@@ -1044,7 +1026,7 @@ ToBuiltinABIFunctionType(const FuncType& funcType)
     ExprType ret = funcType.ret();
 
     uint32_t abiType;
-    switch (ret) {
+    switch (ret.code()) {
       case ExprType::F32: abiType = ArgType_Float32 << RetType_Shift; break;
       case ExprType::F64: abiType = ArgType_Double << RetType_Shift; break;
       default: return Nothing();

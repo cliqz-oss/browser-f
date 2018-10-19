@@ -298,6 +298,7 @@ public:
   virtual void               SetAttachedWidgetListener(nsIWidgetListener* aListener) override;
   virtual nsIWidgetListener* GetPreviouslyAttachedWidgetListener() override;
   virtual void               SetPreviouslyAttachedWidgetListener(nsIWidgetListener* aListener) override;
+  virtual NativeIMEContext GetNativeIMEContext() override;
   TextEventDispatcher* GetTextEventDispatcher() final;
   virtual TextEventDispatcherListener*
     GetNativeTextEventDispatcherListener() override;
@@ -317,6 +318,9 @@ public:
                              const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
 
   bool AsyncPanZoomEnabled() const override;
+
+  typedef void (nsIPresShell::*NotificationFunc)(void);
+  void NotifyPresShell(NotificationFunc aNotificationFunc);
 
   void NotifyWindowDestroyed();
   void NotifySizeMoveDone();
@@ -550,9 +554,7 @@ protected:
   virtual already_AddRefed<nsIWidget>
   AllocateChildPopupWidget()
   {
-    static NS_DEFINE_IID(kCPopUpCID, NS_CHILD_CID);
-    nsCOMPtr<nsIWidget> widget = do_CreateInstance(kCPopUpCID);
-    return widget.forget();
+    return nsIWidget::CreateChildWindow();
   }
 
   LayerManager* CreateBasicLayerManager();

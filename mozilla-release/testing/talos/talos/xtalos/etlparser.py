@@ -13,8 +13,7 @@ import shutil
 import subprocess
 import sys
 
-import mozfile
-from . import xtalos
+import xtalos
 
 EVENTNAME_INDEX = 0
 PROCESS_INDEX = 2
@@ -25,6 +24,7 @@ IMAGEFUNC_COL = "Image!Function"
 EVENTGUID_COL = "EventGuid"
 ACTIVITY_ID_COL = "etw:ActivityId"
 NUMBYTES_COL = "NumBytes"
+BYTESSENT_COL = "BytesSent"
 
 CEVT_WINDOWS_RESTORED = "{917b96b1-ecad-4dab-a760-8d49027748ae}"
 CEVT_XPCOM_SHUTDOWN = "{26d1e091-0ae7-4f49-a554-4214445c505c}"
@@ -65,7 +65,15 @@ def filterOutHeader(data):
     # 0 means we are in the header
     # 1+ means that we are past the header
     state = -1
-    for row in data:
+    done = False
+    while not done:
+        try:
+            row = data.next()
+        except StopIteration:
+            done = True
+            break
+        except csv.Error:
+            continue
 
         if not len(row):
             continue
@@ -94,10 +102,16 @@ def filterOutHeader(data):
             yield row
 
 
-def getIndex(eventType, colName):
-    if colName not in gHeaders[eventType]:
-        return None
-    return gHeaders[eventType].index(colName)
+def getIndex(eventName, *colNames):
+    eventHeader = gHeaders[eventName]
+
+    for colName in colNames:
+        try:
+            return eventHeader.index(colName)
+        except ValueError:
+            pass
+
+    return None
 
 
 def readFile(filename):
@@ -227,7 +241,9 @@ def trackThreadNetIO(row, io, stage):
         if netEvt in net_events:
             opType = net_events[netEvt]
             th, stg = gThreads[origThread], stages[stage]
-            lenIdx = getIndex(event, NUMBYTES_COL)
+            # On newer versions of Windows, some net I/O events have switched to
+            # using BYTESSENT_COL, so we try both
+            lenIdx = getIndex(event, NUMBYTES_COL, BYTESSENT_COL)
             bytes = int(row[lenIdx])
             io[(th, stg, "net_%s_bytes" % opType)] = \
                 io.get((th, stg, "net_%s_bytes" % opType), 0) + bytes
@@ -317,8 +333,6 @@ def etlparser(xperf_path, etl_filename, processID, approot=None,
 
     if debug:
         uploadFile(csvname)
-    else:
-        mozfile.remove(csvname)
 
     output = "thread, stage, counter, value\n"
     for cntr in sorted(io.iterkeys()):

@@ -46,12 +46,6 @@ pub trait Element: Sized + Clone + Debug {
     }
 
     /// Skips non-element nodes
-    fn first_child_element(&self) -> Option<Self>;
-
-    /// Skips non-element nodes
-    fn last_child_element(&self) -> Option<Self>;
-
-    /// Skips non-element nodes
     fn prev_sibling_element(&self) -> Option<Self>;
 
     /// Skips non-element nodes
@@ -127,13 +121,6 @@ pub trait Element: Sized + Clone + Debug {
     /// Returns whether this element should ignore matching nth child
     /// selector.
     fn ignores_nth_child_selectors(&self) -> bool {
-        false
-    }
-
-    /// Return true if we want to stop lookup ancestor of the current
-    /// element while matching complex selectors with descendant/child
-    /// combinator.
-    fn blocks_ancestor_combinators(&self) -> bool {
         false
     }
 }

@@ -47,10 +47,9 @@ var _SearchInput2 = _interopRequireDefault(_SearchInput);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 function getFilePath(item, index) {
   return item.type === "RESULT" ? `${item.sourceId}-${index || "$"}` : `${item.sourceId}-${item.line}-${item.column}-${index || "$"}`;
 }
@@ -84,7 +83,8 @@ class ProjectSearch extends _react.Component {
     this.isProjectSearchEnabled = () => this.props.activeSearch === "project";
 
     this.selectMatchItem = matchItem => {
-      this.props.selectLocation(_objectSpread({}, matchItem));
+      this.props.selectSpecificLocation({ ...matchItem
+      });
       this.props.doSearchForHighlight(this.state.inputValue, (0, _editor.getEditor)(), matchItem.line, matchItem.column);
     };
 
@@ -92,12 +92,13 @@ class ProjectSearch extends _react.Component {
       const {
         results
       } = this.props;
-      return results.toJS().map(result => _objectSpread({
-        type: "RESULT"
-      }, result, {
-        matches: result.matches.map(m => _objectSpread({
-          type: "MATCH"
-        }, m))
+      return results.toJS().map(result => ({
+        type: "RESULT",
+        ...result,
+        matches: result.matches.map(m => ({
+          type: "MATCH",
+          ...m
+        }))
       })).filter(result => result.filepath && result.matches.length > 0);
     };
 
@@ -267,6 +268,15 @@ class ProjectSearch extends _react.Component {
     shortcuts.off("Enter", this.onEnterPress);
   }
 
+  componentDidUpdate(prevProps) {
+    // If the query changes in redux, also change it in the UI
+    if (prevProps.query !== this.props.query) {
+      this.setState({
+        inputValue: this.props.query
+      });
+    }
+  }
+
   shouldShowErrorEmoji() {
     return !this.getResultCount() && this.props.status === _projectTextSearch.statusType.done;
   }
@@ -321,4 +331,11 @@ const mapStateToProps = state => ({
   status: (0, _selectors.getTextSearchStatus)(state)
 });
 
-exports.default = (0, _reactRedux.connect)(mapStateToProps, _actions2.default)(ProjectSearch);
+exports.default = (0, _reactRedux.connect)(mapStateToProps, {
+  closeProjectSearch: _actions2.default.closeProjectSearch,
+  searchSources: _actions2.default.searchSources,
+  clearSearch: _actions2.default.clearSearch,
+  selectSpecificLocation: _actions2.default.selectSpecificLocation,
+  setActiveSearch: _actions2.default.setActiveSearch,
+  doSearchForHighlight: _actions2.default.doSearchForHighlight
+})(ProjectSearch);

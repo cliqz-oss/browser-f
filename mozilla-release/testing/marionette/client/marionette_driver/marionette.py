@@ -24,12 +24,16 @@ from .geckoinstance import GeckoInstance
 from .keys import Keys
 from .timeout import Timeouts
 
-WEBELEMENT_KEY = "ELEMENT"
-W3C_WEBELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
+CHROME_ELEMENT_KEY = "chromeelement-9fc5-4b51-a3c8-01716eedeb04"
+FRAME_KEY = "frame-075b-4da1-b6ba-e579c2d3230a"
+WEB_ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
+WINDOW_KEY = "window-fcc6-11e5-b4f8-330a88ab9d7f"
 
 
 class HTMLElement(object):
     """Represents a DOM Element."""
+
+    identifiers = (CHROME_ELEMENT_KEY, FRAME_KEY, WINDOW_KEY, WEB_ELEMENT_KEY)
 
     def __init__(self, marionette, id):
         self.marionette = marionette
@@ -175,6 +179,19 @@ class HTMLElement(object):
         body = {"id": self.id, "propertyName": property_name}
         return self.marionette._send_message("WebDriver:GetElementCSSValue",
                                              body, key="value")
+
+    @classmethod
+    def _from_json(cls, json, marionette):
+        if isinstance(json, dict):
+            if WEB_ELEMENT_KEY in json:
+                return cls(marionette, json[WEB_ELEMENT_KEY])
+            elif CHROME_ELEMENT_KEY in json:
+                return cls(marionette, json[CHROME_ELEMENT_KEY])
+            elif FRAME_KEY in json:
+                return cls(marionette, json[FRAME_KEY])
+            elif WINDOW_KEY in json:
+                return cls(marionette, json[WINDOW_KEY])
+        raise ValueError("Unrecognised web element")
 
 
 class MouseButton(object):
@@ -525,8 +542,7 @@ class Alert(object):
 
     def accept(self):
         """Accept a currently displayed modal dialog."""
-        # TODO: Switch to "WebDriver:AcceptAlert" in Firefox 62
-        self.marionette._send_message("WebDriver:AcceptDialog")
+        self.marionette._send_message("WebDriver:AcceptAlert")
 
     def dismiss(self):
         """Dismiss a currently displayed modal dialog."""
@@ -559,7 +575,7 @@ class Marionette(object):
     # so that slow builds have enough time to send the timeout error to the client.
     DEFAULT_SOCKET_TIMEOUT = 360
 
-    def __init__(self, host="localhost", port=2828, app=None, bin=None,
+    def __init__(self, host="127.0.0.1", port=2828, app=None, bin=None,
                  baseurl=None, socket_timeout=None,
                  startup_timeout=None, **instance_args):
         """Construct a holder for the Marionette connection.
@@ -568,7 +584,7 @@ class Marionette(object):
         connection and start a Marionette session.
 
         :param host: Host where the Marionette server listens.
-            Defaults to localhost.
+            Defaults to 127.0.0.1.
         :param port: Port where the Marionette server listens.
             Defaults to port 2828.
         :param baseurl: Where to look for files served from Marionette's
@@ -584,7 +600,7 @@ class Marionette(object):
         :param instance_args: Arguments to pass to ``instance_class``.
 
         """
-        self.host = host
+        self.host = "127.0.0.1"  # host
         self.port = self.local_port = int(port)
         self.bin = bin
         self.client = None
@@ -724,9 +740,8 @@ class Marionette(object):
         :returns: Full response from the server, or if `key` is given,
             the value of said key in the response.
         """
-
         if not self.session_id and name != "WebDriver:NewSession":
-            raise errors.MarionetteException("Please start a session")
+            raise errors.InvalidSessionIdException("Please start a session")
 
         try:
             msg = self.client.request(name, params)
@@ -745,12 +760,8 @@ class Marionette(object):
             return self._unwrap_response(res)
 
     def _unwrap_response(self, value):
-        if isinstance(value, dict) and (WEBELEMENT_KEY in value or
-                                        W3C_WEBELEMENT_KEY in value):
-            if value.get(WEBELEMENT_KEY):
-                return HTMLElement(self, value.get(WEBELEMENT_KEY))
-            else:
-                return HTMLElement(self, value.get(W3C_WEBELEMENT_KEY))
+        if isinstance(value, dict) and any(k in value.keys() for k in HTMLElement.identifiers):
+            return HTMLElement._from_json(value, self)
         elif isinstance(value, list):
             return list(self._unwrap_response(item) for item in value)
         else:
@@ -1265,7 +1276,10 @@ class Marionette(object):
         """
         try:
             if send_request:
-                self._send_message("WebDriver:DeleteSession")
+                try:
+                    self._send_message("WebDriver:DeleteSession")
+                except errors.InvalidSessionIdException:
+                    pass
         finally:
             self.process_id = None
             self.profile = None
@@ -1593,8 +1607,8 @@ class Marionette(object):
             for arg in args:
                 wrapped[arg] = self._to_json(args[arg])
         elif type(args) == HTMLElement:
-            wrapped = {W3C_WEBELEMENT_KEY: args.id,
-                       WEBELEMENT_KEY: args.id}
+            wrapped = {WEB_ELEMENT_KEY: args.id,
+                       CHROME_ELEMENT_KEY: args.id}
         elif (isinstance(args, bool) or isinstance(args, basestring) or
               isinstance(args, int) or isinstance(args, float) or args is None):
             wrapped = args
@@ -1605,20 +1619,17 @@ class Marionette(object):
             unwrapped = []
             for item in value:
                 unwrapped.append(self._from_json(item))
+            return unwrapped
         elif isinstance(value, dict):
             unwrapped = {}
             for key in value:
-                if key == W3C_WEBELEMENT_KEY:
-                    unwrapped = HTMLElement(self, value[key])
-                    break
-                elif key == WEBELEMENT_KEY:
-                    unwrapped = HTMLElement(self, value[key])
-                    break
+                if key in HTMLElement.identifiers:
+                    return HTMLElement._from_json(value[key], self)
                 else:
                     unwrapped[key] = self._from_json(value[key])
+            return unwrapped
         else:
-            unwrapped = value
-        return unwrapped
+            return value
 
     def execute_script(self, script, script_args=(), new_sandbox=True,
                        sandbox="default", script_timeout=None):
@@ -1723,8 +1734,9 @@ class Marionette(object):
             marionette.timeout.script = 10
             result = self.marionette.execute_async_script('''
               // this script waits 5 seconds, and then returns the number 1
+              let [resolve] = arguments;
               setTimeout(function() {
-                marionetteScriptFinished(1);
+                resolve(1);
               }, 5000);
             ''')
             assert result == 1
@@ -1876,6 +1888,19 @@ class Marionette(object):
         :returns: A list of cookies for the current domain.
         """
         return self._send_message("WebDriver:GetCookies")
+
+    def save_screenshot(self, fh, element=None, highlights=None,
+                        full=True, scroll=True):
+        """Takes a screenhot of a web element or the current frame and
+        saves it in the filehandle.
+
+        It is a wrapper around screenshot()
+        :param fh: The filehandle to save the screenshot at.
+
+        The rest of the parameters are defined like in screenshot()
+        """
+        data = self.screenshot(element, highlights, "binary", full, scroll)
+        fh.write(data)
 
     def screenshot(self, element=None, highlights=None, format="base64",
                    full=True, scroll=True):

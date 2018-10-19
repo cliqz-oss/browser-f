@@ -22,6 +22,7 @@
 #include "nsITimer.h"
 #include "nsIReflowCallback.h"
 #include "nsThreadUtils.h"
+#include "nsPresContext.h"
 #include "nsStyleConsts.h"
 #include "nsWidgetInitData.h"
 #include "mozilla/Attributes.h"
@@ -131,7 +132,7 @@ extern const nsNavigationDirection DirectionFromKeyCodeTable[2][6];
 
 #define NS_DIRECTION_FROM_KEY_CODE(frame, keycode)                                      \
   (DirectionFromKeyCodeTable[frame->StyleVisibility()->mDirection]                      \
-                            [keycode - mozilla::dom::KeyboardEventBinding::DOM_VK_END])
+                            [keycode - mozilla::dom::KeyboardEvent_Binding::DOM_VK_END])
 
 // nsMenuChainItem holds info about an open popup. Items are stored in a
 // doubly linked list. Note that the linked list is stored beginning from

@@ -893,34 +893,23 @@ GfxInfo::AddCrashReportAnnotations()
   GetAdapterSubsysID(subsysID);
   CopyUTF16toUTF8(subsysID, narrowSubsysID);
 
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AdapterVendorID"),
+  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::AdapterVendorID,
                                      narrowVendorID);
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AdapterDeviceID"),
+  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::AdapterDeviceID,
                                      narrowDeviceID);
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AdapterDriverVersion"),
-                                     narrowDriverVersion);
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AdapterSubsysID"),
+  CrashReporter::AnnotateCrashReport(
+    CrashReporter::Annotation::AdapterDriverVersion, narrowDriverVersion);
+  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::AdapterSubsysID,
                                      narrowSubsysID);
 
-  /* Add an App Note for now so that we get the data immediately. These
-   * can go away after we store the above in the socorro db */
+  /* Add an App Note, this contains extra information. */
   nsAutoCString note;
-  /* AppendPrintf only supports 32 character strings, mrghh. */
-  note.AppendLiteral("AdapterVendorID: ");
-  note.Append(narrowVendorID);
-  note.AppendLiteral(", AdapterDeviceID: ");
-  note.Append(narrowDeviceID);
-  note.AppendLiteral(", AdapterSubsysID: ");
-  note.Append(narrowSubsysID);
-  note.AppendLiteral(", AdapterDriverVersion: ");
-  note.Append(NS_LossyConvertUTF16toASCII(driverVersion));
 
+  // TODO: We should probably convert this into a proper annotation
   if (vendorID == GfxDriverInfo::GetDeviceVendor(VendorAll)) {
     /* if we didn't find a valid vendorID lets append the mDeviceID string to try to find out why */
-    note.AppendLiteral(", ");
     LossyAppendUTF16toASCII(mDeviceID[mActiveGPUIndex], note);
     note.AppendLiteral(", ");
-    LossyAppendUTF16toASCII(mDeviceKeyDebug, note);
     LossyAppendUTF16toASCII(mDeviceKeyDebug, note);
   }
   note.AppendLiteral("\n");
@@ -1574,8 +1563,7 @@ GfxInfo::DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> aObj)
   JS::Rooted<JSObject*> obj(aCx);
 
   gfx::FeatureStatus d3d11 = gfxConfig::GetValue(Feature::D3D11_COMPOSITING);
-  if (!InitFeatureObject(aCx, aObj, "d3d11", FEATURE_DIRECT3D_11_ANGLE,
-                         Some(d3d11), &obj)) {
+  if (!InitFeatureObject(aCx, aObj, "d3d11", d3d11, &obj)) {
     return;
   }
   if (d3d11 == gfx::FeatureStatus::Available) {
@@ -1603,8 +1591,7 @@ GfxInfo::DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> aObj)
   }
 
   gfx::FeatureStatus d2d = gfxConfig::GetValue(Feature::DIRECT2D);
-  if (!InitFeatureObject(aCx, aObj, "d2d", nsIGfxInfo::FEATURE_DIRECT2D,
-                         Some(d2d), &obj)) {
+  if (!InitFeatureObject(aCx, aObj, "d2d", d2d, &obj)) {
     return;
   }
   {

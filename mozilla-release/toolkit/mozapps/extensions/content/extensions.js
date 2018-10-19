@@ -11,9 +11,7 @@
 ChromeUtils.import("resource://gre/modules/DeferredTask.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
 ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/addons/AddonRepository.jsm");
 ChromeUtils.import("resource://gre/modules/addons/AddonSettings.jsm");
 
@@ -103,7 +101,7 @@ function promiseEvent(event, target, capture = false) {
 
 var gPendingInitializations = 1;
 Object.defineProperty(this, "gIsInitializing", {
-  get: () => gPendingInitializations > 0
+  get: () => gPendingInitializations > 0,
 });
 
 function initialize(event) {
@@ -240,13 +238,7 @@ function isLegacyExtension(addon) {
     legacy = true;
   }
   if (addon.type == "theme") {
-    // The logic here is kind of clunky but we want to mark complete
-    // themes as legacy.  There's no explicit flag for complete
-    // themes so explicitly check for new style themes (for which
-    // isWebExtension is true) or lightweight themes (which have
-    // ids that end with @personas.mozilla.org)
-    legacy = !(addon.isWebExtension || addon.id.endsWith("@personas.mozilla.org") ||
-               addon.id == "default-theme@mozilla.org");
+    legacy = false;
   }
 
   if (legacy && (addon.hidden || addon.signedState == AddonManager.SIGNEDSTATE_PRIVILEGED)) {
@@ -284,18 +276,11 @@ function isDiscoverEnabled() {
  * Obtain the main DOMWindow for the current context.
  */
 function getMainWindow() {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIWebNavigation)
-               .QueryInterface(Ci.nsIDocShellTreeItem)
-               .rootTreeItem
-               .QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDOMWindow);
+  return window.docShell.rootTreeItem.domWindow;
 }
 
 function getBrowserElement() {
-  return window.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDocShell)
-               .chromeEventHandler;
+  return window.docShell.chromeEventHandler;
 }
 
 /**
@@ -304,20 +289,20 @@ function getBrowserElement() {
  */
 var HTML5History = {
   get index() {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
+    return window.docShell
+                 .QueryInterface(Ci.nsIWebNavigation)
                  .sessionHistory.index;
   },
 
   get canGoBack() {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
+    return window.docShell
+                 .QueryInterface(Ci.nsIWebNavigation)
                  .canGoBack;
   },
 
   get canGoForward() {
-    return window.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIWebNavigation)
+    return window.docShell
+                 .QueryInterface(Ci.nsIWebNavigation)
                  .canGoForward;
   },
 
@@ -353,7 +338,7 @@ var HTML5History = {
     window.history.back();
     gViewController.updateCommand("cmd_back");
     gViewController.updateCommand("cmd_forward");
-  }
+  },
 };
 
 /**
@@ -415,13 +400,13 @@ var FakeHistory = {
     gViewController.updateState(this.states[this.pos]);
     gViewController.updateCommand("cmd_back");
     gViewController.updateCommand("cmd_forward");
-  }
+  },
 };
 
 // If the window has a session history then use the HTML5 History wrapper
 // otherwise use our fake history implementation
-if (window.QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsIWebNavigation)
+if (window.docShell
+          .QueryInterface(Ci.nsIWebNavigation)
           .sessionHistory) {
   var gHistory = HTML5History;
 } else {
@@ -623,7 +608,7 @@ var gEventManager = {
 
   onUpdateModeChanged() {
     this.refreshAutoUpdateDefault();
-  }
+  },
 };
 
 function attachUpdateHandler(install) {
@@ -764,7 +749,7 @@ var gViewController = {
 
     var state = {
       view: aViewId,
-      previousView: this.currentViewId
+      previousView: this.currentViewId,
     };
     if (!isRefresh) {
       gHistory.pushState(state);
@@ -781,7 +766,7 @@ var gViewController = {
 
     var state = {
       view: aViewId,
-      previousView: null
+      previousView: null,
     };
     gHistory.replaceState(state);
     this.loadViewInternal(aViewId, null, state);
@@ -790,7 +775,7 @@ var gViewController = {
   loadInitialView(aViewId) {
     var state = {
       view: aViewId,
-      previousView: null
+      previousView: null,
     };
     gHistory.replaceState(state);
 
@@ -880,7 +865,7 @@ var gViewController = {
       },
       doCommand() {
         gHistory.back();
-      }
+      },
     },
 
     cmd_forward: {
@@ -889,14 +874,14 @@ var gViewController = {
       },
       doCommand() {
         gHistory.forward();
-      }
+      },
     },
 
     cmd_focusSearch: {
       isEnabled: () => true,
       doCommand() {
         gHeader.focusSearchBox();
-      }
+      },
     },
 
     cmd_enableCheckCompatibility: {
@@ -905,7 +890,7 @@ var gViewController = {
       },
       doCommand() {
         AddonManager.checkCompatibility = true;
-      }
+      },
     },
 
     cmd_enableUpdateSecurity: {
@@ -914,7 +899,7 @@ var gViewController = {
       },
       doCommand() {
         AddonManager.checkUpdateSecurity = true;
-      }
+      },
     },
 
     cmd_toggleAutoUpdateDefault: {
@@ -933,7 +918,7 @@ var gViewController = {
           // Toggle the auto pref to false, but don't touch the enabled check.
           AddonManager.autoUpdateDefault = false;
         }
-      }
+      },
     },
 
     cmd_resetAddonAutoUpdate: {
@@ -946,7 +931,7 @@ var gViewController = {
           if ("applyBackgroundUpdates" in addon)
             addon.applyBackgroundUpdates = AddonManager.AUTOUPDATE_DEFAULT;
         }
-      }
+      },
     },
 
     cmd_goToDiscoverPane: {
@@ -955,7 +940,7 @@ var gViewController = {
       },
       doCommand() {
         gViewController.loadView("addons://discover/");
-      }
+      },
     },
 
     cmd_goToRecentUpdates: {
@@ -964,7 +949,7 @@ var gViewController = {
       },
       doCommand() {
         gViewController.loadView("addons://updates/recent");
-      }
+      },
     },
 
     cmd_goToAvailableUpdates: {
@@ -973,7 +958,7 @@ var gViewController = {
       },
       doCommand() {
         gViewController.loadView("addons://updates/available");
-      }
+      },
     },
 
     cmd_showItemDetails: {
@@ -984,7 +969,7 @@ var gViewController = {
         gViewController.loadView("addons://detail/" +
                                  encodeURIComponent(aAddon.id) +
                                  (aScrollToPreferences ? "/preferences" : ""));
-      }
+      },
     },
 
     cmd_findAllUpdates: {
@@ -1044,7 +1029,7 @@ var gViewController = {
             pendingChecks--;
             numUpdated++;
             updateStatus();
-          }
+          },
         };
 
         var updateCheckListener = {
@@ -1068,7 +1053,7 @@ var gViewController = {
           onUpdateFinished(aAddon, aError) {
             gEventManager.delegateAddonEvent("onUpdateFinished",
                                              [aAddon, aError]);
-          }
+          },
         };
 
         let aAddonList = await AddonManager.getAddonsByTypes(null);
@@ -1082,7 +1067,7 @@ var gViewController = {
 
         if (pendingChecks == 0)
           updateStatus();
-      }
+      },
     },
 
     cmd_findItemUpdates: {
@@ -1103,11 +1088,11 @@ var gViewController = {
           onNoUpdateAvailable(aAddon) {
             gEventManager.delegateAddonEvent("onNoUpdateAvailable",
                                              [aAddon]);
-          }
+          },
         };
         gEventManager.delegateAddonEvent("onCheckingUpdate", [aAddon]);
         aAddon.findUpdates(listener, AddonManager.UPDATE_WHEN_USER_REQUESTED);
-      }
+      },
     },
 
     cmd_showItemPreferences: {
@@ -1126,7 +1111,7 @@ var gViewController = {
         } else if (aAddon.optionsType == AddonManager.OPTIONS_TYPE_TAB) {
           openOptionsInTab(aAddon.optionsURL);
         }
-      }
+      },
     },
 
     cmd_enableItem: {
@@ -1164,7 +1149,7 @@ var gViewController = {
         if (!aAddon)
           return "";
         return gStrings.ext.GetStringFromName("enableAddonTooltip");
-      }
+      },
     },
 
     cmd_disableItem: {
@@ -1182,7 +1167,7 @@ var gViewController = {
         if (!aAddon)
           return "";
         return gStrings.ext.GetStringFromName("disableAddonTooltip");
-      }
+      },
     },
 
     cmd_installItem: {
@@ -1200,7 +1185,7 @@ var gViewController = {
           gViewController.popState(doInstall);
         else
           doInstall();
-      }
+      },
     },
 
     cmd_uninstallItem: {
@@ -1223,7 +1208,7 @@ var gViewController = {
         if (!aAddon)
           return "";
         return gStrings.ext.GetStringFromName("uninstallAddonTooltip");
-      }
+      },
     },
 
     cmd_cancelUninstallItem: {
@@ -1234,7 +1219,7 @@ var gViewController = {
       },
       doCommand(aAddon) {
         aAddon.cancelUninstall();
-      }
+      },
     },
 
     cmd_installFromFile: {
@@ -1259,14 +1244,12 @@ var gViewController = {
             return;
 
           let browser = getBrowserElement();
-          let files = fp.files;
-          while (files.hasMoreElements()) {
-            let file = files.getNext();
+          for (let file of fp.files) {
             let install = await AddonManager.getInstallForFile(file);
             AddonManager.installAddonFromAOM(browser, document.documentURIObject, install);
           }
         });
-      }
+      },
     },
 
     cmd_debugAddons: {
@@ -1293,7 +1276,7 @@ var gViewController = {
         if (isPending(aAddon, "uninstall")) {
           aAddon.cancelUninstall();
         }
-      }
+      },
     },
 
     cmd_contribute: {
@@ -1304,7 +1287,7 @@ var gViewController = {
       },
       doCommand(aAddon) {
         openURL(aAddon.contributionURL);
-      }
+      },
     },
 
     cmd_askToActivateItem: {
@@ -1317,7 +1300,7 @@ var gViewController = {
       },
       doCommand(aAddon) {
         aAddon.userDisabled = AddonManager.STATE_ASK_TO_ACTIVATE;
-      }
+      },
     },
 
     cmd_alwaysActivateItem: {
@@ -1330,7 +1313,7 @@ var gViewController = {
       },
       doCommand(aAddon) {
         aAddon.userDisabled = false;
-      }
+      },
     },
 
     cmd_neverActivateItem: {
@@ -1343,7 +1326,7 @@ var gViewController = {
       },
       doCommand(aAddon) {
         aAddon.userDisabled = true;
-      }
+      },
     },
 
     cmd_showUnsignedExtensions: {
@@ -1411,7 +1394,7 @@ var gViewController = {
     cmd.doCommand(aAddon);
   },
 
-  onEvent() {}
+  onEvent() {},
 };
 
 function hasInlineOptions(aAddon) {
@@ -1465,7 +1448,7 @@ function shouldShowVersionNumber(aAddon) {
 }
 
 function createItem(aObj, aIsInstall) {
-  let item = document.createElement("richlistitem");
+  let item = document.createXULElement("richlistitem");
 
   item.setAttribute("class", "addon addon-view");
   item.setAttribute("name", aObj.name);
@@ -1738,7 +1721,7 @@ var gCategories = {
     if (document.getElementById("category-" + aId))
       return;
 
-    var category = document.createElement("richlistitem");
+    var category = document.createXULElement("richlistitem");
     category.setAttribute("id", "category-" + aId);
     category.setAttribute("value", aView);
     category.setAttribute("class", "category");
@@ -1831,7 +1814,7 @@ var gCategories = {
               Services.prefs.setBoolPref(prefName, false);
               gEventManager.unregisterInstallListener(this);
             }
-          }
+          },
         });
 
         notifyInitialized();
@@ -1910,7 +1893,10 @@ var gHeader = {
 
       let browser = getBrowserElement();
       let chromewin = browser.ownerGlobal;
-      chromewin.openLinkIn(url, "tab", {fromChrome: true});
+      chromewin.openLinkIn(url, "tab", {
+        fromChrome: true,
+        triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+      });
     });
 
     const SETTINGS_PREF_NAME = 'extensions.cliqz.listed';
@@ -1931,16 +1917,13 @@ var gHeader = {
   },
 
   get shouldShowNavButtons() {
-    var docshellItem = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsIWebNavigation)
-                             .QueryInterface(Ci.nsIDocShellTreeItem);
+    var docshellItem = window.docShell;
 
     // If there is no outer frame then make the buttons visible
     if (docshellItem.rootTreeItem == docshellItem)
       return true;
 
-    var outerWin = docshellItem.rootTreeItem.QueryInterface(Ci.nsIInterfaceRequestor)
-                                            .getInterface(Ci.nsIDOMWindow);
+    var outerWin = docshellItem.rootTreeItem.domWindow;
     var outerDoc = outerWin.document;
     var node = outerDoc.getElementById("back-button");
     // If the outer frame has no back-button then make the buttons visible
@@ -2044,7 +2027,7 @@ var gDiscoverView = {
         type: addon.type,
         userDisabled: addon.userDisabled,
         isCompatible: addon.isCompatible,
-        isBlocklisted: addon.blocklistState == Ci.nsIBlocklistService.STATE_BLOCKED
+        isBlocklisted: addon.blocklistState == Ci.nsIBlocklistService.STATE_BLOCKED,
       };
     }
 
@@ -2137,7 +2120,7 @@ var gDiscoverView = {
 
       var state = {
         view: "addons://discover/",
-        url: aLocation.spec
+        url: aLocation.spec,
       };
 
       var replaceHistory = Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY << 16;
@@ -2228,7 +2211,7 @@ var gDiscoverView = {
 
   getSelectedAddon() {
     return null;
-  }
+  },
 };
 
 
@@ -2329,7 +2312,7 @@ var gLegacyView = {
       listitem = listitem.nextSibling;
     }
     return null;
-  }
+  },
 };
 
 var gListView = {
@@ -2569,7 +2552,7 @@ var gListView = {
       listitem = listitem.nextSibling;
     }
     return null;
-  }
+  },
 };
 
 
@@ -2609,27 +2592,7 @@ var gDetailView = {
 
     let legacy = false;
     if (!aAddon.install) {
-      if (aAddon.type == "extension" && !aAddon.isWebExtension) {
-        legacy = true;
-      }
-      if (aAddon.type == "theme") {
-        // The logic here is kind of clunky but we want to mark complete
-        // themes as legacy.  There's no explicit flag for complete
-        // themes so explicitly check for new style themes (for which
-        // isWebExtension is true) or lightweight themes (which have
-        // ids that end with @personas.mozilla.org)
-        legacy = !(aAddon.isWebExtension || aAddon.id.endsWith("@personas.mozilla.org"));
-      }
-
-      if (legacy && aAddon.signedState == AddonManager.SIGNEDSTATE_PRIVILEGED) {
-        legacy = false;
-      }
-
-      // Exceptions that can slip through above: the default theme plus
-      // test pilot addons until we get SIGNEDSTATE_PRIVILEGED deployed.
-      if (legacy && legacyWarningExceptions.includes(aAddon.id)) {
-        legacy = false;
-      }
+      legacy = isLegacyExtension(aAddon);
     }
     this.node.setAttribute("legacy", legacy);
     document.getElementById("detail-legacy-warning").href = SUPPORT_URL + "webextensions";
@@ -3082,10 +3045,10 @@ var gDetailView = {
       stack.remove();
     }
 
-    stack = document.createElement("stack");
+    stack = document.createXULElement("stack");
     stack.setAttribute("id", containerId);
 
-    let browser = document.createElement("browser");
+    let browser = document.createXULElement("browser");
     browser.setAttribute("type", "content");
     browser.setAttribute("disableglobalhistory", "true");
     browser.setAttribute("id", "addon-options");
@@ -3158,8 +3121,8 @@ var gDetailView = {
       }
 
       mm.loadFrameScript("chrome://extensions/content/ext-browser-content.js",
-                         false);
-      mm.loadFrameScript("chrome://browser/content/content.js", false);
+                         false, true);
+      mm.loadFrameScript("chrome://browser/content/content.js", false, true);
       mm.addMessageListener("Extension:BrowserContentLoaded", messageListener);
       mm.addMessageListener("Extension:BrowserResized", messageListener);
 
@@ -3241,7 +3204,7 @@ var gDetailView = {
   onInstallCancelled(aInstall) {
     if (aInstall.addon.id == this._addon.id)
       gViewController.popState();
-  }
+  },
 };
 
 
@@ -3458,7 +3421,7 @@ var gUpdatesView = {
   onPropertyChanged(aAddon, aProperties) {
     if (aProperties.includes("applyBackgroundUpdates"))
       this.updateAvailableCount();
-  }
+  },
 };
 
 var gDragDrop = {
@@ -3500,7 +3463,7 @@ var gDragDrop = {
         AddonManager.installAddonFromAOM(browser, document.documentURIObject, install);
       }
     }
-  }
+  },
 };
 
 // Stub tabbrowser implementation for use by the tab-modal alert code
@@ -3508,14 +3471,14 @@ var gDragDrop = {
 // (See Bug 1385548 for rationale).
 var gBrowser = {
   getTabModalPromptBox(browser) {
-    const parentWindow = document.docShell.chromeEventHandler.ownerGlobal;
+    const parentWindow = window.docShell.chromeEventHandler.ownerGlobal;
 
     if (parentWindow.gBrowser) {
       return parentWindow.gBrowser.getTabModalPromptBox(browser);
     }
 
     return null;
-  }
+  },
 };
 
 // Force the options_ui remote browser to recompute window.mozInnerScreenX and

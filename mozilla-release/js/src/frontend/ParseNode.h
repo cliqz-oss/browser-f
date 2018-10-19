@@ -9,9 +9,10 @@
 
 #include "mozilla/Attributes.h"
 
-#include "builtin/ModuleObject.h"
 #include "frontend/TokenStream.h"
+#include "vm/BytecodeUtil.h"
 #include "vm/Printer.h"
+#include "vm/Scope.h"
 
 // A few notes on lifetime of ParseNode trees:
 //
@@ -55,6 +56,7 @@ class ObjectBox;
     F(PostIncrement) \
     F(PreDecrement) \
     F(PostDecrement) \
+    F(PropertyName) \
     F(Dot) \
     F(Elem) \
     F(Array) \
@@ -63,6 +65,7 @@ class ObjectBox;
     F(Label) \
     F(Object) \
     F(Call) \
+    F(Arguments) \
     F(Name) \
     F(ObjectPropertyName) \
     F(ComputedName) \
@@ -255,16 +258,14 @@ IsTypeofKind(ParseNodeKind kind)
  * StatementList list   pn_head: list of pn_count statements
  * If       ternary     pn_kid1: cond, pn_kid2: then, pn_kid3: else or null.
  * Switch   binary      pn_left: discriminant
- *                          pn_right: list of Case nodes, with at most one
- *                            default node, or if there are let bindings
- *                            in the top level of the switch body's cases, a
- *                            LexicalScope node that contains the list of
- *                            Case nodes.
+ *                      pn_right: LexicalScope node that contains the list
+ *                        of Case nodes, with at most one
+ *                        default node.
+ *                      hasDefault: true if there's a default case
  * Case     binary      pn_left: case-expression if CaseClause, or
  *                            null if DefaultClause
  *                          pn_right: StatementList node for this case's
  *                            statements
- *                          pn_u.binary.offset: scratch space for the emitter
  * While    binary      pn_left: cond, pn_right: body
  * DoWhile  binary      pn_left: body, pn_right: cond
  * For      binary      pn_left: either ForIn (for-in statement),
@@ -373,9 +374,8 @@ IsTypeofKind(ParseNodeKind kind)
  * PostIncrement,
  * PreDecrement,
  * PostDecrement
- * New      list        pn_head: list of ctor, arg1, arg2, ... argN
- *                          pn_count: 1 + N (where N is number of args)
- *                          ctor is a MEMBER expr
+ * New      binary      pn_left: ctor expression on the left of the (
+ *                          pn_right: Arguments
  * DeleteName unary     pn_kid: Name expr
  * DeleteProp unary     pn_kid: Dot expr
  * DeleteElem unary     pn_kid: Elem expr
@@ -384,13 +384,15 @@ IsTypeofKind(ParseNodeKind kind)
  *                          for a more-specific PNK_DELETE* unless constant
  *                          folding (or a similar parse tree manipulation) has
  *                          occurred
- * Dot      name        pn_expr: MEMBER expr to left of .
- *                          pn_atom: name to right of .
+ * PropertyName name    pn_atom: property name being accessed
+ * Dot      binary      pn_left: MEMBER expr to left of .
+ *                          pn_right: PropertyName to right of .
  * Elem     binary      pn_left: MEMBER expr to left of [
  *                          pn_right: expr between [ and ]
- * Call     list        pn_head: list of call, arg1, arg2, ... argN
- *                          pn_count: 1 + N (where N is number of args)
- *                          call is a MEMBER expr naming a callable object
+ * Call     binary      pn_left: callee expression on the left of the (
+ *                          pn_right: Arguments
+ * Arguments list       pn_head: list of arg1, arg2, ... argN
+ *                          pn_count: N (where N is number of args)
  * Array    list        pn_head: list of pn_count array element exprs
  *                          [,,] holes are represented by Elision nodes
  *                          pn_xflags: PN_ENDCOMMA if extra comma at end
@@ -410,8 +412,9 @@ IsTypeofKind(ParseNodeKind kind)
  *              list
  * TemplateString      pn_atom: template string atom
                 nullary     pn_op: JSOP_NOP
- * TaggedTemplate      pn_head: list of call, call site object, arg1, arg2, ... argN
- *              list        pn_count: 2 + N (N is the number of substitutions)
+ * TaggedTemplate      pn_left: tag expression
+ *              binary       pn_right: Arguments, with the first being the
+ *                           call site object, then arg1, arg2, ... argN
  * CallSiteObj list     pn_head: a Array node followed by
  *                          list of pn_count - 1 TemplateString nodes
  * RegExp   nullary     pn_objbox: RegExp model object
@@ -423,7 +426,7 @@ IsTypeofKind(ParseNodeKind kind)
  *
  * This,        unary   pn_kid: '.this' Name if function `this`, else nullptr
  * SuperBase    unary   pn_kid: '.this' Name
- *
+ * SuperCall    binary  pn_left: SuperBase pn_right: Arguments
  * SetThis      binary  pn_left: '.this' Name, pn_right: SuperCall
  *
  * LexicalScope scope   pn_u.scope.bindings: scope bindings
@@ -558,7 +561,7 @@ class ParseNode
             union {
                 unsigned iflags;        /* JSITER_* flags for ParseNodeKind::For node */
                 bool isStatic;          /* only for ParseNodeKind::ClassMethod */
-                uint32_t offset;        /* for the emitter's use on ParseNodeKind::Case nodes */
+                bool hasDefault;        /* only for ParseNodeKind::Switch */
             };
         } binary;
         struct {                        /* one kid if unary */
@@ -573,8 +576,7 @@ class ParseNode
                 FunctionBox* funbox;    /* function object */
             };
             ParseNode*  expr;           /* module or function body, var
-                                           initializer, argument default, or
-                                           base object of ParseNodeKind::Dot */
+                                           initializer, or argument default */
         } name;
         struct {
             LexicalScope::Data* bindings;
@@ -1022,10 +1024,6 @@ class CaseClause : public BinaryNode
     // The next CaseClause in the same switch statement.
     CaseClause* next() const { return pn_next ? &pn_next->as<CaseClause>() : nullptr; }
 
-    // Scratch space used by the emitter.
-    uint32_t offset() const { return pn_u.binary.offset; }
-    void setOffset(uint32_t u) { pn_u.binary.offset = u; }
-
     static bool test(const ParseNode& node) {
         bool match = node.isKind(ParseNodeKind::Case);
         MOZ_ASSERT_IF(match, node.isArity(PN_BINARY));
@@ -1182,30 +1180,33 @@ class RegExpLiteral : public NullaryNode
     }
 };
 
-class PropertyAccess : public ParseNode
+class PropertyAccess : public BinaryNode
 {
   public:
-    PropertyAccess(ParseNode* lhs, PropertyName* name, uint32_t begin, uint32_t end)
-      : ParseNode(ParseNodeKind::Dot, JSOP_NOP, PN_NAME, TokenPos(begin, end))
+    /*
+     * PropertyAccess nodes can have any expression/'super' as left-hand
+     * side, but the name must be a ParseNodeKind::PropertyName node.
+     */
+    PropertyAccess(ParseNode* lhs, ParseNode* name, uint32_t begin, uint32_t end)
+      : BinaryNode(ParseNodeKind::Dot, JSOP_NOP, TokenPos(begin, end), lhs, name)
     {
         MOZ_ASSERT(lhs != nullptr);
         MOZ_ASSERT(name != nullptr);
-        pn_u.name.expr = lhs;
-        pn_u.name.atom = name;
     }
 
     static bool test(const ParseNode& node) {
         bool match = node.isKind(ParseNodeKind::Dot);
-        MOZ_ASSERT_IF(match, node.isArity(PN_NAME));
+        MOZ_ASSERT_IF(match, node.isArity(PN_BINARY));
+        MOZ_ASSERT_IF(match, node.pn_right->isKind(ParseNodeKind::PropertyName));
         return match;
     }
 
     ParseNode& expression() const {
-        return *pn_u.name.expr;
+        return *pn_u.binary.left;
     }
 
     PropertyName& name() const {
-        return *pn_u.name.atom->asPropertyName();
+        return *pn_u.binary.right->pn_atom->asPropertyName();
     }
 
     bool isSuper() const {
@@ -1252,7 +1253,7 @@ struct CallSiteNode : public ListNode {
 
 struct ClassMethod : public BinaryNode {
     /*
-     * Method defintions often keep a name and function body that overlap,
+     * Method definitions often keep a name and function body that overlap,
      * so explicitly define the beginning and end here.
      */
     ClassMethod(ParseNode* name, ParseNode* body, JSOp op, bool isStatic)
@@ -1275,6 +1276,48 @@ struct ClassMethod : public BinaryNode {
     }
     bool isStatic() const {
         return pn_u.binary.isStatic;
+    }
+};
+
+struct SwitchStatement : public BinaryNode {
+    SwitchStatement(uint32_t begin, ParseNode* discriminant, ParseNode* lexicalForCaseList,
+                    bool hasDefault)
+      : BinaryNode(ParseNodeKind::Switch, JSOP_NOP,
+                   TokenPos(begin, lexicalForCaseList->pn_pos.end),
+                   discriminant, lexicalForCaseList)
+    {
+#ifdef DEBUG
+        MOZ_ASSERT(lexicalForCaseList->isKind(ParseNodeKind::LexicalScope));
+        ParseNode* cases = lexicalForCaseList->scopeBody();
+        MOZ_ASSERT(cases->isKind(ParseNodeKind::StatementList));
+        bool found = false;
+        CaseClause* firstCase = cases->pn_head ? &cases->pn_head->as<CaseClause>() : nullptr;
+        for (CaseClause* caseNode = firstCase; caseNode; caseNode = caseNode->next()) {
+            if (caseNode->isDefault()) {
+                found = true;
+                break;
+            }
+        }
+        MOZ_ASSERT(found == hasDefault);
+#endif
+
+        pn_u.binary.hasDefault = hasDefault;
+    }
+
+    static bool test(const ParseNode& node) {
+        bool match = node.isKind(ParseNodeKind::Switch);
+        MOZ_ASSERT_IF(match, node.isArity(PN_BINARY));
+        return match;
+    }
+
+    ParseNode& discriminant() const {
+        return *pn_u.binary.left;
+    }
+    ParseNode& lexicalForCaseList() const {
+        return *pn_u.binary.right;
+    }
+    bool hasDefault() const {
+        return pn_u.binary.hasDefault;
     }
 };
 

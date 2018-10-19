@@ -58,18 +58,6 @@ function run_test() {
   Assert.equal(uri2tags.length, 1);
   Assert.equal(uri2tags[0], "Tag 1");
 
-  // test getURIsForTag
-  var tag1uris = tagssvc.getURIsForTag("tag 1");
-  Assert.equal(tag1uris.length, 2);
-  Assert.ok(tag1uris[0].equals(uri1));
-  Assert.ok(tag1uris[1].equals(uri2));
-
-  // test allTags attribute
-  var allTags = tagssvc.allTags;
-  Assert.equal(allTags.length, 2);
-  Assert.equal(allTags[0], "Tag 1");
-  Assert.equal(allTags[1], "Tag 2");
-
   // test untagging
   tagssvc.untagURI(uri1, ["tag 1"]);
   Assert.equal(tag1node.childCount, 1);
@@ -157,17 +145,15 @@ function run_test() {
     Assert.equal(ex.name, "NS_ERROR_ILLEGAL_VALUE");
   }
 
-  // Tag name length should be limited to nsITaggingService.MAX_TAG_LENGTH (bug407821)
+  // Tag name length should be limited to PlacesUtils.bookmarks.MAX_TAG_LENGTH (bug407821)
   try {
-
     // generate a long tag name. i.e. looooo...oong_tag
-    var n = Ci.nsITaggingService.MAX_TAG_LENGTH;
+    var n = PlacesUtils.bookmarks.MAX_TAG_LENGTH;
     var someOos = new Array(n).join("o");
     var longTagName = "l" + someOos + "ng_tag";
 
     tagssvc.tagURI(uri1, ["short_tag", longTagName]);
     do_throw("Passing a bad tags array should throw");
-
   } catch (ex) {
     Assert.equal(ex.name, "NS_ERROR_ILLEGAL_VALUE");
   }

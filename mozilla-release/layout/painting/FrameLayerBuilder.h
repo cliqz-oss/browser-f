@@ -20,6 +20,7 @@
 #include "Layers.h"
 #include "LayerUserData.h"
 #include "nsDisplayItemTypes.h"
+#include "TransformClipNode.h"
 
 class nsDisplayListBuilder;
 class nsDisplayList;
@@ -49,7 +50,9 @@ enum class DisplayItemEntryType {
   ITEM,
   PUSH_OPACITY,
   PUSH_OPACITY_WITH_BG,
-  POP_OPACITY
+  POP_OPACITY,
+  PUSH_TRANSFORM,
+  POP_TRANSFORM
 };
 
 /**
@@ -79,6 +82,8 @@ public:
   const DisplayItemClip& GetClip() const { return mClip; }
   void Invalidate() { mIsInvalid = true; }
   void ClearAnimationCompositorState();
+  void SetItem(nsDisplayItem* aItem) { mItem = aItem; }
+  nsDisplayItem* GetItem() const { return mItem; }
 
   bool HasMergedFrames() const { return mFrameList.Length() > 1; }
 
@@ -115,9 +120,8 @@ public:
     return mRefCnt;
   }
 
-  void Disconnect();
-
-  bool Disconnected() { return mDisconnected; }
+  RefPtr<TransformClipNode> mTransform;
+  RefPtr<TransformClipNode> mOldTransform;
 
 private:
   DisplayItemData(LayerManagerData* aParent,
@@ -204,7 +208,6 @@ private:
   bool            mUsed;
   bool            mIsInvalid;
   bool            mReusedItem;
-  bool            mDisconnected;
 };
 
 class RefCountedRegion {
@@ -225,7 +228,8 @@ struct AssignedDisplayItem
                       DisplayItemData* aData,
                       const nsRect& aContentRect,
                       DisplayItemEntryType aType,
-                      const bool aHasOpacity);
+                      const bool aHasOpacity,
+                      const RefPtr<TransformClipNode>& aTransform);
   ~AssignedDisplayItem();
 
   nsDisplayItem* mItem;
@@ -239,11 +243,13 @@ struct AssignedDisplayItem
    * used for the inactive transaction.
    */
   RefPtr<layers::LayerManager> mInactiveLayerManager;
-
+  RefPtr<TransformClipNode> mTransform;
   DisplayItemEntryType mType;
+
   bool mReused;
   bool mMerged;
   bool mHasOpacity;
+  bool mHasTransform;
   bool mHasPaintRect;
 };
 
@@ -613,7 +619,10 @@ public:
    * This could be a dedicated layer for the display item, or a PaintedLayer
    * that renders many display items.
    */
-  DisplayItemData* GetOldLayerForFrame(nsIFrame* aFrame, uint32_t aDisplayItemKey, DisplayItemData* aOldData = nullptr);
+  DisplayItemData* GetOldLayerForFrame(nsIFrame* aFrame,
+                                       uint32_t aDisplayItemKey,
+                                       DisplayItemData* aOldData = nullptr,
+                                       LayerManager* aOldLayerManager = nullptr);
 
   /**
    * Stores DisplayItemData associated with aFrame, stores the data in
@@ -665,7 +674,7 @@ protected:
    * PaintedLayer.
    */
 
-  static void RecomputeVisibilityForItems(nsTArray<AssignedDisplayItem>& aItems,
+  static void RecomputeVisibilityForItems(std::vector<AssignedDisplayItem>& aItems,
                                           nsDisplayListBuilder* aBuilder,
                                           const nsIntRegion& aRegionToDraw,
                                           nsRect& aPreviousRectToDraw,
@@ -674,7 +683,7 @@ protected:
                                           float aXScale,
                                           float aYScale);
 
-  void PaintItems(nsTArray<AssignedDisplayItem>& aItems,
+  void PaintItems(std::vector<AssignedDisplayItem>& aItems,
                   const nsIntRect& aRect,
                   gfxContext* aContext,
                   nsDisplayListBuilder* aBuilder,

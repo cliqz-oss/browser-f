@@ -16,6 +16,7 @@ const Flexbox = createFactory(require("devtools/client/inspector/flexbox/compone
 const Grid = createFactory(require("devtools/client/inspector/grids/components/Grid"));
 
 const BoxModelTypes = require("devtools/client/inspector/boxmodel/types");
+const FlexboxTypes = require("devtools/client/inspector/flexbox/types");
 const GridTypes = require("devtools/client/inspector/grids/types");
 
 const Accordion = createFactory(require("./Accordion"));
@@ -27,7 +28,6 @@ const LAYOUT_STRINGS_URI = "devtools/client/locales/layout.properties";
 const LAYOUT_L10N = new LocalizationHelper(LAYOUT_STRINGS_URI);
 
 const FLEXBOX_ENABLED_PREF = "devtools.flexboxinspector.enabled";
-
 const BOXMODEL_OPENED_PREF = "devtools.layout.boxmodel.opened";
 const FLEXBOX_OPENED_PREF = "devtools.layout.flexbox.opened";
 const GRID_OPENED_PREF = "devtools.layout.grid.opened";
@@ -36,19 +36,26 @@ class LayoutApp extends PureComponent {
   static get propTypes() {
     return {
       boxModel: PropTypes.shape(BoxModelTypes.boxModel).isRequired,
+      flexbox: PropTypes.shape(FlexboxTypes.flexbox).isRequired,
       getSwatchColorPickerTooltip: PropTypes.func.isRequired,
       grids: PropTypes.arrayOf(PropTypes.shape(GridTypes.grid)).isRequired,
       highlighterSettings: PropTypes.shape(GridTypes.highlighterSettings).isRequired,
-      setSelectedNode: PropTypes.func.isRequired,
-      showBoxModelProperties: PropTypes.bool.isRequired,
       onHideBoxModelHighlighter: PropTypes.func.isRequired,
+      onSetFlexboxOverlayColor: PropTypes.func.isRequired,
       onSetGridOverlayColor: PropTypes.func.isRequired,
       onShowBoxModelEditor: PropTypes.func.isRequired,
       onShowBoxModelHighlighter: PropTypes.func.isRequired,
       onShowBoxModelHighlighterForNode: PropTypes.func.isRequired,
+      onShowGridOutlineHighlight: PropTypes.func.isRequired,
+      onToggleFlexboxHighlighter: PropTypes.func.isRequired,
+      onToggleFlexItemShown: PropTypes.func.isRequired,
+      onToggleGeometryEditor: PropTypes.func.isRequired,
       onToggleGridHighlighter: PropTypes.func.isRequired,
+      onToggleShowGridAreas: PropTypes.func.isRequired,
       onToggleShowGridLineNumbers: PropTypes.func.isRequired,
       onToggleShowInfiniteLines: PropTypes.func.isRequired,
+      setSelectedNode: PropTypes.func.isRequired,
+      showBoxModelProperties: PropTypes.bool.isRequired,
     };
   }
 
@@ -92,9 +99,10 @@ class LayoutApp extends PureComponent {
       ];
     }
 
-    return dom.div(
-      { id: "layout-container" },
-      Accordion({ items })
+    return (
+      dom.div({ id: "layout-container" },
+        Accordion({ items })
+      )
     );
   }
 }

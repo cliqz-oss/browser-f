@@ -162,10 +162,13 @@ class nsWindowSizes
   macro(DOM,   mDOMCDATANodesSize) \
   macro(DOM,   mDOMCommentNodesSize) \
   macro(DOM,   mDOMEventTargetsSize) \
+  macro(DOM,   mDOMMediaQueryLists) \
   macro(DOM,   mDOMPerformanceUserEntries) \
   macro(DOM,   mDOMPerformanceResourceEntries) \
   macro(DOM,   mDOMOtherSize) \
   macro(Style, mLayoutStyleSheetsSize) \
+  macro(Style, mLayoutShadowDomStyleSheetsSize) \
+  macro(Style, mLayoutShadowDomAuthorStyles) \
   macro(Other, mLayoutPresShellSize) \
   macro(Style, mLayoutStyleSetsStylistRuleTree) \
   macro(Style, mLayoutStyleSetsStylistElementAndPseudosMaps) \
@@ -180,7 +183,6 @@ class nsWindowSizes
   macro(Style, mLayoutComputedValuesDom) \
   macro(Style, mLayoutComputedValuesNonDom) \
   macro(Style, mLayoutComputedValuesVisited) \
-  macro(Style, mLayoutComputedValuesStale) \
   macro(Other, mPropertyTablesSize) \
   macro(Other, mBindingsSize) \
 

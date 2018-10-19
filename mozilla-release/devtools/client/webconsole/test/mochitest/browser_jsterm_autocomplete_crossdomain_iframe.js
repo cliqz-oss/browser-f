@@ -8,7 +8,17 @@
 
 const TEST_URI = "http://example.com/browser/devtools/client/webconsole/" +
                  "test/mochitest/test-iframe-parent.html";
+
 add_task(async function() {
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
+});
+
+async function performTests() {
   const hud = await openNewTabAndConsole(TEST_URI);
   const { jsterm } = hud;
 
@@ -34,4 +44,4 @@ add_task(async function() {
   hud.jsterm.execute("window.location");
   await onParentLocation;
   ok(true, "root document's location is accessible");
-});
+}

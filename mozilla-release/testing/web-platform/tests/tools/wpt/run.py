@@ -49,8 +49,6 @@ def create_parser():
                         help="Browser to run tests in")
     parser.add_argument("--yes", "-y", dest="prompt", action="store_false", default=True,
                         help="Don't prompt before installing components")
-    parser.add_argument("--stability", action="store_true",
-                        help="Stability check tests")
     parser.add_argument("--install-browser", action="store_true",
                         help="Install the latest development version of the browser")
     parser._add_container_actions(wptcommandline.create_parser())
@@ -96,12 +94,17 @@ otherwise install OpenSSL and ensure that it's on your $PATH.""")
 
 def check_environ(product):
     if product not in ("firefox", "servo"):
-        config = serve.load_config(os.path.join(wpt_root, "config.json"))
-        expected_hosts = set(config.domains_set)
+        config_builder = serve.build_config(os.path.join(wpt_root, "config.json"))
+        # Override the ports to avoid looking for free ports
+        config_builder.ssl = {"type": "none"}
+        config_builder.ports = {"http": [8000]}
+
         is_windows = platform.uname()[0] == "Windows"
 
-        if is_windows:
-            expected_hosts.update(config.not_domains_set)
+        with config_builder as config:
+            expected_hosts = set(config.domains_set)
+            if is_windows:
+                expected_hosts.update(config.not_domains_set)
 
         missing_hosts = set(expected_hosts)
         if is_windows:
@@ -443,7 +446,6 @@ def setup_wptrunner(venv, prompt=True, install=False, **kwargs):
 def run(venv, **kwargs):
     #Remove arguments that aren't passed to wptrunner
     prompt = kwargs.pop("prompt", True)
-    stability = kwargs.pop("stability", True)
     install_browser = kwargs.pop("install_browser", False)
 
     kwargs = setup_wptrunner(venv,
@@ -451,20 +453,7 @@ def run(venv, **kwargs):
                              install=install_browser,
                              **kwargs)
 
-    if stability:
-        import stability
-        iterations, results, inconsistent = stability.run(venv, logger, **kwargs)
-
-        def log(x):
-            print(x)
-
-        if inconsistent:
-            stability.write_inconsistent(log, inconsistent, iterations)
-        else:
-            log("All tests stable")
-        rv = len(inconsistent) > 0
-    else:
-        rv = run_single(venv, **kwargs) > 0
+    rv = run_single(venv, **kwargs) > 0
 
     return rv
 

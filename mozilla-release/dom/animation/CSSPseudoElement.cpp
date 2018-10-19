@@ -47,7 +47,7 @@ CSSPseudoElement::GetParentObject() const
 JSObject*
 CSSPseudoElement::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return CSSPseudoElementBinding::Wrap(aCx, this, aGivenProto);
+  return CSSPseudoElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -119,8 +119,8 @@ CSSPseudoElement::GetCSSPseudoElementPropertyAtom(CSSPseudoElementType aType)
       return nsGkAtoms::cssPseudoElementAfterProperty;
 
     default:
-      NS_NOTREACHED("Should not try to get CSSPseudoElement "
-                    "other than ::before or ::after");
+      MOZ_ASSERT_UNREACHABLE("Should not try to get CSSPseudoElement "
+                             "other than ::before or ::after");
       return nullptr;
   }
 }

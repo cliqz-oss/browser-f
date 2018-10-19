@@ -43,7 +43,7 @@ function amManager() {
   ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
   /* globals AddonManagerPrivate*/
 
-  Services.mm.loadFrameScript(CHILD_SCRIPT, true);
+  Services.mm.loadFrameScript(CHILD_SCRIPT, true, true);
   Services.mm.addMessageListener(MSG_INSTALL_ENABLED, this);
   Services.mm.addMessageListener(MSG_INSTALL_ADDON, this);
   Services.mm.addMessageListener(MSG_PROMISE_REQUEST, this);
@@ -114,7 +114,7 @@ amManager.prototype = {
 
           onInstallEnded(aInstall, aStatus) {
             callCallback(aUri, SUCCESS);
-          }
+          },
         });
       }
 
@@ -182,7 +182,7 @@ amManager.prototype = {
               mm.sendAsyncMessage(MSG_INSTALL_CALLBACK, {
                 callbackID: payload.callbackID,
                 url,
-                status
+                status,
               });
             },
           };
@@ -198,13 +198,13 @@ amManager.prototype = {
         let resolve = (value) => {
           mm.sendAsyncMessage(MSG_PROMISE_RESULT, {
             callbackID: payload.callbackID,
-            resolve: value
+            resolve: value,
           });
         };
         let reject = (value) => {
           mm.sendAsyncMessage(MSG_PROMISE_RESULT, {
             callbackID: payload.callbackID,
-            reject: value
+            reject: value,
           });
         };
 
@@ -253,11 +253,11 @@ amManager.prototype = {
       if (!gSingleton)
         gSingleton = new amManager();
       return gSingleton.QueryInterface(aIid);
-    }
+    },
   },
   QueryInterface: ChromeUtils.generateQI([Ci.amIAddonManager,
                                           Ci.nsITimerCallback,
-                                          Ci.nsIObserver])
+                                          Ci.nsIObserver]),
 };
 
 const BLOCKLIST_JSM = "resource://gre/modules/Blocklist.jsm";

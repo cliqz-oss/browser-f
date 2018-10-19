@@ -104,7 +104,8 @@ public:
     eSelectionChangeEvent,
     eTableChangeEvent,
     eVirtualCursorChangeEvent,
-    eObjectAttrChangedEvent
+    eObjectAttrChangedEvent,
+    eScrollingEvent,
   };
 
   static const EventGroup kEventGroup = eGenericEvent;
@@ -488,6 +489,7 @@ public:
                    Accessible* aNewAccessible,
                    int32_t aNewStart, int32_t aNewEnd,
                    int16_t aReason,
+                   int16_t aBoundaryType,
                    EIsFromUserInput aIsFromUserInput = eFromUserInput);
 
   virtual ~AccVCChangeEvent() { }
@@ -507,6 +509,7 @@ public:
   int32_t NewStartOffset() const { return mNewStart; }
   int32_t NewEndOffset() const { return mNewEnd; }
   int32_t Reason() const { return mReason; }
+  int32_t BoundaryType() const { return mBoundaryType; }
 
 private:
   RefPtr<Accessible> mOldAccessible;
@@ -516,6 +519,7 @@ private:
   int32_t mOldEnd;
   int32_t mNewEnd;
   int16_t mReason;
+  int16_t mBoundaryType;
 };
 
 /**
@@ -542,6 +546,46 @@ private:
   RefPtr<nsAtom> mAttribute;
 
   virtual ~AccObjectAttrChangedEvent() { }
+};
+
+/**
+ * Accessible scroll event.
+ */
+class AccScrollingEvent : public AccEvent
+{
+public:
+  AccScrollingEvent(uint32_t aEventType, Accessible* aAccessible,
+                    uint32_t aScrollX, uint32_t aScrollY,
+                    uint32_t aMaxScrollX, uint32_t aMaxScrollY) :
+    AccEvent(aEventType, aAccessible),
+    mScrollX(aScrollX),
+    mScrollY(aScrollY),
+    mMaxScrollX(aMaxScrollX),
+    mMaxScrollY(aMaxScrollY) { }
+
+  virtual ~AccScrollingEvent() { }
+
+  // AccEvent
+  static const EventGroup kEventGroup = eScrollingEvent;
+  virtual unsigned int GetEventGroups() const override
+  {
+    return AccEvent::GetEventGroups() | (1U << eScrollingEvent);
+  }
+
+  // The X scrolling offset of the container when the event was fired.
+  uint32_t ScrollX() { return mScrollX; }
+  // The Y scrolling offset of the container when the event was fired.
+  uint32_t ScrollY() { return mScrollY; }
+  // The max X offset of the container.
+  uint32_t MaxScrollX() { return mMaxScrollX; }
+  // The max Y offset of the container.
+  uint32_t MaxScrollY() { return mMaxScrollY; }
+
+private:
+  uint32_t mScrollX;
+  uint32_t mScrollY;
+  uint32_t mMaxScrollX;
+  uint32_t mMaxScrollY;
 };
 
 /**

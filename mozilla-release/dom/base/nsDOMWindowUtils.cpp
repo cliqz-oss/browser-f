@@ -16,6 +16,7 @@
 #include "nsFocusManager.h"
 #include "nsFrameManager.h"
 #include "nsRefreshDriver.h"
+#include "mozilla/dom/Animation.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/Event.h"
@@ -1623,6 +1624,26 @@ nsDOMWindowUtils::GetScrollXYFloat(bool aFlushLayout, float* aScrollX, float* aS
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::GetVisualViewportOffsetRelativeToLayoutViewport(float* aOffsetX, float* aOffsetY)
+{
+  *aOffsetX = 0;
+  *aOffsetY = 0;
+
+  nsCOMPtr<nsIDocument> doc = GetDocument();
+  NS_ENSURE_STATE(doc);
+
+  nsIPresShell* presShell = doc->GetShell();
+  NS_ENSURE_TRUE(presShell, NS_ERROR_NOT_AVAILABLE);
+
+  nsPoint offset = presShell->GetVisualViewportOffsetRelativeToLayoutViewport();
+  *aOffsetX = nsPresContext::AppUnitsToFloatCSSPixels(offset.x);
+  *aOffsetY = nsPresContext::AppUnitsToFloatCSSPixels(offset.y);
+
+  return NS_OK;
+}
+
+
+NS_IMETHODIMP
 nsDOMWindowUtils::GetScrollbarSize(bool aFlushLayout, int32_t* aWidth,
                                                       int32_t* aHeight)
 {
@@ -2042,8 +2063,8 @@ nsDOMWindowUtils::SendQueryContentEvent(uint32_t aType,
   nsresult rv = targetWidget->DispatchEvent(&queryEvent, status);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  auto* result = new nsQueryContentEventResult();
-  result->SetEventResult(widget, queryEvent);
+  auto* result = new nsQueryContentEventResult(queryEvent);
+  result->SetEventResult(widget);
   NS_ADDREF(*aResult = result);
   return NS_OK;
 }
@@ -2125,8 +2146,7 @@ nsDOMWindowUtils::GetClassName(JS::Handle<JS::Value> aObject, JSContext* aCx,
     return NS_ERROR_XPC_BAD_CONVERT_JS;
   }
 
-  *aName = NS_strdup(JS_GetClass(aObject.toObjectOrNull())->name);
-  MOZ_ASSERT(*aName, "NS_strdup should be infallible.");
+  *aName = NS_xstrdup(JS_GetClass(aObject.toObjectOrNull())->name);
   return NS_OK;
 }
 
@@ -2706,10 +2726,8 @@ nsDOMWindowUtils::ComputeAnimationDistance(Element* aElement,
 {
   NS_ENSURE_ARG_POINTER(aElement);
 
-  nsCSSPropertyID property =
-    nsCSSProps::LookupProperty(aProperty, CSSEnabledState::eIgnoreEnabledState);
-  if (property == eCSSProperty_UNKNOWN ||
-      nsCSSProps::IsShorthand(property)) {
+  nsCSSPropertyID property = nsCSSProps::LookupProperty(aProperty);
+  if (property == eCSSProperty_UNKNOWN || nsCSSProps::IsShorthand(property)) {
     return NS_ERROR_ILLEGAL_VALUE;
   }
 
@@ -2736,8 +2754,7 @@ nsDOMWindowUtils::GetUnanimatedComputedStyle(Element* aElement,
     return NS_ERROR_INVALID_ARG;
   }
 
-  nsCSSPropertyID propertyID =
-    nsCSSProps::LookupProperty(aProperty, CSSEnabledState::eForAllContent);
+  nsCSSPropertyID propertyID = nsCSSProps::LookupProperty(aProperty);
   if (propertyID == eCSSProperty_UNKNOWN ||
       nsCSSProps::IsShorthand(propertyID)) {
     return NS_ERROR_INVALID_ARG;
@@ -3242,7 +3259,7 @@ nsDOMWindowUtils::GetPlugins(JSContext* cx, JS::MutableHandle<JS::Value> aPlugin
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::SetScrollPositionClampingScrollPortSize(float aWidth, float aHeight)
+nsDOMWindowUtils::SetVisualViewportSize(float aWidth, float aHeight)
 {
   if (!(aWidth >= 0.0 && aHeight >= 0.0)) {
     return NS_ERROR_ILLEGAL_VALUE;
@@ -3253,7 +3270,7 @@ nsDOMWindowUtils::SetScrollPositionClampingScrollPortSize(float aWidth, float aH
     return NS_ERROR_FAILURE;
   }
 
-  nsLayoutUtils::SetScrollPositionClampingScrollPortSize(presShell, CSSSize(aWidth, aHeight));
+  nsLayoutUtils::SetVisualViewportSize(presShell, CSSSize(aWidth, aHeight));
 
   return NS_OK;
 }
@@ -3550,6 +3567,10 @@ nsDOMWindowUtils::AllowScriptsToClose()
 NS_IMETHODIMP
 nsDOMWindowUtils::GetIsParentWindowMainWidgetVisible(bool* aIsVisible)
 {
+  if (!XRE_IsParentProcess()) {
+    MOZ_CRASH("IsParentWindowMainWidgetVisible is only available in the parent process");
+  }
+
   // this should reflect the "is parent window visible" logic in
   // nsWindowWatcher::OpenWindowInternal()
   nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryReferent(mWindow);
@@ -3558,12 +3579,6 @@ nsDOMWindowUtils::GetIsParentWindowMainWidgetVisible(bool* aIsVisible)
   nsCOMPtr<nsIWidget> parentWidget;
   nsIDocShell *docShell = window->GetDocShell();
   if (docShell) {
-    if (TabChild *tabChild = TabChild::GetFrom(docShell)) {
-      if (!tabChild->SendIsParentWindowMainWidgetVisible(aIsVisible))
-        return NS_ERROR_FAILURE;
-      return NS_OK;
-    }
-
     nsCOMPtr<nsIDocShellTreeOwner> parentTreeOwner;
     docShell->GetTreeOwner(getter_AddRefs(parentTreeOwner));
     nsCOMPtr<nsIBaseWindow> parentWindow(do_GetInterface(parentTreeOwner));
@@ -3656,6 +3671,34 @@ GetTargetFrame(const Element* aElement, const nsAString& aPseudoElement)
   return frame;
 }
 
+static OMTAValue
+GetOMTAValue(nsIFrame* aFrame,
+             DisplayItemType aDisplayItemKey,
+             WebRenderBridgeChild* aWebRenderBridgeChild)
+{
+  OMTAValue value = mozilla::null_t();
+
+  Layer* layer =
+    FrameLayerBuilder::GetDedicatedLayer(aFrame, aDisplayItemKey);
+  if (layer) {
+    ShadowLayerForwarder* forwarder = layer->Manager()->AsShadowForwarder();
+    if (forwarder && forwarder->HasShadowManager()) {
+      forwarder->GetShadowManager()->
+        SendGetAnimationValue(layer->GetCompositorAnimationsId(), &value);
+    }
+  } else if (aWebRenderBridgeChild) {
+    RefPtr<WebRenderAnimationData> animationData =
+      GetWebRenderUserData<WebRenderAnimationData>(aFrame,
+                                                   (uint32_t)aDisplayItemKey);
+    if (animationData) {
+      aWebRenderBridgeChild->SendGetAnimationValue(
+        animationData->GetAnimationInfo().GetCompositorAnimationsId(),
+        &value);
+    }
+  }
+  return value;
+}
+
 NS_IMETHODIMP
 nsDOMWindowUtils::GetOMTAStyle(Element* aElement,
                                const nsAString& aProperty,
@@ -3680,56 +3723,19 @@ nsDOMWindowUtils::GetOMTAStyle(Element* aElement,
     }
 
     if (aProperty.EqualsLiteral("opacity")) {
-      float value = 0;
-      bool hadAnimatedOpacity = false;
-
-      Layer* layer =
-        FrameLayerBuilder::GetDedicatedLayer(frame, DisplayItemType::TYPE_OPACITY);
-      if (layer) {
-        ShadowLayerForwarder* forwarder = layer->Manager()->AsShadowForwarder();
-        if (forwarder && forwarder->HasShadowManager()) {
-          forwarder->GetShadowManager()->
-            SendGetAnimationOpacity(layer->GetCompositorAnimationsId(),
-                                    &value,
-                                    &hadAnimatedOpacity);
-        }
-      } else if (WebRenderBridgeChild* wrbc = GetWebRenderBridge()) {
-        RefPtr<WebRenderAnimationData> animationData =
-            GetWebRenderUserData<WebRenderAnimationData>(frame, (uint32_t)DisplayItemType::TYPE_OPACITY);
-        if (animationData) {
-          wrbc->SendGetAnimationOpacity(
-              animationData->GetAnimationInfo().GetCompositorAnimationsId(),
-              &value,
-              &hadAnimatedOpacity);
-        }
-      }
-      if (hadAnimatedOpacity) {
+      OMTAValue value = GetOMTAValue(frame,
+                                     DisplayItemType::TYPE_OPACITY,
+                                     GetWebRenderBridge());
+      if (value.type() == OMTAValue::Tfloat) {
         cssValue = new nsROCSSPrimitiveValue;
-        cssValue->SetNumber(value);
+        cssValue->SetNumber(value.get_float());
       }
     } else if (aProperty.EqualsLiteral("transform")) {
-      MaybeTransform transform;
-
-      Layer* layer =
-        FrameLayerBuilder::GetDedicatedLayer(frame, DisplayItemType::TYPE_TRANSFORM);
-      if (layer) {
-        ShadowLayerForwarder* forwarder = layer->Manager()->AsShadowForwarder();
-        if (forwarder && forwarder->HasShadowManager()) {
-          forwarder->GetShadowManager()->
-            SendGetAnimationTransform(layer->GetCompositorAnimationsId(), &transform);
-        }
-      } else if (WebRenderBridgeChild* wrbc = GetWebRenderBridge()) {
-        RefPtr<WebRenderAnimationData> animationData =
-            GetWebRenderUserData<WebRenderAnimationData>(frame, (uint32_t)DisplayItemType::TYPE_TRANSFORM);
-        if (animationData) {
-          wrbc->SendGetAnimationTransform(
-              animationData->GetAnimationInfo().GetCompositorAnimationsId(),
-              &transform);
-        }
-      }
-      if (transform.type() == MaybeTransform::TMatrix4x4) {
-        Matrix4x4 matrix = transform.get_Matrix4x4();
-        cssValue = nsComputedDOMStyle::MatrixToCSSValue(matrix);
+      OMTAValue value = GetOMTAValue(frame,
+                                     DisplayItemType::TYPE_TRANSFORM,
+                                     GetWebRenderBridge());
+      if (value.type() == OMTAValue::TMatrix4x4) {
+        cssValue = nsComputedDOMStyle::MatrixToCSSValue(value.get_Matrix4x4());
       }
     }
   }
@@ -3804,6 +3810,33 @@ nsDOMWindowUtils::GetOMTCTransform(Element* aElement,
   cssValue->GetCssText(text, rv);
   aResult.Assign(text);
   return rv.StealNSResult();
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::IsAnimationInPendingTracker(dom::Animation* aAnimation,
+                                              bool* aRetVal)
+{
+  MOZ_ASSERT(aRetVal);
+
+  if (!aAnimation) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  nsIDocument* doc = GetDocument();
+  if (!doc) {
+    *aRetVal = false;
+    return NS_OK;
+  }
+
+  PendingAnimationTracker* tracker = doc->GetPendingAnimationTracker();
+  if (!tracker) {
+    *aRetVal = false;
+    return NS_OK;
+  }
+
+  *aRetVal = tracker->IsWaitingToPlay(*aAnimation) ||
+             tracker->IsWaitingToPause(*aAnimation);
+  return NS_OK;
 }
 
 namespace {
@@ -4178,7 +4211,7 @@ NS_IMETHODIMP
 nsDOMWindowUtils::RespectDisplayPortSuppression(bool aEnabled)
 {
   nsCOMPtr<nsIPresShell> shell(GetPresShell());
-  APZCCallbackHelper::RespectDisplayPortSuppression(aEnabled, shell);
+  shell->RespectDisplayportSuppression(aEnabled);
   return NS_OK;
 }
 
@@ -4295,14 +4328,13 @@ nsDOMWindowUtils::RemoveManuallyManagedState(Element* aElement,
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::GetStorageUsage(nsIDOMStorage* aStorage, int64_t* aRetval)
+nsDOMWindowUtils::GetStorageUsage(Storage* aStorage, int64_t* aRetval)
 {
-  RefPtr<Storage> storage = static_cast<Storage*>(aStorage);
-  if (!storage) {
+  if (!aStorage) {
     return NS_ERROR_UNEXPECTED;
   }
 
-  *aRetval = storage->GetOriginQuotaUsage();
+  *aRetval = aStorage->GetOriginQuotaUsage();
 
   return NS_OK;
 }
@@ -4346,6 +4378,28 @@ nsDOMWindowUtils::EnsureDirtyRootFrame()
   presShell->FrameNeedsReflow(frame, nsIPresShell::eStyleChange,
                               NS_FRAME_IS_DIRTY);
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::SetPrefersReducedMotionOverrideForTest(bool aValue)
+{
+  nsIWidget* widget = GetWidget();
+  if (!widget) {
+    return NS_OK;
+  }
+
+  return widget->SetPrefersReducedMotionOverrideForTest(aValue);
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::ResetPrefersReducedMotionOverrideForTest()
+{
+  nsIWidget* widget = GetWidget();
+  if (!widget) {
+    return NS_OK;
+  }
+
+  return widget->ResetPrefersReducedMotionOverrideForTest();
 }
 
 NS_INTERFACE_MAP_BEGIN(nsTranslationNodeList)
@@ -4393,3 +4447,49 @@ nsDOMWindowUtils::WrCapture()
   }
   return NS_OK;
 }
+
+NS_IMETHODIMP
+nsDOMWindowUtils::SetSystemFont(const nsACString& aFontName)
+{
+  nsIWidget* widget = GetWidget();
+  if (!widget) {
+    return NS_OK;
+  }
+
+  nsAutoCString fontName(aFontName);
+  return widget->SetSystemFont(fontName);
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetSystemFont(nsACString& aFontName)
+{
+  nsIWidget* widget = GetWidget();
+  if (!widget) {
+    return NS_OK;
+  }
+
+  nsAutoCString fontName;
+  widget->GetSystemFont(fontName);
+  aFontName.Assign(fontName);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::IsCssPropertyRecordedInUseCounter(const nsACString& aPropName,
+                                                    bool* aRecorded)
+{
+  *aRecorded = false;
+
+  nsIDocument* doc = GetDocument();
+  if (!doc || !doc->GetStyleUseCounters()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  bool knownProp = false;
+  *aRecorded =
+    Servo_IsCssPropertyRecordedInUseCounter(doc->GetStyleUseCounters(),
+                                            &aPropName,
+                                            &knownProp);
+  return knownProp ? NS_OK : NS_ERROR_FAILURE;
+}
+

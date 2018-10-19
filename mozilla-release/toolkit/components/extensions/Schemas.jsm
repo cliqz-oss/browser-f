@@ -15,6 +15,7 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 var {
+  chromeModifierKeyMap,
   DefaultMap,
   DefaultWeakMap,
 } = ExtensionUtils;
@@ -30,6 +31,9 @@ XPCOMUtils.defineLazyServiceGetter(this, "contentPolicyService",
 XPCOMUtils.defineLazyGetter(this, "StartupCache", () => ExtensionParent.StartupCache);
 
 var EXPORTED_SYMBOLS = ["SchemaRoot", "Schemas"];
+
+const KEY_CONTENT_SCHEMAS = "extensions-framework/schemas/content";
+const KEY_PRIVILEGED_SCHEMAS = "extensions-framework/schemas/privileged";
 
 const {DEBUG} = AppConstants;
 
@@ -979,6 +983,58 @@ const FORMATS = {
     }
     return string;
   },
+
+  manifestShortcutKey(string, context) {
+    // A valid shortcut key for a webextension manifest
+    const MEDIA_KEYS = /^(MediaNextTrack|MediaPlayPause|MediaPrevTrack|MediaStop)$/;
+    const BASIC_KEYS = /^([A-Z0-9]|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/;
+    const FUNCTION_KEYS = /^(F[1-9]|F1[0-2])$/;
+    let errorMessage = (`Value "${string}" must consist of `
+                        + `either a combination of one or two modifiers, including `
+                        + `a mandatory primary modifier and a key, separated by '+', `
+                        + `or a media key. For details see: `
+                        + `https://developer.mozilla.org/en-US/Add-ons/WebExtensions/manifest.json/commands#Key_combinations`);
+    if (MEDIA_KEYS.test(string.trim())) {
+      return string;
+    }
+
+    let modifiers = string.split("+").map(s => s.trim());
+    let key = modifiers.pop();
+
+    if (!BASIC_KEYS.test(key) && !FUNCTION_KEYS.test(key)) {
+      throw new Error(errorMessage);
+    }
+
+    let chromeModifiers = modifiers.map(m => chromeModifierKeyMap[m]);
+    // If the modifier wasn't found it will be undefined.
+    if (chromeModifiers.some(modifier => !modifier)) {
+      throw new Error(errorMessage);
+    }
+
+    switch (modifiers.length) {
+      case 0:
+        // A lack of modifiers is only allowed with function keys.
+        if (!FUNCTION_KEYS.test(key)) {
+          throw new Error(errorMessage);
+        }
+        break;
+      case 1:
+        // Shift is only allowed on its own with function keys.
+        if (chromeModifiers[0] == "shift" && !FUNCTION_KEYS.test(key)) {
+          throw new Error(errorMessage);
+        }
+        break;
+      case 2:
+        if (chromeModifiers[0] == chromeModifiers[1]) {
+          throw new Error(errorMessage);
+        }
+        break;
+      default:
+        throw new Error(errorMessage);
+    }
+
+    return string;
+  },
 };
 
 // Schema files contain namespaces, and each namespace contains types,
@@ -1683,7 +1739,8 @@ class ObjectType extends Type {
           }
         }
 
-        if (ChromeUtils.getClassName(value) !== this.isInstanceOf) {
+        if (ChromeUtils.getClassName(value) !== this.isInstanceOf &&
+            (this.isInstanceOf !== "Element" || value.nodeType !== 1)) {
           return context.error(`Object must be an instance of ${this.isInstanceOf}`,
                                `be an instance of ${this.isInstanceOf}`);
         }
@@ -3004,9 +3061,12 @@ this.Schemas = {
   // is useful for sending the JSON across processes.
   schemaJSON: new Map(),
 
-  // A separate map of schema JSON which should be available in all
-  // content processes.
+
+  // A map of schema JSON which should be available in all content processes.
   contentSchemaJSON: new Map(),
+
+  // A map of schema JSON which should only be available to extension processes.
+  privilegedSchemaJSON: new Map(),
 
   _rootSchema: null,
 
@@ -3032,35 +3092,20 @@ this.Schemas = {
     this.initialized = true;
 
     if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
-      let data = Services.cpmm.initialProcessData;
-      let schemas = data["Extension:Schemas"];
-      if (schemas) {
-        this.schemaJSON = schemas;
+      let addSchemas = schemas => {
+        for (let [key, value] of schemas.entries()) {
+          this.schemaJSON.set(key, value);
+        }
+      };
+
+      if (WebExtensionPolicy.isExtensionProcess || DEBUG) {
+        addSchemas(Services.cpmm.sharedData.get(KEY_PRIVILEGED_SCHEMAS));
       }
 
-      Services.cpmm.addMessageListener("Schema:Add", this);
-    }
-  },
-
-  receiveMessage(msg) {
-    let {data} = msg;
-    switch (msg.name) {
-      case "Schema:Add":
-        // If we're given a Map, the ordering of the initial items
-        // matters, so swap with our current data to make sure its
-        // entries appear first.
-        if (typeof data.get === "function") {
-          // Create a new Map so we're sure it's in the same compartment.
-          [this.schemaJSON, data] = [new Map(data), this.schemaJSON];
-        }
-
-        for (let [url, schema] of data) {
-          this.schemaJSON.set(url, schema);
-        }
-        if (this._rootSchema) {
-          throw new Error("Schema loaded after root schema populated");
-        }
-        break;
+      let schemas = Services.cpmm.sharedData.get(KEY_CONTENT_SCHEMAS);
+      if (schemas) {
+        addSchemas(schemas);
+      }
     }
   },
 
@@ -3080,18 +3125,20 @@ this.Schemas = {
 
     if (content) {
       this.contentSchemaJSON.set(url, schema);
-
-      let data = Services.ppmm.initialProcessData;
-      data["Extension:Schemas"] = this.contentSchemaJSON;
-
-      Services.ppmm.broadcastAsyncMessage("Schema:Add", [[url, schema]]);
-    } else if (this.schemaHook) {
-      this.schemaHook([[url, schema]]);
+    } else {
+      this.privilegedSchemaJSON.set(url, schema);
     }
 
     if (this._rootSchema) {
       throw new Error("Schema loaded after root schema populated");
     }
+  },
+
+  updateSharedSchemas() {
+    let {sharedData} = Services.ppmm;
+
+    sharedData.set(KEY_CONTENT_SCHEMAS, this.contentSchemaJSON);
+    sharedData.set(KEY_PRIVILEGED_SCHEMAS, this.privilegedSchemaJSON);
   },
 
   fetch(url) {

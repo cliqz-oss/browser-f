@@ -15,7 +15,7 @@ function getAppenders(log) {
   equal(capps.length, 1, "should only have one console appender");
   let dapps = log.appenders.filter(app => app instanceof Log.DumpAppender);
   equal(dapps.length, 1, "should only have one dump appender");
-  let fapps = log.appenders.filter(app => app instanceof Log.StorageStreamAppender);
+  let fapps = log.appenders.filter(app => app instanceof LogManager.StorageStreamAppender);
   return [capps[0], dapps[0], fapps];
 }
 
@@ -79,7 +79,7 @@ add_task(async function test_SharedLogs() {
   let lm2 = new LogManager("log-manager-2.test.", ["TestLog3"], "test");
 
   let log = Log.repository.getLogger("TestLog3");
-  let [capp, dapp, ] = getAppenders(log);
+  let [capp, dapp ] = getAppenders(log);
 
   // console and dump appenders should be "trace" as it is more verbose than
   // "debug"
@@ -227,10 +227,9 @@ add_task(async function test_logFileError() {
 function countLogFiles() {
   let logsdir = FileUtils.getDir("ProfD", ["weave", "logs"], true);
   let count = 0;
-  let entries = logsdir.directoryEntries;
-  while (entries.hasMoreElements()) {
+  for (let entry of logsdir.directoryEntries) {
+    void entry;
     count += 1;
-    entries.getNext();
   }
   return count;
 }

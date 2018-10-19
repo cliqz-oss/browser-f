@@ -12,26 +12,23 @@ using namespace js;
 
 SparseBitmap::~SparseBitmap()
 {
-    if (data.initialized()) {
-        for (Data::Range r(data.all()); !r.empty(); r.popFront())
-            js_delete(r.front().value());
-    }
+    for (Data::Range r(data.all()); !r.empty(); r.popFront())
+        js_delete(r.front().value());
 }
 
 size_t
 SparseBitmap::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 {
-    size_t size = data.sizeOfExcludingThis(mallocSizeOf);
+    size_t size = data.shallowSizeOfExcludingThis(mallocSizeOf);
     for (Data::Range r(data.all()); !r.empty(); r.popFront())
         size += mallocSizeOf(r.front().value());
     return size;
 }
 
 SparseBitmap::BitBlock&
-SparseBitmap::createBlock(Data::AddPtr p, size_t blockId)
+SparseBitmap::createBlock(Data::AddPtr p, size_t blockId, AutoEnterOOMUnsafeRegion& oomUnsafe)
 {
     MOZ_ASSERT(!p);
-    AutoEnterOOMUnsafeRegion oomUnsafe;
     BitBlock* block = js_new<BitBlock>();
     if (!block || !data.add(p, blockId, block))
         oomUnsafe.crash("Bitmap OOM");

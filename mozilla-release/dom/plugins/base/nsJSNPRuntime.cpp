@@ -28,6 +28,7 @@
 #include "js/TracingAPI.h"
 #include "js/Wrapper.h"
 #include "mozilla/HashFunctions.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/dom/ScriptSettings.h"
 
 #define NPRUNTIME_JSCLASS_NAME "NPObject JS wrapper class"
@@ -85,7 +86,7 @@ typedef JS::GCHashMap<nsJSObjWrapperKey,
                       nsJSObjWrapper*,
                       JSObjWrapperHasher,
                       js::SystemAllocPolicy> JSObjWrapperTable;
-static JSObjWrapperTable sJSObjWrappers;
+static UniquePtr<JSObjWrapperTable> sJSObjWrappers;
 
 // Whether it's safe to iterate sJSObjWrappers.  Set to true when sJSObjWrappers
 // has been initialized and is not currently being enumerated.
@@ -294,8 +295,8 @@ OnWrapperDestroyed();
 static void
 TraceJSObjWrappers(JSTracer *trc, void *data)
 {
-  if (sJSObjWrappers.initialized()) {
-    sJSObjWrappers.trace(trc);
+  if (sJSObjWrappers) {
+    sJSObjWrappers->trace(trc);
   }
 }
 
@@ -361,17 +362,13 @@ static bool
 CreateJSObjWrapperTable()
 {
   MOZ_ASSERT(!sJSObjWrappersAccessible);
-  MOZ_ASSERT(!sJSObjWrappers.initialized());
+  MOZ_ASSERT(!sJSObjWrappers);
 
   if (!RegisterGCCallbacks()) {
     return false;
   }
 
-  if (!sJSObjWrappers.init(16)) {
-    NS_ERROR("Error initializing PLDHashTable sJSObjWrappers!");
-    return false;
-  }
-
+  sJSObjWrappers = MakeUnique<JSObjWrapperTable>();
   sJSObjWrappersAccessible = true;
   return true;
 }
@@ -380,12 +377,11 @@ static void
 DestroyJSObjWrapperTable()
 {
   MOZ_ASSERT(sJSObjWrappersAccessible);
-  MOZ_ASSERT(sJSObjWrappers.initialized());
-  MOZ_ASSERT(sJSObjWrappers.count() == 0);
+  MOZ_ASSERT(sJSObjWrappers);
+  MOZ_ASSERT(sJSObjWrappers->count() == 0);
 
-  // No more wrappers, and our hash was initialized. Finish the
-  // hash to prevent leaking it.
-  sJSObjWrappers.finish();
+  // No more wrappers. Delete the table.
+  sJSObjWrappers = nullptr;
   sJSObjWrappersAccessible = false;
 }
 
@@ -580,13 +576,17 @@ JSValToNPVariant(NPP npp, JSContext *cx, const JS::Value& val, NPVariant *varian
   // we run with the original wrapped object, since sometimes there are
   // legitimate cases where a security wrapper ends up here (for example,
   // Location objects, which are _always_ behind security wrappers).
-  JS::Rooted<JSObject*> obj(cx, val.toObjectOrNull());
+  JS::Rooted<JSObject*> obj(cx, &val.toObject());
+  JS::Rooted<JSObject*> global(cx);
   obj = js::CheckedUnwrap(obj);
-  if (!obj) {
-    obj = val.toObjectOrNull();
+  if (obj) {
+    global = JS::GetNonCCWObjectGlobal(obj);
+  } else {
+    obj = &val.toObject();
+    global = JS::CurrentGlobalOrNull(cx);
   }
 
-  NPObject* npobj = nsJSObjWrapper::GetNewOrUsed(npp, obj);
+  NPObject* npobj = nsJSObjWrapper::GetNewOrUsed(npp, obj, global);
   if (!npobj) {
     return false;
   }
@@ -606,15 +606,15 @@ ThrowJSExceptionASCII(JSContext *cx, const char *message)
     nsAutoString ucex;
 
     if (message) {
-      AppendASCIItoUTF16(message, ucex);
+      AppendASCIItoUTF16(mozilla::MakeStringSpan(message), ucex);
 
-      AppendASCIItoUTF16(" [plugin exception: ", ucex);
+      ucex.AppendLiteral(" [plugin exception: ");
     }
 
-    AppendUTF8toUTF16(ex, ucex);
+    AppendUTF8toUTF16(mozilla::MakeStringSpan(ex), ucex);
 
     if (message) {
-      AppendASCIItoUTF16("].", ucex);
+      ucex.AppendLiteral("].");
     }
 
     JSString *str = ::JS_NewUCStringCopyN(cx, ucex.get(), ucex.Length());
@@ -645,7 +645,7 @@ ReportExceptionIfPending(JSContext *cx)
 }
 
 nsJSObjWrapper::nsJSObjWrapper(NPP npp)
-  : mJSObj(nullptr), mNpp(npp), mDestroyPending(false)
+  : mJSObj(nullptr), mJSObjGlobal(nullptr), mNpp(npp), mDestroyPending(false)
 {
   MOZ_COUNT_CTOR(nsJSObjWrapper);
   OnWrapperCreated();
@@ -690,13 +690,14 @@ nsJSObjWrapper::NP_Invalidate(NPObject *npobj)
     if (sJSObjWrappersAccessible) {
       // Remove the wrapper from the hash
       nsJSObjWrapperKey key(jsnpobj->mJSObj, jsnpobj->mNpp);
-      JSObjWrapperTable::Ptr ptr = sJSObjWrappers.lookup(key);
+      JSObjWrapperTable::Ptr ptr = sJSObjWrappers->lookup(key);
       MOZ_ASSERT(ptr.found());
-      sJSObjWrappers.remove(ptr);
+      sJSObjWrappers->remove(ptr);
     }
 
     // Forget our reference to the JSObject.
     jsnpobj->mJSObj = nullptr;
+    jsnpobj->mJSObjGlobal = nullptr;
   }
 }
 
@@ -738,7 +739,7 @@ nsJSObjWrapper::NP_HasMethod(NPObject *npobj, NPIdentifier id)
 
   nsJSObjWrapper *npjsobj = (nsJSObjWrapper *)npobj;
 
-  JSAutoRealm ar(cx, npjsobj->mJSObj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
   MarkCrossZoneNPIdentifier(cx, id);
 
   AutoJSExceptionSuppressor suppressor(aes, npjsobj);
@@ -778,7 +779,7 @@ doInvoke(NPObject *npobj, NPIdentifier method, const NPVariant *args,
   nsJSObjWrapper *npjsobj = (nsJSObjWrapper *)npobj;
 
   JS::Rooted<JSObject*> jsobj(cx, npjsobj->mJSObj);
-  JSAutoRealm ar(cx, jsobj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
   MarkCrossZoneNPIdentifier(cx, method);
   JS::Rooted<JS::Value> fv(cx);
 
@@ -871,7 +872,7 @@ nsJSObjWrapper::NP_HasProperty(NPObject *npobj, NPIdentifier npid)
 
   AutoJSExceptionSuppressor suppressor(aes, npjsobj);
   JS::Rooted<JSObject*> jsobj(cx, npjsobj->mJSObj);
-  JSAutoRealm ar(cx, jsobj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
   MarkCrossZoneNPIdentifier(cx, npid);
 
   NS_ASSERTION(NPIdentifierIsInt(npid) || NPIdentifierIsString(npid),
@@ -908,7 +909,7 @@ nsJSObjWrapper::NP_GetProperty(NPObject *npobj, NPIdentifier id,
   nsJSObjWrapper *npjsobj = (nsJSObjWrapper *)npobj;
 
   AutoJSExceptionSuppressor suppressor(aes, npjsobj);
-  JSAutoRealm ar(cx, npjsobj->mJSObj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
   MarkCrossZoneNPIdentifier(cx, id);
 
   JS::Rooted<JS::Value> v(cx);
@@ -945,7 +946,7 @@ nsJSObjWrapper::NP_SetProperty(NPObject *npobj, NPIdentifier npid,
 
   AutoJSExceptionSuppressor suppressor(aes, npjsobj);
   JS::Rooted<JSObject*> jsObj(cx, npjsobj->mJSObj);
-  JSAutoRealm ar(cx, jsObj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
   MarkCrossZoneNPIdentifier(cx, npid);
 
   JS::Rooted<JS::Value> v(cx, NPVariantToJSVal(npp, cx, value));
@@ -983,7 +984,7 @@ nsJSObjWrapper::NP_RemoveProperty(NPObject *npobj, NPIdentifier npid)
   AutoJSExceptionSuppressor suppressor(aes, npjsobj);
   JS::ObjectOpResult result;
   JS::Rooted<JSObject*> obj(cx, npjsobj->mJSObj);
-  JSAutoRealm ar(cx, obj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
   MarkCrossZoneNPIdentifier(cx, npid);
 
   NS_ASSERTION(NPIdentifierIsInt(npid) || NPIdentifierIsString(npid),
@@ -1037,7 +1038,7 @@ nsJSObjWrapper::NP_Enumerate(NPObject *npobj, NPIdentifier **idarray,
 
   AutoJSExceptionSuppressor suppressor(aes, npjsobj);
   JS::Rooted<JSObject*> jsobj(cx, npjsobj->mJSObj);
-  JSAutoRealm ar(cx, jsobj);
+  JSAutoRealm ar(cx, npjsobj->mJSObjGlobal);
 
   JS::Rooted<JS::IdVector> ida(cx, JS::IdVector(cx));
   if (!JS_Enumerate(cx, jsobj, &ida)) {
@@ -1091,13 +1092,18 @@ nsJSObjWrapper::NP_Construct(NPObject *npobj, const NPVariant *args,
 
 // static
 NPObject *
-nsJSObjWrapper::GetNewOrUsed(NPP npp, JS::Handle<JSObject*> obj)
+nsJSObjWrapper::GetNewOrUsed(NPP npp, JS::Handle<JSObject*> obj,
+                             JS::Handle<JSObject*> objGlobal)
 {
   if (!npp) {
     NS_ERROR("Null NPP passed to nsJSObjWrapper::GetNewOrUsed()!");
 
     return nullptr;
   }
+
+  MOZ_ASSERT(JS_IsGlobalObject(objGlobal));
+  MOZ_RELEASE_ASSERT(js::GetObjectCompartment(obj) ==
+                     js::GetObjectCompartment(objGlobal));
 
   // No need to enter the right compartment here as we only get the
   // class and private from the JSObject, neither of which cares about
@@ -1122,14 +1128,14 @@ nsJSObjWrapper::GetNewOrUsed(NPP npp, JS::Handle<JSObject*> obj)
       return _retainobject(npobj);
   }
 
-  if (!sJSObjWrappers.initialized()) {
+  if (!sJSObjWrappers) {
     // No hash yet (or any more), initialize it.
     if (!CreateJSObjWrapperTable())
       return nullptr;
   }
   MOZ_ASSERT(sJSObjWrappersAccessible);
 
-  JSObjWrapperTable::Ptr p = sJSObjWrappers.lookupForAdd(nsJSObjWrapperKey(obj, npp));
+  JSObjWrapperTable::Ptr p = sJSObjWrappers->lookup(nsJSObjWrapperKey(obj, npp));
   if (p) {
     MOZ_ASSERT(p->value());
     // Found a live nsJSObjWrapper, return it.
@@ -1148,10 +1154,11 @@ nsJSObjWrapper::GetNewOrUsed(NPP npp, JS::Handle<JSObject*> obj)
   }
 
   wrapper->mJSObj = obj;
+  wrapper->mJSObjGlobal = objGlobal;
 
   // Insert the new wrapper into the hashtable, rooting the JSObject. Its
   // lifetime is now tied to that of the NPObject.
-  if (!sJSObjWrappers.putNew(nsJSObjWrapperKey(obj, npp), wrapper)) {
+  if (!sJSObjWrappers->putNew(nsJSObjWrapperKey(obj, npp), wrapper)) {
     // Out of memory, free the wrapper we created.
     _releaseobject(wrapper);
     return nullptr;
@@ -1904,7 +1911,8 @@ nsNPObjWrapper::OnDestroy(NPObject *npobj)
   }
 }
 
-// Look up or create a JSObject that wraps the NPObject npobj.
+// Look up or create a JSObject that wraps the NPObject npobj. The return value
+// is always in the compartment of the passed-in JSContext (it might be a CCW).
 
 // static
 JSObject *
@@ -2020,8 +2028,8 @@ nsJSNPRuntime::OnPluginDestroy(NPP npp)
     // Prevent modification of sJSObjWrappers table if we go reentrant.
     sJSObjWrappersAccessible = false;
 
-    for (JSObjWrapperTable::Enum e(sJSObjWrappers); !e.empty(); e.popFront()) {
-      nsJSObjWrapper *npobj = e.front().value();
+    for (auto iter = sJSObjWrappers->modIter(); !iter.done(); iter.next()) {
+      nsJSObjWrapper* npobj = iter.get().value();
       MOZ_ASSERT(npobj->_class == &nsJSObjWrapper::sJSObjWrapperNPClass);
       if (npobj->mNpp == npp) {
         if (npobj->_class && npobj->_class->invalidate) {
@@ -2030,7 +2038,7 @@ nsJSNPRuntime::OnPluginDestroy(NPP npp)
 
         _releaseobject(npobj);
 
-        e.removeFront();
+        iter.remove();
       }
     }
 
@@ -2093,8 +2101,8 @@ nsJSNPRuntime::OnPluginDestroyPending(NPP npp)
   if (sJSObjWrappersAccessible) {
     // Prevent modification of sJSObjWrappers table if we go reentrant.
     sJSObjWrappersAccessible = false;
-    for (JSObjWrapperTable::Enum e(sJSObjWrappers); !e.empty(); e.popFront()) {
-      nsJSObjWrapper *npobj = e.front().value();
+    for (auto iter = sJSObjWrappers->iter(); !iter.done(); iter.next()) {
+      nsJSObjWrapper* npobj = iter.get().value();
       MOZ_ASSERT(npobj->_class == &nsJSObjWrapper::sJSObjWrapperNPClass);
       if (npobj->mNpp == npp) {
         npobj->mDestroyPending = true;

@@ -42,14 +42,15 @@ interface nsITranslationNodeList;
 interface nsIJSRAIIHelper;
 interface nsIContentPermissionRequest;
 interface nsIObserver;
-interface nsIDOMStorage;
 
+webidl Animation;
 webidl DOMRect;
 webidl Element;
 webidl EventTarget;
 webidl Event;
 webidl Node;
 webidl NodeList;
+webidl Storage;
 
 [scriptable, uuid(4d6732ca-9da7-4176-b8a1-8dde15cd0bf9)]
 interface nsIDOMWindowUtils : nsISupports {
@@ -263,7 +264,7 @@ interface nsIDOMWindowUtils : nsISupports {
   /**
    * Following modifiers are for sent*Event() except sendNative*Event().
    * NOTE: MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT and MODIFIER_META
-   *       are must be same values as EventBinding::*_MASK for backward
+   *       are must be same values as Event_Binding::*_MASK for backward
    *       compatibility.
    */
   const long MODIFIER_ALT        = 0x0001;
@@ -686,8 +687,6 @@ interface nsIDOMWindowUtils : nsISupports {
    * non-debug builds. Available to all callers in debug builds.
    *
    * @param aListener listener that receives information about the CC graph
-   *                  (see @mozilla.org/cycle-collector-logger;1 for a logger
-   *                   component)
    */
   void garbageCollect([optional] in nsICycleCollectorListener aListener);
 
@@ -698,8 +697,6 @@ interface nsIDOMWindowUtils : nsISupports {
    * non-debug builds. Available to all callers in debug builds.
    *
    * @param aListener listener that receives information about the CC graph
-   *                  (see @mozilla.org/cycle-collector-logger;1 for a logger
-   *                   component)
    */
   void cycleCollect([optional] in nsICycleCollectorListener aListener);
 
@@ -846,6 +843,13 @@ interface nsIDOMWindowUtils : nsISupports {
    * Returns the given element's bounds without flushing pending layout changes.
    */
   DOMRect getBoundsWithoutFlushing(in Element aElement);
+
+  /**
+   * Returns the offset of the window's visual viewport relative to the
+   * layout viewport. 
+   */
+  void getVisualViewportOffsetRelativeToLayoutViewport(out float aOffsetX, 
+                                                       out float aOffsetY);
 
   const long FLUSH_NONE = -1;
   const long FLUSH_STYLE = 0;
@@ -1590,12 +1594,12 @@ interface nsIDOMWindowUtils : nsISupports {
   readonly attribute jsval plugins;
 
   /**
-   * Set the scrollport size for the purposes of clamping scroll positions for
+   * Set the viewport size for the purposes of clamping scroll positions for
    * the root scroll frame of this document to be (aWidth,aHeight) in CSS pixels.
    *
    * The caller of this method must have chrome privileges.
    */
-  void setScrollPositionClampingScrollPortSize(in float aWidth, in float aHeight);
+  void setVisualViewportSize(in float aWidth, in float aHeight);
 
   /**
    * These are used to control whether dialogs (alert, prompt, confirm) are
@@ -1698,7 +1702,7 @@ interface nsIDOMWindowUtils : nsISupports {
                        [optional] in AString aPseudoElement);
 
   /*
-   * Returns the value of the transform value on the compositor thread.
+   * Returns the value of the transform on the compositor, in layer pixels.
    * Unlike the above getOMTAStyle, the transform value returned by this
    * includes both of animating and APZ values.
    * Note: This function doesn't work on WebRender at all.  Also this function
@@ -1706,6 +1710,12 @@ interface nsIDOMWindowUtils : nsISupports {
    */
   AString getOMTCTransform(in Element aElement,
                            [optional] in AString aPseudoElement);
+
+  /*
+   * Returns true if the given animation is being tracked by the pending
+   * animation tracker for the current document.
+   */
+  bool isAnimationInPendingTracker(in Animation aAnimation);
 
   /**
    * If aHandlingInput is true, this informs the event state manager that
@@ -1898,7 +1908,7 @@ interface nsIDOMWindowUtils : nsISupports {
    * @param aStorage
    *    The storage object to get usage data for.
    */
-  int64_t getStorageUsage(in nsIDOMStorage aStorage);
+  int64_t getStorageUsage(in Storage aStorage);
 
   /**
    * Returns the directionality of a string using the first-strong character
@@ -1923,6 +1933,32 @@ interface nsIDOMWindowUtils : nsISupports {
    * save them to a folder relative to the current working directory.
    */
   void wrCapture();
+
+  /**
+   * Returns whether the document we're associated to has recorded a given CSS
+   * property via the use counter mechanism.
+   *
+   * Throws if there's no document or the property is invalid.
+   */
+  bool isCssPropertyRecordedInUseCounter(in ACString aProperty);
+
+  /**
+   * NOTE: Currently works only on GTK+.
+   */
+  attribute ACString systemFont;
+
+
+  /**
+   * Simulate the system setting corresponding to 'prefers-reduced-motion'
+   * media queries feature is changed to 'on' or 'off'.
+   *
+   * Currently this function is available only on MacOSX.
+   */
+  void setPrefersReducedMotionOverrideForTest(in boolean aValue);
+  /**
+   * Reset the internal state to be used for above setPrefersReducedMotion.
+   */
+  void resetPrefersReducedMotionOverrideForTest();
 
   // These consts are only for testing purposes.
   const long DEFAULT_MOUSE_POINTER_ID = 0;

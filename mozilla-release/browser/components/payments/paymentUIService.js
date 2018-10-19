@@ -32,6 +32,7 @@ function PaymentUIService() {
       prefix: "Payment UI Service",
     });
   });
+  Services.wm.addListener(this);
   this.log.debug("constructor");
 }
 
@@ -40,6 +41,19 @@ PaymentUIService.prototype = {
   QueryInterface: ChromeUtils.generateQI([Ci.nsIPaymentUIService]),
   DIALOG_URL: "chrome://payments/content/paymentDialogWrapper.xul",
   REQUEST_ID_PREFIX: "paymentRequest-",
+
+  // nsIWindowMediatorListener implementation:
+
+  onOpenWindow(aWindow) {},
+  onCloseWindow(aWindow) {
+    let domWindow = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+    let requestId = this.requestIdForWindow(domWindow);
+    if (!requestId || !paymentSrv.getPaymentRequestById(requestId)) {
+      return;
+    }
+    this.log.debug(`onCloseWindow, close of window for active requestId: ${requestId}`);
+    this.rejectPaymentForClosedDialog(requestId);
+  },
 
   // nsIPaymentUIService implementation:
 
@@ -67,9 +81,34 @@ PaymentUIService.prototype = {
     paymentSrv.respondPayment(abortResponse);
   },
 
+  rejectPaymentForClosedDialog(requestId) {
+    this.log.debug("rejectPaymentForClosedDialog:", requestId);
+    const rejectResponse = Cc["@mozilla.org/dom/payments/payment-show-action-response;1"]
+                            .createInstance(Ci.nsIPaymentShowActionResponse);
+    rejectResponse.init(requestId,
+                        Ci.nsIPaymentActionResponse.PAYMENT_REJECTED,
+                        "", // payment method
+                        null, // payment method data
+                        "", // payer name
+                        "", // payer email
+                        "");// payer phone
+    paymentSrv.respondPayment(rejectResponse);
+  },
+
   completePayment(requestId) {
-    this.log.debug("completePayment:", requestId);
-    let closed = this.closeDialog(requestId);
+    // completeStatus should be one of "timeout", "success", "fail", ""
+    let {completeStatus} = paymentSrv.getPaymentRequestById(requestId);
+    this.log.debug(`completePayment: requestId: ${requestId}, completeStatus: ${completeStatus}`);
+
+    let closed;
+    switch (completeStatus) {
+      case "fail":
+      case "timeout":
+        break;
+      default:
+        closed = this.closeDialog(requestId);
+        break;
+    }
     let responseCode = closed ?
         Ci.nsIPaymentActionResponse.COMPLETE_SUCCEEDED :
         Ci.nsIPaymentActionResponse.COMPLETE_FAILED;
@@ -77,6 +116,15 @@ PaymentUIService.prototype = {
                              .createInstance(Ci.nsIPaymentCompleteActionResponse);
     completeResponse.init(requestId, responseCode);
     paymentSrv.respondPayment(completeResponse.QueryInterface(Ci.nsIPaymentActionResponse));
+
+    if (!closed) {
+      let dialog = this.findDialog(requestId);
+      if (!dialog) {
+        this.log.error("completePayment: no dialog found");
+        return;
+      }
+      dialog.paymentDialogWrapper.updateRequest();
+    }
   },
 
   updatePayment(requestId) {
@@ -87,6 +135,10 @@ PaymentUIService.prototype = {
       return;
     }
     dialog.paymentDialogWrapper.updateRequest();
+  },
+
+  closePayment(requestId) {
+    this.closeDialog(requestId);
   },
 
   // other helper methods
@@ -106,9 +158,7 @@ PaymentUIService.prototype = {
   },
 
   findDialog(requestId) {
-    let enu = Services.wm.getEnumerator(null);
-    let win;
-    while ((win = enu.getNext())) {
+    for (let win of Services.wm.getEnumerator(null)) {
       if (win.name == `${this.REQUEST_ID_PREFIX}${requestId}`) {
         return win;
       }

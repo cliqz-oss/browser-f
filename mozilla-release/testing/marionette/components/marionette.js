@@ -23,6 +23,8 @@ XPCOMUtils.defineLazyGetter(this, "log", Log.get);
 XPCOMUtils.defineLazyServiceGetter(
     this, "env", "@mozilla.org/process/environment;1", "nsIEnvironment");
 
+const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
+
 const NOTIFY_RUNNING = "remote-active";
 
 // Complements -marionette flag for starting the Marionette server.
@@ -64,7 +66,8 @@ const RECOMMENDED_PREFS = new Map([
   //
   // This should also be set in the profile prior to starting Firefox,
   // as it is picked up at runtime.
-  ["app.update.enabled", false],
+  ["app.update.disabledForTesting", true],
+  ["security.turn_off_all_security_so_that_viruses_can_take_over_this_computer", true],
 
   // Increase the APZ content response timeout in tests to 1 minute.
   // This is to accommodate the fact that test environments tends to be
@@ -107,9 +110,6 @@ const RECOMMENDED_PREFS = new Map([
   // These should also be set in the profile prior to starting Firefox,
   // as it is picked up at runtime.
   ["browser.shell.checkDefaultBrowser", false],
-
-  // Do not warn when quitting with multiple tabs
-  ["browser.showQuitWarning", false],
 
   // Do not redirect user when a milstone upgrade of Firefox is detected
   ["browser.startup.homepage_override.mstone", "ignore"],
@@ -322,6 +322,7 @@ class MarionetteParentProcess {
       case "profile-after-change":
         Services.obs.addObserver(this, "command-line-startup");
         Services.obs.addObserver(this, "sessionstore-windows-restored");
+        Services.obs.addObserver(this, "toplevel-window-ready");
 
         for (let [pref, value] of EnvironmentPrefs.from(ENV_PRESERVE_PREFS)) {
           Preferences.set(pref, value);
@@ -362,15 +363,27 @@ class MarionetteParentProcess {
         this.suppressSafeModeDialog(subject);
         break;
 
+      case "toplevel-window-ready":
+        subject.addEventListener("load", ev => {
+          if (ev.target.documentElement.namespaceURI == XMLURI_PARSE_ERROR) {
+            Services.obs.removeObserver(this, topic);
+
+            let parserError = ev.target.querySelector("parsererror");
+            log.fatal(parserError.textContent);
+            this.uninit();
+            Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
+          }
+        }, {once: true});
+        break;
+
       case "sessionstore-windows-restored":
         Services.obs.removeObserver(this, topic);
+        Services.obs.removeObserver(this, "toplevel-window-ready");
 
         // When Firefox starts on Windows, an additional GFX sanity test
         // window may appear off-screen.  Marionette should wait for it
         // to close.
-        let winEn = Services.wm.getEnumerator(null);
-        while (winEn.hasMoreElements()) {
-          let win = winEn.getNext();
+        for (let win of Services.wm.getEnumerator(null)) {
           if (win.document.documentURI == "chrome://gfxsanity/content/sanityparent.html") {
             this.gfxWindow = win;
             break;
@@ -517,14 +530,8 @@ Marionette.prototype = {
   classID: Components.ID("{786a1369-dca5-4adc-8486-33d23c88010a}"),
   contractID: "@mozilla.org/remote/marionette;1",
 
-  /* eslint-disable camelcase */
+  /* eslint-disable-next-line camelcase */
   _xpcom_factory: MarionetteFactory,
-
-  _xpcom_categories: [
-    {category: "command-line-handler", entry: "b-marionette"},
-    {category: "profile-after-change", service: true},
-  ],
-  /* eslint-enable camelcase */
 
   helpInfo: "  --marionette       Enable remote control server.\n",
 };

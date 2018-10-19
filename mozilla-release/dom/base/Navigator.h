@@ -40,6 +40,7 @@ class ArrayBufferOrArrayBufferViewOrBlobOrFormDataOrUSVStringOrURLSearchParams;
 class ServiceWorkerContainer;
 class DOMRequest;
 class CredentialsContainer;
+class Clipboard;
 } // namespace dom
 } // namespace mozilla
 
@@ -76,6 +77,7 @@ class LegacyMozTCPSocket;
 class VRDisplay;
 class VRServiceTest;
 class StorageManager;
+class MediaCapabilities;
 
 class Navigator final : public nsISupports
                       , public nsWrapperCache
@@ -142,7 +144,7 @@ public:
                                nsAString& aUserAgent);
 
   // Clears the user agent cache by calling:
-  // NavigatorBinding::ClearCachedUserAgentValue(this);
+  // Navigator_Binding::ClearCachedUserAgentValue(this);
   void ClearUserAgentCache();
 
   bool Vibrate(uint32_t aDuration);
@@ -206,6 +208,7 @@ public:
   already_AddRefed<ServiceWorkerContainer> ServiceWorker();
 
   mozilla::dom::CredentialsContainer* Credentials();
+  dom::Clipboard* Clipboard();
 
   static bool Webdriver();
 
@@ -214,6 +217,8 @@ public:
   StorageManager* Storage();
 
   static void GetAcceptLanguages(nsTArray<nsString>& aLanguages);
+
+  dom::MediaCapabilities* MediaCapabilities();
 
   // WebIDL helper methods
   static bool HasUserMediaSupport(JSContext* /* unused */,
@@ -265,6 +270,7 @@ private:
   RefPtr<Promise> mBatteryPromise;
   RefPtr<network::Connection> mConnection;
   RefPtr<CredentialsContainer> mCredentials;
+  RefPtr<dom::Clipboard> mClipboard;
   RefPtr<MediaDevices> mMediaDevices;
   RefPtr<ServiceWorkerContainer> mServiceWorkerContainer;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
@@ -274,6 +280,7 @@ private:
   RefPtr<VRServiceTest> mVRServiceTest;
   nsTArray<uint32_t> mRequestedVibrationPattern;
   RefPtr<StorageManager> mStorageManager;
+  RefPtr<dom::MediaCapabilities> mMediaCapabilities;
 };
 
 } // namespace dom

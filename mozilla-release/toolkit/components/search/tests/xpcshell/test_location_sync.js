@@ -1,45 +1,25 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-function getCountryCodePref() {
+function getRegionPref() {
   try {
-    return Services.prefs.getCharPref("browser.search.countryCode");
+    return Services.prefs.getCharPref("browser.search.region");
   } catch (_) {
     return undefined;
   }
 }
 
-// A console listener so we can listen for a log message from nsSearchService.
-function promiseTimezoneMessage() {
-  return new Promise(resolve => {
-    let listener = {
-      QueryInterface: ChromeUtils.generateQI([Ci.nsIConsoleListener]),
-      observe(msg) {
-        if (msg.message.startsWith("getIsUS() fell back to a timezone check with the result=")) {
-          Services.console.unregisterListener(listener);
-          resolve(msg);
-        }
-      }
-    };
-    Services.console.registerListener(listener);
-  });
-}
-
 // Force a sync init and ensure the right thing happens (ie, that no xhr
-// request is made and we fall back to the timezone-only trick)
+// request is made )
 add_task(async function test_simple() {
-  deepEqual(getCountryCodePref(), undefined, "no countryCode pref");
+  deepEqual(getRegionPref(), undefined, "no region pref");
 
   // Still set a geoip pref so we can (indirectly) check it wasn't used.
   Services.prefs.setCharPref("browser.search.geoip.url", 'data:application/json,{"country_code": "AU"}');
 
   ok(!Services.search.isInitialized);
 
-  // setup a console listener for the timezone fallback message.
-  let promiseTzMessage = promiseTimezoneMessage();
-
-  // fetching the engines forces a sync init, and should have caused us to
-  // check the timezone.
+  // fetching the engines forces a sync init
   Services.search.getEngines();
   ok(Services.search.isInitialized);
 
@@ -48,11 +28,7 @@ add_task(async function test_simple() {
     do_timeout(500, resolve);
   });
 
-  let msg = await promiseTzMessage;
-  print("Timezone message:", msg.message);
-  ok(msg.message.endsWith(isUSTimezone().toString()), "fell back to timezone and it matches our timezone");
-
-  deepEqual(getCountryCodePref(), undefined, "didn't do the geoip xhr");
+  deepEqual(getRegionPref(), undefined, "didn't do the geoip xhr");
   // and no telemetry evidence of geoip.
   for (let hid of [
     "SEARCH_SERVICE_COUNTRY_FETCH_RESULT",

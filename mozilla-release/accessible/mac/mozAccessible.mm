@@ -713,14 +713,14 @@ ConvertToNSArray(nsTArray<ProxyAccessible*>& aArray)
     return nil;
   }
 
-#define ROLE(geckoRole, stringRole, atkRole, macRole, msaaRole, ia2Role, nameRule) \
+#define ROLE(geckoRole, stringRole, atkRole, macRole, msaaRole, ia2Role, androidClass, nameRule) \
   case roles::geckoRole: \
     return macRole;
 
   switch (mRole) {
 #include "RoleMap.h"
     default:
-      NS_NOTREACHED("Unknown role.");
+      MOZ_ASSERT_UNREACHABLE("Unknown role.");
       return NSAccessibilityUnknownRole;
   }
 
@@ -928,6 +928,12 @@ ConvertToNSArray(nsTArray<ProxyAccessible*>& aArray)
       if (roleAtom)
         return @"AXApplicationGroup";
       break;
+
+    case roles::CONTENT_DELETION:
+      return @"AXDeleteStyleGroup";
+
+    case roles::CONTENT_INSERTION:
+      return @"AXInsertStyleGroup";
 
     default:
       break;

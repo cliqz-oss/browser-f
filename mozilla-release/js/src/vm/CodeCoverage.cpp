@@ -114,7 +114,7 @@ LCovSource::exportInto(GenericPrinter& out) const
     out.printf("BRF:%zu\n", numBranchesFound_);
     out.printf("BRH:%zu\n", numBranchesHit_);
 
-    if (linesHit_.initialized()) {
+    if (!linesHit_.empty()) {
         for (size_t lineno = 1; lineno <= maxLineHit_; ++lineno) {
             if (auto p = linesHit_.lookup(lineno))
                 out.printf("DA:%zu,%" PRIu64 "\n", lineno, p->value());
@@ -140,9 +140,6 @@ LCovSource::writeScriptName(LSprinter& out, JSScript* script)
 bool
 LCovSource::writeScript(JSScript* script)
 {
-    if (!linesHit_.initialized() && !linesHit_.init())
-        return false;
-
     numFunctionsFound_++;
     outFN_.printf("FN:%u,", script->lineno());
     if (!writeScriptName(outFN_, script))
@@ -196,11 +193,11 @@ LCovSource::writeScript(JSScript* script)
             while (!SN_IS_TERMINATOR(sn) && snpc <= pc) {
                 SrcNoteType type = SN_TYPE(sn);
                 if (type == SRC_SETLINE)
-                    lineno = size_t(GetSrcNoteOffset(sn, 0));
+                    lineno = size_t(GetSrcNoteOffset(sn, SrcNote::SetLine::Line));
                 else if (type == SRC_NEWLINE)
                     lineno++;
                 else if (type == SRC_TABLESWITCH)
-                    tableswitchExitOffset = GetSrcNoteOffset(sn, 0);
+                    tableswitchExitOffset = GetSrcNoteOffset(sn, SrcNote::TableSwitch::EndOffset);
 
                 sn = SN_NEXT(sn);
                 snpc += SN_DELTA(sn);
@@ -455,6 +452,12 @@ LCovRealm::LCovRealm()
     sources_(nullptr)
 {
     MOZ_ASSERT(alloc_.isEmpty());
+}
+
+LCovRealm::~LCovRealm()
+{
+    if (sources_)
+        sources_->~LCovSourceVector();
 }
 
 void

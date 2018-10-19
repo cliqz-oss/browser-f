@@ -120,11 +120,6 @@ public:
     return mIsPositioned;
   }
 
-  void SetMaySpanAnonymousSubtrees(bool aMaySpanAnonymousSubtrees)
-  {
-    mMaySpanAnonymousSubtrees = aMaySpanAnonymousSubtrees;
-  }
-
   /**
    * Return true iff this range is part of a Selection object
    * and isn't detached.
@@ -138,6 +133,11 @@ public:
    * Called when the range is added/removed from a Selection.
    */
   void SetSelection(mozilla::dom::Selection* aSelection);
+
+  /**
+   * Returns pointer to a Selection if the range is associated with a Selection.
+   */
+  mozilla::dom::Selection* GetSelection() const { return mSelection; }
 
   /**
    * Return true if this range was generated.
@@ -162,6 +162,17 @@ public:
 
   nsINode* GetCommonAncestor() const;
   void Reset();
+
+  /**
+   * ResetTemporarily() is called when Selection starts to cache the instance
+   * to reuse later.  This method clears mStart, mEnd and mIsPositioned but
+   * does not clear mRoot for reducing the cost to register this as a mutation
+   * observer again.
+   */
+  void ResetTemporarily()
+  {
+    DoSetRange(RawRangeBoundary(), RawRangeBoundary(), mRoot);
+  }
 
   /**
    * SetStart() and SetEnd() sets start point or end point separately.
@@ -389,10 +400,7 @@ public:
    * fragment.  If this returns nullptr, that means aNode can be neither the
    * start container nor end container of any range.
    */
-  static nsINode* ComputeRootNode(nsINode* aNode)
-  {
-    return ComputeRootNode(aNode, false);
-  }
+  static nsINode* ComputeRootNode(nsINode* aNode);
 
   /**
    * Return true if aStartContainer/aStartOffset and aEndContainer/aEndOffset
@@ -452,7 +460,7 @@ public:
   /**
    * Notify the selection listeners after a range has been modified.
    */
-  void NotifySelectionListenersAfterRangeSet();
+  MOZ_CAN_RUN_SCRIPT void NotifySelectionListenersAfterRangeSet();
 
   typedef nsTHashtable<nsPtrHashKey<nsRange> > RangeHashTable;
 protected:
@@ -461,7 +469,7 @@ protected:
   void UnregisterCommonAncestor(nsINode* aNode, bool aIsUnlinking);
   nsINode* IsValidBoundary(nsINode* aNode) const
   {
-    return ComputeRootNode(aNode, mMaySpanAnonymousSubtrees);
+    return ComputeRootNode(aNode);
   }
 
   /**
@@ -476,13 +484,11 @@ protected:
   }
   static bool IsValidOffset(nsINode* aNode, uint32_t aOffset);
 
-  static nsINode* ComputeRootNode(nsINode* aNode,
-                                  bool aMaySpanAnonymousSubtrees);
-
   // CharacterDataChanged set aNotInsertedYet to true to disable an assertion
   // and suppress re-registering a range common ancestor node since
   // the new text node of a splitText hasn't been inserted yet.
   // CharacterDataChanged does the re-registering when needed.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void DoSetRange(const RawRangeBoundary& lowerBound,
                   const RawRangeBoundary& upperBound,
                   nsINode* aRoot, bool aNotInsertedYet = false);
@@ -566,7 +572,6 @@ protected:
   RangeBoundary mEnd;
 
   bool mIsPositioned : 1;
-  bool mMaySpanAnonymousSubtrees : 1;
   bool mIsGenerated : 1;
   bool mCalledByJS : 1;
 };

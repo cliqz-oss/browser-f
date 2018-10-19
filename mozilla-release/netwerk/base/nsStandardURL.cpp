@@ -26,6 +26,7 @@
 #include "prprf.h"
 #include "nsReadableUtils.h"
 #include "mozilla/net/MozURL_ffi.h"
+#include "mozilla/TextUtils.h"
 
 //
 // setenv MOZ_LOG nsStandardURL:5
@@ -435,10 +436,10 @@ ParseIPv4Number(const nsACString& input, int32_t base, uint32_t& number, uint32_
     for (; current < end; ++current) {
         value *= base;
         char c = *current;
-        MOZ_ASSERT((base == 10 && isdigit(c)) ||
+        MOZ_ASSERT((base == 10 && IsAsciiDigit(c)) ||
                    (base == 8 && c >= '0' && c <= '7') ||
-                   (base == 16 && isxdigit(c)));
-        if (isdigit(c)) {
+                   (base == 16 && IsAsciiHexDigit(c)));
+        if (IsAsciiDigit(c)) {
             value += c - '0';
         } else if (c >= 'a' && c <= 'f') {
             value += c - 'a' + 10;
@@ -1109,11 +1110,9 @@ nsStandardURL::AppendToSubstring(uint32_t pos,
         return nullptr;
 
     char *result = (char *) moz_xmalloc(len + tailLen + 1);
-    if (result) {
-        memcpy(result, mSpec.get() + pos, len);
-        memcpy(result + len, tail, tailLen);
-        result[len + tailLen] = '\0';
-    }
+    memcpy(result, mSpec.get() + pos, len);
+    memcpy(result + len, tail, tailLen);
+    result[len + tailLen] = '\0';
     return result;
 }
 
@@ -2279,19 +2278,6 @@ nsStandardURL::Clone(nsIURI **result)
     return CloneInternal(eHonorRef, EmptyCString(), result);
 }
 
-
-NS_IMETHODIMP
-nsStandardURL::CloneIgnoringRef(nsIURI **result)
-{
-    return CloneInternal(eIgnoreRef, EmptyCString(), result);
-}
-
-NS_IMETHODIMP
-nsStandardURL::CloneWithNewRef(const nsACString& newRef, nsIURI **result)
-{
-    return CloneInternal(eReplaceRef, newRef, result);
-}
-
 nsresult
 nsStandardURL::CloneInternal(nsStandardURL::RefHandlingEnum refHandlingMode,
                              const nsACString& newRef,
@@ -2439,7 +2425,7 @@ nsStandardURL::Resolve(const nsACString &in, nsACString &out)
             if (strncmp(relpath + scheme.mPos + scheme.mLen, "://", 3) == 0) {
                 // now this is really absolute
                 // because a :// follows the scheme
-                result = NS_strdup(relpath);
+                result = NS_xstrdup(relpath);
             } else {
                 // This is a deprecated form of relative urls like
                 // http:file or http:/path/file
@@ -2450,7 +2436,7 @@ nsStandardURL::Resolve(const nsACString &in, nsACString &out)
         } else {
             // the schemes are not the same, we are also done
             // because we have to assume this is absolute
-            result = NS_strdup(relpath);
+            result = NS_xstrdup(relpath);
         }
     } else {
         // add some flags to coalesceFlag if it is an ftp-url
@@ -3214,7 +3200,7 @@ nsStandardURL::Init(uint32_t urlType,
         mParser = net_GetNoAuthURLParser();
         break;
     default:
-        NS_NOTREACHED("bad urlType");
+        MOZ_ASSERT_UNREACHABLE("bad urlType");
         return NS_ERROR_INVALID_ARG;
     }
     mDefaultPort = defaultPort;
@@ -3273,7 +3259,7 @@ nsStandardURL::SetDefaultPort(int32_t aNewDefaultPort)
 NS_IMETHODIMP
 nsStandardURL::Read(nsIObjectInputStream *stream)
 {
-    NS_NOTREACHED("Use nsIURIMutator.read() instead");
+    MOZ_ASSERT_UNREACHABLE("Use nsIURIMutator.read() instead");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -3299,7 +3285,7 @@ nsStandardURL::ReadPrivate(nsIObjectInputStream *stream)
         mParser = net_GetNoAuthURLParser();
         break;
       default:
-        NS_NOTREACHED("bad urlType");
+        MOZ_ASSERT_UNREACHABLE("bad urlType");
         return NS_ERROR_FAILURE;
     }
 
@@ -3559,7 +3545,7 @@ nsStandardURL::Deserialize(const URIParams& aParams)
             mParser = net_GetNoAuthURLParser();
             break;
         default:
-            NS_NOTREACHED("bad urlType");
+            MOZ_ASSERT_UNREACHABLE("bad urlType");
             return false;
     }
 
@@ -3639,8 +3625,6 @@ NS_IMETHODIMP
 nsStandardURL::GetClassID(nsCID * *aClassID)
 {
     *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
-    if (!*aClassID)
-        return NS_ERROR_OUT_OF_MEMORY;
     return GetClassIDNoAlloc(*aClassID);
 }
 

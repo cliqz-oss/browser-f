@@ -11,6 +11,7 @@
 #define CocoaFileUtils_h_
 
 #include "nscore.h"
+#include "nsString.h"
 #include <CoreFoundation/CoreFoundation.h>
 
 namespace CocoaFileUtils {
@@ -21,13 +22,21 @@ nsresult GetFileCreatorCode(CFURLRef aUrl, OSType* aCreatorCode);
 nsresult SetFileCreatorCode(CFURLRef aUrl, OSType aCreatorCode);
 nsresult GetFileTypeCode(CFURLRef aUrl, OSType* aTypeCode);
 nsresult SetFileTypeCode(CFURLRef aUrl, OSType aTypeCode);
+
+// Can be called off of the main thread.
 void     AddOriginMetadataToFile(const CFStringRef filePath,
                                  const CFURLRef sourceURL,
                                  const CFURLRef referrerURL);
+// Can be called off of the main thread.
 void     AddQuarantineMetadataToFile(const CFStringRef filePath,
                                      const CFURLRef sourceURL,
                                      const CFURLRef referrerURL,
-                                     const bool isFromWeb);
+                                     const bool isFromWeb,
+                                     const bool createProps=false);
+// Can be called off of the main thread.
+void CopyQuarantineReferrerUrl(const CFStringRef aFilePath,
+                               nsAString& aReferrer);
+
 CFURLRef GetTemporaryFolderCFURLRef();
 
 } // namespace CocoaFileUtils

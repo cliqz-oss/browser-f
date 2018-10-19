@@ -38,11 +38,11 @@
 #include "nsIDOMWindowUtils.h"
 #include "nsIDOMWindow.h"
 #include "nsINetworkInterceptController.h"
-#include "NullPrincipal.h"
 #include "nsICorsPreflightCallback.h"
 #include "nsISupportsImpl.h"
 #include "nsHttpChannel.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/NullPrincipal.h"
 #include "nsIHttpHeaderVisitor.h"
 #include "nsQueryObject.h"
 #include <algorithm>
@@ -1076,17 +1076,6 @@ nsCORSListenerProxy::CheckPreflightNeeded(nsIChannel* aChannel, UpdateType aUpda
 
   if (!doPreflight) {
     return NS_OK;
-  }
-
-  // A preflight is needed. But if we've already been cross-site, then
-  // we already did a preflight when that happened, and so we're not allowed
-  // to do another preflight again.
-  if (aUpdateType != UpdateType::InternalOrHSTSRedirect) {
-    if (mHasBeenCrossSite) {
-      LogBlockedRequest(aChannel, "CORSPreflightDidNotSucceed", nullptr,
-                        mHttpChannel);
-      return NS_ERROR_DOM_BAD_URI;
-    }
   }
 
   nsCOMPtr<nsIHttpChannelInternal> internal = do_QueryInterface(http);

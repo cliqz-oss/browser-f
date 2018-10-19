@@ -153,17 +153,8 @@ prefBranch.addObserver("", observer.onPrefChange);
 observer.onPrefChange(); // read initial values
 
 
-function messageManagerFromWindow(win) {
-  return win.QueryInterface(Ci.nsIInterfaceRequestor)
-            .getInterface(Ci.nsIWebNavigation)
-            .QueryInterface(Ci.nsIDocShell)
-            .QueryInterface(Ci.nsIInterfaceRequestor)
-            .getInterface(Ci.nsIContentFrameMessageManager);
-}
-
 // This object maps to the "child" process (even in the single-process case).
 var LoginManagerContent = {
-
   __formFillService: null, // FormFillController, for username autocompleting
   get _formFillService() {
     if (!this.__formFillService)
@@ -304,7 +295,7 @@ var LoginManagerContent = {
     }
     let actionOrigin = LoginUtils._getActionOrigin(form);
 
-    let messageManager = messageManagerFromWindow(win);
+    let messageManager = win.docShell.messageManager;
 
     // XXX Weak??
     let requestData = { form };
@@ -326,7 +317,7 @@ var LoginManagerContent = {
     let formOrigin = LoginUtils._getPasswordOrigin(doc.documentURI);
     let actionOrigin = LoginUtils._getActionOrigin(form);
 
-    let messageManager = messageManagerFromWindow(win);
+    let messageManager = win.docShell.messageManager;
 
     let previousResult = aPreviousResult ?
                            { searchString: aPreviousResult.searchString,
@@ -348,15 +339,22 @@ var LoginManagerContent = {
                              messageData);
   },
 
+  setupEventListeners(global) {
+    global.addEventListener("pageshow", (event) => {
+      this.onPageShow(event, global.content);
+    });
+    global.addEventListener("blur", (event) => {
+      this.onUsernameInput(event);
+    });
+  },
+
   setupProgressListener(window) {
     if (!LoginHelper.formlessCaptureEnabled) {
       return;
     }
 
     try {
-      let webProgress = window.QueryInterface(Ci.nsIInterfaceRequestor).
-                        getInterface(Ci.nsIWebNavigation).
-                        QueryInterface(Ci.nsIDocShell).
+      let webProgress = window.docShell.
                         QueryInterface(Ci.nsIInterfaceRequestor).
                         getInterface(Ci.nsIWebProgress);
       webProgress.addProgressListener(observer,
@@ -438,14 +436,8 @@ var LoginManagerContent = {
   _fetchLoginsFromParentAndFillForm(form, window) {
     this._detectInsecureFormLikes(window);
 
-    const isPrivateWindow = PrivateBrowsingUtils.isContentWindowPrivate(window);
-
-    let messageManager = messageManagerFromWindow(window);
-    messageManager.sendAsyncMessage("LoginStats:LoginEncountered",
-                                    {
-                                      isPrivateWindow,
-                                      isPwmgrEnabled: gEnabled,
-                                    });
+    let messageManager = window.docShell.messageManager;
+    messageManager.sendAsyncMessage("LoginStats:LoginEncountered");
 
     if (!gEnabled) {
       return;
@@ -503,7 +495,7 @@ var LoginManagerContent = {
                         frame => hasInsecureLoginForms(frame));
     };
 
-    let messageManager = messageManagerFromWindow(topWindow);
+    let messageManager = topWindow.docShell.messageManager;
     messageManager.sendAsyncMessage("RemoteLogins:insecureLoginFormPresent", {
       hasInsecureLoginForms: hasInsecureLoginForms(topWindow),
     });
@@ -702,7 +694,7 @@ var LoginManagerContent = {
 
       pwFields[pwFields.length] = {
                                     index: i,
-                                    element
+                                    element,
                                   };
     }
 
@@ -941,7 +933,7 @@ var LoginManagerContent = {
     }
 
     let formSubmitURL = LoginUtils._getActionOrigin(form);
-    let messageManager = messageManagerFromWindow(win);
+    let messageManager = win.docShell.messageManager;
 
     let recipes = LoginRecipesContent.getRecipes(hostname, win);
 
@@ -1259,7 +1251,7 @@ var LoginManagerContent = {
       autofillResult = AUTOFILL_RESULT.FILLED;
 
       let win = doc.defaultView;
-      let messageManager = messageManagerFromWindow(win);
+      let messageManager = win.docShell.messageManager;
       messageManager.sendAsyncMessage("LoginStats:LoginFillSuccessful");
     } finally {
       if (autofillResult == -1) {
@@ -1352,6 +1344,7 @@ var LoginManagerContent = {
     // If the element is not a proper form field, return null.
     if (ChromeUtils.getClassName(aField) !== "HTMLInputElement" ||
         (aField.type != "password" && !LoginHelper.isUsernameFieldType(aField)) ||
+        aField.nodePrincipal.isNullPrincipal ||
         !aField.ownerDocument) {
       return null;
     }
@@ -1578,7 +1571,7 @@ UserAutoCompleteResult.prototype = {
         Services.logins.removeLogin(removedLogin);
       }
     }
-  }
+  },
 };
 
 /**

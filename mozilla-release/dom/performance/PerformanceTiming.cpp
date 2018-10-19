@@ -207,17 +207,13 @@ PerformanceTimingData::PerformanceTimingData(nsITimedChannel* aChannel,
   // for resource timing, which can include document loads, both toplevel and
   // in subframes, and resources linked from a document.
   if (aHttpChannel) {
-    mTimingAllowed = CheckAllowedOrigin(aHttpChannel, aChannel);
-    bool redirectsPassCheck = false;
-    aChannel->GetAllRedirectsPassTimingAllowCheck(&redirectsPassCheck);
-    mReportCrossOriginRedirect = mTimingAllowed && redirectsPassCheck;
-
-    SetPropertiesFromHttpChannel(aHttpChannel);
+    SetPropertiesFromHttpChannel(aHttpChannel, aChannel);
   }
 }
 
 void
-PerformanceTimingData::SetPropertiesFromHttpChannel(nsIHttpChannel* aHttpChannel)
+PerformanceTimingData::SetPropertiesFromHttpChannel(nsIHttpChannel* aHttpChannel,
+                                                    nsITimedChannel* aChannel)
 {
   MOZ_ASSERT(aHttpChannel);
 
@@ -231,6 +227,11 @@ PerformanceTimingData::SetPropertiesFromHttpChannel(nsIHttpChannel* aHttpChannel
   if (mDecodedBodySize == 0) {
     mDecodedBodySize = mEncodedBodySize;
   }
+
+  mTimingAllowed = CheckAllowedOrigin(aHttpChannel, aChannel);
+  bool redirectsPassCheck = false;
+  aChannel->GetAllRedirectsPassTimingAllowCheck(&redirectsPassCheck);
+  mReportCrossOriginRedirect = mTimingAllowed && redirectsPassCheck;
 }
 
 PerformanceTiming::~PerformanceTiming()
@@ -285,11 +286,9 @@ PerformanceTimingData::CheckAllowedOrigin(nsIHttpChannel* aResourceChannel,
     return false;
   }
 
-  // TYPE_DOCUMENT loads have no loadingPrincipal.  And that's OK, because we
-  // never actually need to have a performance timing entry for TYPE_DOCUMENT
-  // loads.
+  // TYPE_DOCUMENT loads have no loadingPrincipal.
   if (loadInfo->GetExternalContentPolicyType() == nsIContentPolicy::TYPE_DOCUMENT) {
-    return false;
+    return true;
   }
 
   nsCOMPtr<nsIPrincipal> principal = loadInfo->LoadingPrincipal();
@@ -651,7 +650,7 @@ PerformanceTiming::ResponseEnd()
 JSObject*
 PerformanceTiming::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
 {
-  return PerformanceTimingBinding::Wrap(cx, this, aGivenProto);
+  return PerformanceTiming_Binding::Wrap(cx, this, aGivenProto);
 }
 
 bool

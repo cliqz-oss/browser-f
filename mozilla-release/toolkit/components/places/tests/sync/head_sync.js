@@ -18,6 +18,7 @@ ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/ObjectUtils.jsm");
 ChromeUtils.import("resource://gre/modules/PlacesSyncUtils.jsm");
 ChromeUtils.import("resource://gre/modules/SyncedBookmarksMirror.jsm");
+ChromeUtils.import("resource://services-common/utils.js");
 ChromeUtils.import("resource://testing-common/FileTestUtils.jsm");
 ChromeUtils.import("resource://testing-common/httpd.js");
 
@@ -135,9 +136,6 @@ async function fetchLocalTree(rootGuid) {
     let itemInfo = { guid, index, title, type };
     if (node.annos) {
       let syncableAnnos = node.annos.filter(anno => [
-        PlacesSyncUtils.bookmarks.DESCRIPTION_ANNO,
-        PlacesSyncUtils.bookmarks.SIDEBAR_ANNO,
-        PlacesSyncUtils.bookmarks.SMART_BOOKMARKS_ANNO,
         PlacesUtils.LMANNO_FEEDURI,
         PlacesUtils.LMANNO_SITEURI,
       ].includes(anno.name));
@@ -253,11 +251,11 @@ BookmarkObserver.prototype = {
   },
   onItemVisited() {},
   onItemMoved(itemId, oldParentId, oldIndex, newParentId, newIndex, type, guid,
-              oldParentGuid, newParentGuid, source, uri) {
+              oldParentGuid, newParentGuid, source, urlHref) {
     this.notifications.push({
       name: "onItemMoved",
       params: { itemId, oldParentId, oldIndex, newParentId, newIndex, type,
-                guid, oldParentGuid, newParentGuid, source, uri },
+                guid, oldParentGuid, newParentGuid, source, urlHref },
     });
   },
 

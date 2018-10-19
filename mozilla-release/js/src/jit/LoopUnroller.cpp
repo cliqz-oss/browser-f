@@ -8,6 +8,8 @@
 
 #include "jit/MIRGraph.h"
 
+#include "vm/JSScript-inl.h"
+
 using namespace js;
 using namespace js::jit;
 
@@ -248,9 +250,6 @@ LoopUnroller::go(LoopIterationBound* bound)
     graph.insertBlockAfter(unrolledBackedge, newPreheader);
     graph.renumberBlocksAfter(oldPreheader);
 
-    if (!unrolledDefinitions.init())
-        return false;
-
     // Add phis to the unrolled loop header which correspond to the phis in the
     // original loop header.
     MOZ_ASSERT(header->getPredecessor(0) == oldPreheader);
@@ -401,6 +400,11 @@ bool
 jit::UnrollLoops(MIRGraph& graph, const LoopIterationBoundVector& bounds)
 {
     if (bounds.empty())
+        return true;
+
+    // Loop unrolling interferes with the progress tracking performed when
+    // recording/replaying.
+    if (graph.entryBlock()->info().script()->trackRecordReplayProgress())
         return true;
 
     for (size_t i = 0; i < bounds.length(); i++) {

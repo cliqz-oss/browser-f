@@ -34,6 +34,8 @@
 #include "vm/SymbolType.h"
 
 /*
+ * [SMDOC] Shapes
+ *
  * In isolation, a Shape represents a property that exists in one or more
  * objects; it has an id, flags, etc. (But it doesn't represent the property's
  * value.)  However, Shapes are always stored in linked linear sequence of
@@ -495,11 +497,6 @@ class BaseShape : public gc::TenuredCell
     /* For owned BaseShapes, the shape's shape table. */
     ShapeTable*      table_;
 
-#if JS_BITS_PER_WORD == 32
-    // Ensure sizeof(BaseShape) is a multiple of gc::CellAlignBytes.
-    uint32_t padding_;
-#endif
-
     BaseShape(const BaseShape& base) = delete;
     BaseShape& operator=(const BaseShape& other) = delete;
 
@@ -666,17 +663,25 @@ HashId(jsid id)
     return mozilla::HashGeneric(JSID_BITS(id));
 }
 
+} // namespace js
+
+namespace mozilla {
+
 template <>
 struct DefaultHasher<jsid>
 {
     typedef jsid Lookup;
     static HashNumber hash(jsid id) {
-        return HashId(id);
+        return js::HashId(id);
     }
     static bool match(jsid id1, jsid id2) {
         return id1 == id2;
     }
 };
+
+} // namespace mozilla
+
+namespace js {
 
 using BaseShapeSet = JS::WeakCache<JS::GCHashSet<ReadBarriered<UnownedBaseShape*>,
                                                  StackBaseShape,
@@ -696,7 +701,6 @@ class Shape : public gc::TenuredCell
 
   protected:
     GCPtrBaseShape base_;
-    GCPtrShape parent;
     PreBarrieredId propid_;
 
     // Flags that are not modified after the Shape is created. Off-thread Ion
@@ -746,6 +750,7 @@ class Shape : public gc::TenuredCell
     uint8_t             attrs;          /* attributes, see jsapi.h JSPROP_* */
     uint8_t             mutableFlags;   /* mutable flags, see below for defines */
 
+    GCPtrShape   parent;          /* parent node, reverse for..in order */
     /* kids is valid when !inDictionary(), listp is valid when inDictionary(). */
     union {
         KidsPointer kids;         /* null, single child, or a tagged ptr
@@ -840,7 +845,8 @@ class Shape : public gc::TenuredCell
         }
 
         if (!inDictionary() && kids.isHash())
-            info->shapesMallocHeapTreeKids += kids.toHash()->sizeOfIncludingThis(mallocSizeOf);
+            info->shapesMallocHeapTreeKids +=
+                kids.toHash()->shallowSizeOfIncludingThis(mallocSizeOf);
     }
 
     bool isAccessorShape() const {
@@ -1520,11 +1526,11 @@ class MutableWrappedPtrOperations<StackShape, Wrapper>
 inline
 Shape::Shape(const StackShape& other, uint32_t nfixed)
   : base_(other.base),
-    parent(nullptr),
     propid_(other.propid),
     immutableFlags(other.immutableFlags),
     attrs(other.attrs),
     mutableFlags(other.mutableFlags),
+    parent(nullptr),
     listp(nullptr)
 {
     setNumFixedSlots(nfixed);
@@ -1555,11 +1561,11 @@ class NurseryShapesRef : public gc::BufferableRef
 inline
 Shape::Shape(UnownedBaseShape* base, uint32_t nfixed)
   : base_(base),
-    parent(nullptr),
     propid_(JSID_EMPTY),
     immutableFlags(SHAPE_INVALID_SLOT | (nfixed << FIXED_SLOTS_SHIFT)),
     attrs(0),
     mutableFlags(0),
+    parent(nullptr),
     listp(nullptr)
 {
     MOZ_ASSERT(base);

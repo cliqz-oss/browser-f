@@ -7,7 +7,6 @@
 #define nsIDocument_h___
 
 #include "mozilla/FlushType.h"           // for enum
-#include "nsAttrAndChildArray.h"
 #include "nsAutoPtr.h"                   // for member
 #include "nsCOMArray.h"                  // for member
 #include "nsCompatibility.h"             // for member
@@ -16,6 +15,7 @@
 #include "nsIApplicationCache.h"
 #include "nsIApplicationCacheContainer.h"
 #include "nsIContentViewer.h"
+#include "nsIDOMXULCommandDispatcher.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsILoadContext.h"
 #include "nsILoadGroup.h"                // for member (in nsCOMPtr)
@@ -45,6 +45,7 @@
 #include "mozilla/CORSMode.h"
 #include "mozilla/dom/DispatcherTrait.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
+#include "mozilla/EnumSet.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/SegmentedVector.h"
@@ -180,6 +181,7 @@ class ServiceWorkerDescriptor;
 class StyleSheetList;
 class SVGDocument;
 class SVGSVGElement;
+class SVGUseElement;
 class Touch;
 class TouchList;
 class TreeWalker;
@@ -531,27 +533,11 @@ public:
 
   // nsINode
   bool IsNodeOfType(uint32_t aFlags) const final;
-  nsIContent* GetChildAt_Deprecated(uint32_t aIndex) const final
-  {
-    return mChildren.GetSafeChildAt(aIndex);
-  }
-
-  int32_t ComputeIndexOf(const nsINode* aPossibleChild) const final
-  {
-    return mChildren.IndexOfChild(aPossibleChild);
-  }
-
-  uint32_t GetChildCount() const final
-  {
-    return mChildren.ChildCount();
-  }
-
   nsresult InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
                              bool aNotify) override;
   void RemoveChildNode(nsIContent* aKid, bool aNotify) final;
   nsresult Clone(mozilla::dom::NodeInfo* aNodeInfo,
-                 nsINode **aResult,
-                 bool aPreallocateChildren) const override
+                 nsINode **aResult) const override
   {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
@@ -836,14 +822,6 @@ public:
     mBidiEnabled = true;
   }
 
-  /**
-   * Check if the document contains (or has contained) any MathML elements.
-   */
-  bool GetMathMLEnabled() const
-  {
-    return mMathMLEnabled;
-  }
-
   void SetMathMLEnabled()
   {
     mMathMLEnabled = true;
@@ -1001,11 +979,91 @@ public:
   }
 
   /**
+   * Get slow tracking content blocked flag for this document.
+   */
+  bool GetHasSlowTrackingContentBlocked()
+  {
+    return mHasSlowTrackingContentBlocked;
+  }
+
+  /**
+   * Get all cookies blocked flag for this document.
+   */
+  bool GetHasAllCookiesBlocked()
+  {
+    return mHasAllCookiesBlocked;
+  }
+
+  /**
+   * Get tracking cookies blocked flag for this document.
+   */
+  bool GetHasTrackingCookiesBlocked()
+  {
+    return mHasTrackingCookiesBlocked;
+  }
+
+  /**
+   * Get third-party cookies blocked flag for this document.
+   */
+  bool GetHasForeignCookiesBlocked()
+  {
+    return mHasForeignCookiesBlocked;
+  }
+
+  /**
+   * Get cookies blocked by site permission flag for this document.
+   */
+  bool GetHasCookiesBlockedByPermission()
+  {
+    return mHasCookiesBlockedByPermission;
+  }
+
+  /**
    * Set the tracking content blocked flag for this document.
    */
   void SetHasTrackingContentBlocked(bool aHasTrackingContentBlocked)
   {
     mHasTrackingContentBlocked = aHasTrackingContentBlocked;
+  }
+
+  /**
+   * Set the slow tracking content blocked flag for this document.
+   */
+  void SetHasSlowTrackingContentBlocked(bool aHasSlowTrackingContentBlocked)
+  {
+    mHasSlowTrackingContentBlocked = aHasSlowTrackingContentBlocked;
+  }
+
+  /**
+   * Set the all cookies blocked flag for this document.
+   */
+  void SetHasAllCookiesBlocked(bool aHasAllCookiesBlocked)
+  {
+    mHasAllCookiesBlocked = aHasAllCookiesBlocked;
+  }
+
+  /**
+   * Set the tracking cookies blocked flag for this document.
+   */
+  void SetHasTrackingCookiesBlocked(bool aHasTrackingCookiesBlocked)
+  {
+    mHasTrackingCookiesBlocked = aHasTrackingCookiesBlocked;
+  }
+
+  /**
+   * Set the third-party cookies blocked flag for this document.
+   */
+  void SetHasForeignCookiesBlocked(bool aHasForeignCookiesBlocked)
+  {
+    mHasForeignCookiesBlocked = aHasForeignCookiesBlocked;
+  }
+
+  /**
+   * Set the cookies blocked by site permission flag for this document.
+   */
+  void SetHasCookiesBlockedByPermission(bool aHasCookiesBlockedByPermission)
+  {
+    mHasCookiesBlockedByPermission = aHasCookiesBlockedByPermission;
   }
 
   /**
@@ -1348,7 +1406,8 @@ protected:
 
   void DispatchPageTransition(mozilla::dom::EventTarget* aDispatchTarget,
                               const nsAString& aType,
-                              bool aPersisted);
+                              bool aPersisted,
+                              bool aOnlySystemGroup = false);
 
   // Call this before the document does something that will unbind all content.
   // That will stop us from doing a lot of work as each element is removed.
@@ -1373,6 +1432,11 @@ protected:
    * Clears any Servo element data stored on Elements in the document.
    */
   void ClearStaleServoData();
+
+  /**
+   * Returns the top window root from the outer window.
+   */
+  already_AddRefed<nsPIWindowRoot> GetWindowRoot();
 
 private:
   class SelectorCacheKey
@@ -1467,28 +1531,6 @@ public:
    * Accessors to the collection of stylesheets owned by this document.
    * Style sheets are ordered, most significant last.
    */
-
-  /**
-   * These exists to allow us to on-demand load user-agent style sheets that
-   * would otherwise be loaded by nsDocumentViewer::CreateStyleSet. This allows
-   * us to keep the memory used by a document's rule cascade data (the stuff in
-   * its nsStyleSet's nsCSSRuleProcessors) - which can be considerable - lower
-   * than it would be if we loaded all built-in user-agent style sheets up
-   * front.
-   *
-   * By "built-in" user-agent style sheets we mean the user-agent style sheets
-   * that gecko itself supplies (such as html.css and svg.css) as opposed to
-   * user-agent level style sheets inserted by add-ons or the like.
-   *
-   * This function prepends the given style sheet to the document's style set
-   * in order to make sure that it does not override user-agent style sheets
-   * supplied by add-ons or by the app (Firefox OS or Firefox Mobile, for
-   * example), since their sheets should override built-in sheets.
-   *
-   * TODO We can get rid of the whole concept of delayed loading if we fix
-   * bug 77999.
-   */
-  void EnsureOnDemandBuiltInUASheet(mozilla::StyleSheet* aSheet);
 
   mozilla::dom::StyleSheetList* StyleSheets()
   {
@@ -1869,6 +1911,7 @@ public:
   // To make this easy and painless, use the mozAutoDocUpdate helper class.
   void BeginUpdate();
   virtual void EndUpdate() = 0;
+  uint32_t UpdateNestingLevel() { return mUpdateNestLevel; }
 
   virtual void BeginLoad() = 0;
   virtual void EndLoad() = 0;
@@ -1920,6 +1963,15 @@ public:
    * aType >= FlushType::Style.
    */
   void FlushExternalResources(mozilla::FlushType aType);
+
+  // Triggers an update of <svg:use> element shadow trees.
+  void UpdateSVGUseElementShadowTrees()
+  {
+    if (mSVGUseElementsNeedingShadowTreeUpdate.IsEmpty()) {
+      return;
+    }
+    DoUpdateSVGUseElementShadowTrees();
+  }
 
   nsBindingManager* BindingManager() const
   {
@@ -2211,12 +2263,14 @@ public:
    * PageTransitionEvent.webidl for a description of the |aPersisted|
    * parameter. If aDispatchStartTarget is null, the pageshow event is
    * dispatched on the ScriptGlobalObject for this document, otherwise it's
-   * dispatched on aDispatchStartTarget.
+   * dispatched on aDispatchStartTarget. If |aOnlySystemGroup| is true, the
+   * event is only dispatched to listeners in the system group.
    * Note: if aDispatchStartTarget isn't null, the showing state of the
    * document won't be altered.
    */
   virtual void OnPageShow(bool aPersisted,
-                          mozilla::dom::EventTarget* aDispatchStartTarget);
+                          mozilla::dom::EventTarget* aDispatchStartTarget,
+                          bool aOnlySystemGroup = false);
 
   /**
    * Notification that the page has been hidden, for documents which are loaded
@@ -2226,12 +2280,14 @@ public:
    * window.  See PageTransitionEvent.webidl for a description of the
    * |aPersisted| parameter. If aDispatchStartTarget is null, the pagehide
    * event is dispatched on the ScriptGlobalObject for this document,
-   * otherwise it's dispatched on aDispatchStartTarget.
+   * otherwise it's dispatched on aDispatchStartTarget. If |aOnlySystemGroup| is
+   * true, the event is only dispatched to listeners in the system group.
    * Note: if aDispatchStartTarget isn't null, the showing state of the
    * document won't be altered.
    */
   void OnPageHide(bool aPersisted,
-                  mozilla::dom::EventTarget* aDispatchStartTarget);
+                  mozilla::dom::EventTarget* aDispatchStartTarget,
+                  bool aOnlySystemGroup = false);
 
   /*
    * We record the set of links in the document that are relevant to
@@ -2809,8 +2865,23 @@ public:
    * Doc_Theme_Neutral for any other theme. This is used to determine the state
    * of the pseudoclasses :-moz-lwtheme and :-moz-lwtheme-text.
    */
-  virtual DocumentTheme GetDocumentLWTheme() { return Doc_Theme_None; }
-  virtual DocumentTheme ThreadSafeGetDocumentLWTheme() const { return Doc_Theme_None; }
+  DocumentTheme GetDocumentLWTheme();
+  DocumentTheme ThreadSafeGetDocumentLWTheme() const;
+  void ResetDocumentLWTheme() { mDocLWTheme = Doc_Theme_Uninitialized; }
+
+  // Whether we're a media document or not.
+  enum class MediaDocumentKind
+  {
+    NotMedia,
+    Video,
+    Image,
+    Plugin,
+  };
+
+  virtual enum MediaDocumentKind MediaDocumentKind() const
+  {
+    return MediaDocumentKind::NotMedia;
+  }
 
   /**
    * Returns the document state.
@@ -2843,15 +2914,6 @@ public:
   using mozilla::dom::DocumentOrShadowRoot::GetElementsByTagName;
   using mozilla::dom::DocumentOrShadowRoot::GetElementsByTagNameNS;
   using mozilla::dom::DocumentOrShadowRoot::GetElementsByClassName;
-
-  /**
-   * Lookup an image element using its associated ID, which is usually provided
-   * by |-moz-element()|. Similar to GetElementById, with the difference that
-   * elements set using mozSetImageElement have higher priority.
-   * @param aId the ID associated the element we want to lookup
-   * @return the element associated with |aId|
-   */
-  Element* LookupImageElement(const nsAString& aElementId);
 
   mozilla::dom::DocumentTimeline* Timeline();
   mozilla::LinkedList<mozilla::dom::DocumentTimeline>& Timelines()
@@ -2922,17 +2984,26 @@ public:
     mResponsiveContent.RemoveEntry(aContent);
   }
 
-  void AddComposedDocShadowRoot(mozilla::dom::ShadowRoot& aShadowRoot)
+  void ScheduleSVGUseElementShadowTreeUpdate(mozilla::dom::SVGUseElement&);
+  void UnscheduleSVGUseElementShadowTreeUpdate(mozilla::dom::SVGUseElement& aElement)
   {
-    MOZ_ASSERT(IsShadowDOMEnabled());
-    mComposedShadowRoots.PutEntry(&aShadowRoot);
+    mSVGUseElementsNeedingShadowTreeUpdate.RemoveEntry(&aElement);
+  }
+
+  bool SVGUseElementNeedsShadowTreeUpdate(mozilla::dom::SVGUseElement& aElement) const
+  {
+    return mSVGUseElementsNeedingShadowTreeUpdate.GetEntry(&aElement);
   }
 
   using ShadowRootSet = nsTHashtable<nsPtrHashKey<mozilla::dom::ShadowRoot>>;
 
+  void AddComposedDocShadowRoot(mozilla::dom::ShadowRoot& aShadowRoot)
+  {
+    mComposedShadowRoots.PutEntry(&aShadowRoot);
+  }
+
   void RemoveComposedDocShadowRoot(mozilla::dom::ShadowRoot& aShadowRoot)
   {
-    MOZ_ASSERT(IsShadowDOMEnabled());
     mComposedShadowRoots.RemoveEntry(&aShadowRoot);
   }
 
@@ -2962,7 +3033,7 @@ public:
 
   void SetNavigationTiming(nsDOMNavigationTiming* aTiming);
 
-  Element* FindImageMap(const nsAString& aNormalizedMapName);
+  nsContentList* ImageMapList();
 
   // Add aLink to the set of links that need their status resolved.
   void RegisterPendingLinkUpdate(mozilla::dom::Link* aLink);
@@ -3012,6 +3083,10 @@ public:
 
   bool IsSyntheticDocument() const { return mIsSyntheticDocument; }
 
+  // Adds the size of a given node, which must not be a document node, to the
+  // window sizes passed-in.
+  static void AddSizeOfNodeTree(nsINode&, nsWindowSizes&);
+
   // Note: nsIDocument is a sub-class of nsINode, which has a
   // SizeOfExcludingThis function.  However, because nsIDocument objects can
   // only appear at the top of the DOM tree, we have a specialized measurement
@@ -3021,6 +3096,8 @@ public:
   // because nsIDocument inherits from nsINode;  see the comment above the
   // declaration of nsINode::SizeOfIncludingThis.
   virtual void DocAddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const;
+
+  void ConstructUbiNode(void* storage) override;
 
   bool MayHaveDOMMutationObservers()
   {
@@ -3098,7 +3175,8 @@ public:
     eConnected,
     eDisconnected,
     eAdopted,
-    eAttributeChanged
+    eAttributeChanged,
+    eGetCustomInterface
   };
 
   nsIDocument* GetTopLevelContentDocument();
@@ -3116,6 +3194,10 @@ public:
                   const nsAString& aQualifiedName,
                   const mozilla::dom::ElementCreationOptionsOrString& aOptions,
                   mozilla::ErrorResult& rv);
+  already_AddRefed<Element>
+  CreateXULElement(const nsAString& aTagName,
+                   const mozilla::dom::ElementCreationOptionsOrString& aOptions,
+                   mozilla::ErrorResult& aRv);
   already_AddRefed<mozilla::dom::DocumentFragment>
     CreateDocumentFragment() const;
   already_AddRefed<nsTextNode> CreateTextNode(const nsAString& aData) const;
@@ -3301,10 +3383,6 @@ public:
     return mStyleSheetChangeEventsEnabled;
   }
 
-  void ObsoleteSheet(nsIURI *aSheetURI, mozilla::ErrorResult& rv);
-
-  void ObsoleteSheet(const nsAString& aSheetURI, mozilla::ErrorResult& rv);
-
   already_AddRefed<mozilla::dom::Promise> BlockParsing(mozilla::dom::Promise& aPromise,
                                                        const mozilla::dom::BlockParsingOptions& aOptions,
                                                        mozilla::ErrorResult& aRv);
@@ -3312,6 +3390,14 @@ public:
   already_AddRefed<nsIURI> GetMozDocumentURIIfNotForErrorPages();
 
   mozilla::dom::Promise* GetDocumentReadyForIdle(mozilla::ErrorResult& aRv);
+
+  nsIDOMXULCommandDispatcher* GetCommandDispatcher();
+  already_AddRefed<nsINode> GetPopupNode();
+  void SetPopupNode(nsINode* aNode);
+  nsINode* GetPopupRangeParent(ErrorResult& aRv);
+  int32_t GetPopupRangeOffset(ErrorResult& aRv);
+  already_AddRefed<nsINode> GetTooltipNode();
+  void SetTooltipNode(nsINode* aNode) { /* do nothing */ }
 
   // ParentNode
   nsIHTMLCollection* Children();
@@ -3386,6 +3472,11 @@ public:
     }
   }
 
+  const StyleUseCounters* GetStyleUseCounters()
+  {
+    return mStyleUseCounters.get();
+  }
+
   void SetPageUseCounter(mozilla::UseCounter aUseCounter);
 
   void SetDocumentAndPageUseCounter(mozilla::UseCounter aUseCounter)
@@ -3396,18 +3487,29 @@ public:
 
   void PropagateUseCounters(nsIDocument* aParentDocument);
 
+  // Called to track whether this document has had any interaction.
+  // This is used to track whether we should permit "beforeunload".
   void SetUserHasInteracted(bool aUserHasInteracted);
   bool UserHasInteracted()
   {
     return mUserHasInteracted;
   }
 
-  // This would be called when document get activated by specific user gestures
-  // and propagate the user activation flag to its parent.
-  void NotifyUserActivation();
+  // This should be called when this document receives events which are likely
+  // to be user interaction with the document, rather than the byproduct of
+  // interaction with the browser (i.e. a keypress to scroll the view port,
+  // keyboard shortcuts, etc). This is used to decide whether we should
+  // permit autoplay audible media. This also gesture activates all other
+  // content documents in this tab.
+  void NotifyUserGestureActivation();
 
-  // Return true if document has interacted by specific user gestures.
-  bool HasBeenUserActivated();
+  // Return true if NotifyUserGestureActivation() has been called on any
+  // document in the document tree.
+  bool HasBeenUserGestureActivated();
+
+  // This document is a WebExtension page, it might be a background page, a
+  // popup, a visible tab, a visible iframe ...e.t.c.
+  bool IsExtensionPage() const;
 
   bool HasScriptsBlockedBySandbox();
 
@@ -3518,6 +3620,39 @@ public:
     --mIgnoreOpensDuringUnloadCounter;
   }
 
+  void IncrementTrackerCount()
+  {
+    MOZ_ASSERT(!GetSameTypeParentDocument());
+    ++mNumTrackersFound;
+  }
+
+  void IncrementTrackerBlockedCount()
+  {
+    MOZ_ASSERT(!GetSameTypeParentDocument());
+    ++mNumTrackersBlocked;
+  }
+
+  void NoteTrackerBlockedReason(
+    mozilla::Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED aLabel)
+  {
+    MOZ_ASSERT(!GetSameTypeParentDocument());
+    mTrackerBlockedReasons += aLabel;
+  }
+
+  uint32_t NumTrackersFound()
+  {
+    MOZ_ASSERT(!GetSameTypeParentDocument() || mNumTrackersFound == 0);
+
+    return mNumTrackersFound;
+  }
+
+  uint32_t NumTrackersBlocked()
+  {
+    MOZ_ASSERT(!GetSameTypeParentDocument() || mNumTrackersBlocked == 0);
+
+    return mNumTrackersBlocked;
+  }
+
   bool AllowPaymentRequest() const
   {
     return mAllowPaymentRequest;
@@ -3547,7 +3682,13 @@ public:
 
   void ReportShadowDOMUsage();
 
+  // Sets flags for media autoplay telemetry.
+  void SetDocTreeHadAudibleMedia();
+  void SetDocTreeHadPlayRevoked();
+
 protected:
+  void DoUpdateSVGUseElementShadowTrees();
+
   already_AddRefed<nsIPrincipal> MaybeDowngradePrincipal(nsIPrincipal* aPrincipal);
 
   void EnsureOnloadBlocker();
@@ -3616,7 +3757,6 @@ protected:
 
   void UpdateDocumentStates(mozilla::EventStates);
 
-  void AddOnDemandBuiltInUASheet(mozilla::StyleSheet* aSheet);
   void RemoveDocStyleSheetsFromStyleSets();
   void RemoveStyleSheetsFromStyleSets(
       const nsTArray<RefPtr<mozilla::StyleSheet>>& aSheets,
@@ -3705,13 +3845,7 @@ protected:
   // Return the same type parent docuement if exists, or return null.
   nsIDocument* GetSameTypeParentDocument();
 
-  // Return the first parent document with same pricipal, return nullptr if we
-  // can't find it.
-  nsIDocument* GetFirstParentDocumentWithSamePrincipal(nsIPrincipal* aPrincipal);
-
-  // Activate the flag 'mUserHasActivatedInteraction' by specific user gestures.
-  void ActivateByUserGesture();
-  void MaybeActivateByUserGesture(nsIPrincipal* aPrincipal);
+  void MaybeAllowStorageForOpener();
 
   // Helpers for GetElementsByName.
   static bool MatchNameAttribute(mozilla::dom::Element* aElement,
@@ -3767,8 +3901,15 @@ protected:
 
   // A hashtable of ShadowRoots belonging to the composed doc.
   //
-  // See ShadowRoot::SetIsComposedDocParticipant.
+  // See ShadowRoot::Bind and ShadowRoot::Unbind.
   ShadowRootSet mComposedShadowRoots;
+
+  using SVGUseElementSet =
+    nsTHashtable<nsPtrHashKey<mozilla::dom::SVGUseElement>>;
+
+  // The set of <svg:use> elements that need a shadow tree reclone because the
+  // tree they map to has changed.
+  SVGUseElementSet mSVGUseElementsNeedingShadowTreeUpdate;
 
   // The set of all object, embed, video/audio elements or
   // nsIObjectLoadingContent or nsIDocumentActivity for which this is the owner
@@ -3934,6 +4075,21 @@ protected:
   // True if a document has blocked Tracking Content
   bool mHasTrackingContentBlocked : 1;
 
+  // True if a document has blocked Slow Tracking Content
+  bool mHasSlowTrackingContentBlocked : 1;
+
+  // True if a document has blocked All Cookies
+  bool mHasAllCookiesBlocked : 1;
+
+  // True if a document has blocked Tracking Cookies
+  bool mHasTrackingCookiesBlocked : 1;
+
+  // True if a document has blocked Foreign Cookies
+  bool mHasForeignCookiesBlocked : 1;
+
+  // True if a document has blocked Cookies By Site Permission
+  bool mHasCookiesBlockedByPermission : 1;
+
   // True if a document has loaded Tracking Content
   bool mHasTrackingContentLoaded : 1;
 
@@ -4062,6 +4218,16 @@ protected:
   bool mReportedUseCounters: 1;
 
   bool mHasReportedShadowDOMUsage: 1;
+
+  // True if this document contained, either directly or in a subdocument,
+  // an HTMLMediaElement that played audibly. This should only be set on
+  // top level content documents.
+  bool mDocTreeHadAudibleMedia: 1;
+  // True if this document contained, either directly or in a subdocument,
+  // an HTMLMediaElement that was playing inaudibly and became audible and we
+  // paused the HTMLMediaElement because it wasn't allowed to autoplay audibly.
+  // This should only be set on top level content documents.
+  bool mDocTreeHadPlayRevoked: 1;
 
 #ifdef DEBUG
 public:
@@ -4249,12 +4415,18 @@ protected:
   // for this child document.
   std::bitset<mozilla::eUseCounter_Count> mNotifiedPageForUseCounter;
 
+  // The CSS property use counters.
+  mozilla::UniquePtr<StyleUseCounters> mStyleUseCounters;
+
   // Whether the user has interacted with the document or not:
   bool mUserHasInteracted;
 
-  // Whether the user has interacted with the document via some specific user
-  // gestures.
-  bool mUserHasActivatedInteraction;
+  // Whether the user has interacted with the document via a restricted
+  // set of gestures which are likely to be interaction with the document,
+  // and not events that are fired as a byproduct of the user interacting
+  // with the browser (events for like scrolling the page, keyboard short
+  // cuts, etc).
+  bool mUserGestureActivated;
 
   mozilla::TimeStamp mPageUnloadingEventTimeStamp;
 
@@ -4367,9 +4539,6 @@ protected:
   // Tracking for plugins in the document.
   nsTHashtable<nsPtrHashKey<nsIObjectLoadingContent>> mPlugins;
 
-  // Array of owning references to all children
-  nsAttrAndChildArray mChildren;
-
   RefPtr<mozilla::dom::DocumentTimeline> mDocumentTimeline;
   mozilla::LinkedList<mozilla::dom::DocumentTimeline> mTimelines;
 
@@ -4418,7 +4587,6 @@ protected:
   nsCOMPtr<nsIRunnable> mMaybeEndOutermostXBLUpdateRunner;
   nsCOMPtr<nsIRequest> mOnloadBlocker;
 
-  nsTArray<RefPtr<mozilla::StyleSheet>> mOnDemandBuiltInUASheets;
   nsTArray<RefPtr<mozilla::StyleSheet>> mAdditionalSheets[AdditionalSheetTypeCount];
 
   // Member to store out last-selected stylesheet set.
@@ -4450,6 +4618,21 @@ protected:
 
   // Count of unload/beforeunload/pagehide operations in progress.
   uint32_t mIgnoreOpensDuringUnloadCounter;
+
+  nsCOMPtr<nsIDOMXULCommandDispatcher> mCommandDispatcher; // [OWNER] of the focus tracker
+
+  // At the moment, trackers might be blocked by Tracking Protection or FastBlock.
+  // In order to know the numbers of trackers detected and blocked, we add
+  // these two values here and those are shared by TP and FB.
+  uint32_t mNumTrackersFound;
+  uint32_t mNumTrackersBlocked;
+
+  mozilla::EnumSet<mozilla::Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED>
+    mTrackerBlockedReasons;
+
+  // document lightweight theme for use with :-moz-lwtheme, :-moz-lwtheme-brighttext
+  // and :-moz-lwtheme-darktext
+  DocumentTheme                         mDocLWTheme;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIDocument, NS_IDOCUMENT_IID)
@@ -4609,17 +4792,26 @@ nsINode::OwnerDocAsNode() const
 template<typename T>
 inline bool ShouldUseXBLScope(const T* aNode)
 {
-  return aNode->IsInAnonymousSubtree() &&
-         !aNode->IsAnonymousContentInSVGUseSubtree();
+  return aNode->IsInAnonymousSubtree();
+}
+
+template<typename T>
+inline bool ShouldUseUAWidgetScope(const T* aNode)
+{
+  return aNode->IsInUAWidget();
 }
 
 inline mozilla::dom::ParentObject
 nsINode::GetParentObject() const
 {
   mozilla::dom::ParentObject p(OwnerDoc());
-    // Note that mUseXBLScope is a no-op for chrome, and other places where we
-    // don't use XBL scopes.
-  p.mUseXBLScope = ShouldUseXBLScope(this);
+    // Note that mReflectionScope is a no-op for chrome, and other places
+    // where we don't check this value.
+  if (ShouldUseXBLScope(this)) {
+    p.mReflectionScope = mozilla::dom::ReflectionScope::XBL;
+  } else if (ShouldUseUAWidgetScope(this)) {
+    p.mReflectionScope = mozilla::dom::ReflectionScope::UAWidget;
+  }
   return p;
 }
 

@@ -14,7 +14,7 @@ function setTitle() {
   let winElem = document.documentElement;
   if (params.userContextId) {
     document.l10n.setAttributes(winElem, "containers-window-update", {
-      name: params.identity.name
+      name: params.identity.name,
     });
   } else {
     document.l10n.setAttributes(winElem, "containers-window-new");
@@ -35,7 +35,7 @@ let gContainersManager = {
     "fruit",
     "pet",
     "tree",
-    "chill"
+    "chill",
   ],
 
   colors: [
@@ -46,7 +46,7 @@ let gContainersManager = {
     "orange",
     "red",
     "pink",
-    "purple"
+    "purple",
   ],
 
   onLoad() {
@@ -89,12 +89,12 @@ let gContainersManager = {
   },
 
   createIconButtons(defaultIcon) {
-    let radiogroup = document.createElement("radiogroup");
+    let radiogroup = document.createXULElement("radiogroup");
     radiogroup.setAttribute("id", "icon");
     radiogroup.className = "icon-buttons radio-buttons";
 
     for (let icon of this.icons) {
-      let iconSwatch = document.createElement("radio");
+      let iconSwatch = document.createXULElement("radio");
       iconSwatch.id = "iconbutton-" + icon;
       iconSwatch.name = "icon";
       iconSwatch.type = "radio";
@@ -105,7 +105,7 @@ let gContainersManager = {
       }
 
       document.l10n.setAttributes(iconSwatch, `containers-icon-${icon}`);
-      let iconElement = document.createElement("hbox");
+      let iconElement = document.createXULElement("hbox");
       iconElement.className = "userContext-icon";
       iconElement.setAttribute("data-identity-icon", icon);
 
@@ -117,12 +117,12 @@ let gContainersManager = {
   },
 
   createColorSwatches(defaultColor) {
-    let radiogroup = document.createElement("radiogroup");
+    let radiogroup = document.createXULElement("radiogroup");
     radiogroup.setAttribute("id", "color");
     radiogroup.className = "radio-buttons";
 
     for (let color of this.colors) {
-      let colorSwatch = document.createElement("radio");
+      let colorSwatch = document.createXULElement("radio");
       colorSwatch.id = "colorswatch-" + color;
       colorSwatch.name = "color";
       colorSwatch.type = "radio";
@@ -133,7 +133,7 @@ let gContainersManager = {
       }
 
       document.l10n.setAttributes(colorSwatch, `containers-color-${color}`);
-      let iconElement = document.createElement("hbox");
+      let iconElement = document.createXULElement("hbox");
       iconElement.className = "userContext-icon";
       iconElement.setAttribute("data-identity-icon", "circle");
       iconElement.setAttribute("data-identity-color", color);
@@ -173,5 +173,5 @@ let gContainersManager = {
   onWindowKeyPress(aEvent) {
     if (aEvent.keyCode == KeyEvent.DOM_VK_ESCAPE)
       window.close();
-  }
+  },
 };

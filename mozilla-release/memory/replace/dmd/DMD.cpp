@@ -30,18 +30,17 @@
 #endif
 
 #include "nscore.h"
-#include "mozilla/StackWalk.h"
-
-#include "js/HashTable.h"
-#include "js/Vector.h"
 
 #include "mozilla/Assertions.h"
 #include "mozilla/FastBernoulliTrial.h"
 #include "mozilla/HashFunctions.h"
+#include "mozilla/HashTable.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/JSONWriter.h"
 #include "mozilla/Likely.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/StackWalk.h"
+#include "mozilla/Vector.h"
 
 // CodeAddressService is defined entirely in the header, so this does not make
 // DMD depend on XPCOM's object file.
@@ -96,8 +95,8 @@ static malloc_table_t gMallocTable;
 //
 // - Direct allocations (the easy case).
 //
-// - Indirect allocations in js::{Vector,HashSet,HashMap} -- this class serves
-//   as their AllocPolicy.
+// - Indirect allocations in mozilla::{Vector,HashSet,HashMap} -- this class
+//   serves as their AllocPolicy.
 //
 // - Other indirect allocations (e.g. MozStackWalk) -- see the comments on
 //   Thread::mBlockIntercepts and in replace_malloc for how these work.
@@ -162,7 +161,6 @@ public:
     return p;
   }
 
-  // This realloc_ is the one we use for direct reallocs within DMD.
   static void* realloc_(void* aPtr, size_t aNewSize)
   {
     void* p = gMallocTable.realloc(aPtr, aNewSize);
@@ -170,7 +168,6 @@ public:
     return p;
   }
 
-  // This realloc_ is required for this to be a JS container AllocPolicy.
   template <typename T>
   static T* pod_realloc(T* aPtr, size_t aOldSize, size_t aNewSize)
   {
@@ -186,7 +183,8 @@ public:
     return p;
   }
 
-  static void free_(void* aPtr) { gMallocTable.free(aPtr); }
+  template <typename T>
+  static void free_(T* aPtr, size_t aSize = 0) { gMallocTable.free(aPtr); }
 
   static char* strdup_(const char* aStr)
   {
@@ -587,8 +585,8 @@ class StringTable
 {
 public:
   StringTable()
+    : mSet(64)
   {
-    MOZ_ALWAYS_TRUE(mSet.init(64));
   }
 
   const char*
@@ -608,9 +606,9 @@ public:
   SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   {
     size_t n = 0;
-    n += mSet.sizeOfExcludingThis(aMallocSizeOf);
-    for (auto r = mSet.all(); !r.empty(); r.popFront()) {
-      n += aMallocSizeOf(r.front());
+    n += mSet.shallowSizeOfExcludingThis(aMallocSizeOf);
+    for (auto iter = mSet.iter(); !iter.done(); iter.next()) {
+      n += aMallocSizeOf(iter.get());
     }
     return n;
   }
@@ -620,7 +618,7 @@ private:
   {
       typedef const char* Lookup;
 
-      static uint32_t hash(const char* const& aS)
+      static mozilla::HashNumber hash(const char* const& aS)
       {
           return HashString(aS);
       }
@@ -631,7 +629,8 @@ private:
       }
   };
 
-  typedef js::HashSet<const char*, StringHasher, InfallibleAllocPolicy> StringHashSet;
+  typedef mozilla::HashSet<const char*, StringHasher, InfallibleAllocPolicy>
+          StringHashSet;
 
   StringHashSet mSet;
 };
@@ -692,7 +691,7 @@ public:
 
   typedef StackTrace* Lookup;
 
-  static uint32_t hash(const StackTrace* const& aSt)
+  static mozilla::HashNumber hash(const StackTrace* const& aSt)
   {
     return mozilla::HashBytes(aSt->mPcs, aSt->Size());
   }
@@ -716,19 +715,21 @@ private:
   }
 };
 
-typedef js::HashSet<StackTrace*, StackTrace, InfallibleAllocPolicy>
+typedef mozilla::HashSet<StackTrace*, StackTrace, InfallibleAllocPolicy>
         StackTraceTable;
 static StackTraceTable* gStackTraceTable = nullptr;
 
-typedef js::HashSet<const StackTrace*, js::DefaultHasher<const StackTrace*>,
-                    InfallibleAllocPolicy>
+typedef mozilla::HashSet<const StackTrace*,
+                         mozilla::DefaultHasher<const StackTrace*>,
+                         InfallibleAllocPolicy>
         StackTraceSet;
 
-typedef js::HashSet<const void*, js::DefaultHasher<const void*>,
-                    InfallibleAllocPolicy>
+typedef mozilla::HashSet<const void*, mozilla::DefaultHasher<const void*>,
+                         InfallibleAllocPolicy>
         PointerSet;
-typedef js::HashMap<const void*, uint32_t, js::DefaultHasher<const void*>,
-                    InfallibleAllocPolicy>
+typedef mozilla::HashMap<const void*, uint32_t,
+                         mozilla::DefaultHasher<const void*>,
+                         InfallibleAllocPolicy>
         PointerIdMap;
 
 // We won't GC the stack trace table until it this many elements.
@@ -991,7 +992,7 @@ public:
 
   typedef const void* Lookup;
 
-  static uint32_t hash(const void* const& aPtr)
+  static mozilla::HashNumber hash(const void* const& aPtr)
   {
     return mozilla::HashGeneric(aPtr);
   }
@@ -1003,7 +1004,8 @@ public:
 };
 
 // A table of live blocks where the lookup key is the block address.
-typedef js::HashSet<LiveBlock, LiveBlock, InfallibleAllocPolicy> LiveBlockTable;
+typedef mozilla::HashSet<LiveBlock, LiveBlock, InfallibleAllocPolicy>
+        LiveBlockTable;
 static LiveBlockTable* gLiveBlockTable = nullptr;
 
 class AggregatedLiveBlockHashPolicy
@@ -1011,7 +1013,7 @@ class AggregatedLiveBlockHashPolicy
 public:
   typedef const LiveBlock* const Lookup;
 
-  static uint32_t hash(const LiveBlock* const& aB)
+  static mozilla::HashNumber hash(const LiveBlock* const& aB)
   {
     return gOptions->IsDarkMatterMode()
          ? mozilla::HashGeneric(aB->ReqSize(),
@@ -1040,8 +1042,8 @@ public:
 
 // A table of live blocks where the lookup key is everything but the block
 // address. For aggregating similar live blocks at output time.
-typedef js::HashMap<const LiveBlock*, size_t, AggregatedLiveBlockHashPolicy,
-                    InfallibleAllocPolicy>
+typedef mozilla::HashMap<const LiveBlock*, size_t,
+                         AggregatedLiveBlockHashPolicy, InfallibleAllocPolicy>
         AggregatedLiveBlockTable;
 
 // A freed heap block.
@@ -1087,7 +1089,7 @@ public:
 
   typedef DeadBlock Lookup;
 
-  static uint32_t hash(const DeadBlock& aB)
+  static mozilla::HashNumber hash(const DeadBlock& aB)
   {
     return mozilla::HashGeneric(aB.ReqSize(),
                                 aB.SlopSize(),
@@ -1104,7 +1106,7 @@ public:
 
 // For each unique DeadBlock value we store a count of how many actual dead
 // blocks have that value.
-typedef js::HashMap<DeadBlock, size_t, DeadBlock, InfallibleAllocPolicy>
+typedef mozilla::HashMap<DeadBlock, size_t, DeadBlock, InfallibleAllocPolicy>
         DeadBlockTable;
 static DeadBlockTable* gDeadBlockTable = nullptr;
 
@@ -1129,15 +1131,15 @@ GatherUsedStackTraces(StackTraceSet& aStackTraces)
   MOZ_ASSERT(gStateLock->IsLocked());
   MOZ_ASSERT(Thread::Fetch()->InterceptsAreBlocked());
 
-  aStackTraces.finish();
-  MOZ_ALWAYS_TRUE(aStackTraces.init(512));
+  aStackTraces.clear();
+  MOZ_ALWAYS_TRUE(aStackTraces.reserve(512));
 
-  for (auto r = gLiveBlockTable->all(); !r.empty(); r.popFront()) {
-    r.front().AddStackTracesToTable(aStackTraces);
+  for (auto iter = gLiveBlockTable->iter(); !iter.done(); iter.next()) {
+    iter.get().AddStackTracesToTable(aStackTraces);
   }
 
-  for (auto r = gDeadBlockTable->all(); !r.empty(); r.popFront()) {
-    r.front().key().AddStackTracesToTable(aStackTraces);
+  for (auto iter = gDeadBlockTable->iter(); !iter.done(); iter.next()) {
+    iter.get().key().AddStackTracesToTable(aStackTraces);
   }
 }
 
@@ -1151,12 +1153,12 @@ GCStackTraces()
   StackTraceSet usedStackTraces;
   GatherUsedStackTraces(usedStackTraces);
 
-  // Delete all unused stack traces from gStackTraceTable.  The Enum destructor
-  // will automatically rehash and compact the table.
-  for (StackTraceTable::Enum e(*gStackTraceTable); !e.empty(); e.popFront()) {
-    StackTrace* const& st = e.front();
+  // Delete all unused stack traces from gStackTraceTable.  The ModIterator
+  // destructor will automatically rehash and compact the table.
+  for (auto iter = gStackTraceTable->modIter(); !iter.done(); iter.next()) {
+    StackTrace* const& st = iter.get();
     if (!usedStackTraces.has(st)) {
-      e.removeFront();
+      iter.remove();
       InfallibleAllocPolicy::delete_(st);
     }
   }
@@ -1574,18 +1576,14 @@ Init(malloc_table_t* aMallocTable)
   {
     AutoLockState lock;
 
-    gStackTraceTable = InfallibleAllocPolicy::new_<StackTraceTable>();
-    MOZ_ALWAYS_TRUE(gStackTraceTable->init(8192));
-
-    gLiveBlockTable = InfallibleAllocPolicy::new_<LiveBlockTable>();
-    MOZ_ALWAYS_TRUE(gLiveBlockTable->init(8192));
+    gStackTraceTable = InfallibleAllocPolicy::new_<StackTraceTable>(8192);
+    gLiveBlockTable = InfallibleAllocPolicy::new_<LiveBlockTable>(8192);
 
     // Create this even if the mode isn't Cumulative (albeit with a small
     // size), in case the mode is changed later on (as is done by SmokeDMD.cpp,
     // for example).
-    gDeadBlockTable = InfallibleAllocPolicy::new_<DeadBlockTable>();
     size_t tableSize = gOptions->IsCumulativeMode() ? 8192 : 4;
-    MOZ_ALWAYS_TRUE(gDeadBlockTable->init(tableSize));
+    gDeadBlockTable = InfallibleAllocPolicy::new_<DeadBlockTable>(tableSize);
   }
 
   return true;
@@ -1659,8 +1657,8 @@ SizeOfInternal(Sizes* aSizes)
   StackTraceSet usedStackTraces;
   GatherUsedStackTraces(usedStackTraces);
 
-  for (auto r = gStackTraceTable->all(); !r.empty(); r.popFront()) {
-    StackTrace* const& st = r.front();
+  for (auto iter = gStackTraceTable->iter(); !iter.done(); iter.next()) {
+    StackTrace* const& st = iter.get();
 
     if (usedStackTraces.has(st)) {
       aSizes->mStackTracesUsed += MallocSizeOf(st);
@@ -1670,11 +1668,13 @@ SizeOfInternal(Sizes* aSizes)
   }
 
   aSizes->mStackTraceTable =
-    gStackTraceTable->sizeOfIncludingThis(MallocSizeOf);
+    gStackTraceTable->shallowSizeOfIncludingThis(MallocSizeOf);
 
-  aSizes->mLiveBlockTable = gLiveBlockTable->sizeOfIncludingThis(MallocSizeOf);
+  aSizes->mLiveBlockTable =
+    gLiveBlockTable->shallowSizeOfIncludingThis(MallocSizeOf);
 
-  aSizes->mDeadBlockTable = gDeadBlockTable->sizeOfIncludingThis(MallocSizeOf);
+  aSizes->mDeadBlockTable =
+    gDeadBlockTable->shallowSizeOfIncludingThis(MallocSizeOf);
 }
 
 void
@@ -1699,8 +1699,8 @@ DMDFuncs::ClearReports()
   // Unreport all blocks that were marked reported by a memory reporter.  This
   // excludes those that were reported on allocation, because they need to keep
   // their reported marking.
-  for (auto r = gLiveBlockTable->all(); !r.empty(); r.popFront()) {
-    r.front().UnreportIfNotReportedOnAlloc();
+  for (auto iter = gLiveBlockTable->iter(); !iter.done(); iter.next()) {
+    iter.get().UnreportIfNotReportedOnAlloc();
   }
 }
 
@@ -1708,9 +1708,9 @@ class ToIdStringConverter final
 {
 public:
   ToIdStringConverter()
-    : mNextId(0)
+    : mIdMap(512)
+    , mNextId(0)
   {
-    MOZ_ALWAYS_TRUE(mIdMap.init(512));
   }
 
   // Converts a pointer to a unique ID. Reuses the existing ID for the pointer
@@ -1730,7 +1730,7 @@ public:
 
   size_t sizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   {
-    return mIdMap.sizeOfExcludingThis(aMallocSizeOf);
+    return mIdMap.shallowSizeOfExcludingThis(aMallocSizeOf);
   }
 
 private:
@@ -1825,11 +1825,8 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
   // Allocate this on the heap instead of the stack because it's fairly large.
   auto locService = InfallibleAllocPolicy::new_<CodeAddressService>();
 
-  StackTraceSet usedStackTraces;
-  MOZ_ALWAYS_TRUE(usedStackTraces.init(512));
-
-  PointerSet usedPcs;
-  MOZ_ALWAYS_TRUE(usedPcs.init(512));
+  StackTraceSet usedStackTraces(512);
+  PointerSet usedPcs(512);
 
   size_t iscSize;
 
@@ -1906,10 +1903,9 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
       if (!gOptions->IsScanMode()) {
         // At this point we typically have many LiveBlocks that differ only in
         // their address. Aggregate them to reduce the size of the output file.
-        AggregatedLiveBlockTable agg;
-        MOZ_ALWAYS_TRUE(agg.init(8192));
-        for (auto r = gLiveBlockTable->all(); !r.empty(); r.popFront()) {
-          const LiveBlock& b = r.front();
+        AggregatedLiveBlockTable agg(8192);
+        for (auto iter = gLiveBlockTable->iter(); !iter.done(); iter.next()) {
+          const LiveBlock& b = iter.get();
           b.AddStackTracesToTable(usedStackTraces);
 
           if (AggregatedLiveBlockTable::AddPtr p = agg.lookupForAdd(&b)) {
@@ -1920,17 +1916,17 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
         }
 
         // Now iterate over the aggregated table.
-        for (auto r = agg.all(); !r.empty(); r.popFront()) {
-          const LiveBlock& b = *r.front().key();
-          size_t num = r.front().value();
+        for (auto iter = agg.iter(); !iter.done(); iter.next()) {
+          const LiveBlock& b = *iter.get().key();
+          size_t num = iter.get().value();
           writeLiveBlock(b, num);
         }
 
       } else {
         // In scan mode we cannot aggregate because we print each live block's
         // address and contents.
-        for (auto r = gLiveBlockTable->all(); !r.empty(); r.popFront()) {
-          const LiveBlock& b = r.front();
+        for (auto iter = gLiveBlockTable->iter(); !iter.done(); iter.next()) {
+          const LiveBlock& b = iter.get();
           b.AddStackTracesToTable(usedStackTraces);
 
           writeLiveBlock(b, 1);
@@ -1938,11 +1934,11 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
       }
 
       // Dead blocks.
-      for (auto r = gDeadBlockTable->all(); !r.empty(); r.popFront()) {
-        const DeadBlock& b = r.front().key();
+      for (auto iter = gDeadBlockTable->iter(); !iter.done(); iter.next()) {
+        const DeadBlock& b = iter.get().key();
         b.AddStackTracesToTable(usedStackTraces);
 
-        size_t num = r.front().value();
+        size_t num = iter.get().value();
         MOZ_ASSERT(num > 0);
 
         writer.StartObjectElement(writer.SingleLineStyle);
@@ -1968,8 +1964,8 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
 
     writer.StartObjectProperty("traceTable");
     {
-      for (auto r = usedStackTraces.all(); !r.empty(); r.popFront()) {
-        const StackTrace* const st = r.front();
+      for (auto iter = usedStackTraces.iter(); !iter.done(); iter.next()) {
+        const StackTrace* const st = iter.get();
         writer.StartArrayProperty(isc.ToIdString(st), writer.SingleLineStyle);
         {
           for (uint32_t i = 0; i < st->Length(); i++) {
@@ -1990,8 +1986,8 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
       static const size_t locBufLen = 1024;
       char locBuf[locBufLen];
 
-      for (PointerSet::Enum e(usedPcs); !e.empty(); e.popFront()) {
-        const void* const pc = e.front();
+      for (auto iter = usedPcs.iter(); !iter.done(); iter.next()) {
+        const void* const pc = iter.get();
 
         // Use 0 for the frame number. See the JSON format description comment
         // in DMD.h to understand why.
@@ -2045,9 +2041,10 @@ AnalyzeImpl(UniquePtr<JSONWriteFunc> aWriter)
     StatusMsg("      Location service:      %10s bytes\n",
       Show(locService->SizeOfIncludingThis(MallocSizeOf), buf1, kBufLen));
     StatusMsg("      Used stack traces set: %10s bytes\n",
-      Show(usedStackTraces.sizeOfExcludingThis(MallocSizeOf), buf1, kBufLen));
+      Show(usedStackTraces.shallowSizeOfExcludingThis(MallocSizeOf), buf1,
+           kBufLen));
     StatusMsg("      Used PCs set:          %10s bytes\n",
-      Show(usedPcs.sizeOfExcludingThis(MallocSizeOf), buf1, kBufLen));
+      Show(usedPcs.shallowSizeOfExcludingThis(MallocSizeOf), buf1, kBufLen));
     StatusMsg("      Pointer ID map:        %10s bytes\n",
       Show(iscSize, buf1, kBufLen));
 

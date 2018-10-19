@@ -8,7 +8,7 @@
 
 #include "sqlite3.h"
 #include "nsString.h"
-#include "nsISimpleEnumerator.h"
+#include "nsIDirectoryEnumerator.h"
 #include "nsIFile.h"
 
 namespace {
@@ -51,7 +51,7 @@ public:
   nsresult NextFile();
 
 private:
-  nsCOMPtr<nsISimpleEnumerator> mEntries;
+  nsCOMPtr<nsIDirectoryEnumerator> mEntries;
 
   nsString mDirectoryPath;
   nsString mCurrentFileName;
@@ -252,7 +252,7 @@ int Column(sqlite3_vtab_cursor* aCursor, sqlite3_context* aContext,
       break;
     }
     default:
-      NS_NOTREACHED("Unsupported column!");
+      MOZ_ASSERT_UNREACHABLE("Unsupported column!");
   }
 
   return SQLITE_OK;

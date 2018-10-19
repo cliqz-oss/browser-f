@@ -182,12 +182,14 @@ nsImageBoxFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDest
     nsLayoutUtils::DeregisterImageRequest(PresContext(), mImageRequest,
                                           &mRequestRegistered);
 
+    mImageRequest->UnlockImage();
+
     // Release image loader first so that it's refcnt can go to zero
     mImageRequest->CancelAndForgetObserver(NS_ERROR_FAILURE);
   }
 
   if (mListener)
-    reinterpret_cast<nsImageBoxListener*>(mListener.get())->SetFrame(nullptr); // set the frame to null so we don't send messages to a dead object.
+    reinterpret_cast<nsImageBoxListener*>(mListener.get())->ClearFrame(); // set the frame to null so we don't send messages to a dead object.
 
   nsLeafBoxFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
@@ -199,8 +201,7 @@ nsImageBoxFrame::Init(nsIContent*       aContent,
                       nsIFrame*         aPrevInFlow)
 {
   if (!mListener) {
-    RefPtr<nsImageBoxListener> listener = new nsImageBoxListener();
-    listener->SetFrame(this);
+    RefPtr<nsImageBoxListener> listener = new nsImageBoxListener(this);
     mListener = listener.forget();
   }
 
@@ -268,9 +269,9 @@ nsImageBoxFrame::UpdateImage()
   } else {
     // Only get the list-style-image if we aren't being drawn
     // by a native theme.
-    uint8_t appearance = StyleDisplay()->mAppearance;
-    if (!(appearance && nsBox::gTheme &&
-          nsBox::gTheme->ThemeSupportsWidget(nullptr, this, appearance))) {
+    auto* display = StyleDisplay();
+    if (!(display->HasAppearance() && nsBox::gTheme &&
+          nsBox::gTheme->ThemeSupportsWidget(nullptr, this, display->mAppearance))) {
       // get the list-style-image
       imgRequestProxy *styleRequest = StyleList()->GetListStyleImage();
       if (styleRequest) {
@@ -553,7 +554,7 @@ nsDisplayXULImage::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBui
   }
 
   if (!imageFrame->mImageRequest) {
-    return false;
+    return true;
   }
 
   uint32_t flags = imgIContainer::FLAG_SYNC_DECODE_IF_FAST;
@@ -662,7 +663,7 @@ nsImageBoxFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle)
 
   // If we're using a native theme implementation, we shouldn't draw anything.
   const nsStyleDisplay* disp = StyleDisplay();
-  if (disp->mAppearance && nsBox::gTheme &&
+  if (disp->HasAppearance() && nsBox::gTheme &&
       nsBox::gTheme->ThemeSupportsWidget(nullptr, this, disp->mAppearance))
     return;
 
@@ -901,6 +902,19 @@ nsImageBoxFrame::OnFrameUpdate(imgIRequest* aRequest)
     return NS_OK;
   }
 
+  // Check if WebRender has interacted with this frame. If it has
+  // we need to let it know that things have changed.
+  if (HasProperty(WebRenderUserDataProperty::Key())) {
+    uint32_t key = static_cast<uint32_t>(DisplayItemType::TYPE_XUL_IMAGE);
+    RefPtr<WebRenderFallbackData> data =
+      GetWebRenderUserData<WebRenderFallbackData>(this, key);
+    if (data) {
+      data->SetInvalid(true);
+    }
+    SchedulePaint();
+    return NS_OK;
+  }
+
   InvalidateLayer(DisplayItemType::TYPE_XUL_IMAGE);
 
   return NS_OK;
@@ -908,7 +922,8 @@ nsImageBoxFrame::OnFrameUpdate(imgIRequest* aRequest)
 
 NS_IMPL_ISUPPORTS(nsImageBoxListener, imgINotificationObserver)
 
-nsImageBoxListener::nsImageBoxListener()
+nsImageBoxListener::nsImageBoxListener(nsImageBoxFrame *frame)
+  : mFrame(frame)
 {
 }
 

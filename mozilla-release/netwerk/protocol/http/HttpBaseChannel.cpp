@@ -10,6 +10,7 @@
 
 #include "mozilla/net/HttpBaseChannel.h"
 
+#include "nsGlobalWindowOuter.h"
 #include "nsHttpHandler.h"
 #include "nsMimeTypes.h"
 #include "nsNetCID.h"
@@ -42,6 +43,7 @@
 #include "nsINetworkInterceptController.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/PerformanceStorage.h"
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/Services.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsStreamUtils.h"
@@ -51,7 +53,6 @@
 #include "nsILoadGroupChild.h"
 #include "mozilla/ConsoleReportCollector.h"
 #include "LoadInfo.h"
-#include "NullPrincipal.h"
 #include "nsISSLSocketControl.h"
 #include "mozilla/Telemetry.h"
 #include "nsIURL.h"
@@ -155,14 +156,26 @@ private:
 NS_IMPL_ISUPPORTS(AddHeadersToChannelVisitor, nsIHttpHeaderVisitor)
 
 HttpBaseChannel::HttpBaseChannel()
-  : mCanceled(false)
+  : mReportCollector(new ConsoleReportCollector())
+  , mHttpHandler(gHttpHandler)
+  , mChannelCreationTime(0)
   , mStartPos(UINT64_MAX)
+  , mTransferSize(0)
+  , mDecodedBodySize(0)
+  , mEncodedBodySize(0)
+  , mRequestContextID(0)
+  , mContentWindowId(0)
+  , mTopLevelOuterContentWindowId(0)
+  , mAltDataLength(0)
+  , mChannelId(0)
+  , mReqContentLength(0U)
   , mStatus(NS_OK)
+  , mCanceled(false)
+  , mIsFirstPartyTrackingResource(false)
+  , mIsThirdPartyTrackingResource(false)
   , mLoadFlags(LOAD_NORMAL)
   , mCaps(0)
   , mClassOfService(0)
-  , mPriority(PRIORITY_NORMAL)
-  , mRedirectionLimit(gHttpHandler->RedirectionLimit())
   , mUpgradeToSecure(false)
   , mApplyConversion(true)
   , mIsPending(false)
@@ -191,40 +204,29 @@ HttpBaseChannel::HttpBaseChannel()
   , mAllowStaleCacheContent(false)
   , mAddedAsNonTailRequest(false)
   , mAsyncOpenWaitingForStreamLength(false)
+  , mUpgradableToSecure(true)
   , mTlsFlags(0)
   , mSuspendCount(0)
   , mInitialRwin(0)
   , mProxyResolveFlags(0)
   , mContentDispositionHint(UINT32_MAX)
-  , mHttpHandler(gHttpHandler)
   , mReferrerPolicy(NS_GetDefaultReferrerPolicy())
+  , mCorsMode(nsIHttpChannelInternal::CORS_MODE_NO_CORS)
+  , mRedirectMode(nsIHttpChannelInternal::REDIRECT_MODE_FOLLOW)
+  , mLastRedirectFlags(0)
+  , mPriority(PRIORITY_NORMAL)
+  , mRedirectionLimit(gHttpHandler->RedirectionLimit())
   , mRedirectCount(0)
   , mInternalRedirectCount(0)
-  , mChannelCreationTime(0)
   , mAsyncOpenTimeOverriden(false)
   , mForcePending(false)
   , mCorsIncludeCredentials(false)
-  , mCorsMode(nsIHttpChannelInternal::CORS_MODE_NO_CORS)
-  , mRedirectMode(nsIHttpChannelInternal::REDIRECT_MODE_FOLLOW)
   , mOnStartRequestCalled(false)
   , mOnStopRequestCalled(false)
-  , mUpgradableToSecure(true)
   , mAfterOnStartRequestBegun(false)
-  , mTransferSize(0)
-  , mDecodedBodySize(0)
-  , mEncodedBodySize(0)
-  , mRequestContextID(0)
-  , mContentWindowId(0)
-  , mTopLevelOuterContentWindowId(0)
   , mRequireCORSPreflight(false)
-  , mReportCollector(new ConsoleReportCollector())
-  , mAltDataLength(0)
   , mAltDataForChild(false)
   , mForceMainDocumentChannel(false)
-  , mIsTrackingResource(false)
-  , mChannelId(0)
-  , mLastRedirectFlags(0)
-  , mReqContentLength(0U)
   , mPendingInputStreamLengthOperation(false)
 {
   this->mSelfAddr.inet = {};
@@ -317,10 +319,22 @@ HttpBaseChannel::ReleaseMainThreadOnlyReferences()
 }
 
 void
-HttpBaseChannel::SetIsTrackingResource()
+HttpBaseChannel::SetIsTrackingResource(bool aIsThirdParty)
 {
-  LOG(("HttpBaseChannel::SetIsTrackingResource %p", this));
-  mIsTrackingResource = true;
+  LOG(("HttpBaseChannel::SetIsTrackingResource thirdparty=%d %p",
+       static_cast<int>(aIsThirdParty), this));
+
+  if (aIsThirdParty) {
+    MOZ_ASSERT(!mIsFirstPartyTrackingResource);
+    mIsThirdPartyTrackingResource = true;
+  } else {
+    MOZ_ASSERT(!mIsThirdPartyTrackingResource);
+    mIsFirstPartyTrackingResource = true;
+  }
+
+  if (mLoadInfo) {
+    MOZ_ALWAYS_SUCCEEDS(mLoadInfo->SetIsTracker(true));
+  }
 }
 
 nsresult
@@ -1516,7 +1530,10 @@ NS_IMETHODIMP HttpBaseChannel::GetTopLevelContentWindowId(uint64_t *aWindowId)
     if (loadContext) {
       nsCOMPtr<mozIDOMWindowProxy> topWindow;
       loadContext->GetTopWindow(getter_AddRefs(topWindow));
-      nsCOMPtr<nsIDOMWindowUtils> windowUtils = do_GetInterface(topWindow);
+      nsCOMPtr<nsIDOMWindowUtils> windowUtils;
+      if (topWindow) {
+        windowUtils = nsGlobalWindowOuter::Cast(topWindow)->WindowUtils();
+      }
       if (windowUtils) {
         windowUtils->GetCurrentInnerWindowID(&mContentWindowId);
       }
@@ -1548,18 +1565,39 @@ NS_IMETHODIMP HttpBaseChannel::SetTopLevelContentWindowId(uint64_t aWindowId)
 NS_IMETHODIMP
 HttpBaseChannel::GetIsTrackingResource(bool* aIsTrackingResource)
 {
-  *aIsTrackingResource = mIsTrackingResource;
+  MOZ_ASSERT(!(mIsFirstPartyTrackingResource && mIsThirdPartyTrackingResource));
+  *aIsTrackingResource =
+    mIsThirdPartyTrackingResource || mIsFirstPartyTrackingResource;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-HttpBaseChannel::OverrideTrackingResource(bool aIsTracking)
+HttpBaseChannel::GetIsThirdPartyTrackingResource(bool* aIsTrackingResource)
 {
-  LOG(("HttpBaseChannel::OverrideTrackingResource(%d) %p "
-       "mIsTrackingResource=%d",
-      (int) aIsTracking, this, (int) mIsTrackingResource));
+  MOZ_ASSERT(!(mIsFirstPartyTrackingResource && mIsThirdPartyTrackingResource));
+  *aIsTrackingResource = mIsThirdPartyTrackingResource;
+  return NS_OK;
+}
 
-  mIsTrackingResource = aIsTracking;
+NS_IMETHODIMP
+HttpBaseChannel::OverrideTrackingFlagsForDocumentCookieAccessor(nsIHttpChannel* aDocumentChannel)
+{
+  LOG(("HttpBaseChannel::OverrideTrackingFlagsForDocumentCookieAccessor() %p "
+       "mIsFirstPartyTrackingResource=%d  mIsThirdPartyTrackingResource=%d",
+       this, static_cast<int>(mIsFirstPartyTrackingResource),
+       static_cast<int>(mIsThirdPartyTrackingResource)));
+
+  // The semantics we'd like to achieve here are that document.cookie
+  // should follow the same rules that the document is subject to with
+  // regards to content blocking. Therefore we need to propagate the
+  // same flags from the document channel to the fake channel here.
+  if (aDocumentChannel->GetIsThirdPartyTrackingResource()) {
+    mIsThirdPartyTrackingResource = true;
+  } else {
+    mIsFirstPartyTrackingResource = true;
+  }
+
+  MOZ_ASSERT(!(mIsFirstPartyTrackingResource && mIsThirdPartyTrackingResource));
   return NS_OK;
 }
 
@@ -1788,9 +1826,9 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
   //  (1) modify it
   //  (2) keep a reference to it after returning from this function
   //
-  // Use CloneIgnoringRef to strip away any fragment per RFC 2616 section 14.36
+  // Strip away any fragment per RFC 2616 section 14.36
   // and Referrer Policy section 6.3.5.
-  rv = referrer->CloneIgnoringRef(getter_AddRefs(clone));
+  rv = NS_GetURIWithoutRef(referrer, getter_AddRefs(clone));
   if (NS_FAILED(rv)) return rv;
 
   nsAutoCString currentHost;
@@ -1835,7 +1873,7 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
   // send spoofed referrer if desired
   if (userSpoofReferrerSource) {
     nsCOMPtr<nsIURI> mURIclone;
-    rv = mURI->CloneIgnoringRef(getter_AddRefs(mURIclone));
+    rv = NS_GetURIWithoutRef(mURI, getter_AddRefs(mURIclone));
     if (NS_FAILED(rv)) return rv;
     clone = mURIclone;
     currentHost = referrerHost;
@@ -2456,7 +2494,7 @@ HttpBaseChannel::NotifySetCookie(char const *aCookie)
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   if (obs) {
     nsAutoString cookie;
-    CopyASCIItoUTF16(aCookie, cookie);
+    CopyASCIItoUTF16(mozilla::MakeStringSpan(aCookie), cookie);
     obs->NotifyObservers(static_cast<nsIChannel*>(this),
                          "http-on-response-set-cookie",
                          cookie.get());
@@ -2557,7 +2595,7 @@ HttpBaseChannel::GetLocalAddress(nsACString& addr)
   if (mSelfAddr.raw.family == PR_AF_UNSPEC)
     return NS_ERROR_NOT_AVAILABLE;
 
-  addr.SetCapacity(kIPv6CStrBufSize);
+  addr.SetLength(kIPv6CStrBufSize);
   NetAddrToString(&mSelfAddr, addr.BeginWriting(), kIPv6CStrBufSize);
   addr.SetLength(strlen(addr.BeginReading()));
 
@@ -2666,7 +2704,7 @@ HttpBaseChannel::GetRemoteAddress(nsACString& addr)
   if (mPeerAddr.raw.family == PR_AF_UNSPEC)
     return NS_ERROR_NOT_AVAILABLE;
 
-  addr.SetCapacity(kIPv6CStrBufSize);
+  addr.SetLength(kIPv6CStrBufSize);
   NetAddrToString(&mPeerAddr, addr.BeginWriting(), kIPv6CStrBufSize);
   addr.SetLength(strlen(addr.BeginReading()));
 
@@ -4359,22 +4397,6 @@ HttpBaseChannel::GetPerformanceStorage()
 void
 HttpBaseChannel::MaybeReportTimingData()
 {
-  // We don't need to report the resource timing entry for a TYPE_DOCUMENT load.
-  // But for the case that Server-Timing headers are existed for
-  // a document load, we have to create the document entry early
-  // with the timed channel. This is the only way to make
-  // server timing data availeble in the document entry.
-  if (mLoadInfo && mLoadInfo->GetExternalContentPolicyType() == nsIContentPolicy::TYPE_DOCUMENT) {
-    if ((mResponseHead && mResponseHead->HasHeader(nsHttp::Server_Timing)) ||
-        (mResponseTrailers && mResponseTrailers->HasHeader(nsHttp::Server_Timing))) {
-      mozilla::dom::PerformanceStorage* documentPerformance = GetPerformanceStorage();
-      if (documentPerformance) {
-        documentPerformance->CreateDocumentEntry(this);
-      }
-    }
-    return;
-  }
-
   mozilla::dom::PerformanceStorage* documentPerformance = GetPerformanceStorage();
   if (documentPerformance) {
       documentPerformance->AddEntry(this, this);
@@ -4593,6 +4615,18 @@ HttpBaseChannel::SetLastRedirectFlags(uint32_t aValue)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+HttpBaseChannel::GetNavigationStartTimeStamp(TimeStamp* aTimeStamp)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetNavigationStartTimeStamp(TimeStamp aTimeStamp)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 nsresult
 HttpBaseChannel::CheckRedirectLimit(uint32_t aRedirectFlags) const
 {
@@ -4692,6 +4726,12 @@ HttpBaseChannel::GetNativeServerTiming(nsTArray<nsCOMPtr<nsIServerTiming>>& aSer
   }
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::CancelForTrackingProtection()
+{
+  return Cancel(NS_ERROR_TRACKING_URI);
 }
 
 } // namespace net

@@ -3,30 +3,34 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 rich-select {
-  display: inline-block;
-}
-
-rich-select:not([open]) > .rich-select-popup-box {
-  display: none;
-}
-
-rich-select[open] {
+  border: 1px solid #0C0C0D33;
+  display: block;
+  margin: 14px 0;
   position: relative;
 }
 
-rich-select[open] > .rich-select-popup-box {
-  box-shadow: 0 0 5px black;
-  position: absolute;
-  z-index: 1;
+/* Focusing on the underlying select element outlines the outer
+rich-select wrapper making it appear like rich-select is focused. */
+rich-select:focus-within {
+  outline: 1px dotted;
 }
 
-.rich-select-popup-box > .rich-option[selected] {
-  background-color: #ffa;
+/*
+ * The HTML select element is hidden and placed on the rich-option
+ * element to make it look like clicking on the rich-option element
+ * in the closed state opens the HTML select dropdown. */
+rich-select > select {
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
 }
 
 .rich-option {
   display: grid;
-  border-bottom: 1px solid #ddd;
   background: #fff; /* TODO: system colors */
   padding: 8px;
 }

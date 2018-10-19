@@ -18,7 +18,7 @@
 #include "SVGMotionSMILPathUtils.h"
 
 using namespace mozilla::dom;
-using namespace mozilla::dom::SVGAngleBinding;
+using namespace mozilla::dom::SVGAngle_Binding;
 using namespace mozilla::gfx;
 
 namespace mozilla {
@@ -45,7 +45,8 @@ SVGMotionSMILAnimationFunction::MarkStaleIfAttributeAffectsPath(nsAtom* aAttribu
   } else if (aAttribute == nsGkAtoms::by) {
     isAffected = (mPathSourceType <= ePathSourceType_ByAttr);
   } else {
-    NS_NOTREACHED("Should only call this method for path-describing attrs");
+    MOZ_ASSERT_UNREACHABLE("Should only call this method for path-describing "
+                           "attrs");
     isAffected = false;
   }
 

@@ -30,11 +30,9 @@ let anyWindowsWithInjectedCss = false;
 // Add cleanup handler for CSS injected into windows by Heartbeat
 CleanupManager.addCleanupHandler(() => {
   if (anyWindowsWithInjectedCss) {
-    const windowEnumerator = Services.wm.getEnumerator("navigator:browser");
-    while (windowEnumerator.hasMoreElements()) {
-      const window = windowEnumerator.getNext();
+    for (let window of Services.wm.getEnumerator("navigator:browser")) {
       if (windowsWithInjectedCss.has(window)) {
-        const utils = window.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+        const utils = window.windowUtils;
         utils.removeSheet(HEARTBEAT_CSS_URI, window.AGENT_SHEET);
         if (AppConstants.platform === "macosx") {
           utils.removeSheet(HEARTBEAT_CSS_URI_OSX, window.AGENT_SHEET);
@@ -123,7 +121,7 @@ var Heartbeat = class {
 
     if (!windowsWithInjectedCss.has(chromeWindow)) {
       windowsWithInjectedCss.add(chromeWindow);
-      const utils = chromeWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+      const utils = chromeWindow.windowUtils;
       utils.loadSheet(HEARTBEAT_CSS_URI, chromeWindow.AGENT_SHEET);
       if (AppConstants.platform === "macosx") {
         utils.loadSheet(HEARTBEAT_CSS_URI_OSX, chromeWindow.AGENT_SHEET);
@@ -175,12 +173,12 @@ var Heartbeat = class {
     // Build the heartbeat stars
     if (!this.options.engagementButtonLabel) {
       const numStars = this.options.engagementButtonLabel ? 0 : 5;
-      const ratingContainer = this.chromeWindow.document.createElement("hbox");
+      const ratingContainer = this.chromeWindow.document.createXULElement("hbox");
       ratingContainer.id = "star-rating-container";
 
       for (let i = 0; i < numStars; i++) {
         // create a star rating element
-        const ratingElement = this.chromeWindow.document.createElement("toolbarbutton");
+        const ratingElement = this.chromeWindow.document.createXULElement("toolbarbutton");
 
         // style it
         const starIndex = numStars - i;
@@ -211,7 +209,7 @@ var Heartbeat = class {
     this.messageText.classList.add("heartbeat");
 
     // Make sure the stars are not pushed to the right by the spacer.
-    const rightSpacer = this.chromeWindow.document.createElement("spacer");
+    const rightSpacer = this.chromeWindow.document.createXULElement("spacer");
     rightSpacer.flex = 20;
     frag.appendChild(rightSpacer);
 
@@ -222,7 +220,7 @@ var Heartbeat = class {
 
     // Add Learn More Link
     if (this.options.learnMoreMessage && this.options.learnMoreUrl) {
-      const learnMore = this.chromeWindow.document.createElement("label");
+      const learnMore = this.chromeWindow.document.createXULElement("label");
       learnMore.className = "text-link";
       learnMore.href = this.options.learnMoreUrl.toString();
       learnMore.setAttribute("value", this.options.learnMoreMessage);
@@ -346,7 +344,10 @@ var Heartbeat = class {
         this.options.postAnswerUrl.searchParams.append(key, engagementParams[key]);
       }
       // Open the engagement URL in a new tab.
-      this.chromeWindow.gBrowser.selectedTab = this.chromeWindow.gBrowser.addTab(this.options.postAnswerUrl.toString());
+      let { gBrowser} = this.chromeWindow;
+      gBrowser.selectedTab = gBrowser.addWebTab(this.options.postAnswerUrl.toString(), {
+        triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({}),
+      });
     }
 
     this.endTimerIfPresent("surveyEndTimer");

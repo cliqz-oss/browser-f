@@ -2,7 +2,6 @@
 
 /* eslint-env mozilla/frame-script */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(this, "WebNavigationFrames",
@@ -13,9 +12,8 @@ function getDocShellOuterWindowId(docShell) {
     return undefined;
   }
 
-  return docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                 .getInterface(Ci.nsIDOMWindow)
-                 .getInterface(Ci.nsIDOMWindowUtils)
+  return docShell.domWindow
+                 .windowUtils
                  .outerWindowID;
 }
 
@@ -120,8 +118,7 @@ var WebProgressListener = {
 
     // Populate the above previousURIMap by iterating over the docShells tree.
     for (let currentDocShell of WebNavigationFrames.iterateDocShellTree(docShell)) {
-      let win = currentDocShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                               .getInterface(Ci.nsIDOMWindow);
+      let win = currentDocShell.domWindow;
       let {currentURI} = currentDocShell.QueryInterface(Ci.nsIWebNavigation);
 
       this.previousURIMap.set(win, currentURI);

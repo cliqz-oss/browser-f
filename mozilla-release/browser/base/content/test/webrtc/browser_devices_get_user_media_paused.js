@@ -61,7 +61,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -123,7 +123,7 @@ var gTests = [
       audio: STATE_CAPTURE_ENABLED,
     });
     await closeStream();
-  }
+  },
 },
 
 {
@@ -137,7 +137,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -208,7 +208,7 @@ var gTests = [
       audio: STATE_CAPTURE_ENABLED,
     });
     await closeStream();
-  }
+  },
 },
 
 {
@@ -222,7 +222,7 @@ var gTests = [
     is(PopupNotifications.getNotification("webRTC-shareDevices").anchorID,
        "webRTC-shareScreen-notification-icon", "anchored to device icon");
     checkDeviceSelectors(false, false, true);
-    let notification = PopupNotifications.panel.firstChild;
+    let notification = PopupNotifications.panel.firstElementChild;
     let iconclass = notification.getAttribute("iconclass");
     ok(iconclass.includes("screen-icon"), "panel using screen icon");
 
@@ -232,7 +232,7 @@ var gTests = [
 
     let indicator = promiseIndicatorWindow();
     await promiseMessage("ok", () => {
-      PopupNotifications.panel.firstChild.button.click();
+      PopupNotifications.panel.firstElementChild.button.click();
     });
     await expectObserverCalled("getUserMedia:response:allow");
     await expectObserverCalled("recording-device-events");
@@ -261,7 +261,7 @@ var gTests = [
     );
     await expectObserverCalled("recording-device-events");
     await checkSharingUI({screen: "Screen"});
-  }
+  },
 },
 ];
 

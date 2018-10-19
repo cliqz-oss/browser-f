@@ -39,6 +39,16 @@ public:
     return {NS_RGBA(0, 0, 0, 0), 1, eAuto};
   }
 
+  static StyleComplexColor Black() {
+    return StyleComplexColor::FromColor(NS_RGB(0, 0, 0));
+  }
+  static StyleComplexColor White() {
+    return StyleComplexColor::FromColor(NS_RGB(255, 255, 255));
+  }
+  static StyleComplexColor Transparent() {
+    return StyleComplexColor::FromColor(NS_RGBA(0, 0, 0, 0));
+  }
+
   bool IsAuto() const { return mTag == eAuto; }
   bool IsCurrentColor() const { return mTag == eForeground; }
 
@@ -71,6 +81,12 @@ public:
    * Is it possible that this StyleComplexColor is transparent?
    */
   bool MaybeTransparent() const;
+
+  /**
+   * Compute the color for this StyleComplexColor, taking into account
+   * the foreground color, aForegroundColor.
+   */
+  nscolor CalcColor(nscolor aForegroundColor) const;
 
   /**
    * Compute the color for this StyleComplexColor, taking into account

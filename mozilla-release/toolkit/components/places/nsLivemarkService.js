@@ -12,8 +12,9 @@ ChromeUtils.defineModuleGetter(this, "NetUtil",
                                "resource://gre/modules/NetUtil.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "history", function() {
+  let livemarks = PlacesUtils.livemarks;
   // Lazily add an history observer when it's actually needed.
-  PlacesUtils.history.addObserver(PlacesUtils.livemarks, true);
+  PlacesUtils.history.addObserver(livemarks, true);
   return PlacesUtils.history;
 });
 
@@ -80,6 +81,10 @@ function LivemarkService() {
   // Observe bookmarks but don't init the service just for that.
   PlacesUtils.bookmarks.addObserver(this, true);
 
+  this._placesListener = new PlacesWeakCallbackWrapper(
+    this.handlePlacesEvents.bind(this));
+  PlacesObservers.addListener(["page-visited"], this._placesListener);
+
   this._livemarksMap = null;
   this._promiseLivemarksMapReady = Promise.resolve();
 }
@@ -106,7 +111,7 @@ LivemarkService.prototype = {
             dateAdded: row.getResultByName("dateAdded"),
             lastModified: row.getResultByName("lastModified"),
             feedURI: NetUtil.newURI(row.getResultByName("feedURI")),
-            siteURI: siteURI ? NetUtil.newURI(siteURI) : null
+            siteURI: siteURI ? NetUtil.newURI(siteURI) : null,
           });
           this._livemarksMap.set(livemark.guid, livemark);
         }
@@ -207,7 +212,7 @@ LivemarkService.prototype = {
                                     siteURI:      aLivemarkInfo.siteURI,
                                     guid:         folder.guid,
                                     dateAdded:    toPRTime(folder.dateAdded),
-                                    lastModified: toPRTime(folder.lastModified)
+                                    lastModified: toPRTime(folder.lastModified),
                                   });
 
       livemark.writeFeedURI(aLivemarkInfo.feedURI, aLivemarkInfo.source);
@@ -336,6 +341,21 @@ LivemarkService.prototype = {
     return this._invalidateCachedLivemarks();
   },
 
+  handlePlacesEvents(aEvents) {
+    if (!aEvents) {
+      throw new Components.Exception("Invalid arguments",
+                                     Cr.NS_ERROR_INVALID_ARG);
+    }
+
+    this._withLivemarksMap(livemarksMap => {
+      for (let event of aEvents) {
+        for (let livemark of livemarksMap.values()) {
+          livemark.updateURIVisitedStatus(event.url, true);
+        }
+      }
+    });
+  },
+
   // nsINavBookmarkObserver
 
   onBeginUpdateBatch() {},
@@ -407,17 +427,7 @@ LivemarkService.prototype = {
   onDeleteURI(aURI) {
     this._withLivemarksMap(livemarksMap => {
       for (let livemark of livemarksMap.values()) {
-        livemark.updateURIVisitedStatus(aURI, false);
-      }
-    });
-  },
-
-  onVisits(aVisits) {
-    this._withLivemarksMap(livemarksMap => {
-      for (let {uri} of aVisits) {
-        for (let livemark of livemarksMap.values()) {
-          livemark.updateURIVisitedStatus(uri, true);
-        }
+        livemark.updateURIVisitedStatus(aURI.spec, false);
       }
     });
   },
@@ -433,8 +443,8 @@ LivemarkService.prototype = {
     Ci.nsINavBookmarkObserver,
     Ci.nsINavHistoryObserver,
     Ci.nsIObserver,
-    Ci.nsISupportsWeakReference
-  ])
+    Ci.nsISupportsWeakReference,
+  ]),
 };
 
 // Livemark
@@ -563,7 +573,7 @@ Livemark.prototype = {
         uri: this.feedURI,
         loadingPrincipal: Services.scriptSecurityManager.createCodebasePrincipal(this.feedURI, {}),
         securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_IS_NULL,
-        contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_XMLHTTPREQUEST
+        contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_XMLHTTPREQUEST,
       }).QueryInterface(Ci.nsIHttpChannel);
       channel.loadGroup = loadgroup;
       channel.loadFlags |= Ci.nsIRequest.LOAD_BACKGROUND |
@@ -600,7 +610,7 @@ Livemark.prototype = {
     // Update visited status for each entry.
     for (let child of this._children) {
       history.hasVisits(child.uri).then(isVisited => {
-        this.updateURIVisitedStatus(child.uri, isVisited);
+        this.updateURIVisitedStatus(child.uri.spec, isVisited);
       }).catch(Cu.reportError);
     }
 
@@ -666,7 +676,7 @@ Livemark.prototype = {
         get tags() {
           return PlacesUtils.tagging.getTagsForURI(NetUtil.newURI(this.uri)).join(", ");
         },
-        QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryResultNode])
+        QueryInterface: ChromeUtils.generateQI([Ci.nsINavHistoryResultNode]),
       };
       nodes.push(node);
     }
@@ -692,18 +702,18 @@ Livemark.prototype = {
   /**
    * Updates the visited status of nodes observing this livemark.
    *
-   * @param aURI
+   * @param href
    *        If provided will update nodes having the given uri,
    *        otherwise any node.
-   * @param aVisitedStatus
+   * @param visitedStatus
    *        Whether the nodes should be set as visited.
    */
-  updateURIVisitedStatus(aURI, aVisitedStatus) {
+  updateURIVisitedStatus(href, visitedStatus) {
     let wasVisited = false;
     for (let child of this.children) {
-      if (!aURI || child.uri.equals(aURI)) {
+      if (!href || child.uri.spec == href) {
         wasVisited = child.visited;
-        child.visited = aVisitedStatus;
+        child.visited = visitedStatus;
       }
     }
 
@@ -711,7 +721,7 @@ Livemark.prototype = {
       if (this._nodes.has(container)) {
         let nodes = this._nodes.get(container);
         for (let node of nodes) {
-          if (!aURI || node.uri == aURI.spec) {
+          if (!href || node.uri == href) {
             Services.tm.dispatchToMainThread(() => {
               observer.nodeHistoryDetailsChanged(node, node.time, wasVisited);
             });
@@ -743,8 +753,8 @@ Livemark.prototype = {
   },
 
   QueryInterface: ChromeUtils.generateQI([
-    Ci.mozILivemark
-  ])
+    Ci.mozILivemark,
+  ]),
 };
 
 // LivemarkLoadListener
@@ -818,6 +828,7 @@ LivemarkLoadListener.prototype = {
 
       this._livemark.children = livemarkChildren;
     } catch (ex) {
+      Cu.reportError(ex);
       this.abort(ex);
     } finally {
       this._processor.listener = null;
@@ -905,8 +916,8 @@ LivemarkLoadListener.prototype = {
     Ci.nsIFeedResultListener,
     Ci.nsIStreamListener,
     Ci.nsIRequestObserver,
-    Ci.nsIInterfaceRequestor
-  ])
+    Ci.nsIInterfaceRequestor,
+  ]),
 };
 
 this.NSGetFactory = XPCOMUtils.generateNSGetFactory([LivemarkService]);

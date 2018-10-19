@@ -52,7 +52,10 @@ linux64/opt:
         - awsy
         - mochitest-headless
         - linux-talos-flex
-        - raptor
+        - raptor-firefox
+        - raptor-chrome
+        - raptor-fetch-firefox
+        - raptor-fetch-chrome
 linux64-nightly/opt:
     build-platform: linux64-nightly/opt
     test-sets:
@@ -77,12 +80,14 @@ linux64-pgo/opt:
         - common-tests
         - web-platform-tests
         - talos
-        - raptor
+        - raptor-firefox
+        - raptor-fetch-firefox
 
 linux64-asan/opt:
     build-platform: linux64-asan/opt
     test-sets:
         - common-tests
+        - web-platform-tests
 
 # Stylo sequential runs check memory and performance when using a single thread.
 linux64-stylo-sequential/opt:
@@ -98,7 +103,8 @@ linux64-qr/opt:
         - talos
         - awsy
         - web-platform-tests
-        - raptor
+        - raptor-firefox
+        - raptor-fetch-firefox
 linux64-qr/debug:
     build-platform: linux64/debug
     test-sets:
@@ -127,6 +133,12 @@ windows7-32/debug:
         - windows-reftest-gpu
         - windows-tests
 
+windows7-32-msvc/debug:
+    build-platform: win32-msvc/debug
+    test-sets:
+        - windows-reftest-gpu
+        - windows-tests
+
 windows7-32/opt:
     build-platform: win32/opt
     test-sets:
@@ -135,6 +147,8 @@ windows7-32/opt:
         - windows-reftest-gpu
         - windows-talos
         - windows-tests
+        - raptor-firefox
+        - raptor-chrome
 
 windows7-32-pgo/opt:
     build-platform: win32-pgo/opt
@@ -144,6 +158,7 @@ windows7-32-pgo/opt:
         - windows-reftest-gpu
         - windows-talos
         - windows-tests
+        - raptor-firefox
 
 windows7-32-nightly/opt:
     build-platform: win32-nightly/opt
@@ -158,6 +173,15 @@ windows7-32-devedition/opt:
     test-sets:
         - desktop-screenshot-capture
         - windows-reftest-gpu
+        - windows-tests
+
+windows7-32-msvc/opt:
+    build-platform: win32-msvc/opt
+    test-sets:
+        - awsy
+        - desktop-screenshot-capture
+        - windows-reftest-gpu
+        - windows-talos
         - windows-tests
 
 # win64
@@ -176,6 +200,12 @@ windows10-64/debug:
         - windows-tests
         - mochitest-headless
 
+windows10-64-msvc/debug:
+    build-platform: win64-msvc/debug
+    test-sets:
+        - windows-tests
+        - mochitest-headless
+
 windows10-64/opt:
     build-platform: win64/opt
     test-sets:
@@ -184,7 +214,8 @@ windows10-64/opt:
         - windows-talos
         - windows-tests
         - mochitest-headless
-        - raptor
+        - raptor-firefox
+        - raptor-chrome
 
 windows10-64-pgo/opt:
     build-platform: win64-pgo/opt
@@ -193,7 +224,7 @@ windows10-64-pgo/opt:
         - desktop-screenshot-capture
         - windows-talos
         - windows-tests
-        - raptor
+        - raptor-firefox
 
 windows10-64-nightly/opt:
     build-platform: win64-nightly/opt
@@ -215,6 +246,15 @@ windows10-64-asan/opt:
     test-sets:
         - common-tests
 
+windows10-64-msvc/opt:
+    build-platform: win64-msvc/opt
+    test-sets:
+        - awsy
+        - desktop-screenshot-capture
+        - windows-talos
+        - windows-tests
+        - mochitest-headless
+
 # QR builds just run a subset right now.
 windows10-64-qr/debug:
     build-platform: win64/debug
@@ -226,7 +266,7 @@ windows10-64-qr/opt:
     test-sets:
         - windows-qr-tests
         - windows-talos
-        - raptor
+        - raptor-firefox
 
 
 ##
@@ -244,7 +284,8 @@ macosx64/opt:
         - macosx64-tests
         - desktop-screenshot-capture
         - awsy
-        - raptor
+        - raptor-firefox
+        - raptor-chrome
 
 macosx64-nightly/opt:
     build-platform: macosx64-nightly/opt
@@ -283,6 +324,11 @@ android-em-4.3-arm7-api-16/debug:
         - android-common-tests
         - android-gradle-tests
 
+android-em-4.3-arm7-api-16-ccov/debug:
+    build-platform: android-api-16-ccov/debug
+    test-sets:
+        - android-ccov-tests
+
 android-em-4.3-arm7-api-16/opt:
     build-platform: android-api-16/opt
     test-sets:
@@ -295,11 +341,10 @@ android-em-4.2-x86/opt:
     test-sets:
         - android-x86-tests
 
-# Coming soon!
-# android-em-7.0-x86/opt:
-#     build-platform: android-x86/opt
-#     test-sets:
-#         - android-x86-kvm-tests
+android-em-7.0-x86/opt:
+    build-platform: android-x86/opt
+    test-sets:
+        - android-x86-kvm-tests
 
 # android-hw test platforms execute on real devices attached to Autophone hosts.
 

@@ -69,7 +69,9 @@ class Kind(object):
                       attributes=task_dict['attributes'],
                       task=task_dict['task'],
                       optimization=task_dict.get('optimization'),
-                      dependencies=task_dict.get('dependencies'))
+                      dependencies=task_dict.get('dependencies'),
+                      release_artifacts=task_dict.get('release-artifacts'),
+                      )
                  for task_dict in transforms(trans_config, inputs)]
         return tasks
 
@@ -82,7 +84,7 @@ class Kind(object):
 
         logger.debug("loading kind `{}` from `{}`".format(kind_name, path))
         with open(kind_yml) as f:
-            config = yaml.load(f)
+            config = yaml.safe_load(f)
 
         return cls(kind_name, path, config, graph_config)
 

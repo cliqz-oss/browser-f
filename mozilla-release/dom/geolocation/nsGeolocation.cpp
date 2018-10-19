@@ -271,7 +271,7 @@ void
 nsGeolocationRequest::Notify()
 {
   SetTimeoutTimer();
-  NotifyErrorAndShutdown(PositionErrorBinding::TIMEOUT);
+  NotifyErrorAndShutdown(PositionError_Binding::TIMEOUT);
 }
 
 void
@@ -347,7 +347,7 @@ nsGeolocationRequest::Cancel()
     return NS_OK;
   }
 
-  NotifyError(PositionErrorBinding::PERMISSION_DENIED);
+  NotifyError(PositionError_Binding::PERMISSION_DENIED);
   return NS_OK;
 }
 
@@ -415,7 +415,7 @@ nsGeolocationRequest::Allow(JS::HandleValue aChoices)
     // if it is not a watch request and timeout is 0,
     // invoke the errorCallback (if present) with TIMEOUT code
     if (mOptions && mOptions->mTimeout == 0 && !mIsWatchPositionRequest) {
-      NotifyError(PositionErrorBinding::TIMEOUT);
+      NotifyError(PositionError_Binding::TIMEOUT);
       return NS_OK;
     }
 
@@ -426,7 +426,7 @@ nsGeolocationRequest::Allow(JS::HandleValue aChoices)
 
   if (NS_FAILED(rv)) {
     // Location provider error
-    NotifyError(PositionErrorBinding::POSITION_UNAVAILABLE);
+    NotifyError(PositionError_Binding::POSITION_UNAVAILABLE);
     return NS_OK;
   }
 
@@ -505,7 +505,7 @@ nsGeolocationRequest::SendLocation(nsIDOMGeoPosition* aPosition)
   }
 
   if (!wrapped) {
-    NotifyError(PositionErrorBinding::POSITION_UNAVAILABLE);
+    NotifyError(PositionError_Binding::POSITION_UNAVAILABLE);
     return;
   }
 
@@ -790,7 +790,7 @@ nsGeolocationService::StartDevice(nsIPrincipal *aPrincipal)
   if (NS_FAILED(rv = mProvider->Startup()) ||
       NS_FAILED(rv = mProvider->Watch(this))) {
 
-    NotifyError(PositionErrorBinding::POSITION_UNAVAILABLE);
+    NotifyError(PositionError_Binding::POSITION_UNAVAILABLE);
     return rv;
   }
 
@@ -1221,8 +1221,7 @@ Geolocation::GetCurrentPosition(GeoPositionCallback callback,
                              std::move(options), static_cast<uint8_t>(mProtocolType), target,
                              false, EventStateManager::IsHandlingUserInput());
 
-  if (!sGeoEnabled || ShouldBlockInsecureRequests() ||
-      nsContentUtils::ResistFingerprinting(aCallerType)) {
+  if (!sGeoEnabled || ShouldBlockInsecureRequests()) {
     nsCOMPtr<nsIRunnable> ev = new RequestAllowEvent(false, request);
     target->Dispatch(ev.forget());
     return NS_OK;
@@ -1305,8 +1304,7 @@ Geolocation::WatchPosition(GeoPositionCallback aCallback,
                              static_cast<uint8_t>(mProtocolType), target, true,
                              EventStateManager::IsHandlingUserInput(), watchId);
 
-  if (!sGeoEnabled || ShouldBlockInsecureRequests() ||
-      nsContentUtils::ResistFingerprinting(aCallerType)) {
+  if (!sGeoEnabled || ShouldBlockInsecureRequests()) {
     nsCOMPtr<nsIRunnable> ev = new RequestAllowEvent(false, request);
     target->Dispatch(ev.forget());
     return watchId;
@@ -1419,5 +1417,5 @@ Geolocation::RegisterRequestWithPrompt(nsGeolocationRequest* request)
 JSObject*
 Geolocation::WrapObject(JSContext *aCtx, JS::Handle<JSObject*> aGivenProto)
 {
-  return GeolocationBinding::Wrap(aCtx, this, aGivenProto);
+  return Geolocation_Binding::Wrap(aCtx, this, aGivenProto);
 }

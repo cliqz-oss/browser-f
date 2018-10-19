@@ -6,6 +6,7 @@
 
 const Services = require("Services");
 const osString = Services.appinfo.OS;
+const { Cu } = require("chrome");
 
 // Panels
 loader.lazyGetter(this, "OptionsPanel", () => require("devtools/client/framework/toolbox-options").OptionsPanel);
@@ -13,8 +14,7 @@ loader.lazyGetter(this, "InspectorPanel", () => require("devtools/client/inspect
 loader.lazyGetter(this, "WebConsolePanel", () => require("devtools/client/webconsole/panel").WebConsolePanel);
 loader.lazyGetter(this, "DebuggerPanel", () => require("devtools/client/debugger/panel").DebuggerPanel);
 loader.lazyGetter(this, "NewDebuggerPanel", () => require("devtools/client/debugger/new/panel").DebuggerPanel);
-loader.lazyGetter(this, "StyleEditorPanel", () => require("devtools/client/styleeditor/styleeditor-panel").StyleEditorPanel);
-loader.lazyGetter(this, "ShaderEditorPanel", () => require("devtools/client/shadereditor/panel").ShaderEditorPanel);
+loader.lazyGetter(this, "StyleEditorPanel", () => require("devtools/client/styleeditor/panel").StyleEditorPanel);
 loader.lazyGetter(this, "CanvasDebuggerPanel", () => require("devtools/client/canvasdebugger/panel").CanvasDebuggerPanel);
 loader.lazyGetter(this, "WebAudioEditorPanel", () => require("devtools/client/webaudioeditor/panel").WebAudioEditorPanel);
 loader.lazyGetter(this, "MemoryPanel", () => require("devtools/client/memory/panel").MemoryPanel);
@@ -22,17 +22,16 @@ loader.lazyGetter(this, "PerformancePanel", () => require("devtools/client/perfo
 loader.lazyGetter(this, "NewPerformancePanel", () => require("devtools/client/performance-new/panel").PerformancePanel);
 loader.lazyGetter(this, "NetMonitorPanel", () => require("devtools/client/netmonitor/panel").NetMonitorPanel);
 loader.lazyGetter(this, "StoragePanel", () => require("devtools/client/storage/panel").StoragePanel);
-loader.lazyGetter(this, "ScratchpadPanel", () => require("devtools/client/scratchpad/scratchpad-panel").ScratchpadPanel);
-loader.lazyGetter(this, "DomPanel", () => require("devtools/client/dom/dom-panel").DomPanel);
-loader.lazyGetter(this, "AccessibilityPanel", () => require("devtools/client/accessibility/accessibility-panel").AccessibilityPanel);
+loader.lazyGetter(this, "ScratchpadPanel", () => require("devtools/client/scratchpad/panel").ScratchpadPanel);
+loader.lazyGetter(this, "DomPanel", () => require("devtools/client/dom/panel").DomPanel);
+loader.lazyGetter(this, "AccessibilityPanel", () => require("devtools/client/accessibility/panel").AccessibilityPanel);
 loader.lazyGetter(this, "ApplicationPanel", () => require("devtools/client/application/panel").ApplicationPanel);
 
 // Other dependencies
 loader.lazyRequireGetter(this, "AccessibilityStartup", "devtools/client/accessibility/accessibility-startup", true);
-loader.lazyRequireGetter(this, "CommandUtils", "devtools/client/shared/developer-toolbar", true);
-loader.lazyRequireGetter(this, "CommandState", "devtools/shared/gcli/command-state", true);
 loader.lazyRequireGetter(this, "ResponsiveUIManager", "devtools/client/responsive.html/manager", true);
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
+loader.lazyRequireGetter(this, "getScreenshotFront", "resource://devtools/shared/fronts/screenshot", true);
 
 const {MultiLocalizationHelper} = require("devtools/shared/l10n");
 const L10N = new MultiLocalizationHelper(
@@ -70,7 +69,7 @@ Tools.inspector = {
   accesskey: l10n("inspector.accesskey"),
   ordinal: 1,
   icon: "chrome://devtools/skin/images/tool-inspector.svg",
-  url: "chrome://devtools/content/inspector/inspector.xhtml",
+  url: "chrome://devtools/content/inspector/index.xhtml",
   label: l10n("inspector.label"),
   panelLabel: l10n("inspector.panelLabel"),
   get tooltip() {
@@ -83,10 +82,6 @@ Tools.inspector = {
     return l10n("inspector.tooltip2", "Ctrl+Shift+") + l10n("inspector.commandkey");
   },
   inMenu: true,
-  commands: [
-    "devtools/client/responsive.html/commands",
-    "devtools/client/inspector/inspector-commands"
-  ],
 
   preventClosingOnKey: true,
   onkey: function(panel, toolbox) {
@@ -105,15 +100,7 @@ Tools.webConsole = {
   id: "webconsole",
   accesskey: l10n("webConsoleCmd.accesskey"),
   ordinal: 2,
-  url: "chrome://devtools/content/webconsole/webconsole.html",
-  get browserConsoleUsesHTML() {
-    return Services.prefs.getBoolPref("devtools.browserconsole.html");
-  },
-  get browserConsoleURL() {
-    return this.browserConsoleUsesHTML ?
-      "chrome://devtools/content/webconsole/webconsole.html" :
-      "chrome://devtools/content/webconsole/browserconsole.xul";
-  },
+  url: "chrome://devtools/content/webconsole/index.html",
   icon: "chrome://devtools/skin/images/tool-webconsole.svg",
   label: l10n("ToolboxTabWebconsole.label"),
   menuLabel: l10n("MenuWebconsole.label"),
@@ -124,7 +111,6 @@ Tools.webConsole = {
     l10n("webconsole.commandkey"));
   },
   inMenu: true,
-  commands: "devtools/client/webconsole/console-commands",
 
   preventClosingOnKey: true,
   onkey: function(panel, toolbox) {
@@ -149,7 +135,7 @@ Tools.jsdebugger = {
   accesskey: l10n("debuggerMenu.accesskey"),
   ordinal: 3,
   icon: "chrome://devtools/skin/images/tool-debugger.svg",
-  url: "chrome://devtools/content/debugger/debugger.xul",
+  url: "chrome://devtools/content/debugger/index.xul",
   label: l10n("ToolboxDebugger.label"),
   panelLabel: l10n("ToolboxDebugger.panelLabel"),
   get tooltip() {
@@ -158,8 +144,6 @@ Tools.jsdebugger = {
     l10n("debugger.commandkey"));
   },
   inMenu: true,
-  commands: "devtools/client/debugger/debugger-commands",
-
   isTargetSupported: function() {
     return true;
   },
@@ -176,7 +160,7 @@ function switchDebugger() {
       return new NewDebuggerPanel(iframeWindow, toolbox);
     };
   } else {
-    Tools.jsdebugger.url = "chrome://devtools/content/debugger/debugger.xul";
+    Tools.jsdebugger.url = "chrome://devtools/content/debugger/index.xul";
     Tools.jsdebugger.build = function(iframeWindow, toolbox) {
       return new DebuggerPanel(iframeWindow, toolbox);
     };
@@ -195,7 +179,7 @@ Tools.styleEditor = {
   visibilityswitch: "devtools.styleeditor.enabled",
   accesskey: l10n("open.accesskey"),
   icon: "chrome://devtools/skin/images/tool-styleeditor.svg",
-  url: "chrome://devtools/content/styleeditor/styleeditor.xul",
+  url: "chrome://devtools/content/styleeditor/index.xul",
   label: l10n("ToolboxStyleEditor.label"),
   panelLabel: l10n("ToolboxStyleEditor.panelLabel"),
   get tooltip() {
@@ -203,8 +187,6 @@ Tools.styleEditor = {
     "Shift+" + functionkey(l10n("styleeditor.commandkey")));
   },
   inMenu: true,
-  commands: "devtools/client/styleeditor/styleeditor-commands",
-
   isTargetSupported: function(target) {
     return target.hasActor("styleSheets");
   },
@@ -219,7 +201,7 @@ Tools.shaderEditor = {
   ordinal: 5,
   visibilityswitch: "devtools.shadereditor.enabled",
   icon: "chrome://devtools/skin/images/tool-shadereditor.svg",
-  url: "chrome://devtools/content/shadereditor/shadereditor.xul",
+  url: "chrome://devtools/content/shadereditor/index.xul",
   label: l10n("ToolboxShaderEditor.label"),
   panelLabel: l10n("ToolboxShaderEditor.panelLabel"),
   tooltip: l10n("ToolboxShaderEditor.tooltip"),
@@ -229,7 +211,13 @@ Tools.shaderEditor = {
   },
 
   build: function(iframeWindow, toolbox) {
-    return new ShaderEditorPanel(iframeWindow, toolbox);
+    const { BrowserLoader } = Cu.import("resource://devtools/client/shared/browser-loader.js", {});
+    const browserRequire = BrowserLoader({
+      baseURI: "resource://devtools/client/shadereditor/",
+      window: iframeWindow
+    }).require;
+    const { ShaderEditorPanel } = browserRequire("devtools/client/shadereditor/panel");
+    return new ShaderEditorPanel(toolbox);
   }
 };
 
@@ -238,7 +226,7 @@ Tools.canvasDebugger = {
   ordinal: 6,
   visibilityswitch: "devtools.canvasdebugger.enabled",
   icon: "chrome://devtools/skin/images/tool-canvas.svg",
-  url: "chrome://devtools/content/canvasdebugger/canvasdebugger.xul",
+  url: "chrome://devtools/content/canvasdebugger/index.xul",
   label: l10n("ToolboxCanvasDebugger.label"),
   panelLabel: l10n("ToolboxCanvasDebugger.panelLabel"),
   tooltip: l10n("ToolboxCanvasDebugger.tooltip"),
@@ -271,7 +259,7 @@ Tools.performance = {
 
 function switchPerformancePanel() {
   if (Services.prefs.getBoolPref("devtools.performance.new-panel-enabled", false)) {
-    Tools.performance.url = "chrome://devtools/content/performance-new/perf.xhtml";
+    Tools.performance.url = "chrome://devtools/content/performance-new/index.xhtml";
     Tools.performance.build = function(frame, target) {
       return new NewPerformancePanel(frame, target);
     };
@@ -282,7 +270,7 @@ function switchPerformancePanel() {
       return true;
     };
   } else {
-    Tools.performance.url = "chrome://devtools/content/performance/performance.xul";
+    Tools.performance.url = "chrome://devtools/content/performance/index.xul";
     Tools.performance.build = function(frame, target) {
       return new PerformancePanel(frame, target);
     };
@@ -302,7 +290,7 @@ Tools.memory = {
   id: "memory",
   ordinal: 8,
   icon: "chrome://devtools/skin/images/tool-memory.svg",
-  url: "chrome://devtools/content/memory/memory.xhtml",
+  url: "chrome://devtools/content/memory/index.xhtml",
   visibilityswitch: "devtools.memory.enabled",
   label: l10n("memory.label"),
   panelLabel: l10n("memory.panelLabel"),
@@ -348,7 +336,7 @@ Tools.storage = {
   accesskey: l10n("storage.accesskey"),
   visibilityswitch: "devtools.storage.enabled",
   icon: "chrome://devtools/skin/images/tool-storage.svg",
-  url: "chrome://devtools/content/storage/storage.xul",
+  url: "chrome://devtools/content/storage/index.xul",
   label: l10n("storage.label"),
   menuLabel: l10n("storage.menuLabel"),
   panelLabel: l10n("storage.panelLabel"),
@@ -373,7 +361,7 @@ Tools.webAudioEditor = {
   ordinal: 11,
   visibilityswitch: "devtools.webaudioeditor.enabled",
   icon: "chrome://devtools/skin/images/tool-webaudio.svg",
-  url: "chrome://devtools/content/webaudioeditor/webaudioeditor.xul",
+  url: "chrome://devtools/content/webaudioeditor/index.xul",
   label: l10n("ToolboxWebAudioEditor1.label"),
   panelLabel: l10n("ToolboxWebAudioEditor1.panelLabel"),
   tooltip: l10n("ToolboxWebAudioEditor1.tooltip"),
@@ -392,17 +380,14 @@ Tools.scratchpad = {
   ordinal: 12,
   visibilityswitch: "devtools.scratchpad.enabled",
   icon: "chrome://devtools/skin/images/tool-scratchpad.svg",
-  url: "chrome://devtools/content/scratchpad/scratchpad.xul",
+  url: "chrome://devtools/content/scratchpad/index.xul",
   label: l10n("scratchpad.label"),
   panelLabel: l10n("scratchpad.panelLabel"),
   tooltip: l10n("scratchpad.tooltip"),
   inMenu: false,
-  commands: "devtools/client/scratchpad/scratchpad-commands",
-
   isTargetSupported: function(target) {
     return target.hasActor("console");
   },
-
   build: function(iframeWindow, toolbox) {
     return new ScratchpadPanel(iframeWindow, toolbox);
   }
@@ -414,7 +399,7 @@ Tools.dom = {
   ordinal: 13,
   visibilityswitch: "devtools.dom.enabled",
   icon: "chrome://devtools/skin/images/tool-dom.svg",
-  url: "chrome://devtools/content/dom/dom.html",
+  url: "chrome://devtools/content/dom/index.html",
   label: l10n("dom.label"),
   panelLabel: l10n("dom.panelLabel"),
   get tooltip() {
@@ -440,7 +425,7 @@ Tools.accessibility = {
   modifiers: osString == "Darwin" ? "accel,alt" : "accel,shift",
   visibilityswitch: "devtools.accessibility.enabled",
   icon: "chrome://devtools/skin/images/tool-accessibility.svg",
-  url: "chrome://devtools/content/accessibility/accessibility.html",
+  url: "chrome://devtools/content/accessibility/index.html",
   label: l10n("accessibility.label"),
   panelLabel: l10n("accessibility.panelLabel"),
   get tooltip() {
@@ -459,6 +444,15 @@ Tools.accessibility = {
 
   buildToolStartup(toolbox) {
     return new AccessibilityStartup(toolbox);
+  },
+
+  // @remove after release 63 (See Bug 1482461)
+  get badge() {
+    if (Services.prefs.getIntPref("devtools.promote.accessibility") > 0) {
+      return l10n("toolbox.tab.newBadge");
+    }
+
+    return null;
   }
 };
 
@@ -533,16 +527,10 @@ exports.ToolboxButtons = [
     description: l10n("toolbox.buttons.paintflashing"),
     isTargetSupported: target => target.isLocalTab,
     onClick(event, toolbox) {
-      CommandUtils.executeOnTarget(toolbox.target, "paintflashing toggle");
+      toolbox.togglePaintFlashing();
     },
     isChecked(toolbox) {
-      return CommandState.isEnabledForTarget(toolbox.target, "paintflashing");
-    },
-    setup(toolbox, onChange) {
-      CommandState.on("changed", onChange);
-    },
-    teardown(toolbox, onChange) {
-      CommandState.off("changed", onChange);
+      return toolbox.isPaintFlashing;
     }
   },
   { id: "command-button-scratchpad",
@@ -579,51 +567,45 @@ exports.ToolboxButtons = [
   },
   { id: "command-button-screenshot",
     description: l10n("toolbox.buttons.screenshot"),
-    isTargetSupported: target => target.isLocalTab,
-    onClick(event, toolbox) {
+    isTargetSupported: target => !target.chrome && target.hasActor("screenshot"),
+    async onClick(event, toolbox) {
       // Special case for screenshot button to check for clipboard preference
       const clipboardEnabled = Services.prefs
         .getBoolPref("devtools.screenshot.clipboard.enabled");
-      let args = "--fullpage --file";
+      const args = { fullpage: true, file: true };
       if (clipboardEnabled) {
-        args += " --clipboard";
+        args.clipboard = true;
       }
-      CommandUtils.executeOnTarget(toolbox.target, "screenshot " + args);
+      const screenshotFront = getScreenshotFront(toolbox.target);
+      await screenshotFront.captureAndSave(toolbox.win, args);
     }
   },
-  { id: "command-button-rulers",
-    description: l10n("toolbox.buttons.rulers"),
-    isTargetSupported: target => target.isLocalTab,
-    onClick(event, toolbox) {
-      CommandUtils.executeOnTarget(toolbox.target, "rulers");
-    },
-    isChecked(toolbox) {
-      return CommandState.isEnabledForTarget(toolbox.target, "rulers");
-    },
-    setup(toolbox, onChange) {
-      CommandState.on("changed", onChange);
-    },
-    teardown(toolbox, onChange) {
-      CommandState.off("changed", onChange);
-    }
-  },
-  { id: "command-button-measure",
-    description: l10n("toolbox.buttons.measure"),
-    isTargetSupported: target => target.isLocalTab,
-    onClick(event, toolbox) {
-      CommandUtils.executeOnTarget(toolbox.target, "measure");
-    },
-    isChecked(toolbox) {
-      return CommandState.isEnabledForTarget(toolbox.target, "measure");
-    },
-    setup(toolbox, onChange) {
-      CommandState.on("changed", onChange);
-    },
-    teardown(toolbox, onChange) {
-      CommandState.off("changed", onChange);
-    }
-  },
+  createHighlightButton("RulersHighlighter", "rulers"),
+  createHighlightButton("MeasuringToolHighlighter", "measure"),
 ];
+
+function createHighlightButton(highlighterName, id) {
+  return {
+    id: `command-button-${id}`,
+    description: l10n(`toolbox.buttons.${id}`),
+    isTargetSupported: target => !target.chrome,
+    async onClick(event, toolbox) {
+      const highlighter =
+        await toolbox.highlighterUtils.getOrCreateHighlighterByType(highlighterName);
+      if (highlighter.isShown()) {
+        return highlighter.hide();
+      }
+      // Starting with FF63, higlighter's spec accept a null first argument.
+      // Still pass an empty object to fake a domnode front in order to support old
+      // servers.
+      return highlighter.show({});
+    },
+    isChecked(toolbox) {
+      const highlighter = toolbox.highlighterUtils.getKnownHighlighter(highlighterName);
+      return highlighter && highlighter.isShown();
+    }
+  };
+}
 
 /**
  * Lookup l10n string from a string bundle.

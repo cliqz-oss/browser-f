@@ -14,13 +14,13 @@
 #include "ds/InlineTable.h"
 #include "frontend/BCEParserHandle.h"
 #include "frontend/EitherParser.h"
+#include "frontend/JumpList.h"
+#include "frontend/NameFunctions.h"
 #include "frontend/SharedContext.h"
 #include "frontend/SourceNotes.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
-#include "vm/JSContext.h"
-#include "vm/JSScript.h"
 
 namespace js {
 namespace frontend {
@@ -108,61 +108,6 @@ struct CGYieldAndAwaitOffsetList {
 typedef Vector<jsbytecode, 64> BytecodeVector;
 typedef Vector<jssrcnote, 64> SrcNotesVector;
 
-// Linked list of jump instructions that need to be patched. The linked list is
-// stored in the bytes of the incomplete bytecode that will be patched, so no
-// extra memory is needed, and patching the instructions destroys the list.
-//
-// Example:
-//
-//     JumpList brList;
-//     if (!emitJump(JSOP_IFEQ, &brList))
-//         return false;
-//     ...
-//     JumpTarget label;
-//     if (!emitJumpTarget(&label))
-//         return false;
-//     ...
-//     if (!emitJump(JSOP_GOTO, &brList))
-//         return false;
-//     ...
-//     patchJumpsToTarget(brList, label);
-//
-//                 +-> -1
-//                 |
-//                 |
-//    ifeq ..   <+ +                +-+   ifeq ..
-//    ..         |                  |     ..
-//  label:       |                  +-> label:
-//    jumptarget |                  |     jumptarget
-//    ..         |                  |     ..
-//    goto .. <+ +                  +-+   goto .. <+
-//             |                                   |
-//             |                                   |
-//             +                                   +
-//           brList                              brList
-//
-//       |                                  ^
-//       +------- patchJumpsToTarget -------+
-//
-
-// Offset of a jump target instruction, used for patching jump instructions.
-struct JumpTarget {
-    ptrdiff_t offset;
-};
-
-struct JumpList {
-    // -1 is used to mark the end of jump lists.
-    JumpList() : offset(-1) {}
-    ptrdiff_t offset;
-
-    // Add a jump instruction to the list.
-    void push(jsbytecode* code, ptrdiff_t jumpOffset);
-
-    // Patch all jump instructions in this list to jump to `target`.  This
-    // clobbers the list.
-    void patchAll(jsbytecode* code, JumpTarget target);
-};
-
 // Used to control whether JSOP_CALL_IGNORES_RV is emitted for function calls.
 enum class ValueUsage {
     // Assume the value of the current expression may be used. This is always
@@ -175,12 +120,12 @@ enum class ValueUsage {
     IgnoreValue
 };
 
+class EmitterScope;
+class NestableControl;
+class TDZCheckCache;
+
 struct MOZ_STACK_CLASS BytecodeEmitter
 {
-    class TDZCheckCache;
-    class NestableControl;
-    class EmitterScope;
-
     SharedContext* const sc;      /* context shared between parsing and bytecode generation */
 
     JSContext* const cx;
@@ -472,7 +417,11 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     }
 
     void reportError(ParseNode* pn, unsigned errorNumber, ...);
+    void reportError(const mozilla::Maybe<uint32_t>& maybeOffset,
+                     unsigned errorNumber, ...);
     bool reportExtraWarning(ParseNode* pn, unsigned errorNumber, ...);
+    bool reportExtraWarning(const mozilla::Maybe<uint32_t>& maybeOffset,
+                            unsigned errorNumber, ...);
 
     // If pn contains a useful expression, return true with *answer set to true.
     // If pn contains a useless expression, return true with *answer set to
@@ -527,7 +476,11 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitScript(ParseNode* body);
 
     // Emit function code for the tree rooted at body.
-    MOZ_MUST_USE bool emitFunctionScript(ParseNode* body);
+    enum class TopLevelFunction {
+        No,
+        Yes
+    };
+    MOZ_MUST_USE bool emitFunctionScript(ParseNode* fn, TopLevelFunction isTopLevel);
 
     // If op is JOF_TYPESET (see the type barriers comment in TypeInference.h),
     // reserve a type set to store its result.
@@ -594,11 +547,12 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     void patchJumpsToTarget(JumpList jump, JumpTarget target);
     MOZ_MUST_USE bool emitJumpTargetAndPatch(JumpList jump);
 
+    MOZ_MUST_USE bool emitCall(JSOp op, uint16_t argc,
+                               const mozilla::Maybe<uint32_t>& sourceCoordOffset);
     MOZ_MUST_USE bool emitCall(JSOp op, uint16_t argc, ParseNode* pn = nullptr);
     MOZ_MUST_USE bool emitCallIncDec(ParseNode* incDec);
 
-    MOZ_MUST_USE bool emitLoopHead(ParseNode* nextpn, JumpTarget* top);
-    MOZ_MUST_USE bool emitLoopEntry(ParseNode* nextpn, JumpList entryJump);
+    mozilla::Maybe<uint32_t> getOffsetForLoop(ParseNode* nextpn);
 
     MOZ_MUST_USE bool emitGoto(NestableControl* target, JumpList* jumplist,
                                SrcNoteType noteType = SRC_NULL);
@@ -683,7 +637,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitSingleDeclaration(ParseNode* decls, ParseNode* decl,
                                             ParseNode* initializer);
 
-    MOZ_MUST_USE bool emitNewInit(JSProtoKey key);
+    MOZ_MUST_USE bool emitNewInit();
     MOZ_MUST_USE bool emitSingletonInitialiser(ParseNode* pn);
 
     MOZ_MUST_USE bool emitPrepareIteratorResult();
@@ -718,7 +672,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     // Emit bytecode to put operands for a JSOP_GETELEM/CALLELEM/SETELEM/DELELEM
     // opcode onto the stack in the right order. In the case of SETELEM, the
     // value to be assigned must already be pushed.
-    enum class EmitElemOption { Get, Set, Call, IncDec, CompoundAssign, Ref };
+    enum class EmitElemOption { Get, Call, IncDec, CompoundAssign, Ref };
     MOZ_MUST_USE bool emitElemOperands(ParseNode* pn, EmitElemOption opts);
 
     MOZ_MUST_USE bool emitElemOpBase(JSOp op);
@@ -733,7 +687,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_NEVER_INLINE MOZ_MUST_USE bool emitLexicalScope(ParseNode* pn);
     MOZ_MUST_USE bool emitLexicalScopeBody(ParseNode* body,
                                            EmitLineNumberNote emitLineNote = EMIT_LINENOTE);
-    MOZ_NEVER_INLINE MOZ_MUST_USE bool emitSwitch(ParseNode* pn);
+    MOZ_NEVER_INLINE MOZ_MUST_USE bool emitSwitch(SwitchStatement* pn);
     MOZ_NEVER_INLINE MOZ_MUST_USE bool emitTry(ParseNode* pn);
 
     enum DestructuringFlavor {
@@ -792,7 +746,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     // Pops iterator from the top of the stack. Pushes the result of |.next()|
     // onto the stack.
-    MOZ_MUST_USE bool emitIteratorNext(ParseNode* pn, IteratorKind kind = IteratorKind::Sync,
+    MOZ_MUST_USE bool emitIteratorNext(const mozilla::Maybe<uint32_t>& callSourceCoordOffset,
+                                       IteratorKind kind = IteratorKind::Sync,
                                        bool allowSelfHosted = false);
     MOZ_MUST_USE bool emitIteratorCloseInScope(EmitterScope& currentScope,
                                                IteratorKind iterKind = IteratorKind::Sync,
@@ -851,6 +806,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     bool isRestParameter(ParseNode* pn);
 
+    MOZ_MUST_USE bool emitArguments(ParseNode* pn, bool callop, bool spread);
     MOZ_MUST_USE bool emitCallOrNew(ParseNode* pn, ValueUsage valueUsage = ValueUsage::WantValue);
     MOZ_MUST_USE bool emitSelfHostedCallFunction(ParseNode* pn);
     MOZ_MUST_USE bool emitSelfHostedResumeGenerator(ParseNode* pn);
@@ -863,10 +819,11 @@ struct MOZ_STACK_CLASS BytecodeEmitter
     MOZ_MUST_USE bool emitDo(ParseNode* pn);
     MOZ_MUST_USE bool emitWhile(ParseNode* pn);
 
-    MOZ_MUST_USE bool emitFor(ParseNode* pn, EmitterScope* headLexicalEmitterScope = nullptr);
-    MOZ_MUST_USE bool emitCStyleFor(ParseNode* pn, EmitterScope* headLexicalEmitterScope);
-    MOZ_MUST_USE bool emitForIn(ParseNode* pn, EmitterScope* headLexicalEmitterScope);
-    MOZ_MUST_USE bool emitForOf(ParseNode* pn, EmitterScope* headLexicalEmitterScope);
+    MOZ_MUST_USE bool emitFor(ParseNode* pn,
+                              const EmitterScope* headLexicalEmitterScope = nullptr);
+    MOZ_MUST_USE bool emitCStyleFor(ParseNode* pn, const EmitterScope* headLexicalEmitterScope);
+    MOZ_MUST_USE bool emitForIn(ParseNode* pn, const EmitterScope* headLexicalEmitterScope);
+    MOZ_MUST_USE bool emitForOf(ParseNode* pn, const EmitterScope* headLexicalEmitterScope);
 
     MOZ_MUST_USE bool emitInitializeForInOrOfTarget(ParseNode* forHead);
 
@@ -891,10 +848,10 @@ struct MOZ_STACK_CLASS BytecodeEmitter
 
     MOZ_MUST_USE bool emitClass(ParseNode* pn);
     MOZ_MUST_USE bool emitSuperPropLHS(ParseNode* superBase, bool isCall = false);
-    MOZ_MUST_USE bool emitSuperPropOp(ParseNode* pn, JSOp op, bool isCall = false);
+    MOZ_MUST_USE bool emitSuperGetProp(ParseNode* pn, bool isCall = false);
     MOZ_MUST_USE bool emitSuperElemOperands(ParseNode* pn,
                                             EmitElemOption opts = EmitElemOption::Get);
-    MOZ_MUST_USE bool emitSuperElemOp(ParseNode* pn, JSOp op, bool isCall = false);
+    MOZ_MUST_USE bool emitSuperGetElem(ParseNode* pn, bool isCall = false);
 
     MOZ_MUST_USE bool emitCallee(ParseNode* callee, ParseNode* call, bool* callop);
 

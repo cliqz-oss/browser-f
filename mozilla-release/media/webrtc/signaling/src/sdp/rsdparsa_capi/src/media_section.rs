@@ -134,7 +134,7 @@ pub unsafe extern "C" fn sdp_get_media_bandwidth_vec(sdp_media: *const SdpMedia)
 
 #[no_mangle]
 pub unsafe extern "C" fn sdp_media_has_connection(sdp_media: *const SdpMedia) -> bool {
-    (*sdp_media).has_connection()
+    (*sdp_media).get_connection().is_some()
 }
 
 #[no_mangle]
@@ -176,5 +176,21 @@ pub unsafe extern "C" fn sdp_media_add_codec(sdp_media: *mut SdpMedia, pt: u8,
     match (*sdp_media).add_codec(rtpmap) {
         Ok(_) => NS_OK,
         Err(_) => NS_ERROR_INVALID_ARG,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn sdp_media_add_datachannel(sdp_media: *mut SdpMedia, name: StringView,
+                                                    port: u16, streams: u16, message_size: u32)
+                                                    -> nsresult {
+    let name_str = match name.into() {
+        Ok(x) => x,
+        Err(_) => {
+            return NS_ERROR_INVALID_ARG;
+        }
+    };
+    match (*sdp_media).add_datachannel(name_str, port, streams, message_size){
+        Ok(_) => NS_OK,
+        Err(_) => NS_ERROR_INVALID_ARG
     }
 }

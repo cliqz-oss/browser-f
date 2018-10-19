@@ -21,15 +21,21 @@ const {
 } = require("devtools/client/webconsole/selectors/history");
 
 add_task(async function() {
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
+});
+
+async function performTests() {
   const {
     jsterm,
     ui,
   } = await openNewTabAndConsole(TEST_URI);
 
-  const {
-    autocompletePopup: popup,
-    completeNode,
-  } = jsterm;
+  const { autocompletePopup: popup } = jsterm;
 
   const onPopUpOpen = popup.once("popup-opened");
 
@@ -45,15 +51,18 @@ add_task(async function() {
 
   info("press Return and wait for popup to hide");
   const onPopUpClose = popup.once("popup-closed");
-  executeSoon(() => EventUtils.synthesizeKey("KEY_Enter"));
+  EventUtils.synthesizeKey("KEY_Enter");
   await onPopUpClose;
 
   ok(!popup.isOpen, "popup is not open after KEY_Enter");
-  is(jsterm.getInputValue(), "", "inputNode is empty after KEY_Enter");
-  is(completeNode.value, "", "completeNode is empty");
+  is(jsterm.getInputValue(), "window.testBugA",
+    "input was completed with the first item of the popup");
+  ok(!getJsTermCompletionValue(jsterm), "completeNode is empty");
+
+  EventUtils.synthesizeKey("KEY_Enter");
+  is(jsterm.getInputValue(), "", "input is empty after KEY_Enter");
 
   const state = ui.consoleOutput.getStore().getState();
   const entries = getHistoryEntries(state);
-  is(entries[entries.length - 1], "window.testBug",
-     "jsterm history is correct");
-});
+  is(entries[entries.length - 1], "window.testBugA", "jsterm history is correct");
+}

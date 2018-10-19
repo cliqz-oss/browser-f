@@ -14,7 +14,6 @@ var EXPORTED_SYMBOLS = [
 ];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AppConstants",
   "resource://gre/modules/AppConstants.jsm");
@@ -452,9 +451,6 @@ var PageActions = {
  *        some reason.  You can also pass an object that maps pixel sizes to
  *        URLs, like { 16: url16, 32: url32 }.  The best size for the user's
  *        screen will be used.
- * @param nodeAttributes (object, optional)
- *        An object of name-value pairs.  Each pair will be added as an
- *        attribute to DOM nodes created for this action.
  * @param onBeforePlacedInWindow (function, optional)
  *        Called before the action is placed in the window:
  *        onBeforePlacedInWindow(window)
@@ -536,7 +532,6 @@ function Action(options) {
     extensionID: false,
     iconURL: false,
     labelForHistogram: false,
-    nodeAttributes: false,
     onBeforePlacedInWindow: false,
     onCommand: false,
     onIframeHiding: false,
@@ -620,14 +615,6 @@ Action.prototype = {
    */
   get id() {
     return this._id;
-  },
-
-  /**
-   * Attribute name => value mapping to set on nodes created for this action
-   * (object)
-   */
-  get nodeAttributes() {
-    return this._nodeAttributes;
   },
 
   /**
@@ -1082,9 +1069,6 @@ var gBuiltInActions = [
     // BookmarkingUI.updateBookmarkPageMenuItem().
     title: "",
     pinnedToUrlbar: true,
-    nodeAttributes: {
-      observes: "bookmarkThisPageBroadcaster",
-    },
     onShowingInPanel(buttonNode) {
       browserPageActions(buttonNode).bookmark.onShowingInPanel(buttonNode);
     },
@@ -1103,8 +1087,9 @@ var gBuiltInActions = [
   {
     id: "copyURL",
     title: "copyURL-title",
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).copyURL.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).copyURL
+        .onBeforePlacedInWindow(browserWindow);
     },
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).copyURL.onCommand(event, buttonNode);
@@ -1115,8 +1100,9 @@ var gBuiltInActions = [
   {
     id: "emailLink",
     title: "emailLink-title",
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).emailLink.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).emailLink
+        .onBeforePlacedInWindow(browserWindow);
     },
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).emailLink.onCommand(event, buttonNode);
@@ -1151,8 +1137,9 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   {
     id: "sendToDevice",
     title: "sendToDevice-title",
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).sendToDevice.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).sendToDevice
+        .onBeforePlacedInWindow(browserWindow);
     },
     onLocationChange(browserWindow) {
       browserPageActions(browserWindow).sendToDevice.onLocationChange();
@@ -1179,8 +1166,9 @@ if (AppConstants.platform == "macosx") {
     onShowingInPanel(buttonNode) {
       browserPageActions(buttonNode).shareURL.onShowingInPanel(buttonNode);
     },
-    onPlacedInPanel(buttonNode) {
-      browserPageActions(buttonNode).shareURL.onPlacedInPanel(buttonNode);
+    onBeforePlacedInWindow(browserWindow) {
+      browserPageActions(browserWindow).shareURL
+        .onBeforePlacedInWindow(browserWindow);
     },
     wantsSubview: true,
     onSubviewShowing(panelViewNode) {
@@ -1219,10 +1207,7 @@ function* allBrowserWindows(browserWindow = null) {
     yield browserWindow;
     return;
   }
-  let windows = Services.wm.getEnumerator("navigator:browser");
-  while (windows.hasMoreElements()) {
-    yield windows.getNext();
-  }
+  yield* Services.wm.getEnumerator("navigator:browser");
 }
 
 /**

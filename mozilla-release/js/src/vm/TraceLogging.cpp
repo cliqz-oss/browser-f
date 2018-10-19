@@ -163,21 +163,24 @@ TraceLoggerThread::initGraph()
         return;
 
     MOZ_ASSERT(traceLoggerState);
+    bool graphFile = traceLoggerState->IsGraphFileEnabled();
     uint64_t start = rdtsc() - traceLoggerState->startupTime;
-    if (!graph->init(start)) {
+    if (!graph->init(start, graphFile)) {
         graph = nullptr;
         return;
     }
 
-    // Report the textIds to the graph.
-    for (uint32_t i = 0; i < TraceLogger_LastTreeItem; i++) {
-        TraceLoggerTextId id = TraceLoggerTextId(i);
-        graph->addTextId(i, TLTextIdString(id));
-    }
-    graph->addTextId(TraceLogger_LastTreeItem, "TraceLogger internal");
-    for (uint32_t i = TraceLogger_LastTreeItem + 1; i < TraceLogger_Last; i++) {
-        TraceLoggerTextId id = TraceLoggerTextId(i);
-        graph->addTextId(i, TLTextIdString(id));
+    if (graphFile) {
+        // Report the textIds to the graph.
+        for (uint32_t i = 0; i < TraceLogger_TreeItemEnd; i++) {
+            TraceLoggerTextId id = TraceLoggerTextId(i);
+            graph->addTextId(i, TLTextIdString(id));
+        }
+        graph->addTextId(TraceLogger_TreeItemEnd, "TraceLogger internal");
+        for (uint32_t i = TraceLogger_TreeItemEnd + 1; i < TraceLogger_Last; i++) {
+            TraceLoggerTextId id = TraceLoggerTextId(i);
+            graph->addTextId(i, TLTextIdString(id));
+        }
     }
 }
 
@@ -355,12 +358,10 @@ TraceLoggerThreadState::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
     // Do not count threadLoggers since they are counted by JSContext::traceLogger.
 
     size_t size = 0;
-    size += pointerMap.sizeOfExcludingThis(mallocSizeOf);
-    if (textIdPayloads.initialized()) {
-        size += textIdPayloads.sizeOfExcludingThis(mallocSizeOf);
-        for (TextIdHashMap::Range r = textIdPayloads.all(); !r.empty(); r.popFront())
-            r.front().value()->sizeOfIncludingThis(mallocSizeOf);
-    }
+    size += pointerMap.shallowSizeOfExcludingThis(mallocSizeOf);
+    size += textIdPayloads.shallowSizeOfExcludingThis(mallocSizeOf);
+    for (TextIdHashMap::Range r = textIdPayloads.all(); !r.empty(); r.popFront())
+        r.front().value()->sizeOfIncludingThis(mallocSizeOf);
     return size;
 }
 
@@ -564,7 +565,7 @@ TraceLoggerThread::startEvent(uint32_t id)
     }
 #endif
 
-    if (graph.get()) {
+    if (graph.get() && traceLoggerState->IsGraphFileEnabled()) {
         for (uint32_t otherId = graph->nextTextId(); otherId <= id; otherId++)
             graph->addTextId(otherId, maybeEventText(id));
     }
@@ -629,7 +630,7 @@ TraceLoggerThread::logTimestamp(TraceLoggerTextId id)
 void
 TraceLoggerThread::logTimestamp(uint32_t id)
 {
-    MOZ_ASSERT(id > TraceLogger_LastTreeItem && id < TraceLogger_Last);
+    MOZ_ASSERT(id > TraceLogger_TreeItemEnd && id < TraceLogger_Last);
     log(id);
 }
 
@@ -655,6 +656,13 @@ TraceLoggerThread::log(uint32_t id)
         if (!events.ensureSpaceBeforeAdd(3)) {
             if (graph.get())
                 graph->log(events);
+
+            // The data structures are full, and the graph file is not enabled
+            // so we cannot flush to disk.  Trace logging should stop here.
+            if (!traceLoggerState->IsGraphFileEnabled()) {
+                enabled_ = 0;
+                return;
+            }
 
             iteration_++;
             events.clear();
@@ -692,10 +700,8 @@ TraceLoggerThreadState::~TraceLoggerThreadState()
 
     threadLoggers.clear();
 
-    if (textIdPayloads.initialized()) {
-        for (TextIdHashMap::Range r = textIdPayloads.all(); !r.empty(); r.popFront())
-            js_delete(r.front().value());
-    }
+    for (TextIdHashMap::Range r = textIdPayloads.all(); !r.empty(); r.popFront())
+        js_delete(r.front().value());
 
 #ifdef DEBUG
     initialized = false;
@@ -857,7 +863,8 @@ TraceLoggerThreadState::init()
                 "\n"
                 "  EnableMainThread        Start logging main threads immediately.\n"
                 "  EnableOffThread         Start logging helper threads immediately.\n"
-                "  EnableGraph             Enable spewing the tracelogging graph to a file.\n"
+                "  EnableGraph             Enable the tracelogging graph.\n"
+                "  EnableGraphFile         Enable flushing tracelogger data to a file.\n"
                 "  Errors                  Report errors during tracing to stderr.\n"
             );
             printf("\n");
@@ -869,16 +876,13 @@ TraceLoggerThreadState::init()
             mainThreadEnabled = true;
         if (strstr(options, "EnableOffThread"))
             helperThreadEnabled = true;
+        if (strstr(options, "EnableGraphFile"))
+            graphFileEnabled = true;
         if (strstr(options, "EnableGraph"))
-            graphSpewingEnabled = true;
+            graphEnabled = true;
         if (strstr(options, "Errors"))
             spewErrors = true;
     }
-
-    if (!pointerMap.init())
-        return false;
-    if (!textIdPayloads.init())
-        return false;
 
     startupTime = rdtsc();
 
@@ -968,7 +972,7 @@ TraceLoggerThreadState::forCurrentThread(JSContext* maybecx)
         threadLoggers.insertFront(logger);
         cx->traceLogger = logger;
 
-        if (graphSpewingEnabled)
+        if (graphEnabled)
             logger->initGraph();
 
         if (CurrentHelperThread() ? helperThreadEnabled : mainThreadEnabled)

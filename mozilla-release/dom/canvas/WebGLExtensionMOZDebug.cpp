@@ -26,6 +26,11 @@ WebGLExtensionMOZDebug::GetParameter(JSContext* cx, GLenum pname,
                                      JS::MutableHandle<JS::Value> retval,
                                      ErrorResult& er) const
 {
+    if (mIsLost)
+        return;
+    const WebGLContext::FuncScope funcScope(*mContext, "MOZ_debug.getParameter");
+    MOZ_ASSERT(!mContext->IsContextLost());
+
     const auto& gl = mContext->gl;
 
     switch (pname) {
@@ -59,7 +64,7 @@ WebGLExtensionMOZDebug::GetParameter(JSContext* cx, GLenum pname,
             return;
         }
 
-    case dom::MOZ_debugBinding::WSI_INFO:
+    case dom::MOZ_debug_Binding::WSI_INFO:
         {
             nsCString info;
             gl->GetWSIInfo(&info);
@@ -67,12 +72,12 @@ WebGLExtensionMOZDebug::GetParameter(JSContext* cx, GLenum pname,
             return;
         }
 
-    case dom::MOZ_debugBinding::DOES_INDEX_VALIDATION:
+    case dom::MOZ_debug_Binding::DOES_INDEX_VALIDATION:
         retval.set(JS::BooleanValue(mContext->mNeedsIndexValidation));
         return;
 
     default:
-        mContext->ErrorInvalidEnumArg("MOZ_debug.getParameter", "pname", pname);
+        mContext->ErrorInvalidEnumInfo("pname", pname);
         retval.set(JS::NullValue());
         return;
     }

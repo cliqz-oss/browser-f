@@ -13,6 +13,8 @@
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
+#include "js/CompilationAndEvaluation.h"
+#include "js/SourceBufferHolder.h"
 #include "js/Utility.h"
 
 #include "mozilla/dom/ChromeUtils.h"
@@ -131,8 +133,9 @@ AsyncScriptCompiler::StartCompile(JSContext* aCx)
 {
     Rooted<JSObject*> global(aCx, mGlobalObject->GetGlobalJSObject());
 
+    JS::SourceBufferHolder srcBuf(std::move(mScriptText), mScriptLength);
     if (JS::CanCompileOffThread(aCx, mOptions, mScriptLength)) {
-        if (!JS::CompileOffThread(aCx, mOptions, mScriptText.get(), mScriptLength,
+        if (!JS::CompileOffThread(aCx, mOptions, srcBuf,
                                   OffThreadScriptLoaderCallback,
                                   static_cast<void*>(this))) {
             return false;
@@ -143,7 +146,7 @@ AsyncScriptCompiler::StartCompile(JSContext* aCx)
     }
 
     Rooted<JSScript*> script(aCx);
-    if (!JS::Compile(aCx, mOptions, mScriptText.get(), mScriptLength, &script)) {
+    if (!JS::Compile(aCx, mOptions, srcBuf, &script)) {
         return false;
     }
 
@@ -338,7 +341,7 @@ PrecompiledScript::HasReturnValue()
 JSObject*
 PrecompiledScript::WrapObject(JSContext* aCx, HandleObject aGivenProto)
 {
-    return PrecompiledScriptBinding::Wrap(aCx, this, aGivenProto);
+    return PrecompiledScript_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 bool

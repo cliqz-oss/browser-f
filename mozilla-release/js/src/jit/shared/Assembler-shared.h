@@ -104,6 +104,8 @@ struct Imm32
 
     explicit Imm32(int32_t value) : value(value)
     { }
+    explicit Imm32(FrameType type) : Imm32(int32_t(type))
+    { }
 
     static inline Imm32 ShiftOf(enum Scale s) {
         switch (s) {
@@ -322,8 +324,7 @@ struct Address
     { }
 #endif
 
-    Address() : base(RegisterOrSP(Registers::Invalid)), offset(0)
-    { }
+    Address() = delete;
 };
 
 #if JS_BITS_PER_WORD == 32
@@ -363,12 +364,7 @@ struct BaseIndex
     { }
 #endif
 
-    BaseIndex()
-      : base(RegisterOrSP(Registers::Invalid))
-      , index(Registers::Invalid)
-      , scale(TimesOne)
-      , offset(0)
-    {}
+    BaseIndex() = delete;
 };
 
 #if JS_BITS_PER_WORD == 32
@@ -445,17 +441,14 @@ struct BaseObjectSlotIndex : BaseValueIndex
 #endif
 };
 
-class Relocation {
-  public:
-    enum Kind {
-        // The target is immovable, so patching is only needed if the source
-        // buffer is relocated and the reference is relative.
-        HARDCODED,
+enum class RelocationKind {
+    // The target is immovable, so patching is only needed if the source
+    // buffer is relocated and the reference is relative.
+    HARDCODED,
 
-        // The target is the start of a JitCode buffer, which must be traced
-        // during garbage collection. Relocations and patching may be needed.
-        JITCODE
-    };
+    // The target is the start of a JitCode buffer, which must be traced
+    // during garbage collection. Relocations and patching may be needed.
+    JITCODE
 };
 
 class RepatchLabel
@@ -791,39 +784,29 @@ class MemoryAccessDesc
     uint32_t offset_;
     uint32_t align_;
     Scalar::Type type_;
-    unsigned numSimdElems_;
     jit::Synchronization sync_;
     wasm::BytecodeOffset trapOffset_;
 
   public:
     explicit MemoryAccessDesc(Scalar::Type type, uint32_t align, uint32_t offset,
-                              BytecodeOffset trapOffset, unsigned numSimdElems = 0,
+                              BytecodeOffset trapOffset,
                               const jit::Synchronization& sync = jit::Synchronization::None())
       : offset_(offset),
         align_(align),
         type_(type),
-        numSimdElems_(numSimdElems),
         sync_(sync),
         trapOffset_(trapOffset)
     {
-        MOZ_ASSERT(Scalar::isSimdType(type) == (numSimdElems > 0));
-        MOZ_ASSERT(numSimdElems <= jit::ScalarTypeToLength(type));
         MOZ_ASSERT(mozilla::IsPowerOfTwo(align));
     }
 
     uint32_t offset() const { return offset_; }
     uint32_t align() const { return align_; }
     Scalar::Type type() const { return type_; }
-    unsigned byteSize() const {
-        return Scalar::isSimdType(type())
-               ? Scalar::scalarByteSize(type()) * numSimdElems()
-               : Scalar::byteSize(type());
-    }
-    unsigned numSimdElems() const { MOZ_ASSERT(isSimd()); return numSimdElems_; }
+    unsigned byteSize() const { return Scalar::byteSize(type()); }
     const jit::Synchronization& sync() const { return sync_; }
     BytecodeOffset trapOffset() const { return trapOffset_; }
     bool isAtomic() const { return !sync_.isNone(); }
-    bool isSimd() const { return Scalar::isSimdType(type_); }
 
     void clearOffset() { offset_ = 0; }
     void setOffset(uint32_t offset) { offset_ = offset; }
@@ -902,10 +885,6 @@ class AssemblerShared
 
     bool embedsNurseryPointers() const {
         return embedsNurseryPointers_;
-    }
-
-    static bool canUseInSingleByteInstruction(Register reg) {
-        return true;
     }
 
     void addCodeLabel(CodeLabel label) {

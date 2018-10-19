@@ -397,18 +397,28 @@ DocAccessibleParent::RecvVirtualCursorChangeEvent(const uint64_t& aID,
                                                   const int32_t& aNewStartOffset,
                                                   const int32_t& aNewEndOffset,
                                                   const int16_t& aReason,
+                                                  const int16_t& aBoundaryType,
                                                   const bool& aFromUser)
 {
   ProxyAccessible* target = GetAccessible(aID);
   ProxyAccessible* oldPosition = GetAccessible(aOldPositionID);
   ProxyAccessible* newPosition = GetAccessible(aNewPositionID);
 
+  if (!target) {
+    NS_ERROR("no proxy for event!");
+    return IPC_OK();
+  }
+
 #if defined(ANDROID)
   ProxyVirtualCursorChangeEvent(target,
-                                newPosition, aOldStartOffset, aOldEndOffset,
-                                oldPosition, aNewStartOffset, aNewEndOffset,
-                                aReason, aFromUser);
+                                oldPosition, aOldStartOffset, aOldEndOffset,
+                                newPosition, aNewStartOffset, aNewEndOffset,
+                                aReason, aBoundaryType, aFromUser);
 #endif
+
+  if (!nsCoreUtils::AccEventObserversExist()) {
+    return IPC_OK();
+  }
 
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
   RefPtr<xpcAccVirtualCursorChangeEvent> event =
@@ -419,7 +429,42 @@ DocAccessibleParent::RecvVirtualCursorChangeEvent(const uint64_t& aID,
                                        aOldStartOffset, aOldEndOffset,
                                        GetXPCAccessible(newPosition),
                                        aNewStartOffset, aNewEndOffset,
-                                       aReason);
+                                       aBoundaryType, aReason);
+  nsCoreUtils::DispatchAccEvent(std::move(event));
+
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+DocAccessibleParent::RecvScrollingEvent(const uint64_t& aID,
+                                        const uint64_t& aType,
+                                        const uint32_t& aScrollX,
+                                        const uint32_t& aScrollY,
+                                        const uint32_t& aMaxScrollX,
+                                        const uint32_t& aMaxScrollY)
+{
+  ProxyAccessible* target = GetAccessible(aID);
+
+  if (!target) {
+    NS_ERROR("no proxy for event!");
+    return IPC_OK();
+  }
+
+#if defined(ANDROID)
+  ProxyScrollingEvent(target, aScrollX, aScrollY, aMaxScrollX, aMaxScrollY);
+#endif
+
+  if (!nsCoreUtils::AccEventObserversExist()) {
+    return IPC_OK();
+  }
+
+  xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(target);
+  xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
+  nsINode* node = nullptr;
+  bool fromUser = true; // XXX: Determine if this was from user input.
+  RefPtr<xpcAccScrollingEvent> event =
+    new xpcAccScrollingEvent(aType, xpcAcc, doc, node, fromUser, aScrollX,
+                             aScrollY, aMaxScrollX, aMaxScrollY);
   nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
@@ -715,7 +760,7 @@ DocAccessibleParent::SendParentCOMProxy()
   }
 
 #if defined(MOZ_CONTENT_SANDBOX)
-  mParentProxyStream = std::move(holder.GetPreservedStream());
+  mParentProxyStream = holder.GetPreservedStream();
 #endif // defined(MOZ_CONTENT_SANDBOX)
 }
 

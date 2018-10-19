@@ -21,6 +21,7 @@ using RequestHeaderTuples from "mozilla/net/PHttpChannelParams.h";
 using struct nsHttpAtom from "nsHttp.h";
 using class mozilla::net::nsHttpResponseHead from "nsHttpResponseHead.h";
 using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
+using Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED from "DocumentAnalyticsTrackerFastBlocked.h";
 
 namespace mozilla {
 namespace net {
@@ -42,6 +43,8 @@ struct LoadInfoArgs
   PrincipalInfo               triggeringPrincipalInfo;
   OptionalPrincipalInfo       principalToInheritInfo;
   OptionalPrincipalInfo       sandboxedLoadingPrincipalInfo;
+  OptionalPrincipalInfo       topLevelPrincipalInfo;
+  OptionalPrincipalInfo       topLevelStorageAreaPrincipalInfo;
   OptionalURIParams           resultPrincipalURI;
   uint32_t                    securityFlags;
   uint32_t                    contentPolicyType;
@@ -64,6 +67,7 @@ struct LoadInfoArgs
   bool                        initialSecurityCheckDone;
   bool                        isInThirdPartyContext;
   bool                        isDocshellReload;
+  bool                        sendCSPViolationEvents;
   OriginAttributes            originAttributes;
   RedirectHistoryEntryInfo[]  redirectChainIncludingInternalRedirects;
   RedirectHistoryEntryInfo[]  redirectChain;
@@ -103,6 +107,8 @@ struct LoadInfoArgs
   bool                        isPreflight;
   bool                        loadTriggeredFromExternal;
   bool                        serviceWorkerTaintingSynthesized;
+  bool                        documentHasUserInteracted;
+  bool                        documentHasLoaded;
 };
 
 /**
@@ -139,6 +145,13 @@ struct ParentLoadInfoForwarderArgs
   // We must also note that the tainting value was explicitly set
   // by the service worker.
   bool serviceWorkerTaintingSynthesized;
+
+  // Tracker information, currently used by FastBlock
+  bool isTracker;
+  bool isTrackerBlocked;
+  LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED trackerBlockedReason;
+  bool documentHasUserInteracted;
+  bool documentHasLoaded;
 
   // IMPORTANT: when you add new properites here you must also update
   // LoadInfoToParentLoadInfoForwarder and MergeParentLoadInfoForwarder
@@ -241,6 +254,7 @@ struct HttpChannelOpenArgs
   TimeStamp                   handleFetchEventStart;
   TimeStamp                   handleFetchEventEnd;
   bool                        forceMainDocumentChannel;
+  TimeStamp                   navigationStartTimeStamp;
 };
 
 struct HttpChannelConnectArgs

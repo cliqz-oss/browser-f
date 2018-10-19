@@ -109,9 +109,9 @@ function installAddonEngine(name = "engine-addon") {
       return {
         QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
         hasMoreElements: () => result.length > 0,
-        getNext: () => result.shift()
+        getNext: () => result.shift(),
       };
-    }
+    },
   });
 }
 
@@ -143,7 +143,7 @@ function installDistributionEngine() {
       if (aProp == XRE_APP_DISTRIBUTION_DIR)
         return distDir.clone();
       return null;
-    }
+    },
   });
 }
 
@@ -238,7 +238,7 @@ function getDefaultEngineName(isUS) {
   // The list of visibleDefaultEngines needs to match or the cache will be ignored.
   let chan = NetUtil.newChannel({
     uri: "resource://search-plugins/list.json",
-    loadUsingSystemPrincipal: true
+    loadUsingSystemPrincipal: true,
   });
   let searchSettings = parseJsonFromStream(chan.open2());
   let defaultEngineName = searchSettings.default.searchDefault;
@@ -251,6 +251,40 @@ function getDefaultEngineName(isUS) {
     defaultEngineName = searchSettings.US.searchDefault;
   }
   return defaultEngineName;
+}
+
+function getDefaultEngineList(isUS) {
+  // The list of visibleDefaultEngines needs to match or the cache will be ignored.
+  let chan = NetUtil.newChannel({
+    uri: "resource://search-plugins/list.json",
+    loadUsingSystemPrincipal: true,
+  });
+  let json = parseJsonFromStream(chan.open2());
+  let visibleDefaultEngines = json.default.visibleDefaultEngines;
+
+  if (isUS === undefined)
+    isUS = Services.locale.getRequestedLocale() == "en-US" && isUSTimezone();
+
+  if (isUS) {
+    let searchSettings = json.locales["en-US"];
+    if ("US" in searchSettings &&
+        "visibleDefaultEngines" in searchSettings.US) {
+      visibleDefaultEngines = searchSettings.US.visibleDefaultEngines;
+    }
+    // From nsSearchService.js
+    let searchRegion = "US";
+    if ("regionOverrides" in json &&
+        searchRegion in json.regionOverrides) {
+      for (let engine in json.regionOverrides[searchRegion]) {
+        let index = visibleDefaultEngines.indexOf(engine);
+        if (index > -1) {
+          visibleDefaultEngines[index] = json.regionOverrides[searchRegion][engine];
+        }
+      }
+    }
+  }
+
+  return visibleDefaultEngines;
 }
 
 /**
@@ -399,33 +433,6 @@ function installTestEngine() {
   useHttpServer();
   return addTestEngines([
     { name: kTestEngineName, xmlFileName: "engine.xml" },
-  ]);
-}
-
-/**
- * Set a localized preference on the default branch
- * @param aPrefName
- *        The name of the pref to set.
- */
-function setLocalizedDefaultPref(aPrefName, aValue) {
-  let value = "data:text/plain," + BROWSER_SEARCH_PREF + aPrefName + "=" + aValue;
-  Services.prefs.getDefaultBranch(BROWSER_SEARCH_PREF)
-          .setCharPref(aPrefName, value);
-}
-
-/**
- * Installs two test engines, sets them as default for US vs. general.
- */
-function setUpGeoDefaults() {
-  const kSecondTestEngineName = "A second test engine";
-
-  setLocalizedDefaultPref("defaultenginename", "Test search engine");
-  setLocalizedDefaultPref("defaultenginename.US", "A second test engine");
-
-  useHttpServer();
-  return addTestEngines([
-    { name: kTestEngineName, xmlFileName: "engine.xml" },
-    { name: kSecondTestEngineName, xmlFileName: "engine2.xml" },
   ]);
 }
 

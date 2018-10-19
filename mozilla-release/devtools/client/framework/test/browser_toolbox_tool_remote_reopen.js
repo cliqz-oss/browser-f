@@ -71,18 +71,16 @@ function getClient() {
 }
 
 function getTarget(client) {
-  const deferred = defer();
-
-  client.listTabs().then(tabList => {
-    const target = TargetFactory.forRemoteTab({
-      client: client,
-      form: tabList.tabs[tabList.selected],
-      chrome: false
+  return new Promise(resolve => {
+    client.listTabs().then(tabList => {
+      const target = TargetFactory.forRemoteTab({
+        client: client,
+        form: tabList.tabs[tabList.selected],
+        chrome: false
+      });
+      resolve(target);
     });
-    deferred.resolve(target);
   });
-
-  return deferred.promise;
 }
 
 function test() {
@@ -94,12 +92,21 @@ function test() {
     const target = await getTarget(client);
     await runTools(target);
 
+    const rootFronts = [...client.mainRoot.fronts.values()];
+
     // Actor fronts should be destroyed now that the toolbox has closed, but
     // look for any that remain.
     for (const pool of client.__pools) {
       if (!pool.__poolMap) {
         continue;
       }
+
+      // Ignore the root fronts, which are top-level pools and aren't released
+      // on toolbox destroy, but on client close.
+      if (rootFronts.includes(pool)) {
+        continue;
+      }
+
       for (const actor of pool.__poolMap.keys()) {
         // Bug 1056342: Profiler fails today because of framerate actor, but
         // this appears more complex to rework, so leave it for that bug to

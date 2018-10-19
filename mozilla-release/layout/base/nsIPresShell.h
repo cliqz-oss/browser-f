@@ -503,6 +503,8 @@ public:
 
   virtual void NotifyCounterStylesAreDirty() = 0;
 
+  bool FrameIsAncestorOfDirtyRoot(nsIFrame* aFrame) const;
+
   /**
    * Destroy the frames for aElement, and reconstruct them asynchronously if
    * needed.
@@ -1160,7 +1162,7 @@ public:
    */
   virtual already_AddRefed<mozilla::gfx::SourceSurface>
   RenderNode(nsINode* aNode,
-             nsIntRegion* aRegion,
+             const mozilla::Maybe<mozilla::CSSIntRegion>& aRegion,
              const mozilla::LayoutDeviceIntPoint aPoint,
              mozilla::LayoutDeviceIntRect* aScreenRect,
              uint32_t aFlags) = 0;
@@ -1505,6 +1507,22 @@ public:
   virtual bool IsVisible() = 0;
   void DispatchSynthMouseMove(mozilla::WidgetGUIEvent* aEvent);
 
+  /* Temporarily ignore the Displayport for better paint performance. We
+   * trigger a repaint once suppression is disabled. Without that
+   * the displayport may get left at the suppressed size for an extended
+   * period of time and result in unnecessary checkerboarding (see bug
+   * 1255054). */
+  virtual void SuppressDisplayport(bool aEnabled) = 0;
+
+  /* Whether or not displayport suppression should be turned on. Note that
+   * this only affects the return value of |IsDisplayportSuppressed()|, and
+   * doesn't change the value of the internal counter.
+   */
+  virtual void RespectDisplayportSuppression(bool aEnabled) = 0;
+
+  /* Whether or not the displayport is currently suppressed. */
+  virtual bool IsDisplayportSuppressed() = 0;
+
   virtual void AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const = 0;
 
   /**
@@ -1642,14 +1660,24 @@ public:
   // clears that capture.
   static void ClearMouseCapture(nsIFrame* aFrame);
 
-  void SetScrollPositionClampingScrollPortSize(nscoord aWidth, nscoord aHeight);
-  bool IsScrollPositionClampingScrollPortSizeSet() {
-    return mScrollPositionClampingScrollPortSizeSet;
+  void SetVisualViewportSize(nscoord aWidth, nscoord aHeight);
+  bool IsVisualViewportSizeSet() {
+    return mVisualViewportSizeSet;
   }
-  nsSize GetScrollPositionClampingScrollPortSize() {
-    NS_ASSERTION(mScrollPositionClampingScrollPortSizeSet, "asking for scroll port when its not set?");
-    return mScrollPositionClampingScrollPortSize;
+  nsSize GetVisualViewportSize() {
+    NS_ASSERTION(mVisualViewportSizeSet, "asking for visual viewport size when its not set?");
+    return mVisualViewportSize;
   }
+
+  void SetVisualViewportOffset(const nsPoint& aScrollOffset) {
+    mVisualViewportOffset = aScrollOffset;
+  }
+
+  nsPoint GetVisualViewportOffset() const {
+    return mVisualViewportOffset;
+  }
+
+  nsPoint GetVisualViewportOffsetRelativeToLayoutViewport() const;
 
   virtual void WindowSizeMoveDone() = 0;
   virtual void SysColorChanged() = 0;
@@ -1727,13 +1755,18 @@ protected:
   // Count of the number of times this presshell has been painted to a window.
   uint64_t                  mPaintCount;
 
-  nsSize                    mScrollPositionClampingScrollPortSize;
+  nsSize                    mVisualViewportSize;
+
+  nsPoint                   mVisualViewportOffset;
 
   // A list of stack weak frames. This is a pointer to the last item in the list.
   AutoWeakFrame*            mAutoWeakFrames;
 
   // A hash table of heap allocated weak frames.
   nsTHashtable<nsPtrHashKey<WeakFrame>> mWeakFrames;
+
+  // Reflow roots that need to be reflowed.
+  nsTArray<nsIFrame*> mDirtyRoots;
 
 #ifdef MOZ_GECKO_PROFILER
   // These two fields capture call stacks of any changes that require a restyle
@@ -1782,7 +1815,7 @@ protected:
 
   // Whether the most recent interruptible reflow was actually interrupted:
   bool                      mWasLastReflowInterrupted : 1;
-  bool                      mScrollPositionClampingScrollPortSizeSet : 1;
+  bool                      mVisualViewportSizeSet : 1;
 
   // True if a layout flush might not be a no-op
   bool mNeedLayoutFlush : 1;
@@ -1817,9 +1850,6 @@ protected:
   bool mFontSizeInflationForceEnabled;
   bool mFontSizeInflationDisabledInMasterProcess;
   bool mFontSizeInflationEnabled;
-
-  // Dirty bit indicating that mFontSizeInflationEnabled needs to be recomputed.
-  bool mFontSizeInflationEnabledIsDirty;
 
   bool mPaintingIsFrozen;
 

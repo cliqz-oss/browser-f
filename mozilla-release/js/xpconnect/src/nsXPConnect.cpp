@@ -32,6 +32,7 @@
 
 #include "nsDOMMutationObserver.h"
 #include "nsICycleCollectorListener.h"
+#include "nsCycleCollector.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
 #include "nsScriptSecurityManager.h"
@@ -55,11 +56,9 @@ bool         nsXPConnect::gOnceAliveNowDead = false;
 nsIScriptSecurityManager* nsXPConnect::gScriptSecurityManager = nullptr;
 nsIPrincipal* nsXPConnect::gSystemPrincipal = nullptr;
 
-const char XPC_CONTEXT_STACK_CONTRACTID[] = "@mozilla.org/js/xpc/ContextStack;1";
 const char XPC_EXCEPTION_CONTRACTID[]     = "@mozilla.org/js/xpc/Exception;1";
 const char XPC_CONSOLE_CONTRACTID[]       = "@mozilla.org/consoleservice;1";
 const char XPC_SCRIPT_ERROR_CONTRACTID[]  = "@mozilla.org/scripterror;1";
-const char XPC_ID_CONTRACTID[]            = "@mozilla.org/js/xpc/ID;1";
 const char XPC_XPCONNECT_CONTRACTID[]     = "@mozilla.org/js/xpc/XPConnect;1";
 
 /***************************************************************************/
@@ -193,7 +192,7 @@ xpc::ErrorBase::Init(JSErrorBase* aReport)
     if (!aReport->filename)
         mFileName.SetIsVoid(true);
     else
-        CopyASCIItoUTF16(aReport->filename, mFileName);
+      CopyUTF8toUTF16(mozilla::MakeStringSpan(aReport->filename), mFileName);
 
     mLineNumber = aReport->lineno;
     mColumn = aReport->column;
@@ -218,7 +217,7 @@ xpc::ErrorReport::Init(JSErrorReport* aReport, const char* aToStringResult,
 
     ErrorReportToMessageString(aReport, mErrorMsg);
     if (mErrorMsg.IsEmpty() && aToStringResult) {
-        AppendUTF8toUTF16(aToStringResult, mErrorMsg);
+      AppendUTF8toUTF16(mozilla::MakeStringSpan(aToStringResult), mErrorMsg);
     }
 
     mSourceLine.Assign(aReport->linebuf(), aReport->linebufLength());
@@ -270,11 +269,11 @@ static LazyLogModule gJSDiagnostics("JSDiagnostics");
 void
 xpc::ErrorBase::AppendErrorDetailsTo(nsCString& error)
 {
-    error.Append(NS_LossyConvertUTF16toASCII(mFileName));
+    AppendUTF16toUTF8(mFileName, error);
     error.AppendLiteral(", line ");
     error.AppendInt(mLineNumber, 10);
     error.AppendLiteral(": ");
-    error.Append(NS_LossyConvertUTF16toASCII(mErrorMsg));
+    AppendUTF16toUTF8(mErrorMsg, error);
 }
 
 void
@@ -319,17 +318,33 @@ xpc::ErrorReport::LogToStderr()
 void
 xpc::ErrorReport::LogToConsole()
 {
-  LogToConsoleWithStack(nullptr);
+    LogToConsoleWithStack(nullptr, nullptr);
 }
+
 void
-xpc::ErrorReport::LogToConsoleWithStack(JS::HandleObject aStack)
+xpc::ErrorReport::LogToConsoleWithStack(JS::HandleObject aStack,
+                                        JS::HandleObject aStackGlobal,
+                                        uint64_t aTimeWarpTarget /* = 0 */)
 {
+    // Don't log failures after diverging from a recording during replay, as
+    // this will cause the associated debugger operation to fail.
+    if (recordreplay::HasDivergedFromRecording())
+        return;
+
+    if (aStack) {
+        MOZ_ASSERT(aStackGlobal);
+        MOZ_ASSERT(JS_IsGlobalObject(aStackGlobal));
+        js::AssertSameCompartment(aStack, aStackGlobal);
+    } else {
+        MOZ_ASSERT(!aStackGlobal);
+    }
+
     LogToStderr();
 
     MOZ_LOG(gJSDiagnostics,
             JSREPORT_IS_WARNING(mFlags) ? LogLevel::Warning : LogLevel::Error,
-            ("file %s, line %u\n%s", NS_LossyConvertUTF16toASCII(mFileName).get(),
-             mLineNumber, NS_LossyConvertUTF16toASCII(mErrorMsg).get()));
+            ("file %s, line %u\n%s", NS_ConvertUTF16toUTF8(mFileName).get(),
+             mLineNumber, NS_ConvertUTF16toUTF8(mErrorMsg).get()));
 
     // Log to the console. We do this last so that we can simply return if
     // there's no console service without affecting the other reporting
@@ -344,11 +359,12 @@ xpc::ErrorReport::LogToConsoleWithStack(JS::HandleObject aStack)
       // As we cache messages in the console service,
       // we have to ensure not leaking them after the related
       // context is destroyed and we only track document lifecycle for now.
-      errorObject = new nsScriptErrorWithStack(aStack);
+      errorObject = new nsScriptErrorWithStack(aStack, aStackGlobal);
     } else {
       errorObject = new nsScriptError();
     }
     errorObject->SetErrorMessageName(mErrorMsgName);
+    errorObject->SetTimeWarpTarget(aTimeWarpTarget);
 
     nsresult rv = errorObject->InitWithWindowID(mErrorMsg, mFileName, mSourceLine,
                                                 mLineNumber, mColumn, mFlags,
@@ -658,10 +674,9 @@ nsXPConnect::WrapJS(JSContext * aJSContext,
     *result = nullptr;
 
     RootedObject aJSObj(aJSContext, aJSObjArg);
-    JSAutoRealm ar(aJSContext, aJSObj);
 
     nsresult rv = NS_ERROR_UNEXPECTED;
-    if (!XPCConvert::JSObject2NativeInterface(result, aJSObj,
+    if (!XPCConvert::JSObject2NativeInterface(aJSContext, result, aJSObj,
                                               &aIID, nullptr, &rv))
         return rv;
     return NS_OK;
@@ -697,7 +712,7 @@ nsXPConnect::WrapJSAggregatedToNative(nsISupports* aOuter,
 
     RootedObject aJSObj(aJSContext, aJSObjArg);
     nsresult rv;
-    if (!XPCConvert::JSObject2NativeInterface(result, aJSObj,
+    if (!XPCConvert::JSObject2NativeInterface(aJSContext, result, aJSObj,
                                               &aIID, aOuter, &rv))
         return rv;
     return NS_OK;
@@ -784,36 +799,6 @@ nsXPConnect::EvalInSandboxObject(const nsAString& source, const char* filename,
         filenameStr = NS_LITERAL_CSTRING("x-bogus://XPConnect/Sandbox");
     }
     return EvalInSandbox(cx, sandbox, source, filenameStr, 1, rval);
-}
-
-NS_IMETHODIMP
-nsXPConnect::GetWrappedNativePrototype(JSContext* aJSContext,
-                                       JSObject* aScopeArg,
-                                       nsIClassInfo* aClassInfo,
-                                       JSObject** aRetVal)
-{
-    RootedObject aScope(aJSContext, aScopeArg);
-    JSAutoRealm ar(aJSContext, aScope);
-
-    XPCWrappedNativeScope* scope = ObjectScope(aScope);
-    if (!scope)
-        return UnexpectedFailure(NS_ERROR_FAILURE);
-
-    nsCOMPtr<nsIXPCScriptable> scrProto =
-        XPCWrappedNative::GatherProtoScriptable(aClassInfo);
-
-    AutoMarkingWrappedNativeProtoPtr proto(aJSContext);
-    proto = XPCWrappedNativeProto::GetNewOrUsed(scope, aClassInfo, scrProto);
-    if (!proto)
-        return UnexpectedFailure(NS_ERROR_FAILURE);
-
-    JSObject* protoObj = proto->GetJSProtoObject();
-    if (!protoObj)
-        return UnexpectedFailure(NS_ERROR_FAILURE);
-
-    *aRetVal = protoObj;
-
-    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1042,8 +1027,12 @@ ReadScriptOrFunction(nsIObjectInputStream* stream, JSContext* cx,
     // We don't serialize mutedError-ness of scripts, which is fine as long as
     // we only serialize system and XUL-y things. We can detect this by checking
     // where the caller wants us to deserialize.
+    //
+    // CompilationScope() could theoretically GC, so get that out of the way
+    // before comparing to the cx global.
+    JSObject* loaderGlobal = xpc::CompilationScope();
     MOZ_RELEASE_ASSERT(nsContentUtils::IsSystemCaller(cx) ||
-                       CurrentGlobalOrNull(cx) == xpc::CompilationScope());
+                       CurrentGlobalOrNull(cx) == loaderGlobal);
 
     uint32_t size;
     rv = stream->Read32(&size);
@@ -1121,12 +1110,8 @@ DumpJSStack()
 MOZ_EXPORT void
 DumpCompleteHeap()
 {
-    nsCOMPtr<nsICycleCollectorListener> listener =
-      do_CreateInstance("@mozilla.org/cycle-collector-logger;1");
-    if (!listener) {
-      NS_WARNING("Failed to create CC logger");
-      return;
-    }
+    nsCOMPtr<nsICycleCollectorListener> listener = nsCycleCollector_createLogger();
+    MOZ_ASSERT(listener);
 
     nsCOMPtr<nsICycleCollectorListener> alltracesListener;
     listener->AllTraces(getter_AddRefs(alltracesListener));
@@ -1190,13 +1175,40 @@ IsChromeOrXBL(JSContext* cx, JSObject* /* unused */)
     return AccessCheck::isChrome(c) || IsContentXBLCompartment(c) || !AllowContentXBLScope(realm);
 }
 
+bool
+IsNotUAWidget(JSContext* cx, JSObject* /* unused */)
+{
+    MOZ_ASSERT(NS_IsMainThread());
+    JS::Realm* realm = JS::GetCurrentRealmOrNull(cx);
+    MOZ_ASSERT(realm);
+    JS::Compartment* c = JS::GetCompartmentForRealm(realm);
+
+    return !IsUAWidgetCompartment(c);
+}
+
+bool
+IsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* /* unused */)
+{
+    if (IsChromeOrXBL(cx, nullptr)) {
+      return true;
+    }
+
+    MOZ_ASSERT(NS_IsMainThread());
+    JS::Realm* realm = JS::GetCurrentRealmOrNull(cx);
+    MOZ_ASSERT(realm);
+    JS::Compartment* c = JS::GetCompartmentForRealm(realm);
+
+    return IsUAWidgetCompartment(c);
+}
+
+
 extern bool IsCurrentThreadRunningChromeWorker();
 
 bool
-ThreadSafeIsChromeOrXBL(JSContext* cx, JSObject* obj)
+ThreadSafeIsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* obj)
 {
     if (NS_IsMainThread()) {
-        return IsChromeOrXBL(cx, obj);
+        return IsChromeOrXBLOrUAWidget(cx, obj);
     }
     return IsCurrentThreadRunningChromeWorker();
 }

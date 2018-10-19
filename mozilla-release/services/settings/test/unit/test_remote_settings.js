@@ -85,6 +85,17 @@ add_task(async function test_records_obtained_from_server_are_stored_in_db() {
 });
 add_task(clear_state);
 
+add_task(async function test_records_can_have_local_fields() {
+  const c = RemoteSettings("password-fields", { localFields: ["accepted"] });
+  await c.maybeSync(2000, Date.now());
+
+  const col = await c.openCollection();
+  await col.update({ id: "9d500963-d80e-3a91-6e74-66f3811b99cc", accepted: true });
+
+  await c.maybeSync(2000, Date.now()); // Does not fail.
+});
+add_task(clear_state);
+
 add_task(async function test_current_server_time_is_saved_in_pref() {
   const serverTime = Date.now();
   await client.maybeSync(2000, serverTime);
@@ -99,7 +110,7 @@ add_task(async function test_records_changes_are_overwritten_by_server_changes()
   const collection = await client.openCollection();
   await collection.create({
     "website": "",
-    "id": "9d500963-d80e-3a91-6e74-66f3811b99cc"
+    "id": "9d500963-d80e-3a91-6e74-66f3811b99cc",
   }, { useRecordId: true });
 
   await client.maybeSync(2000, Date.now());
@@ -167,6 +178,37 @@ add_task(async function test_inspect_method() {
   equal(collections[0].collection, "password-fields");
   equal(collections[0].serverTimestamp, 3000);
   equal(collections[0].localTimestamp, 3000);
+});
+add_task(clear_state);
+
+add_task(async function test_listeners_are_not_deduplicated() {
+  const serverTime = Date.now();
+
+  let count = 0;
+  const plus1 = () => { count += 1; };
+
+  client.on("sync", plus1);
+  client.on("sync", plus1);
+  client.on("sync", plus1);
+
+  await client.maybeSync(2000, serverTime);
+
+  equal(count, 3);
+});
+add_task(clear_state);
+
+add_task(async function test_listeners_can_be_removed() {
+  const serverTime = Date.now();
+
+  let count = 0;
+  const onSync = () => { count += 1; };
+
+  client.on("sync", onSync);
+  client.off("sync", onSync);
+
+  await client.maybeSync(2000, serverTime);
+
+  equal(count, 0);
 });
 add_task(clear_state);
 
@@ -276,29 +318,29 @@ function getSampleResponse(req, port) {
         "Access-Control-Allow-Methods: GET,HEAD,OPTIONS,POST,DELETE,OPTIONS",
         "Access-Control-Allow-Origin: *",
         "Content-Type: application/json; charset=UTF-8",
-        "Server: waitress"
+        "Server: waitress",
       ],
       "status": {status: 200, statusText: "OK"},
-      "responseBody": null
+      "responseBody": null,
     },
     "GET:/v1/": {
       "sampleHeaders": [
         "Access-Control-Allow-Origin: *",
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
-        "Server: waitress"
+        "Server: waitress",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": {
         "settings": {
-          "batch_max_requests": 25
+          "batch_max_requests": 25,
         },
         "url": `http://localhost:${port}/v1/`,
         "documentation": "https://kinto.readthedocs.org/",
         "version": "1.5.1",
         "commit": "cbc6f58",
-        "hello": "kinto"
-      }
+        "hello": "kinto",
+      },
     },
     "GET:/v1/buckets/monitor/collections/changes/records": {
       "sampleHeaders": [
@@ -307,7 +349,7 @@ function getSampleResponse(req, port) {
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
         `Date: ${new Date().toUTCString()}`,
-        "Etag: \"4000\""
+        "Etag: \"4000\"",
       ],
       "status": { status: 200, statusText: "OK" },
       "responseBody": {
@@ -315,14 +357,14 @@ function getSampleResponse(req, port) {
           "id": "4676f0c7-9757-4796-a0e8-b40a5a37a9c9",
           "bucket": "main",
           "collection": "unknown",
-          "last_modified": 4000
+          "last_modified": 4000,
         }, {
           "id": "0af8da0b-3e03-48fb-8d0d-2d8e4cb7514d",
           "bucket": "main",
           "collection": "password-fields",
-          "last_modified": 3000
-        }]
-      }
+          "last_modified": 3000,
+        }],
+      },
     },
     "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified": {
       "sampleHeaders": [
@@ -330,7 +372,7 @@ function getSampleResponse(req, port) {
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
-        "Etag: \"3000\""
+        "Etag: \"3000\"",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": {
@@ -338,9 +380,9 @@ function getSampleResponse(req, port) {
           "id": "9d500963-d80e-3a91-6e74-66f3811b99cc",
           "last_modified": 3000,
           "website": "https://some-website.com",
-          "selector": "#user[password]"
-        }]
-      }
+          "selector": "#user[password]",
+        }],
+      },
     },
     "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified&_since=3000": {
       "sampleHeaders": [
@@ -348,7 +390,7 @@ function getSampleResponse(req, port) {
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
-        "Etag: \"4000\""
+        "Etag: \"4000\"",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": {
@@ -356,14 +398,14 @@ function getSampleResponse(req, port) {
           "id": "aabad965-e556-ffe7-4191-074f5dee3df3",
           "last_modified": 4000,
           "website": "https://www.other.org/signin",
-          "selector": "#signinpassword"
+          "selector": "#signinpassword",
         }, {
           "id": "9d500963-d80e-3a91-6e74-66f3811b99cc",
           "last_modified": 3500,
           "website": "https://some-website.com/login",
-          "selector": "input#user[password]"
-        }]
-      }
+          "selector": "input#user[password]",
+        }],
+      },
     },
     "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified&_since=4000": {
       "sampleHeaders": [
@@ -371,15 +413,15 @@ function getSampleResponse(req, port) {
         "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
         "Content-Type: application/json; charset=UTF-8",
         "Server: waitress",
-        "Etag: \"5000\""
+        "Etag: \"5000\"",
       ],
       "status": {status: 200, statusText: "OK"},
       "responseBody": {
         "data": [{
           "id": "aabad965-e556-ffe7-4191-074f5dee3df3",
-          "deleted": true
-        }]
-      }
+          "deleted": true,
+        }],
+      },
     },
     "GET:/v1/buckets/main/collections/password-fields/records?_sort=-last_modified&_since=9999": {
       "sampleHeaders": [
@@ -393,8 +435,8 @@ function getSampleResponse(req, port) {
         code: 503,
         errno: 999,
         error: "Service Unavailable",
-      }
-    }
+      },
+    },
   };
   dump(`${req.method}:${req.path}?${req.queryString}`);
   return responses[`${req.method}:${req.path}?${req.queryString}`] ||

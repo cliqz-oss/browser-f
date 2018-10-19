@@ -37,6 +37,7 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/StereoPannerNodeBinding.h"
 #include "mozilla/dom/WaveShaperNodeBinding.h"
+#include "mozilla/dom/Worklet.h"
 
 #include "AudioBuffer.h"
 #include "AudioBufferSourceNode.h"
@@ -60,6 +61,7 @@
 #include "MediaStreamAudioSourceNode.h"
 #include "MediaStreamGraph.h"
 #include "nsContentUtils.h"
+#include "nsGlobalWindowInner.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsPIDOMWindow.h"
@@ -91,7 +93,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(AudioContext)
   }
   // mDecodeJobs owns the WebAudioDecodeJob objects whose lifetime is managed explicitly.
   // mAllNodes is an array of weak pointers, ignore it here.
-  // mPannerNodes is an array of weak pointers, ignore it here.
   // mBasicWaveFormCache cannot participate in cycles, ignore it here.
 
   // Remove weak reference on the global window as the context is not usable
@@ -112,7 +113,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(AudioContext,
   }
   // mDecodeJobs owns the WebAudioDecodeJob objects whose lifetime is managed explicitly.
   // mAllNodes is an array of weak pointers, ignore it here.
-  // mPannerNodes is an array of weak pointers, ignore it here.
   // mBasicWaveFormCache cannot participate in cycles, ignore it here.
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -175,6 +175,8 @@ AudioContext::AudioContext(nsPIDOMWindowInner* aWindow,
     MOZ_ASSERT(dummy->State() != Promise::PromiseState::Rejected,
                "suspend failed");
   }
+
+  FFTBlock::MainThreadInit();
 }
 
 nsresult
@@ -209,9 +211,9 @@ JSObject*
 AudioContext::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   if (mIsOffline) {
-    return OfflineAudioContextBinding::Wrap(aCx, this, aGivenProto);
+    return OfflineAudioContext_Binding::Wrap(aCx, this, aGivenProto);
   } else {
-    return AudioContextBinding::Wrap(aCx, this, aGivenProto);
+    return AudioContext_Binding::Wrap(aCx, this, aGivenProto);
   }
 }
 
@@ -220,6 +222,12 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
                           const AudioContextOptions& aOptions,
                           ErrorResult& aRv)
 {
+  // Audio playback is not yet supported when recording or replaying. See bug 1304147.
+  if (recordreplay::IsRecordingOrReplaying()) {
+    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+    return nullptr;
+  }
+
   nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aGlobal.GetAsSupports());
   if (!window) {
     aRv.Throw(NS_ERROR_FAILURE);
@@ -271,6 +279,12 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
                           float aSampleRate,
                           ErrorResult& aRv)
 {
+  // Audio playback is not yet supported when recording or replaying. See bug 1304147.
+  if (recordreplay::IsRecordingOrReplaying()) {
+    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+    return nullptr;
+  }
+
   nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(aGlobal.GetAsSupports());
   if (!window) {
     aRv.Throw(NS_ERROR_FAILURE);
@@ -537,6 +551,28 @@ AudioContext::Listener()
   return mListener;
 }
 
+Worklet*
+AudioContext::GetAudioWorklet(ErrorResult& aRv)
+{
+  if (!mWorklet) {
+    nsCOMPtr<nsPIDOMWindowInner> window = GetOwner();
+    if (NS_WARN_IF(!window)) {
+      aRv.Throw(NS_ERROR_FAILURE);
+      return nullptr;
+    }
+    nsCOMPtr<nsIPrincipal> principal =
+        nsGlobalWindowInner::Cast(window)->GetPrincipal();
+    if (NS_WARN_IF(!principal)) {
+      aRv.Throw(NS_ERROR_FAILURE);
+      return nullptr;
+    }
+
+    mWorklet = new Worklet(window, principal, Worklet::eAudioWorklet);
+  }
+
+  return mWorklet;
+}
+
 bool
 AudioContext::IsRunning() const
 {
@@ -554,7 +590,14 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
   AutoJSAPI jsapi;
   jsapi.Init();
   JSContext* cx = jsapi.cx();
-  JSAutoRealm ar(cx, aBuffer.Obj());
+
+  JS::Rooted<JSObject*> obj(cx, js::CheckedUnwrap(aBuffer.Obj()));
+  if (!obj) {
+    aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
+    return nullptr;
+  }
+
+  JSAutoRealm ar(cx, obj);
 
   promise = Promise::Create(parentObject, aRv);
   if (aRv.Failed()) {
@@ -577,7 +620,6 @@ AudioContext::DecodeAudioData(const ArrayBuffer& aBuffer,
 
   // Detach the array buffer
   size_t length = aBuffer.Length();
-  JS::RootedObject obj(cx, aBuffer.Obj());
 
   uint8_t* data = static_cast<uint8_t*>(JS_StealArrayBufferContents(cx, obj));
 
@@ -629,29 +671,6 @@ void
 AudioContext::UnregisterActiveNode(AudioNode* aNode)
 {
   mActiveNodes.RemoveEntry(aNode);
-}
-
-void
-AudioContext::UnregisterAudioBufferSourceNode(AudioBufferSourceNode* aNode)
-{
-  UpdatePannerSource();
-}
-
-void
-AudioContext::UnregisterPannerNode(PannerNode* aNode)
-{
-  mPannerNodes.RemoveEntry(aNode);
-  if (mListener) {
-    mListener->UnregisterPannerNode(aNode);
-  }
-}
-
-void
-AudioContext::UpdatePannerSource()
-{
-  for (auto iter = mPannerNodes.Iter(); !iter.Done(); iter.Next()) {
-    iter.Get()->GetKey()->FindConnectedSources();
-  }
 }
 
 uint32_t
@@ -841,7 +860,7 @@ public:
     return nsContentUtils::DispatchTrustedEvent(doc,
                                 static_cast<DOMEventTargetHelper*>(mAudioContext),
                                 NS_LITERAL_STRING("statechange"),
-                                false, false);
+                                CanBubble::eNo, Cancelable::eNo);
   }
 
 private:
@@ -1178,7 +1197,6 @@ AudioContext::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
     amount += mDecodeJobs[i]->SizeOfIncludingThis(aMallocSizeOf);
   }
   amount += mActiveNodes.ShallowSizeOfExcludingThis(aMallocSizeOf);
-  amount += mPannerNodes.ShallowSizeOfExcludingThis(aMallocSizeOf);
   return amount;
 }
 

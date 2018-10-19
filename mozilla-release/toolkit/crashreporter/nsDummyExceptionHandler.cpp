@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <functional>
+
 #include "nsExceptionHandler.h"
 #include "nsExceptionHandlerUtils.h"
 
@@ -66,14 +68,31 @@ UnsetExceptionHandler()
 }
 
 nsresult
-AnnotateCrashReport(const nsACString& key,
-                    const nsACString& data)
+AnnotateCrashReport(Annotation key, bool data)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 nsresult
-RemoveCrashReportAnnotation(const nsACString& key)
+AnnotateCrashReport(Annotation key, int data)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+AnnotateCrashReport(Annotation key, unsigned int data)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+AnnotateCrashReport(Annotation key, const nsACString& data)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult
+RemoveCrashReportAnnotation(Annotation key)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -371,15 +390,14 @@ TakeMinidump(nsIFile** aResult, bool aMoveToPending)
   return false;
 }
 
-void
+bool
 CreateMinidumpsAndPair(ProcessHandle aTargetPid,
                        ThreadId aTargetBlamedThread,
                        const nsACString& aIncomingPairName,
                        nsIFile* aIncomingDumpToPair,
-                       nsIFile** aMainDumpOut,
-                       std::function<void(bool)>&& aCallback,
-                       bool aAsync)
+                       nsIFile** aTargetDumpOut)
 {
+  return false;
 }
 
 bool

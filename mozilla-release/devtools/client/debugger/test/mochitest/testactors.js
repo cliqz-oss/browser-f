@@ -9,7 +9,7 @@ function TestActor1(aConnection, aTab) {
 }
 
 TestActor1.prototype = {
-  actorPrefix: "test_one",
+  actorPrefix: "testOne",
 
   grip: function TA1_grip() {
     return { actor: this.actorID,
@@ -24,15 +24,4 @@ TestActor1.prototype = {
 TestActor1.prototype.requestTypes = {
   "ping": TestActor1.prototype.onPing
 };
-
-DebuggerServer.removeTabActor("testTabActor1");
-DebuggerServer.removeGlobalActor("testGlobalActor1");
-
-DebuggerServer.addTabActor({
-  constructorName: "TestActor1",
-  constructorFun: TestActor1,
-}, "testTabActor1");
-DebuggerServer.addGlobalActor({
-  constructorName: "TestActor1",
-  constructorFun: TestActor1,
-}, "testGlobalActor1");
+exports.TestActor1 = TestActor1;

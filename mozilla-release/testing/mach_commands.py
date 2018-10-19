@@ -9,20 +9,22 @@ import json
 import logging
 import os
 import sys
-import tempfile
 import subprocess
-import shutil
 
 from mach.decorators import (
     CommandArgument,
     CommandProvider,
     Command,
     SettingsProvider,
+    SubCommand,
 )
 
-from mozbuild.base import MachCommandBase, MachCommandConditions as conditions
+from mozbuild.base import (
+    BuildEnvironmentNotFoundException,
+    MachCommandBase,
+    MachCommandConditions as conditions,
+)
 from moztest.resolve import TEST_SUITES
-from argparse import ArgumentParser
 
 UNKNOWN_TEST = '''
 I was unable to find tests from the given argument(s).
@@ -72,7 +74,7 @@ class TestConfig(object):
 def get_test_parser():
     from mozlog.commandline import add_logging_group
     parser = argparse.ArgumentParser()
-    parser.add_argument('what', default=None, nargs='*', help=TEST_HELP)
+    parser.add_argument('what', default=None, nargs='+', help=TEST_HELP)
     parser.add_argument('extra_args', default=None, nargs=argparse.REMAINDER,
                         help="Extra arguments to pass to the underlying test command(s). "
                              "If an underlying command doesn't recognize the argument, it "
@@ -268,6 +270,26 @@ def executable_name(name):
 
 @CommandProvider
 class CheckSpiderMonkeyCommand(MachCommandBase):
+    @Command('jstests', category='testing',
+             description='Run SpiderMonkey JS tests in the JavaScript shell.')
+    @CommandArgument('--shell', help='The shell to be used')
+    @CommandArgument('params', nargs=argparse.REMAINDER,
+                     help="Extra arguments to pass down to the test harness.")
+    def run_jstests(self, shell, params):
+        import subprocess
+
+        self.virtualenv_manager.ensure()
+        python = self.virtualenv_manager.python_path
+
+        js = shell or os.path.join(self.bindir, executable_name('js'))
+        jstest_cmd = [
+            python,
+            os.path.join(self.topsrcdir, 'js', 'src', 'tests', 'jstests.py'),
+            js,
+            '--jitflags=all',
+        ] + params
+        return subprocess.call(jstest_cmd)
+
     @Command('check-spidermonkey', category='testing',
              description='Run SpiderMonkey tests (JavaScript engine).')
     @CommandArgument('--valgrind', action='store_true',
@@ -295,13 +317,7 @@ class CheckSpiderMonkeyCommand(MachCommandBase):
         jittest_result = subprocess.call(jittest_cmd)
 
         print('running jstests')
-        jstest_cmd = [
-            python,
-            os.path.join(self.topsrcdir, 'js', 'src', 'tests', 'jstests.py'),
-            js,
-            '--jitflags=all',
-        ]
-        jstest_result = subprocess.call(jstest_cmd)
+        jstest_result = self.run_jstests(js, [])
 
         print('running jsapi-tests')
         jsapi_tests_cmd = [os.path.join(
@@ -322,7 +338,11 @@ class CheckSpiderMonkeyCommand(MachCommandBase):
 
 def has_js_binary(binary):
     def has_binary(cls):
-        name = binary + cls.substs['BIN_SUFFIX']
+        try:
+            name = binary + cls.substs['BIN_SUFFIX']
+        except BuildEnvironmentNotFoundException:
+            return False
+
         path = os.path.join(cls.topobjdir, 'dist', 'bin', name)
 
         has_binary.__doc__ = """
@@ -411,155 +431,6 @@ class CramTest(MachCommandBase):
         return subprocess.call(cmd, cwd=self.topsrcdir)
 
 
-def get_parser(argv=None):
-    parser = ArgumentParser()
-    parser.add_argument(dest="suite_name",
-                        nargs=1,
-                        choices=['mochitest'],
-                        type=str,
-                        help="The test for which chunk should be found. It corresponds "
-                             "to the mach test invoked (only 'mochitest' currently).")
-
-    parser.add_argument(dest="test_path",
-                        nargs=1,
-                        type=str,
-                        help="The test (any mochitest) for which chunk should be found.")
-
-    parser.add_argument('--total-chunks',
-                        type=int,
-                        dest='total_chunks',
-                        required=True,
-                        help='Total number of chunks to split tests into.',
-                        default=None)
-
-    parser.add_argument('--chunk-by-runtime',
-                        action='store_true',
-                        dest='chunk_by_runtime',
-                        help='Group tests such that each chunk has roughly the same runtime.',
-                        default=False)
-
-    parser.add_argument('--chunk-by-dir',
-                        type=int,
-                        dest='chunk_by_dir',
-                        help='Group tests together in the same chunk that are in the same top '
-                             'chunkByDir directories.',
-                        default=None)
-
-    parser.add_argument('--disable-e10s',
-                        action='store_false',
-                        dest='e10s',
-                        help='Find test on chunk with electrolysis preferences disabled.',
-                        default=True)
-
-    parser.add_argument('-p', '--platform',
-                        choices=['linux', 'linux64', 'mac',
-                                 'macosx64', 'win32', 'win64'],
-                        dest='platform',
-                        help="Platform for the chunk to find the test.",
-                        default=None)
-
-    parser.add_argument('--debug',
-                        action='store_true',
-                        dest='debug',
-                        help="Find the test on chunk in a debug build.",
-                        default=False)
-
-    return parser
-
-
-def download_mozinfo(platform=None, debug_build=False):
-    temp_dir = tempfile.mkdtemp()
-    temp_path = os.path.join(temp_dir, "mozinfo.json")
-    args = [
-        'mozdownload',
-        '-t', 'tinderbox',
-        '--ext', 'mozinfo.json',
-        '-d', temp_path,
-    ]
-    if platform:
-        if platform == 'macosx64':
-            platform = 'mac64'
-        args.extend(['-p', platform])
-    if debug_build:
-        args.extend(['--debug-build'])
-
-    subprocess.call(args)
-    return temp_dir, temp_path
-
-
-@CommandProvider
-class ChunkFinder(MachCommandBase):
-    @Command('find-test-chunk', category='testing',
-             description='Find which chunk a test belongs to (works for mochitest).',
-             parser=get_parser)
-    def chunk_finder(self, **kwargs):
-        total_chunks = kwargs['total_chunks']
-        test_path = kwargs['test_path'][0]
-        suite_name = kwargs['suite_name'][0]
-        _, dump_tests = tempfile.mkstemp()
-
-        from moztest.resolve import TestResolver
-        resolver = self._spawn(TestResolver)
-        relpath = self._wrap_path_argument(test_path).relpath()
-        tests = list(resolver.resolve_tests(paths=[relpath]))
-        if len(tests) != 1:
-            print('No test found for test_path: %s' % test_path)
-            sys.exit(1)
-
-        flavor = tests[0]['flavor']
-        subsuite = tests[0]['subsuite']
-        args = {
-            'totalChunks': total_chunks,
-            'dump_tests': dump_tests,
-            'chunkByDir': kwargs['chunk_by_dir'],
-            'chunkByRuntime': kwargs['chunk_by_runtime'],
-            'e10s': kwargs['e10s'],
-            'subsuite': subsuite,
-        }
-
-        temp_dir = None
-        if kwargs['platform'] or kwargs['debug']:
-            self._activate_virtualenv()
-            self.virtualenv_manager.install_pip_package('mozdownload==1.17')
-            temp_dir, temp_path = download_mozinfo(
-                kwargs['platform'], kwargs['debug'])
-            args['extra_mozinfo_json'] = temp_path
-
-        found = False
-        for this_chunk in range(1, total_chunks + 1):
-            args['thisChunk'] = this_chunk
-            try:
-                self._mach_context.commands.dispatch(
-                    suite_name, self._mach_context, flavor=flavor, resolve_tests=False, **args)
-            except SystemExit:
-                pass
-            except KeyboardInterrupt:
-                break
-
-            fp = open(os.path.expanduser(args['dump_tests']), 'r')
-            tests = json.loads(fp.read())['active_tests']
-            for test in tests:
-                if test_path == test['path']:
-                    if 'disabled' in test:
-                        print('The test %s for flavor %s is disabled on the given platform' % (
-                            test_path, flavor))
-                    else:
-                        print('The test %s for flavor %s is present in chunk number: %d' % (
-                            test_path, flavor, this_chunk))
-                    found = True
-                    break
-
-            if found:
-                break
-
-        if not found:
-            raise Exception("Test %s not found." % test_path)
-        # Clean up the file
-        os.remove(dump_tests)
-        if temp_dir:
-            shutil.rmtree(temp_dir)
-
-
 @CommandProvider
 class TestInfoCommand(MachCommandBase):
     from datetime import date, timedelta
@@ -585,6 +456,8 @@ class TestInfoCommand(MachCommandBase):
                      help='Retrieve and display ActiveData test result summary.')
     @CommandArgument('--show-durations', action='store_true',
                      help='Retrieve and display ActiveData test duration summary.')
+    @CommandArgument('--show-tasks', action='store_true',
+                     help='Retrieve and display ActiveData test task names.')
     @CommandArgument('--show-bugs', action='store_true',
                      help='Retrieve and display related Bugzilla bugs.')
     @CommandArgument('--verbose', action='store_true',
@@ -600,17 +473,20 @@ class TestInfoCommand(MachCommandBase):
         self.show_info = params['show_info']
         self.show_results = params['show_results']
         self.show_durations = params['show_durations']
+        self.show_tasks = params['show_tasks']
         self.show_bugs = params['show_bugs']
         self.verbose = params['verbose']
 
         if (not self.show_info and
             not self.show_results and
             not self.show_durations and
+            not self.show_tasks and
                 not self.show_bugs):
             # by default, show everything
             self.show_info = True
             self.show_results = True
             self.show_durations = True
+            self.show_tasks = True
             self.show_bugs = True
 
         here = os.path.abspath(os.path.dirname(__file__))
@@ -636,12 +512,13 @@ class TestInfoCommand(MachCommandBase):
             if len(self.test_name) < 6:
                 print("'%s' is too short for a test name!" % self.test_name)
                 continue
-            if self.show_info:
-                self.set_test_name()
+            self.set_test_name()
             if self.show_results:
                 self.report_test_results()
             if self.show_durations:
                 self.report_test_durations()
+            if self.show_tasks:
+                self.report_test_tasks()
             if self.show_bugs:
                 self.report_bugs()
 
@@ -733,7 +610,7 @@ class TestInfoCommand(MachCommandBase):
             if self.short_name == self.test_name:
                 self.short_name = None
 
-        if not (self.show_results or self.show_durations):
+        if not (self.show_results or self.show_durations or self.show_tasks):
             # no need to determine ActiveData name if not querying
             return
 
@@ -784,7 +661,7 @@ class TestInfoCommand(MachCommandBase):
     def get_platform(self, record):
         platform = record['build']['platform']
         type = record['build']['type']
-        if 'run' in record and 'e10s' in record['run']['type']:
+        if 'run' in record and 'type' in record['run'] and 'e10s' in record['run']['type']:
             e10s = "-e10s"
         else:
             e10s = ""
@@ -897,6 +774,45 @@ class TestInfoCommand(MachCommandBase):
         else:
             print("No test durations found.")
 
+    def report_test_tasks(self):
+        # Report test tasks summary from ActiveData
+        query = {
+            "from": "unittest",
+            "format": "list",
+            "limit": 1000,
+            "select": ["build.platform", "build.type", "run.type", "run.name"],
+            "where": {"and": [
+                {"eq": {"result.test": self.activedata_test_name}},
+                {"in": {"build.branch": self.branches.split(',')}},
+                {"gt": {"run.timestamp": {"date": self.start}}},
+                {"lt": {"run.timestamp": {"date": self.end}}}
+            ]}
+        }
+        data = self.submit(query)
+        print("\nTest tasks for %s on %s between %s and %s" %
+              (self.activedata_test_name, self.branches, self.start, self.end))
+        if data and len(data) > 0:
+            data.sort(key=self.get_platform)
+            consolidated = {}
+            for record in data:
+                platform = self.get_platform(record)
+                if platform not in consolidated:
+                    consolidated[platform] = {}
+                if record['run']['name'] in consolidated[platform]:
+                    consolidated[platform][record['run']['name']] += 1
+                else:
+                    consolidated[platform][record['run']['name']] = 1
+            for key in sorted(consolidated.keys()):
+                tasks = ""
+                for task in consolidated[key].keys():
+                    if tasks:
+                        tasks += "\n%-40s " % ""
+                    tasks += task
+                    tasks += " in %d runs" % consolidated[key][task]
+                print("%-40s %s" % (key, tasks))
+        else:
+            print("No test tasks found.")
+
     def report_bugs(self):
         # Report open bugs matching test name
         import requests
@@ -919,3 +835,99 @@ class TestInfoCommand(MachCommandBase):
                 print("Bug %s: %s" % (bug['id'], bug['summary']))
         else:
             print("No bugs found.")
+
+    @SubCommand('test-info', 'long-tasks',
+                description='Find tasks approaching their taskcluster max-run-time.')
+    @CommandArgument('--branches',
+                     default='mozilla-central,mozilla-inbound,autoland',
+                     help='Report for named branches '
+                          '(default: mozilla-central,mozilla-inbound,autoland)')
+    @CommandArgument('--start',
+                     default=(date.today() - timedelta(7)
+                              ).strftime("%Y-%m-%d"),
+                     help='Start date (YYYY-MM-DD)')
+    @CommandArgument('--end',
+                     default=date.today().strftime("%Y-%m-%d"),
+                     help='End date (YYYY-MM-DD)')
+    @CommandArgument('--max-threshold-pct',
+                     default=90.0,
+                     help='Count tasks exceeding this percentage of max-run-time.')
+    @CommandArgument('--filter-threshold-pct',
+                     default=0.5,
+                     help='Report tasks exceeding this percentage of long tasks.')
+    @CommandArgument('--verbose', action='store_true',
+                     help='Enable debug logging.')
+    def report_long_running_tasks(self, **params):
+        def get_long_running_ratio(record):
+            count = record['count']
+            tasks_gt_pct = record['tasks_gt_pct']
+            return count / tasks_gt_pct
+
+        branches = params['branches']
+        start = params['start']
+        end = params['end']
+        self.verbose = params['verbose']
+        threshold_pct = float(params['max_threshold_pct'])
+        filter_threshold_pct = float(params['filter_threshold_pct'])
+
+        # Search test durations in ActiveData for long-running tests
+        query = {
+            "from": "task",
+            "format": "list",
+            "groupby": ["run.name"],
+            "limit": 1000,
+            "select": [
+                {
+                    "value": "task.maxRunTime",
+                    "aggregate": "median",
+                    "name": "max_run_time"
+                },
+                {
+                    "aggregate": "count"
+                },
+                {
+                    "value": {
+                        "when": {
+                            "gt": [
+                                {
+                                    "div": ["action.duration", "task.maxRunTime"]
+                                }, threshold_pct/100.0
+                            ]
+                        },
+                        "then": 1
+                    },
+                    "aggregate": "sum",
+                    "name": "tasks_gt_pct"
+                },
+            ],
+            "where": {"and": [
+                {"in": {"build.branch": branches.split(',')}},
+                {"gt": {"task.run.start_time": {"date": start}}},
+                {"lte": {"task.run.start_time": {"date": end}}},
+                {"eq": {"state": "completed"}},
+            ]}
+        }
+        data = self.submit(query)
+        print("\nTasks nearing their max-run-time on %s between %s and %s" %
+              (branches, start, end))
+        if data and len(data) > 0:
+            filtered = []
+            for record in data:
+                if 'tasks_gt_pct' in record:
+                    count = record['count']
+                    tasks_gt_pct = record['tasks_gt_pct']
+                    if tasks_gt_pct / count > filter_threshold_pct / 100.0:
+                        filtered.append(record)
+            filtered.sort(key=get_long_running_ratio)
+            if not filtered:
+                print("No long running tasks found.")
+            for record in filtered:
+                name = record['run']['name']
+                count = record['count']
+                max_run_time = record['max_run_time']
+                tasks_gt_pct = record['tasks_gt_pct']
+                print("%-55s: %d of %d runs (%.1f%%) exceeded %d%% of max-run-time (%d s)" %
+                      (name, tasks_gt_pct, count, tasks_gt_pct * 100 / count,
+                       threshold_pct, max_run_time))
+        else:
+            print("No tasks found.")

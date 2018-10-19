@@ -26,7 +26,10 @@ from mozharness.base.script import BaseScript, PreScriptAction, PostScriptAction
 from mozharness.mozilla.automation import TBPL_RETRY, EXIT_STATUS_DICT
 from mozharness.mozilla.mozbase import MozbaseMixin
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
-from mozharness.mozilla.testing.codecoverage import CodeCoverageMixin
+from mozharness.mozilla.testing.codecoverage import (
+    CodeCoverageMixin,
+    code_coverage_config_options
+)
 
 
 class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMixin):
@@ -56,7 +59,29 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
          "default": None,
          "help": "Number of this chunk",
          }
-    ]] + copy.deepcopy(testing_config_options)
+    ], [
+        ["--gpu-required"],
+        {"action": "store_true",
+         "dest": "gpu_required",
+         "default": False,
+         "help": "Run additional verification on modified tests using gpu instances.",
+         }
+    ], [
+        ["--log-raw-level"],
+        {"action": "store",
+         "dest": "log_raw_level",
+         "default": "info",
+         "help": "Set log level (debug|info|warning|error|critical|fatal)",
+         }
+    ], [
+        ["--log-tbpl-level"],
+        {"action": "store",
+         "dest": "log_tbpl_level",
+         "default": "info",
+         "help": "Set log level (debug|info|warning|error|critical|fatal)",
+         }
+    ]] + copy.deepcopy(testing_config_options) + \
+        copy.deepcopy(code_coverage_config_options)
 
     app_name = None
 
@@ -103,6 +128,9 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
                     self.this_chunk = m.group(2)
         self.sdk_level = None
         self.xre_path = None
+        self.device_serial = 'emulator-5554'
+        self.log_raw_level = c.get('log_raw_level')
+        self.log_tbpl_level = c.get('log_tbpl_level')
 
     def query_abs_dirs(self):
         if self.abs_dirs:
@@ -226,7 +254,7 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
                                                suffix='.log', dir=dir, delete=False)
         self.info("Launching the emulator with: %s" % ' '.join(command))
         self.info("Writing log to %s" % tmp_file.name)
-        proc = subprocess.Popen(command, stdout=tmp_file, stderr=tmp_file, env=env)
+        proc = subprocess.Popen(command, stdout=tmp_file, stderr=tmp_file, env=env, bufsize=0)
         return {
             "process": proc,
         }
@@ -268,7 +296,7 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
 
     def _run_proc(self, cmd, quiet=False):
         self.info('Running %s' % subprocess.list2cmdline(cmd))
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         out, err = p.communicate()
         if out and not quiet:
             self.info('%s' % str(out.strip()))
@@ -349,7 +377,7 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
         return install_ok
 
     def _kill_processes(self, process_name):
-        p = subprocess.Popen(['ps', '-A'], stdout=subprocess.PIPE)
+        p = subprocess.Popen(['ps', '-A'], stdout=subprocess.PIPE, bufsize=0)
         out, err = p.communicate()
         self.info("Killing every process called %s" % process_name)
         for line in out.splitlines():
@@ -402,10 +430,13 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
         error_summary_file = os.path.join(dirs['abs_blob_upload_dir'],
                                           '%s_errorsummary.log' % self.test_suite)
         str_format_values = {
+            'device_serial': self.device_serial,
             # IP address of the host as seen from the emulator
             'remote_webserver': '10.0.2.2',
             'xre_path': self.xre_path,
             'utility_path': self.xre_path,
+            'http_port': '8854',  # starting http port  to use for the mochitest server
+            'ssl_port': '4454',  # starting ssl port to use for the server
             'certs_path': os.path.join(dirs['abs_work_dir'], 'tests/certs'),
             # TestingMixin._download_and_extract_symbols() will set
             # self.symbols_path when downloading/extracting.
@@ -413,9 +444,14 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
             'modules_dir': dirs['abs_modules_dir'],
             'installer_path': self.installer_path,
             'raw_log_file': raw_log_file,
+            'log_tbpl_level': self.log_tbpl_level,
+            'log_raw_level': self.log_raw_level,
             'error_summary_file': error_summary_file,
+            'gecko_log': '-',
             # marionette options
             'address': c.get('marionette_address'),
+            'marionette_extra': c.get('marionette_extra', ''),
+            'xpcshell_extra': c.get('xpcshell_extra', ''),
             'test_manifest': os.path.join(
                 dirs['abs_marionette_tests_dir'],
                 self.config.get('marionette_test_manifest', '')
@@ -434,7 +470,9 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
                 # only query package name if requested
                 cmd.extend([option % {'app': self._query_package_name()}])
             else:
-                cmd.extend([option % str_format_values])
+                option = option % str_format_values
+                if option:
+                    cmd.extend([option])
 
         if not (self.verify_enabled or self.per_test_coverage):
             if user_paths:
@@ -452,6 +490,10 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
                 self.config["suite_definitions"][self.test_suite].get("tests"),
                 None,
                 try_tests))
+
+        if self.java_code_coverage_enabled:
+            cmd.extend(['--enable-coverage',
+                        '--coverage-output-path', self.java_coverage_output_path])
 
         return cmd
 
@@ -570,12 +612,17 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
         if self.test_suite:
             return [(self.test_suite, self.test_suite)]
         # per-test mode: determine test suites to run
+
+        # For each test category, provide a list of supported sub-suites and a mapping
+        # between the per_test_base suite name and the android suite name.
         all = [('mochitest', {'plain': 'mochitest',
                               'chrome': 'mochitest-chrome',
+                              'mochitest-media': 'mochitest-media',
                               'plain-clipboard': 'mochitest-plain-clipboard',
                               'plain-gpu': 'mochitest-plain-gpu'}),
                ('reftest', {'reftest': 'reftest',
-                            'crashtest': 'crashtest'}),
+                            'crashtest': 'crashtest',
+                            'jsreftest': 'jsreftest'}),
                ('xpcshell', {'xpcshell': 'xpcshell'})]
         suites = []
         for (category, all_suites) in all:
@@ -696,7 +743,7 @@ class AndroidEmulatorTest(TestingMixin, BaseScript, MozbaseMixin, CodeCoverageMi
 
     def download_and_extract(self):
         """
-        Download and extract fennec APK, tests.zip, host utils, and robocop (if required).
+        Download and extract fennec APK, tests, host utils, and robocop (if required).
         """
         super(AndroidEmulatorTest, self).download_and_extract(
             suite_categories=self._query_suite_categories())

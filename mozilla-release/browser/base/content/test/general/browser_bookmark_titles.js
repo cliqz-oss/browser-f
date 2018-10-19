@@ -16,8 +16,10 @@ var tests = [
    "data:application/vnd.mozilla.xul+xml,"],
   // about:certerror
   ["https://untrusted.example.com/somepage.html",
-   "https://untrusted.example.com/somepage.html"]
+   "https://untrusted.example.com/somepage.html"],
 ];
+
+SpecialPowers.pushPrefEnv({"set": [["browser.bookmarks.editDialog.showForNewBookmarks", false]]});
 
 add_task(async function check_default_bookmark_title() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
@@ -70,47 +72,6 @@ add_task(async function check_default_bookmark_title() {
   BrowserTestUtils.removeTab(tab);
 });
 
-add_task(async function check_override_bookmark_title() {
-  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
-  let browser = tab.linkedBrowser;
-  let [url, default_title] = tests[1];
-
-  // We use promisePageLoaded rather than BrowserTestUtils.browserLoaded - see
-  // note on function definition below.
-  let promiseLoaded = promisePageLoaded(browser);
-  BrowserTestUtils.loadURI(browser, url);
-
-  await promiseLoaded;
-
-  // Test that a bookmark of this URI gets the correct title if we provide one
-  await checkBookmarkedPageTitle(url, default_title, "An overridden title");
-
-  BrowserTestUtils.removeTab(tab);
-});
-
-// Bookmark a page and confirm that the new bookmark has the expected title.
-// (Then delete the bookmark.)
-async function checkBookmarkedPageTitle(url, default_title, overridden_title) {
-  let promiseBookmark = PlacesTestUtils.waitForNotification("onItemAdded",
-    (id, parentId, index, type, itemUrl) => itemUrl.equals(Services.io.newURI(url)));
-
-  // Here we test that if we provide a url and a title to bookmark, it will use the
-  // title provided rather than the one provided by the current page
-  PlacesCommandHook.bookmarkPage(gBrowser.selectedBrowser, false, url, overridden_title);
-  await promiseBookmark;
-
-  let bookmark = await PlacesUtils.bookmarks.fetch({url});
-
-  Assert.ok(bookmark, "Found the expected bookmark");
-  Assert.equal(bookmark.title, overridden_title, "Bookmark got a good overridden title.");
-  Assert.equal(default_title, gBrowser.selectedBrowser.contentTitle,
-    "Sanity check that the content is providing us with the correct title");
-  Assert.notEqual(bookmark.title, default_title,
-    "Make sure we picked the overridden one and not the default one.");
-
-  await PlacesUtils.bookmarks.remove(bookmark);
-}
-
 // Bookmark the current page and confirm that the new bookmark has the expected
 // title. (Then delete the bookmark.)
 async function checkBookmark(url, expected_title) {
@@ -119,7 +80,7 @@ async function checkBookmark(url, expected_title) {
 
   let promiseBookmark = PlacesTestUtils.waitForNotification("onItemAdded",
     (id, parentId, index, type, itemUrl) => itemUrl.equals(gBrowser.selectedBrowser.currentURI));
-  PlacesCommandHook.bookmarkPage(gBrowser.selectedBrowser);
+  PlacesCommandHook.bookmarkPage();
   await promiseBookmark;
 
   let bookmark = await PlacesUtils.bookmarks.fetch({url});

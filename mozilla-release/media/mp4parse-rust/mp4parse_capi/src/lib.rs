@@ -77,6 +77,7 @@ pub enum Mp4parseStatus {
 pub enum Mp4parseTrackType {
     Video = 0,
     Audio = 1,
+    Metadata = 2,
 }
 
 impl Default for Mp4parseTrackType {
@@ -93,6 +94,7 @@ pub enum Mp4parseCodec {
     Opus,
     Avc,
     Vp9,
+    Av1,
     Mp3,
     Mp4v,
     Jpeg,   // for QT JPEG atom in video track
@@ -406,6 +408,7 @@ pub unsafe extern fn mp4parse_get_track_info(parser: *mut Mp4parseParser, track_
     info.track_type = match context.tracks[track_index].track_type {
         TrackType::Video => Mp4parseTrackType::Video,
         TrackType::Audio => Mp4parseTrackType::Audio,
+        TrackType::Metadata => Mp4parseTrackType::Metadata,
         TrackType::Unknown => return Mp4parseStatus::Unsupported,
     };
 
@@ -430,6 +433,8 @@ pub unsafe extern fn mp4parse_get_track_info(parser: *mut Mp4parseParser, track_
         Some(SampleEntry::Video(ref video)) => match video.codec_specific {
             VideoCodecSpecific::VPxConfig(_) =>
                 Mp4parseCodec::Vp9,
+            VideoCodecSpecific::AV1Config(_) =>
+                Mp4parseCodec::Av1,
             VideoCodecSpecific::AVCConfig(_) =>
                 Mp4parseCodec::Avc,
             VideoCodecSpecific::ESDSConfig(_) => // MP4V (14496-2) video is unsupported.
@@ -540,8 +545,8 @@ pub unsafe extern fn mp4parse_get_track_audio_info(parser: *mut Mp4parseParser, 
             if streaminfo.block_type != 0 || streaminfo.data.len() != 34 {
                 return Mp4parseStatus::Invalid;
             }
-            (*info).extra_data.length = streaminfo.data.len() as u32;
-            (*info).extra_data.data = streaminfo.data.as_ptr();
+            (*info).codec_specific_config.length = streaminfo.data.len() as u32;
+            (*info).codec_specific_config.data = streaminfo.data.as_ptr();
         }
         AudioCodecSpecific::OpusSpecificBox(ref opus) => {
             let mut v = Vec::new();
@@ -556,15 +561,15 @@ pub unsafe extern fn mp4parse_get_track_audio_info(parser: *mut Mp4parseParser, 
                         if v.len() > std::u32::MAX as usize {
                             return Mp4parseStatus::Invalid;
                         }
-                        (*info).extra_data.length = v.len() as u32;
-                        (*info).extra_data.data = v.as_ptr();
+                        (*info).codec_specific_config.length = v.len() as u32;
+                        (*info).codec_specific_config.data = v.as_ptr();
                     }
                 }
             }
         }
         AudioCodecSpecific::ALACSpecificBox(ref alac) => {
-            (*info).extra_data.length = alac.data.len() as u32;
-            (*info).extra_data.data = alac.data.as_ptr();
+            (*info).codec_specific_config.length = alac.data.len() as u32;
+            (*info).codec_specific_config.data = alac.data.as_ptr();
         }
         AudioCodecSpecific::MP3 | AudioCodecSpecific::LPCM => (),
     }

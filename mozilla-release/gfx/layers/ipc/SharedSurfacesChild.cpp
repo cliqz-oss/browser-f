@@ -23,33 +23,47 @@ class SharedSurfacesChild::ImageKeyData final
 {
 public:
   ImageKeyData(WebRenderLayerManager* aManager,
-               const wr::ImageKey& aImageKey,
-               int32_t aInvalidations)
+               const wr::ImageKey& aImageKey)
     : mManager(aManager)
     , mImageKey(aImageKey)
-    , mInvalidations(aInvalidations)
   { }
 
   ImageKeyData(ImageKeyData&& aOther)
     : mManager(std::move(aOther.mManager))
+    , mDirtyRect(std::move(aOther.mDirtyRect))
     , mImageKey(aOther.mImageKey)
-    , mInvalidations(aOther.mInvalidations)
   { }
 
   ImageKeyData& operator=(ImageKeyData&& aOther)
   {
     mManager = std::move(aOther.mManager);
+    mDirtyRect = std::move(aOther.mDirtyRect);
     mImageKey = aOther.mImageKey;
-    mInvalidations = aOther.mInvalidations;
     return *this;
+  }
+
+  void MergeDirtyRect(const Maybe<IntRect>& aDirtyRect)
+  {
+    if (mDirtyRect) {
+      if (aDirtyRect) {
+        mDirtyRect->UnionRect(mDirtyRect.ref(), aDirtyRect.ref());
+      }
+    } else {
+      mDirtyRect = aDirtyRect;
+    }
+  }
+
+  Maybe<IntRect> TakeDirtyRect()
+  {
+    return std::move(mDirtyRect);
   }
 
   ImageKeyData(const ImageKeyData&) = delete;
   ImageKeyData& operator=(const ImageKeyData&) = delete;
 
   RefPtr<WebRenderLayerManager> mManager;
+  Maybe<IntRect> mDirtyRect;
   wr::ImageKey mImageKey;
-  int32_t mInvalidations;
 };
 
 class SharedSurfacesChild::SharedUserData final
@@ -119,7 +133,7 @@ public:
 
   wr::ImageKey UpdateKey(WebRenderLayerManager* aManager,
                          wr::IpcResourceUpdateQueue& aResources,
-                         int32_t aInvalidations)
+                         const Maybe<IntRect>& aDirtyRect)
   {
     MOZ_ASSERT(aManager);
     MOZ_ASSERT(!aManager->IsDestroyed());
@@ -146,23 +160,31 @@ public:
         // can change state. If our namespace differs, then our old key has
         // already been discarded.
         bool ownsKey = wrBridge->GetNamespace() == entry.mImageKey.mNamespace;
-        if (!ownsKey || entry.mInvalidations != aInvalidations) {
-          if (ownsKey) {
-            aManager->AddImageKeyForDiscard(entry.mImageKey);
-          }
-          entry.mInvalidations = aInvalidations;
+        if (!ownsKey) {
           entry.mImageKey = wrBridge->GetNextImageKey();
+          entry.TakeDirtyRect();
           aResources.AddExternalImage(mId, entry.mImageKey);
+        } else {
+          entry.MergeDirtyRect(aDirtyRect);
+          Maybe<IntRect> dirtyRect = entry.TakeDirtyRect();
+          if (dirtyRect) {
+            aResources.UpdateExternalImage(mId, entry.mImageKey,
+                                           ViewAs<ImagePixel>(dirtyRect.ref()));
+          }
         }
 
         key = entry.mImageKey;
         found = true;
+      } else {
+        // We don't have the resource update queue for this manager, so just
+        // accumulate the dirty rects until it is requested.
+        entry.MergeDirtyRect(aDirtyRect);
       }
     }
 
     if (!found) {
       key = aManager->WrBridge()->GetNextImageKey();
-      ImageKeyData data(aManager, key, aInvalidations);
+      ImageKeyData data(aManager, key);
       mKeys.AppendElement(std::move(data));
       aResources.AddExternalImage(mId, key);
     }
@@ -322,13 +344,13 @@ SharedSurfacesChild::Share(SourceSurfaceSharedData* aSurface,
   // Each time the surface changes, the producers of SourceSurfaceSharedData
   // surfaces promise to increment the invalidation counter each time the
   // surface has changed. We can use this counter to determine whether or not
-  // we should upate our paired ImageKey.
-  int32_t invalidations = aSurface->Invalidations();
+  // we should update our paired ImageKey.
+  Maybe<IntRect> dirtyRect = aSurface->TakeDirtyRect();
   SharedUserData* data = nullptr;
   nsresult rv = SharedSurfacesChild::ShareInternal(aSurface, &data);
   if (NS_SUCCEEDED(rv)) {
     MOZ_ASSERT(data);
-    aKey = data->UpdateKey(aManager, aResources, invalidations);
+    aKey = data->UpdateKey(aManager, aResources, dirtyRect);
   }
 
   return rv;

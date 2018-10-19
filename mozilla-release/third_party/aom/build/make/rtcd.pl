@@ -1,5 +1,14 @@
 #!/usr/bin/env perl
-
+##
+## Copyright (c) 2017, Alliance for Open Media. All rights reserved
+##
+## This source code is subject to the terms of the BSD 2 Clause License and
+## the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+## was not distributed with this source code in the LICENSE file, you can
+## obtain it at www.aomedia.org/license/software. If the Alliance for Open
+## Media Patent License 1.0 was not distributed with this source code in the
+## PATENTS file, you can obtain it at www.aomedia.org/license/patent.
+##
 no strict 'refs';
 use warnings;
 use Getopt::Long;
@@ -49,11 +58,15 @@ open CONFIG_FILE, $opts{config} or
 
 my %config = ();
 while (<CONFIG_FILE>) {
-  next if !/^(?:CONFIG_|HAVE_)/;
+  next if !/^#define\s+(?:CONFIG_|HAVE_)/;
   chomp;
-  s/\r$//;
-  my @pair = split /=/;
-  $config{$pair[0]} = $pair[1];
+  my @line_components = split /\s/;
+  scalar @line_components > 2 or
+    die "Invalid input passed to rtcd.pl via $opts{config}.";
+  # $line_components[0] = #define
+  # $line_components[1] = flag name (CONFIG_SOMETHING or HAVE_SOMETHING)
+  # $line_components[2] = flag value (0 or 1)
+  $config{$line_components[1]} = "$line_components[2]" eq "1" ? "yes" : "";
 }
 close CONFIG_FILE;
 
@@ -205,6 +218,7 @@ sub filter {
 sub common_top() {
   my $include_guard = uc($opts{sym})."_H_";
   print <<EOF;
+// This file is generated. Do not edit.
 #ifndef ${include_guard}
 #define ${include_guard}
 
@@ -279,15 +293,12 @@ sub arm() {
   # Assign the helper variable for each enabled extension
   foreach my $opt (@ALL_ARCHS) {
     my $opt_uc = uc $opt;
-    # Enable neon assembly based on HAVE_NEON logic instead of adding new
-    # HAVE_NEON_ASM logic
-    if ($opt eq 'neon_asm') { $opt_uc = 'NEON' }
     eval "\$have_${opt}=\"flags & HAS_${opt_uc}\"";
   }
 
   common_top;
   print <<EOF;
-#include "aom_config.h"
+#include "config/aom_config.h"
 
 #ifdef RTCD_C
 #include "aom_ports/arm.h"
@@ -310,10 +321,17 @@ EOF
 
 sub mips() {
   determine_indirection("c", @ALL_ARCHS);
+
+  # Assign the helper variable for each enabled extension
+  foreach my $opt (@ALL_ARCHS) {
+    my $opt_uc = uc $opt;
+    eval "\$have_${opt}=\"flags & HAS_${opt_uc}\"";
+  }
+
   common_top;
 
   print <<EOF;
-#include "aom_config.h"
+#include "config/aom_config.h"
 
 #ifdef RTCD_C
 static void setup_rtcd_internal(void)
@@ -333,11 +351,44 @@ EOF
   common_bottom;
 }
 
+sub ppc() {
+  determine_indirection("c", @ALL_ARCHS);
+
+  # Assign the helper variable for each enabled extension
+  foreach my $opt (@ALL_ARCHS) {
+    my $opt_uc = uc $opt;
+    eval "\$have_${opt}=\"flags & HAS_${opt_uc}\"";
+  }
+
+  common_top;
+
+  print <<EOF;
+#include "config/aom_config.h"
+
+#ifdef RTCD_C
+#include "aom_ports/ppc.h"
+static void setup_rtcd_internal(void)
+{
+  int flags = ppc_simd_caps();
+
+  (void)flags;
+
+EOF
+
+  set_function_pointers("c", @ALL_ARCHS);
+
+  print <<EOF;
+}
+#endif
+EOF
+  common_bottom;
+}
+
 sub unoptimized() {
   determine_indirection "c";
   common_top;
   print <<EOF;
-#include "aom_config.h"
+#include "config/aom_config.h"
 
 #ifdef RTCD_C
 static void setup_rtcd_internal(void)
@@ -359,36 +410,30 @@ EOF
 
 &require("c");
 if ($opts{arch} eq 'x86') {
-  @ALL_ARCHS = filter(qw/mmx sse sse2 sse3 ssse3 sse4_1 avx avx2/);
+  @ALL_ARCHS = filter(qw/mmx sse sse2 sse3 ssse3 sse4_1 sse4_2 avx avx2/);
   x86;
 } elsif ($opts{arch} eq 'x86_64') {
-  @ALL_ARCHS = filter(qw/mmx sse sse2 sse3 ssse3 sse4_1 avx avx2/);
+  @ALL_ARCHS = filter(qw/mmx sse sse2 sse3 ssse3 sse4_1 sse4_2 avx avx2/);
   @REQUIRES = filter(keys %required ? keys %required : qw/mmx sse sse2/);
   &require(@REQUIRES);
   x86;
 } elsif ($opts{arch} eq 'mips32' || $opts{arch} eq 'mips64') {
   @ALL_ARCHS = filter("$opts{arch}");
-  open CONFIG_FILE, $opts{config} or
-    die "Error opening config file '$opts{config}': $!\n";
-  while (<CONFIG_FILE>) {
-    if (/HAVE_DSPR2=yes/) {
-      @ALL_ARCHS = filter("$opts{arch}", qw/dspr2/);
-      last;
-    }
-    if (/HAVE_MSA=yes/) {
-      @ALL_ARCHS = filter("$opts{arch}", qw/msa/);
-      last;
-    }
+  if (aom_config("HAVE_DSPR2") eq "yes") {
+    @ALL_ARCHS = filter("$opts{arch}", qw/dspr2/);
+  } elsif (aom_config("HAVE_MSA") eq "yes") {
+    @ALL_ARCHS = filter("$opts{arch}", qw/msa/);
   }
-  close CONFIG_FILE;
   mips;
 } elsif ($opts{arch} =~ /armv7\w?/) {
-  @ALL_ARCHS = filter(qw/neon_asm neon/);
-  &require(@REQUIRES);
+  @ALL_ARCHS = filter(qw/neon/);
   arm;
 } elsif ($opts{arch} eq 'armv8' || $opts{arch} eq 'arm64' ) {
   @ALL_ARCHS = filter(qw/neon/);
   arm;
+} elsif ($opts{arch} eq 'ppc') {
+  @ALL_ARCHS = filter(qw/vsx/);
+  ppc;
 } else {
   unoptimized;
 }
@@ -417,4 +462,4 @@ Options:
   --disable-EXT     Disable support for EXT extensions
   --require-EXT     Require support for EXT extensions
   --sym=SYMBOL      Unique symbol to use for RTCD initialization function
-  --config=FILE     File with CONFIG_FOO=yes lines to parse
+  --config=FILE     Path to file containing C preprocessor directives to parse

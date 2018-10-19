@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/Attributes.h"
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/CmdLineAndEnvUtils.h"
 #include "nsWindowsDllInterceptor.h"
 #include "nsWindowsHelpers.h"
 
@@ -11,27 +14,29 @@
 
 using std::wstring;
 
-static void* gOrigReturnResult;
-
 extern "C" __declspec(dllexport) int
 ReturnResult()
 {
   return 2;
 }
 
+static mozilla::CrossProcessDllInterceptor::FuncHookType<decltype(&ReturnResult)>
+  gOrigReturnResult;
+
 static int
 ReturnResultHook()
 {
-  auto origFn = reinterpret_cast<decltype(&ReturnResult)>(gOrigReturnResult);
-  if (origFn() != 2) {
+  if (gOrigReturnResult() != 2) {
     return 3;
   }
 
   return 0;
 }
 
-int ParentMain()
+int ParentMain(int argc, wchar_t* argv[])
 {
+  mozilla::SetArgv0ToFullBinaryPath(argv);
+
   // We'll add the child process to a job so that, in the event of a failure in
   // this parent process, the child process will be automatically terminated.
   nsAutoHandle job(::CreateJobObject(nullptr, nullptr));
@@ -40,7 +45,7 @@ int ParentMain()
     return 1;
   }
 
-  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo{};
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {};
   jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
   if (!::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation,
@@ -49,14 +54,20 @@ int ParentMain()
     return 1;
   }
 
-  wstring cmdLine(::GetCommandLineW());
-  cmdLine += L" -child";
+  wchar_t childArgv_1[] = L"-child";
+
+  wchar_t* childArgv[] = {
+    argv[0],
+    childArgv_1
+  };
+
+  mozilla::UniquePtr<wchar_t[]>
+    cmdLine(mozilla::MakeCommandLine(mozilla::ArrayLength(childArgv), childArgv));
 
   STARTUPINFOW si = { sizeof(si) };
   PROCESS_INFORMATION pi;
-  if (!::CreateProcessW(nullptr, const_cast<LPWSTR>(cmdLine.c_str()), nullptr,
-                        nullptr, FALSE, CREATE_SUSPENDED, nullptr, nullptr, &si,
-                        &pi)) {
+  if (!::CreateProcessW(argv[0], cmdLine.get(), nullptr, nullptr, FALSE,
+                        CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
     printf("TEST-UNEXPECTED-FAIL | DllInterceptorCrossProcess | Failed to spawn child process\n");
     return 1;
   }
@@ -73,23 +84,13 @@ int ParentMain()
   mozilla::CrossProcessDllInterceptor intcpt(childProcess.get());
   intcpt.Init("TestDllInterceptorCrossProcess.exe");
 
-  if (!intcpt.AddHook("ReturnResult",
-                      reinterpret_cast<intptr_t>(&ReturnResultHook),
-                      &gOrigReturnResult)) {
+  if (!gOrigReturnResult.Set(childProcess.get(), intcpt, "ReturnResult",
+                             &ReturnResultHook)) {
     printf("TEST-UNEXPECTED-FAIL | DllInterceptorCrossProcess | Failed to add hook\n");
     return 1;
   }
 
   printf("TEST-PASS | DllInterceptorCrossProcess | Hook added\n");
-
-  // Let's save the original hook
-  SIZE_T bytesWritten;
-  if (!::WriteProcessMemory(childProcess.get(), &gOrigReturnResult,
-                            &gOrigReturnResult, sizeof(gOrigReturnResult),
-                            &bytesWritten)) {
-    printf("TEST-UNEXPECTED-FAIL | DllInterceptorCrossProcess | Failed to write original function pointer\n");
-    return 1;
-  }
 
   if (::ResumeThread(childMainThread.get()) == static_cast<DWORD>(-1)) {
     printf("TEST-UNEXPECTED-FAIL | DllInterceptorCrossProcess | Failed to resume child thread\n");
@@ -124,12 +125,18 @@ int ParentMain()
   return 0;
 }
 
-int main(int argc, char* argv[])
+extern "C"
+int wmain(int argc, wchar_t* argv[])
 {
   if (argc > 1) {
-    return ReturnResult();
+    // clang keeps inlining this call despite every attempt to force it to do
+    // otherwise. We'll use GetProcAddress and call its function pointer instead.
+    auto pReturnResult =
+      reinterpret_cast<decltype(&ReturnResult)>(
+        ::GetProcAddress(::GetModuleHandleW(nullptr), "ReturnResult"));
+    return pReturnResult();
   }
 
-  return ParentMain();
+  return ParentMain(argc, argv);
 }
 

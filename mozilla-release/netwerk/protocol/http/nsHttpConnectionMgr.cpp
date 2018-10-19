@@ -2963,7 +2963,7 @@ nsHttpConnectionMgr::OnMsgUpdateParam(int32_t inParam, ARefBase *)
         mThrottleMaxTime = TimeDuration::FromMilliseconds(value);
         break;
     default:
-        NS_NOTREACHED("unexpected parameter name");
+        MOZ_ASSERT_UNREACHABLE("unexpected parameter name");
     }
 }
 
@@ -5121,7 +5121,7 @@ nsHttpConnectionMgr::nsHalfOpenSocket::OnTransportStatus(nsITransport *trans,
         if (NS_SUCCEEDED(rv) && !addressSet.IsEmpty()) {
             for (uint32_t i = 0; i < addressSet.Length(); ++i) {
                 nsCString *newKey = mEnt->mCoalescingKeys.AppendElement(nsCString());
-                newKey->SetCapacity(kIPv6CStrBufSize + 26);
+                newKey->SetLength(kIPv6CStrBufSize + 26);
                 NetAddrToString(&addressSet[i], newKey->BeginWriting(), kIPv6CStrBufSize);
                 newKey->SetLength(strlen(newKey->BeginReading()));
                 if (mEnt->mConnInfo->GetAnonymous()) {

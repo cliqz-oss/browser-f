@@ -121,7 +121,8 @@ NS_IMETHODIMP
 txStylesheetSink::HandleStartElement(const char16_t *aName,
                                      const char16_t **aAtts,
                                      uint32_t aAttsCount,
-                                     uint32_t aLineNumber)
+                                     uint32_t aLineNumber,
+                                     uint32_t aColumnNumber)
 {
     MOZ_ASSERT(aAttsCount % 2 == 0, "incorrect aAttsCount");
 
@@ -687,7 +688,7 @@ TX_CompileStylesheet(nsINode* aNode, txMozillaXSLTProcessor* aProcessor,
 
     // We need to remove the ref, a URI with a ref would mean that we have an
     // embedded stylesheet.
-    docUri->CloneIgnoringRef(getter_AddRefs(uri));
+    NS_GetURIWithoutRef(docUri, getter_AddRefs(uri));
     NS_ENSURE_TRUE(uri, NS_ERROR_FAILURE);
 
     uri->GetSpec(spec);

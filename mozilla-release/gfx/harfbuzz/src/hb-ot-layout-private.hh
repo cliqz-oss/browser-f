@@ -105,12 +105,12 @@ HB_INTERNAL void
 hb_ot_layout_position_start (hb_font_t    *font,
 			     hb_buffer_t  *buffer);
 
-/* Should be called after all the position_lookup's are done, to finish advances. */
+/* Should be called after all the position_lookup's are done, to fini advances. */
 HB_INTERNAL void
 hb_ot_layout_position_finish_advances (hb_font_t    *font,
 				       hb_buffer_t  *buffer);
 
-/* Should be called after hb_ot_layout_position_finish_advances, to finish offsets. */
+/* Should be called after hb_ot_layout_position_finish_advances, to fini offsets. */
 HB_INTERNAL void
 hb_ot_layout_position_finish_offsets (hb_font_t    *font,
 				      hb_buffer_t  *buffer);
@@ -120,25 +120,6 @@ hb_ot_layout_position_finish_offsets (hb_font_t    *font,
 /*
  * hb_ot_layout_t
  */
-
-namespace OT {
-  struct BASE;
-  struct COLR;
-  struct CPAL;
-  struct GDEF;
-  struct GSUB;
-  struct GPOS;
-  struct MATH;
-  struct fvar;
-  struct avar;
-}
-
-namespace AAT {
-  struct ankr;
-  struct kerx;
-  struct morx;
-  struct trak;
-}
 
 struct hb_ot_layout_lookup_accelerator_t
 {
@@ -161,33 +142,73 @@ struct hb_ot_layout_lookup_accelerator_t
   hb_set_digest_t digest;
 };
 
+/* Most of these tables are NOT needed for shaping.  But we need to hook them *somewhere*.
+ * This is as good as any place. */
+#define HB_OT_LAYOUT_TABLES \
+    /* OpenType shaping. */ \
+    HB_OT_LAYOUT_TABLE(OT, GDEF) \
+    HB_OT_LAYOUT_TABLE(OT, GSUB) \
+    HB_OT_LAYOUT_TABLE(OT, GPOS) \
+    HB_OT_LAYOUT_TABLE(OT, JSTF) \
+    HB_OT_LAYOUT_TABLE(OT, BASE) \
+    /* AAT shaping. */ \
+    HB_OT_LAYOUT_TABLE(AAT, morx) \
+    HB_OT_LAYOUT_TABLE(AAT, kerx) \
+    HB_OT_LAYOUT_TABLE(AAT, ankr) \
+    HB_OT_LAYOUT_TABLE(AAT, trak) \
+    /* OpenType variations. */ \
+    HB_OT_LAYOUT_TABLE(OT, fvar) \
+    HB_OT_LAYOUT_TABLE(OT, avar) \
+    HB_OT_LAYOUT_TABLE(OT, MVAR) \
+    /* OpenType color. */ \
+    HB_OT_LAYOUT_TABLE(OT, COLR) \
+    HB_OT_LAYOUT_TABLE(OT, CPAL) \
+    HB_OT_LAYOUT_TABLE(OT, CBDT) \
+    HB_OT_LAYOUT_TABLE(OT, CBLC) \
+    HB_OT_LAYOUT_TABLE(OT, sbix) \
+    HB_OT_LAYOUT_TABLE(OT, svg) \
+    /* OpenType math. */ \
+    HB_OT_LAYOUT_TABLE(OT, MATH) \
+    /* OpenType fundamentals. */ \
+    HB_OT_LAYOUT_TABLE(OT, post) \
+    /* */
+
+/* Declare tables. */
+#define HB_OT_LAYOUT_TABLE(Namespace, Type) namespace Namespace { struct Type; }
+HB_OT_LAYOUT_TABLES
+#undef HB_OT_LAYOUT_TABLE
+
 struct hb_ot_layout_t
 {
-  hb_blob_t *gdef_blob;
-  hb_blob_t *gsub_blob;
-  hb_blob_t *gpos_blob;
-
-  const struct OT::GDEF *gdef;
-  const struct OT::GSUB *gsub;
-  const struct OT::GPOS *gpos;
-
-  /* TODO Move the following out of this struct. */
-  OT::hb_lazy_table_loader_t<struct OT::BASE> base;
-  OT::hb_lazy_table_loader_t<struct OT::COLR> colr;
-  OT::hb_lazy_table_loader_t<struct OT::CPAL> cpal;
-  OT::hb_lazy_table_loader_t<struct OT::MATH> math;
-  OT::hb_lazy_table_loader_t<struct OT::fvar> fvar;
-  OT::hb_lazy_table_loader_t<struct OT::avar> avar;
-  OT::hb_lazy_table_loader_t<struct AAT::ankr> ankr;
-  OT::hb_lazy_table_loader_t<struct AAT::kerx> kerx;
-  OT::hb_lazy_table_loader_t<struct AAT::morx> morx;
-  OT::hb_lazy_table_loader_t<struct AAT::trak> trak;
-
   unsigned int gsub_lookup_count;
   unsigned int gpos_lookup_count;
 
   hb_ot_layout_lookup_accelerator_t *gsub_accels;
   hb_ot_layout_lookup_accelerator_t *gpos_accels;
+
+  /* Various non-shaping tables. */
+  struct tables_t
+  {
+    HB_INTERNAL void init0 (hb_face_t *face);
+    HB_INTERNAL void fini (void);
+
+#define HB_OT_LAYOUT_TABLE_ORDER(Namespace, Type) \
+      HB_PASTE (ORDER_, HB_PASTE (Namespace, HB_PASTE (_, Type)))
+    enum order_t
+    {
+      ORDER_ZERO,
+#define HB_OT_LAYOUT_TABLE(Namespace, Type) \
+	HB_OT_LAYOUT_TABLE_ORDER (Namespace, Type),
+      HB_OT_LAYOUT_TABLES
+#undef HB_OT_LAYOUT_TABLE
+    };
+
+    hb_face_t *face; /* MUST be JUST before the lazy loaders. */
+#define HB_OT_LAYOUT_TABLE(Namespace, Type) \
+    hb_table_lazy_loader_t<struct Namespace::Type, HB_OT_LAYOUT_TABLE_ORDER (Namespace, Type)> Type;
+    HB_OT_LAYOUT_TABLES
+#undef HB_OT_LAYOUT_TABLE
+  } table;
 };
 
 
@@ -198,7 +219,7 @@ HB_INTERNAL void
 _hb_ot_layout_destroy (hb_ot_layout_t *layout);
 
 
-#define hb_ot_layout_from_face(face) ((hb_ot_layout_t *) face->shaper_data.ot)
+#define hb_ot_layout_from_face(face) ((hb_ot_layout_t *) face->shaper_data.ot.get_relaxed ())
 
 
 /*
@@ -309,7 +330,7 @@ _hb_glyph_info_set_unicode_props (hb_glyph_info_t *info, hb_buffer_t *buffer)
        * processing on. */
 
       /* Only Mn and Mc can have non-zero ccc:
-       * http://www.unicode.org/policies/stability_policy.html#Property_Value
+       * https://unicode.org/policies/stability_policy.html#Property_Value
        * """
        * Canonical_Combining_Class, General_Category
        * All characters other than those with General_Category property values

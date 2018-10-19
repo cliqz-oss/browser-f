@@ -8,6 +8,7 @@ if CONFIG['OS_TARGET'] != 'Android':
     Program('crashreporter')
 
     UNIFIED_SOURCES += [
+        '../CrashAnnotations.cpp',
         'crashreporter.cpp',
         'ping.cpp',
     ]
@@ -24,10 +25,20 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     UNIFIED_SOURCES += [
         'crashreporter_win.cpp',
     ]
+    include('/toolkit/crashreporter/google-breakpad/src/common/windows/objs.mozbuild')
+    include('/toolkit/crashreporter/breakpad-client/windows/sender/objs.mozbuild')
+    include('/toolkit/crashreporter/breakpad-client/windows/crash_generation/objs.mozbuild')
+    include('/toolkit/crashreporter/breakpad-client/windows/common/objs.mozbuild')
+    SOURCES += objs_common
+    SOURCES += objs_sender
+    SOURCES += objs_crash_generation
+    SOURCES += objs_client_common
+    SOURCES += [
+        '../google-breakpad/src/common/windows/http_upload.cc',
+    ]
     DEFINES['UNICODE'] = True
     DEFINES['_UNICODE'] = True
     USE_LIBS += [
-        'google_breakpad_libxul_s',
         'nss',
     ]
     OS_LIBS += [
@@ -88,3 +99,6 @@ RCINCLUDE = 'crashreporter.rc'
 DisableStlWrapping()
 
 include('/toolkit/crashreporter/crashreporter.mozbuild')
+
+if CONFIG['CC_TYPE'] == 'clang-cl':
+    AllowCompilerWarnings()  # workaround for bug 1090497

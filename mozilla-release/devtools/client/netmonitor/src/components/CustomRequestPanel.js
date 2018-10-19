@@ -35,7 +35,7 @@ const CUSTOM_SEND = L10N.getStr("netmonitor.custom.send");
 /*
  * Custom request panel component
  * A network request editor which simply provide edit and resend interface
- * for netowrk development.
+ * for network development.
  */
 class CustomRequestPanel extends Component {
   static get propTypes() {
@@ -100,18 +100,11 @@ class CustomRequestPanel extends Component {
 
     switch (evt.target.id) {
       case "custom-headers-value":
-        let customHeadersValue = val || "";
-        // Parse text representation of multiple HTTP headers
-        const headersArray = this.parseRequestText(customHeadersValue, "\\S+?", ":");
-        // Remove temp customHeadersValue while query string is parsable
-        if (customHeadersValue === "" ||
-          headersArray.length === customHeadersValue.split("\n").length) {
-          customHeadersValue = null;
-        }
         data = {
           requestHeaders: {
-            customHeadersValue,
-            headers: headersArray,
+            customHeadersValue: val || "",
+            // Parse text representation of multiple HTTP headers
+            headers: this.parseRequestText(val, "\\S+?", ":")
           },
         };
         break;

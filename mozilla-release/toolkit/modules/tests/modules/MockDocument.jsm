@@ -7,7 +7,6 @@
 var EXPORTED_SYMBOLS = ["MockDocument"];
 
 Cu.importGlobalProperties(["DOMParser", "URL"]);
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const { NetUtil } = ChromeUtils.import("resource://gre/modules/NetUtil.jsm", {});
 
@@ -56,11 +55,10 @@ const MockDocument = {
   mockOwnerGlobalProperty(aElement) {
     Object.defineProperty(aElement, "ownerGlobal", {
       value: {
-        QueryInterface: ChromeUtils.generateQI([Ci.nsIInterfaceRequestor]),
-        getInterface: () => ({
+        windowUtils: {
           addManuallyManagedState() {},
           removeManuallyManagedState() {},
-        }),
+        },
         UIEvent: Event,
         Event,
       },
@@ -79,4 +77,3 @@ const MockDocument = {
   },
 
 };
-

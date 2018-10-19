@@ -14,6 +14,7 @@
 #include "mozilla/dom/CanvasCaptureMediaStreamBinding.h"
 #include "mozilla/gfx/2D.h"
 #include "nsContentUtils.h"
+#include "Tracing.h"
 
 using namespace mozilla::layers;
 using namespace mozilla::gfx;
@@ -51,6 +52,8 @@ public:
   void NotifyPull(MediaStreamGraph* aGraph, StreamTime aDesiredTime) override
   {
     // Called on the MediaStreamGraph thread.
+    TRACE_AUDIO_CALLBACK_COMMENT("SourceMediaStream %p track %i",
+                                 mSourceStream.get(), mTrackId);
     MOZ_ASSERT(mSourceStream);
     StreamTime delta = aDesiredTime - mSourceStream->GetEndOfAppendedData(mTrackId);
     if (delta > 0) {
@@ -249,7 +252,7 @@ CanvasCaptureMediaStream::~CanvasCaptureMediaStream()
 JSObject*
 CanvasCaptureMediaStream::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return dom::CanvasCaptureMediaStreamBinding::Wrap(aCx, this, aGivenProto);
+  return dom::CanvasCaptureMediaStream_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

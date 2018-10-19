@@ -23,22 +23,17 @@ var EXPORTED_SYMBOLS = [
 ChromeUtils.import("resource://gre/modules/Integration.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-ChromeUtils.defineModuleGetter(this, "FileUtils",
-                               "resource://gre/modules/FileUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "NetUtil",
-                               "resource://gre/modules/NetUtil.jsm");
-ChromeUtils.defineModuleGetter(this, "OS",
-                               "resource://gre/modules/osfile.jsm");
-ChromeUtils.defineModuleGetter(this, "PromiseUtils",
-                               "resource://gre/modules/PromiseUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "Services",
-                               "resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
+  DownloadHistory: "resource://gre/modules/DownloadHistory.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
+  PromiseUtils: "resource://gre/modules/PromiseUtils.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+});
 
-XPCOMUtils.defineLazyServiceGetter(this, "gDownloadHistory",
-           "@mozilla.org/browser/download-history;1",
-           Ci.nsIDownloadHistory);
 XPCOMUtils.defineLazyServiceGetter(this, "gExternalAppLauncher",
            "@mozilla.org/uriloader/external-helper-app-service;1",
            Ci.nsPIExternalAppLauncher);
@@ -1718,32 +1713,8 @@ this.DownloadSaver.prototype = {
    * the download is private.
    */
   addToHistory() {
-    if (this.download.source.isPrivate) {
-      return;
-    }
-
-    let sourceUri = NetUtil.newURI(this.download.source.url);
-    let referrer = this.download.source.referrer;
-    let referrerUri = referrer ? NetUtil.newURI(referrer) : null;
-    let targetUri = NetUtil.newURI(new FileUtils.File(
-                                       this.download.target.path));
-
-    // The start time is always available when we reach this point.
-    let startPRTime = this.download.startTime.getTime() * 1000;
-
-    try {
-      gDownloadHistory.addDownload(sourceUri, referrerUri, startPRTime,
-                                   targetUri);
-    } catch (ex) {
-      if (!(ex instanceof Components.Exception) ||
-          ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
-        throw ex;
-      }
-      //
-      // Under normal operation the download history service may not
-      // be available. We don't want all downloads that are public to fail
-      // when this happens so we'll ignore this error and this error only!
-      //
+    if (AppConstants.MOZ_PLACES) {
+      DownloadHistory.addDownloadToHistory(this.download).catch(Cu.reportError);
     }
   },
 
@@ -2244,7 +2215,7 @@ this.DownloadCopySaver.prototype = {
    */
   getRedirects() {
     return this._redirects;
-  }
+  },
 };
 
 /**
@@ -2363,14 +2334,8 @@ this.DownloadLegacySaver.prototype = {
    *
    * @param aRequest
    *        nsIRequest associated to the status update.
-   * @param aAlreadyAddedToHistory
-   *        Indicates that the nsIExternalHelperAppService component already
-   *        added the download to the browsing history, unless it was started
-   *        from a private browsing window.  When this parameter is false, the
-   *        download is added to the browsing history here.  Private downloads
-   *        are never added to history even if this parameter is false.
    */
-  onTransferStarted(aRequest, aAlreadyAddedToHistory) {
+  onTransferStarted(aRequest) {
     // Store a reference to the request, used in some cases when handling
     // completion, and also checked during the download by unit tests.
     this.request = aRequest;
@@ -2394,9 +2359,7 @@ this.DownloadLegacySaver.prototype = {
       this.download.source.referrer = aRequest.referrer.spec;
     }
 
-    if (!aAlreadyAddedToHistory) {
-      this.addToHistory();
-    }
+    this.addToHistory();
   },
 
   /**
@@ -2692,8 +2655,7 @@ this.DownloadPDFSaver.prototype = {
     printSettings.footerStrLeft = "";
     printSettings.footerStrRight = "";
 
-    this._webBrowserPrint = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                               .getInterface(Ci.nsIWebBrowserPrint);
+    this._webBrowserPrint = win.getInterface(Ci.nsIWebBrowserPrint);
 
     try {
       await new Promise((resolve, reject) => {

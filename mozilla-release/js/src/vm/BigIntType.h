@@ -17,6 +17,7 @@
 #include "gc/Heap.h"
 #include "js/AllocPolicy.h"
 #include "js/GCHashTable.h"
+#include "js/Result.h"
 #include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
 #include "vm/StringType.h"
@@ -38,13 +39,16 @@ class BigInt final : public js::gc::TenuredCell
     friend bool js::StringToBigIntImpl(const mozilla::Range<const CharT>& chars,
                                        uint8_t radix, Handle<BigInt*> res);
 
+  protected:
+    // Reserved word for Cell GC invariants. This also ensures minimum
+    // structure size.
+    uintptr_t reserved_;
+
   private:
-    // The minimum allocation size is currently 16 bytes (see
-    // SortedArenaList in gc/ArenaList.h).
-    union {
-        mpz_t num_;
-        uint8_t unused_[js::gc::MinCellSize];
-    };
+    mpz_t num_;
+
+  protected:
+    BigInt() : reserved_(0) { }
 
   public:
     // Allocate and initialize a BigInt value
@@ -73,9 +77,32 @@ class BigInt final : public js::gc::TenuredCell
     static void init();
 
     static BigInt* copy(JSContext* cx, Handle<BigInt*> x);
+    static BigInt* add(JSContext* cx, Handle<BigInt*> x, Handle<BigInt*> y);
+    static BigInt* sub(JSContext* cx, Handle<BigInt*> x, Handle<BigInt*> y);
+    static BigInt* mul(JSContext* cx, Handle<BigInt*> x, Handle<BigInt*> y);
+    static BigInt* div(JSContext* cx, Handle<BigInt*> x, Handle<BigInt*> y);
+    static BigInt* mod(JSContext* cx, Handle<BigInt*> x, Handle<BigInt*> y);
+    static BigInt* pow(JSContext* cx, Handle<BigInt*> x, Handle<BigInt*> y);
+    static BigInt* neg(JSContext* cx, Handle<BigInt*> x);
+
+    // Type-checking versions of arithmetic operations. These methods
+    // must be called with at least one BigInt operand. Binary
+    // operations with throw a TypeError if one of the operands is not a
+    // BigInt value.
+    static bool add(JSContext* cx, Handle<Value> lhs, Handle<Value> rhs, MutableHandle<Value> res);
+    static bool sub(JSContext* cx, Handle<Value> lhs, Handle<Value> rhs, MutableHandle<Value> res);
+    static bool mul(JSContext* cx, Handle<Value> lhs, Handle<Value> rhs, MutableHandle<Value> res);
+    static bool div(JSContext* cx, Handle<Value> lhs, Handle<Value> rhs, MutableHandle<Value> res);
+    static bool mod(JSContext* cx, Handle<Value> lhs, Handle<Value> rhs, MutableHandle<Value> res);
+    static bool pow(JSContext* cx, Handle<Value> lhs, Handle<Value> rhs, MutableHandle<Value> res);
+    static bool neg(JSContext* cx, Handle<Value> operand, MutableHandle<Value> res);
 
     static double numberValue(BigInt* x);
     static JSLinearString* toString(JSContext* cx, BigInt* x, uint8_t radix);
+
+    static bool equal(BigInt* lhs, BigInt* rhs);
+    static bool equal(BigInt* lhs, double rhs);
+    static JS::Result<bool> looselyEqual(JSContext* cx, HandleBigInt lhs, HandleValue rhs);
 
     // Return the length in bytes of the representation used by
     // writeBytes.
@@ -99,7 +126,8 @@ BigIntToAtom(JSContext* cx, JS::BigInt* bi);
 extern JS::BigInt*
 NumberToBigInt(JSContext* cx, double d);
 
-extern JS::BigInt*
+// Convert a string to a BigInt, returning nullptr if parsing fails.
+extern JS::Result<JS::BigInt*, JS::OOM&>
 StringToBigInt(JSContext* cx, JS::Handle<JSString*> str, uint8_t radix);
 
 extern JS::BigInt*

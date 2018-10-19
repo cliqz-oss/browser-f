@@ -62,6 +62,8 @@ ReflowInput::ReflowInput(nsPresContext*       aPresContext,
   : SizeComputationInput(aFrame, aRenderingContext)
   , mBlockDelta(0)
   , mOrthogonalLimit(NS_UNCONSTRAINEDSIZE)
+  , mAvailableWidth(0)
+  , mAvailableHeight(0)
   , mContainingBlockSize(mWritingMode)
   , mReflowDepth(0)
 {
@@ -182,6 +184,8 @@ ReflowInput::ReflowInput(
   : SizeComputationInput(aFrame, aParentReflowInput.mRenderingContext)
   , mBlockDelta(0)
   , mOrthogonalLimit(NS_UNCONSTRAINEDSIZE)
+  , mAvailableWidth(0)
+  , mAvailableHeight(0)
   , mContainingBlockSize(mWritingMode)
   , mFlags(aParentReflowInput.mFlags)
   , mReflowDepth(aParentReflowInput.mReflowDepth + 1)
@@ -483,6 +487,13 @@ ReflowInput::Init(nsPresContext*     aPresContext,
     } else {
       AvailableBSize() = NS_UNCONSTRAINEDSIZE;
     }
+  }
+
+  if (mStyleDisplay->IsContainSize()) {
+    // In the case that a box is size contained, we want to ensure
+    // that it is also monolithic. We do this by unsetting
+    // AvailableBSize() to avoid fragmentaiton.
+    AvailableBSize() = NS_UNCONSTRAINEDSIZE;
   }
 
   LAYOUT_WARN_IF_FALSE((mFrameType == NS_CSS_FRAME_TYPE_INLINE &&
@@ -2457,7 +2468,7 @@ ReflowInput::InitConstraints(nsPresContext* aPresContext,
         // Also shrink-wrap blocks that are orthogonal to their container.
         if (isBlock &&
             ((aFrameType == LayoutFrameType::Legend &&
-              mFrame->Style()->GetPseudo() != nsCSSAnonBoxes::scrolledContent) ||
+              mFrame->Style()->GetPseudo() != nsCSSAnonBoxes::scrolledContent()) ||
              (aFrameType == LayoutFrameType::Scroll &&
               mFrame->GetContentInsertionFrame()->IsLegendFrame()) ||
              (mCBReflowInput &&

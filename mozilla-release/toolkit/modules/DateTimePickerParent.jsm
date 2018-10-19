@@ -12,10 +12,9 @@ function debug(aStr) {
 }
 
 var EXPORTED_SYMBOLS = [
-  "DateTimePickerParent"
+  "DateTimePickerParent",
 ];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 /*
@@ -31,7 +30,7 @@ var DateTimePickerParent = {
   MESSAGES: [
     "FormDateTime:OpenPicker",
     "FormDateTime:ClosePicker",
-    "FormDateTime:UpdatePicker"
+    "FormDateTime:UpdatePicker",
   ],
 
   init() {

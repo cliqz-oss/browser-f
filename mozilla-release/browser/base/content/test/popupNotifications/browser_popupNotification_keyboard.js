@@ -30,7 +30,9 @@ var tests = [
       ok(this.notifyObj.secondaryActionClicked, "secondaryAction was clicked");
       ok(!this.notifyObj.dismissalCallbackTriggered, "dismissal callback wasn't triggered");
       ok(this.notifyObj.removedCallbackTriggered, "removed callback triggered");
-    }
+      is(this.notifyObj.mainActionSource, undefined, "shouldn't have a main action source.");
+      is(this.notifyObj.secondaryActionSource, "esc-press", "secondary action should be from ESC key press");
+    },
   },
   // Test that for non-persistent notifications, the escape key dismisses the notification.
   { id: "Test#2",
@@ -48,8 +50,10 @@ var tests = [
       ok(!this.notifyObj.secondaryActionClicked, "secondaryAction was not clicked");
       ok(this.notifyObj.dismissalCallbackTriggered, "dismissal callback triggered");
       ok(!this.notifyObj.removedCallbackTriggered, "removed callback was not triggered");
+      is(this.notifyObj.mainActionSource, undefined, "shouldn't have a main action source.");
+      is(this.notifyObj.secondaryActionSource, undefined, "shouldn't have a secondary action source.");
       this.notification.remove();
-    }
+    },
   },
   // Test that the space key on an anchor element focuses an active notification
   { id: "Test#3",
@@ -67,10 +71,10 @@ var tests = [
       anchor.focus();
       is(document.activeElement, anchor);
       EventUtils.sendString(" ");
-      is(document.activeElement, popup.childNodes[0].closebutton);
+      is(document.activeElement, popup.children[0].closebutton);
       this.notification.remove();
     },
-    onHidden(popup) { }
+    onHidden(popup) { },
   },
   // Test that you can switch between active notifications with the space key
   // and that the notification is focused on selection.
@@ -112,7 +116,7 @@ var tests = [
       popup = await opened;
       checkPopup(popup, notifyObj1);
 
-      is(document.activeElement, popup.childNodes[0].checkbox);
+      is(document.activeElement, popup.children[0].checkbox);
 
       // Activate the anchor for notification 2 and wait until it's shown.
       anchor = document.getElementById(notifyObj2.anchorID);
@@ -123,7 +127,7 @@ var tests = [
       popup = await opened;
       checkPopup(popup, notifyObj2);
 
-      is(document.activeElement, popup.childNodes[0].closebutton);
+      is(document.activeElement, popup.children[0].closebutton);
 
       notification1.remove();
       notification2.remove();
@@ -148,7 +152,7 @@ var tests = [
       is(Services.focus.focusedElement, null);
 
       EventUtils.synthesizeKey("KEY_Tab");
-      is(Services.focus.focusedElement, popup.childNodes[0].closebutton);
+      is(Services.focus.focusedElement, popup.children[0].closebutton);
       dismissNotification(popup);
     },
     async onHidden() {
@@ -170,7 +174,7 @@ var tests = [
 
       this.notification.remove();
       notification.remove();
-    }
+    },
   },
   // Test that focus is not moved out of a content element if autofocus is not set.
   { id: "Test#6",

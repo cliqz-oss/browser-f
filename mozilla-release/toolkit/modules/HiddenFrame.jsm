@@ -8,7 +8,6 @@ var EXPORTED_SYMBOLS = ["HiddenFrame"];
 
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 const XUL_PAGE = "chrome://global/content/win.xul";
 
@@ -60,8 +59,7 @@ HiddenFrame.prototype = {
    */
   getWindow() {
     this.get();
-    this._browser.QueryInterface(Ci.nsIInterfaceRequestor);
-    return this._browser.getInterface(Ci.nsIDOMWindow);
+    return this._browser.document.ownerGlobal;
   },
 
 
@@ -106,9 +104,9 @@ HiddenFrame.prototype = {
       }
     };
     this._webProgress.addProgressListener(this._listener, Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT);
-    let docShell = this._browser.getInterface(Ci.nsIDocShell);
+    let docShell = this._browser.docShell;
     docShell.createAboutBlankContentViewer(Services.scriptSecurityManager.getSystemPrincipal());
     docShell.useGlobalHistory = false;
     this._browser.loadURI(XUL_PAGE, 0, null, null, null);
-  }
+  },
 };

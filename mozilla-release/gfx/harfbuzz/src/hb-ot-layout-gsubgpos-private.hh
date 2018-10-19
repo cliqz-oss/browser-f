@@ -30,8 +30,8 @@
 #define HB_OT_LAYOUT_GSUBGPOS_PRIVATE_HH
 
 #include "hb-private.hh"
-#include "hb-debug.hh"
 #include "hb-buffer-private.hh"
+#include "hb-map-private.hh"
 #include "hb-ot-layout-gdef-table.hh"
 #include "hb-set-private.hh"
 
@@ -59,22 +59,53 @@ struct hb_closure_context_t :
     return HB_VOID;
   }
 
+  bool should_visit_lookup (unsigned int lookup_index)
+  {
+    if (is_lookup_done (lookup_index))
+      return false;
+    done_lookups->set (lookup_index, glyphs->get_population ());
+    return true;
+  }
+
+  bool is_lookup_done (unsigned int lookup_index)
+  {
+    /* Have we visited this lookup with the current set of glyphs? */
+    return done_lookups->get (lookup_index) == glyphs->get_population ();
+  }
+
   hb_face_t *face;
   hb_set_t *glyphs;
+  hb_auto_t<hb_set_t> out[1];
   recurse_func_t recurse_func;
   unsigned int nesting_level_left;
   unsigned int debug_depth;
 
   hb_closure_context_t (hb_face_t *face_,
 			hb_set_t *glyphs_,
+                        hb_map_t *done_lookups_,
 		        unsigned int nesting_level_left_ = HB_MAX_NESTING_LEVEL) :
 			  face (face_),
 			  glyphs (glyphs_),
 			  recurse_func (nullptr),
 			  nesting_level_left (nesting_level_left_),
-			  debug_depth (0) {}
+			  debug_depth (0),
+                          done_lookups (done_lookups_) {}
+
+  ~hb_closure_context_t (void)
+  {
+    flush ();
+  }
 
   void set_recurse_func (recurse_func_t func) { recurse_func = func; }
+
+  void flush (void)
+  {
+    hb_set_union (glyphs, out);
+    hb_set_clear (out);
+  }
+
+  private:
+  hb_map_t *done_lookups;
 };
 
 
@@ -368,7 +399,7 @@ struct hb_ot_apply_context_t :
     inline bool prev (void)
     {
       assert (num_items > 0);
-      while (idx >= num_items)
+      while (idx > num_items - 1)
       {
 	idx--;
 	const hb_glyph_info_t &info = c->buffer->out_info[idx];
@@ -449,7 +480,7 @@ struct hb_ot_apply_context_t :
 			iter_input (), iter_context (),
 			font (font_), face (font->face), buffer (buffer_),
 			recurse_func (nullptr),
-			gdef (*hb_ot_layout_from_face (face)->gdef),
+			gdef (*hb_ot_layout_from_face (face)->table.GDEF),
 			var_store (gdef.get_var_store ()),
 			direction (buffer_->props.direction),
 			lookup_mask (1),
@@ -855,7 +886,7 @@ static inline bool ligate_input (hb_ot_apply_context_t *c,
 
   for (unsigned int i = 1; i < count; i++)
   {
-    while (buffer->idx < match_positions[i] && !buffer->in_error)
+    while (buffer->idx < match_positions[i] && buffer->successful)
     {
       if (!is_mark_ligature) {
         unsigned int this_comp = _hb_glyph_info_get_lig_comp (&buffer->cur());
@@ -990,7 +1021,7 @@ static inline bool apply_lookup (hb_ot_apply_context_t *c,
       match_positions[j] += delta;
   }
 
-  for (unsigned int i = 0; i < lookupCount && !buffer->in_error; i++)
+  for (unsigned int i = 0; i < lookupCount && buffer->successful; i++)
   {
     unsigned int idx = lookupRecord[i].sequenceIndex;
     if (idx >= count)
@@ -1713,10 +1744,10 @@ struct ChainRule
     const ArrayOf<HBUINT16> &lookahead = StructAfter<ArrayOf<HBUINT16> > (input);
     const ArrayOf<LookupRecord> &lookup = StructAfter<ArrayOf<LookupRecord> > (lookahead);
     chain_context_closure_lookup (c,
-				  backtrack.len, backtrack.array,
-				  input.len, input.array,
-				  lookahead.len, lookahead.array,
-				  lookup.len, lookup.array,
+				  backtrack.len, backtrack.arrayZ,
+				  input.len, input.arrayZ,
+				  lookahead.len, lookahead.arrayZ,
+				  lookup.len, lookup.arrayZ,
 				  lookup_context);
   }
 
@@ -1727,10 +1758,10 @@ struct ChainRule
     const ArrayOf<HBUINT16> &lookahead = StructAfter<ArrayOf<HBUINT16> > (input);
     const ArrayOf<LookupRecord> &lookup = StructAfter<ArrayOf<LookupRecord> > (lookahead);
     chain_context_collect_glyphs_lookup (c,
-					 backtrack.len, backtrack.array,
-					 input.len, input.array,
-					 lookahead.len, lookahead.array,
-					 lookup.len, lookup.array,
+					 backtrack.len, backtrack.arrayZ,
+					 input.len, input.arrayZ,
+					 lookahead.len, lookahead.arrayZ,
+					 lookup.len, lookup.arrayZ,
 					 lookup_context);
   }
 
@@ -1741,10 +1772,10 @@ struct ChainRule
     const ArrayOf<HBUINT16> &lookahead = StructAfter<ArrayOf<HBUINT16> > (input);
     const ArrayOf<LookupRecord> &lookup = StructAfter<ArrayOf<LookupRecord> > (lookahead);
     return_trace (chain_context_would_apply_lookup (c,
-						    backtrack.len, backtrack.array,
-						    input.len, input.array,
-						    lookahead.len, lookahead.array, lookup.len,
-						    lookup.array, lookup_context));
+						    backtrack.len, backtrack.arrayZ,
+						    input.len, input.arrayZ,
+						    lookahead.len, lookahead.arrayZ, lookup.len,
+						    lookup.arrayZ, lookup_context));
   }
 
   inline bool apply (hb_ot_apply_context_t *c, ChainContextApplyLookupContext &lookup_context) const
@@ -1754,10 +1785,10 @@ struct ChainRule
     const ArrayOf<HBUINT16> &lookahead = StructAfter<ArrayOf<HBUINT16> > (input);
     const ArrayOf<LookupRecord> &lookup = StructAfter<ArrayOf<LookupRecord> > (lookahead);
     return_trace (chain_context_apply_lookup (c,
-					      backtrack.len, backtrack.array,
-					      input.len, input.array,
-					      lookahead.len, lookahead.array, lookup.len,
-					      lookup.array, lookup_context));
+					      backtrack.len, backtrack.arrayZ,
+					      input.len, input.arrayZ,
+					      lookahead.len, lookahead.arrayZ, lookup.len,
+					      lookup.arrayZ, lookup_context));
   }
 
   inline bool sanitize (hb_sanitize_context_t *c) const
@@ -2072,10 +2103,10 @@ struct ChainContextFormat3
       {this, this, this}
     };
     chain_context_closure_lookup (c,
-				  backtrack.len, (const HBUINT16 *) backtrack.array,
-				  input.len, (const HBUINT16 *) input.array + 1,
-				  lookahead.len, (const HBUINT16 *) lookahead.array,
-				  lookup.len, lookup.array,
+				  backtrack.len, (const HBUINT16 *) backtrack.arrayZ,
+				  input.len, (const HBUINT16 *) input.arrayZ + 1,
+				  lookahead.len, (const HBUINT16 *) lookahead.arrayZ,
+				  lookup.len, lookup.arrayZ,
 				  lookup_context);
   }
 
@@ -2093,10 +2124,10 @@ struct ChainContextFormat3
       {this, this, this}
     };
     chain_context_collect_glyphs_lookup (c,
-					 backtrack.len, (const HBUINT16 *) backtrack.array,
-					 input.len, (const HBUINT16 *) input.array + 1,
-					 lookahead.len, (const HBUINT16 *) lookahead.array,
-					 lookup.len, lookup.array,
+					 backtrack.len, (const HBUINT16 *) backtrack.arrayZ,
+					 input.len, (const HBUINT16 *) input.arrayZ + 1,
+					 lookahead.len, (const HBUINT16 *) lookahead.arrayZ,
+					 lookup.len, lookup.arrayZ,
 					 lookup_context);
   }
 
@@ -2112,10 +2143,10 @@ struct ChainContextFormat3
       {this, this, this}
     };
     return_trace (chain_context_would_apply_lookup (c,
-						    backtrack.len, (const HBUINT16 *) backtrack.array,
-						    input.len, (const HBUINT16 *) input.array + 1,
-						    lookahead.len, (const HBUINT16 *) lookahead.array,
-						    lookup.len, lookup.array, lookup_context));
+						    backtrack.len, (const HBUINT16 *) backtrack.arrayZ,
+						    input.len, (const HBUINT16 *) input.arrayZ + 1,
+						    lookahead.len, (const HBUINT16 *) lookahead.arrayZ,
+						    lookup.len, lookup.arrayZ, lookup_context));
   }
 
   inline const Coverage &get_coverage (void) const
@@ -2139,10 +2170,10 @@ struct ChainContextFormat3
       {this, this, this}
     };
     return_trace (chain_context_apply_lookup (c,
-					      backtrack.len, (const HBUINT16 *) backtrack.array,
-					      input.len, (const HBUINT16 *) input.array + 1,
-					      lookahead.len, (const HBUINT16 *) lookahead.array,
-					      lookup.len, lookup.array, lookup_context));
+					      backtrack.len, (const HBUINT16 *) backtrack.arrayZ,
+					      input.len, (const HBUINT16 *) input.arrayZ + 1,
+					      lookahead.len, (const HBUINT16 *) lookahead.arrayZ,
+					      lookup.len, lookup.arrayZ, lookup_context));
   }
 
   inline bool sanitize (hb_sanitize_context_t *c) const
@@ -2289,6 +2320,7 @@ struct Extension
 
 struct GSUBGPOS
 {
+  inline bool has_data (void) const { return version.to_int () != 0; }
   inline unsigned int get_script_count (void) const
   { return (this+scriptList).len; }
   inline const Tag& get_script_tag (unsigned int i) const

@@ -8,6 +8,10 @@
   --exception-button-container-background: #F5F5F7;
 }
 
+body.certerror {
+  justify-content: normal;
+}
+
 body.captiveportal .title {
   background-image: url("wifi.svg");
 }
@@ -48,6 +52,14 @@ body:not(.neterror) #certErrorAndCaptivePortalButtonContainer {
 }
 
 body:not(.neterror) #netErrorButtonContainer {
+  display: none;
+}
+
+#advancedPanelErrorTryAgain {
+  display: none;
+}
+
+#moreInformationButton {
   display: none;
 }
 

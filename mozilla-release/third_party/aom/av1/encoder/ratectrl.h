@@ -24,11 +24,24 @@ extern "C" {
 // Bits Per MB at different Q (Multiplied by 512)
 #define BPER_MB_NORMBITS 9
 
+#define CUSTOMIZED_GF 1
+#define FIX_GF_INTERVAL_LENGTH 0
+
+#if FIX_GF_INTERVAL_LENGTH
+#define FIXED_GF_LENGTH 16
+#define USE_SYMM_MULTI_LAYER 1
+#else
+#define USE_SYMM_MULTI_LAYER 0
+#endif
+
+#if USE_SYMM_MULTI_LAYER
+#define USE_MANUAL_GF4_STRUCT 0
+#endif
+
 #define MIN_GF_INTERVAL 4
 #define MAX_GF_INTERVAL 16
 #define FIXED_GF_INTERVAL 8  // Used in some testing modes only
 
-#if CONFIG_EXT_REFS
 typedef enum {
   INTER_NORMAL = 0,
   INTER_LOW = 1,
@@ -38,23 +51,20 @@ typedef enum {
   KF_STD = 5,
   RATE_FACTOR_LEVELS = 6
 } RATE_FACTOR_LEVEL;
-#else
-typedef enum {
-  INTER_NORMAL = 0,
-  INTER_HIGH = 1,
-  GF_ARF_LOW = 2,
-  GF_ARF_STD = 3,
-  KF_STD = 4,
-  RATE_FACTOR_LEVELS = 5
-} RATE_FACTOR_LEVEL;
-#endif  // CONFIG_EXT_REFS
+
+static const double rate_factor_deltas[RATE_FACTOR_LEVELS] = {
+  1.00,  // INTER_NORMAL
+  0.80,  // INTER_LOW
+  1.50,  // INTER_HIGH
+  1.25,  // GF_ARF_LOW
+  2.00,  // GF_ARF_STD
+  2.00,  // KF_STD
+};
 
 typedef struct {
   int resize_width;
   int resize_height;
-#if CONFIG_FRAME_SUPERRES
   uint8_t superres_denom;
-#endif  // CONFIG_FRAME_SUPERRES
 } size_params_type;
 
 typedef struct {
@@ -88,8 +98,8 @@ typedef struct {
   int source_alt_ref_pending;
   int source_alt_ref_active;
   int is_src_frame_alt_ref;
+  int sframe_due;
 
-#if CONFIG_EXT_REFS
   // Length of the bi-predictive frame group interval
   int bipred_group_interval;
 
@@ -99,7 +109,6 @@ typedef struct {
   int is_last_bipred_frame;
   int is_bipred_frame;
   int is_src_frame_ext_arf;
-#endif  // CONFIG_EXT_REFS
 
   int avg_frame_bandwidth;  // Average frame size target for clip
   int min_frame_bandwidth;  // Minimum allocation used for any frame

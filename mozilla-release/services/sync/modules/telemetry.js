@@ -52,6 +52,7 @@ const TOPICS = [
   "weave:engine:validate:error",
 
   "weave:telemetry:event",
+  "weave:telemetry:histogram",
 ];
 
 const PING_FORMAT_VERSION = 1;
@@ -153,11 +154,22 @@ class EngineRecord {
     // so we need to keep both it and when.
     this.startTime = tryGetMonotonicTimestamp();
     this.name = name;
+
+    // This allows cases like bookmarks-buffered to have a separate name from
+    // the bookmarks engine.
+    let engineImpl = Weave.Service.engineManager.get(name);
+    if (engineImpl && engineImpl.overrideTelemetryName) {
+      this.overrideTelemetryName = engineImpl.overrideTelemetryName;
+    }
   }
 
   toJSON() {
-    let result = Object.assign({}, this);
-    delete result.startTime;
+    let result = { name: this.overrideTelemetryName || this.name };
+    let properties = ["took", "status", "failureReason", "incoming", "outgoing",
+      "validation"];
+    for (let property of properties) {
+      result[property] = this[property];
+    }
     return result;
   }
 
@@ -168,12 +180,6 @@ class EngineRecord {
     }
     if (error) {
       this.failureReason = SyncTelemetry.transformError(error);
-    }
-    // This allows cases like bookmarks-buffered to have a separate name from
-    // the bookmarks engine.
-    let engineImpl = Weave.Service.engineManager.get(this.name);
-    if (engineImpl && engineImpl.overrideTelemetryName) {
-      this.name = engineImpl.overrideTelemetryName;
     }
   }
 
@@ -227,7 +233,7 @@ class EngineRecord {
     }
 
     this.validation = {
-      failureReason: SyncTelemetry.transformError(e)
+      failureReason: SyncTelemetry.transformError(e),
     };
   }
 
@@ -464,6 +470,7 @@ class SyncTelemetryImpl {
     this.payloads = [];
     this.discarded = 0;
     this.events = [];
+    this.histograms = {};
     this.maxEventsCount = Svc.Prefs.get("telemetry.maxEventsCount", 1000);
     this.maxPayloadCount = Svc.Prefs.get("telemetry.maxPayloadCount");
     this.submissionInterval = Svc.Prefs.get("telemetry.submissionInterval") * 1000;
@@ -486,6 +493,7 @@ class SyncTelemetryImpl {
       deviceID: this.lastDeviceID,
       sessionStartDate: this.sessionStartDate,
       events: this.events.length == 0 ? undefined : this.events,
+      histograms: Object.keys(this.histograms).length == 0 ? undefined : this.histograms,
     };
   }
 
@@ -496,6 +504,7 @@ class SyncTelemetryImpl {
     this.payloads = [];
     this.discarded = 0;
     this.events = [];
+    this.histograms = {};
     this.submit(result);
   }
 
@@ -513,7 +522,8 @@ class SyncTelemetryImpl {
   }
 
   submit(record) {
-    if (Services.prefs.prefHasUserValue("identity.sync.tokenserver.uri")) {
+    if (Services.prefs.prefHasUserValue("identity.sync.tokenserver.uri") ||
+      Services.prefs.prefHasUserValue("services.sync.tokenServerURI")) {
       log.trace(`Not sending telemetry ping for self-hosted Sync user`);
       return false;
     }
@@ -592,6 +602,12 @@ class SyncTelemetryImpl {
       this.finish("schedule");
       this.lastSubmissionTime = Telemetry.msSinceProcessStart();
     }
+  }
+
+  _addHistogram(hist) {
+      let histogram = Telemetry.getHistogramById(hist);
+      let s = histogram.snapshot();
+      this.histograms[hist] = s;
   }
 
   _recordEvent(eventDetails) {
@@ -705,6 +721,10 @@ class SyncTelemetryImpl {
         this._recordEvent(subject);
         break;
 
+      case "weave:telemetry:histogram":
+        this._addHistogram(data);
+        break;
+
       default:
         log.warn(`unexpected observer topic ${topic}`);
         break;
@@ -769,7 +789,7 @@ class SyncTelemetryImpl {
     }
     return {
       name: "unexpectederror",
-      error: cleanErrorMessage(msg)
+      error: cleanErrorMessage(msg),
     };
   }
 

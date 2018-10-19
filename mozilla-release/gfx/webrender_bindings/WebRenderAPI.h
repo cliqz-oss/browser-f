@@ -120,6 +120,15 @@ public:
                            wr::WrExternalImageBufferType aBufferType,
                            uint8_t aChannelIndex = 0);
 
+  void UpdateExternalImageWithDirtyRect(ImageKey aKey,
+                                        const ImageDescriptor& aDescriptor,
+                                        ExternalImageId aExtID,
+                                        wr::WrExternalImageBufferType aBufferType,
+                                        const wr::DeviceUintRect& aDirtyRect,
+                                        uint8_t aChannelIndex = 0);
+
+  void SetImageVisibleArea(ImageKey aKey, const wr::NormalizedRect& aArea);
+
   void DeleteImage(wr::ImageKey aKey);
 
   void AddRawFont(wr::FontKey aKey, wr::Vec<uint8_t>& aBytes, uint32_t aIndex);
@@ -187,7 +196,9 @@ public:
 
   void RunOnRenderThread(UniquePtr<RendererEvent> aEvent);
 
-  void Readback(gfx::IntSize aSize, uint8_t *aBuffer, uint32_t aBufferSize);
+  void Readback(const TimeStamp& aStartTime, gfx::IntSize aSize, uint8_t *aBuffer, uint32_t aBufferSize);
+
+  void ClearAllCaches();
 
   void Pause();
   bool Resume();
@@ -195,19 +206,23 @@ public:
   void WakeSceneBuilder();
   void FlushSceneBuilder();
 
+  void NotifyMemoryPressure();
+
   wr::WrIdNamespace GetNamespace();
   uint32_t GetMaxTextureSize() const { return mMaxTextureSize; }
   bool GetUseANGLE() const { return mUseANGLE; }
+  bool GetUseDComp() const { return mUseDComp; }
   layers::SyncHandle GetSyncHandle() const { return mSyncHandle; }
 
   void Capture();
 
 protected:
-  WebRenderAPI(wr::DocumentHandle* aHandle, wr::WindowId aId, uint32_t aMaxTextureSize, bool aUseANGLE, layers::SyncHandle aSyncHandle)
+  WebRenderAPI(wr::DocumentHandle* aHandle, wr::WindowId aId, uint32_t aMaxTextureSize, bool aUseANGLE, bool aUseDComp, layers::SyncHandle aSyncHandle)
     : mDocHandle(aHandle)
     , mId(aId)
     , mMaxTextureSize(aMaxTextureSize)
     , mUseANGLE(aUseANGLE)
+    , mUseDComp(aUseDComp)
     , mSyncHandle(aSyncHandle)
   {}
 
@@ -219,6 +234,7 @@ protected:
   wr::WindowId mId;
   uint32_t mMaxTextureSize;
   bool mUseANGLE;
+  bool mUseDComp;
   layers::SyncHandle mSyncHandle;
 
   // We maintain alive the root api to know when to shut the render backend down,
@@ -275,7 +291,7 @@ public:
   void Save();
   void Restore();
   void ClearSave();
-  void Dump();
+  usize Dump(usize aIndent, const Maybe<usize>& aStart, const Maybe<usize>& aEnd);
 
   void Finalize(wr::LayoutSize& aOutContentSize,
                 wr::BuiltDisplayList& aOutDisplayList);
@@ -355,7 +371,8 @@ public:
                  bool aIsBackfaceVisible,
                  wr::ImageRendering aFilter,
                  wr::ImageKey aImage,
-                 bool aPremultipliedAlpha = true);
+                 bool aPremultipliedAlpha = true,
+                 const wr::ColorF& aColor = wr::ColorF{1.0f, 1.0f, 1.0f, 1.0f});
 
   void PushImage(const wr::LayoutRect& aBounds,
                  const wr::LayoutRect& aClip,
@@ -364,7 +381,8 @@ public:
                  const wr::LayoutSize& aTileSpacing,
                  wr::ImageRendering aFilter,
                  wr::ImageKey aImage,
-                 bool aPremultipliedAlpha = true);
+                 bool aPremultipliedAlpha = true,
+                 const wr::ColorF& aColor = wr::ColorF{1.0f, 1.0f, 1.0f, 1.0f});
 
   void PushYCbCrPlanarImage(const wr::LayoutRect& aBounds,
                             const wr::LayoutRect& aClip,
@@ -420,6 +438,9 @@ public:
                           const wr::LayoutRect& aClip,
                           bool aIsBackfaceVisible,
                           const wr::BorderWidths& aWidths,
+                          const uint32_t aWidth,
+                          const uint32_t aHeight,
+                          const wr::SideOffsets2D<uint32_t>& aSlice,
                           const wr::LayoutPoint& aStartPoint,
                           const wr::LayoutPoint& aEndPoint,
                           const nsTArray<wr::GradientStop>& aStops,

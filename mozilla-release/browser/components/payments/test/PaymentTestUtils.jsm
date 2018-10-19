@@ -12,10 +12,23 @@ var PaymentTestUtils = {
      * Add a completion handler to the existing `showPromise` to call .complete().
      * @returns {Object} representing the PaymentResponse
      */
-    addCompletionHandler: async () => {
+    addCompletionHandler: async ({result, delayMs = 0}) => {
       let response = await content.showPromise;
-      response.complete();
+      let completeException;
+
+      // delay the given # milliseconds
+      await new Promise(resolve => content.setTimeout(resolve, delayMs));
+
+      try {
+        await response.complete(result);
+      } catch (ex) {
+        completeException = {
+          name: ex.name,
+          message: ex.message,
+        };
+      }
       return {
+        completeException,
         response: response.toJSON(),
         // XXX: Bug NNN: workaround for `details` not being included in `toJSON`.
         methodDetails: response.details,
@@ -73,43 +86,58 @@ var PaymentTestUtils = {
       const rq = new content.PaymentRequest(methodData, details, options);
       content.rq = rq; // assign it so we can retrieve it later
 
-      const handle = content.QueryInterface(Ci.nsIInterfaceRequestor)
-                            .getInterface(Ci.nsIDOMWindowUtils)
-                            .setHandlingUserInput(true);
+      const handle = content.windowUtils.setHandlingUserInput(true);
       content.showPromise = rq.show();
 
       handle.destruct();
+    },
+
+    /**
+     * Add a rejection handler for the `showPromise` created by createAndShowRequest
+     * and stash details of any eventual exception or response in `rqResult`
+     */
+    catchShowPromiseRejection: () => {
+      content.rqResult = {};
+      content.showPromise.then(res => content.rqResult.response = res)
+                         .catch(ex => content.rqResult.showException = {
+                           name: ex.name,
+                           message: ex.message,
+                         });
     },
   },
 
   DialogContentTasks: {
     getShippingOptions: () => {
-      let select = content.document.querySelector("shipping-option-picker > rich-select");
-      let popupBox = Cu.waiveXrays(select).popupBox;
-      let selectedOptionIndex = Array.from(popupBox.children)
-                                     .findIndex(item => item.hasAttribute("selected"));
-      let selectedOption = popupBox.children[selectedOptionIndex];
-      let currencyAmount = selectedOption.querySelector("currency-amount");
-      return {
+      let picker = content.document.querySelector("shipping-option-picker");
+      let popupBox = Cu.waiveXrays(picker).dropdown.popupBox;
+      let selectedOptionIndex = popupBox.selectedIndex;
+      let selectedOption = Cu.waiveXrays(picker).dropdown.selectedOption;
+
+      let result = {
         optionCount: popupBox.children.length,
         selectedOptionIndex,
+      };
+      if (!selectedOption) {
+        return result;
+      }
+
+      return Object.assign(result, {
         selectedOptionID: selectedOption.getAttribute("value"),
         selectedOptionLabel: selectedOption.getAttribute("label"),
-        selectedOptionCurrency: currencyAmount.getAttribute("currency"),
-        selectedOptionValue: currencyAmount.getAttribute("value"),
-      };
+        selectedOptionCurrency: selectedOption.getAttribute("amount-currency"),
+        selectedOptionValue: selectedOption.getAttribute("amount-value"),
+      });
     },
 
     getShippingAddresses: () => {
       let doc = content.document;
       let addressPicker =
         doc.querySelector("address-picker[selected-state-key='selectedShippingAddress']");
-      let select = addressPicker.querySelector("rich-select");
-      let popupBox = Cu.waiveXrays(select).popupBox;
+      let popupBox = Cu.waiveXrays(addressPicker).dropdown.popupBox;
       let options = Array.from(popupBox.children).map(option => {
         return {
-          guid: option.guid,
-          country: option.country,
+          guid: option.getAttribute("guid"),
+          country: option.getAttribute("country"),
           selected: option.selected,
         };
       });
@@ -120,24 +148,52 @@ var PaymentTestUtils = {
       };
     },
 
-    selectShippingAddressByCountry: country => {
+    selectShippingAddressByCountry: (country) => {
       let doc = content.document;
       let addressPicker =
         doc.querySelector("address-picker[selected-state-key='selectedShippingAddress']");
-      let select = addressPicker.querySelector("rich-select");
+      let select = Cu.waiveXrays(addressPicker).dropdown.popupBox;
       let option = select.querySelector(`[country="${country}"]`);
-      select.click();
-      option.click();
+      select.focus();
+      // eslint-disable-next-line no-undef
+      EventUtils.synthesizeKey(option.label, {}, content.window);
+    },
+
+    selectShippingAddressByGuid: guid => {
+      let doc = content.document;
+      let addressPicker =
+        doc.querySelector("address-picker[selected-state-key='selectedShippingAddress']");
+      let select = Cu.waiveXrays(addressPicker).dropdown.popupBox;
+      let option = select.querySelector(`[guid="${guid}"]`);
+      select.focus();
+      // eslint-disable-next-line no-undef
+      EventUtils.synthesizeKey(option.label, {}, content.window);
     },
 
     selectShippingOptionById: value => {
       let doc = content.document;
       let optionPicker =
         doc.querySelector("shipping-option-picker");
-      let select = optionPicker.querySelector("rich-select");
+      let select = Cu.waiveXrays(optionPicker).dropdown.popupBox;
       let option = select.querySelector(`[value="${value}"]`);
-      select.click();
-      option.click();
+      select.focus();
+      // eslint-disable-next-line no-undef
+      EventUtils.synthesizeKey(option.textContent, {}, content.window);
+    },
+
+    /**
+     * Click the primary button for the current page
+     *
+     * Don't await on this method from a ContentTask when expecting the dialog to close
+     *
+     * @returns {undefined}
+     */
+    clickPrimaryButton: () => {
+      let {requestStore} = Cu.waiveXrays(content.document.querySelector("payment-dialog"));
+      let {page} = requestStore.getState();
+      let button = content.document.querySelector(`#${page.id} button.primary`);
+      ok(!button.disabled, "Primary button should not be disabled when clicking it");
+      button.click();
     },
 
     /**
@@ -180,6 +236,11 @@ var PaymentTestUtils = {
       } = ChromeUtils.import("resource://testing-common/ContentTaskUtils.jsm", {});
       let {requestStore} = Cu.waiveXrays(content.document.querySelector("payment-dialog"));
       await ContentTaskUtils.waitForCondition(() => stateCheckFn(requestStore.getState()), msg);
+      return requestStore.getState();
+    },
+
+    getCurrentState: async (content) => {
+      let {requestStore} = Cu.waiveXrays(content.document.querySelector("payment-dialog"));
       return requestStore.getState();
     },
   },
@@ -394,7 +455,7 @@ var PaymentTestUtils = {
       organization: "World Wide Web Consortium",
       "street-address": "1 Pommes Frittes Place",
       "address-level2": "Berlin",
-      "address-level1": "BE",
+      // address-level1 isn't used in our forms for Germany
       "postal-code": "02138",
       country: "DE",
       tel: "+16172535702",
@@ -421,6 +482,25 @@ var PaymentTestUtils = {
       "cc-exp-year": (new Date()).getFullYear() + 9,
       "cc-name": "John Doe",
       "cc-number": "4111111111111111",
+      "cc-type": "visa",
+    },
+    JaneMasterCard: {
+      "cc-exp-month": 12,
+      "cc-exp-year": (new Date()).getFullYear() + 9,
+      "cc-name": "Jane McMaster-Card",
+      "cc-number": "5555555555554444",
+      "cc-type": "mastercard",
+    },
+    MissingFields: {
+      "cc-name": "Missy Fields",
+      "cc-number": "340000000000009",
+    },
+    Temp: {
+      "cc-exp-month": 12,
+      "cc-exp-year": (new Date()).getFullYear() + 9,
+      "cc-name": "Temp Name",
+      "cc-number": "5105105105105100",
+      "cc-type": "mastercard",
     },
   },
 };

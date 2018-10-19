@@ -26,22 +26,23 @@ add_task(async function test_history_clear() {
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: `place:parent=${PlacesUtils.bookmarks.tagsGuid}`,
-    title: "shortcut"
+    title: "shortcut",
   });
 
   // Add an expire never annotation
   // Actually expire never annotations are removed as soon as a page is removed
   // from the database, so this should act as a normal visit.
-  PlacesUtils.annotations.setPageAnnotation(uri("http://download.mozilla.org/"),
-                                            "never", "never", 0,
-                                            PlacesUtils.annotations.EXPIRE_NEVER);
+  await PlacesUtils.history.update({
+    url: "http://download.mozilla.org/",
+    annotations: new Map([["never", "never"]]),
+  });
 
   // Add a bookmark
   // Bookmarked page should have history cleared and frecency = -1
   await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: "http://typed.mozilla.org/",
-    title: "bookmark"
+    title: "bookmark",
   });
 
   await PlacesTestUtils.addVisits([

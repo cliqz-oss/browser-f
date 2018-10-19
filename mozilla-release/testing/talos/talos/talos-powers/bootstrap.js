@@ -245,9 +245,7 @@ TalosPowersService.prototype = {
       });
     }
 
-    let enumerator = Services.wm.getEnumerator(null);
-    while (enumerator.hasMoreElements()) {
-      let domWindow = enumerator.getNext();
+    for (let domWindow of Services.wm.getEnumerator(null)) {
       domWindow.close();
     }
 
@@ -300,17 +298,13 @@ TalosPowersService.prototype = {
 
     // arg: ignored. return: handle (number) for use with stopFrameTimeRecording
     startFrameTimeRecording(arg, callback, win) {
-      var rv = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIDOMWindowUtils)
-                  .startFrameTimeRecording();
+      var rv = win.windowUtils.startFrameTimeRecording();
       callback(rv);
     },
 
     // arg: handle from startFrameTimeRecording. return: array with composition intervals
     stopFrameTimeRecording(arg, callback, win) {
-      var rv = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                  .getInterface(Ci.nsIDOMWindowUtils)
-                  .stopFrameTimeRecording(arg);
+      var rv = win.windowUtils.stopFrameTimeRecording(arg);
       callback(rv);
     },
 

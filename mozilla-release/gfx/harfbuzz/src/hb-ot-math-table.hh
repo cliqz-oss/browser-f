@@ -678,12 +678,15 @@ struct MathVariants
 
 
 /*
- * MATH -- The MATH Table
+ * MATH -- Mathematical typesetting
+ * https://docs.microsoft.com/en-us/typography/opentype/spec/math
  */
 
 struct MATH
 {
   static const hb_tag_t tableTag	= HB_OT_TAG_MATH;
+
+  inline bool has_data (void) const { return version.to_int () != 0; }
 
   inline bool sanitize (hb_sanitize_context_t *c) const
   {

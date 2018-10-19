@@ -12,6 +12,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
@@ -24,7 +25,6 @@ import org.mozilla.gecko.TelemetryContract;
  */
 public class FirstrunPanel extends Fragment {
 
-    public static final int TITLE_RES = -1;
     protected boolean showBrowserHint = true;
 
     @Override
@@ -32,13 +32,13 @@ public class FirstrunPanel extends Fragment {
         final ViewGroup root = (ViewGroup) inflater.inflate(R.layout.firstrun_basepanel_checkable_fragment, container, false);
         final Bundle args = getArguments();
         if (args != null) {
-            final int imageRes = args.getInt(FirstrunPagerConfig.KEY_IMAGE);
-            final int textRes = args.getInt(FirstrunPagerConfig.KEY_TEXT);
-            final int subtextRes = args.getInt(FirstrunPagerConfig.KEY_SUBTEXT);
+            final int image = args.getInt(FirstrunPagerConfig.KEY_IMAGE);
+            final String message = args.getString(FirstrunPagerConfig.KEY_MESSAGE);
+            final String subtext = args.getString(FirstrunPagerConfig.KEY_SUBTEXT);
 
-            ((ImageView) root.findViewById(R.id.firstrun_image)).setImageResource(imageRes);
-            ((TextView) root.findViewById(R.id.firstrun_text)).setText(textRes);
-            ((TextView) root.findViewById(R.id.firstrun_subtext)).setText(subtextRes);
+            ((ImageView) root.findViewById(R.id.firstrun_image)).setImageDrawable(getResources().getDrawable(image));
+            ((TextView) root.findViewById(R.id.firstrun_text)).setText(message);
+            ((TextView) root.findViewById(R.id.firstrun_subtext)).setText(subtext);
         }
 
         root.findViewById(R.id.firstrun_link).setOnClickListener(new View.OnClickListener() {

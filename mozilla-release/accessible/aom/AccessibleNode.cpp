@@ -32,7 +32,8 @@ AccessibleNode::IsAOMEnabled(JSContext* aCx, JSObject* /*unused*/)
   return nsContentUtils::IsSystemCaller(aCx) || sPrefCacheValue;
 }
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AccessibleNode, mIntl, mDOMNode, mStates)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AccessibleNode, mRelationProperties,
+                                      mIntl, mDOMNode, mStates)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AccessibleNode)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
@@ -42,7 +43,14 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(AccessibleNode)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(AccessibleNode)
 
-AccessibleNode::AccessibleNode(nsINode* aNode) : mDOMNode(aNode)
+AccessibleNode::AccessibleNode(nsINode* aNode) :
+    mDoubleProperties(3),
+    mIntProperties(3),
+    mUIntProperties(6),
+    mBooleanProperties(0),
+    mRelationProperties(3),
+    mStringProperties(16),
+    mDOMNode(aNode)
 {
   nsAccessibilityService* accService = GetOrCreateAccService();
   if (!accService) {
@@ -62,7 +70,7 @@ AccessibleNode::~AccessibleNode()
 /* virtual */ JSObject*
 AccessibleNode::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return AccessibleNodeBinding::Wrap(aCx, this, aGivenProto);
+  return AccessibleNode_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 /* virtual */ ParentObject
@@ -72,7 +80,7 @@ AccessibleNode::GetParentObject() const
 }
 
 void
-AccessibleNode::GetRole(nsAString& aRole)
+AccessibleNode::GetComputedRole(nsAString& aRole)
 {
   if (mIntl) {
     nsAccessibilityService* accService = GetOrCreateAccService();

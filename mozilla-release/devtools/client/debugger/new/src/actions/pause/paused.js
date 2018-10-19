@@ -5,13 +5,11 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.paused = paused;
 
-var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
-
 var _selectors = require("../../selectors/index");
 
 var _ = require("./index");
 
-var _breakpoints = require("../breakpoints");
+var _breakpoints = require("../breakpoints/index");
 
 var _expressions = require("../expressions");
 
@@ -33,7 +31,7 @@ var _fetchScopes = require("./fetchScopes");
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 async function getOriginalSourceForFrame(state, frame) {
-  return (0, _selectors.getSources)(state).get(frame.location.sourceId);
+  return (0, _selectors.getSources)(state)[frame.location.sourceId];
 }
 /**
  * Debugger has just paused
@@ -56,9 +54,9 @@ function paused(pauseInfo) {
       why,
       loadedObjects
     } = pauseInfo;
-    const topFrame = frames.length > 0 ? frames[0] : null;
+    const topFrame = frames.length > 0 ? frames[0] : null; // NOTE: do not step when leaving a frame or paused at a debugger statement
 
-    if (topFrame && why.type == "resumeLimit") {
+    if (topFrame && !why.frameFinished && why.type == "resumeLimit") {
       const mappedFrame = await (0, _mapFrames.updateFrameLocation)(topFrame, sourceMaps);
       const source = await getOriginalSourceForFrame(getState(), mappedFrame); // Ensure that the original file has loaded if there is one.
 
@@ -87,9 +85,7 @@ function paused(pauseInfo) {
     const selectedFrame = (0, _selectors.getSelectedFrame)(getState());
 
     if (selectedFrame) {
-      const visibleFrame = (0, _selectors.getVisibleSelectedFrame)(getState());
-      const location = (0, _devtoolsSourceMap.isGeneratedId)(visibleFrame.location.sourceId) ? selectedFrame.generatedLocation : selectedFrame.location;
-      await dispatch((0, _sources.selectLocation)(location));
+      await dispatch((0, _sources.selectLocation)(selectedFrame.location));
     }
 
     dispatch((0, _ui.togglePaneCollapse)("end", false));

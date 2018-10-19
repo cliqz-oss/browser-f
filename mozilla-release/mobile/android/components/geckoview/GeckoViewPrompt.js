@@ -32,11 +32,14 @@ PromptFactory.prototype = {
       case "contextmenu":
         this._handleContextMenu(aEvent);
         break;
+      case "DOMPopupBlocked":
+        this._handlePopupBlocked(aEvent);
+        break;
     }
   },
 
   _handleClick: function(aEvent) {
-    let target = aEvent.target;
+    let target = aEvent.composedTarget;
     if (aEvent.defaultPrevented || target.isContentEditable ||
         target.disabled || target.readOnly || !target.willValidate) {
       // target.willValidate is false when any associated fieldset is disabled,
@@ -273,6 +276,21 @@ PromptFactory.prototype = {
     aEvent.preventDefault();
   },
 
+  _handlePopupBlocked: function(aEvent) {
+    const dwi = aEvent.requestingWindow;
+    const popupWindowURISpec = aEvent.popupWindowURI ? aEvent.popupWindowURI.spec : "about:blank";
+
+    let prompt = new PromptDelegate(aEvent.requestingWindow);
+    prompt.asyncShowPrompt({
+      type: "popup",
+      targetUri: popupWindowURISpec
+    }, allowed => {
+      if (allowed && dwi) {
+        dwi.open(popupWindowURISpec, aEvent.popupWindowName, aEvent.popupWindowFeatures);
+      }
+    });
+  },
+
   /* ----------  nsIPromptFactory  ---------- */
   getPrompt: function(aDOMWin, aIID) {
     // Delegated to login manager here, which in turn calls back into us via nsIPromptService.
@@ -365,8 +383,7 @@ PromptDelegate.prototype = {
     }
     // Accessing the document object can throw if this window no longer exists. See bug 789888.
     try {
-      let winUtils = this._domWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIDOMWindowUtils);
+      let winUtils = this._domWin.windowUtils;
       if (!aEntering) {
         winUtils.leaveModalState();
       }
@@ -874,6 +891,14 @@ FilePickerDelegate.prototype = {
       QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
       _owner: this,
       _index: 0,
+      * [Symbol.iterator]() {
+        for (let file of this._owner._files) {
+          if (aDOMFile) {
+            yield this._owner._getDOMFile(file);
+          }
+          yield new FileUtils.File(file);
+        }
+      },
       hasMoreElements: function() {
         return this._index < this._owner._files.length;
       },

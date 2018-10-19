@@ -83,24 +83,14 @@ class StoreBuffer
         const static size_t MaxEntries = 48 * 1024 / sizeof(T);
 
         explicit MonoTypeBuffer() : last_(T()) {}
-        ~MonoTypeBuffer() { stores_.finish(); }
-
-        MOZ_MUST_USE bool init() {
-            if (!stores_.initialized() && !stores_.init())
-                return false;
-            clear();
-            return true;
-        }
 
         void clear() {
             last_ = T();
-            if (stores_.initialized())
-                stores_.clear();
+            stores_.clear();
         }
 
         /* Add one item to the buffer. */
         void put(StoreBuffer* owner, const T& t) {
-            MOZ_ASSERT(stores_.initialized());
             sinkStore(owner);
             last_ = t;
         }
@@ -117,7 +107,6 @@ class StoreBuffer
 
         /* Move any buffered stores to the canonical store set. */
         void sinkStore(StoreBuffer* owner) {
-            MOZ_ASSERT(stores_.initialized());
             if (last_) {
                 AutoEnterOOMUnsafeRegion oomUnsafe;
                 if (!stores_.put(last_))
@@ -138,11 +127,11 @@ class StoreBuffer
         void trace(StoreBuffer* owner, TenuringTracer& mover);
 
         size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) {
-            return stores_.sizeOfExcludingThis(mallocSizeOf);
+            return stores_.shallowSizeOfExcludingThis(mallocSizeOf);
         }
 
         bool isEmpty() const {
-            return last_ == T() && (!stores_.initialized() || stores_.empty());
+            return last_ == T() && stores_.empty();
         }
 
       private:

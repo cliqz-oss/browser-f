@@ -6,44 +6,44 @@
 
 "use strict";
 
-const { PureComponent, createFactory } = require("devtools/client/shared/vendor/react");
-const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+
+const ViewportDimension = createFactory(require("./ViewportDimension"));
 
 const { getFormatStr, getStr } = require("../utils/l10n");
 const Types = require("../types");
-const ViewportDimension = createFactory(require("./ViewportDimension.js"));
 
 class DeviceAdder extends PureComponent {
   static get propTypes() {
     return {
       devices: PropTypes.shape(Types.devices).isRequired,
-      viewportTemplate: PropTypes.shape(Types.viewport).isRequired,
       onAddCustomDevice: PropTypes.func.isRequired,
+      viewportTemplate: PropTypes.shape(Types.viewport).isRequired,
     };
   }
 
   constructor(props) {
     super(props);
-    this.state = {};
+
+    const {
+      height,
+      width,
+    } = this.props.viewportTemplate;
+
+    this.state = {
+      deviceAdderDisplayed: false,
+      height,
+      width,
+    };
+
     this.onChangeSize = this.onChangeSize.bind(this);
     this.onDeviceAdderShow = this.onDeviceAdderShow.bind(this);
     this.onDeviceAdderSave = this.onDeviceAdderSave.bind(this);
   }
 
-  componentWillReceiveProps(nextProps) {
-    const {
-      width,
-      height,
-    } = nextProps.viewportTemplate;
-
-    this.setState({
-      width,
-      height,
-    });
-  }
-
-  onChangeSize(width, height) {
+  onChangeSize(_, width, height) {
     this.setState({
       width,
       height,
@@ -65,6 +65,7 @@ class DeviceAdder extends PureComponent {
     if (!this.pixelRatioInput.checkValidity()) {
       return;
     }
+
     if (devices.custom.find(device => device.name == this.nameInput.value)) {
       this.nameInput.setCustomValidity("Device name already in use");
       return;
@@ -73,6 +74,7 @@ class DeviceAdder extends PureComponent {
     this.setState({
       deviceAdderDisplayed: false,
     });
+
     onAddCustomDevice({
       name: this.nameInput.value,
       width: this.state.width,
@@ -134,121 +136,81 @@ class DeviceAdder extends PureComponent {
       });
     }
 
-    return dom.div(
-      {
-        id: "device-adder"
-      },
-      dom.div(
-        {
-          id: "device-adder-content",
-        },
-        dom.div(
-          {
-            id: "device-adder-column-1",
-          },
-          dom.label(
-            {
-              id: "device-adder-name",
-            },
-            dom.span(
-              {
-                className: "device-adder-label",
-              },
-              getStr("responsive.deviceAdderName")
+    return (
+      dom.div({ id: "device-adder" },
+        dom.div({ id: "device-adder-content" },
+          dom.div({ id: "device-adder-column-1" },
+            dom.label({ id: "device-adder-name" },
+              dom.span({ className: "device-adder-label" },
+                getStr("responsive.deviceAdderName")
+              ),
+              dom.input({
+                defaultValue: deviceName,
+                ref: input => {
+                  this.nameInput = input;
+                },
+              })
             ),
-            dom.input({
-              defaultValue: deviceName,
-              ref: input => {
-                this.nameInput = input;
-              },
-            })
+            dom.label({ id: "device-adder-size" },
+              dom.span({ className: "device-adder-label" },
+                getStr("responsive.deviceAdderSize")
+              ),
+              ViewportDimension({
+                viewport: {
+                  width,
+                  height,
+                },
+                onResizeViewport: this.onChangeSize,
+                onRemoveDeviceAssociation: () => {},
+              })
+            ),
+            dom.label({ id: "device-adder-pixel-ratio" },
+              dom.span({ className: "device-adder-label" },
+                getStr("responsive.deviceAdderPixelRatio")
+              ),
+              dom.input({
+                type: "number",
+                step: "any",
+                defaultValue: normalizedViewport.pixelRatio,
+                ref: input => {
+                  this.pixelRatioInput = input;
+                },
+              })
+            )
           ),
-          dom.label(
-            {
-              id: "device-adder-size",
-            },
-            dom.span(
-              {
-                className: "device-adder-label"
-              },
-              getStr("responsive.deviceAdderSize")
+          dom.div({ id: "device-adder-column-2" },
+            dom.label({ id: "device-adder-user-agent" },
+              dom.span({ className: "device-adder-label" },
+                getStr("responsive.deviceAdderUserAgent")
+              ),
+              dom.input({
+                defaultValue: normalizedViewport.userAgent,
+                ref: input => {
+                  this.userAgentInput = input;
+                },
+              })
             ),
-            ViewportDimension({
-              viewport: {
-                width,
-                height,
-              },
-              onChangeSize: this.onChangeSize,
-              onRemoveDeviceAssociation: () => {},
-            })
+            dom.label({ id: "device-adder-touch" },
+              dom.span({ className: "device-adder-label" },
+                getStr("responsive.deviceAdderTouch")
+              ),
+              dom.input({
+                defaultChecked: normalizedViewport.touch,
+                type: "checkbox",
+                ref: input => {
+                  this.touchInput = input;
+                },
+              })
+            )
           ),
-          dom.label(
-            {
-              id: "device-adder-pixel-ratio",
-            },
-            dom.span(
-              {
-                className: "device-adder-label"
-              },
-              getStr("responsive.deviceAdderPixelRatio")
-            ),
-            dom.input({
-              type: "number",
-              step: "any",
-              defaultValue: normalizedViewport.pixelRatio,
-              ref: input => {
-                this.pixelRatioInput = input;
-              },
-            })
-          )
         ),
-        dom.div(
+        dom.button(
           {
-            id: "device-adder-column-2",
+            id: "device-adder-save",
+            onClick: this.onDeviceAdderSave,
           },
-          dom.label(
-            {
-              id: "device-adder-user-agent",
-            },
-            dom.span(
-              {
-                className: "device-adder-label"
-              },
-              getStr("responsive.deviceAdderUserAgent")
-            ),
-            dom.input({
-              defaultValue: normalizedViewport.userAgent,
-              ref: input => {
-                this.userAgentInput = input;
-              },
-            })
-          ),
-          dom.label(
-            {
-              id: "device-adder-touch",
-            },
-            dom.span(
-              {
-                className: "device-adder-label"
-              },
-              getStr("responsive.deviceAdderTouch")
-            ),
-            dom.input({
-              defaultChecked: normalizedViewport.touch,
-              type: "checkbox",
-              ref: input => {
-                this.touchInput = input;
-              },
-            })
-          )
-        ),
-      ),
-      dom.button(
-        {
-          id: "device-adder-save",
-          onClick: this.onDeviceAdderSave,
-        },
-        getStr("responsive.deviceAdderSave")
+          getStr("responsive.deviceAdderSave")
+        )
       )
     );
   }

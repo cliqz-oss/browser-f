@@ -48,7 +48,7 @@ add_task(async function sidebar_windows() {
 
   // SidebarUI relies on window.opener being set, which is normal behavior when
   // using menu or key commands to open a new browser window.
-  let win = await BrowserTestUtils.openNewBrowserWindow({opener: window});
+  let win = await BrowserTestUtils.openNewBrowserWindow();
 
   await secondSidebar;
   ok(!win.document.getElementById("sidebar-box").hidden, "sidebar box is visible in second window");
@@ -60,10 +60,4 @@ add_task(async function sidebar_windows() {
 
   await extension.unload();
   await BrowserTestUtils.closeWindow(win);
-
-  // Move toolbar button back to customization.
-  CustomizableUI.removeWidgetFromArea("sidebar-button", CustomizableUI.AREA_NAVBAR);
-  ok(!document.getElementById("sidebar-button"), "sidebar button is not in UI");
-  // This is set on initial sidebar install.
-  Services.prefs.clearUserPref("extensions.sidebar-button.shown");
 });

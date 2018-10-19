@@ -64,16 +64,16 @@ MapsAreEqual(IntMap& am, IntMap& bm)
         equal = false;
         fprintf(stderr, "A.count() == %u and B.count() == %u\n", am.count(), bm.count());
     }
-    for (IntMap::Range r = am.all(); !r.empty(); r.popFront()) {
-        if (!bm.has(r.front().key())) {
+    for (auto iter = am.iter(); !iter.done(); iter.next()) {
+        if (!bm.has(iter.get().key())) {
             equal = false;
-            fprintf(stderr, "B does not have %x which is in A\n", r.front().key());
+            fprintf(stderr, "B does not have %x which is in A\n", iter.get().key());
         }
     }
-    for (IntMap::Range r = bm.all(); !r.empty(); r.popFront()) {
-        if (!am.has(r.front().key())) {
+    for (auto iter = bm.iter(); !iter.done(); iter.next()) {
+        if (!am.has(iter.get().key())) {
             equal = false;
-            fprintf(stderr, "A does not have %x which is in B\n", r.front().key());
+            fprintf(stderr, "A does not have %x which is in B\n", iter.get().key());
         }
     }
     return equal;
@@ -87,16 +87,16 @@ SetsAreEqual(IntSet& am, IntSet& bm)
         equal = false;
         fprintf(stderr, "A.count() == %u and B.count() == %u\n", am.count(), bm.count());
     }
-    for (IntSet::Range r = am.all(); !r.empty(); r.popFront()) {
-        if (!bm.has(r.front())) {
+    for (auto iter = am.iter(); !iter.done(); iter.next()) {
+        if (!bm.has(iter.get())) {
             equal = false;
-            fprintf(stderr, "B does not have %x which is in A\n", r.front());
+            fprintf(stderr, "B does not have %x which is in A\n", iter.get());
         }
     }
-    for (IntSet::Range r = bm.all(); !r.empty(); r.popFront()) {
-        if (!am.has(r.front())) {
+    for (auto iter = bm.iter(); !iter.done(); iter.next()) {
+        if (!am.has(iter.get())) {
             equal = false;
-            fprintf(stderr, "A does not have %x which is in B\n", r.front());
+            fprintf(stderr, "A does not have %x which is in B\n", iter.get());
         }
     }
     return equal;
@@ -143,22 +143,20 @@ template <class NewKeyFunction>
 static bool
 SlowRekey(IntMap* m) {
     IntMap tmp;
-    if (!tmp.init())
-        return false;
 
-    for (IntMap::Range r = m->all(); !r.empty(); r.popFront()) {
-        if (NewKeyFunction::shouldBeRemoved(r.front().key()))
+    for (auto iter = m->iter(); !iter.done(); iter.next()) {
+        if (NewKeyFunction::shouldBeRemoved(iter.get().key()))
             continue;
-        uint32_t hi = NewKeyFunction::rekey(r.front().key());
+        uint32_t hi = NewKeyFunction::rekey(iter.get().key());
         if (tmp.has(hi))
             return false;
-        if (!tmp.putNew(hi, r.front().value()))
+        if (!tmp.putNew(hi, iter.get().value()))
             return false;
     }
 
     m->clear();
-    for (IntMap::Range r = tmp.all(); !r.empty(); r.popFront()) {
-        if (!m->putNew(r.front().key(), r.front().value()))
+    for (auto iter = tmp.iter(); !iter.done(); iter.next()) {
+        if (!m->putNew(iter.get().key(), iter.get().value()))
             return false;
     }
 
@@ -169,13 +167,11 @@ template <class NewKeyFunction>
 static bool
 SlowRekey(IntSet* s) {
     IntSet tmp;
-    if (!tmp.init())
-        return false;
 
-    for (IntSet::Range r = s->all(); !r.empty(); r.popFront()) {
-        if (NewKeyFunction::shouldBeRemoved(r.front()))
+    for (auto iter = s->iter(); !iter.done(); iter.next()) {
+        if (NewKeyFunction::shouldBeRemoved(iter.get()))
             continue;
-        uint32_t hi = NewKeyFunction::rekey(r.front());
+        uint32_t hi = NewKeyFunction::rekey(iter.get());
         if (tmp.has(hi))
             return false;
         if (!tmp.putNew(hi))
@@ -183,8 +179,8 @@ SlowRekey(IntSet* s) {
     }
 
     s->clear();
-    for (IntSet::Range r = tmp.all(); !r.empty(); r.popFront()) {
-        if (!s->putNew(r.front()))
+    for (auto iter = tmp.iter(); !iter.done(); iter.next()) {
+        if (!s->putNew(iter.get()))
             return false;
     }
 
@@ -194,8 +190,6 @@ SlowRekey(IntSet* s) {
 BEGIN_TEST(testHashRekeyManual)
 {
     IntMap am, bm;
-    CHECK(am.init());
-    CHECK(bm.init());
     for (size_t i = 0; i < TestIterations; ++i) {
 #ifdef FUZZ
         fprintf(stderr, "map1: %lu\n", i);
@@ -203,10 +197,10 @@ BEGIN_TEST(testHashRekeyManual)
         CHECK(AddLowKeys(&am, &bm, i));
         CHECK(MapsAreEqual(am, bm));
 
-        for (IntMap::Enum e(am); !e.empty(); e.popFront()) {
-            uint32_t tmp = LowToHigh::rekey(e.front().key());
-            if (tmp != e.front().key())
-                e.rekeyFront(tmp);
+        for (auto iter = am.modIter(); !iter.done(); iter.next()) {
+            uint32_t tmp = LowToHigh::rekey(iter.get().key());
+            if (tmp != iter.get().key())
+                iter.rekey(tmp);
         }
         CHECK(SlowRekey<LowToHigh>(&bm));
 
@@ -216,8 +210,6 @@ BEGIN_TEST(testHashRekeyManual)
     }
 
     IntSet as, bs;
-    CHECK(as.init());
-    CHECK(bs.init());
     for (size_t i = 0; i < TestIterations; ++i) {
 #ifdef FUZZ
         fprintf(stderr, "set1: %lu\n", i);
@@ -225,10 +217,10 @@ BEGIN_TEST(testHashRekeyManual)
         CHECK(AddLowKeys(&as, &bs, i));
         CHECK(SetsAreEqual(as, bs));
 
-        for (IntSet::Enum e(as); !e.empty(); e.popFront()) {
-            uint32_t tmp = LowToHigh::rekey(e.front());
-            if (tmp != e.front())
-                e.rekeyFront(tmp);
+        for (auto iter = as.modIter(); !iter.done(); iter.next()) {
+            uint32_t tmp = LowToHigh::rekey(iter.get());
+            if (tmp != iter.get())
+                iter.rekey(tmp);
         }
         CHECK(SlowRekey<LowToHigh>(&bs));
 
@@ -244,8 +236,6 @@ END_TEST(testHashRekeyManual)
 BEGIN_TEST(testHashRekeyManualRemoval)
 {
     IntMap am, bm;
-    CHECK(am.init());
-    CHECK(bm.init());
     for (size_t i = 0; i < TestIterations; ++i) {
 #ifdef FUZZ
         fprintf(stderr, "map2: %lu\n", i);
@@ -253,13 +243,13 @@ BEGIN_TEST(testHashRekeyManualRemoval)
         CHECK(AddLowKeys(&am, &bm, i));
         CHECK(MapsAreEqual(am, bm));
 
-        for (IntMap::Enum e(am); !e.empty(); e.popFront()) {
-            if (LowToHighWithRemoval::shouldBeRemoved(e.front().key())) {
-                e.removeFront();
+        for (auto iter = am.modIter(); !iter.done(); iter.next()) {
+            if (LowToHighWithRemoval::shouldBeRemoved(iter.get().key())) {
+                iter.remove();
             } else {
-                uint32_t tmp = LowToHighWithRemoval::rekey(e.front().key());
-                if (tmp != e.front().key())
-                    e.rekeyFront(tmp);
+                uint32_t tmp = LowToHighWithRemoval::rekey(iter.get().key());
+                if (tmp != iter.get().key())
+                    iter.rekey(tmp);
             }
         }
         CHECK(SlowRekey<LowToHighWithRemoval>(&bm));
@@ -270,8 +260,6 @@ BEGIN_TEST(testHashRekeyManualRemoval)
     }
 
     IntSet as, bs;
-    CHECK(as.init());
-    CHECK(bs.init());
     for (size_t i = 0; i < TestIterations; ++i) {
 #ifdef FUZZ
         fprintf(stderr, "set1: %lu\n", i);
@@ -279,13 +267,13 @@ BEGIN_TEST(testHashRekeyManualRemoval)
         CHECK(AddLowKeys(&as, &bs, i));
         CHECK(SetsAreEqual(as, bs));
 
-        for (IntSet::Enum e(as); !e.empty(); e.popFront()) {
-            if (LowToHighWithRemoval::shouldBeRemoved(e.front())) {
-                e.removeFront();
+        for (auto iter = as.modIter(); !iter.done(); iter.next()) {
+            if (LowToHighWithRemoval::shouldBeRemoved(iter.get())) {
+                iter.remove();
             } else {
-                uint32_t tmp = LowToHighWithRemoval::rekey(e.front());
-                if (tmp != e.front())
-                    e.rekeyFront(tmp);
+                uint32_t tmp = LowToHighWithRemoval::rekey(iter.get());
+                if (tmp != iter.get())
+                    iter.rekey(tmp);
             }
         }
         CHECK(SlowRekey<LowToHighWithRemoval>(&bs));
@@ -338,7 +326,6 @@ BEGIN_TEST(testHashSetOfMoveOnlyType)
     typedef js::HashSet<MoveOnlyType, MoveOnlyType::HashPolicy, js::SystemAllocPolicy> Set;
 
     Set set;
-    CHECK(set.init());
 
     MoveOnlyType a(1);
 
@@ -350,85 +337,191 @@ END_TEST(testHashSetOfMoveOnlyType)
 
 #if defined(DEBUG)
 
-// Add entries to a HashMap using lookupWithDefault until either we get an OOM,
-// or the table has been resized a few times.
+// Add entries to a HashMap until either we get an OOM, or the table has been
+// resized a few times.
 static bool
-LookupWithDefaultUntilResize() {
+GrowUntilResize()
+{
     IntMap m;
-
-    if (!m.init())
-        return false;
 
     // Add entries until we've resized the table four times.
     size_t lastCapacity = m.capacity();
     size_t resizes = 0;
     uint32_t key = 0;
     while (resizes < 4) {
-        if (!m.lookupWithDefault(key++, 0))
-            return false;
+        auto p = m.lookupForAdd(key);
+        if (!p && !m.add(p, key, 0))
+            return false;   // OOM'd in lookupForAdd() or add()
 
         size_t capacity = m.capacity();
         if (capacity != lastCapacity) {
             resizes++;
             lastCapacity = capacity;
         }
+        key++;
     }
 
     return true;
 }
 
-BEGIN_TEST(testHashMapLookupWithDefaultOOM)
+BEGIN_TEST(testHashMapGrowOOM)
 {
     uint32_t timeToFail;
     for (timeToFail = 1; timeToFail < 1000; timeToFail++) {
         js::oom::SimulateOOMAfter(timeToFail, js::THREAD_TYPE_MAIN, false);
-        LookupWithDefaultUntilResize();
+        GrowUntilResize();
     }
 
     js::oom::ResetSimulatedOOM();
     return true;
 }
 
-END_TEST(testHashMapLookupWithDefaultOOM)
+END_TEST(testHashMapGrowOOM)
 #endif // defined(DEBUG)
 
-BEGIN_TEST(testHashTableMovableEnum)
+BEGIN_TEST(testHashTableMovableModIterator)
 {
     IntSet set;
-    CHECK(set.init());
 
-    // Exercise returning a hash table Enum object from a function.
+    // Exercise returning a hash table ModIterator object from a function.
 
     CHECK(set.put(1));
-    for (auto e = enumerateSet(set); !e.empty(); e.popFront())
-        e.removeFront();
+    for (auto iter = setModIter(set); !iter.done(); iter.next())
+        iter.remove();
     CHECK(set.count() == 0);
 
-    // Test moving an Enum object explicitly.
+    // Test moving an ModIterator object explicitly.
 
     CHECK(set.put(1));
     CHECK(set.put(2));
     CHECK(set.put(3));
     CHECK(set.count() == 3);
     {
-        auto e1 = IntSet::Enum(set);
-        CHECK(!e1.empty());
-        e1.removeFront();
-        e1.popFront();
+        auto i1 = set.modIter();
+        CHECK(!i1.done());
+        i1.remove();
+        i1.next();
 
-        auto e2 = std::move(e1);
-        CHECK(!e2.empty());
-        e2.removeFront();
-        e2.popFront();
+        auto i2 = std::move(i1);
+        CHECK(!i2.done());
+        i2.remove();
+        i2.next();
     }
 
     CHECK(set.count() == 1);
     return true;
 }
 
-IntSet::Enum enumerateSet(IntSet& set)
+IntSet::ModIterator setModIter(IntSet& set)
 {
-    return IntSet::Enum(set);
+    return set.modIter();
 }
 
-END_TEST(testHashTableMovableEnum)
+END_TEST(testHashTableMovableModIterator)
+
+BEGIN_TEST(testHashLazyStorage)
+{
+    // The following code depends on the current capacity computation, which
+    // could change in the future.
+    uint32_t defaultCap = 32;
+    uint32_t minCap = 4;
+
+    IntSet set;
+    CHECK(set.capacity() == 0);
+
+    CHECK(set.put(1));
+    CHECK(set.capacity() == defaultCap);
+
+    set.compact();                  // effectively a no-op
+    CHECK(set.capacity() == minCap);
+
+    set.clear();
+    CHECK(set.capacity() == minCap);
+
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    CHECK(set.putNew(1));
+    CHECK(set.capacity() == minCap);
+
+    set.clear();
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    auto p = set.lookupForAdd(1);
+    CHECK(set.capacity() == 0);
+    CHECK(set.add(p, 1));
+    CHECK(set.capacity() == minCap);
+    CHECK(set.has(1));
+
+    set.clear();
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    p = set.lookupForAdd(1);
+    CHECK(set.putNew(2));
+    CHECK(set.capacity() == minCap);
+    CHECK(set.relookupOrAdd(p, 1, 1));
+    CHECK(set.capacity() == minCap);
+    CHECK(set.has(1));
+
+    set.clear();
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    CHECK(set.putNew(1));
+    p = set.lookupForAdd(1);
+    set.clear();
+    set.compact();
+    CHECK(set.count() == 0);
+    CHECK(set.relookupOrAdd(p, 1, 1));
+    CHECK(set.count() == 1);
+    CHECK(set.capacity() == minCap);
+
+    set.clear();
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    CHECK(set.reserve(0));          // a no-op
+    CHECK(set.capacity() == 0);
+
+    CHECK(set.reserve(1));
+    CHECK(set.capacity() == minCap);
+
+    CHECK(set.reserve(0));          // a no-op
+    CHECK(set.capacity() == minCap);
+
+    CHECK(set.reserve(2));          // effectively a no-op
+    CHECK(set.capacity() == minCap);
+
+    // No need to clear here because we didn't add anything.
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    CHECK(set.reserve(128));
+    CHECK(set.capacity() == 256);
+    CHECK(set.reserve(3));          // effectively a no-op
+    CHECK(set.capacity() == 256);
+    for (int i = 0; i < 8; i++) {
+      CHECK(set.putNew(i));
+    }
+    CHECK(set.count() == 8);
+    CHECK(set.capacity() == 256);
+    set.compact();
+    CHECK(set.capacity() == 16);
+    set.compact();                  // effectively a no-op
+    CHECK(set.capacity() == 16);
+    for (int i = 8; i < 16; i++) {
+      CHECK(set.putNew(i));
+    }
+    CHECK(set.count() == 16);
+    CHECK(set.capacity() == 32);
+    set.clear();
+    CHECK(set.capacity() == 32);
+    set.compact();
+    CHECK(set.capacity() == 0);
+
+    return true;
+}
+END_TEST(testHashLazyStorage)
+

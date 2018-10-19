@@ -6,7 +6,7 @@ add_task(async function() {
   // allow top level data: URI navigations, otherwise loading data: URIs
   // in toplevel windows fail.
   await SpecialPowers.pushPrefEnv({
-    "set": [["security.data_uri.block_toplevel_data_uri_navigations", false]]
+    "set": [["security.data_uri.block_toplevel_data_uri_navigations", false]],
   });
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, null, false);
@@ -34,7 +34,7 @@ add_task(async function() {
           Assert.ok(!content.document.body.textContent,
             "no domain was inherited for view background image");
         });
-      }
+      },
     },
     {
       name: "view image",
@@ -47,7 +47,7 @@ add_task(async function() {
           img.height = 100;
           img.width = 100;
           img.setAttribute("src", arg.writeDomainURL);
-          doc.body.insertBefore(img, doc.body.firstChild);
+          doc.body.insertBefore(img, doc.body.firstElementChild);
 
           return "context-viewimage";
         });
@@ -57,7 +57,7 @@ add_task(async function() {
           Assert.ok(!content.document.body.textContent,
             "no domain was inherited for view image");
         });
-      }
+      },
     },
     {
       name: "show only this frame",
@@ -68,7 +68,7 @@ add_task(async function() {
           let doc = content.document;
           let iframe = doc.createElement("iframe");
           iframe.setAttribute("src", arg.writeDomainURL);
-          doc.body.insertBefore(iframe, doc.body.firstChild);
+          doc.body.insertBefore(iframe, doc.body.firstElementChild);
 
           // Wait for the iframe to load.
           return new Promise(resolve => {
@@ -83,8 +83,8 @@ add_task(async function() {
           Assert.ok(!content.document.body.textContent,
             "no domain was inherited for 'show only this frame'");
         });
-      }
-    }
+      },
+    },
   ];
 
   let contentAreaContextMenu = document.getElementById("contentAreaContextMenu");

@@ -14,7 +14,9 @@ namespace js {
 
 #ifdef JS_HAS_PROTECTED_DATA_CHECKS
 
-/* static */ mozilla::Atomic<size_t> AutoNoteSingleThreadedRegion::count(0);
+/* static */ mozilla::Atomic<size_t, mozilla::SequentiallyConsistent,
+                             mozilla::recordreplay::Behavior::DontPreserve>
+    AutoNoteSingleThreadedRegion::count(0);
 
 template <AllowedHelperThread Helper>
 static inline bool
@@ -26,7 +28,7 @@ OnHelperThread()
     }
 
     if (Helper == AllowedHelperThread::GCTask || Helper == AllowedHelperThread::GCTaskOrIonCompile) {
-        if (TlsContext.get()->performingGC || TlsContext.get()->runtime()->gc.onBackgroundThread())
+        if (TlsContext.get()->performingGC)
             return true;
     }
 
@@ -65,19 +67,13 @@ CheckZone<Helper>::check() const
     if (OnHelperThread<Helper>())
         return;
 
-    JSRuntime* runtime = TlsContext.get()->runtime();
-    if (zone->isAtomsZone()) {
-        // The atoms zone is protected by the exclusive access lock, but can be
-        // also accessed when off-thread parsing is blocked.
-        MOZ_ASSERT(runtime->currentThreadHasExclusiveAccess() ||
-                   (!runtime->isOffThreadParseRunning() && runtime->isOffThreadParsingBlocked()));
-    } else if (zone->usedByHelperThread()) {
+    if (zone->usedByHelperThread()) {
         // This may only be accessed by the helper thread using this zone.
         MOZ_ASSERT(zone->ownedByCurrentHelperThread());
     } else {
         // The main thread is permitted access to all zones. These accesses
         // are threadsafe if the zone is not in use by a helper thread.
-        MOZ_ASSERT(CurrentThreadCanAccessRuntime(runtime));
+        MOZ_ASSERT(CurrentThreadCanAccessRuntime(TlsContext.get()->runtime()));
     }
 }
 
@@ -97,9 +93,6 @@ CheckGlobalLock<Lock, Helper>::check() const
       case GlobalLock::GCLock:
         MOZ_ASSERT(TlsContext.get()->runtime()->gc.currentThreadHasLockedGC());
         break;
-      case GlobalLock::ExclusiveAccessLock:
-        MOZ_ASSERT(TlsContext.get()->runtime()->currentThreadHasExclusiveAccess());
-        break;
       case GlobalLock::ScriptDataLock:
         MOZ_ASSERT(TlsContext.get()->runtime()->currentThreadHasScriptDataAccess());
         break;
@@ -110,10 +103,34 @@ CheckGlobalLock<Lock, Helper>::check() const
 }
 
 template class CheckGlobalLock<GlobalLock::GCLock, AllowedHelperThread::None>;
-template class CheckGlobalLock<GlobalLock::ExclusiveAccessLock, AllowedHelperThread::None>;
-template class CheckGlobalLock<GlobalLock::ExclusiveAccessLock, AllowedHelperThread::GCTask>;
 template class CheckGlobalLock<GlobalLock::ScriptDataLock, AllowedHelperThread::None>;
 template class CheckGlobalLock<GlobalLock::HelperThreadLock, AllowedHelperThread::None>;
+
+template <AllowedHelperThread Helper>
+void
+CheckArenaListAccess<Helper>::check() const
+{
+    MOZ_ASSERT(zone);
+
+    if (OnHelperThread<Helper>())
+        return;
+
+    JSRuntime* rt = TlsContext.get()->runtime();
+    if (zone->isAtomsZone()) {
+        // The main thread can access the atoms arenas if it holds all the atoms
+        // table locks.
+        if (rt->currentThreadHasAtomsTableAccess())
+            return;
+
+        // Otherwise we must hold the GC lock if parallel parsing is running.
+        MOZ_ASSERT_IF(rt->isOffThreadParseRunning(), rt->gc.currentThreadHasLockedGC());
+        return;
+    }
+
+    CheckZone<AllowedHelperThread::None>::check();
+}
+
+template class CheckArenaListAccess<AllowedHelperThread::GCTask>;
 
 #endif // JS_HAS_PROTECTED_DATA_CHECKS
 

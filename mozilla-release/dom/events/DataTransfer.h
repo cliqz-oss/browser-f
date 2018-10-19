@@ -419,6 +419,20 @@ public:
   already_AddRefed<DataTransfer> MozCloneForEvent(const nsAString& aEvent,
                                                   ErrorResult& aRv);
 
+  // Retrieve a list of clipboard formats supported
+  //
+  // If kFileMime is supported, then it will be placed either at
+  // index 0 or at index 1 in aResult
+  static void
+  GetExternalClipboardFormats(const int32_t& aWhichClipboard,
+                              const bool& aPlainTextOnly,
+                              nsTArray<nsCString>* aResult);
+
+  // Returns true if moz* APIs should be exposed (true for chrome code or if
+  // dom.datatransfer.moz pref is enabled).
+  // The affected moz* APIs are mozItemCount, mozTypesAt, mozClearDataAt, mozSetDataAt, mozGetDataAt
+  static bool MozAtAPIsEnabled(JSContext* cx, JSObject* obj);
+
 protected:
 
   // caches text and uri-list data formats that exist in the drag service or
@@ -442,6 +456,7 @@ protected:
                              uint32_t aIndex, nsIPrincipal* aSubjectPrincipal);
 
   friend class ContentParent;
+  friend class Clipboard;
 
   void FillAllExternalData();
 

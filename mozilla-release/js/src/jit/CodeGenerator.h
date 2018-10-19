@@ -76,7 +76,6 @@ class CodeGenerator final : public CodeGeneratorSpecific
                                    wasm::FuncOffsets* offsets);
 
     MOZ_MUST_USE bool link(JSContext* cx, CompilerConstraintList* constraints);
-    MOZ_MUST_USE bool linkSharedStubs(JSContext* cx);
 
     void emitOOLTestObject(Register objreg, Label* ifTruthy, Label* ifFalsy, Register scratch);
     void emitIntToString(Register input, Register output, Label* ool);
@@ -113,7 +112,6 @@ class CodeGenerator final : public CodeGeneratorSpecific
     void visitOutOfLineNewObject(OutOfLineNewObject* ool);
 
   private:
-    void emitSharedStub(ICStub::Kind kind, LInstruction* lir);
 
     void emitPostWriteBarrier(const LAllocation* obj);
     void emitPostWriteBarrier(Register objreg);
@@ -221,6 +219,9 @@ class CodeGenerator final : public CodeGeneratorSpecific
 
     void emitWasmCallBase(MWasmCall* mir, bool needsBoundsCheck);
 
+    template<size_t NumDefs>
+    void emitIonToWasmCallBase(LIonToWasmCallBase<NumDefs>* lir);
+
     IonScriptCounts* maybeCreateScriptCounts();
 
     // This function behaves like testValueTruthy with the exception that it can
@@ -290,18 +291,6 @@ class CodeGenerator final : public CodeGeneratorSpecific
 
     Vector<CodeOffset, 0, JitAllocPolicy> ionScriptLabels_;
 
-    struct SharedStub {
-        ICStub::Kind kind;
-        IonICEntry entry;
-        CodeOffset label;
-
-        SharedStub(ICStub::Kind kind, IonICEntry entry, CodeOffset label)
-          : kind(kind), entry(entry), label(label)
-        {}
-    };
-
-    Vector<SharedStub, 0, SystemAllocPolicy> sharedStubs_;
-
     void branchIfInvalidated(Register temp, Label* invalidated);
 
 #ifdef DEBUG
@@ -317,23 +306,8 @@ class CodeGenerator final : public CodeGeneratorSpecific
     PerfSpewer perfSpewer_;
 #endif
 
-    // This integer is a bit mask of all SimdTypeDescr::Type indexes.  When a
-    // MSimdBox instruction is encoded, it might have either been created by
-    // IonBuilder, or by the Eager Simd Unbox phase.
-    //
-    // As the template objects are weak references, the JitRealm is using
-    // Read Barriers, but such barrier cannot be used during the compilation. To
-    // work around this issue, the barriers are captured during
-    // CodeGenerator::link.
-    //
-    // Instead of saving the pointers, we just save the index of the Read
-    // Barriered objects in a bit mask.
-    uint32_t simdTemplatesToReadBarrier_;
-
     // Bit mask of JitRealm stubs that are to be read-barriered.
     uint32_t realmStubsToReadBarrier_;
-
-    void addSimdTemplateToReadBarrier(SimdType simdType);
 
 #define LIR_OP(op) void visit##op(L##op* ins);
     LIR_OPCODE_LIST(LIR_OP)

@@ -213,6 +213,7 @@ NS_IMPL_CYCLE_COLLECTION(nsDocumentEncoder,
 
 nsDocumentEncoder::nsDocumentEncoder()
   : mEncoding(nullptr)
+  , mIsCopying(false)
   , mCachedBuffer(nullptr)
 {
   Initialize();
@@ -1123,6 +1124,7 @@ public:
   NS_IMETHOD Init(nsIDocument* aDocument, const nsAString& aMimeType, uint32_t aFlags) override;
 
   // overridden methods from nsDocumentEncoder
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   NS_IMETHOD SetSelection(Selection* aSelection) override;
   NS_IMETHOD EncodeToStringWithContext(nsAString& aContextString,
                                        nsAString& aInfoString,
@@ -1556,8 +1558,7 @@ nsHTMLCopyEncoder::GetPromotedPoint(Endpoint aWhere, nsINode* aNode,
   if (aWhere == kStart)
   {
     // some special casing for text nodes
-    nsCOMPtr<nsINode> t = aNode;
-    if (auto nodeAsText = t->GetAsText())
+    if (auto nodeAsText = aNode->GetAsText())
     {
       // if not at beginning of text node, we are done
       if (offset >  0)
@@ -1631,11 +1632,10 @@ nsHTMLCopyEncoder::GetPromotedPoint(Endpoint aWhere, nsINode* aNode,
   if (aWhere == kEnd)
   {
     // some special casing for text nodes
-    nsCOMPtr<nsINode> n = do_QueryInterface(aNode);
-    if (auto nodeAsText = n->GetAsText())
+    if (auto nodeAsText = aNode->GetAsText())
     {
       // if not at end of text node, we are done
-      uint32_t len = n->Length();
+      uint32_t len = aNode->Length();
       if (offset < (int32_t)len)
       {
         // unless everything after us in just whitespace.  NOTE: we need a more

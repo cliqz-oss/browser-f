@@ -631,8 +631,24 @@ impl Item {
             ctx.in_codegen_phase(),
             "You're not supposed to call this yet"
         );
-        self.annotations.hide() ||
-            ctx.blacklisted_by_name(&self.canonical_path(ctx), self.id)
+        if self.annotations.hide() {
+            return true;
+        }
+
+        let path = self.canonical_path(ctx);
+        let name = path[1..].join("::");
+        match self.kind {
+            ItemKind::Type(..) => {
+                ctx.options().blacklisted_types.matches(&name) ||
+                    ctx.is_replaced_type(&path, self.id)
+            }
+            ItemKind::Function(..) => {
+                ctx.options().blacklisted_functions.matches(&name)
+            }
+            // TODO: Add constant / namespace blacklisting?
+            ItemKind::Var(..) |
+            ItemKind::Module(..) => false,
+        }
     }
 
     /// Is this a reference to another type?
@@ -935,21 +951,17 @@ impl Item {
         let cc = &ctx.options().codegen_config;
         match *self.kind() {
             ItemKind::Module(..) => true,
-            ItemKind::Var(_) => cc.vars,
-            ItemKind::Type(_) => cc.types,
+            ItemKind::Var(_) => cc.vars(),
+            ItemKind::Type(_) => cc.types(),
             ItemKind::Function(ref f) => {
                 match f.kind() {
-                    FunctionKind::Function => cc.functions,
-                    FunctionKind::Method(MethodKind::Constructor) => {
-                        cc.constructors
-                    }
+                    FunctionKind::Function => cc.functions(),
+                    FunctionKind::Method(MethodKind::Constructor) => cc.constructors(),
                     FunctionKind::Method(MethodKind::Destructor) |
-                    FunctionKind::Method(MethodKind::VirtualDestructor { .. }) => {
-                        cc.destructors
-                    }
+                    FunctionKind::Method(MethodKind::VirtualDestructor { ..  }) => cc.destructors(),
                     FunctionKind::Method(MethodKind::Static) |
                     FunctionKind::Method(MethodKind::Normal) |
-                    FunctionKind::Method(MethodKind::Virtual { .. }) => cc.methods,
+                    FunctionKind::Method(MethodKind::Virtual { .. }) => cc.methods(),
                 }
             }
         }
@@ -1112,8 +1124,8 @@ where
     fn self_template_params(
         &self,
         ctx: &BindgenContext,
-    ) -> Option<Vec<TypeId>> {
-        ctx.resolve_item_fallible(*self).and_then(|item| {
+    ) -> Vec<TypeId> {
+        ctx.resolve_item_fallible(*self).map_or(vec![], |item| {
             item.self_template_params(ctx)
         })
     }
@@ -1123,7 +1135,7 @@ impl TemplateParameters for Item {
     fn self_template_params(
         &self,
         ctx: &BindgenContext,
-    ) -> Option<Vec<TypeId>> {
+    ) -> Vec<TypeId> {
         self.kind.self_template_params(ctx)
     }
 }
@@ -1132,7 +1144,7 @@ impl TemplateParameters for ItemKind {
     fn self_template_params(
         &self,
         ctx: &BindgenContext,
-    ) -> Option<Vec<TypeId>> {
+    ) -> Vec<TypeId> {
         match *self {
             ItemKind::Type(ref ty) => ty.self_template_params(ctx),
             // If we start emitting bindings to explicitly instantiated
@@ -1140,7 +1152,7 @@ impl TemplateParameters for ItemKind {
             // template params.
             ItemKind::Function(_) |
             ItemKind::Module(_) |
-            ItemKind::Var(_) => None,
+            ItemKind::Var(_) => vec![],
         }
     }
 }
@@ -1397,7 +1409,7 @@ impl ClangItemParser for Item {
                 parent_id.unwrap_or(current_module.into()),
                 ItemKind::Type(Type::new(None, None, kind, is_const)),
             ),
-            Some(clang::Cursor::null()),
+            None,
             None,
         );
         potential_id.as_type_id_unchecked()
@@ -1449,8 +1461,8 @@ impl ClangItemParser for Item {
                 return Ok(Item::new_opaque_type(id, ty, ctx));
             }
 
-            if let Some(id) = Item::type_param(Some(id), location, ctx) {
-                return Ok(id);
+            if let Some(param_id) = Item::type_param(None, location, ctx) {
+                return Ok(ctx.build_ty_wrapper(id, param_id, None, ty));
             }
         }
 

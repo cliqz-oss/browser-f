@@ -34,14 +34,7 @@ class JSObject2WrappedJSMap
 
 public:
     static JSObject2WrappedJSMap* newMap(int length) {
-        auto* map = new JSObject2WrappedJSMap();
-        if (!map->mTable.init(length)) {
-            // This is a decent estimate of the size of the hash table's
-            // entry storage. The |2| is because on average the capacity is
-            // twice the requested length.
-            NS_ABORT_OOM(length * 2 * sizeof(Map::Entry));
-        }
-        return map;
+        return new JSObject2WrappedJSMap(length);
     }
 
     inline nsXPCWrappedJS* Find(JSObject* Obj) {
@@ -52,8 +45,8 @@ public:
 
 #ifdef DEBUG
     inline bool HasWrapper(nsXPCWrappedJS* wrapper) {
-        for (auto r = mTable.all(); !r.empty(); r.popFront()) {
-            if (r.front().value() == wrapper)
+        for (auto iter = mTable.iter(); !iter.done(); iter.next()) {
+            if (iter.get().value() == wrapper)
                 return true;
         }
         return false;
@@ -79,8 +72,8 @@ public:
     inline uint32_t Count() {return mTable.count();}
 
     inline void Dump(int16_t depth) {
-        for (Map::Range r = mTable.all(); !r.empty(); r.popFront())
-            r.front().value()->DebugDump(depth);
+        for (auto iter = mTable.iter(); !iter.done(); iter.next())
+            iter.get().value()->DebugDump(depth);
     }
 
     void UpdateWeakPointersAfterGC();
@@ -94,7 +87,7 @@ public:
     size_t SizeOfWrappedJS(mozilla::MallocSizeOf mallocSizeOf) const;
 
 private:
-    JSObject2WrappedJSMap() {}
+    explicit JSObject2WrappedJSMap(size_t length) : mTable(length) {}
 
     Map mTable;
 };
@@ -112,7 +105,7 @@ public:
 
     static Native2WrappedNativeMap* newMap(int length);
 
-    inline XPCWrappedNative* Find(nsISupports* Obj)
+    inline XPCWrappedNative* Find(nsISupports* Obj) const
     {
         MOZ_ASSERT(Obj,"bad param");
         auto entry = static_cast<Entry*>(mTable.Search(Obj));
@@ -178,7 +171,7 @@ public:
 
     static IID2WrappedJSClassMap* newMap(int length);
 
-    inline nsXPCWrappedJSClass* Find(REFNSIID iid)
+    inline nsXPCWrappedJSClass* Find(REFNSIID iid) const
     {
         auto entry = static_cast<Entry*>(mTable.Search(&iid));
         return entry ? entry->value : nullptr;
@@ -232,7 +225,7 @@ public:
 
     static IID2NativeInterfaceMap* newMap(int length);
 
-    inline XPCNativeInterface* Find(REFNSIID iid)
+    inline XPCNativeInterface* Find(REFNSIID iid) const
     {
         auto entry = static_cast<Entry*>(mTable.Search(&iid));
         return entry ? entry->value : nullptr;
@@ -290,7 +283,7 @@ public:
 
     static ClassInfo2NativeSetMap* newMap(int length);
 
-    inline XPCNativeSet* Find(nsIClassInfo* info)
+    inline XPCNativeSet* Find(nsIClassInfo* info) const
     {
         auto entry = static_cast<Entry*>(mTable.Search(info));
         return entry ? entry->value : nullptr;
@@ -343,7 +336,7 @@ public:
 
     static ClassInfo2WrappedNativeProtoMap* newMap(int length);
 
-    inline XPCWrappedNativeProto* Find(nsIClassInfo* info)
+    inline XPCWrappedNativeProto* Find(nsIClassInfo* info) const
     {
         auto entry = static_cast<Entry*>(mTable.Search(info));
         return entry ? entry->value : nullptr;
@@ -401,7 +394,7 @@ public:
 
     static NativeSetMap* newMap(int length);
 
-    inline XPCNativeSet* Find(XPCNativeSetKey* key)
+    inline XPCNativeSet* Find(XPCNativeSetKey* key) const
     {
         auto entry = static_cast<Entry*>(mTable.Search(key));
         return entry ? entry->key_value : nullptr;
@@ -506,14 +499,7 @@ class JSObject2JSObjectMap
 
 public:
     static JSObject2JSObjectMap* newMap(int length) {
-        auto* map = new JSObject2JSObjectMap();
-        if (!map->mTable.init(length)) {
-            // This is a decent estimate of the size of the hash table's
-            // entry storage. The |2| is because on average the capacity is
-            // twice the requested length.
-            NS_ABORT_OOM(length * 2 * sizeof(Map::Entry));
-        }
-        return map;
+        return new JSObject2JSObjectMap(length);
     }
 
     inline JSObject* Find(JSObject* key) {
@@ -547,7 +533,7 @@ public:
     }
 
 private:
-    JSObject2JSObjectMap() {}
+    explicit JSObject2JSObjectMap(size_t length) : mTable(length) {}
 
     Map mTable;
 };

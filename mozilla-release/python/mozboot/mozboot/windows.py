@@ -50,8 +50,8 @@ class WindowsBootstrapper(BaseBootstrapper):
                                       'pacman. Get msys2 at http://msys2.github.io/')
         print('Using an experimental bootstrapper for Windows.')
 
-    def which(self, name):
-        return BaseBootstrapper.which(self, name + '.exe')
+    def which(self, name, *extra_search_dirs):
+        return BaseBootstrapper.which(self, name + '.exe', *extra_search_dirs)
 
     def install_system_packages(self):
         self.pacman_install(*self.SYSTEM_PACKAGES)
@@ -73,7 +73,13 @@ class WindowsBootstrapper(BaseBootstrapper):
 
     def ensure_stylo_packages(self, state_dir, checkout_root):
         from mozboot import stylo
-        self.install_toolchain_artifact(state_dir, checkout_root, stylo.WINDOWS)
+        self.install_toolchain_artifact(state_dir, checkout_root, stylo.WINDOWS_CLANG)
+        self.install_toolchain_artifact(state_dir, checkout_root, stylo.WINDOWS_CBINDGEN)
+
+    def ensure_node_packages(self, state_dir, checkout_root):
+        from mozboot import node
+        self.install_toolchain_artifact(
+            state_dir, checkout_root, node.WINDOWS)
 
     def _update_package_manager(self):
         self.pacman_update()

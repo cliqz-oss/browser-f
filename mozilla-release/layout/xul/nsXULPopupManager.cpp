@@ -47,34 +47,34 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-static_assert(KeyboardEventBinding::DOM_VK_HOME  ==
-                KeyboardEventBinding::DOM_VK_END + 1 &&
-              KeyboardEventBinding::DOM_VK_LEFT  ==
-                KeyboardEventBinding::DOM_VK_END + 2 &&
-              KeyboardEventBinding::DOM_VK_UP    ==
-                KeyboardEventBinding::DOM_VK_END + 3 &&
-              KeyboardEventBinding::DOM_VK_RIGHT ==
-                KeyboardEventBinding::DOM_VK_END + 4 &&
-              KeyboardEventBinding::DOM_VK_DOWN  ==
-                KeyboardEventBinding::DOM_VK_END + 5,
+static_assert(KeyboardEvent_Binding::DOM_VK_HOME  ==
+                KeyboardEvent_Binding::DOM_VK_END + 1 &&
+              KeyboardEvent_Binding::DOM_VK_LEFT  ==
+                KeyboardEvent_Binding::DOM_VK_END + 2 &&
+              KeyboardEvent_Binding::DOM_VK_UP    ==
+                KeyboardEvent_Binding::DOM_VK_END + 3 &&
+              KeyboardEvent_Binding::DOM_VK_RIGHT ==
+                KeyboardEvent_Binding::DOM_VK_END + 4 &&
+              KeyboardEvent_Binding::DOM_VK_DOWN  ==
+                KeyboardEvent_Binding::DOM_VK_END + 5,
               "nsXULPopupManager assumes some keyCode values are consecutive");
 
 const nsNavigationDirection DirectionFromKeyCodeTable[2][6] = {
   {
-    eNavigationDirection_Last,   // KeyboardEventBinding::DOM_VK_END
-    eNavigationDirection_First,  // KeyboardEventBinding::DOM_VK_HOME
-    eNavigationDirection_Start,  // KeyboardEventBinding::DOM_VK_LEFT
-    eNavigationDirection_Before, // KeyboardEventBinding::DOM_VK_UP
-    eNavigationDirection_End,    // KeyboardEventBinding::DOM_VK_RIGHT
-    eNavigationDirection_After   // KeyboardEventBinding::DOM_VK_DOWN
+    eNavigationDirection_Last,   // KeyboardEvent_Binding::DOM_VK_END
+    eNavigationDirection_First,  // KeyboardEvent_Binding::DOM_VK_HOME
+    eNavigationDirection_Start,  // KeyboardEvent_Binding::DOM_VK_LEFT
+    eNavigationDirection_Before, // KeyboardEvent_Binding::DOM_VK_UP
+    eNavigationDirection_End,    // KeyboardEvent_Binding::DOM_VK_RIGHT
+    eNavigationDirection_After   // KeyboardEvent_Binding::DOM_VK_DOWN
   },
   {
-    eNavigationDirection_Last,   // KeyboardEventBinding::DOM_VK_END
-    eNavigationDirection_First,  // KeyboardEventBinding::DOM_VK_HOME
-    eNavigationDirection_End,    // KeyboardEventBinding::DOM_VK_LEFT
-    eNavigationDirection_Before, // KeyboardEventBinding::DOM_VK_UP
-    eNavigationDirection_Start,  // KeyboardEventBinding::DOM_VK_RIGHT
-    eNavigationDirection_After   // KeyboardEventBinding::DOM_VK_DOWN
+    eNavigationDirection_Last,   // KeyboardEvent_Binding::DOM_VK_END
+    eNavigationDirection_First,  // KeyboardEvent_Binding::DOM_VK_HOME
+    eNavigationDirection_End,    // KeyboardEvent_Binding::DOM_VK_LEFT
+    eNavigationDirection_Before, // KeyboardEvent_Binding::DOM_VK_UP
+    eNavigationDirection_Start,  // KeyboardEvent_Binding::DOM_VK_RIGHT
+    eNavigationDirection_After   // KeyboardEvent_Binding::DOM_VK_DOWN
   }
 };
 
@@ -133,7 +133,7 @@ nsMenuChainItem::CheckForAnchorChange()
 
 bool nsXULPopupManager::sDevtoolsDisableAutoHide = false;
 
-const char* kPrefDevtoolsDisableAutoHide =
+const char kPrefDevtoolsDisableAutoHide[] =
   "ui.popup.disable_autohide";
 
 NS_IMPL_ISUPPORTS(nsXULPopupManager,
@@ -729,14 +729,7 @@ nsXULPopupManager::ShowMenu(nsIContent *aMenu,
 
 #ifdef XP_MACOSX
   nsCOMPtr<nsIDOMXULMenuListElement> menulist = do_QueryInterface(aMenu);
-  bool isNonEditableMenulist = false;
   if (menulist) {
-    bool editable;
-    menulist->GetEditable(&editable);
-    isNonEditableMenulist = !editable;
-  }
-
-  if (isNonEditableMenulist) {
     position.AssignLiteral("selection");
   }
   else
@@ -929,7 +922,7 @@ nsXULPopupManager::ShowPopupCallback(nsIContent* aPopup,
   // use a weak frame as the popup will set an open attribute if it is a menu
   AutoWeakFrame weakFrame(aPopupFrame);
   aPopupFrame->ShowPopup(aIsContextMenu);
-  ENSURE_TRUE(weakFrame.IsAlive());
+  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
 
   // popups normally hide when an outside click occurs. Panels may use
   // the noautohide attribute to disable this behaviour. It is expected
@@ -942,6 +935,7 @@ nsXULPopupManager::ShowPopupCallback(nsIContent* aPopup,
   item->SetParent(mPopups);
   mPopups = item;
   SetCaptureState(oldmenu);
+  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
 
   item->UpdateFollowAnchor();
 
@@ -1152,7 +1146,7 @@ nsXULPopupManager::HidePopupCallback(nsIContent* aPopup,
 
   AutoWeakFrame weakFrame(aPopupFrame);
   aPopupFrame->HidePopup(aDeselectMenu, ePopupClosed);
-  ENSURE_TRUE(weakFrame.IsAlive());
+  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
 
   // send the popuphidden event synchronously. This event has no default
   // behaviour.
@@ -1161,7 +1155,7 @@ nsXULPopupManager::HidePopupCallback(nsIContent* aPopup,
                          WidgetMouseEvent::eReal);
   EventDispatcher::Dispatch(aPopup, aPopupFrame->PresContext(),
                             &event, nullptr, &status);
-  ENSURE_TRUE(weakFrame.IsAlive());
+  NS_ENSURE_TRUE_VOID(weakFrame.IsAlive());
 
   // Force any popups that might be anchored on elements within this popup to update.
   UpdatePopupPositions(aPopupFrame->PresContext()->RefreshDriver());
@@ -1953,12 +1947,10 @@ nsXULPopupManager::UpdateMenuItems(nsIContent* aPopup)
   }
 
   // When a menu is opened, make sure that command updating is unlocked first.
-  if (document->IsXULDocument()) {
-    nsCOMPtr<nsIDOMXULCommandDispatcher> xulCommandDispatcher =
-      document->AsXULDocument()->GetCommandDispatcher();
-    if (xulCommandDispatcher) {
-      xulCommandDispatcher->Unlock();
-    }
+  nsCOMPtr<nsIDOMXULCommandDispatcher> commandDispatcher =
+    document->GetCommandDispatcher();
+  if (commandDispatcher) {
+    commandDispatcher->Unlock();
   }
 
   for (nsCOMPtr<nsIContent> grandChild = aPopup->GetFirstChild();
@@ -2162,8 +2154,8 @@ nsXULPopupManager::HandleKeyboardNavigation(uint32_t aKeyCode)
     return false;
 
   nsNavigationDirection theDirection;
-  NS_ASSERTION(aKeyCode >= KeyboardEventBinding::DOM_VK_END &&
-                 aKeyCode <= KeyboardEventBinding::DOM_VK_DOWN, "Illegal key code");
+  NS_ASSERTION(aKeyCode >= KeyboardEvent_Binding::DOM_VK_END &&
+                 aKeyCode <= KeyboardEvent_Binding::DOM_VK_DOWN, "Illegal key code");
   theDirection = NS_DIRECTION_FROM_KEY_CODE(itemFrame, aKeyCode);
 
   bool selectFirstItem = true;
@@ -2312,7 +2304,7 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
   // Escape should close panels, but the other keys should have no effect.
   if (aTopVisibleMenuItem &&
       aTopVisibleMenuItem->PopupType() != ePopupTypeMenu) {
-    if (keyCode == KeyboardEventBinding::DOM_VK_ESCAPE) {
+    if (keyCode == KeyboardEvent_Binding::DOM_VK_ESCAPE) {
       HidePopup(aTopVisibleMenuItem->Content(), false, false, false, true);
       aKeyEvent->StopPropagation();
       aKeyEvent->StopCrossProcessForwarding();
@@ -2323,8 +2315,8 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
 
   bool consume = (aTopVisibleMenuItem || mActiveMenuBar);
   switch (keyCode) {
-    case KeyboardEventBinding::DOM_VK_UP:
-    case KeyboardEventBinding::DOM_VK_DOWN:
+    case KeyboardEvent_Binding::DOM_VK_UP:
+    case KeyboardEvent_Binding::DOM_VK_DOWN:
 #ifndef XP_MACOSX
       // roll up the popup when alt+up/down are pressed within a menulist.
       if (aKeyEvent->AltKey() &&
@@ -2336,22 +2328,22 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
       MOZ_FALLTHROUGH;
 #endif
 
-    case KeyboardEventBinding::DOM_VK_LEFT:
-    case KeyboardEventBinding::DOM_VK_RIGHT:
-    case KeyboardEventBinding::DOM_VK_HOME:
-    case KeyboardEventBinding::DOM_VK_END:
+    case KeyboardEvent_Binding::DOM_VK_LEFT:
+    case KeyboardEvent_Binding::DOM_VK_RIGHT:
+    case KeyboardEvent_Binding::DOM_VK_HOME:
+    case KeyboardEvent_Binding::DOM_VK_END:
       HandleKeyboardNavigation(keyCode);
       break;
 
-    case KeyboardEventBinding::DOM_VK_PAGE_DOWN:
-    case KeyboardEventBinding::DOM_VK_PAGE_UP:
+    case KeyboardEvent_Binding::DOM_VK_PAGE_DOWN:
+    case KeyboardEvent_Binding::DOM_VK_PAGE_UP:
       if (aTopVisibleMenuItem) {
         aTopVisibleMenuItem->Frame()->ChangeByPage(
-          keyCode == KeyboardEventBinding::DOM_VK_PAGE_UP);
+          keyCode == KeyboardEvent_Binding::DOM_VK_PAGE_UP);
       }
       break;
 
-    case KeyboardEventBinding::DOM_VK_ESCAPE:
+    case KeyboardEvent_Binding::DOM_VK_ESCAPE:
       // Pressing Escape hides one level of menus only. If no menu is open,
       // check if a menubar is active and inform it that a menu closed. Even
       // though in this latter case, a menu didn't actually close, the effect
@@ -2363,9 +2355,9 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
       }
       break;
 
-    case KeyboardEventBinding::DOM_VK_TAB:
+    case KeyboardEvent_Binding::DOM_VK_TAB:
 #ifndef XP_MACOSX
-    case KeyboardEventBinding::DOM_VK_F10:
+    case KeyboardEvent_Binding::DOM_VK_F10:
 #endif
       if (aTopVisibleMenuItem &&
           !aTopVisibleMenuItem->Frame()->GetContent()->AsElement()->AttrValueIs(
@@ -2381,7 +2373,7 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
       // Intentional fall-through to RETURN case
       MOZ_FALLTHROUGH;
 
-    case KeyboardEventBinding::DOM_VK_RETURN: {
+    case KeyboardEvent_Binding::DOM_VK_RETURN: {
       // If there is a popup open, check if the current item needs to be opened.
       // Otherwise, tell the active menubar, if any, to activate the menu. The
       // Enter method will return a menu if one needs to be opened as a result.
@@ -2560,12 +2552,7 @@ nsXULPopupManager::GetPreviousMenuItem(nsContainerFrame* aParent,
 bool
 nsXULPopupManager::IsValidMenuItem(nsIContent* aContent, bool aOnPopup)
 {
-  if (aContent->IsXULElement()) {
-    if (!aContent->IsAnyOfXULElements(nsGkAtoms::menu, nsGkAtoms::menuitem)) {
-      return false;
-    }
-  }
-  else if (!aOnPopup || !aContent->IsHTMLElement(nsGkAtoms::option)) {
+  if (!aContent->IsAnyOfXULElements(nsGkAtoms::menu, nsGkAtoms::menuitem)) {
     return false;
   }
 
@@ -2675,13 +2662,13 @@ nsXULPopupManager::KeyDown(KeyboardEvent* aKeyEvent)
     uint32_t theChar = aKeyEvent->KeyCode();
 
     if (theChar == (uint32_t)menuAccessKey) {
-      bool ctrl = (menuAccessKey != KeyboardEventBinding::DOM_VK_CONTROL &&
+      bool ctrl = (menuAccessKey != KeyboardEvent_Binding::DOM_VK_CONTROL &&
                    aKeyEvent->CtrlKey());
-      bool alt = (menuAccessKey != KeyboardEventBinding::DOM_VK_ALT &&
+      bool alt = (menuAccessKey != KeyboardEvent_Binding::DOM_VK_ALT &&
                   aKeyEvent->AltKey());
-      bool shift = (menuAccessKey != KeyboardEventBinding::DOM_VK_SHIFT &&
+      bool shift = (menuAccessKey != KeyboardEvent_Binding::DOM_VK_SHIFT &&
                     aKeyEvent->ShiftKey());
-      bool meta = (menuAccessKey != KeyboardEventBinding::DOM_VK_META &&
+      bool meta = (menuAccessKey != KeyboardEvent_Binding::DOM_VK_META &&
                    aKeyEvent->MetaKey());
       if (!(ctrl || alt || shift || meta)) {
         // The access key just went down and no other

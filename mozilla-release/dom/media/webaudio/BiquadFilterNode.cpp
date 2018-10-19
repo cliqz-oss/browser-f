@@ -69,7 +69,7 @@ SetParamsOnBiquad(WebCore::Biquad& aBiquad,
     aBiquad.setAllpassParams(normalizedFrequency, aQ);
     break;
   default:
-    NS_NOTREACHED("We should never see the alternate names here");
+    MOZ_ASSERT_UNREACHABLE("We should never see the alternate names here");
     break;
   }
 }
@@ -323,7 +323,7 @@ BiquadFilterNode::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 JSObject*
 BiquadFilterNode::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return BiquadFilterNodeBinding::Wrap(aCx, this, aGivenProto);
+  return BiquadFilterNode_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void

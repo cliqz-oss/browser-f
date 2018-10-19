@@ -25,7 +25,6 @@
  */
 
 #include "hb-private.hh"
-#include "hb-debug.hh"
 #include "hb-ot-shape-complex-arabic-private.hh"
 #include "hb-ot-shape-private.hh"
 
@@ -251,7 +250,7 @@ struct arabic_shape_plan_t
    * mask_array[NONE] == 0. */
   hb_mask_t mask_array[ARABIC_NUM_FEATURES + 1];
 
-  arabic_fallback_plan_t *fallback_plan;
+  hb_atomic_ptr_t<arabic_fallback_plan_t> fallback_plan;
 
   unsigned int do_fallback : 1;
   unsigned int has_stch : 1;
@@ -281,7 +280,7 @@ data_destroy_arabic (void *data)
 {
   arabic_shape_plan_t *arabic_plan = (arabic_shape_plan_t *) data;
 
-  arabic_fallback_plan_destroy (arabic_plan->fallback_plan);
+  arabic_fallback_plan_destroy (arabic_plan->fallback_plan.get ());
 
   free (data);
 }
@@ -404,12 +403,13 @@ arabic_fallback_shape (const hb_ot_shape_plan_t *plan,
     return;
 
 retry:
-  arabic_fallback_plan_t *fallback_plan = (arabic_fallback_plan_t *) hb_atomic_ptr_get (&arabic_plan->fallback_plan);
+  arabic_fallback_plan_t *fallback_plan = arabic_plan->fallback_plan.get ();
   if (unlikely (!fallback_plan))
   {
     /* This sucks.  We need a font to build the fallback plan... */
     fallback_plan = arabic_fallback_plan_create (plan, font);
-    if (unlikely (!hb_atomic_ptr_cmpexch (&(const_cast<arabic_shape_plan_t *> (arabic_plan))->fallback_plan, nullptr, fallback_plan))) {
+    if (unlikely (!arabic_plan->fallback_plan.cmpexch (nullptr, fallback_plan)))
+    {
       arabic_fallback_plan_destroy (fallback_plan);
       goto retry;
     }
@@ -421,7 +421,7 @@ retry:
 /*
  * Stretch feature: "stch".
  * See example here:
- * https://www.microsoft.com/typography/OpenTypeDev/syriac/intro.htm
+ * https://docs.microsoft.com/en-us/typography/script-development/syriac
  * We implement this in a generic way, such that the Arabic subtending
  * marks can use it as well.
  */
@@ -611,7 +611,7 @@ postprocess_glyphs_arabic (const hb_ot_shape_plan_t *plan,
   HB_BUFFER_DEALLOCATE_VAR (buffer, arabic_shaping_action);
 }
 
-/* http://www.unicode.org/reports/tr53/tr53-1.pdf */
+/* https://unicode.org/reports/tr53/tr53-1.pdf */
 
 static hb_codepoint_t
 modifier_combining_marks[] =

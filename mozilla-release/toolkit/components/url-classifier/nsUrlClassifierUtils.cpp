@@ -19,6 +19,7 @@
 #include "nsIHttpChannelInternal.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsIDocShell.h"
+#include "mozilla/TextUtils.h"
 
 #define DEFAULT_PROTOCOL_VERSION "2.2"
 
@@ -32,7 +33,7 @@ static bool
 IsDecimal(const nsACString & num)
 {
   for (uint32_t i = 0; i < num.Length(); i++) {
-    if (!isdigit(num[i])) {
+    if (!mozilla::IsAsciiDigit(num[i])) {
       return false;
     }
   }
@@ -52,7 +53,7 @@ IsHex(const nsACString & num)
   }
 
   for (uint32_t i = 2; i < num.Length(); i++) {
-    if (!isxdigit(num[i])) {
+    if (!mozilla::IsAsciiHexDigit(num[i])) {
       return false;
     }
   }
@@ -72,7 +73,7 @@ IsOctal(const nsACString & num)
   }
 
   for (uint32_t i = 1; i < num.Length(); i++) {
-    if (!isdigit(num[i]) || num[i] == '8' || num[i] == '9') {
+    if (!mozilla::IsAsciiDigit(num[i]) || num[i] == '8' || num[i] == '9') {
       return false;
     }
   }
@@ -112,7 +113,15 @@ InitListUpdateRequest(ThreatType aThreatType,
                       ListUpdateRequest* aListUpdateRequest)
 {
   aListUpdateRequest->set_threat_type(aThreatType);
-  aListUpdateRequest->set_platform_type(GetPlatformType());
+  PlatformType platform = GetPlatformType();
+#if defined(ANDROID)
+  // Temporary hack to fix bug 1441345.
+  if ((aThreatType == SOCIAL_ENGINEERING_PUBLIC) ||
+      (aThreatType == SOCIAL_ENGINEERING)) {
+    platform = LINUX_PLATFORM;
+  }
+#endif
+  aListUpdateRequest->set_platform_type(platform);
   aListUpdateRequest->set_threat_entry_type(URL);
 
   Constraints* contraints = new Constraints();
@@ -418,6 +427,8 @@ nsUrlClassifierUtils::MakeFindFullHashRequestV4(const char** aListNames,
   // Set up FindFullHashesRequest.threat_info.
   auto threatInfo = r.mutable_threat_info();
 
+  PlatformType platform = GetPlatformType();
+
   // 1) Set threat types.
   for (uint32_t i = 0; i < aListCount; i++) {
     // Add threat types.
@@ -433,6 +444,14 @@ nsUrlClassifierUtils::MakeFindFullHashRequestV4(const char** aListNames,
     }
     threatInfo->add_threat_types((ThreatType)threatType);
 
+#if defined(ANDROID)
+    // Temporary hack to fix bug 1441345.
+    if (((ThreatType)threatType == SOCIAL_ENGINEERING_PUBLIC) ||
+        ((ThreatType)threatType == SOCIAL_ENGINEERING)) {
+      platform = LINUX_PLATFORM;
+    }
+#endif
+
     // Add client states for index 'i' only when the threat type is available
     // on current platform.
     nsCString stateBinary;
@@ -442,7 +461,7 @@ nsUrlClassifierUtils::MakeFindFullHashRequestV4(const char** aListNames,
   }
 
   // 2) Set platform type.
-  threatInfo->add_platform_types(GetPlatformType());
+  threatInfo->add_platform_types(platform);
 
   // 3) Set threat entry type.
   threatInfo->add_threat_entry_types(URL);
@@ -947,7 +966,7 @@ nsUrlClassifierUtils::ParseIPAddress(const nsACString & host,
   }
 
   for (host.BeginReading(iter); iter != end; iter++) {
-    if (!(isxdigit(*iter) || *iter == 'x' || *iter == 'X' || *iter == '.')) {
+    if (!(mozilla::IsAsciiHexDigit(*iter) || *iter == 'x' || *iter == 'X' || *iter == '.')) {
       // not an IP
       return;
     }

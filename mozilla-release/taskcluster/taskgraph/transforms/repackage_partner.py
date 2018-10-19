@@ -17,9 +17,12 @@ from taskgraph.util.schema import (
     resolve_keyed_by,
     Schema,
 )
-from taskgraph.util.taskcluster import get_taskcluster_artifact_prefix, get_artifact_prefix
+from taskgraph.util.taskcluster import get_artifact_prefix
 from taskgraph.util.partners import check_if_partners_enabled
+from taskgraph.util.platforms import archive_format, executable_extension
+from taskgraph.util.workertypes import worker_type_implementation
 from taskgraph.transforms.task import task_description_schema
+from taskgraph.transforms.repackage import PACKAGE_FORMATS
 from voluptuous import Any, Required, Optional
 
 transforms = TransformSequence()
@@ -57,6 +60,8 @@ packaging_description_schema = Schema({
     # Shipping product and phase
     Optional('shipping-product'): task_description_schema['shipping-product'],
     Optional('shipping-phase'): task_description_schema['shipping-phase'],
+
+    Required('package-formats'): _by_platform([basestring]),
 
     # All l10n jobs use mozharness
     Required('mozharness'): {
@@ -100,6 +105,7 @@ def handle_keyed_by(config, jobs):
     """Resolve fields that can be keyed by platform, etc."""
     fields = [
         "mozharness.config",
+        'package-formats',
     ]
     for job in jobs:
         job = copy.deepcopy(job)  # don't overwrite dict values here
@@ -142,32 +148,47 @@ def make_job_description(config, jobs):
                 signing_task = dependency
             elif build_platform.startswith('win') and dependency.endswith('repack'):
                 signing_task = dependency
-        signing_task_ref = "<{}>".format(signing_task)
 
         attributes['repackage_type'] = 'repackage'
 
         level = config.params['level']
         repack_id = job['extra']['repack_id']
 
+        repackage_config = []
+        for format in job.get('package-formats'):
+            command = copy.deepcopy(PACKAGE_FORMATS[format])
+            substs = {
+                'archive_format': archive_format(build_platform),
+                'executable_extension': executable_extension(build_platform),
+            }
+            command['inputs'] = {
+                name: filename.format(**substs)
+                for name, filename in command['inputs'].items()
+            }
+            repackage_config.append(command)
+
         run = job.get('mozharness', {})
         run.update({
             'using': 'mozharness',
             'script': 'mozharness/scripts/repackage.py',
             'job-script': 'taskcluster/scripts/builder/repackage.sh',
-            'actions': ['download_input', 'setup', 'repackage'],
+            'actions': ['setup', 'repackage'],
             'extra-workspace-cache-key': 'repackage',
+            'extra-config': {
+                'repackage_config': repackage_config,
+            },
         })
 
         worker = {
-            'env': _generate_task_env(build_platform, signing_task, signing_task_ref,
-                                      partner=repack_id),
-            'artifacts': _generate_task_output_files(dep_job, build_platform, partner=repack_id),
             'chain-of-trust': True,
             'max-run-time': 7200 if build_platform.startswith('win') else 3600,
             'taskcluster-proxy': True if get_artifact_prefix(dep_job) else False,
+            'env': {
+                'REPACK_ID': repack_id,
+            },
+            # Don't add generic artifact directory.
+            'skip-artifacts': True,
         }
-
-        worker['env'].update(REPACK_ID=repack_id)
 
         if build_platform.startswith('win'):
             worker_type = 'aws-provisioner-v1/gecko-%s-b-win2012' % level
@@ -182,6 +203,11 @@ def make_job_description(config, jobs):
 
             run['tooltool-downloads'] = 'internal'
             worker['docker-image'] = {"in-tree": "debian7-amd64-build"}
+
+        worker['artifacts'] = _generate_task_output_files(
+            dep_job, worker_type_implementation(worker_type),
+            repackage_config, partner=repack_id,
+        )
 
         description = (
             "Repackaging for repack_id '{repack_id}' for build '"
@@ -204,42 +230,48 @@ def make_job_description(config, jobs):
             'extra': job.get('extra', {}),
             'worker': worker,
             'run': run,
+            'fetches': _generate_download_config(dep_job, build_platform,
+                                                 signing_task, partner=repack_id,
+                                                 project=config.params["project"]),
         }
 
         if build_platform.startswith('macosx'):
             task['toolchains'] = [
                 'linux64-libdmg',
                 'linux64-hfsplus',
+                'linux64-node',
             ]
         yield task
 
 
-def _generate_task_env(build_platform, signing_task, signing_task_ref, partner):
-    # Force private artifacts here, until we can populate our dependency map
-    # with actual task definitions rather than labels.
-    # (get_taskcluster_artifact_prefix requires the task definition to find
-    # the artifact_prefix attribute).
-    signed_prefix = get_taskcluster_artifact_prefix(
-        signing_task, signing_task_ref, locale=partner, force_private=True
-    )
-    signed_prefix = signed_prefix.replace('public/build', 'releng/partner')
+def _generate_download_config(task, build_platform, signing_task, partner=None,
+                              project=None):
+    locale_path = '{}/'.format(partner) if partner else ''
 
     if build_platform.startswith('macosx'):
         return {
-            'SIGNED_INPUT': {'task-reference': '{}target.tar.gz'.format(signed_prefix)},
+            signing_task: [
+                {
+                    'artifact': '{}target.tar.gz'.format(locale_path),
+                    'extract': False,
+                },
+            ],
         }
     elif build_platform.startswith('win'):
-        task_env = {
-            'SIGNED_ZIP': {'task-reference': '{}target.zip'.format(signed_prefix)},
-            'SIGNED_SETUP': {'task-reference': '{}setup.exe'.format(signed_prefix)},
+        return {
+            signing_task: [
+                {
+                    'artifact': '{}target.zip'.format(locale_path),
+                    'extract': False,
+                },
+                '{}setup.exe'.format(locale_path),
+            ],
         }
-
-        return task_env
 
     raise NotImplementedError('Unsupported build_platform: "{}"'.format(build_platform))
 
 
-def _generate_task_output_files(task, build_platform, partner):
+def _generate_task_output_files(task, worker_implementation, repackage_config, partner):
     """We carefully generate an explicit list here, but there's an artifacts directory
     too, courtesy of generic_worker_add_artifacts() (windows) or docker_worker_add_artifacts().
     Any errors here are likely masked by that.
@@ -247,22 +279,20 @@ def _generate_task_output_files(task, build_platform, partner):
     partner_output_path = '{}/'.format(partner)
     artifact_prefix = get_artifact_prefix(task)
 
-    if build_platform.startswith('macosx'):
-        output_files = [{
+    if worker_implementation == ('docker-worker', 'linux'):
+        local_prefix = '/builds/worker/workspace/'
+    elif worker_implementation == ('generic-worker', 'windows'):
+        local_prefix = ''
+    else:
+        raise NotImplementedError(
+            'Unsupported worker implementation: "{}"'.format(worker_implementation))
+
+    output_files = []
+    for config in repackage_config:
+        output_files.append({
             'type': 'file',
-            'path': '/builds/worker/workspace/build/artifacts/{}target.dmg'
-                    .format(partner_output_path),
-            'name': '{}/{}target.dmg'.format(artifact_prefix, partner_output_path),
-        }]
-
-    elif build_platform.startswith('win'):
-        output_files = [{
-            'type': 'file',
-            'path': '{}/{}target.installer.exe'.format(artifact_prefix, partner_output_path),
-            'name': '{}/{}target.installer.exe'.format(artifact_prefix, partner_output_path),
-        }]
-
-    if output_files:
-        return output_files
-
-    raise NotImplementedError('Unsupported build_platform: "{}"'.format(build_platform))
+            'path': '{}build/outputs/{}{}'
+                    .format(local_prefix, partner_output_path, config['output']),
+            'name': '{}/{}{}'.format(artifact_prefix, partner_output_path, config['output']),
+        })
+    return output_files

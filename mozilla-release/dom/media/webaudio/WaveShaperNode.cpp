@@ -41,7 +41,7 @@ static uint32_t ValueOf(OverSampleType aType)
   case OverSampleType::_2x:  return 2;
   case OverSampleType::_4x:  return 4;
   default:
-    NS_NOTREACHED("We should never reach here");
+    MOZ_ASSERT_UNREACHABLE("We should never reach here");
     return 1;
   }
 }
@@ -283,7 +283,7 @@ public:
         mResampler.DownSample(i, outputBuffer, 4);
         break;
       default:
-        NS_NOTREACHED("We should never reach here");
+        MOZ_ASSERT_UNREACHABLE("We should never reach here");
       }
     }
   }
@@ -350,14 +350,14 @@ WaveShaperNode::Create(AudioContext& aAudioContext,
 JSObject*
 WaveShaperNode::WrapObject(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return WaveShaperNodeBinding::Wrap(aCx, this, aGivenProto);
+  return WaveShaperNode_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
 WaveShaperNode::SetCurve(const Nullable<Float32Array>& aCurve, ErrorResult& aRv)
 {
   // Let's purge the cached value for the curve attribute.
-  WaveShaperNodeBinding::ClearCachedCurveValue(this);
+  WaveShaperNode_Binding::ClearCachedCurveValue(this);
 
   if (aCurve.IsNull()) {
     CleanCurveInternal();

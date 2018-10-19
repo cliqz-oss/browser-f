@@ -272,7 +272,7 @@ nsFileStreamBase::Write(const char *buf, uint32_t count, uint32_t *result)
 nsresult
 nsFileStreamBase::WriteFrom(nsIInputStream *inStr, uint32_t count, uint32_t *_retval)
 {
-    NS_NOTREACHED("WriteFrom (see source comment)");
+    MOZ_ASSERT_UNREACHABLE("WriteFrom (see source comment)");
     return NS_ERROR_NOT_IMPLEMENTED;
     // File streams intentionally do not support this method.
     // If you need something like this, then you should wrap
@@ -303,7 +303,7 @@ nsFileStreamBase::MaybeOpen(nsIFile* aFile, int32_t aIoFlags,
         nsresult rv = aFile->Clone(getter_AddRefs(file));
         NS_ENSURE_SUCCESS(rv, rv);
 
-        mOpenParams.localFile = do_QueryInterface(file);
+        mOpenParams.localFile = file.forget();
         NS_ENSURE_TRUE(mOpenParams.localFile, NS_ERROR_UNEXPECTED);
 
         mState = eDeferredOpen;
@@ -449,13 +449,8 @@ nsFileInputStream::Create(nsISupports *aOuter, REFNSIID aIID, void **aResult)
 {
     NS_ENSURE_NO_AGGREGATION(aOuter);
 
-    nsFileInputStream* stream = new nsFileInputStream();
-    if (stream == nullptr)
-        return NS_ERROR_OUT_OF_MEMORY;
-    NS_ADDREF(stream);
-    nsresult rv = stream->QueryInterface(aIID, aResult);
-    NS_RELEASE(stream);
-    return rv;
+    RefPtr<nsFileInputStream> stream = new nsFileInputStream();
+    return stream->QueryInterface(aIID, aResult);
 }
 
 nsresult
@@ -727,13 +722,8 @@ nsFileOutputStream::Create(nsISupports *aOuter, REFNSIID aIID, void **aResult)
 {
     NS_ENSURE_NO_AGGREGATION(aOuter);
 
-    nsFileOutputStream* stream = new nsFileOutputStream();
-    if (stream == nullptr)
-        return NS_ERROR_OUT_OF_MEMORY;
-    NS_ADDREF(stream);
-    nsresult rv = stream->QueryInterface(aIID, aResult);
-    NS_RELEASE(stream);
-    return rv;
+    RefPtr<nsFileOutputStream> stream = new nsFileOutputStream();
+    return stream->QueryInterface(aIID, aResult);
 }
 
 NS_IMETHODIMP

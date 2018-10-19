@@ -15,7 +15,6 @@
 #include "gfxPattern.h"
 #include "gfxPlatform.h"
 #include "mozilla/gfx/2D.h"
-#include "nsContentUtils.h"
 #include "nsGkAtoms.h"
 #include "nsSVGDisplayableFrame.h"
 #include "mozilla/ComputedStyle.h"
@@ -29,7 +28,7 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-using namespace mozilla::dom::SVGUnitTypesBinding;
+using namespace mozilla::dom::SVGUnitTypes_Binding;
 using namespace mozilla::gfx;
 using namespace mozilla::image;
 

@@ -99,6 +99,11 @@ struct LinkedListElementTraits
   // to a list.
   static void enterList(LinkedListElement<T>* elt) {}
   static void exitList(LinkedListElement<T>* elt) {}
+
+  // This method is called when AutoCleanLinkedList cleans itself
+  // during destruction. It can be used to call delete on elements if
+  // the list is the sole owner.
+  static void cleanElement(LinkedListElement<T>* elt) { delete elt->asT(); }
 };
 
 template<typename T>
@@ -111,6 +116,7 @@ struct LinkedListElementTraits<RefPtr<T>>
 
   static void enterList(LinkedListElement<RefPtr<T>>* elt) { elt->asT()->AddRef(); }
   static void exitList(LinkedListElement<RefPtr<T>>* elt) { elt->asT()->Release(); }
+  static void cleanElement(LinkedListElement<RefPtr<T>>* elt) {}
 };
 
 } /* namespace detail */
@@ -411,11 +417,13 @@ private:
   typedef typename Traits::ConstRawType ConstRawType;
   typedef typename Traits::ClientType ClientType;
   typedef typename Traits::ConstClientType ConstClientType;
+  typedef LinkedListElement<T>* ElementType;
+  typedef const LinkedListElement<T>* ConstElementType;
 
   LinkedListElement<T> sentinel;
 
 public:
-  template <typename Type>
+  template <typename Type, typename Element>
   class Iterator {
     Type mCurrent;
 
@@ -427,11 +435,11 @@ public:
     }
 
     const Iterator& operator++() {
-      mCurrent = mCurrent->getNext();
+      mCurrent = static_cast<Element>(mCurrent)->getNext();
       return *this;
     }
 
-    bool operator!=(const Iterator<Type>& aOther) const {
+    bool operator!=(const Iterator& aOther) const {
       return mCurrent != aOther.mCurrent;
     }
   };
@@ -536,17 +544,17 @@ public:
    *
    *     for (MyElementType* elt : myList) { ... }
    */
-  Iterator<RawType> begin() {
-    return Iterator<RawType>(getFirst());
+  Iterator<RawType, ElementType> begin() {
+    return Iterator<RawType, ElementType>(getFirst());
   }
-  Iterator<ConstRawType> begin() const {
-    return Iterator<ConstRawType>(getFirst());
+  Iterator<ConstRawType, ConstElementType> begin() const {
+    return Iterator<ConstRawType, ConstElementType>(getFirst());
   }
-  Iterator<RawType> end() {
-    return Iterator<RawType>(nullptr);
+  Iterator<RawType, ElementType> end() {
+    return Iterator<RawType, ElementType>(nullptr);
   }
-  Iterator<ConstRawType> end() const {
-    return Iterator<ConstRawType>(nullptr);
+  Iterator<ConstRawType, ConstElementType> end() const {
+    return Iterator<ConstRawType, ConstElementType>(nullptr);
   }
 
   /*
@@ -558,8 +566,10 @@ public:
   size_t sizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
   {
     size_t n = 0;
-    for (ConstRawType t = getFirst(); t; t = t->getNext()) {
+    ConstRawType t = getFirst();
+    while (t) {
       n += aMallocSizeOf(t);
+      t = static_cast<const LinkedListElement<T>*>(t)->getNext();
     }
     return n;
   }
@@ -651,6 +661,9 @@ private:
 template <typename T>
 class AutoCleanLinkedList : public LinkedList<T>
 {
+private:
+  using Traits = detail::LinkedListElementTraits<T>;
+  using ClientType = typename detail::LinkedListElementTraits<T>::ClientType;
 public:
   ~AutoCleanLinkedList()
   {
@@ -665,8 +678,8 @@ public:
 
   void clear()
   {
-    while (T* element = this->popFirst()) {
-      delete element;
+    while (ClientType element = this->popFirst()) {
+      Traits::cleanElement(element);
     }
   }
 };

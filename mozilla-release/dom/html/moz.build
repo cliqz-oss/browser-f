@@ -48,6 +48,8 @@ EXPORTS += [
 ]
 
 EXPORTS.mozilla += [
+    'AutoplayPermissionManager.h',
+    'AutoplayPermissionRequest.h',
     'TextInputListener.h',
 ]
 
@@ -222,6 +224,8 @@ UNIFIED_SOURCES += [
 ]
 
 SOURCES += [
+    'AutoplayPermissionManager.cpp',
+    'AutoplayPermissionRequest.cpp',
     # Includes npapi.h.
     'PluginDocument.cpp',
 ]

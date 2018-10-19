@@ -99,6 +99,25 @@ GeneratorObject::finalSuspend(HandleObject obj)
     genObj->setClosed();
 }
 
+GeneratorObject*
+js::GetGeneratorObjectForFrame(JSContext* cx, AbstractFramePtr frame)
+{
+    cx->check(frame);
+    MOZ_ASSERT(frame.isFunctionFrame() &&
+               (frame.callee()->isGenerator() || frame.callee()->isAsync()));
+
+    // The ".generator" binding is always present and always "aliased".
+    CallObject& callObj = frame.callObj();
+    Shape* shape = callObj.lookup(cx, cx->names().dotGenerator);
+    Value genValue = callObj.getSlot(shape->slot());
+
+    // If the `generator; setaliasedvar ".generator"; initialyield` bytecode
+    // sequence has not run yet, genValue is undefined.
+    return genValue.isObject()
+           ? &genValue.toObject().as<GeneratorObject>()
+           : nullptr;
+}
+
 void
 js::SetGeneratorClosed(JSContext* cx, AbstractFramePtr frame)
 {
@@ -116,14 +135,14 @@ js::GeneratorThrowOrReturn(JSContext* cx, AbstractFramePtr frame, Handle<Generat
 {
     if (resumeKind == GeneratorObject::THROW) {
         cx->setPendingException(arg);
-        genObj->setRunning();
     } else {
         MOZ_ASSERT(resumeKind == GeneratorObject::RETURN);
 
         MOZ_ASSERT(arg.isObject());
         frame.setReturnValue(arg);
 
-        cx->setPendingException(MagicValue(JS_GENERATOR_CLOSING));
+        RootedValue closing(cx, MagicValue(JS_GENERATOR_CLOSING));
+        cx->setPendingException(closing);
         genObj->setClosing();
     }
     return false;
@@ -131,9 +150,8 @@ js::GeneratorThrowOrReturn(JSContext* cx, AbstractFramePtr frame, Handle<Generat
 
 bool
 GeneratorObject::resume(JSContext* cx, InterpreterActivation& activation,
-                        HandleObject obj, HandleValue arg, GeneratorObject::ResumeKind resumeKind)
+                        Handle<GeneratorObject*> genObj, HandleValue arg)
 {
-    Rooted<GeneratorObject*> genObj(cx, &obj->as<GeneratorObject>());
     MOZ_ASSERT(genObj->isSuspended());
 
     RootedFunction callee(cx, &genObj->callee());
@@ -165,18 +183,8 @@ GeneratorObject::resume(JSContext* cx, InterpreterActivation& activation,
     MOZ_ASSERT(activation.regs().spForStackDepth(activation.regs().stackDepth()));
     activation.regs().sp[-1] = arg;
 
-    switch (resumeKind) {
-      case NEXT:
-        genObj->setRunning();
-        return true;
-
-      case THROW:
-      case RETURN:
-        return GeneratorThrowOrReturn(cx, activation.regs().fp(), genObj, arg, resumeKind);
-
-      default:
-        MOZ_CRASH("bad resumeKind");
-    }
+    genObj->setRunning();
+    return true;
 }
 
 const Class GeneratorObject::class_ = {
@@ -251,37 +259,6 @@ GlobalObject::initGenerators(JSContext* cx, Handle<GlobalObject*> global)
     global->setReservedSlot(GENERATOR_OBJECT_PROTO, ObjectValue(*genObjectProto));
     global->setReservedSlot(GENERATOR_FUNCTION, ObjectValue(*genFunction));
     global->setReservedSlot(GENERATOR_FUNCTION_PROTO, ObjectValue(*genFunctionProto));
-    return true;
-}
-
-MOZ_MUST_USE bool
-js::CheckGeneratorResumptionValue(JSContext* cx, HandleValue v)
-{
-    // yield/return value should be an Object.
-    if (!v.isObject())
-        return false;
-
-    JSObject* obj = &v.toObject();
-
-    // It should have `done` data property with boolean value.
-    Value doneVal;
-    if (!GetPropertyPure(cx, obj, NameToId(cx->names().done), &doneVal))
-        return false;
-    if (!doneVal.isBoolean())
-        return false;
-
-    // It should have `value` data property, but the type doesn't matter
-    JSObject* ignored;
-    PropertyResult prop;
-    if (!LookupPropertyPure(cx, obj, NameToId(cx->names().value), &ignored, &prop))
-        return false;
-    if (!prop)
-        return false;
-    if (!prop.isNativeProperty())
-        return false;
-    if (!prop.shape()->hasDefaultGetter())
-        return false;
-
     return true;
 }
 

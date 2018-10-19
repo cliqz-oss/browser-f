@@ -242,7 +242,7 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
     doc.getElementById("identity-popup-security-expander").click();
     await promiseViewShown;
     is(Array.filter(doc.getElementById("identity-popup-securityView")
-                       .querySelectorAll("[observes=identity-popup-mcb-learn-more]"),
+                       .querySelectorAll(".identity-popup-mcb-learn-more"),
                     element => !BrowserTestUtils.is_hidden(element)).length, 1,
        "The 'Learn more' link should be visible once.");
   }
@@ -271,7 +271,7 @@ async function loadBadCertPage(url) {
             resolve();
           });
         }
-      }
+      },
     };
 
     Services.obs.addObserver(certExceptionDialogObserver,
@@ -285,31 +285,24 @@ async function loadBadCertPage(url) {
   await ContentTask.spawn(gBrowser.selectedBrowser, null, async function() {
     content.document.getElementById("exceptionDialogButton").click();
   });
-  await exceptionDialogResolved;
+  if (!Services.prefs.getBoolPref("browser.security.newcerterrorpage.enabled", false)) {
+    await exceptionDialogResolved;
+  }
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 }
 
 // Utility function to get a handle on the certificate exception dialog.
 // Modified from toolkit/components/passwordmgr/test/prompt_common.js
 function getCertExceptionDialog(aLocation) {
-  let enumerator = Services.wm.getXULWindowEnumerator(null);
-
-  while (enumerator.hasMoreElements()) {
-    let win = enumerator.getNext();
-    let windowDocShell = win.QueryInterface(Ci.nsIXULWindow).docShell;
+  for (let win of Services.wm.getXULWindowEnumerator(null)) {
+    let windowDocShell = win.docShell;
 
     let containedDocShells = windowDocShell.getDocShellEnumerator(
                                       Ci.nsIDocShellTreeItem.typeChrome,
                                       Ci.nsIDocShell.ENUMERATE_FORWARDS);
-    while (containedDocShells.hasMoreElements()) {
-      // Get the corresponding document for this docshell
-      let childDocShell = containedDocShells.getNext();
-      let childDoc = childDocShell.QueryInterface(Ci.nsIDocShell)
-                                  .contentViewer
-                                  .DOMDocument;
-
-      if (childDoc.location.href == aLocation) {
-        return childDoc;
+    for (let {domWindow} of containedDocShells) {
+      if (domWindow.location.href == aLocation) {
+        return domWindow.document;
       }
     }
   }

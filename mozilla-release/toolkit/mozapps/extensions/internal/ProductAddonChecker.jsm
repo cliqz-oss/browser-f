@@ -8,10 +8,10 @@
 
 const LOCAL_GMP_SOURCES = [{
   "id": "gmp-gmpopenh264",
-  "src": "chrome://global/content/gmp-sources/openh264.json"
+  "src": "chrome://global/content/gmp-sources/openh264.json",
 }, {
   "id": "gmp-widevinecdm",
-  "src": "chrome://global/content/gmp-sources/widevinecdm.json"
+  "src": "chrome://global/content/gmp-sources/widevinecdm.json",
 }];
 
 var EXPORTED_SYMBOLS = [ "ProductAddonChecker" ];
@@ -20,8 +20,6 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/CertUtils.jsm");
-ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
-ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["XMLHttpRequest"]);
@@ -218,7 +216,7 @@ function parseXML(document) {
 
   return {
     usedFallback: false,
-    gmpAddons: results
+    gmpAddons: results,
   };
 }
 
@@ -263,7 +261,7 @@ function downloadLocalConfig() {
         "hashFunction": addons.hashFunction,
         "hashValue": details.hashValue,
         "version": addons.vendors[conf.id].version,
-        "size": details.filesize
+        "size": details.filesize,
       };
     });
   })).then(addons => {
@@ -274,7 +272,7 @@ function downloadLocalConfig() {
 
     return {
       usedFallback: true,
-      gmpAddons: addons
+      gmpAddons: addons,
     };
   });
 }
@@ -450,5 +448,5 @@ const ProductAddonChecker = {
       await OS.File.remove(path);
       throw e;
     }
-  }
+  },
 };

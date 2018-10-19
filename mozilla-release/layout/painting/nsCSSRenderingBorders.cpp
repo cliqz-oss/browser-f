@@ -23,7 +23,6 @@
 #include "nsDisplayList.h"
 #include "GeckoProfiler.h"
 #include "nsExpirationTracker.h"
-#include "RoundedRect.h"
 #include "nsIScriptError.h"
 #include "nsClassHashtable.h"
 #include "nsPresContext.h"
@@ -1384,7 +1383,7 @@ nsCSSBorderRenderer::DrawBorderSides(int aSides)
       break;
 
     default:
-      NS_NOTREACHED("Unhandled border style!!");
+      MOZ_ASSERT_UNREACHABLE("Unhandled border style!!");
       break;
   }
 
@@ -3128,8 +3127,7 @@ nsCSSBorderRenderer::DrawBorders()
       !mNoBorderRadius)
   {
     // Relatively simple case.
-    gfxRect outerRect = ThebesRect(mOuterRect);
-    RoundedRect borderInnerRect(outerRect, mBorderRadii);
+    RoundedRect borderInnerRect(mOuterRect, mBorderRadii);
     borderInnerRect.Deflate(mBorderWidths[eSideTop],
                             mBorderWidths[eSideBottom],
                             mBorderWidths[eSideLeft],
@@ -3146,7 +3144,7 @@ nsCSSBorderRenderer::DrawBorders()
     // a new cubic approximation.
     RefPtr<PathBuilder> builder = mDrawTarget->CreatePathBuilder();
     AppendRoundedRectToPath(builder, mOuterRect, mBorderRadii, true);
-    AppendRoundedRectToPath(builder, ToRect(borderInnerRect.rect), borderInnerRect.corners, false);
+    AppendRoundedRectToPath(builder, borderInnerRect.rect, borderInnerRect.corners, false);
     RefPtr<Path> path = builder->Finish();
     mDrawTarget->Fill(path, color);
     return;
@@ -3655,7 +3653,7 @@ nsCSSBorderImageRenderer::DrawBorderImage(nsPresContext* aPresContext,
       if (subArea.IsEmpty())
         continue;
 
-      nsIntRect intSubArea = subArea.ToOutsidePixels(nsPresContext::AppUnitsPerCSSPixel());
+      nsIntRect intSubArea = subArea.ToOutsidePixels(AppUnitsPerCSSPixel());
       result &=
         mImageRenderer.DrawBorderImageComponent(aPresContext,
                                                  aRenderingContext, aDirtyRect,
@@ -3771,6 +3769,9 @@ nsCSSBorderImageRenderer::CreateWebRenderCommands(nsDisplayItem* aItem,
                                     clip,
                                     !aItem->BackfaceIsHidden(),
                                     wr::ToBorderWidths(widths[0], widths[1], widths[2], widths[3]),
+                                    (float)(mImageSize.width) / appUnitsPerDevPixel,
+                                    (float)(mImageSize.height) / appUnitsPerDevPixel,
+                                    wr::ToSideOffsets2D_u32(slice[0], slice[1], slice[2], slice[3]),
                                     wr::ToLayoutPoint(startPoint),
                                     wr::ToLayoutPoint(endPoint),
                                     stops,
@@ -3890,7 +3891,7 @@ nsCSSBorderImageRenderer::nsCSSBorderImageRenderer(nsIFrame* aForFrame,
           NS_lround(coord.GetFactorValue()));
         break;
       default:
-        NS_NOTREACHED("unexpected CSS unit for image slice");
+        MOZ_ASSERT_UNREACHABLE("unexpected CSS unit for image slice");
         value = 0;
         break;
     }
@@ -3915,7 +3916,8 @@ nsCSSBorderImageRenderer::nsCSSBorderImageRenderer(nsIFrame* aForFrame,
         value = mSlice.Side(s);
         break;
       default:
-        NS_NOTREACHED("unexpected CSS unit for border image area division");
+        MOZ_ASSERT_UNREACHABLE("unexpected CSS unit for border image area "
+                               "division");
         value = 0;
         break;
     }

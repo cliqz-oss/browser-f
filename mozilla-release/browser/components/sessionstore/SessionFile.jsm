@@ -30,16 +30,15 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
 ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
-ChromeUtils.defineModuleGetter(this, "RunState",
-  "resource:///modules/sessionstore/RunState.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "Telemetry",
   "@mozilla.org/base/telemetry;1", "nsITelemetry");
-XPCOMUtils.defineLazyServiceGetter(this, "sessionStartup",
-  "@mozilla.org/browser/sessionstartup;1", "nsISessionStartup");
-ChromeUtils.defineModuleGetter(this, "SessionWorker",
-  "resource:///modules/sessionstore/SessionWorker.jsm");
-ChromeUtils.defineModuleGetter(this, "SessionStore",
-  "resource:///modules/sessionstore/SessionStore.jsm");
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  RunState: "resource:///modules/sessionstore/RunState.jsm",
+  SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
+  SessionStore: "resource:///modules/sessionstore/SessionStore.jsm",
+  SessionWorker: "resource:///modules/sessionstore/SessionWorker.jsm",
+});
 
 const PREF_UPGRADE_BACKUP = "browser.sessionstore.upgradeBackup.latestBuildID";
 const PREF_MAX_UPGRADE_BACKUPS = "browser.sessionstore.upgradeBackup.maxUpgradeBackups";
@@ -80,7 +79,7 @@ var SessionFile = {
 
   get MaxWriteFailures() {
     return kMaxWriteFailures;
-  }
+  },
 };
 
 Object.freeze(SessionFile);
@@ -186,7 +185,7 @@ var SessionFileInternal = {
   // Object that keeps statistics that should help us make informed decisions
   // about the current status of the worker.
   _workerHealth: {
-    failures: 0
+    failures: 0,
   },
 
   // `true` once we have started initialization of the worker.
@@ -245,7 +244,7 @@ var SessionFileInternal = {
           origin: key,
           source,
           parsed,
-          useOldExtension
+          useOldExtension,
         };
         Telemetry.getHistogramById("FX_SESSION_RESTORE_CORRUPT_FILE").
           add(false);
@@ -298,7 +297,7 @@ var SessionFileInternal = {
         origin: "empty",
         source: "",
         parsed: null,
-        useOldExtension: false
+        useOldExtension: false,
       };
     }
     this._readOrigin = result.origin;
@@ -339,7 +338,7 @@ var SessionFileInternal = {
       SessionWorker.post("init", [this._readOrigin, this._usingOldExtension, this.Paths, {
         maxUpgradeBackups: Services.prefs.getIntPref(PREF_MAX_UPGRADE_BACKUPS, 3),
         maxSerializeBack: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_BACK, 10),
-        maxSerializeForward: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_FWD, -1)
+        maxSerializeForward: Services.prefs.getIntPref(PREF_MAX_SERIALIZE_FWD, -1),
       }]).catch(err => {
         // Ensure that we report errors but that they do not stop us.
         Promise.reject(err);
@@ -367,7 +366,6 @@ var SessionFileInternal = {
       this._initializationStarted = false;
       // Reset the counter and report to telemetry.
       this._workerHealth.failures = 0;
-      Telemetry.scalarAdd("browser.session.restore.worker_restart_count", 1);
     }
   },
 
@@ -385,7 +383,7 @@ var SessionFileInternal = {
     }
 
     let performShutdownCleanup = isFinalWrite &&
-      !sessionStartup.isAutomaticRestoreEnabled();
+      !SessionStartup.isAutomaticRestoreEnabled();
 
     this._attempts++;
     let options = {isFinalWrite, performShutdownCleanup};
@@ -423,7 +421,7 @@ var SessionFileInternal = {
           attempts: this._attempts,
           successes: this._successes,
           failures: this._failures,
-        })
+        }),
       });
 
     // This code will always be executed because |promise| can't fail anymore.
@@ -463,5 +461,5 @@ var SessionFileInternal = {
         histogram.add(sample);
       }
     }
-  }
+  },
 };

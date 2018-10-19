@@ -74,6 +74,10 @@ MarkupContainer.prototype = {
 
     // Marking the node as shown or hidden
     this.updateIsDisplayed();
+
+    if (node.isShadowRoot) {
+      this.markup.telemetry.scalarSet("devtools.shadowdom.shadow_root_displayed", true);
+    }
   },
 
   buildMarkup: function() {
@@ -332,6 +336,10 @@ MarkupContainer.prototype = {
     if (this.showExpander) {
       this.tagLine.setAttribute("aria-expanded", this.expanded);
     }
+
+    if (this.node.isShadowRoot) {
+      this.markup.telemetry.scalarSet("devtools.shadowdom.shadow_root_expanded", true);
+    }
   },
 
   /**
@@ -438,6 +446,7 @@ MarkupContainer.prototype = {
            tagName !== "body" &&
            tagName !== "head" &&
            this.win.getSelection().isCollapsed &&
+           this.node.parentNode() &&
            this.node.parentNode().tagName !== null;
   },
 
@@ -740,18 +749,29 @@ MarkupContainer.prototype = {
   },
 
   _onToggle: function(event) {
+    event.stopPropagation();
+
     // Prevent the html tree from expanding when an event bubble or display node is
     // clicked.
     if (event.target.dataset.event || event.target.dataset.display) {
-      event.stopPropagation();
       return;
     }
 
+    this.expandContainer(event.altKey);
+  },
+
+  /**
+   * Expands the markup container if it has children.
+   *
+   * @param  {Boolean} applyToDescendants
+   *         Whether all descendants should also be expanded/collapsed
+   */
+  expandContainer: function(applyToDescendants) {
     this.markup.navigate(this);
+
     if (this.hasChildren) {
-      this.markup.setNodeExpanded(this.node, !this.expanded, event.altKey);
+      this.markup.setNodeExpanded(this.node, !this.expanded, applyToDescendants);
     }
-    event.stopPropagation();
   },
 
   /**

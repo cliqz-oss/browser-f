@@ -36,9 +36,9 @@ public:
   virtual nsresult PostHandleEvent(
                      EventChainPostVisitor& aVisitor) override;
 
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers) override;
+  virtual nsresult BindToTree(nsIDocument* aDocument,
+                              nsIContent* aParent,
+                              nsIContent* aBindingParent) override;
 
   virtual bool ParseAttribute(int32_t aNamespaceID,
                                 nsAtom* aAttribute,
@@ -48,8 +48,7 @@ public:
 
   virtual void DoneCreatingElement() override;
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const override;
+  virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   uint8_t GetType() const { return mType; }
 

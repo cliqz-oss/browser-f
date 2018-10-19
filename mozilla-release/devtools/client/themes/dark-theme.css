@@ -19,12 +19,20 @@ body {
 
 .theme-sidebar {
   background: var(--theme-sidebar-background);
-  color: var(--theme-toolbar-color);
+  color: var(--theme-body-color);
 }
 
 ::-moz-selection {
   background-color: var(--theme-selection-background);
   color: var(--theme-selection-color);
+}
+
+:root[platform="win"],
+:root[platform="mac"] {
+  /* Set colors for native scrollbars on Windows dark theme */
+  /* Other platforms support for scrollbar theming is Bug 1460109 */
+  scrollbar-face-color: var(--theme-body-color-inactive);
+  scrollbar-track-color: var(--theme-splitter-color);
 }
 
 .theme-selected,
@@ -123,8 +131,7 @@ body {
   background-color: var(--theme-highlight-bluegrey);
 }
 
-.theme-fg-color4,
-.theme-fg-color6 {
+.theme-fg-color4 {
   color: var(--theme-highlight-purple);
 }
 
@@ -140,7 +147,6 @@ body {
   background-color: #b26b47;
 }
 
-.theme-fg-color7,
 .cm-s-mozilla .cm-atom,
 .cm-s-mozilla .cm-quote,
 .cm-s-mozilla .cm-error,
@@ -253,84 +259,12 @@ div.CodeMirror span.eval-text {
   min-height: 1.4em;
 }
 
-/* XUL panel styling (see devtools/client/shared/widgets/tooltip/Tooltip.js) */
-
-.theme-tooltip-panel .panel-arrowcontent {
-  padding: 5px;
-  background: rgba(19, 28, 38, .9);
-  border-radius: 5px;
-  box-shadow: none;
-  border: 3px solid #434850;
-}
-
-/* Overring panel arrow images to fit with our light and dark themes */
-
-.theme-tooltip-panel .panel-arrow {
-  --arrow-margin: -4px;
-}
-
-:root[platform="win"] .theme-tooltip-panel .panel-arrow {
-  --arrow-margin: -7px;
-}
-
-.theme-tooltip-panel .panel-arrow[side="top"],
-.theme-tooltip-panel .panel-arrow[side="bottom"] {
-  list-style-image: url("chrome://devtools/skin/tooltip/arrow-vertical-dark.png");
-  /* !important is needed to override the popup.css rules in toolkit/themes */
-  width: 39px !important;
-  height: 16px !important;
-}
-
-.theme-tooltip-panel .panel-arrow[side="left"],
-.theme-tooltip-panel .panel-arrow[side="right"] {
-  list-style-image: url("chrome://devtools/skin/tooltip/arrow-horizontal-dark.png");
-  /* !important is needed to override the popup.css rules in toolkit/themes */
-  width: 16px !important;
-  height: 39px !important;
-}
-
-.theme-tooltip-panel .panel-arrow[side="top"] {
-  margin-bottom: var(--arrow-margin);
-}
-
-.theme-tooltip-panel .panel-arrow[side="bottom"] {
-  margin-top: var(--arrow-margin);
-}
-
-.theme-tooltip-panel .panel-arrow[side="left"] {
-  margin-right: var(--arrow-margin);
-}
-
-.theme-tooltip-panel .panel-arrow[side="right"] {
-  margin-left: var(--arrow-margin);
-}
-
-@media (min-resolution: 1.1dppx) {
-  .theme-tooltip-panel .panel-arrow[side="top"],
-  .theme-tooltip-panel .panel-arrow[side="bottom"] {
-    list-style-image: url("chrome://devtools/skin/tooltip/arrow-vertical-dark@2x.png");
-  }
-
-  .theme-tooltip-panel .panel-arrow[side="left"],
-  .theme-tooltip-panel .panel-arrow[side="right"] {
-    list-style-image: url("chrome://devtools/skin/tooltip/arrow-horizontal-dark@2x.png");
-  }
-}
-
-.theme-tooltip-panel .devtools-tooltip-simple-text {
-  color: white;
-  border-bottom: 1px solid #434850;
-}
-
-.theme-tooltip-panel .devtools-tooltip-simple-text:last-child {
-  border-bottom: 0;
-}
-
 .devtools-textinput,
 .devtools-searchinput,
 .devtools-filterinput {
-  background-color: rgba(24, 29, 32, 1);
-  color: rgba(184, 200, 217, 1);
+  /* in between grey-85 and grey-90 */
+  background-color: #141416;
+  color: var(--theme-highlight-gray);
 }
 
 .CodeMirror-Tern-fname {

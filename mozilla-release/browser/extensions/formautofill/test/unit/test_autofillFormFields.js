@@ -5,8 +5,11 @@
 
 "use strict";
 
-ChromeUtils.import("resource://formautofill/FormAutofillHandler.jsm");
-let {MasterPassword} = ChromeUtils.import("resource://formautofill/MasterPassword.jsm", {});
+let MasterPassword;
+add_task(async function setup() {
+  ChromeUtils.import("resource://formautofill/FormAutofillHandler.jsm");
+  ({MasterPassword} = ChromeUtils.import("resource://formautofill/MasterPassword.jsm", {}));
+});
 
 const TESTCASES = [
   {
@@ -246,7 +249,7 @@ const TESTCASES = [
     focusedInputId: "cc-number",
     profileData: {
       "guid": "123",
-      "cc-number": "1234000056780000",
+      "cc-number": "4111111111111111",
       "cc-name": "test name",
       "cc-exp-month": "06",
       "cc-exp-year": "25",
@@ -257,7 +260,7 @@ const TESTCASES = [
       "country": "",
       "email": "",
       "tel": "",
-      "cc-number": "1234000056780000",
+      "cc-number": "4111111111111111",
       "cc-name": "test name",
       "cc-exp-month": "06",
       "cc-exp-year": "25",

@@ -58,6 +58,9 @@ with Files("Channel*"):
 with Files("Client*"):
     BUG_COMPONENT = ("Core", "DOM: Service Workers")
 
+with Files("Clipboard.webidl"):
+    BUG_COMPONENT = ("Core", "DOM: Events")
+
 with Files("ClipboardEvent.webidl"):
     BUG_COMPONENT = ("Core", "DOM: Events")
 
@@ -328,6 +331,9 @@ with Files("WebAuthentication.webidl"):
 with Files("WebGL*"):
     BUG_COMPONENT = ("Core", "Canvas: WebGL")
 
+with Files("WebGPU*"):
+    BUG_COMPONENT = ("Core", "Canvas: WebGL")
+
 with Files("WebKitCSSMatrix.webidl"):
     BUG_COMPONENT = ("Core", "DOM: CSS Object Model")
 
@@ -384,8 +390,10 @@ WEBIDL_FILES = [
     'AudioStreamTrack.webidl',
     'AudioTrack.webidl',
     'AudioTrackList.webidl',
+    'AudioWorklet.webidl',
     'AudioWorkletGlobalScope.webidl',
     'AudioWorkletNode.webidl',
+    'AudioWorkletProcessor.webidl',
     'AutocompleteInfo.webidl',
     'BarProp.webidl',
     'BaseAudioContext.webidl',
@@ -414,6 +422,7 @@ WEBIDL_FILES = [
     'ChromeNodeList.webidl',
     'Client.webidl',
     'Clients.webidl',
+    'Clipboard.webidl',
     'ClipboardEvent.webidl',
     'CommandEvent.webidl',
     'Comment.webidl',
@@ -628,9 +637,9 @@ WEBIDL_FILES = [
     'L10nUtils.webidl',
     'LegacyQueryInterface.webidl',
     'LinkStyle.webidl',
-    'ListBoxObject.webidl',
     'LocalMediaStream.webidl',
     'Location.webidl',
+    'MediaCapabilities.webidl',
     'MediaDeviceInfo.webidl',
     'MediaDevices.webidl',
     'MediaElementAudioSourceNode.webidl',
@@ -671,6 +680,7 @@ WEBIDL_FILES = [
     'MimeTypeArray.webidl',
     'MouseEvent.webidl',
     'MouseScrollEvent.webidl',
+    'MozFrameLoaderOwner.webidl',
     'MutationEvent.webidl',
     'MutationObserver.webidl',
     'NamedNodeMap.webidl',
@@ -696,6 +706,7 @@ WEBIDL_FILES = [
     'ParentNode.webidl',
     'ParentSHistory.webidl',
     'PaymentAddress.webidl',
+    'PaymentMethodChangeEvent.webidl',
     'PaymentRequest.webidl',
     'PaymentRequestUpdateEvent.webidl',
     'PaymentResponse.webidl',
@@ -742,7 +753,6 @@ WEBIDL_FILES = [
     'ScreenOrientation.webidl',
     'ScriptProcessorNode.webidl',
     'ScrollAreaEvent.webidl',
-    'ScrollBoxObject.webidl',
     'Selection.webidl',
     'ServiceWorker.webidl',
     'ServiceWorkerContainer.webidl',
@@ -908,6 +918,7 @@ WEBIDL_FILES = [
     'VideoStreamTrack.webidl',
     'VideoTrack.webidl',
     'VideoTrackList.webidl',
+    'VisualViewport.webidl',
     'VRDisplay.webidl',
     'VRDisplayEvent.webidl',
     'VRServiceTest.webidl',
@@ -918,6 +929,8 @@ WEBIDL_FILES = [
     'WebComponents.webidl',
     'WebGL2RenderingContext.webidl',
     'WebGLRenderingContext.webidl',
+    'WebGPU.webidl',
+    'WebGPUExtras.webidl',
     'WebKitCSSMatrix.webidl',
     'WebSocket.webidl',
     'WheelEvent.webidl',

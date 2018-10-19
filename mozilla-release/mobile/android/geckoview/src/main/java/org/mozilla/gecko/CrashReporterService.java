@@ -1,15 +1,21 @@
 package org.mozilla.gecko;
 
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Build;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.v4.app.JobIntentService;
+import android.util.Log;
+
 import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.mozglue.MinidumpAnalyzer;
 import org.mozilla.gecko.util.INIParser;
 import org.mozilla.gecko.util.INISection;
 import org.mozilla.gecko.util.ProxySelector;
-
-import android.app.IntentService;
-import android.content.Intent;
-import android.os.Build;
-import android.util.Log;
+import org.mozilla.geckoview.GeckoRuntime;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -33,7 +39,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 
-public class CrashReporterService extends IntentService {
+public class CrashReporterService extends JobIntentService {
     private static final String LOGTAG = "CrashReporter";
     private static final String ACTION_REPORT_CRASH = "org.mozilla.gecko.reportCrash";
     private static final String PASSED_MINI_DUMP_KEY = "minidumpPath";
@@ -52,13 +58,9 @@ public class CrashReporterService extends IntentService {
     private HashMap<String, String> mExtrasStringMap;
     private boolean mMinidumpSucceeded;
 
-    public CrashReporterService() {
-        super("CrashReporterService");
-    }
-
     @Override
-    protected void onHandleIntent(Intent intent) {
-        if (intent == null || !intent.getAction().equals(ACTION_REPORT_CRASH)) {
+    protected void onHandleWork(Intent intent) {
+        if (intent == null || intent.getAction() == null || !intent.getAction().equals(ACTION_REPORT_CRASH)) {
             Log.d(LOGTAG, "Invalid or unknown action");
             return;
         }
@@ -74,6 +76,32 @@ public class CrashReporterService extends IntentService {
         submitCrash(intent);
     }
 
+    @Override
+    public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
+        // When running on pre-O devices the work will be dispatched to onHandleWork() automatically
+        // When running on Oreo and later devices we will enqueue the work for the JobIntentService to perform
+        if (Build.VERSION.SDK_INT >= 26) {
+            // Only when the system restarts the service because of Service.START_STICKY
+            // the intent will be null. So the intent is safe to be passed to the JobIntentService.
+            enqueueWork(this, intent);
+        }
+
+        return super.onStartCommand(intent, flags, startId);
+    }
+
+    @Override
+    public boolean onStopCurrentWork() {
+        // If JobScheduler stopped execution before work being completed it should not be restarted.
+        return false;
+    }
+
+    static void enqueueWork(@NonNull final Context context, @NonNull final Intent intent) {
+        // Speculative default value. Should be unique across all Job Ids used inside the app.
+        final int jobId = intent.getIntExtra("jobId", 1024);
+
+        enqueueWork(context, CrashReporterService.class, jobId, intent);
+    }
+
     private Class<?> getFennecReporterActivity() {
         try {
             return Class.forName("org.mozilla.gecko.CrashReporterActivity");
@@ -86,21 +114,42 @@ public class CrashReporterService extends IntentService {
         Log.i(LOGTAG, "moving " + inFile + " to " + outFile);
         if (inFile.renameTo(outFile))
             return true;
+        FileInputStream inStream = null;
+        FileOutputStream outStream = null;
         try {
             outFile.createNewFile();
             Log.i(LOGTAG, "couldn't rename minidump file");
             // so copy it instead
-            FileChannel inChannel = new FileInputStream(inFile).getChannel();
-            FileChannel outChannel = new FileOutputStream(outFile).getChannel();
+            inStream = new FileInputStream(inFile);
+            outStream = new FileOutputStream(outFile);
+            FileChannel inChannel = inStream.getChannel();
+            FileChannel outChannel = outStream.getChannel();
             long transferred = inChannel.transferTo(0, inChannel.size(), outChannel);
-            inChannel.close();
-            outChannel.close();
-
             if (transferred > 0)
                 inFile.delete();
         } catch (Exception e) {
             Log.e(LOGTAG, "exception while copying minidump file: ", e);
             return false;
+        } finally {
+            // always try and close inStream and outStream while taking into
+            // consideration that `.close` throws as well.
+            try {
+                if (inStream != null) {
+                    inStream.close();
+                }
+            } catch (IOException e) {
+                Log.e(LOGTAG, "inStream could not be closed: ", e);
+                return false;
+            } finally {
+                try {
+                    if (outStream != null) {
+                        outStream.close();
+                    }
+                } catch (IOException e) {
+                    Log.e(LOGTAG, "outStream could not be closed: ", e);
+                    return false;
+                }
+            }
         }
         return true;
     }
@@ -147,8 +196,6 @@ public class CrashReporterService extends IntentService {
             if (profileName != null) {
                 // Extract the crash dump ID and telemetry client ID, we need profile access for the latter.
                 final String passedMinidumpName = passedMinidumpFile.getName();
-                // Strip the .dmp suffix from the minidump name to obtain the crash ID.
-                final String crashId = passedMinidumpName.substring(0, passedMinidumpName.length() - 4);
                 final GeckoProfile profile = GeckoProfile.get(this, profileName, profileDir);
                 final String clientId = profile.getClientId();
             }
@@ -232,12 +279,23 @@ public class CrashReporterService extends IntentService {
     }
 
     private boolean readStringsFromFile(String filePath, Map<String, String> stringMap) {
+        FileReader fileReader = null;
         try {
-            BufferedReader reader = new BufferedReader(new FileReader(filePath));
+            fileReader = new FileReader(filePath);
+            BufferedReader reader = new BufferedReader(fileReader);
             return readStringsFromReader(reader, stringMap);
         } catch (Exception e) {
             Log.e(LOGTAG, "exception while reading strings: ", e);
             return false;
+        } finally {
+            try {
+                if (fileReader != null) {
+                    fileReader.close();
+                }
+            } catch (IOException e) {
+                Log.e(LOGTAG, "exception while closing file: ", e);
+                return false;
+            }
         }
     }
 
@@ -293,13 +351,13 @@ public class CrashReporterService extends IntentService {
         if (spec == null) {
             return;
         }
-
+        HttpURLConnection conn = null;
         try {
             final URL url = new URL(URLDecoder.decode(spec, "UTF-8"));
             final URI uri = new URI(url.getProtocol(), url.getUserInfo(),
                     url.getHost(), url.getPort(),
                     url.getPath(), url.getQuery(), url.getRef());
-            HttpURLConnection conn = (HttpURLConnection) ProxySelector.openConnectionWithProxy(uri);
+            conn = (HttpURLConnection) ProxySelector.openConnectionWithProxy(uri);
             conn.setRequestMethod("POST");
             String boundary = generateBoundary();
             conn.setDoOutput(true);
@@ -370,6 +428,10 @@ public class CrashReporterService extends IntentService {
             Log.e(LOGTAG, "exception during send: ", e);
         } catch (URISyntaxException e) {
             Log.e(LOGTAG, "exception during new URI: ", e);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
         }
     }
 

@@ -19,16 +19,7 @@ ChromeUtils.defineModuleGetter(this, "ContentSearch",
 const SIMPLETEST_OVERRIDES =
   ["ok", "is", "isnot", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
 
-// non-android is bootstrapped by marionette
-if (Services.appinfo.OS == "Android") {
-  window.addEventListener("load", function() {
-    window.addEventListener("MozAfterPaint", function() {
-      setTimeout(testInit, 0);
-    }, {once: true});
-  }, {once: true});
-} else {
-  setTimeout(testInit, 0);
-}
+setTimeout(testInit, 0);
 
 var TabDestroyObserver = {
   outstanding: new Set(),
@@ -95,8 +86,8 @@ function testInit() {
       // Window is the [ChromeWindow] for messageManager, so we need content.window
       // Currently chrome tests are run in a content window instead of a ChromeWindow
       // eslint-disable-next-line no-undef
-      var webNav = content.window.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsIWebNavigation);
+      var webNav = content.window.docShell
+                          .QueryInterface(Ci.nsIWebNavigation);
       webNav.loadURI(url, null, null, null, null);
     };
 
@@ -244,8 +235,9 @@ function takeInstrumentation() {
 
   // The selector for just this element
   function immediateSelector(element) {
-    if (element.localName == "notificationbox" && element.parentNode &&
-        element.parentNode.classList.contains("tabbrowser-tabpanels")) {
+    if (element.localName == "notificationbox" &&
+        element.parentNode &&
+        element.parentNode.id == "tabbrowser-tabpanels") {
       // Don't do a full selector for a tabpanel's notificationbox
       return element.localName;
     }
@@ -364,7 +356,7 @@ function takeInstrumentation() {
     }
 
     win.addEventListener("load", () => {
-      if (win.location.href != "chrome://browser/content/browser.xul") {
+      if (win.location.href != AppConstants.BROWSER_CHROME_URL) {
         return;
       }
 
@@ -423,6 +415,7 @@ function Tester(aTests, structuredLogger, aCallback) {
   this.Promise = ChromeUtils.import("resource://gre/modules/Promise.jsm", null).Promise;
   this.PromiseTestUtils = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm", null).PromiseTestUtils;
   this.Assert = ChromeUtils.import("resource://testing-common/Assert.jsm", null).Assert;
+  this.PerTestCoverageUtils = ChromeUtils.import("resource://testing-common/PerTestCoverageUtils.jsm", null).PerTestCoverageUtils;
 
   this.PromiseTestUtils.init();
 
@@ -511,6 +504,8 @@ Tester.prototype = {
       "webConsoleCommandController",
     ];
 
+    this.PerTestCoverageUtils.beforeTestSync();
+
     if (this.tests.length) {
       this.waitForWindowsReady().then(() => {
         this.nextTest();
@@ -533,9 +528,7 @@ Tester.prototype = {
   },
 
   waitForGraphicsTestWindowToBeGone(aCallback) {
-    let windowsEnum = Services.wm.getEnumerator(null);
-    while (windowsEnum.hasMoreElements()) {
-      let win = windowsEnum.getNext();
+    for (let win of Services.wm.getEnumerator(null)) {
       if (win != window && !win.closed &&
           win.document.documentURI == "chrome://gfxsanity/content/sanityparent.html") {
         this.BrowserTestUtils.domWindowClosed(win).then(aCallback);
@@ -572,16 +565,17 @@ Tester.prototype = {
 
     // Replace the last tab with a fresh one
     if (window.gBrowser) {
-      gBrowser.addTab("about:blank", { skipAnimation: true });
+      gBrowser.addTab("about:blank", {
+        skipAnimation: true,
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      });
       gBrowser.removeTab(gBrowser.selectedTab, { skipPermitUnload: true });
       gBrowser.stop();
     }
 
     // Remove stale windows
     this.structuredLogger.info("checking window state");
-    let windowsEnum = Services.wm.getEnumerator(null);
-    while (windowsEnum.hasMoreElements()) {
-      let win = windowsEnum.getNext();
+    for (let win of Services.wm.getEnumerator(null)) {
       if (win != window && !win.closed &&
           win.document.documentElement.getAttribute("id") != "browserTestHarness") {
         let type = win.document.documentElement.getAttribute("windowtype");
@@ -690,6 +684,8 @@ Tester.prototype = {
         this._coverageCollector.recordTestCoverage(this.currentTest.path);
       }
 
+      this.PerTestCoverageUtils.afterTestSync();
+
       // Run cleanup functions for the current test before moving on to the
       // next one.
       let testScope = this.currentTest.scope;
@@ -719,8 +715,7 @@ Tester.prototype = {
         }));
       }
 
-      let winUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
+      let winUtils = window.windowUtils;
       if (winUtils.isTestControllingRefreshes) {
         this.currentTest.addResult(new testResult({
           name: "test left refresh driver under test control",

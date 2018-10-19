@@ -5,12 +5,14 @@
 "use strict";
 
 var EXPORTED_SYMBOLS = [
-  "TelemetryUtils"
+  "TelemetryUtils",
 ];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
 ChromeUtils.defineModuleGetter(this, "AppConstants",
                                "resource://gre/modules/AppConstants.jsm");
+ChromeUtils.defineModuleGetter(this, "UpdateUtils",
+                               "resource://gre/modules/UpdateUtils.jsm");
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -49,7 +51,7 @@ function packHistogram(hgram) {
     bucket_count: r.length,
     histogram_type: hgram.histogram_type,
     values: {},
-    sum: hgram.sum
+    sum: hgram.sum,
   };
 
   let first = true;
@@ -86,6 +88,7 @@ var TelemetryUtils = {
     HybridContentEnabled: "toolkit.telemetry.hybridContent.enabled",
     OverrideOfficialCheck: "toolkit.telemetry.send.overrideOfficialCheck",
     OverridePreRelease: "toolkit.telemetry.testing.overridePreRelease",
+    OverrideUpdateChannel: "toolkit.telemetry.overrideUpdateChannel",
     Server: "toolkit.telemetry.server",
     ShutdownPingSender: "toolkit.telemetry.shutdownPingSender.enabled",
     ShutdownPingSenderFirstSession: "toolkit.telemetry.shutdownPingSender.enabledFirstSession",
@@ -116,6 +119,13 @@ var TelemetryUtils = {
     MinimumPolicyVersion: "datareporting.policy.minimumPolicyVersion",
     FirstRunURL: "datareporting.policy.firstRunURL",
   }),
+
+  /**
+   * A fixed valid client ID used when Telemetry upload is disabled.
+   */
+  get knownClientID() {
+    return "c0ffeec0-ffee-c0ff-eec0-ffeec0ffeec0";
+  },
 
   /**
    * True if this is a content process.
@@ -370,5 +380,22 @@ var TelemetryUtils = {
     }
 
     return ret;
+  },
+
+  /**
+   * @returns {string} The name of the update channel to report
+   * in telemetry.
+   * By default, this is the same as the name of the channel that
+   * the browser uses to download its updates. However in certain
+   * situations, a single update channel provides multiple (distinct)
+   * build types, that need to be distinguishable on Telemetry.
+   */
+  getUpdateChannel() {
+    let overrideChannel = Services.prefs.getCharPref(this.Preferences.OverrideUpdateChannel, undefined);
+    if (overrideChannel) {
+      return overrideChannel;
+    }
+
+    return UpdateUtils.getUpdateChannel(false);
   },
 };

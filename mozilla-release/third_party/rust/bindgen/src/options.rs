@@ -1,4 +1,4 @@
-use bindgen::{Builder, CodegenConfig, RUST_TARGET_STRINGS, RustTarget, builder};
+use bindgen::{Builder, CodegenConfig, RUST_TARGET_STRINGS, RustTarget, builder, EnumVariation};
 use clap::{App, Arg};
 use std::fs::File;
 use std::io::{self, Error, ErrorKind, Write, stderr};
@@ -26,18 +26,32 @@ where
             Arg::with_name("header")
                 .help("C or C++ header file")
                 .required(true),
+            Arg::with_name("default-enum-style")
+                .long("default-enum-style")
+                .help("The default style of code used to generate enums.")
+                .value_name("variant")
+                .default_value("consts")
+                .possible_values(&["consts", "moduleconsts", "bitfield", "rust"])
+                .multiple(false),
             Arg::with_name("bitfield-enum")
                 .long("bitfield-enum")
                 .help("Mark any enum whose name matches <regex> as a set of \
-                       bitfield flags instead of an enumeration.")
+                       bitfield flags.")
                 .value_name("regex")
                 .takes_value(true)
                 .multiple(true)
                 .number_of_values(1),
             Arg::with_name("rustified-enum")
                 .long("rustified-enum")
-                .help("Mark any enum whose name matches <regex> as a Rust enum \
-                       instead of a set of constants.")
+                .help("Mark any enum whose name matches <regex> as a Rust enum.")
+                .value_name("regex")
+                .takes_value(true)
+                .multiple(true)
+                .number_of_values(1),
+            Arg::with_name("constified-enum")
+                .long("constified-enum")
+                .help("Mark any enum whose name matches <regex> as a series of \
+                       constants.")
                 .value_name("regex")
                 .takes_value(true)
                 .multiple(true)
@@ -45,7 +59,7 @@ where
             Arg::with_name("constified-enum-module")
                 .long("constified-enum-module")
                 .help("Mark any enum whose name matches <regex> as a module of \
-                       constants instead of just constants.")
+                       constants.")
                 .value_name("regex")
                 .takes_value(true)
                 .multiple(true)
@@ -54,6 +68,13 @@ where
                 .long("blacklist-type")
                 .help("Mark <type> as hidden.")
                 .value_name("type")
+                .takes_value(true)
+                .multiple(true)
+                .number_of_values(1),
+            Arg::with_name("blacklist-function")
+                .long("blacklist-function")
+                .help("Mark <function> as hidden.")
+                .value_name("function")
                 .takes_value(true)
                 .multiple(true)
                 .number_of_values(1),
@@ -149,12 +170,6 @@ where
                 .help("Disable namespacing via mangling, causing bindgen to \
                        generate names like \"Baz\" instead of \"foo_bar_Baz\" \
                        for an input name \"foo::bar::Baz\"."),
-            Arg::with_name("framework")
-                .long("framework-link")
-                .help("Link to framework.")
-                .takes_value(true)
-                .multiple(true)
-                .number_of_values(1),
             Arg::with_name("ignore-functions")
                 .long("ignore-functions")
                 .help("Do not generate bindings for functions or methods. This \
@@ -168,13 +183,6 @@ where
             Arg::with_name("ignore-methods")
                 .long("ignore-methods")
                 .help("Do not generate bindings for methods."),
-            Arg::with_name("dynamic")
-                .short("l")
-                .long("link")
-                .help("Link to dynamic library.")
-                .takes_value(true)
-                .multiple(true)
-                .number_of_values(1),
             Arg::with_name("no-convert-floats")
                 .long("no-convert-floats")
                 .help("Do not automatically convert floats to f32/f64."),
@@ -207,12 +215,6 @@ where
                 .long("rust-target")
                 .help(&rust_target_help)
                 .takes_value(true),
-            Arg::with_name("static")
-                .long("static-link")
-                .help("Link to static library.")
-                .takes_value(true)
-                .multiple(true)
-                .number_of_values(1),
             Arg::with_name("use-core")
                 .long("use-core")
                 .help("Use types from Rust core instead of std."),
@@ -322,6 +324,10 @@ where
         builder = builder.rust_target(RustTarget::from_str(rust_target)?);
     }
 
+    if let Some(variant) = matches.value_of("default-enum-style") {
+        builder = builder.default_enum_style(EnumVariation::from_str(variant)?)
+    }
+
     if let Some(bitfields) = matches.values_of("bitfield-enum") {
         for regex in bitfields {
             builder = builder.bitfield_enum(regex);
@@ -334,6 +340,12 @@ where
         }
     }
 
+    if let Some(bitfields) = matches.values_of("constified-enum") {
+        for regex in bitfields {
+            builder = builder.constified_enum(regex);
+        }
+    }
+
     if let Some(constified_mods) = matches.values_of("constified-enum-module") {
         for regex in constified_mods {
             builder = builder.constified_enum_module(regex);
@@ -342,6 +354,12 @@ where
     if let Some(hidden_types) = matches.values_of("blacklist-type") {
         for ty in hidden_types {
             builder = builder.blacklist_type(ty);
+        }
+    }
+
+    if let Some(hidden_functions) = matches.values_of("blacklist-function") {
+        for fun in hidden_functions {
+            builder = builder.blacklist_function(fun);
         }
     }
 
@@ -409,22 +427,16 @@ where
         builder = builder.ctypes_prefix(prefix);
     }
 
-    if let Some(links) = matches.values_of("dynamic") {
-        for library in links {
-            builder = builder.link(library);
-        }
-    }
-
     if let Some(what_to_generate) = matches.value_of("generate") {
-        let mut config = CodegenConfig::nothing();
+        let mut config = CodegenConfig::empty();
         for what in what_to_generate.split(",") {
             match what {
-                "functions" => config.functions = true,
-                "types" => config.types = true,
-                "vars" => config.vars = true,
-                "methods" => config.methods = true,
-                "constructors" => config.constructors = true,
-                "destructors" => config.destructors = true,
+                "functions" => config.insert(CodegenConfig::FUNCTIONS),
+                "types" => config.insert(CodegenConfig::TYPES),
+                "vars" => config.insert(CodegenConfig::VARS),
+                "methods" => config.insert(CodegenConfig::METHODS),
+                "constructors" => config.insert(CodegenConfig::CONSTRUCTORS),
+                "destructors" => config.insert(CodegenConfig::DESTRUCTORS),
                 otherwise => {
                     return Err(Error::new(
                         ErrorKind::Other,
@@ -454,12 +466,6 @@ where
 
     if matches.is_present("disable-name-namespacing") {
         builder = builder.disable_name_namespacing();
-    }
-
-    if let Some(links) = matches.values_of("framework") {
-        for framework in links {
-            builder = builder.link_framework(framework);
-        }
     }
 
     if matches.is_present("ignore-functions") {
@@ -495,12 +501,6 @@ where
     if let Some(lines) = matches.values_of("raw-line") {
         for line in lines {
             builder = builder.raw_line(line);
-        }
-    }
-
-    if let Some(links) = matches.values_of("static") {
-        for library in links {
-            builder = builder.link_static(library);
         }
     }
 

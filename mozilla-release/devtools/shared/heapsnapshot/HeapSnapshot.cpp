@@ -86,7 +86,7 @@ NS_INTERFACE_MAP_END
 /* virtual */ JSObject*
 HeapSnapshot::WrapObject(JSContext* aCx, HandleObject aGivenProto)
 {
-  return HeapSnapshotBinding::Wrap(aCx, this, aGivenProto);
+  return HeapSnapshot_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 /*** Reading Heap Snapshots ***********************************************************************/
@@ -147,8 +147,8 @@ struct GetOrInternStringMatcher
     size_t length = str->length() / sizeof(CharT);
     auto tempString = reinterpret_cast<const CharT*>(str->data());
 
-    UniqueFreePtr<CharT[]> owned(NS_strndup(tempString, length));
-    if (!owned || !internedStrings.append(std::move(owned)))
+    UniqueFreePtr<CharT[]> owned(NS_xstrndup(tempString, length));
+    if (!internedStrings.append(std::move(owned)))
       return nullptr;
 
     return internedStrings.back().get();
@@ -284,11 +284,21 @@ HeapSnapshot::saveNode(const protobuf::Node& node, NodeIdSet& edgeReferents)
       return false;
   }
 
+  const char16_t* descriptiveTypeName = nullptr;
+  if (node.descriptiveTypeNameOrRef_case() != protobuf::Node::DESCRIPTIVETYPENAMEORREF_NOT_SET) {
+    Maybe<StringOrRef> descriptiveTypeNameOrRef = GET_STRING_OR_REF(node, descriptivetypename);
+    descriptiveTypeName = getOrInternString<char16_t>(internedTwoByteStrings, descriptiveTypeNameOrRef);
+    if (NS_WARN_IF(!descriptiveTypeName))
+        return false;
+  }
+
   if (NS_WARN_IF(!nodes.putNew(id, DeserializedNode(id, coarseType, typeName,
                                                     size, std::move(edges),
                                                     allocationStack,
                                                     jsObjectClassName,
-                                                    scriptFilename, *this))))
+                                                    scriptFilename,
+                                                    descriptiveTypeName,
+                                                     *this))))
   {
     return false;
   };
@@ -396,9 +406,6 @@ readSizeOfNextMessage(ZeroCopyInputStream& stream, uint32_t* sizep)
 bool
 HeapSnapshot::init(JSContext* cx, const uint8_t* buffer, uint32_t size)
 {
-  if (!nodes.init() || !frames.init())
-    return false;
-
   ArrayInputStream stream(buffer, size);
   GzipInputStream gzipStream(&stream);
   uint32_t sizeOfMessage = 0;
@@ -429,8 +436,6 @@ HeapSnapshot::init(JSContext* cx, const uint8_t* buffer, uint32_t size)
 
   // The set of all node ids we've found edges pointing to.
   NodeIdSet edgeReferents(cx);
-  if (NS_WARN_IF(!edgeReferents.init()))
-    return false;
 
   if (NS_WARN_IF(!saveNode(root, edgeReferents)))
     return false;
@@ -452,8 +457,8 @@ HeapSnapshot::init(JSContext* cx, const uint8_t* buffer, uint32_t size)
   // Check the set of node ids referred to by edges we found and ensure that we
   // have the node corresponding to each id. If we don't have all of them, it is
   // unsafe to perform analyses of this heap snapshot.
-  for (auto range = edgeReferents.all(); !range.empty(); range.popFront()) {
-    if (NS_WARN_IF(!nodes.has(range.front())))
+  for (auto iter = edgeReferents.iter(); !iter.done(); iter.next()) {
+    if (NS_WARN_IF(!nodes.has(iter.get())))
       return false;
   }
 
@@ -468,10 +473,6 @@ HeapSnapshot::TakeCensus(JSContext* cx, JS::HandleObject options,
                          JS::MutableHandleValue rval, ErrorResult& rv)
 {
   JS::ubi::Census census(cx);
-  if (NS_WARN_IF(!census.init())) {
-    rv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return;
-  }
 
   JS::ubi::CountTypePtr rootType;
   if (NS_WARN_IF(!JS::ubi::ParseCensusOptions(cx,  census, options, rootType))) {
@@ -491,10 +492,6 @@ HeapSnapshot::TakeCensus(JSContext* cx, JS::HandleObject options,
     JS::AutoCheckCannotGC nogc;
 
     JS::ubi::CensusTraversal traversal(cx, handler, nogc);
-    if (NS_WARN_IF(!traversal.init())) {
-      rv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
-    }
 
     if (NS_WARN_IF(!traversal.addStart(getRoot()))) {
       rv.Throw(NS_ERROR_OUT_OF_MEMORY);
@@ -600,10 +597,6 @@ HeapSnapshot::ComputeShortestPaths(JSContext*cx, uint64_t start,
   // snapshot.
 
   JS::ubi::NodeSet targetsSet;
-  if (NS_WARN_IF(!targetsSet.init())) {
-    rv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return;
-  }
 
   for (const auto& target : targets) {
     Maybe<JS::ubi::Node> targetNode = getNodeById(target);
@@ -643,11 +636,11 @@ HeapSnapshot::ComputeShortestPaths(JSContext*cx, uint64_t start,
     return;
   }
 
-  for (auto range = shortestPaths.eachTarget(); !range.empty(); range.popFront()) {
-    JS::RootedValue key(cx, JS::NumberValue(range.front().identifier()));
+  for (auto iter = shortestPaths.targetIter(); !iter.done(); iter.next()) {
+    JS::RootedValue key(cx, JS::NumberValue(iter.get().identifier()));
     JS::AutoValueVector paths(cx);
 
-    bool ok = shortestPaths.forEachPath(range.front(), [&](JS::ubi::Path& path) {
+    bool ok = shortestPaths.forEachPath(iter.get(), [&](JS::ubi::Path& path) {
       JS::AutoValueVector pathValues(cx);
 
       for (JS::ubi::BackEdge* edge : path) {
@@ -712,9 +705,6 @@ HeapSnapshot::ComputeShortestPaths(JSContext*cx, uint64_t start,
 static bool
 PopulateCompartmentsWithGlobals(CompartmentSet& compartments, AutoObjectVector& globals)
 {
-  if (!compartments.init())
-    return false;
-
   unsigned length = globals.length();
   for (unsigned i = 0; i < length; i++) {
     if (!compartments.put(GetObjectCompartment(globals[i])))
@@ -758,7 +748,7 @@ EstablishBoundaries(JSContext* cx,
                     CompartmentSet& compartments)
 {
   MOZ_ASSERT(!roots.initialized());
-  MOZ_ASSERT(!compartments.initialized());
+  MOZ_ASSERT(compartments.empty());
 
   bool foundBoundaryProperty = false;
 
@@ -841,8 +831,6 @@ EstablishBoundaries(JSContext* cx,
   }
 
   MOZ_ASSERT(roots.initialized());
-  MOZ_ASSERT_IF(boundaries.mDebugger.WasPassed(), compartments.initialized());
-  MOZ_ASSERT_IF(boundaries.mGlobals.WasPassed(), compartments.initialized());
   return true;
 }
 
@@ -1247,12 +1235,6 @@ public:
     , compartments(compartments)
   { }
 
-  bool init() {
-    return framesAlreadySerialized.init() &&
-           twoByteStringsAlreadySerialized.init() &&
-           oneByteStringsAlreadySerialized.init();
-  }
-
   ~StreamWriter() override { }
 
   bool writeMetadata(uint64_t timestamp) final {
@@ -1340,6 +1322,16 @@ public:
       }
     }
 
+    if (ubiNode.descriptiveTypeName()) {
+      auto descriptiveTypeName = TwoByteString(ubiNode.descriptiveTypeName());
+      if (NS_WARN_IF(!attachTwoByteString(descriptiveTypeName,
+                                          [&] (std::string* name) { protobufNode.set_allocated_descriptivetypename(name); },
+                                          [&] (uint64_t ref) { protobufNode.set_descriptivetypenameref(ref); })))
+      {
+        return false;
+      }
+    }
+
     return writeMessage(protobufNode);
   }
 };
@@ -1420,8 +1412,6 @@ WriteHeapGraph(JSContext* cx,
 
   HeapSnapshotHandler handler(writer, compartments);
   HeapSnapshotHandler::Traversal traversal(cx, handler, noGC);
-  if (!traversal.init())
-    return false;
   traversal.wantNames = wantNames;
 
   bool ok = traversal.addStartVisited(node) &&
@@ -1601,11 +1591,7 @@ ChromeUtils::SaveHeapSnapshotShared(GlobalObject& global,
       return;
 
     StreamWriter writer(cx, gzipStream, wantNames,
-                        compartments.initialized() ? &compartments : nullptr);
-    if (NS_WARN_IF(!writer.init())) {
-      rv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
-    }
+                        !compartments.empty() ? &compartments : nullptr);
 
     MOZ_ASSERT(maybeNoGC.isSome());
     ubi::Node roots(&rootList);
@@ -1618,7 +1604,7 @@ ChromeUtils::SaveHeapSnapshotShared(GlobalObject& global,
                         roots,
                         writer,
                         wantNames,
-                        compartments.initialized() ? &compartments : nullptr,
+                        !compartments.empty() ? &compartments : nullptr,
                         maybeNoGC.ref(),
                         nodeCount,
                         edgeCount))

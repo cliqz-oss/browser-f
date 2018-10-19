@@ -26,6 +26,7 @@
 #include "mozilla/layers/TextureHostOGL.h"  // for TextureHostOGL
 #include "mozilla/layers/PaintedLayerComposite.h"
 #include "mozilla/mozalloc.h"           // for operator delete, etc
+#include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "nsCoord.h"                    // for NSAppUnitsToFloatPixels
 #include "nsISupportsImpl.h"            // for Layer::Release, etc
@@ -48,16 +49,19 @@ namespace layers {
 LayerTransactionParent::LayerTransactionParent(HostLayerManager* aManager,
                                                CompositorBridgeParentBase* aBridge,
                                                CompositorAnimationStorage* aAnimStorage,
-                                               LayersId aId)
+                                               LayersId aId,
+                                               TimeDuration aVsyncRate)
   : mLayerManager(aManager)
   , mCompositorBridge(aBridge)
   , mAnimStorage(aAnimStorage)
   , mId(aId)
-  , mChildEpoch(0)
-  , mParentEpoch(0)
+  , mChildEpoch{0}
+  , mParentEpoch{0}
+  , mVsyncRate(aVsyncRate)
   , mPendingTransaction{0}
   , mDestroyed(false)
   , mIPCOpen(false)
+  , mUpdateHitTestingTree(false)
 {
   MOZ_ASSERT(mId.IsValid());
 }
@@ -159,6 +163,12 @@ LayerTransactionParent::RecvPaintTime(const TransactionId& aTransactionId,
 mozilla::ipc::IPCResult
 LayerTransactionParent::RecvUpdate(const TransactionInfo& aInfo)
 {
+  auto guard = MakeScopeExit([&] {
+      if (recordreplay::IsRecordingOrReplaying()) {
+        recordreplay::child::NotifyPaintComplete();
+      }
+    });
+
   AUTO_PROFILER_TRACING("Paint", "LayerTransaction");
   AUTO_PROFILER_LABEL("LayerTransactionParent::RecvUpdate", GRAPHICS);
 
@@ -234,17 +244,6 @@ LayerTransactionParent::RecvUpdate(const TransactionInfo& aInfo)
       }
 
       UpdateHitTestingTree(layer, "CreateColorLayer");
-      break;
-    }
-    case Edit::TOpCreateBorderLayer: {
-      MOZ_LAYERS_LOG(("[ParentSide] CreateBorderLayer"));
-
-      RefPtr<BorderLayer> layer = mLayerManager->CreateBorderLayer();
-      if (!BindLayer(layer, edit.get_OpCreateBorderLayer())) {
-        return IPC_FAIL_NO_REASON(this);
-      }
-
-      UpdateHitTestingTree(layer, "CreateBorderLayer");
       break;
     }
     case Edit::TOpCreateCanvasLayer: {
@@ -497,6 +496,11 @@ LayerTransactionParent::RecvUpdate(const TransactionInfo& aInfo)
     mLayerManager->RecordUpdateTime((TimeStamp::Now() - updateStart).ToMilliseconds());
   }
 
+  // Compose after every update when recording/replaying.
+  if (recordreplay::IsRecordingOrReplaying()) {
+    mCompositorBridge->ForceComposeToTarget(nullptr);
+  }
+
   return IPC_OK();
 }
 
@@ -601,19 +605,6 @@ LayerTransactionParent::SetLayerAttributes(const OpSetLayerAttributes& aOp)
     colorLayer->SetBounds(specific.get_ColorLayerAttributes().bounds());
     break;
   }
-  case Specific::TBorderLayerAttributes: {
-    MOZ_LAYERS_LOG(("[ParentSide]   border layer"));
-
-    BorderLayer* borderLayer = layer->AsBorderLayer();
-    if (!borderLayer) {
-      return false;
-    }
-    borderLayer->SetRect(specific.get_BorderLayerAttributes().rect());
-    borderLayer->SetColors(specific.get_BorderLayerAttributes().colors());
-    borderLayer->SetCornerRadii(specific.get_BorderLayerAttributes().corners());
-    borderLayer->SetWidths(specific.get_BorderLayerAttributes().widths());
-    break;
-  }
   case Specific::TCanvasLayerAttributes: {
     MOZ_LAYERS_LOG(("[ParentSide]   canvas layer"));
 
@@ -657,9 +648,9 @@ LayerTransactionParent::SetLayerAttributes(const OpSetLayerAttributes& aOp)
 }
 
 mozilla::ipc::IPCResult
-LayerTransactionParent::RecvSetLayerObserverEpoch(const uint64_t& aLayerObserverEpoch)
+LayerTransactionParent::RecvSetLayersObserverEpoch(const LayersObserverEpoch& aChildEpoch)
 {
-  mChildEpoch = aLayerObserverEpoch;
+  mChildEpoch = aChildEpoch;
   return IPC_OK();
 }
 
@@ -691,33 +682,8 @@ LayerTransactionParent::RecvLeaveTestMode()
 }
 
 mozilla::ipc::IPCResult
-LayerTransactionParent::RecvGetAnimationOpacity(const uint64_t& aCompositorAnimationsId,
-                                                float* aOpacity,
-                                                bool* aHasAnimationOpacity)
-{
-  *aHasAnimationOpacity = false;
-  if (mDestroyed || !mLayerManager || mLayerManager->IsDestroyed()) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-
-  mCompositorBridge->ApplyAsyncProperties(
-    this, CompositorBridgeParentBase::TransformsToSkip::APZ);
-
-  if (!mAnimStorage) {
-    return IPC_FAIL_NO_REASON(this);
-  }
-
-  Maybe<float> opacity = mAnimStorage->GetAnimationOpacity(aCompositorAnimationsId);
-  if (opacity) {
-    *aOpacity = *opacity;
-    *aHasAnimationOpacity = true;
-  }
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
-LayerTransactionParent::RecvGetAnimationTransform(const uint64_t& aCompositorAnimationsId,
-                                                  MaybeTransform* aTransform)
+LayerTransactionParent::RecvGetAnimationValue(const uint64_t& aCompositorAnimationsId,
+                                              OMTAValue* aValue)
 {
   if (mDestroyed || !mLayerManager || mLayerManager->IsDestroyed()) {
     return IPC_FAIL_NO_REASON(this);
@@ -734,12 +700,7 @@ LayerTransactionParent::RecvGetAnimationTransform(const uint64_t& aCompositorAni
     return IPC_FAIL_NO_REASON(this);
   }
 
-  Maybe<Matrix4x4> transform = mAnimStorage->GetAnimationTransform(aCompositorAnimationsId);
-  if (transform) {
-    *aTransform = *transform;
-  } else {
-    *aTransform = mozilla::void_t();
-  }
+  *aValue = mAnimStorage->GetOMTAValue(aCompositorAnimationsId);
   return IPC_OK();
 }
 
@@ -788,6 +749,17 @@ LayerTransactionParent::RecvGetTransform(const LayerHandle& aLayerHandle,
   // to cancel it out.
   if (!layer->GetParent() || !layer->GetParent()->GetTransformIsPerspective()) {
     transform.PostTranslate(-scaledOrigin.x, -scaledOrigin.y, -scaledOrigin.z);
+  }
+
+  // This function is supposed to include the APZ transform, but if root scroll
+  // containers are enabled, then the APZ transform might not be on |layer| but
+  // instead would be on the parent of |layer|, if that is the root scrollable
+  // metrics. So we special-case that behaviour.
+  if (gfxPrefs::LayoutUseContainersForRootFrames() &&
+      !layer->HasScrollableFrameMetrics() &&
+      layer->GetParent() &&
+      layer->GetParent()->HasRootScrollableFrameMetrics()) {
+    transform *= layer->GetParent()->AsHostLayer()->GetShadowBaseTransform();
   }
 
   *aTransform = transform;
@@ -948,20 +920,29 @@ bool LayerTransactionParent::IsSameProcess() const
 TransactionId
 LayerTransactionParent::FlushTransactionId(TimeStamp& aCompositeEnd)
 {
+  if (mId.IsValid() && mPendingTransaction.IsValid() && !mVsyncRate.IsZero()) {
+    double latencyMs = (aCompositeEnd - mTxnStartTime).ToMilliseconds();
+    double latencyNorm = latencyMs / mVsyncRate.ToMilliseconds();
+    int32_t fracLatencyNorm = lround(latencyNorm * 100.0);
+    Telemetry::Accumulate(Telemetry::CONTENT_FRAME_TIME, fracLatencyNorm);
+  }
+
 #if defined(ENABLE_FRAME_LATENCY_LOG)
   if (mPendingTransaction.IsValid()) {
-    if (mTxnStartTime) {
-      uint32_t latencyMs = round((aCompositeEnd - mTxnStartTime).ToMilliseconds());
+    if (mRefreshStartTime) {
+      int32_t latencyMs = lround((aCompositeEnd - mRefreshStartTime).ToMilliseconds());
       printf_stderr("From transaction start to end of generate frame latencyMs %d this %p\n", latencyMs, this);
     }
     if (mFwdTime) {
-      uint32_t latencyMs = round((aCompositeEnd - mFwdTime).ToMilliseconds());
+      int32_t latencyMs = lround((aCompositeEnd - mFwdTime).ToMilliseconds());
       printf_stderr("From forwarding transaction to end of generate frame latencyMs %d this %p\n", latencyMs, this);
     }
   }
+#endif
+
+  mRefreshStartTime = TimeStamp();
   mTxnStartTime = TimeStamp();
   mFwdTime = TimeStamp();
-#endif
   TransactionId id = mPendingTransaction;
   mPendingTransaction = TransactionId{0};
   return id;

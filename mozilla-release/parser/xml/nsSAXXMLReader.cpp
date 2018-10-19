@@ -6,10 +6,10 @@
 #include "nsSAXXMLReader.h"
 
 #include "mozilla/Encoding.h"
+#include "mozilla/NullPrincipal.h"
 #include "nsIInputStream.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
-#include "NullPrincipal.h"
 #include "nsIParser.h"
 #include "nsParserCIID.h"
 #include "nsStreamUtils.h"
@@ -79,7 +79,8 @@ NS_IMETHODIMP
 nsSAXXMLReader::HandleStartElement(const char16_t *aName,
                                    const char16_t **aAtts,
                                    uint32_t aAttsCount,
-                                   uint32_t aLineNumber)
+                                   uint32_t aLineNumber,
+                                   uint32_t aColumnNumber)
 {
   if (!mContentHandler)
     return NS_OK;

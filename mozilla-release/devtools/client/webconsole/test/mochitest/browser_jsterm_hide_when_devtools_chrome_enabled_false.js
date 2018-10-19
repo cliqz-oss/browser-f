@@ -23,6 +23,15 @@
 "use strict";
 
 add_task(async function() {
+  // Run test with legacy JsTerm
+  await pushPref("devtools.webconsole.jsterm.codeMirror", false);
+  await performTests();
+  // And then run it with the CodeMirror-powered one.
+  await pushPref("devtools.webconsole.jsterm.codeMirror", true);
+  await performTests();
+});
+
+async function performTests() {
   let browserConsole, webConsole, objInspector;
 
   // We don't use `pushPref()` because we need to revert the same pref later
@@ -52,8 +61,11 @@ add_task(async function() {
   objInspector = await getObjectInspector(webConsole);
   testJSTermIsVisible(webConsole);
   await testObjectInspectorPropertiesAreSet(objInspector);
+
+  info("Close webconsole and browser console");
   await closeConsole(browserTab);
-});
+  await HUDService.toggleBrowserConsole();
+}
 
 /**
  * Returns either the Variables View or Object Inspector depending on which is

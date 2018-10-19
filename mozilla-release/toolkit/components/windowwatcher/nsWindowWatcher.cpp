@@ -22,7 +22,7 @@
 #include "nsIBaseWindow.h"
 #include "nsIBrowserDOMWindow.h"
 #include "nsIDocShell.h"
-#include "nsIDocShellLoadInfo.h"
+#include "nsDocShellLoadInfo.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShellTreeOwner.h"
 #include "nsIDocumentLoader.h"
@@ -58,6 +58,7 @@
 #include "nsIPrefBranch.h"
 #include "nsIPrefService.h"
 #include "nsSandboxFlags.h"
+#include "nsSimpleEnumerator.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/Element.h"
@@ -146,7 +147,7 @@ nsWatcherWindowEntry::ReferenceSelf()
  ****************** nsWatcherWindowEnumerator *******************
  ****************************************************************/
 
-class nsWatcherWindowEnumerator : public nsISimpleEnumerator
+class nsWatcherWindowEnumerator : public nsSimpleEnumerator
 {
 
 public:
@@ -154,10 +155,8 @@ public:
   NS_IMETHOD HasMoreElements(bool* aResult) override;
   NS_IMETHOD GetNext(nsISupports** aResult) override;
 
-  NS_DECL_ISUPPORTS
-
 protected:
-  virtual ~nsWatcherWindowEnumerator();
+  ~nsWatcherWindowEnumerator() override;
 
 private:
   friend class nsWindowWatcher;
@@ -168,10 +167,6 @@ private:
   nsWindowWatcher* mWindowWatcher;
   nsWatcherWindowEntry* mCurrentPosition;
 };
-
-NS_IMPL_ADDREF(nsWatcherWindowEnumerator)
-NS_IMPL_RELEASE(nsWatcherWindowEnumerator)
-NS_IMPL_QUERY_INTERFACE(nsWatcherWindowEnumerator, nsISimpleEnumerator)
 
 nsWatcherWindowEnumerator::nsWatcherWindowEnumerator(nsWindowWatcher* aWatcher)
   : mWindowWatcher(aWatcher)
@@ -210,8 +205,9 @@ nsWatcherWindowEnumerator::GetNext(nsISupports** aResult)
   if (mCurrentPosition) {
     CallQueryInterface(mCurrentPosition->mWindow, aResult);
     mCurrentPosition = FindNext();
+    return NS_OK;
   }
-  return NS_OK;
+  return NS_ERROR_FAILURE;
 }
 
 nsWatcherWindowEntry*
@@ -395,7 +391,7 @@ nsWindowWatcher::OpenWindow2(mozIDOMWindowProxy* aParent,
                              nsISupports* aArguments,
                              bool aIsPopupSpam,
                              bool aForceNoOpener,
-                             nsIDocShellLoadInfo* aLoadInfo,
+                             nsDocShellLoadInfo* aLoadInfo,
                              mozIDOMWindowProxy** aResult)
 {
   nsCOMPtr<nsIArray> argv = ConvertArgsToArray(aArguments);
@@ -641,7 +637,7 @@ nsWindowWatcher::OpenWindowInternal(mozIDOMWindowProxy* aParent,
                                     nsIArray* aArgv,
                                     bool aIsPopupSpam,
                                     bool aForceNoOpener,
-                                    nsIDocShellLoadInfo* aLoadInfo,
+                                    nsDocShellLoadInfo* aLoadInfo,
                                     mozIDOMWindowProxy** aResult)
 {
   nsresult rv = NS_OK;
@@ -685,7 +681,7 @@ nsWindowWatcher::OpenWindowInternal(mozIDOMWindowProxy* aParent,
 
   bool nameSpecified = false;
   if (aName) {
-    CopyUTF8toUTF16(aName, name);
+    CopyUTF8toUTF16(MakeStringSpan(aName), name);
     nameSpecified = true;
   } else {
     name.SetIsVoid(true);
@@ -1122,10 +1118,9 @@ nsWindowWatcher::OpenWindowInternal(mozIDOMWindowProxy* aParent,
     }
   }
 
-  nsCOMPtr<nsIDocShellLoadInfo> loadInfo = aLoadInfo;
+  RefPtr<nsDocShellLoadInfo> loadInfo = aLoadInfo;
   if (uriToLoad && aNavigate && !loadInfo) {
-    newDocShell->CreateLoadInfo(getter_AddRefs(loadInfo));
-    NS_ENSURE_TRUE(loadInfo, NS_ERROR_FAILURE);
+    loadInfo = new nsDocShellLoadInfo();
 
     if (subjectPrincipal) {
       loadInfo->SetTriggeringPrincipal(subjectPrincipal);
@@ -1204,7 +1199,7 @@ nsWindowWatcher::OpenWindowInternal(mozIDOMWindowProxy* aParent,
       do_QueryInterface(newDocShell);
 
     if (parentStorageManager && newStorageManager) {
-      nsCOMPtr<nsIDOMStorage> storage;
+      RefPtr<Storage> storage;
       nsCOMPtr<nsPIDOMWindowInner> pInnerWin = parentWindow->GetCurrentInnerWindow();
       parentStorageManager->GetStorage(pInnerWin, subjectPrincipal,
                                        isPrivateBrowsingWindow,

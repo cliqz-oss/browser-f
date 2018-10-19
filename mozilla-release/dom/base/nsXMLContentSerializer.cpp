@@ -27,6 +27,7 @@
 #include "nsContentUtils.h"
 #include "nsAttrName.h"
 #include "mozilla/dom/Comment.h"
+#include "mozilla/dom/CustomElementRegistry.h"
 #include "mozilla/dom/DocumentType.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ProcessingInstruction.h"
@@ -591,9 +592,7 @@ void
 nsXMLContentSerializer::GenerateNewPrefix(nsAString& aPrefix)
 {
   aPrefix.Assign('a');
-  char buf[128];
-  SprintfLiteral(buf, "%d", mPrefixIndex++);
-  AppendASCIItoUTF16(buf, aPrefix);
+  aPrefix.AppendInt(mPrefixIndex++);
 }
 
 bool
@@ -791,11 +790,12 @@ nsXMLContentSerializer::SerializeAttributes(Element* aElement,
                                             uint32_t aSkipAttr,
                                             bool aAddNSAttr)
 {
-
   nsAutoString prefixStr, uriStr, valueStr;
   nsAutoString xmlnsStr;
   xmlnsStr.AssignLiteral(kXMLNS);
   uint32_t index, count;
+
+  MaybeSerializeIsValue(aElement, aStr);
 
   // If we had to add a new namespace declaration, serialize
   // and push it on the namespace stack
@@ -1249,7 +1249,10 @@ nsXMLContentSerializer::AppendAndTranslateEntities(const nsAString& aStr,
 
     NS_ENSURE_TRUE(aOutputStr.Append(fragmentStart, advanceLength, mozilla::fallible), false);
     if (entityText) {
-      NS_ENSURE_TRUE(AppendASCIItoUTF16(entityText, aOutputStr, mozilla::fallible), false);
+      NS_ENSURE_TRUE(AppendASCIItoUTF16(mozilla::MakeStringSpan(entityText),
+                                        aOutputStr,
+                                        mozilla::fallible),
+                     false);
       advanceLength++;
     }
   }
@@ -1808,4 +1811,23 @@ nsXMLContentSerializer::ShouldMaintainPreLevel() const
 {
   // Only attempt to maintain the pre level for consumers who care about it.
   return !mDoRaw || (mFlags & nsIDocumentEncoder::OutputNoFormattingInPre);
+}
+
+bool
+nsXMLContentSerializer::MaybeSerializeIsValue(Element* aElement,
+                                              nsAString& aStr)
+{
+  CustomElementData* ceData = aElement->GetCustomElementData();
+  if (ceData) {
+    nsAtom* isAttr = ceData->GetIs(aElement);
+    if (isAttr && !aElement->HasAttr(kNameSpaceID_None, nsGkAtoms::is)) {
+      NS_ENSURE_TRUE(aStr.AppendLiteral(" is=\"", mozilla::fallible), false);
+      NS_ENSURE_TRUE(aStr.Append(nsDependentAtomString(isAttr),
+                                 mozilla::fallible),
+                     false);
+      NS_ENSURE_TRUE(aStr.AppendLiteral("\"", mozilla::fallible), false);
+    }
+  }
+
+  return true;
 }

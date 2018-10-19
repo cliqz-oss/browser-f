@@ -6,12 +6,57 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AndroidLog: "resource://gre/modules/AndroidLog.jsm",
   EventDispatcher: "resource://gre/modules/Messaging.jsm",
   Log: "resource://gre/modules/Log.jsm",
   Services: "resource://gre/modules/Services.jsm",
 });
 
 var EXPORTED_SYMBOLS = ["GeckoViewUtils"];
+
+/**
+ * A formatter that does not prepend time/name/level information to messages,
+ * because those fields are logged separately when using the Android logger.
+ */
+class AndroidFormatter extends Log.BasicFormatter {
+  format(message) {
+    return this.formatText(message);
+  }
+}
+
+/*
+ * AndroidAppender
+ * Logs to Android logcat using AndroidLog.jsm
+ */
+class AndroidAppender extends Log.Appender {
+  constructor(aFormatter) {
+    super(aFormatter || new AndroidFormatter());
+    this._name = "AndroidAppender";
+
+    // Map log level to AndroidLog.foo method.
+    this._mapping = {
+      [Log.Level.Fatal]:  "e",
+      [Log.Level.Error]:  "e",
+      [Log.Level.Warn]:   "w",
+      [Log.Level.Info]:   "i",
+      [Log.Level.Config]: "d",
+      [Log.Level.Debug]:  "d",
+      [Log.Level.Trace]:  "v",
+    };
+  }
+
+  append(aMessage) {
+    if (!aMessage) {
+      return;
+    }
+
+    // AndroidLog.jsm always prepends "Gecko" to the tag, so we strip any
+    // leading "Gecko" here. Also strip dots to save space.
+    const tag = aMessage.loggerName.replace(/^Gecko|\./g, "");
+    const msg = this._formatter.format(aMessage);
+    AndroidLog[this._mapping[aMessage.level]](tag, msg);
+  }
+}
 
 var GeckoViewUtils = {
   /**
@@ -244,10 +289,9 @@ var GeckoViewUtils = {
     try {
       docShell = aWin.QueryInterface(Ci.nsIDocShell);
     } catch (e) {
-      docShell = aWin.QueryInterface(Ci.nsIInterfaceRequestor)
-                     .getInterface(Ci.nsIDocShell);
+      docShell = aWin.docShell;
     }
-    return docShell.QueryInterface(Ci.nsIDocShellTreeItem).rootTreeItem
+    return docShell.rootTreeItem
                    .QueryInterface(Ci.nsIInterfaceRequestor);
   },
 
@@ -259,7 +303,7 @@ var GeckoViewUtils = {
    */
   getChromeWindow: function(aWin) {
     const docShell = this.getRootDocShell(aWin);
-    return docShell && docShell.getInterface(Ci.nsIDOMWindow);
+    return docShell && docShell.domWindow;
   },
 
   /**
@@ -301,9 +345,7 @@ var GeckoViewUtils = {
       return [dispatcher, win];
     }
 
-    let iter = Services.wm.getEnumerator(/* windowType */ null);
-    while (iter.hasMoreElements()) {
-      win = iter.getNext().QueryInterface(Ci.nsIDOMWindow);
+    for (let win of Services.wm.getEnumerator(/* windowType */ null)) {
       dispatcher = this.getDispatcherForWindow(win);
       if (dispatcher) {
         return [dispatcher, win];
@@ -333,6 +375,8 @@ var GeckoViewUtils = {
    * @param aScope Scope to add the logging functions to.
    */
   initLogging: function(aTag, aScope) {
+    const tag = "GeckoView." + aTag.replace(/^GeckoView\.?/, "");
+
     // Only provide two levels for simplicity.
     // For "info", use "debug" instead.
     // For "error", throw an actual JS error instead.
@@ -341,7 +385,7 @@ var GeckoViewUtils = {
           this._log(log.logger, level, strings, exprs);
 
       XPCOMUtils.defineLazyGetter(log, "logger", _ => {
-        const logger = Log.repository.getLogger(aTag);
+        const logger = Log.repository.getLogger(tag);
         logger.parent = this.rootLogger;
         return logger;
       });
@@ -356,7 +400,8 @@ var GeckoViewUtils = {
   get rootLogger() {
     if (!this._rootLogger) {
       this._rootLogger = Log.repository.getLogger("GeckoView");
-      this._rootLogger.addAppender(new Log.AndroidAppender());
+      this._rootLogger.addAppender(new AndroidAppender());
+      this._rootLogger.manageLevelFromPref("geckoview.logging");
     }
     return this._rootLogger;
   },

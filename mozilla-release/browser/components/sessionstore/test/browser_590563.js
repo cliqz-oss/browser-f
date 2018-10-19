@@ -6,9 +6,9 @@ function test() {
     windows: [{
       tabs: [
         { entries: [{ url: "about:mozilla", triggeringPrincipal_base64 }], hidden: true },
-        { entries: [{ url: "about:blank", triggeringPrincipal_base64 }], hidden: false }
-      ]
-    }]
+        { entries: [{ url: "about:blank", triggeringPrincipal_base64 }], hidden: false },
+      ],
+    }],
   };
   let url = "about:sessionrestore";
   let formdata = {id: {sessionData}, url};
@@ -58,7 +58,7 @@ async function middleClickTest(win) {
 
 function newWindowWithState(state, callback) {
   let opts = "chrome,all,dialog=no,height=800,width=800";
-  let win = window.openDialog(getBrowserURL(), "_blank", opts);
+  let win = window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank", opts);
 
   win.addEventListener("load", function() {
     // The form data will be restored before SSTabRestored, so we want to listen

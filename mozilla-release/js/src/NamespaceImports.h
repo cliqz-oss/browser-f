@@ -38,7 +38,7 @@ using ValueVector = JS::GCVector<JS::Value>;
 using IdVector = JS::GCVector<jsid>;
 using ScriptVector = JS::GCVector<JSScript*>;
 
-class MOZ_STACK_CLASS SourceBufferHolder;
+class SourceBufferHolder;
 
 class HandleValueArray;
 
@@ -100,13 +100,8 @@ using JS::GCHashSet;
 
 using JS::CallArgs;
 using JS::CallNonGenericMethod;
-using JS::CompileOptions;
 using JS::IsAcceptableThis;
 using JS::NativeImpl;
-using JS::OwningCompileOptions;
-using JS::ReadOnlyCompileOptions;
-using JS::SourceBufferHolder;
-using JS::TransitiveCompileOptions;
 
 using JS::Rooted;
 using JS::RootedFunction;

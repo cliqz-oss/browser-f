@@ -14,6 +14,9 @@ const HISTOGRAM_IDB_IDS = [
 
 const HISTOGRAM_IDS = [].concat(HISTOGRAM_JSON_IDS, HISTOGRAM_IDB_IDS);
 
+const EXTENSION_ID1 = "@test-extension1";
+const EXTENSION_ID2 = "@test-extension2";
+
 async function test_telemetry_background() {
   const expectedEmptyHistograms = ExtensionStorageIDB.isBackendEnabled ?
           HISTOGRAM_JSON_IDS : HISTOGRAM_IDB_IDS;
@@ -29,24 +32,21 @@ async function test_telemetry_background() {
   async function contentScript() {
     await browser.storage.local.set({a: "b"});
     await browser.storage.local.get("a");
-    browser.runtime.sendMessage("contentDone");
+    browser.test.sendMessage("contentDone");
   }
 
-  let extInfo = {
-    manifest: {
-      permissions: ["storage"],
-      content_scripts: [
-        {
-          "matches": ["http://*/*/file_sample.html"],
-          "js": ["content_script.js"],
-        },
-      ],
-    },
-    async background() {
-      browser.runtime.onMessage.addListener(msg => {
-        browser.test.sendMessage(msg);
-      });
+  let baseManifest = {
+    permissions: ["storage"],
+    content_scripts: [
+      {
+        "matches": ["http://*/*/file_sample.html"],
+        "js": ["content_script.js"],
+      },
+    ],
+  };
 
+  let baseExtInfo = {
+    async background() {
       await browser.storage.local.set({a: "b"});
       await browser.storage.local.get("a");
       browser.test.sendMessage("backgroundDone");
@@ -56,8 +56,27 @@ async function test_telemetry_background() {
     },
   };
 
-  let extension1 = ExtensionTestUtils.loadExtension(extInfo);
-  let extension2 = ExtensionTestUtils.loadExtension(extInfo);
+  let extInfo1 = {
+    ...baseExtInfo,
+    manifest: {
+      ...baseManifest,
+      applications: {
+        gecko: {id: EXTENSION_ID1},
+      },
+    },
+  };
+  let extInfo2 = {
+    ...baseExtInfo,
+    manifest: {
+      ...baseManifest,
+      applications: {
+        gecko: {id: EXTENSION_ID2},
+      },
+    },
+  };
+
+  let extension1 = ExtensionTestUtils.loadExtension(extInfo1);
+  let extension2 = ExtensionTestUtils.loadExtension(extInfo2);
 
   clearHistograms();
 
@@ -99,10 +118,9 @@ async function test_telemetry_background() {
   // Run a content script.
   process = IS_OOP ? "content" : "parent";
   let expectedCount = IS_OOP ? 1 : 3;
-  let contentScriptPromise = extension1.awaitMessage("contentDone");
+
   let contentPage = await ExtensionTestUtils.loadContentPage(`${BASE_URL}/file_sample.html`);
-  await contentScriptPromise;
-  await contentPage.close();
+  await extension1.awaitMessage("contentDone");
 
   for (let id of expectedNonEmptyHistograms) {
     await promiseTelemetryRecorded(id, process, expectedCount);
@@ -121,6 +139,8 @@ async function test_telemetry_background() {
   for (let id of expectedEmptyHistograms) {
     ok(!(id in snapshots), `No data recorded for histogram: ${id}.`);
   }
+
+  await contentPage.close();
 }
 
 add_task(function test_telemetry_background_file_backend() {
@@ -129,6 +149,13 @@ add_task(function test_telemetry_background_file_backend() {
 });
 
 add_task(function test_telemetry_background_idb_backend() {
-  return runWithPrefs([[ExtensionStorageIDB.BACKEND_ENABLED_PREF, true]],
-                      test_telemetry_background);
+  return runWithPrefs([
+    [ExtensionStorageIDB.BACKEND_ENABLED_PREF, true],
+    // Set the migrated preference for the two test extension, because the
+    // first storage.local call fallbacks to run in the parent process when we
+    // don't know which is the selected backend during the extension startup
+    // and so we can't choose the telemetry histogram to use.
+    [`${ExtensionStorageIDB.IDB_MIGRATED_PREF_BRANCH}.${EXTENSION_ID1}`, true],
+    [`${ExtensionStorageIDB.IDB_MIGRATED_PREF_BRANCH}.${EXTENSION_ID2}`, true],
+  ], test_telemetry_background);
 });

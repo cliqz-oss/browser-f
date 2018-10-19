@@ -12,6 +12,7 @@
 #include "jit/BaselineFrame.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitRealm.h"
+#include "jit/shared/CodeGenerator-shared.h"
 #include "vm/Debugger.h"
 #include "vm/JSContext.h"
 #include "vm/Opcodes.h"
@@ -203,6 +204,7 @@ InterpreterFrame::prologue(JSContext* cx)
     RootedScript script(cx, this->script());
 
     MOZ_ASSERT(cx->interpreterRegs().pc == script->code());
+    MOZ_ASSERT(cx->realm() == script->realm());
 
     if (isEvalFrame()) {
         if (!script->bodyScope()->hasEnvironment()) {
@@ -226,8 +228,12 @@ InterpreterFrame::prologue(JSContext* cx)
             lexicalEnv = &cx->global()->lexicalEnvironment();
             varObjRoot = cx->global();
         }
-        if (!CheckGlobalDeclarationConflicts(cx, script, lexicalEnv, varObjRoot))
+        if (!CheckGlobalDeclarationConflicts(cx, script, lexicalEnv, varObjRoot)) {
+            // Treat this as a script entry, for consistency with Ion.
+            if (script->trackRecordReplayProgress())
+                mozilla::recordreplay::AdvanceExecutionProgressCounter();
             return false;
+        }
         return probes::EnterScript(cx, script, nullptr, this);
     }
 
@@ -252,6 +258,7 @@ void
 InterpreterFrame::epilogue(JSContext* cx, jsbytecode* pc)
 {
     RootedScript script(cx, this->script());
+    MOZ_ASSERT(cx->realm() == script->realm());
     probes::ExitScript(cx, script, script->functionNonDelazifying(), hasPushedGeckoProfilerFrame());
 
     // Check that the scope matches the environment at the point of leaving
@@ -563,7 +570,7 @@ JitFrameIter::settle()
 {
     if (isJSJit()) {
         const jit::JSJitFrameIter& jitFrame = asJSJit();
-        if (jitFrame.type() != jit::JitFrame_WasmToJSJit)
+        if (jitFrame.type() != jit::FrameType::WasmToJSJit)
             return;
 
         // Transition from js jit frames to wasm frames: we're on the
@@ -607,12 +614,13 @@ JitFrameIter::settle()
 
         MOZ_ASSERT(wasmFrame.done());
         uint8_t* prevFP = wasmFrame.unwoundIonCallerFP();
+        jit::FrameType prevFrameType = wasmFrame.unwoundIonFrameType();
 
         if (mustUnwindActivation_)
             act_->setJSExitFP(prevFP);
 
         iter_.destroy();
-        iter_.construct<jit::JSJitFrameIter>(act_, prevFP);
+        iter_.construct<jit::JSJitFrameIter>(act_, prevFrameType, prevFP);
         MOZ_ASSERT(!asJSJit().done());
         return;
     }
@@ -1577,7 +1585,7 @@ jit::JitActivation::JitActivation(JSContext* cx)
     packedExitFP_(nullptr),
     encodedWasmExitReason_(0),
     prevJitActivation_(cx->jitActivation),
-    rematerializedFrames_(nullptr),
+    rematerializedFrames_(),
     ionRecovery_(cx),
     bailoutData_(nullptr),
     lastProfilingFrame_(nullptr),
@@ -1604,7 +1612,6 @@ jit::JitActivation::~JitActivation()
     MOZ_ASSERT(!isWasmTrapping());
 
     clearRematerializedFrames();
-    js_delete(rematerializedFrames_);
 }
 
 void
@@ -1653,14 +1660,9 @@ jit::JitActivation::getRematerializedFrame(JSContext* cx, const JSJitFrameIter& 
     MOZ_ASSERT(iter.isIonScripted());
 
     if (!rematerializedFrames_) {
-        rematerializedFrames_ = cx->new_<RematerializedFrameTable>(cx);
+        rematerializedFrames_ = cx->make_unique<RematerializedFrameTable>(cx);
         if (!rematerializedFrames_)
             return nullptr;
-        if (!rematerializedFrames_->init()) {
-            rematerializedFrames_ = nullptr;
-            ReportOutOfMemory(cx);
-            return nullptr;
-        }
     }
 
     uint8_t* top = iter.fp();
@@ -1911,7 +1913,8 @@ void
 JS::ProfilingFrameIterator::settleFrames()
 {
     // Handle transition frames (see comment in JitFrameIter::operator++).
-    if (isJSJit() && !jsJitIter().done() && jsJitIter().frameType() == jit::JitFrame_WasmToJSJit) {
+    if (isJSJit() && !jsJitIter().done() && jsJitIter().frameType() == jit::FrameType::WasmToJSJit)
+    {
         wasm::Frame* fp = (wasm::Frame*) jsJitIter().fp();
         iteratorDestroy();
         new (storage()) wasm::ProfilingFrameIterator(*activation_->asJit(), fp);

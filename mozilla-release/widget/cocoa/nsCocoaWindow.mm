@@ -858,17 +858,6 @@ nsCocoaWindow::Show(bool bState)
       }
     }
     else if (mWindowType == eWindowType_popup) {
-      if (!nsCocoaFeatures::OnMojaveOrLater()) {
-        // If a popup window is shown after being hidden, it needs to be "reset"
-        // for it to receive any mouse events aside from mouse-moved events
-        // (because it was removed from the "window cache" when it was hidden
-        // -- see below).  Setting the window number to -1 and then back to its
-        // original value seems to accomplish this.  The idea was "borrowed"
-        // from the Java Embedding Plugin. This is fixed on macOS 10.14+.
-        NSInteger windowNumber = [mWindow windowNumber];
-        [mWindow _setWindowNumber:-1];
-        [mWindow _setWindowNumber:windowNumber];
-      }
       // For reasons that aren't yet clear, calls to [NSWindow orderFront:] or
       // [NSWindow makeKeyAndOrderFront:] can sometimes trigger "Error (1000)
       // creating CGSWindow", which in turn triggers an internal inconsistency
@@ -913,7 +902,7 @@ nsCocoaWindow::Show(bool bState)
               behavior = NSWindowAnimationBehaviorDocumentWindow;
               break;
             default:
-              NS_NOTREACHED("unexpected mAnimationType value");
+              MOZ_ASSERT_UNREACHABLE("unexpected mAnimationType value");
               // fall through
             case nsIWidget::eGenericWindowAnimation:
               behavior = NSWindowAnimationBehaviorDefault;
@@ -1003,21 +992,6 @@ nsCocoaWindow::Show(bool bState)
 
       [mWindow orderOut:nil];
 
-      if (!nsCocoaFeatures::OnMojaveOrLater()) {
-        // Unless it's explicitly removed from NSApp's "window cache", a popup
-        // window will keep receiving mouse-moved events even after it's been
-        // "ordered out" (instead of the browser window that was underneath it,
-        // until you click on that window).  This is bmo bug 378645, but it's
-        // surely an Apple bug.  The "window cache" is an undocumented
-        // subsystem, all of whose methods are included in the NSWindowCache
-        // category of the NSApplication class (in header files generated using
-        // class-dump). This workaround was "borrowed" from the Java Embedding
-        // Plugin (which uses it for a different purpose). This is fixed on
-        // macOS 10.14+.
-        if (mWindowType == eWindowType_popup) {
-          [NSApp _removeWindowFromCache:mWindow];
-        }
-      }
       // If our popup window is a non-native context menu, tell the OS (and
       // other programs) that a menu has closed.
       if ([mWindow isKindOfClass:[PopupWindow class]] &&
@@ -2527,6 +2501,21 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   keyBindings->GetEditCommands(aEvent, aCommands);
 }
 
+already_AddRefed<nsIWidget>
+nsIWidget::CreateTopLevelWindow()
+{
+  nsCOMPtr<nsIWidget> window = new nsCocoaWindow();
+  return window.forget();
+}
+
+already_AddRefed<nsIWidget>
+nsIWidget::CreateChildWindow()
+{
+  nsCOMPtr<nsIWidget> window = new nsChildView();
+  return window.forget();
+}
+
+
 @implementation WindowDelegate
 
 // We try to find a gecko menu bar to paint. If one does not exist, just paint
@@ -3519,7 +3508,7 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 // 1) In the style sheet we set the toolbar's -moz-appearance to toolbar.
 // 2) When the toolbar is visible and we paint the application chrome
 //    window, the array that Gecko passes nsChildView::UpdateThemeGeometries
-//    will contain an entry for the widget type NS_THEME_TOOLBAR.
+//    will contain an entry for the widget type StyleAppearance::Toolbar.
 // 3) nsChildView::UpdateThemeGeometries finds the toolbar frame's ToolbarWindow
 //    and passes the toolbar frame's height to setUnifiedToolbarHeight.
 // 4) If the toolbar height has changed, a titlebar redraw is triggered and the

@@ -77,16 +77,16 @@ class JitRuntime
     MainThreadData<uint64_t> nextCompilationId_;
 
     // Shared exception-handler tail.
-    ExclusiveAccessLockWriteOnceData<uint32_t> exceptionTailOffset_;
+    WriteOnceData<uint32_t> exceptionTailOffset_;
 
     // Shared post-bailout-handler tail.
-    ExclusiveAccessLockWriteOnceData<uint32_t> bailoutTailOffset_;
+    WriteOnceData<uint32_t> bailoutTailOffset_;
 
     // Shared profiler exit frame tail.
-    ExclusiveAccessLockWriteOnceData<uint32_t> profilerExitFrameTailOffset_;
+    WriteOnceData<uint32_t> profilerExitFrameTailOffset_;
 
     // Trampoline for entering JIT code.
-    ExclusiveAccessLockWriteOnceData<uint32_t> enterJITOffset_;
+    WriteOnceData<uint32_t> enterJITOffset_;
 
     // Vector mapping frame class sizes to bailout tables.
     struct BailoutTable {
@@ -97,50 +97,50 @@ class JitRuntime
         {}
     };
     typedef Vector<BailoutTable, 4, SystemAllocPolicy> BailoutTableVector;
-    ExclusiveAccessLockWriteOnceData<BailoutTableVector> bailoutTables_;
+    WriteOnceData<BailoutTableVector> bailoutTables_;
 
     // Generic bailout table; used if the bailout table overflows.
-    ExclusiveAccessLockWriteOnceData<uint32_t> bailoutHandlerOffset_;
+    WriteOnceData<uint32_t> bailoutHandlerOffset_;
 
     // Argument-rectifying thunk, in the case of insufficient arguments passed
     // to a function call site.
-    ExclusiveAccessLockWriteOnceData<uint32_t> argumentsRectifierOffset_;
-    ExclusiveAccessLockWriteOnceData<uint32_t> argumentsRectifierReturnOffset_;
+    WriteOnceData<uint32_t> argumentsRectifierOffset_;
+    WriteOnceData<uint32_t> argumentsRectifierReturnOffset_;
 
     // Thunk that invalides an (Ion compiled) caller on the Ion stack.
-    ExclusiveAccessLockWriteOnceData<uint32_t> invalidatorOffset_;
+    WriteOnceData<uint32_t> invalidatorOffset_;
 
     // Thunk that calls the GC pre barrier.
-    ExclusiveAccessLockWriteOnceData<uint32_t> valuePreBarrierOffset_;
-    ExclusiveAccessLockWriteOnceData<uint32_t> stringPreBarrierOffset_;
-    ExclusiveAccessLockWriteOnceData<uint32_t> objectPreBarrierOffset_;
-    ExclusiveAccessLockWriteOnceData<uint32_t> shapePreBarrierOffset_;
-    ExclusiveAccessLockWriteOnceData<uint32_t> objectGroupPreBarrierOffset_;
+    WriteOnceData<uint32_t> valuePreBarrierOffset_;
+    WriteOnceData<uint32_t> stringPreBarrierOffset_;
+    WriteOnceData<uint32_t> objectPreBarrierOffset_;
+    WriteOnceData<uint32_t> shapePreBarrierOffset_;
+    WriteOnceData<uint32_t> objectGroupPreBarrierOffset_;
 
     // Thunk to call malloc/free.
-    ExclusiveAccessLockWriteOnceData<uint32_t> mallocStubOffset_;
-    ExclusiveAccessLockWriteOnceData<uint32_t> freeStubOffset_;
+    WriteOnceData<uint32_t> mallocStubOffset_;
+    WriteOnceData<uint32_t> freeStubOffset_;
 
     // Thunk called to finish compilation of an IonScript.
-    ExclusiveAccessLockWriteOnceData<uint32_t> lazyLinkStubOffset_;
+    WriteOnceData<uint32_t> lazyLinkStubOffset_;
 
     // Thunk to enter the interpreter from JIT code.
-    ExclusiveAccessLockWriteOnceData<uint32_t> interpreterStubOffset_;
+    WriteOnceData<uint32_t> interpreterStubOffset_;
 
     // Thunk used by the debugger for breakpoint and step mode.
-    ExclusiveAccessLockWriteOnceData<JitCode*> debugTrapHandler_;
+    WriteOnceData<JitCode*> debugTrapHandler_;
 
     // Thunk used to fix up on-stack recompile of baseline scripts.
-    ExclusiveAccessLockWriteOnceData<JitCode*> baselineDebugModeOSRHandler_;
-    ExclusiveAccessLockWriteOnceData<void*> baselineDebugModeOSRHandlerNoFrameRegPopAddr_;
+    WriteOnceData<JitCode*> baselineDebugModeOSRHandler_;
+    WriteOnceData<void*> baselineDebugModeOSRHandlerNoFrameRegPopAddr_;
 
     // Code for trampolines and VMFunction wrappers.
-    ExclusiveAccessLockWriteOnceData<JitCode*> trampolineCode_;
+    WriteOnceData<JitCode*> trampolineCode_;
 
     // Map VMFunction addresses to the offset of the wrapper in
     // trampolineCode_.
     using VMWrapperMap = HashMap<const VMFunction*, uint32_t, VMFunction>;
-    ExclusiveAccessLockWriteOnceData<VMWrapperMap*> functionWrappers_;
+    WriteOnceData<VMWrapperMap*> functionWrappers_;
 
     // Global table of jitcode native address => bytecode address mappings.
     UnprotectedData<JitcodeGlobalTable*> jitcodeGlobalTable_;
@@ -154,12 +154,17 @@ class JitRuntime
     // Number of Ion compilations which were finished off thread and are
     // waiting to be lazily linked. This is only set while holding the helper
     // thread state lock, but may be read from at other times.
-    mozilla::Atomic<size_t> numFinishedBuilders_;
+    typedef mozilla::Atomic<size_t, mozilla::SequentiallyConsistent,
+                            mozilla::recordreplay::Behavior::DontPreserve> NumFinishedBuildersType;
+    NumFinishedBuildersType numFinishedBuilders_;
 
     // List of Ion compilation waiting to get linked.
     using IonBuilderList = mozilla::LinkedList<js::jit::IonBuilder>;
     MainThreadData<IonBuilderList> ionLazyLinkList_;
     MainThreadData<size_t> ionLazyLinkListSize_;
+
+    // Counter used to help dismbiguate stubs in CacheIR
+    MainThreadData<uint64_t> disambiguationId_;
 
   private:
     void generateLazyLinkStub(MacroAssembler& masm);
@@ -199,7 +204,7 @@ class JitRuntime
   public:
     JitRuntime();
     ~JitRuntime();
-    MOZ_MUST_USE bool initialize(JSContext* cx, js::AutoLockForExclusiveAccess& lock);
+    MOZ_MUST_USE bool initialize(JSContext* cx);
 
     static void Trace(JSTracer* trc, const js::AutoAccessAtomsZone& access);
     static void TraceJitcodeGlobalTableForMinorGC(JSTracer* trc);
@@ -315,7 +320,7 @@ class JitRuntime
     size_t numFinishedBuilders() const {
         return numFinishedBuilders_;
     }
-    mozilla::Atomic<size_t>& numFinishedBuildersRef(const AutoLockHelperThreadState& locked) {
+    NumFinishedBuildersType& numFinishedBuildersRef(const AutoLockHelperThreadState& locked) {
         return numFinishedBuilders_;
     }
 
@@ -327,17 +332,18 @@ class JitRuntime
 
     void ionLazyLinkListRemove(JSRuntime* rt, js::jit::IonBuilder* builder);
     void ionLazyLinkListAdd(JSRuntime* rt, js::jit::IonBuilder* builder);
+
+    uint64_t nextDisambiguationId() {
+        return disambiguationId_++;
+    }
 };
 
 enum class CacheKind : uint8_t;
 class CacheIRStubInfo;
 
 enum class ICStubEngine : uint8_t {
-    // Baseline IC, see SharedIC.h and BaselineIC.h.
+    // Baseline IC, see BaselineIC.h.
     Baseline = 0,
-
-    // Ion IC that reuses Baseline IC code, see SharedIC.h.
-    IonSharedIC,
 
     // Ion IC, see IonIC.h.
     IonIC
@@ -396,7 +402,6 @@ class JitZone
     BaselineCacheIRStubCodeMap baselineCacheIRStubCodes_;
 
   public:
-    MOZ_MUST_USE bool init(JSContext* cx);
     void sweep();
 
     void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
@@ -431,22 +436,18 @@ class JitZone
     }
 
     CacheIRStubInfo* getIonCacheIRStubInfo(const CacheIRStubKey::Lookup& key) {
-        if (!ionCacheIRStubInfoSet_.initialized())
-            return nullptr;
         IonCacheIRStubInfoSet::Ptr p = ionCacheIRStubInfoSet_.lookup(key);
         return p ? p->stubInfo.get() : nullptr;
     }
     MOZ_MUST_USE bool putIonCacheIRStubInfo(const CacheIRStubKey::Lookup& lookup,
                                             CacheIRStubKey& key)
     {
-        if (!ionCacheIRStubInfoSet_.initialized() && !ionCacheIRStubInfoSet_.init())
-            return false;
         IonCacheIRStubInfoSet::AddPtr p = ionCacheIRStubInfoSet_.lookupForAdd(lookup);
         MOZ_ASSERT(!p);
         return ionCacheIRStubInfoSet_.add(p, std::move(key));
     }
     void purgeIonCacheIRStubInfo() {
-        ionCacheIRStubInfoSet_.finish();
+        ionCacheIRStubInfoSet_.clearAndCompact();
     }
 };
 
@@ -505,10 +506,6 @@ class JitRealm
 
     mozilla::EnumeratedArray<StubIndex, StubIndex::Count, ReadBarrieredJitCode> stubs_;
 
-    // The same approach is taken for SIMD template objects.
-
-    mozilla::EnumeratedArray<SimdType, SimdType::Count, ReadBarrieredObject> simdTemplateObjects_;
-
     JitCode* generateStringConcatStub(JSContext* cx);
     JitCode* generateRegExpMatcherStub(JSContext* cx);
     JitCode* generateRegExpSearcherStub(JSContext* cx);
@@ -521,23 +518,6 @@ class JitRealm
     }
 
   public:
-    JSObject* getSimdTemplateObjectFor(JSContext* cx, Handle<SimdTypeDescr*> descr) {
-        ReadBarrieredObject& tpl = simdTemplateObjects_[descr->type()];
-        if (!tpl)
-            tpl.set(TypedObject::createZeroed(cx, descr, gc::TenuredHeap));
-        return tpl.get();
-    }
-
-    JSObject* maybeGetSimdTemplateObjectFor(SimdType type) const {
-        // This function is used by Eager Simd Unbox phase which can run
-        // off-thread, so we cannot use the usual read barrier. For more
-        // information, see the comment above
-        // CodeGenerator::simdRefreshTemplatesDuringLink_.
-
-        MOZ_ASSERT(CurrentThreadIsIonCompiling());
-        return simdTemplateObjects_[type].unbarrieredGet();
-    }
-
     JitCode* getStubCode(uint32_t key) {
         ICStubCodeMap::Ptr p = stubCodes_->lookup(key);
         if (p)
@@ -618,15 +598,13 @@ class JitRealm
         return stubs_[RegExpTester];
     }
 
-    // Perform the necessary read barriers on stubs and SIMD template object
-    // described by the bitmasks passed in. This function can only be called
-    // from the main thread.
+    // Perform the necessary read barriers on stubs described by the bitmasks
+    // passed in. This function can only be called from the main thread.
     //
-    // The stub and template object pointers must still be valid by the time
-    // these methods are called. This is arranged by cancelling off-thread Ion
-    // compilation at the start of GC and at the start of sweeping.
+    // The stub pointers must still be valid by the time these methods are
+    // called. This is arranged by cancelling off-thread Ion compilation at the
+    // start of GC and at the start of sweeping.
     void performStubReadBarriers(uint32_t stubsToBarrier) const;
-    void performSIMDTemplateReadBarriers(uint32_t simdTemplatesToBarrier) const;
 
     size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 

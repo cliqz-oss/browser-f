@@ -22,7 +22,7 @@ static float ClampFactor(float aFactor)
   if (aFactor > 1) {
     return 1;
   } else if (aFactor < 0) {
-    NS_NOTREACHED("A negative value should not have been parsed.");
+    MOZ_ASSERT_UNREACHABLE("A negative value should not have been parsed.");
     return 0;
   }
 
@@ -91,7 +91,7 @@ nsCSSFilterInstance::BuildPrimitives(nsTArray<FilterPrimitiveDescription>& aPrim
       result = SetAttributesForInvert(descr);
       break;
     case NS_STYLE_FILTER_OPACITY:
-      descr = CreatePrimitiveDescription(PrimitiveType::ComponentTransfer,
+      descr = CreatePrimitiveDescription(PrimitiveType::Opacity,
                                          aPrimitiveDescrs,
                                          aInputIsTainted);
       result = SetAttributesForOpacity(descr);
@@ -109,7 +109,7 @@ nsCSSFilterInstance::BuildPrimitives(nsTArray<FilterPrimitiveDescription>& aPrim
       result = SetAttributesForSepia(descr);
       break;
     default:
-      NS_NOTREACHED("not a valid CSS filter type");
+      MOZ_ASSERT_UNREACHABLE("not a valid CSS filter type");
       return NS_ERROR_FAILURE;
   }
 
@@ -144,7 +144,7 @@ nsCSSFilterInstance::SetAttributesForBlur(FilterPrimitiveDescription& aDescr)
 {
   const nsStyleCoord& radiusInFrameSpace = mFilter.GetFilterParameter();
   if (radiusInFrameSpace.GetUnit() != eStyleUnit_Coord) {
-    NS_NOTREACHED("unexpected unit");
+    MOZ_ASSERT_UNREACHABLE("unexpected unit");
     return NS_ERROR_FAILURE;
   }
 
@@ -209,7 +209,7 @@ nsCSSFilterInstance::SetAttributesForDropShadow(FilterPrimitiveDescription& aDes
 {
   nsCSSShadowArray* shadows = mFilter.GetDropShadow();
   if (!shadows || shadows->Length() != 1) {
-    NS_NOTREACHED("Exactly one drop shadow should have been parsed.");
+    MOZ_ASSERT_UNREACHABLE("Exactly one drop shadow should have been parsed.");
     return NS_ERROR_FAILURE;
   }
 
@@ -224,7 +224,7 @@ nsCSSFilterInstance::SetAttributesForDropShadow(FilterPrimitiveDescription& aDes
   aDescr.Attributes().Set(eDropShadowOffset, offsetInFilterSpace);
 
   // Set color. If unspecified, use the CSS color property.
-  nscolor shadowColor = shadow->mHasColor ? shadow->mColor : mShadowFallbackColor;
+  nscolor shadowColor = shadow->mColor.CalcColor(mShadowFallbackColor);
   aDescr.Attributes().Set(eDropShadowColor, ToAttributeColor(shadowColor));
 
   return NS_OK;
@@ -291,24 +291,7 @@ nsCSSFilterInstance::SetAttributesForOpacity(FilterPrimitiveDescription& aDescr)
   const nsStyleCoord& styleValue = mFilter.GetFilterParameter();
   float value = ClampFactor(styleValue.GetFactorOrPercentValue());
 
-  // Set identity transfer functions for RGB.
-  AttributeMap identityAttrs;
-  identityAttrs.Set(eComponentTransferFunctionType,
-                    (uint32_t)SVG_FECOMPONENTTRANSFER_TYPE_IDENTITY);
-  aDescr.Attributes().Set(eComponentTransferFunctionR, identityAttrs);
-  aDescr.Attributes().Set(eComponentTransferFunctionG, identityAttrs);
-  aDescr.Attributes().Set(eComponentTransferFunctionB, identityAttrs);
-
-  // Set transfer function for A.
-  AttributeMap opacityAttrs;
-  float opacityTableValues[2];
-  opacityTableValues[0] = 0;
-  opacityTableValues[1] = value;
-  opacityAttrs.Set(eComponentTransferFunctionType,
-                  (uint32_t)SVG_FECOMPONENTTRANSFER_TYPE_TABLE);
-  opacityAttrs.Set(eComponentTransferFunctionTableValues, opacityTableValues, 2);
-  aDescr.Attributes().Set(eComponentTransferFunctionA, opacityAttrs);
-
+  aDescr.Attributes().Set(eOpacityOpacity, value);
   return NS_OK;
 }
 
@@ -356,9 +339,11 @@ nsCSSFilterInstance::BlurRadiusToFilterSpace(nscoord aRadiusInFrameSpace)
 
   // Check the radius limits.
   if (radiusInFilterSpace.width < 0 || radiusInFilterSpace.height < 0) {
-    NS_NOTREACHED("we shouldn't have parsed a negative radius in the style");
+    MOZ_ASSERT_UNREACHABLE("we shouldn't have parsed a negative radius in the "
+                           "style");
     return Size();
   }
+
   Float maxStdDeviation = (Float)kMaxStdDeviation;
   radiusInFilterSpace.width = std::min(radiusInFilterSpace.width, maxStdDeviation);
   radiusInFilterSpace.height = std::min(radiusInFilterSpace.height, maxStdDeviation);

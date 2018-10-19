@@ -147,20 +147,11 @@ DistributionCustomizer.prototype = {
 
         let folder = await PlacesUtils.bookmarks.insert({
           type: PlacesUtils.bookmarks.TYPE_FOLDER,
-          parentGuid, index, title: item.title
+          parentGuid, index, title: item.title,
         });
 
         await this._parseBookmarksSection(folder.guid,
                                           "BookmarksFolder-" + item.folderId);
-
-        if (item.description) {
-          let folderId = await PlacesUtils.promiseItemId(folder.guid);
-          PlacesUtils.annotations.setItemAnnotation(folderId,
-                                                    "bookmarkProperties/description",
-                                                    item.description, 0,
-                                                    PlacesUtils.annotations.EXPIRE_NEVER);
-        }
-
         break;
 
       case "separator":
@@ -169,7 +160,7 @@ DistributionCustomizer.prototype = {
 
         await PlacesUtils.bookmarks.insert({
           type: PlacesUtils.bookmarks.TYPE_SEPARATOR,
-          parentGuid, index
+          parentGuid, index,
         });
         break;
 
@@ -182,7 +173,7 @@ DistributionCustomizer.prototype = {
         await PlacesUtils.livemarks.addLivemark({
           feedURI: Services.io.newURI(item.feedLink),
           siteURI: Services.io.newURI(item.siteLink),
-          parentId, index, title: item.title
+          parentId, index, title: item.title,
         });
         break;
 
@@ -191,17 +182,9 @@ DistributionCustomizer.prototype = {
         if (itemIndex < defaultIndex)
           index = prependIndex++;
 
-        let bm = await PlacesUtils.bookmarks.insert({
-          parentGuid, index, title: item.title, url: item.link
+        await PlacesUtils.bookmarks.insert({
+          parentGuid, index, title: item.title, url: item.link,
         });
-
-        if (item.description) {
-          let bmId = await PlacesUtils.promiseItemId(bm.guid);
-          PlacesUtils.annotations.setItemAnnotation(bmId,
-                                                    "bookmarkProperties/description",
-                                                    item.description, 0,
-                                                    PlacesUtils.annotations.EXPIRE_NEVER);
-        }
 
         if (item.icon && item.iconData) {
           try {
@@ -438,10 +421,10 @@ DistributionCustomizer.prototype = {
   },
 
   _checkCustomizationComplete: function DIST__checkCustomizationComplete() {
-    const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
+    const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     if (this._newProfile) {
-      let xulStore = Cc["@mozilla.org/xul/xulstore;1"].getService(Ci.nsIXULStore);
+      let xulStore = Services.xulStore;
 
       try {
         var showPersonalToolbar = Services.prefs.getBoolPref("browser.showPersonalToolbar");
@@ -462,7 +445,7 @@ DistributionCustomizer.prototype = {
         prefDefaultsApplied) {
       Services.obs.notifyObservers(null, DISTRIBUTION_CUSTOMIZATION_COMPLETE_TOPIC);
     }
-  }
+  },
 };
 
 function parseValue(value) {

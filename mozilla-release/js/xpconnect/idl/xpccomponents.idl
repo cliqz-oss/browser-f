@@ -19,6 +19,7 @@ interface nsIJSCID;
 interface nsIJSIID;
 interface nsIPrincipal;
 interface nsIStackFrame;
+webidl Element;
 
 /**
 * interface of Components.interfacesByID
@@ -176,6 +177,13 @@ interface nsIXPCComponents_Utils : nsISupports
                         [optional] in long lineNo);
 
     /*
+     * Get the sandbox for running JS-implemented UA widgets (video controls etc.),
+     * hosted inside UA-created Shadow DOM.
+     */
+    [implicit_jscontext]
+    jsval getUAWidgetScope(in nsIPrincipal principal);
+
+    /*
      * getSandboxMetadata is designed to be called from JavaScript only.
      *
      * getSandboxMetadata retrieves the metadata associated with
@@ -287,6 +295,14 @@ interface nsIXPCComponents_Utils : nsISupports
      * Force an immediate cycle collection cycle.
      */
     void forceCC([optional] in nsICycleCollectorListener aListener);
+
+    /*
+     * To be called from JS only.  C++ callers should use the
+     * nsCycleCollector_createLogger() function instead.
+     *
+     * Create an instance of the built-in cycle collector logger object.
+     */
+    nsICycleCollectorListener createCCLogger();
 
     /*
      * To be called from JS only.
@@ -697,6 +713,9 @@ interface nsIXPCComponents_Utils : nsISupports
      */
     void blockThreadedExecution(in nsIBlockThreadedExecutionCallback aBlockedCallback);
     void unblockThreadedExecution();
+
+    /* Give a directive to the record/replay system. */
+    void recordReplayDirective(in long directive);
 };
 
 /**

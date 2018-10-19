@@ -16,6 +16,7 @@
 #include "jsutil.h"
 
 #include "ds/LifoAlloc.h"
+#include "util/Text.h"
 #include "util/Windows.h"
 #include "vm/JSContext.h"
 
@@ -124,7 +125,7 @@ bool
 Sprinter::init()
 {
     MOZ_ASSERT(!initialized);
-    base = (char*) js_malloc(DefaultSize);
+    base = js_pod_malloc<char>(DefaultSize);
     if (!base) {
         reportOutOfMemory();
         return false;
@@ -223,9 +224,8 @@ Sprinter::putString(JSString* s)
     InvariantChecker ic(this);
 
     size_t length = s->length();
-    size_t size = length;
 
-    char* buffer = reserve(size);
+    char* buffer = reserve(length);
     if (!buffer)
         return false;
 
@@ -234,12 +234,15 @@ Sprinter::putString(JSString* s)
         return false;
 
     JS::AutoCheckCannotGC nogc;
-    if (linear->hasLatin1Chars())
+    if (linear->hasLatin1Chars()) {
         PodCopy(reinterpret_cast<Latin1Char*>(buffer), linear->latin1Chars(nogc), length);
-    else
-        DeflateStringToBuffer(nullptr, linear->twoByteChars(nogc), length, buffer, &size);
+    } else {
+        const char16_t* src = linear->twoByteChars(nogc);
+        for (size_t i = 0; i < length; i++)
+            buffer[i] = char(src[i]);
+    }
 
-    buffer[size] = 0;
+    buffer[length] = 0;
     return true;
 }
 
@@ -445,13 +448,11 @@ Fprinter::put(const char* s, size_t len)
     }
 #ifdef XP_WIN32
     if ((file_ == stderr) && (IsDebuggerPresent())) {
-        UniqueChars buf(static_cast<char*>(js_malloc(len + 1)));
+        UniqueChars buf = DuplicateString(s, len);
         if (!buf) {
             reportOutOfMemory();
             return false;
         }
-        PodCopy(buf.get(), s, len);
-        buf[len] = '\0';
         OutputDebugStringA(buf.get());
     }
 #endif

@@ -57,6 +57,8 @@ public:
   static nsresult Init();
   static void Shutdown();
 
+  void PrefChanged(const char* aPref);
+
   /**
    * Retrieve the single focus manager.
    */
@@ -73,6 +75,11 @@ public:
    * Returns true if aContent currently has focus.
    */
   bool IsFocused(nsIContent* aContent);
+
+  /**
+   * Returns true if test mode is enabled.
+   */
+  bool IsTestMode();
 
   /**
    * Return a focused window. Version of nsIFocusManager::GetFocusedWindow.
@@ -451,8 +458,11 @@ protected:
    * Host and Slot elements need to be handled as if they had tabindex 0 even
    * when they don't have the attribute. This is a helper method to get the right
    * value for focus navigation.
+   * If aIsFocusable is passed, it is set to true if the element itself is
+   * focusable.
    */
-  int32_t HostOrSlotTabIndexValue(nsIContent* aContent);
+  int32_t HostOrSlotTabIndexValue(nsIContent* aContent,
+                                  bool* aIsFocusable = nullptr);
 
   /**
    * Retrieve the next tabbable element in scope owned by aOwner, using

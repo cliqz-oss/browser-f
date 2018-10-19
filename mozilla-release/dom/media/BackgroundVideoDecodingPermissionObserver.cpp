@@ -110,11 +110,16 @@ BackgroundVideoDecodingPermissionObserver::EnableEvent() const
     return;
   }
 
+  nsCOMPtr<nsPIDOMWindowOuter> ownerTop = GetOwnerWindow();
+  if (!ownerTop) {
+    return;
+  }
+
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
     new AsyncEventDispatcher(doc,
                              NS_LITERAL_STRING("UnselectedTabHover:Enable"),
-                             /* Bubbles */ true,
-                             /* OnlyChromeDispatch */ true);
+                             CanBubble::eYes,
+                             ChromeOnlyDispatch::eYes);
   asyncDispatcher->PostDOMEvent();
 }
 
@@ -126,11 +131,16 @@ BackgroundVideoDecodingPermissionObserver::DisableEvent() const
     return;
   }
 
+  nsCOMPtr<nsPIDOMWindowOuter> ownerTop = GetOwnerWindow();
+  if (!ownerTop) {
+    return;
+  }
+
   RefPtr<AsyncEventDispatcher> asyncDispatcher =
     new AsyncEventDispatcher(doc,
                              NS_LITERAL_STRING("UnselectedTabHover:Disable"),
-                             /* Bubbles */ true,
-                             /* OnlyChromeDispatch */ true);
+                             CanBubble::eYes,
+                             ChromeOnlyDispatch::eYes);
   asyncDispatcher->PostDOMEvent();
 }
 

@@ -39,7 +39,7 @@ const PREF_BRANCH = "extensions.pocket.";
 const PREFS = {
   enabled: true, // bug 1229937, figure out ui tour support
   api: "api.getpocket.com",
-  site: "getpocket.com"
+  site: "getpocket.com",
 };
 
 function setDefaultPrefs() {
@@ -64,7 +64,7 @@ function setDefaultPrefs() {
 }
 
 function createElementWithAttrs(document, type, attrs) {
-  let element = document.createElement(type);
+  let element = document.createXULElement(type);
   Object.keys(attrs).forEach(function(attr) {
     element.setAttribute(attr, attrs[attr]);
   });
@@ -104,18 +104,18 @@ var PocketPageAction = {
             return;
           }
 
-          let wrapper = doc.createElement("hbox");
+          let wrapper = doc.createXULElement("hbox");
           wrapper.id = "pocket-button-box";
           wrapper.classList.add("urlbar-icon-wrapper", "urlbar-page-action");
-          let animatableBox = doc.createElement("hbox");
+          let animatableBox = doc.createXULElement("hbox");
           animatableBox.id = "pocket-animatable-box";
-          let animatableImage = doc.createElement("image");
+          let animatableImage = doc.createXULElement("image");
           animatableImage.id = "pocket-animatable-image";
           animatableImage.setAttribute("role", "presentation");
           let tooltip =
             gPocketBundle.GetStringFromName("pocket-button.tooltiptext");
           animatableImage.setAttribute("tooltiptext", tooltip);
-          let pocketButton = doc.createElement("image");
+          let pocketButton = doc.createXULElement("image");
           pocketButton.id = "pocket-button";
           pocketButton.classList.add("urlbar-icon");
           pocketButton.setAttribute("role", "button");
@@ -283,7 +283,7 @@ var PocketContextMenu = {
         "id": "context-pocket",
         "label": gPocketBundle.GetStringFromName("saveToPocketCmd.label"),
         "accesskey": gPocketBundle.GetStringFromName("saveToPocketCmd.accesskey"),
-        "oncommand": "Pocket.savePage(gContextMenu.browser, gContextMenu.browser.currentURI.spec, gContextMenu.browser.contentTitle);"
+        "oncommand": "Pocket.savePage(gContextMenu.browser, gContextMenu.browser.currentURI.spec, gContextMenu.browser.contentTitle);",
       });
       let sibling = document.getElementById("context-savepage");
       if (sibling.nextSibling) {
@@ -300,7 +300,7 @@ var PocketContextMenu = {
         "id": "context-savelinktopocket",
         "label": gPocketBundle.GetStringFromName("saveLinkToPocketCmd.label"),
         "accesskey": gPocketBundle.GetStringFromName("saveLinkToPocketCmd.accesskey"),
-        "oncommand": "Pocket.savePage(gContextMenu.browser, gContextMenu.linkURL);"
+        "oncommand": "Pocket.savePage(gContextMenu.browser, gContextMenu.linkURL);",
       });
       let sibling = document.getElementById("context-savelink");
       if (sibling.nextSibling) {
@@ -310,7 +310,7 @@ var PocketContextMenu = {
       }
     }
     menu.hidden = !showSaveLinkToPocket;
-  }
+  },
 };
 
 // PocketReader
@@ -344,10 +344,13 @@ var PocketReader = {
     if (this.hidden) {
       Services.mm.broadcastAsyncMessage("Reader:RemoveButton", { id: "pocket-button" });
     } else {
-      Services.mm.broadcastAsyncMessage("Reader:AddButton",
-                               { id: "pocket-button",
-                                 title: gPocketBundle.GetStringFromName("pocket-button.tooltiptext"),
-                                 image: "chrome://pocket/content/panels/img/pocket.svg#pocket-mark" });
+      Services.mm.broadcastAsyncMessage("Reader:AddButton", {
+        id: "pocket-button",
+        title: gPocketBundle.GetStringFromName("pocket-button.tooltiptext"),
+        image: "chrome://pocket/content/panels/img/pocket-outline.svg",
+        width: 20,
+        height: 20,
+      });
     }
   },
   receiveMessage(message) {
@@ -357,9 +360,13 @@ var PocketReader = {
         if (this.hidden)
           break;
         message.target.messageManager.
-          sendAsyncMessage("Reader:AddButton", { id: "pocket-button",
-                                                 title: gPocketBundle.GetStringFromName("pocket-button.tooltiptext"),
-                                                 image: "chrome://pocket/content/panels/img/pocket.svg#pocket-mark"});
+          sendAsyncMessage("Reader:AddButton", {
+            id: "pocket-button",
+            title: gPocketBundle.GetStringFromName("pocket-button.tooltiptext"),
+            image: "chrome://pocket/content/panels/img/pocket-outline.svg",
+            width: 20,
+            height: 20,
+          });
         break;
       }
       case "Reader:Clicked-pocket-button": {
@@ -369,7 +376,7 @@ var PocketReader = {
         break;
       }
     }
-  }
+  },
 };
 
 
@@ -384,7 +391,7 @@ function pktUIGetter(prop, window) {
       return window[prop];
     },
     configurable: true,
-    enumerable: true
+    enumerable: true,
   };
 }
 
@@ -468,7 +475,7 @@ var PocketOverlay = {
         "label": gPocketBundle.GetStringFromName("pocketMenuitem.label"),
         "class": "subviewbutton subviewbutton-iconic",
         "oncommand": "Pocket.openList(event)",
-        "hidden": hidden
+        "hidden": hidden,
       });
       sib.parentNode.insertBefore(menu, sib);
     }
@@ -478,14 +485,14 @@ var PocketOverlay = {
   },
 
   addStyles(win) {
-    let utils = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    let utils = win.windowUtils;
     utils.addSheet(this._cachedSheet, this._sheetType);
   },
 
   removeStyles(win) {
-    let utils = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    let utils = win.windowUtils;
     utils.removeSheet(gPocketStyleURI, this._sheetType);
-  }
+  },
 
 };
 
@@ -531,9 +538,6 @@ function install() {
 function uninstall() {
 }
 
-function* browserWindows() {
-  let windows = Services.wm.getEnumerator("navigator:browser");
-  while (windows.hasMoreElements()) {
-    yield windows.getNext();
-  }
+function browserWindows() {
+  return Services.wm.getEnumerator("navigator:browser");
 }

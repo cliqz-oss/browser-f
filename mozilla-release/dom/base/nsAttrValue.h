@@ -41,7 +41,7 @@ class DeclarationBlock;
 
 #define NS_ATTRVALUE_MAX_STRINGLENGTH_ATOM 12
 
-#define NS_ATTRVALUE_BASETYPE_MASK (uintptr_t(3))
+const uintptr_t NS_ATTRVALUE_BASETYPE_MASK = 3;
 #define NS_ATTRVALUE_POINTERVALUE_MASK (~NS_ATTRVALUE_BASETYPE_MASK)
 
 #define NS_ATTRVALUE_INTEGERTYPE_BITS 4
@@ -478,7 +478,11 @@ private:
   int32_t EnumTableEntryToValue(const EnumTable* aEnumTable,
                                 const EnumTable* aTableEntry);
 
+  static MiscContainer* AllocMiscContainer();
+  static void DeallocMiscContainer(MiscContainer* aCont);
+
   static nsTArray<const EnumTable*>* sEnumTableArray;
+  static MiscContainer* sMiscContainerCache;
 
   uintptr_t mBits;
 };

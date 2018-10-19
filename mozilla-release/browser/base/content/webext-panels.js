@@ -25,10 +25,10 @@ function getBrowser(sidebar) {
     return Promise.resolve(browser);
   }
 
-  let stack = document.createElementNS(XUL_NS, "stack");
+  let stack = document.createXULElement("stack");
   stack.setAttribute("flex", "1");
 
-  browser = document.createElementNS(XUL_NS, "browser");
+  browser = document.createXULElement("browser");
   browser.setAttribute("id", "webext-panels-browser");
   browser.setAttribute("type", "content");
   browser.setAttribute("flex", "1");
@@ -38,7 +38,6 @@ function getBrowser(sidebar) {
   browser.setAttribute("tooltip", "aHTMLTooltip");
   browser.setAttribute("autocompletepopup", "PopupAutoComplete");
   browser.setAttribute("selectmenulist", "ContentSelectDropdown");
-  browser.setAttribute("onclick", "window.parent.contentAreaClick(event, true);");
 
   // Ensure that the browser is going to run in the same process of the other
   // extension pages from the same addon.
@@ -64,23 +63,24 @@ function getBrowser(sidebar) {
   document.documentElement.appendChild(stack);
 
   return readyPromise.then(() => {
-    browser.messageManager.loadFrameScript("chrome://browser/content/content.js", false);
+    browser.messageManager.loadFrameScript("chrome://browser/content/content.js", false, true);
     ExtensionParent.apiManager.emit("extension-browser-inserted", browser);
 
-    if (sidebar.browserStyle) {
-      browser.messageManager.loadFrameScript(
-        "chrome://extensions/content/ext-browser-content.js", false);
+    browser.messageManager.loadFrameScript(
+      "chrome://extensions/content/ext-browser-content.js", false, true);
 
-      browser.messageManager.sendAsyncMessage("Extension:InitBrowser", {
-        stylesheets: ExtensionParent.extensionStylesheets,
-      });
-    }
+    let options = sidebar.browserStyle !== false ? {stylesheets: ExtensionParent.extensionStylesheets} : {};
+    browser.messageManager.sendAsyncMessage("Extension:InitBrowser", options);
     return browser;
   });
 }
 
 // Stub tabbrowser implementation for use by the tab-modal alert code.
 var gBrowser = {
+  get selectedBrowser() {
+    return document.getElementById("webext-panels-browser");
+  },
+
   getTabForBrowser(browser) {
     return null;
   },

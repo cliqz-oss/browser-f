@@ -6,6 +6,7 @@
 
 #include "gfxTextRun.h"
 #include "gfxGlyphExtents.h"
+#include "gfxHarfBuzzShaper.h"
 #include "gfxPlatformFontList.h"
 #include "gfxUserFontSet.h"
 #include "mozilla/gfx/2D.h"
@@ -1233,6 +1234,34 @@ gfxTextRun::GetAdvanceWidth(Range aRange, PropertyProvider *aProvider,
     return result + GetAdvanceForGlyphs(ligatureRange);
 }
 
+gfxFloat
+gfxTextRun::GetMinAdvanceWidth(Range aRange)
+{
+    MOZ_ASSERT(aRange.end <= GetLength(), "Substring out of range");
+
+    Range ligatureRange = aRange;
+    ShrinkToLigatureBoundaries(&ligatureRange);
+
+    gfxFloat result = std::max(
+        ComputePartialLigatureWidth(Range(aRange.start, ligatureRange.start),
+                                    nullptr),
+        ComputePartialLigatureWidth(Range(ligatureRange.end, aRange.end),
+                                    nullptr));
+
+    // XXX Do we need to take spacing into account? When each grapheme cluster
+    // takes its own line, we shouldn't be adding spacings around them.
+    gfxFloat clusterAdvance = 0;
+    for (uint32_t i = ligatureRange.start; i < ligatureRange.end; ++i) {
+        clusterAdvance += GetAdvanceForGlyph(i);
+        if (i + 1 == ligatureRange.end || IsClusterStart(i + 1)) {
+            result = std::max(result, clusterAdvance);
+            clusterAdvance = 0;
+        }
+    }
+
+    return result;
+}
+
 bool
 gfxTextRun::SetLineBreaks(Range aRange,
                           bool aLineBreakBefore, bool aLineBreakAfter,
@@ -1908,7 +1937,7 @@ gfxFontGroup::GetFontAt(int32_t i, uint32_t aCh)
         if (fe->mIsUserFontContainer) {
             gfxUserFontEntry* ufe = static_cast<gfxUserFontEntry*>(fe);
             if (ufe->LoadState() == gfxUserFontEntry::STATUS_NOT_LOADED &&
-                ufe->CharacterInUnicodeRange(aCh) &&
+                ufe->CharacterInUnicodeRange(aCh) && !mSkipDrawing &&
                 !FontLoadingForFamily(ff.Family(), aCh)) {
                 ufe->Load();
                 ff.CheckState(mSkipDrawing);
@@ -2091,7 +2120,8 @@ gfxFontGroup::GetFirstValidFont(uint32_t aCh, FontFamilyType* aGeneric)
                 static_cast<gfxUserFontEntry*>(mFonts[i].FontEntry());
             bool inRange = ufe->CharacterInUnicodeRange(aCh);
             if (ufe->LoadState() == gfxUserFontEntry::STATUS_NOT_LOADED &&
-                inRange && !FontLoadingForFamily(ff.Family(), aCh)) {
+                inRange && !mSkipDrawing &&
+                !FontLoadingForFamily(ff.Family(), aCh)) {
                 ufe->Load();
                 ff.CheckState(mSkipDrawing);
             }
@@ -2988,7 +3018,7 @@ gfxFontGroup::FindFontForChar(uint32_t aCh, uint32_t aPrevCh, uint32_t aNextCh,
             // load if not already loaded but only if no other font in similar
             // range within family is loading
             if (ufe->LoadState() == gfxUserFontEntry::STATUS_NOT_LOADED &&
-                !FontLoadingForFamily(ff.Family(), aCh)) {
+                !mSkipDrawing && !FontLoadingForFamily(ff.Family(), aCh)) {
                 ufe->Load();
                 ff.CheckState(mSkipDrawing);
             }

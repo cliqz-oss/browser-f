@@ -62,6 +62,7 @@ public class GeckoServiceChildProcess extends Service {
                              final Bundle extras,
                              final int flags,
                              final ParcelFileDescriptor prefsPfd,
+                             final ParcelFileDescriptor prefMapPfd,
                              final ParcelFileDescriptor ipcPfd,
                              final ParcelFileDescriptor crashReporterPfd,
                              final ParcelFileDescriptor crashAnnotationPfd) {
@@ -75,6 +76,8 @@ public class GeckoServiceChildProcess extends Service {
 
             final int prefsFd = prefsPfd != null ?
                                 prefsPfd.detachFd() : -1;
+            final int prefMapFd = prefMapPfd != null ?
+                                  prefMapPfd.detachFd() : -1;
             final int ipcFd = ipcPfd.detachFd();
             final int crashReporterFd = crashReporterPfd != null ?
                                         crashReporterPfd.detachFd() : -1;
@@ -84,8 +87,8 @@ public class GeckoServiceChildProcess extends Service {
             ThreadUtils.postToUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if (GeckoThread.initChildProcess(args, extras, flags, prefsFd, ipcFd, crashReporterFd,
-                                                     crashAnnotationFd)) {
+                    if (GeckoThread.initChildProcess(args, extras, flags, prefsFd, prefMapFd, ipcFd,
+                                                     crashReporterFd, crashAnnotationFd)) {
                         GeckoThread.launch();
                     }
                 }

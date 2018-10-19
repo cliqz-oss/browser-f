@@ -189,12 +189,12 @@ function ReadManifest(aURL, aFilter)
                 if (!AddPrefSettings(m[1], m[2], m[3], sandbox, testPrefSettings, refPrefSettings)) {
                     throw "Error in pref value in manifest file " + aURL.spec + " line " + lineNo;
                 }
-            } else if ((m = item.match(/^fuzzy\((\d+)(-\d+)?,(\d+)(-\d+)?\)$/))) {
+            } else if ((m = item.match(/^fuzzy\((\d+)-(\d+),(\d+)-(\d+)\)$/))) {
               cond = false;
               expected_status = EXPECTED_FUZZY;
               fuzzy_delta = ExtractRange(m, 1);
               fuzzy_pixels = ExtractRange(m, 3);
-            } else if ((m = item.match(/^fuzzy-if\((.*?),(\d+)(-\d+)?,(\d+)(-\d+)?\)$/))) {
+            } else if ((m = item.match(/^fuzzy-if\((.*?),(\d+)-(\d+),(\d+)-(\d+)\)$/))) {
               cond = false;
               if (Cu.evalInSandbox("(" + m[1] + ")", sandbox)) {
                 expected_status = EXPECTED_FUZZY;
@@ -527,7 +527,7 @@ sandbox.compareRetainedDisplayLists = g.compareRetainedDisplayLists;
     sandbox.browserIsRemote = g.browserIsRemote;
 
     try {
-        sandbox.asyncPan = g.containingWindow.document.docShell.asyncPanZoomEnabled;
+        sandbox.asyncPan = g.containingWindow.docShell.asyncPanZoomEnabled;
     } catch (e) {
         sandbox.asyncPan = false;
     }
@@ -589,16 +589,10 @@ function AddPrefSettings(aWhere, aPrefName, aPrefValExpression, aSandbox, aTestP
     return true;
 }
 
-function ExtractRange(matches, startIndex, defaultMin = 0) {
-    if (matches[startIndex + 1] === undefined) {
-        return {
-            min: defaultMin,
-            max: Number(matches[startIndex])
-        };
-    }
+function ExtractRange(matches, startIndex) {
     return {
         min: Number(matches[startIndex]),
-        max: Number(matches[startIndex + 1].substring(1))
+        max: Number(matches[startIndex + 1])
     };
 }
 

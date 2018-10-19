@@ -172,29 +172,26 @@ ScaledFontDWrite::GetPathForGlyphs(const GlyphBuffer &aBuffer, const DrawTarget 
 
 #ifdef USE_SKIA
 SkTypeface*
-ScaledFontDWrite::GetSkTypeface()
+ScaledFontDWrite::CreateSkTypeface()
 {
-  if (!mTypeface) {
-    RefPtr<IDWriteFactory> factory = Factory::GetDWriteFactory();
-    if (!factory) {
-      return nullptr;
-    }
-
-    Float gamma = mGamma;
-    // Skia doesn't support a gamma value outside of 0-4, so default to 2.2
-    if (gamma < 0.0f || gamma > 4.0f) {
-      gamma = 2.2f;
-    }
-
-    Float contrast = mContrast;
-    // Skia doesn't support a contrast value outside of 0-1, so default to 1.0
-    if (contrast < 0.0f || contrast > 1.0f) {
-      contrast = 1.0f;
-    }
-
-    mTypeface = SkCreateTypefaceFromDWriteFont(factory, mFontFace, mStyle, mForceGDIMode, gamma, contrast);
+  RefPtr<IDWriteFactory> factory = Factory::GetDWriteFactory();
+  if (!factory) {
+    return nullptr;
   }
-  return mTypeface;
+
+  Float gamma = mGamma;
+  // Skia doesn't support a gamma value outside of 0-4, so default to 2.2
+  if (gamma < 0.0f || gamma > 4.0f) {
+    gamma = 2.2f;
+  }
+
+  Float contrast = mContrast;
+  // Skia doesn't support a contrast value outside of 0-1, so default to 1.0
+  if (contrast < 0.0f || contrast > 1.0f) {
+    contrast = 1.0f;
+  }
+
+  return SkCreateTypefaceFromDWriteFont(factory, mFontFace, mStyle, mForceGDIMode, gamma, contrast);
 }
 #endif
 
@@ -474,7 +471,14 @@ ScaledFontDWrite::GetWRFontInstanceOptions(Maybe<wr::FontInstanceOptions>* aOutO
     options.flags |= wr::FontInstanceFlags::FORCE_GDI;
   }
   options.bg_color = wr::ToColorU(Color());
+  options.synthetic_italics = wr::DegreesToSyntheticItalics(GetSyntheticObliqueAngle());
+
+  wr::FontInstancePlatformOptions platformOptions;
+  platformOptions.gamma = uint16_t(std::round(mGamma * 100.0f));
+  platformOptions.contrast = uint16_t(std::round(std::min(mContrast, 1.0f) * 100.0f));
+
   *aOutOptions = Some(options);
+  *aOutPlatformOptions = Some(platformOptions);
   return true;
 }
 

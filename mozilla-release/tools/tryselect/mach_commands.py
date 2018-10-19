@@ -54,11 +54,19 @@ class TryConfig(object):
         desc = "The default selector to use when running `mach try` without a subcommand."
         choices = Registrar.command_handlers['try'].subcommand_handlers.keys()
 
-        return [('try.default', 'string', desc, 'syntax', {'choices': choices})]
+        return [
+            ('try.default', 'string', desc, 'syntax', {'choices': choices}),
+            ('try.maxhistory', 'int', "Maximum number of pushes to save in history.", 10),
+        ]
 
 
 @CommandProvider
 class TrySelect(MachCommandBase):
+
+    def __init__(self, context):
+        super(TrySelect, self).__init__(context)
+        from tryselect import push
+        push.MAX_HISTORY = self._mach_context.settings['try']['maxhistory']
 
     @Command('try',
              category='ci',
@@ -142,6 +150,15 @@ class TrySelect(MachCommandBase):
         return run_fuzzy_try(**kwargs)
 
     @SubCommand('try',
+                'again',
+                description='Schedule a previously generated (non try syntax) '
+                            'push again.',
+                parser=get_parser('again'))
+    def try_again(self, **kwargs):
+        from tryselect.selectors.again import run_try_again
+        return run_try_again(**kwargs)
+
+    @SubCommand('try',
                 'empty',
                 description='Push to try without scheduling any tasks.',
                 parser=get_parser('empty'))
@@ -195,8 +212,8 @@ class TrySelect(MachCommandBase):
         the AUTOTRY_PLATFORM_HINT environment variable, if set.
 
         The command requires either its own mercurial extension ("push-to-try",
-        installable from mach mercurial-setup) or a git repo using git-cinnabar
-        (available at https://github.com/glandium/git-cinnabar).
+        installable from mach vcs-setup) or a git repo using git-cinnabar
+        (installable from mach vcs-setup --git).
 
         """
         from tryselect.selectors.syntax import AutoTry

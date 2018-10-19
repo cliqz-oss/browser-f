@@ -44,12 +44,16 @@
 
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["many option", "not checked", "check button", "First item", "list", "1 item"]);
+      runner.eventInfoMatches(evt, { checked: false });
+      runner.eventTextMatches(evt, ["many option", "check button", "First item", "list", "1 item"]);
 
       evt = await runner.activateCurrent(0,
-        AndroidEvents.VIEW_CLICKED,
         AndroidEvents.VIEW_CLICKED);
-      is(evt[1].checked, true, "checkbox is checked");
+      is(evt.checked, true, "checkbox is checked");
+
+      evt = await runner.moveNext("Simple",
+        AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
+      runner.eventTextMatches(evt, ["many option"]);
 
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -73,12 +77,12 @@
 
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["Light", "off", "switch"]);
+      runner.eventInfoMatches(evt, { checked: false });
+      runner.eventTextMatches(evt, ["Light", "switch"]);
 
       evt = await runner.activateCurrent(0,
-        AndroidEvents.VIEW_CLICKED,
         AndroidEvents.VIEW_CLICKED);
-      is(evt[1].checked, true, "checkbox is checked");
+      is(evt.checked, true, "checkbox is checked");
 
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -86,12 +90,12 @@
 
       evt = await runner.movePrevious("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["Light", "on", "switch"]);
+      runner.eventInfoMatches(evt, { checked: true });
+      runner.eventTextMatches(evt, ["Light", "switch"]);
 
       evt = await runner.activateCurrent(0,
-        AndroidEvents.VIEW_CLICKED,
         AndroidEvents.VIEW_CLICKED);
-      is(evt[1].checked, false, "checkbox is checked");
+      is(evt.checked, false, "checkbox is checked");
 
       evt = await runner.movePrevious("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -119,12 +123,16 @@
 
       evt = await runner.movePrevious("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["many option", "checked", "check button", "First item", "list", "1 item"]);
+      runner.eventTextMatches(evt, ["many option", "label", "First item", "list", "1 item"]);
+
+      evt = await runner.movePrevious("Simple",
+        AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
+      runner.eventInfoMatches(evt, { checked: true });
+      runner.eventTextMatches(evt, ["many option", "check button"]);
 
       evt = await runner.activateCurrent(0,
-        AndroidEvents.VIEW_CLICKED,
         AndroidEvents.VIEW_CLICKED);
-      is(evt[1].checked, false, "checkbox is checked");
+      is(evt.checked, false, "checkbox is checked");
 
       evt = await runner.movePrevious("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -172,7 +180,8 @@
 
       evt = await runner.moveNext("FormElement",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["such app", "many option", "not checked", "check button", "First item", "list", "1 item"]);
+      runner.eventInfoMatches(evt, { checked: false });
+      runner.eventTextMatches(evt, ["such app", "many option", "check button", "First item", "list", "1 item"]);
 
       evt = await runner.moveNext("FormElement",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -184,7 +193,8 @@
 
       evt = await runner.movePrevious("FormElement",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["many option", "not checked", "check button", "First item", "list", "1 item"]);
+      runner.eventInfoMatches(evt, { checked: false });
+      runner.eventTextMatches(evt, ["many option", "check button", "First item", "list", "1 item"]);
 
       evt = await runner.movePrevious("FormElement",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -206,7 +216,8 @@
       runner.eventTextMatches(evt, ["such app", "wow", "heading level 1"]);
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["many option", "not checked", "check button", "First item", "list", "1 item"]);
+      runner.eventInfoMatches(evt, { checked: false });
+      runner.eventTextMatches(evt, ["many option", "check button", "First item", "list", "1 item"]);
 
       evt = await runner.moveFirst("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
@@ -294,7 +305,10 @@
       // Changing aria-hidden attribute twice and making sure that the event
       // is fired only once when the actual change happens.
       doc.getElementById("back").setAttribute("aria-hidden", true);
+      let onShow = waitForEventPromise(EVENT_SHOW, doc.getElementById("back"));
       doc.getElementById("back").setAttribute("aria-hidden", false);
+      await onShow;
+
       evt = await runner.movePrevious("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
       runner.eventTextMatches(evt, ["Back", "button"]);
@@ -311,13 +325,14 @@
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
       runner.eventTextMatches(evt, ["such app", "wow", "heading level 1"]);
 
-
       evt = await runner.expectAndroidEvents(() => {
         doc.getElementById("iframe").setAttribute("aria-hidden", true);
       }, AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["Home", "button"]);
+      runner.eventTextMatches(evt, ["Traversal Rule test document", "Home", "button"]);
 
+      onShow = waitForEventPromise(EVENT_SHOW, doc.getElementById("iframe"));
       doc.getElementById("iframe").setAttribute("aria-hidden", false);
+      await onShow;
       await runner.clearCursor();
 
       // aria-hidden element and auto Move
@@ -330,7 +345,9 @@
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
       runner.eventTextMatches(evt, ["such app", "wow", "heading level 1"]);
 
+      onShow = waitForEventPromise(EVENT_SHOW, doc.getElementById("back"));
       doc.getElementById("back").setAttribute("aria-hidden", false);
+      await onShow;
       runner.blur();
       await runner.clearCursor();
 
@@ -401,7 +418,8 @@
 
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);
-      runner.eventTextMatches(evt, ["Light", "off", "switch"]);
+      runner.eventInfoMatches(evt, { checked: false });
+      runner.eventTextMatches(evt, ["Light", "switch"]);
 
       evt = await runner.moveNext("Simple",
         AndroidEvents.VIEW_ACCESSIBILITY_FOCUSED);

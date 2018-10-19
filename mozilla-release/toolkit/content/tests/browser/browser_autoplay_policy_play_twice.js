@@ -4,8 +4,8 @@ function setup_test_preference(enableUserGesture) {
   let state = enableUserGesture ? "enable" : "disable";
   info(`- set pref : ${state} user gesture -`);
   return SpecialPowers.pushPrefEnv({"set": [
-    ["media.autoplay.enabled", false],
-    ["media.autoplay.enabled.user-gestures-needed", enableUserGesture]
+    ["media.autoplay.default", SpecialPowers.Ci.nsIAutoplay.BLOCKED],
+    ["media.autoplay.enabled.user-gestures-needed", enableUserGesture],
   ]});
 }
 

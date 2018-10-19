@@ -97,6 +97,8 @@ private:
            nsIPrincipal* aTriggeringPrincipal,
            nsIPrincipal* aPrincipalToInherit,
            nsIPrincipal* aSandboxedLoadingPrincipal,
+           nsIPrincipal* aTopLevelPrincipal,
+           nsIPrincipal* aTopLevelStorageAreaPrincipal,
            nsIURI* aResultPrincipalURI,
            const Maybe<mozilla::dom::ClientInfo>& aClientInfo,
            const Maybe<mozilla::dom::ClientInfo>& aReservedClientInfo,
@@ -123,6 +125,7 @@ private:
            bool aInitialSecurityCheckDone,
            bool aIsThirdPartyRequest,
            bool aIsDocshellReload,
+           bool aSendCSPViolationEvents,
            const OriginAttributes& aOriginAttributes,
            RedirectHistoryArray& aRedirectChainIncludingInternalRedirects,
            RedirectHistoryArray& aRedirectChain,
@@ -132,7 +135,9 @@ private:
            bool aForcePreflight,
            bool aIsPreflight,
            bool aLoadTriggeredFromExternal,
-           bool aServiceWorkerTaintingSynthesized);
+           bool aServiceWorkerTaintingSynthesized,
+           bool aDocumentHasUserInteracted,
+           bool aDocumentHasLoaded);
   LoadInfo(const LoadInfo& rhs);
 
   NS_IMETHOD GetRedirects(JSContext* aCx, JS::MutableHandle<JS::Value> aRedirects,
@@ -159,6 +164,8 @@ private:
   nsCOMPtr<nsIPrincipal>           mTriggeringPrincipal;
   nsCOMPtr<nsIPrincipal>           mPrincipalToInherit;
   nsCOMPtr<nsIPrincipal>           mSandboxedLoadingPrincipal;
+  nsCOMPtr<nsIPrincipal>           mTopLevelPrincipal;
+  nsCOMPtr<nsIPrincipal>           mTopLevelStorageAreaPrincipal;
   nsCOMPtr<nsIURI>                 mResultPrincipalURI;
 
   Maybe<mozilla::dom::ClientInfo>               mClientInfo;
@@ -192,16 +199,25 @@ private:
   bool                             mInitialSecurityCheckDone;
   bool                             mIsThirdPartyContext;
   bool                             mIsDocshellReload;
+  bool                             mSendCSPViolationEvents;
   OriginAttributes                 mOriginAttributes;
   RedirectHistoryArray             mRedirectChainIncludingInternalRedirects;
   RedirectHistoryArray             mRedirectChain;
   nsTArray<nsCOMPtr<nsIPrincipal>> mAncestorPrincipals;
   nsTArray<uint64_t>               mAncestorOuterWindowIDs;
   nsTArray<nsCString>              mCorsUnsafeHeaders;
+
+  mozilla::Telemetry::LABELS_DOCUMENT_ANALYTICS_TRACKER_FASTBLOCKED mTrackerBlockedReason;
+
   bool                             mForcePreflight;
   bool                             mIsPreflight;
   bool                             mLoadTriggeredFromExternal;
   bool                             mServiceWorkerTaintingSynthesized;
+
+  bool                             mIsTracker;
+  bool                             mIsTrackerBlocked;
+  bool                             mDocumentHasUserInteracted;
+  bool                             mDocumentHasLoaded;
 };
 
 } // namespace net

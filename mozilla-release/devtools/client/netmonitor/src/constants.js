@@ -105,6 +105,9 @@ const EVENTS = {
 
   // When request payload (HTTP details data) are fetched from the backend.
   PAYLOAD_READY: "NetMonitor:PayloadReady",
+
+  // When throttling is set on the backend.
+  THROTTLING_CHANGED: "NetMonitor:ThrottlingChanged",
 };
 
 const UPDATE_PROPS = [
@@ -143,6 +146,7 @@ const UPDATE_PROPS = [
   "responseCacheAvailable",
   "formDataSections",
   "stacktrace",
+  "isThirdPartyTrackingResource",
 ];
 
 const PANELS = {

@@ -16,6 +16,7 @@
 #include "builtin/String.h"
 
 #include "js/HashTable.h"
+#include "js/UniquePtr.h"
 #include "js/Utility.h"
 
 #include "threading/ExclusiveData.h"
@@ -138,11 +139,9 @@ class SharedImmutableStringsCache
         size_t n = mallocSizeOf(inner_);
 
         auto locked = inner_->lock();
-        if (!locked->set.initialized())
-            return n;
 
         // Size of the table.
-        n += locked->set.sizeOfExcludingThis(mallocSizeOf);
+        n += locked->set.shallowSizeOfExcludingThis(mallocSizeOf);
 
         // Sizes of the strings and their boxes.
         for (auto r = locked->set.all(); !r.empty(); r.popFront()) {
@@ -213,9 +212,6 @@ class SharedImmutableStringsCache
         auto locked = inner_->lock();
         MOZ_ASSERT(locked->refcount > 0);
 
-        if (!locked->set.initialized())
-            return;
-
         for (Inner::Set::Enum e(locked->set); !e.empty(); e.popFront()) {
             if (e.front()->refcount == 0) {
                 // The chars should be eagerly freed when refcount reaches zero.
@@ -239,7 +235,7 @@ class SharedImmutableStringsCache
       public:
         mutable size_t refcount;
 
-        using Ptr = mozilla::UniquePtr<StringBox, JS::DeletePolicy<StringBox>>;
+        using Ptr = js::UniquePtr<StringBox>;
 
         StringBox(OwnedChars&& chars, size_t length)
           : chars_(std::move(chars))
@@ -250,7 +246,7 @@ class SharedImmutableStringsCache
         }
 
         static Ptr Create(OwnedChars&& chars, size_t length) {
-            return Ptr(js_new<StringBox>(std::move(chars), length));
+            return js::MakeUnique<StringBox>(std::move(chars), length);
         }
 
         StringBox(const StringBox&) = delete;

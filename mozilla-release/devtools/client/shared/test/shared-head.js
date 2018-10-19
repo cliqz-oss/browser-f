@@ -39,8 +39,17 @@ const URL_ROOT = CHROME_URL_ROOT.replace("chrome://mochitests/content/",
 const URL_ROOT_SSL = CHROME_URL_ROOT.replace("chrome://mochitests/content/",
                                              "https://example.com/");
 
-Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js", this);
+try {
+  Services.scriptloader.loadSubScript(
+    "chrome://mochitests/content/browser/devtools/client/shared/test/telemetry-test-helpers.js", this);
+} catch (e) {
+  ok(false,
+    "MISSING DEPENDENCY ON telemetry-test-helpers.js\n" +
+    "Please add the following line in browser.ini:\n" +
+    "  !/devtools/client/shared/test/telemetry-test-helpers.js\n"
+  );
+  throw e;
+}
 
 // Force devtools to be initialized so menu items and keyboard shortcuts get installed
 require("devtools/client/framework/devtools-browser");
@@ -281,6 +290,7 @@ function waitForNEvents(target, eventName, numTimes, useCapture = false) {
       ["on", "off"],
       ["addEventListener", "removeEventListener"],
       ["addListener", "removeListener"],
+      ["addMessageListener", "removeMessageListener"]
     ]) {
       if ((add in target) && (remove in target)) {
         target[add](eventName, function onEvent(...args) {
@@ -358,7 +368,6 @@ function once(target, eventName, useCapture = false) {
  * @param {String} filePath The file path, relative to the current directory.
  *                 Examples:
  *                 - "helper_attributes_test_runner.js"
- *                 - "../../../commandline/test/helpers.js"
  */
 function loadHelperScript(filePath) {
   const testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
@@ -711,5 +720,42 @@ async function injectEventUtilsInContentTask(browser) {
 
     Services.scriptloader.loadSubScript(
       "chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
+  });
+}
+
+/**
+ * Temporarily flip all the preferences needed to enable web components.
+ */
+async function enableWebComponents() {
+  await pushPref("dom.webcomponents.shadowdom.enabled", true);
+  await pushPref("dom.webcomponents.customelements.enabled", true);
+}
+
+/*
+ * Register an actor in the content process of the current tab.
+ *
+ * Calling DebuggerServer.registerModule only registers the actor in the current process.
+ * As all test scripts are ran in the parent process, it is only registered here.
+ * This function helps register them in the content process used for the current tab.
+ *
+ * @param {string} url
+ *        Actor module URL or absolute require path
+ * @param {json} options
+ *        Arguments to be passed to DebuggerServer.registerModule
+ */
+async function registerActorInContentProcess(url, options) {
+  function convertChromeToFile(uri) {
+    return Cc["@mozilla.org/chrome/chrome-registry;1"]
+             .getService(Ci.nsIChromeRegistry)
+             .convertChromeURL(Services.io.newURI(uri)).spec;
+  }
+  // chrome://mochitests URI is registered only in the parent process, so convert these
+  // URLs to file:// one in order to work in the content processes
+  url = url.startsWith("chrome://mochitests") ? convertChromeToFile(url) : url;
+  return ContentTask.spawn(gBrowser.selectedBrowser, { url, options }, args => {
+    // eslint-disable-next-line no-shadow
+    const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm", {});
+    const { DebuggerServer } = require("devtools/server/main");
+    DebuggerServer.registerModule(args.url, args.options);
   });
 }

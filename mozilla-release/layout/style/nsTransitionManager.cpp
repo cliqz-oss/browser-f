@@ -11,7 +11,6 @@
 #include "mozilla/dom/CSSTransitionBinding.h"
 
 #include "nsIContent.h"
-#include "nsContentUtils.h"
 #include "mozilla/ComputedStyle.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/TimeStamp.h"
@@ -131,7 +130,7 @@ ElementPropertyTransition::UpdateStartValueFromReplacedTransition()
 JSObject*
 CSSTransition::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return dom::CSSTransitionBinding::Wrap(aCx, this, aGivenProto);
+  return dom::CSSTransition_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -206,12 +205,18 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
     ComputedTiming computedTiming = mEffect->GetComputedTiming();
 
     currentPhase = static_cast<TransitionPhase>(computedTiming.mPhase);
-    intervalStartTime =
-      std::max(std::min(StickyTimeDuration(-mEffect->SpecifiedTiming().Delay()),
-                        computedTiming.mActiveDuration), zeroDuration);
-    intervalEndTime =
-      std::max(std::min((EffectEnd() - mEffect->SpecifiedTiming().Delay()),
-                        computedTiming.mActiveDuration), zeroDuration);
+    intervalStartTime = IntervalStartTime(computedTiming.mActiveDuration);
+    intervalEndTime = IntervalEndTime(computedTiming.mActiveDuration);
+  }
+
+  if (mPendingState != PendingState::NotPending &&
+      (mPreviousTransitionPhase == TransitionPhase::Idle ||
+       mPreviousTransitionPhase == TransitionPhase::Pending)) {
+    currentPhase = TransitionPhase::Pending;
+  }
+
+  if (currentPhase == mPreviousTransitionPhase) {
+    return;
   }
 
   // TimeStamps to use for ordering the events when they are dispatched. We
@@ -223,18 +228,11 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
   TimeStamp startTimeStamp = ElapsedTimeToTimeStamp(intervalStartTime);
   TimeStamp endTimeStamp   = ElapsedTimeToTimeStamp(intervalEndTime);
 
-  if (mPendingState != PendingState::NotPending &&
-      (mPreviousTransitionPhase == TransitionPhase::Idle ||
-       mPreviousTransitionPhase == TransitionPhase::Pending))
-  {
-    currentPhase = TransitionPhase::Pending;
-  }
-
   AutoTArray<AnimationEventInfo, 3> events;
 
   auto appendTransitionEvent = [&](EventMessage aMessage,
                                    const StickyTimeDuration& aElapsedTime,
-                                   const TimeStamp& aTimeStamp) {
+                                   const TimeStamp& aScheduledEventTimeStamp) {
     double elapsedTime = aElapsedTime.ToSeconds();
     if (aMessage == eTransitionCancel) {
       // 0 is an inappropriate value for this callsite. What we need to do is
@@ -248,7 +246,7 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
                                             mOwningElement.Target(),
                                             aMessage,
                                             elapsedTime,
-                                            aTimeStamp,
+                                            aScheduledEventTimeStamp,
                                             this));
   };
 
@@ -256,8 +254,9 @@ CSSTransition::QueueEvents(const StickyTimeDuration& aActiveTime)
   if ((mPreviousTransitionPhase != TransitionPhase::Idle &&
        mPreviousTransitionPhase != TransitionPhase::After) &&
       currentPhase == TransitionPhase::Idle) {
-    TimeStamp activeTimeStamp = ElapsedTimeToTimeStamp(aActiveTime);
-    appendTransitionEvent(eTransitionCancel, aActiveTime, activeTimeStamp);
+    appendTransitionEvent(eTransitionCancel,
+                          aActiveTime,
+                          GetTimelineCurrentTimeAsTimeStamp());
   }
 
   // All other events
@@ -363,7 +362,10 @@ CSSTransition::HasLowerCompositeOrderThan(const CSSTransition& aOther) const
 
   // 1. Sort by document order
   if (!mOwningElement.Equals(aOther.mOwningElement)) {
-    return mOwningElement.LessThan(aOther.mOwningElement);
+    return mOwningElement.LessThan(
+      const_cast<CSSTransition*>(this)->CachedChildIndexRef(),
+      aOther.mOwningElement,
+      const_cast<CSSTransition*>(&aOther)->CachedChildIndexRef());
   }
 
   // 2. (Same element and pseudo): Sort by transition generation
@@ -544,15 +546,17 @@ nsTransitionManager::DoUpdateTransitions(
           for (nsCSSPropertyID p = nsCSSPropertyID(0);
                p < eCSSProperty_COUNT_no_shorthands;
                p = nsCSSPropertyID(p + 1)) {
-            allTransitionProperties.AddProperty(p);
+            allTransitionProperties.AddProperty(nsCSSProps::Physicalize(p, aNewStyle));
           }
         } else if (nsCSSProps::IsShorthand(property)) {
           CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(
               subprop, property, CSSEnabledState::eForAllContent) {
-            allTransitionProperties.AddProperty(*subprop);
+            auto p = nsCSSProps::Physicalize(*subprop, aNewStyle);
+            allTransitionProperties.AddProperty(p);
           }
         } else {
-          allTransitionProperties.AddProperty(property);
+          allTransitionProperties.AddProperty(
+            nsCSSProps::Physicalize(property, aNewStyle));
         }
       }
     }
@@ -656,13 +660,15 @@ nsTransitionManager::ConsiderInitiatingTransition(
   nsCSSPropertyIDSet& aPropertiesChecked)
 {
   // IsShorthand itself will assert if aProperty is not a property.
-  MOZ_ASSERT(!nsCSSProps::IsShorthand(aProperty),
-             "property out of range");
+  MOZ_ASSERT(!nsCSSProps::IsShorthand(aProperty), "property out of range");
   NS_ASSERTION(!aElementTransitions ||
                aElementTransitions->mElement == aElement, "Element mismatch");
 
-  // A later item in transition-property already specified a transition for this
-  // property, so we ignore this one.
+  aProperty = nsCSSProps::Physicalize(aProperty, aNewStyle);
+
+  // A later item in transition-property already specified a transition for
+  // this property, so we ignore this one.
+  //
   // See http://lists.w3.org/Archives/Public/www-style/2009Aug/0109.html .
   if (aPropertiesChecked.HasProperty(aProperty)) {
     return false;

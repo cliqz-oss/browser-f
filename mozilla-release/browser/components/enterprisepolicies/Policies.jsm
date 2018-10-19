@@ -6,6 +6,7 @@
 
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "gXulStore",
                                    "@mozilla.org/xul/xulstore;1",
                                    "nsIXULStore");
@@ -19,7 +20,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 });
 
 const PREF_LOGLEVEL           = "browser.policies.loglevel";
-const BROWSER_DOCUMENT_URL    = "chrome://browser/content/browser.xul";
+const BROWSER_DOCUMENT_URL    = AppConstants.BROWSER_CHROME_URL;
 
 XPCOMUtils.defineLazyGetter(this, "log", () => {
   let { ConsoleAPI } = ChromeUtils.import("resource://gre/modules/Console.jsm", {});
@@ -64,7 +65,7 @@ var Policies = {
   "AppUpdateURL": {
     onBeforeAddons(manager, param) {
       setDefaultPref("app.update.url", param.href);
-    }
+    },
   },
 
   "Authentication": {
@@ -86,7 +87,7 @@ var Policies = {
           setAndLockPref("network.negotiate-auth.allow-non-fqdn", param.AllowNonFQDN.SPNEGO);
         }
       }
-    }
+    },
   },
 
   "BlockAboutAddons": {
@@ -94,38 +95,38 @@ var Policies = {
       if (param) {
         blockAboutPage(manager, "about:addons", true);
       }
-    }
+    },
   },
 
   "BlockAboutConfig": {
     onBeforeUIStartup(manager, param) {
       if (param) {
-        blockAboutPage(manager, "about:config", true);
+        blockAboutPage(manager, "about:config");
         setAndLockPref("devtools.chrome.enabled", false);
       }
-    }
+    },
   },
 
   "BlockAboutProfiles": {
     onBeforeUIStartup(manager, param) {
       if (param) {
-        blockAboutPage(manager, "about:profiles", true);
+        blockAboutPage(manager, "about:profiles");
       }
-    }
+    },
   },
 
   "BlockAboutSupport": {
     onBeforeUIStartup(manager, param) {
       if (param) {
-        blockAboutPage(manager, "about:support", true);
+        blockAboutPage(manager, "about:support");
       }
-    }
+    },
   },
 
   "Bookmarks": {
     onAllWindowsRestored(manager, param) {
       BookmarksPolicies.processBookmarks(param);
-    }
+    },
   },
 
   "Certificates": {
@@ -133,7 +134,7 @@ var Policies = {
       if ("ImportEnterpriseRoots" in param) {
         setAndLockPref("security.enterprise_roots.enabled", true);
       }
-    }
+    },
   },
 
   "Cookies": {
@@ -151,11 +152,13 @@ var Policies = {
 
       if (param.Default !== undefined ||
           param.AcceptThirdParty !== undefined ||
+          param.RejectTracker !== undefined ||
           param.Locked) {
         const ACCEPT_COOKIES = 0;
         const REJECT_THIRD_PARTY_COOKIES = 1;
         const REJECT_ALL_COOKIES = 2;
         const REJECT_UNVISITED_THIRD_PARTY = 3;
+        const REJECT_TRACKER = 4;
 
         let newCookieBehavior = ACCEPT_COOKIES;
         if (param.Default !== undefined && !param.Default) {
@@ -166,6 +169,8 @@ var Policies = {
           } else if (param.AcceptThirdParty == "from-visited") {
             newCookieBehavior = REJECT_UNVISITED_THIRD_PARTY;
           }
+        } else if (param.RejectTracker !== undefined && param.RejectTracker) {
+          newCookieBehavior = REJECT_TRACKER;
         }
 
         if (param.Locked) {
@@ -190,7 +195,27 @@ var Policies = {
           setDefaultPref("network.cookie.lifetimePolicy", newLifetimePolicy);
         }
       }
-    }
+    },
+  },
+
+  "DNSOverHTTPS": {
+    onBeforeAddons(manager, param) {
+      if ("Enabled" in param) {
+        let mode = param.Enabled ? 2 : 5;
+        if (param.Locked) {
+          setAndLockPref("network.trr.mode", mode);
+        } else {
+          setDefaultPref("network.trr.mode", mode);
+        }
+      }
+      if (param.ProviderURL) {
+        if (param.Locked) {
+          setAndLockPref("network.trr.uri", param.ProviderURL.href);
+        } else {
+          setDefaultPref("network.trr.uri", param.ProviderURL.href);
+        }
+      }
+    },
   },
 
   "DisableAppUpdate": {
@@ -198,15 +223,15 @@ var Policies = {
       if (param) {
         manager.disallowFeature("appUpdate");
       }
-    }
+    },
   },
 
   "DisableBuiltinPDFViewer": {
-    onBeforeUIStartup(manager, param) {
+    onBeforeAddons(manager, param) {
       if (param) {
-        manager.disallowFeature("PDF.js");
+        setAndLockPref("pdfjs.disabled", true);
       }
-    }
+    },
   },
 
   "DisableDeveloperTools": {
@@ -220,7 +245,7 @@ var Policies = {
         blockAboutPage(manager, "about:debugging");
         blockAboutPage(manager, "about:devtools-toolbox");
       }
-    }
+    },
   },
 
   "DisableFeedbackCommands": {
@@ -228,7 +253,7 @@ var Policies = {
       if (param) {
         manager.disallowFeature("feedbackCommands");
       }
-    }
+    },
   },
 
   "DisableFirefoxAccounts": {
@@ -236,7 +261,7 @@ var Policies = {
       if (param) {
         setAndLockPref("identity.fxaccounts.enabled", false);
       }
-    }
+    },
   },
 
   "DisableFirefoxScreenshots": {
@@ -244,7 +269,7 @@ var Policies = {
       if (param) {
         setAndLockPref("extensions.screenshots.disabled", true);
       }
-    }
+    },
   },
 
   "DisableFirefoxStudies": {
@@ -252,7 +277,7 @@ var Policies = {
       if (param) {
         manager.disallowFeature("Shield");
       }
-    }
+    },
   },
 
   "DisableForgetButton": {
@@ -260,7 +285,7 @@ var Policies = {
       if (param) {
         setAndLockPref("privacy.panicButton.enabled", false);
       }
-    }
+    },
   },
 
   "DisableFormHistory": {
@@ -268,7 +293,7 @@ var Policies = {
       if (param) {
         setAndLockPref("browser.formfill.enable", false);
       }
-    }
+    },
   },
 
   "DisableMasterPasswordCreation": {
@@ -276,7 +301,7 @@ var Policies = {
       if (param) {
         manager.disallowFeature("createMasterPassword");
       }
-    }
+    },
   },
 
   "DisablePocket": {
@@ -284,7 +309,7 @@ var Policies = {
       if (param) {
         setAndLockPref("extensions.pocket.enabled", false);
       }
-    }
+    },
   },
 
   "DisablePrivateBrowsing": {
@@ -294,7 +319,7 @@ var Policies = {
         blockAboutPage(manager, "about:privatebrowsing", true);
         setAndLockPref("browser.privatebrowsing.autostart", false);
       }
-    }
+    },
   },
 
   "DisableProfileImport": {
@@ -303,7 +328,7 @@ var Policies = {
         manager.disallowFeature("profileImport");
         setAndLockPref("browser.newtabpage.activity-stream.migrationExpired", true);
       }
-    }
+    },
   },
 
   "DisableProfileRefresh": {
@@ -312,7 +337,7 @@ var Policies = {
         manager.disallowFeature("profileRefresh");
         setAndLockPref("browser.disableResetPrompt", true);
       }
-    }
+    },
   },
 
   "DisableSafeMode": {
@@ -320,7 +345,7 @@ var Policies = {
       if (param) {
         manager.disallowFeature("safeMode");
       }
-    }
+    },
   },
 
   "DisableSecurityBypass": {
@@ -332,15 +357,15 @@ var Policies = {
       if ("SafeBrowsing" in param) {
         setAndLockPref("browser.safebrowsing.allowOverride", !param.SafeBrowsing);
       }
-    }
+    },
   },
 
   "DisableSetDesktopBackground": {
     onBeforeUIStartup(manager, param) {
       if (param) {
-        manager.disallowFeature("setDesktopBackground", true);
+        manager.disallowFeature("setDesktopBackground");
       }
-    }
+    },
   },
 
   "DisableSystemAddonUpdate": {
@@ -348,7 +373,7 @@ var Policies = {
       if (param) {
         manager.disallowFeature("SysAddonUpdate");
       }
-    }
+    },
   },
 
   "DisableTelemetry": {
@@ -358,7 +383,7 @@ var Policies = {
         setAndLockPref("datareporting.policy.dataSubmissionEnabled", false);
         blockAboutPage(manager, "about:telemetry");
       }
-    }
+    },
   },
 
   "DisplayBookmarksToolbar": {
@@ -370,7 +395,7 @@ var Policies = {
       runOncePerModification("displayBookmarksToolbar", value, () => {
         gXulStore.setValue(BROWSER_DOCUMENT_URL, "PersonalToolbar", "collapsed", value);
       });
-    }
+    },
   },
 
   "DisplayMenuBar": {
@@ -382,13 +407,13 @@ var Policies = {
       runOncePerModification("displayMenuBar", value, () => {
         gXulStore.setValue(BROWSER_DOCUMENT_URL, "toolbar-menubar", "autohide", value);
       });
-    }
+    },
   },
 
   "DontCheckDefaultBrowser": {
     onBeforeUIStartup(manager, param) {
       setAndLockPref("browser.shell.checkDefaultBrowser", false);
-    }
+    },
   },
 
   "EnableTrackingProtection": {
@@ -405,7 +430,7 @@ var Policies = {
         setAndLockPref("privacy.trackingprotection.enabled", false);
         setAndLockPref("privacy.trackingprotection.pbmode.enabled", false);
       }
-    }
+    },
   },
 
   "Extensions": {
@@ -454,7 +479,7 @@ var Policies = {
                 onInstallEnded: () => {
                   install.removeListener(listener);
                   log.debug(`Installation succeeded - ${location}`);
-                }
+                },
               };
               install.addListener(listener);
               install.install();
@@ -482,7 +507,7 @@ var Policies = {
           manager.disallowFeature(`modify-extension:${ID}`);
         }
       }
-    }
+    },
   },
 
   "FlashPlugin": {
@@ -506,7 +531,7 @@ var Policies = {
       } else if (param.Default !== undefined) {
         setDefaultPref("plugin.state.flash", flashPrefVal);
       }
-    }
+    },
   },
 
   "HardwareAcceleration": {
@@ -514,7 +539,7 @@ var Policies = {
       if (!param) {
         setAndLockPref("layers.acceleration.disabled", true);
       }
-    }
+    },
   },
 
   "Homepage": {
@@ -533,18 +558,14 @@ var Policies = {
         setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
         setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
       } else {
-        // The default pref for homepage is actually a complex pref. We need to
-        // set it in a special way such that it works properly
-        let homepagePrefVal = "data:text/plain,browser.startup.homepage=" +
-                               homepages;
-        setDefaultPref("browser.startup.homepage", homepagePrefVal);
+        setDefaultPref("browser.startup.homepage", homepages);
         setDefaultPref("browser.startup.page", 1);
         runOncePerModification("setHomepage", homepages, () => {
           Services.prefs.clearUserPref("browser.startup.homepage");
           Services.prefs.clearUserPref("browser.startup.page");
         });
       }
-    }
+    },
   },
 
   "InstallAddonsPermission": {
@@ -558,7 +579,7 @@ var Policies = {
           blockAboutPage(manager, "about:debugging");
         }
       }
-    }
+    },
   },
 
   "NoDefaultBookmarks": {
@@ -566,20 +587,20 @@ var Policies = {
       if (param) {
         manager.disallowFeature("defaultBookmarks");
       }
-    }
+    },
   },
 
   "OfferToSaveLogins": {
     onBeforeUIStartup(manager, param) {
       setAndLockPref("signon.rememberSignons", param);
-    }
+    },
   },
 
   "OverrideFirstRunPage": {
     onProfileAfterChange(manager, param) {
       let url = param ? param.href : "";
       setAndLockPref("startup.homepage_welcome_url", url);
-    }
+    },
   },
 
   "OverridePostUpdatePage": {
@@ -590,7 +611,7 @@ var Policies = {
       // as a fallback when the update.xml file hasn't provided
       // a specific post-update URL.
       manager.disallowFeature("postUpdateCustomPage");
-    }
+    },
   },
 
   "Permissions": {
@@ -614,7 +635,7 @@ var Policies = {
         addAllowDenyPermissions("desktop-notification", param.Notifications.Allow, param.Notifications.Block);
         setDefaultPermission("desktop-notification", param.Notifications);
       }
-    }
+    },
   },
 
   "PopupBlocking": {
@@ -630,7 +651,7 @@ var Policies = {
       } else if (param.Default !== undefined) {
         setDefaultPref("dom.disable_open_during_load", !!param.Default);
       }
-    }
+    },
   },
 
   "Proxy": {
@@ -641,7 +662,7 @@ var Policies = {
       } else {
         ProxyPolicies.configureProxySettings(param, setDefaultPref);
       }
-    }
+    },
   },
 
   "SanitizeOnShutdown": {
@@ -657,7 +678,7 @@ var Policies = {
         setAndLockPref("privacy.clearOnShutdown.siteSettings", true);
         setAndLockPref("privacy.clearOnShutdown.offlineApps", true);
       }
-    }
+    },
   },
 
   "SearchBar": {
@@ -673,7 +694,7 @@ var Policies = {
           CustomizableUI.removeWidgetFromArea("search-container");
         }
       });
-    }
+    },
   },
 
   "SearchEngines": {
@@ -710,12 +731,13 @@ var Policies = {
             for (let newEngine of param.Add) {
               let newEngineParameters = {
                 template:    newEngine.URLTemplate,
-                iconURL:     newEngine.IconURL,
+                iconURL:     newEngine.IconURL ? newEngine.IconURL.href : null,
                 alias:       newEngine.Alias,
                 description: newEngine.Description,
                 method:      newEngine.Method,
                 suggestURL:  newEngine.SuggestURLTemplate,
-                extensionID: "set-via-policy"
+                extensionID: "set-via-policy",
+                queryCharset: "UTF-8",
               };
               try {
                 Services.search.addEngineWithDetails(newEngine.Name,
@@ -749,13 +771,13 @@ var Policies = {
           });
         }
       });
-    }
+    },
   },
 
   "WebsiteFilter": {
     onBeforeUIStartup(manager, param) {
       this.filter = new WebsiteFilter(param.Block || [], param.Exceptions || []);
-    }
+    },
   },
 
 };
@@ -958,7 +980,7 @@ let ChromeURLBlockPolicy = {
     if (contentLocation.scheme == "chrome" &&
         contentType == Ci.nsIContentPolicy.TYPE_DOCUMENT &&
         loadInfo.loadingContext &&
-        loadInfo.loadingContext.baseURI == "chrome://browser/content/browser.xul" &&
+        loadInfo.loadingContext.baseURI == AppConstants.BROWSER_CHROME_URL &&
         contentLocation.host != "mochitests") {
       return Ci.nsIContentPolicy.REJECT_REQUEST;
     }
@@ -984,6 +1006,7 @@ function blockAllChromeURLs() {
                             ChromeURLBlockPolicy.contractID,
                             ChromeURLBlockPolicy);
 
-  let cm = Cc["@mozilla.org/categorymanager;1"].getService(Ci.nsICategoryManager);
-  cm.addCategoryEntry("content-policy", ChromeURLBlockPolicy.contractID, ChromeURLBlockPolicy.contractID, false, true);
+  Services.catMan.addCategoryEntry("content-policy",
+                                   ChromeURLBlockPolicy.contractID,
+                                   ChromeURLBlockPolicy.contractID, false, true);
 }

@@ -103,6 +103,7 @@ async function testSearchEngine(engineDetails) {
   // Test search URLs (including purposes).
   let url = engine.getSubmission("foo").uri.spec;
   Assert.equal(url, base + engineDetails.codes.submission, "Check search URL for 'foo'");
+  let sb = BrowserSearch.searchBar;
 
   let engineTests = [
     {
@@ -111,8 +112,8 @@ async function testSearchEngine(engineDetails) {
       run() {
         // Simulate a contextmenu search
         // FIXME: This is a bit "low-level"...
-        BrowserSearch.loadSearch("foo", false, "contextmenu");
-      }
+        BrowserSearch._loadSearch("foo", false, "contextmenu", Services.scriptSecurityManager.getSystemPrincipal());
+      },
     },
     {
       name: "keyword search",
@@ -121,7 +122,7 @@ async function testSearchEngine(engineDetails) {
         gURLBar.value = "? foo";
         gURLBar.focus();
         EventUtils.synthesizeKey("KEY_Enter");
-      }
+      },
     },
     {
       name: "keyword search with alias",
@@ -130,20 +131,16 @@ async function testSearchEngine(engineDetails) {
         gURLBar.value = `${engineDetails.alias} foo`;
         gURLBar.focus();
         EventUtils.synthesizeKey("KEY_Enter");
-      }
+      },
     },
     {
       name: "search bar search",
       searchURL: base + engineDetails.codes.submission,
       run() {
-        let sb = BrowserSearch.searchBar;
         sb.focus();
         sb.value = "foo";
-        registerCleanupFunction(function() {
-          sb.value = "";
-        });
         EventUtils.synthesizeKey("KEY_Enter");
-      }
+      },
     },
     {
       name: "new tab search",
@@ -162,8 +159,8 @@ async function testSearchEngine(engineDetails) {
           input.value = "foo";
         });
         EventUtils.synthesizeKey("KEY_Enter");
-      }
-    }
+      },
+    },
   ];
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
@@ -185,5 +182,6 @@ async function testSearchEngine(engineDetails) {
   }
 
   engine.alias = undefined;
+  sb.value = "";
   BrowserTestUtils.removeTab(tab);
 }

@@ -29,7 +29,6 @@
 #include "builtin/Reflect.h"
 #include "builtin/RegExp.h"
 #include "builtin/SelfHostingDefines.h"
-#include "builtin/SIMD.h"
 #include "builtin/Stream.h"
 #include "builtin/String.h"
 #include "builtin/TypedObject.h"
@@ -39,8 +38,11 @@
 #include "gc/Policy.h"
 #include "jit/AtomicOperations.h"
 #include "jit/InlinableNatives.h"
+#include "js/AutoByteString.h"
 #include "js/CharacterEncoding.h"
+#include "js/CompilationAndEvaluation.h"
 #include "js/Date.h"
+#include "js/StableStringChars.h"
 #include "js/Wrapper.h"
 #include "util/StringBuffer.h"
 #include "vm/ArgumentsObject.h"
@@ -71,6 +73,8 @@ using namespace js;
 using namespace js::selfhosted;
 
 using JS::AutoCheckCannotGC;
+using JS::AutoStableStringChars;
+using JS::CompileOptions;
 using mozilla::IsInRange;
 using mozilla::Maybe;
 
@@ -123,11 +127,11 @@ intrinsic_IsArray(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-intrinsic_IsWrappedArrayConstructor(JSContext* cx, unsigned argc, Value* vp)
+intrinsic_IsCrossRealmArrayConstructor(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     bool result = false;
-    if (!IsWrappedArrayConstructor(cx, args[0], &result))
+    if (!IsCrossRealmArrayConstructor(cx, args[0], &result))
         return false;
     args.rval().setBoolean(result);
     return true;
@@ -1557,6 +1561,7 @@ intrinsic_SetOverlappingTypedElements(JSContext* cx, unsigned argc, Value* vp)
     MOZ_ASSERT(args.length() == 3);
 
     Rooted<TypedArrayObject*> target(cx, &args[0].toObject().as<TypedArrayObject>());
+    cx->check(target);
     MOZ_ASSERT(!target->hasDetachedBuffer(),
                "shouldn't set elements if underlying buffer is detached");
 
@@ -1578,7 +1583,7 @@ intrinsic_SetOverlappingTypedElements(JSContext* cx, unsigned argc, Value* vp)
     Scalar::Type unsafeSrcTypeCrossCompartment = unsafeSrcCrossCompartment->type();
     size_t sourceByteLen = count * TypedArrayElemSize(unsafeSrcTypeCrossCompartment);
 
-    auto copyOfSrcData = target->zone()->make_pod_array<uint8_t>(sourceByteLen);
+    auto copyOfSrcData = cx->make_pod_array<uint8_t>(sourceByteLen);
     if (!copyOfSrcData)
         return false;
 
@@ -2151,17 +2156,18 @@ intrinsic_HostResolveImportedModule(JSContext* cx, unsigned argc, Value* vp)
         return false;
     }
 
-    RootedObject result(cx);
-    result = moduleResolveHook(cx, module, specifier);
+    RootedScript script(cx, module->script());
+    RootedScript result(cx);
+    result = moduleResolveHook(cx, script, specifier);
     if (!result)
         return false;
 
-    if (!result->is<ModuleObject>()) {
-        JS_ReportErrorASCII(cx, "Module resolve hook did not return Module object");
+    if (!result->module()) {
+        JS_ReportErrorASCII(cx, "Module resolve hook did not return a module script");
         return false;
     }
 
-    args.rval().setObject(*result);
+    args.rval().setObject(*result->module());
     return true;
 }
 
@@ -2403,25 +2409,12 @@ static const JSFunctionSpec intrinsic_functions[] = {
 
     JS_FN("std_TypedArray_buffer",               js::TypedArray_bufferGetter,  1,0),
 
-    JS_FN("std_SIMD_Int8x16_extractLane",        simd_int8x16_extractLane,     2,0),
-    JS_FN("std_SIMD_Int16x8_extractLane",        simd_int16x8_extractLane,     2,0),
-    JS_INLINABLE_FN("std_SIMD_Int32x4_extractLane",   simd_int32x4_extractLane,  2,0, SimdInt32x4_extractLane),
-    JS_FN("std_SIMD_Uint8x16_extractLane",       simd_uint8x16_extractLane,    2,0),
-    JS_FN("std_SIMD_Uint16x8_extractLane",       simd_uint16x8_extractLane,    2,0),
-    JS_FN("std_SIMD_Uint32x4_extractLane",       simd_uint32x4_extractLane,    2,0),
-    JS_INLINABLE_FN("std_SIMD_Float32x4_extractLane", simd_float32x4_extractLane,2,0, SimdFloat32x4_extractLane),
-    JS_FN("std_SIMD_Float64x2_extractLane",      simd_float64x2_extractLane,   2,0),
-    JS_FN("std_SIMD_Bool8x16_extractLane",       simd_bool8x16_extractLane,    2,0),
-    JS_FN("std_SIMD_Bool16x8_extractLane",       simd_bool16x8_extractLane,    2,0),
-    JS_FN("std_SIMD_Bool32x4_extractLane",       simd_bool32x4_extractLane,    2,0),
-    JS_FN("std_SIMD_Bool64x2_extractLane",       simd_bool64x2_extractLane,    2,0),
-
     // Helper funtions after this point.
     JS_INLINABLE_FN("ToObject",      intrinsic_ToObject,                1,0, IntrinsicToObject),
     JS_INLINABLE_FN("IsObject",      intrinsic_IsObject,                1,0, IntrinsicIsObject),
     JS_INLINABLE_FN("IsArray",       intrinsic_IsArray,                 1,0, ArrayIsArray),
-    JS_INLINABLE_FN("IsWrappedArrayConstructor", intrinsic_IsWrappedArrayConstructor, 1,0,
-                    IntrinsicIsWrappedArrayConstructor),
+    JS_INLINABLE_FN("IsCrossRealmArrayConstructor", intrinsic_IsCrossRealmArrayConstructor, 1,0,
+                    IntrinsicIsCrossRealmArrayConstructor),
     JS_INLINABLE_FN("ToInteger",     intrinsic_ToInteger,               1,0, IntrinsicToInteger),
     JS_INLINABLE_FN("ToString",      intrinsic_ToString,                1,0, IntrinsicToString),
     JS_FN("ToSource",                intrinsic_ToSource,                1,0),
@@ -2452,6 +2445,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("_DefineDataProperty",     intrinsic_DefineDataProperty,      4,0),
     JS_FN("_DefineProperty",         intrinsic_DefineProperty,          6,0),
     JS_FN("CopyDataPropertiesOrGetOwnKeys", intrinsic_CopyDataPropertiesOrGetOwnKeys, 3,0),
+    JS_INLINABLE_FN("SameValue",     js::obj_is,                        2,0, ObjectIs),
 
     JS_INLINABLE_FN("_IsConstructing", intrinsic_IsConstructing,        0,0,
                     IntrinsicIsConstructing),
@@ -2612,7 +2606,6 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("TypedObjectTypeDescr",           js::TypedObjectTypeDescr, 1, 0),
     JS_FN("ClampToUint8",                   js::ClampToUint8, 1, 0),
     JS_FN("GetTypedObjectModule",           js::GetTypedObjectModule, 0, 0),
-    JS_FN("GetSimdTypeDescr",               js::GetSimdTypeDescr, 1, 0),
 
     JS_INLINABLE_FN("ObjectIsTypeDescr"    ,          js::ObjectIsTypeDescr, 1, 0,
                     IntrinsicObjectIsTypeDescr),
@@ -2814,7 +2807,6 @@ JSRuntime::createSelfHostingGlobal(JSContext* cx)
 
     cx->runtime()->selfHostingGlobal_ = shg;
     realm->setIsSelfHostingRealm();
-    realm->setIsSystem(true);
 
     if (!GlobalObject::initSelfHostingBuiltins(cx, shg, intrinsic_functions))
         return nullptr;
@@ -2955,7 +2947,7 @@ JSRuntime::initSelfHosting(JSContext* cx)
 
     const unsigned char* compressed = compressedSources;
     uint32_t compressedLen = GetCompressedSize();
-    UniqueChars src(selfHostingGlobal_->zone()->pod_malloc<char>(srcLen));
+    auto src = cx->make_pod_array<char>(srcLen);
     if (!src || !DecompressString(compressed, compressedLen,
                                   reinterpret_cast<unsigned char*>(src.get()), srcLen))
     {

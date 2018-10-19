@@ -37,6 +37,8 @@ class Test(object):
     filters = filter.ignore_first.prepare(1) + filter.median.prepare()
     lower_is_better = True
     alert_threshold = 2.0
+    perfherder_framework = 'talos'
+    subtest_alerts = False
 
     @classmethod
     def name(cls):
@@ -245,6 +247,7 @@ class PageloaderTest(Test):
     tpcycles = 1  # number of time to run each page
     cycles = None
     timeout = None
+
     keys = ['tpmanifest', 'tpcycles', 'tppagecycles', 'tprender', 'tpchrome',
             'tpmozafterpaint', 'fnbpaint', 'tphero', 'tploadnocache', 'firstpaint',
             'userready', 'testeventmap', 'base_vs_ref', 'mainthread', 'resolution',
@@ -253,7 +256,8 @@ class PageloaderTest(Test):
             'tpscrolltest', 'xperf_counters', 'timeout', 'responsiveness',
             'profile_path', 'xperf_providers', 'xperf_user_providers', 'xperf_stackwalk',
             'format_pagename', 'filters', 'preferences', 'extensions', 'setup', 'cleanup',
-            'lower_is_better', 'alert_threshold', 'unit', 'webextensions', 'profile']
+            'lower_is_better', 'alert_threshold', 'unit', 'webextensions', 'profile',
+            'subtest_alerts', 'perfherder_framework']
 
 
 class QuantumPageloadTest(PageloaderTest):
@@ -424,12 +428,14 @@ class damp(PageloaderTest):
     tploadnocache = True
     tpmozafterpaint = False
     gecko_profile_interval = 10
-    gecko_profile_entries = 1000000
+    gecko_profile_entries = 2000000
     win_counters = w7_counters = linux_counters = mac_counters = None
     filters = filter.ignore_first.prepare(1) + filter.median.prepare()
     preferences = {'devtools.memory.enabled': True,
                    'addon.test.damp.webserver': '${webserver}'}
     unit = 'ms'
+    subtest_alerts = True
+    perfherder_framework = 'devtools'
 
 
 @register_test()
@@ -495,7 +501,7 @@ class tp5n(PageloaderTest):
     tppagecycles = 1
     cycles = 1
     tpmozafterpaint = True
-    tptimeout = 5000
+    tptimeout = 10000
     mainthread = True
     w7_counters = []
     win_counters = []
@@ -506,7 +512,9 @@ class tp5n(PageloaderTest):
                       'nonmain_startup_fileio', 'nonmain_normal_fileio',
                       'nonmain_normal_netio', 'mainthread_readcount',
                       'mainthread_readbytes', 'mainthread_writecount',
-                      'mainthread_writebytes']
+                      'mainthread_writebytes',
+                      'time_to_session_store_window_restored_ms',
+                      ]
     xperf_providers = ['PROC_THREAD', 'LOADER', 'HARD_FAULTS', 'FILENAME',
                        'FILE_IO', 'FILE_IO_INIT']
     xperf_user_providers = ['Mozilla Generic Provider',

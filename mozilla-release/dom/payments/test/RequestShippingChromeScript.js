@@ -24,7 +24,6 @@ shippingAddress.init("",  // country
                      "",  // dependent locality
                      "",  // postal code
                      "",  // sorting code
-                     "",  // language code
                      "",  // organization
                      "",  // recipient
                      ""); // phone
@@ -71,6 +70,8 @@ const NormalUIService = {
                       "");                        // payer phone
     paymentSrv.respondPayment(showResponse.QueryInterface(Ci.nsIPaymentActionResponse));
   },
+  closePayment: function(requestId) {
+  },
   QueryInterface: ChromeUtils.generateQI([Ci.nsIPaymentUIService]),
 };
 
@@ -79,7 +80,6 @@ addMessageListener("set-normal-ui-service", function() {
 });
 
 addMessageListener("teardown", function() {
-  paymentSrv.cleanup();
   paymentSrv.setTestingUIService(null);
   sendAsyncMessage('teardown-complete');
 });

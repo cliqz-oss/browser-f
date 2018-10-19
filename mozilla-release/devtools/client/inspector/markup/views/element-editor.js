@@ -11,8 +11,8 @@ const {
   flashElementOn,
   flashElementOff,
   parseAttributeValues,
-  truncateString,
 } = require("devtools/client/inspector/markup/utils");
+const { truncateString } = require("devtools/shared/inspector/utils");
 const {editableField, InplaceEditor} =
       require("devtools/client/shared/inplace-editor");
 const {parseAttribute} =
@@ -60,6 +60,8 @@ function ElementEditor(container, node) {
   this.node = node;
   this.markup = this.container.markup;
   this.doc = this.markup.doc;
+  this.inspector = this.markup.inspector;
+  this.highlighters = this.markup.highlighters;
   this._cssProperties = getCssProperties(this.markup.toolbox);
 
   this.attrElements = new Map();
@@ -71,6 +73,11 @@ function ElementEditor(container, node) {
   this.attrList = null;
   this.newAttr = null;
   this.closeElt = null;
+
+  this.onCustomBadgeClick = this.onCustomBadgeClick.bind(this);
+  this.onDisplayBadgeClick = this.onDisplayBadgeClick.bind(this);
+  this.onExpandBadgeClick = this.onExpandBadgeClick.bind(this);
+  this.onTagEdit = this.onTagEdit.bind(this);
 
   // Create the main editor
   this.buildMarkup();
@@ -86,7 +93,7 @@ function ElementEditor(container, node) {
       maxWidth: () => getAutocompleteMaxWidth(this.tag, this.container.elt),
       trigger: "dblclick",
       stopOnReturn: true,
-      done: this.onTagEdit.bind(this),
+      done: this.onTagEdit,
       cssProperties: this._cssProperties
     });
   }
@@ -160,6 +167,11 @@ ElementEditor.prototype = {
     closingBracket.textContent = ">";
     open.appendChild(closingBracket);
 
+    this.expandBadge = this.doc.createElement("span");
+    this.expandBadge.classList.add("markup-expand-badge");
+    this.expandBadge.addEventListener("click", this.onExpandBadgeClick);
+    this.elt.appendChild(this.expandBadge);
+
     const close = this.doc.createElement("span");
     close.classList.add("close");
     close.appendChild(this.doc.createTextNode("</"));
@@ -170,17 +182,6 @@ ElementEditor.prototype = {
     close.appendChild(this.closeTag);
 
     close.appendChild(this.doc.createTextNode(">"));
-
-    this.eventNode = this.doc.createElement("div");
-    this.eventNode.classList.add("markupview-event-badge");
-    this.eventNode.dataset.event = "true";
-    this.eventNode.textContent = "event";
-    this.eventNode.title = INSPECTOR_L10N.getStr("markupView.event.tooltiptext");
-    this.elt.appendChild(this.eventNode);
-
-    this.displayNode = this.doc.createElement("div");
-    this.displayNode.classList.add("markupview-display-badge");
-    this.elt.appendChild(this.displayNode);
   },
 
   set selected(value) {
@@ -271,17 +272,90 @@ ElementEditor.prototype = {
       }
     }
 
-    // Update the event bubble display
-    this.eventNode.style.display = this.node.hasEventListeners ? "inline-block" : "none";
-
-    // Update the display type node
-    const showDisplayNode = this.node.displayType in DISPLAY_TYPES;
-    this.displayNode.textContent = this.node.displayType;
-    this.displayNode.dataset.display = showDisplayNode ? this.node.displayType : "";
-    this.displayNode.style.display = showDisplayNode ? "inline-block" : "none";
-    this.displayNode.title = showDisplayNode ? DISPLAY_TYPES[this.node.displayType] : "";
-
+    this.updateEventBadge();
+    this.updateDisplayBadge();
+    this.updateCustomBadge();
     this.updateTextEditor();
+  },
+
+  updateEventBadge: function() {
+    const showEventBadge = this.node.hasEventListeners;
+    if (this._eventBadge && !showEventBadge) {
+      this._eventBadge.remove();
+      this._eventBadge = null;
+    } else if (showEventBadge && !this._eventBadge) {
+      this._createEventBadge();
+    }
+  },
+
+  _createEventBadge: function() {
+    this._eventBadge = this.doc.createElement("div");
+    this._eventBadge.classList.add("markup-badge");
+    this._eventBadge.dataset.event = "true";
+    this._eventBadge.textContent = "event";
+    this._eventBadge.title = INSPECTOR_L10N.getStr("markupView.event.tooltiptext");
+    // Badges order is [event][display][custom], insert event badge before others.
+    this.elt.insertBefore(this._eventBadge, this._displayBadge || this._customBadge);
+  },
+
+  /**
+   * Update the markup display badge.
+   */
+  updateDisplayBadge: function() {
+    const showDisplayBadge = this.node.displayType in DISPLAY_TYPES;
+    if (this._displayBadge && !showDisplayBadge) {
+      this._displayBadge.remove();
+      this._displayBadge = null;
+    } else if (showDisplayBadge) {
+      if (!this._displayBadge) {
+        this._createDisplayBadge();
+      }
+      this._updateDisplayBadgeContent();
+    }
+  },
+
+  _createDisplayBadge: function() {
+    this._displayBadge = this.doc.createElement("div");
+    this._displayBadge.classList.add("markup-badge");
+    this._displayBadge.addEventListener("click", this.onDisplayBadgeClick);
+    // Badges order is [event][display][custom], insert display badge before custom.
+    this.elt.insertBefore(this._displayBadge, this._customBadge);
+  },
+
+  _updateDisplayBadgeContent: function() {
+    this._displayBadge.textContent = this.node.displayType;
+    this._displayBadge.dataset.display = this.node.displayType;
+    this._displayBadge.title = DISPLAY_TYPES[this.node.displayType];
+    this._displayBadge.classList.toggle("active",
+      this.highlighters.flexboxHighlighterShown === this.node ||
+      this.highlighters.gridHighlighterShown === this.node);
+    this._displayBadge.classList.toggle("interactive",
+      Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled") &&
+      (this.node.displayType === "flex" || this.node.displayType === "inline-flex"));
+  },
+
+  /**
+   * Update the markup custom element badge.
+   */
+  updateCustomBadge: function() {
+    const showCustomBadge = !!this.node.customElementLocation;
+    if (this._customBadge && !showCustomBadge) {
+      this._customBadge.remove();
+      this._customBadge = null;
+    } else if (!this._customBadge && showCustomBadge) {
+      this._createCustomBadge();
+    }
+  },
+
+  _createCustomBadge: function() {
+    this._customBadge = this.doc.createElement("div");
+    this._customBadge.classList.add("markup-badge");
+    this._customBadge.dataset.custom = "true";
+    this._customBadge.textContent = "custom…";
+    this._customBadge.title = INSPECTOR_L10N.getStr("markupView.custom.tooltiptext");
+    this._customBadge.addEventListener("click", this.onCustomBadgeClick);
+    // Badges order is [event][display][custom], insert custom badge at the end.
+    this.elt.appendChild(this._customBadge);
   },
 
   /**
@@ -361,7 +435,7 @@ ElementEditor.prototype = {
 
     const val = this.doc.createElement("span");
     val.classList.add("attr-value");
-    val.classList.add("theme-fg-color6");
+    val.classList.add("theme-fg-color4");
     inner.appendChild(val);
 
     inner.appendChild(this.doc.createTextNode('"'));
@@ -627,6 +701,38 @@ ElementEditor.prototype = {
   },
 
   /**
+   * Called when the display badge is clicked. Toggles on the grid highlighter for the
+   * selected node if it is a grid container.
+   */
+  onDisplayBadgeClick: function(event) {
+    event.stopPropagation();
+
+    const target = event.target;
+
+    if (Services.prefs.getBoolPref("devtools.inspector.flexboxHighlighter.enabled") &&
+        (target.dataset.display === "flex" || target.dataset.display === "inline-flex")) {
+      this._displayBadge.classList.add("active");
+      this.highlighters.toggleFlexboxHighlighter(this.inspector.selection.nodeFront,
+        "markup");
+    }
+
+    if (target.dataset.display === "grid" || target.dataset.display === "inline-grid") {
+      this._displayBadge.classList.add("active");
+      this.highlighters.toggleGridHighlighter(this.inspector.selection.nodeFront,
+        "markup");
+    }
+  },
+
+  onCustomBadgeClick: function() {
+    const { url, line } = this.node.customElementLocation;
+    this.markup.toolbox.viewSourceInDebugger(url, line, "show_custom_element");
+  },
+
+  onExpandBadgeClick: function() {
+    this.container.expandContainer();
+  },
+
+  /**
    * Called when the tag name editor has is done editing.
    */
   onTagEdit: function(newTagName, isCommit) {
@@ -646,6 +752,15 @@ ElementEditor.prototype = {
   },
 
   destroy: function() {
+    if (this._displayBadge) {
+      this._displayBadge.removeEventListener("click", this.onDisplayBadgeClick);
+    }
+    if (this._customBadge) {
+      this._customBadge.removeEventListener("click", this.onCustomBadgeClick);
+    }
+
+    this.expandBadge.removeEventListener("click", this.onExpandBadgeClick);
+
     for (const key in this.animationTimers) {
       clearTimeout(this.animationTimers[key]);
     }

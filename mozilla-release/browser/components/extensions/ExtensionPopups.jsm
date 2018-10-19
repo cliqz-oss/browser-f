@@ -18,18 +18,20 @@ ChromeUtils.defineModuleGetter(this, "setTimeout",
                                "resource://gre/modules/Timer.jsm");
 
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   DefaultWeakMap,
-  makeWidgetId,
   promiseEvent,
 } = ExtensionUtils;
 
+const {
+  makeWidgetId,
+} = ExtensionCommon;
+
 
 const POPUP_LOAD_TIMEOUT_MS = 200;
-
-const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 function promisePopupShown(popup) {
   return new Promise(resolve => {
@@ -74,6 +76,7 @@ class BasePopup {
       this._resolveContentReady = resolve;
     });
 
+    this.window.addEventListener("unload", this);
     this.viewNode.addEventListener(this.DESTROY_EVENT, this);
     this.panel.addEventListener("popuppositioned", this, {once: true, capture: true});
 
@@ -96,6 +99,8 @@ class BasePopup {
 
   destroy() {
     this.extension.forgetOnClose(this);
+
+    this.window.removeEventListener("unload", this);
 
     this.destroyed = true;
     this.browserLoadedDeferred.reject(new Error("Popup destroyed"));
@@ -208,6 +213,7 @@ class BasePopup {
 
   handleEvent(event) {
     switch (event.type) {
+      case "unload":
       case this.DESTROY_EVENT:
         if (!this.destroyed) {
           this.destroy();
@@ -231,10 +237,10 @@ class BasePopup {
   createBrowser(viewNode, popupURL = null) {
     let document = viewNode.ownerDocument;
 
-    let stack = document.createElementNS(XUL_NS, "stack");
+    let stack = document.createXULElement("stack");
     stack.setAttribute("class", "webextension-popup-stack");
 
-    let browser = document.createElementNS(XUL_NS, "browser");
+    let browser = document.createXULElement("browser");
     browser.setAttribute("type", "content");
     browser.setAttribute("disableglobalhistory", "true");
     browser.setAttribute("transparent", "true");
@@ -303,10 +309,10 @@ class BasePopup {
       let mm = browser.messageManager;
 
       // Sets the context information for context menus.
-      mm.loadFrameScript("chrome://browser/content/content.js", true);
+      mm.loadFrameScript("chrome://browser/content/content.js", true, true);
 
       mm.loadFrameScript(
-        "chrome://extensions/content/ext-browser-content.js", false);
+        "chrome://extensions/content/ext-browser-content.js", false, true);
 
       mm.sendAsyncMessage("Extension:InitBrowser", {
         allowScriptsToClose: true,
@@ -380,7 +386,7 @@ BasePopup.instances = new DefaultWeakMap(() => new WeakMap());
 
 class PanelPopup extends BasePopup {
   constructor(extension, document, popupURL, browserStyle) {
-    let panel = document.createElement("panel");
+    let panel = document.createXULElement("panel");
     panel.setAttribute("id", makeWidgetId(extension.id) + "-panel");
     panel.setAttribute("class", "browser-extension-panel");
     panel.setAttribute("tabspecific", "true");
@@ -428,7 +434,7 @@ class ViewPopup extends BasePopup {
     let document = window.document;
 
     let createPanel = remote => {
-      let panel = document.createElement("panel");
+      let panel = document.createXULElement("panel");
       panel.setAttribute("type", "arrow");
       if (remote) {
         panel.setAttribute("remote", "true");
@@ -477,6 +483,9 @@ class ViewPopup extends BasePopup {
    *        should be closed, or `true` otherwise.
    */
   async attach(viewNode) {
+    this.viewNode.removeEventListener(this.DESTROY_EVENT, this);
+    this.panel.removeEventListener("popuppositioned", this, {once: true, capture: true});
+
     this.viewNode = viewNode;
     this.viewNode.addEventListener(this.DESTROY_EVENT, this);
     this.viewNode.setAttribute("closemenu", "none");

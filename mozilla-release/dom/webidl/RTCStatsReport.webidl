@@ -26,9 +26,10 @@ dictionary RTCStats {
   DOMString id;
 };
 
-dictionary RTCRTPStreamStats : RTCStats {
-  DOMString ssrc;
+dictionary RTCRtpStreamStats : RTCStats {
+  unsigned long ssrc;
   DOMString mediaType;
+  DOMString kind;
   DOMString remoteId;
   boolean isRemote = false;
   DOMString mediaTrackId;
@@ -48,7 +49,7 @@ dictionary RTCRTPStreamStats : RTCStats {
   unsigned long nackCount;
 };
 
-dictionary RTCInboundRTPStreamStats : RTCRTPStreamStats {
+dictionary RTCInboundRTPStreamStats : RTCRtpStreamStats {
   unsigned long packetsReceived;
   unsigned long long bytesReceived;
   double jitter;
@@ -62,7 +63,7 @@ dictionary RTCInboundRTPStreamStats : RTCRTPStreamStats {
   unsigned long framesDecoded;
 };
 
-dictionary RTCOutboundRTPStreamStats : RTCRTPStreamStats {
+dictionary RTCOutboundRTPStreamStats : RTCRtpStreamStats {
   unsigned long packetsSent;
   unsigned long long bytesSent;
   double targetBitrate;  // config encoder bitrate target of this SSRC in bits/s
@@ -195,8 +196,6 @@ dictionary RTCStatsReportInternal {
 };
 
 [Pref="media.peerconnection.enabled",
-// TODO: Use MapClass here once it's available (Bug 928114)
-// MapClass(DOMString, object)
  JSImplementation="@mozilla.org/dom/rtcstatsreport;1"]
 interface RTCStatsReport {
   readonly maplike<DOMString, object>;

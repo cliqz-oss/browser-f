@@ -7,7 +7,6 @@
 var EXPORTED_SYMBOLS = ["ScrollbarSampler"];
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 var gSystemScrollbarWidth = null;
 
@@ -38,8 +37,7 @@ var ScrollbarSampler = {
     hdoc.appendChild(iframe);
 
     let cwindow = iframe.contentWindow;
-    let utils = cwindow.QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
+    let utils = cwindow.windowUtils;
 
     return new Promise(resolve => {
       cwindow.addEventListener("load", function(aEvent) {
@@ -57,6 +55,6 @@ var ScrollbarSampler = {
         iframe.remove();
       }, {once: true});
     });
-  }
+  },
 };
 Object.freeze(this.ScrollbarSampler);

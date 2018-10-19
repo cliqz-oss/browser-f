@@ -8,12 +8,13 @@
 
 #include "nsCanvasFrame.h"
 
-#include "AccessibleCaretEventHub.h"
 #include "gfxContext.h"
 #include "gfxUtils.h"
 #include "nsContainerFrame.h"
+#include "nsContentCreatorFunctions.h"
 #include "nsCSSRendering.h"
 #include "nsPresContext.h"
+#include "nsPopupSetFrame.h"
 #include "nsGkAtoms.h"
 #include "nsIFrameInlines.h"
 #include "nsIPresShell.h"
@@ -22,6 +23,7 @@
 #include "nsFrameManager.h"
 #include "gfxPlatform.h"
 #include "nsPrintfCString.h"
+#include "mozilla/AccessibleCaretEventHub.h"
 #include "mozilla/ComputedStyle.h"
 #include "mozilla/dom/AnonymousContent.h"
 #include "mozilla/layers/StackingContextHelper.h"
@@ -52,6 +54,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsCanvasFrame)
 NS_QUERYFRAME_HEAD(nsCanvasFrame)
   NS_QUERYFRAME_ENTRY(nsCanvasFrame)
   NS_QUERYFRAME_ENTRY(nsIAnonymousContentCreator)
+  NS_QUERYFRAME_ENTRY(nsIPopupContainer)
 NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
 
 void
@@ -75,12 +78,25 @@ nsCanvasFrame::HideCustomContentContainer()
 nsresult
 nsCanvasFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 {
+  MOZ_ASSERT(!mCustomContentContainer);
+
   if (!mContent) {
     return NS_OK;
   }
 
   nsCOMPtr<nsIDocument> doc = mContent->OwnerDoc();
-  nsresult rv = NS_OK;
+
+  RefPtr<AccessibleCaretEventHub> eventHub =
+    PresShell()->GetAccessibleCaretEventHub();
+
+  // This will go through InsertAnonymousContent and such, and we don't really
+  // want it to end up inserting into our content container.
+  //
+  // FIXME(emilio): The fact that this enters into InsertAnonymousContent is a
+  // bit nasty, can we avoid it, maybe doing this off a scriptrunner?
+  if (eventHub) {
+    eventHub->Init();
+  }
 
   // Create the custom content container.
   mCustomContentContainer = doc->CreateHTMLElement(nsGkAtoms::div);
@@ -96,35 +112,81 @@ nsCanvasFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   mCustomContentContainer->SetProperty(nsGkAtoms::docLevelNativeAnonymousContent,
                                        reinterpret_cast<void*>(true));
 
+  // This will usually be done by the caller, but in this case we do it here,
+  // since we reuse the document's AnoymousContent list, and those survive
+  // across reframes and thus may already be flagged as being in an anonymous
+  // subtree. We don't really want to have this semi-broken state where
+  // anonymous nodes have a non-anonymous.
+  mCustomContentContainer->SetIsNativeAnonymousRoot();
+
   aElements.AppendElement(mCustomContentContainer);
 
   // Do not create an accessible object for the container.
   mCustomContentContainer->SetAttr(kNameSpaceID_None, nsGkAtoms::role,
                                    NS_LITERAL_STRING("presentation"), false);
 
-  // XXX add :moz-native-anonymous or will that be automatically set?
-  rv = mCustomContentContainer->SetAttr(kNameSpaceID_None, nsGkAtoms::_class,
-                                        NS_LITERAL_STRING("moz-custom-content-container"),
-                                        true);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Append all existing AnonymousContent nodes stored at document level if any.
-  size_t len = doc->GetAnonymousContents().Length();
-  for (size_t i = 0; i < len; ++i) {
-    nsCOMPtr<Element> node = doc->GetAnonymousContents()[i]->GetContentNode();
-    mCustomContentContainer->AppendChildTo(node->AsContent(), true);
-  }
+  mCustomContentContainer->SetAttr(kNameSpaceID_None, nsGkAtoms::_class,
+                                   NS_LITERAL_STRING("moz-custom-content-container"),
+                                   false);
 
   // Only create a frame for mCustomContentContainer if it has some children.
-  if (len == 0) {
+  if (doc->GetAnonymousContents().IsEmpty()) {
     HideCustomContentContainer();
   }
 
-  RefPtr<AccessibleCaretEventHub> eventHub =
-    PresContext()->GetPresShell()->GetAccessibleCaretEventHub();
-  if (eventHub) {
-    // AccessibleCaret will insert anonymous caret elements.
-    eventHub->Init();
+  for (RefPtr<AnonymousContent>& anonContent : doc->GetAnonymousContents()) {
+    if (nsCOMPtr<nsINode> parent = anonContent->ContentNode().GetParentNode()) {
+      // Parent had better be an old custom content container already removed
+      // from a reframe. Forget about it since we're about to get inserted in a
+      // new one.
+      //
+      // TODO(emilio): Maybe we should extend PostDestroyData and do this stuff
+      // there instead, or something...
+      MOZ_ASSERT(parent != mCustomContentContainer);
+      MOZ_ASSERT(parent->IsElement());
+      MOZ_ASSERT(parent->AsElement()->IsRootOfNativeAnonymousSubtree());
+      MOZ_ASSERT(!parent->IsInComposedDoc());
+      MOZ_ASSERT(!parent->GetParentNode());
+
+      parent->RemoveChildNode(&anonContent->ContentNode(), false);
+    }
+
+    mCustomContentContainer->AppendChildTo(&anonContent->ContentNode(), false);
+  }
+
+  // Create a popupgroup element for chrome privileged top level non-XUL
+  // documents to support context menus and tooltips.
+  if (PresContext()->IsChrome() && PresContext()->IsRoot() &&
+      doc->AllowXULXBL() && !doc->IsXULDocument()) {
+    nsNodeInfoManager* nodeInfoManager = doc->NodeInfoManager();
+    RefPtr<NodeInfo> nodeInfo =
+      nodeInfoManager->GetNodeInfo(nsGkAtoms::popupgroup,
+                                   nullptr, kNameSpaceID_XUL,
+                                   nsINode::ELEMENT_NODE);
+
+    nsresult rv = NS_NewXULElement(getter_AddRefs(mPopupgroupContent),
+                                   nodeInfo.forget(),
+                                   dom::NOT_FROM_PARSER);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    aElements.AppendElement(mPopupgroupContent);
+
+    nodeInfo = nodeInfoManager->GetNodeInfo(nsGkAtoms::tooltip, nullptr,
+                                          kNameSpaceID_XUL,
+                                          nsINode::ELEMENT_NODE);
+
+    rv = NS_NewXULElement(getter_AddRefs(mTooltipContent), nodeInfo.forget(),
+                          dom::NOT_FROM_PARSER);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    mTooltipContent->SetAttr(kNameSpaceID_None, nsGkAtoms::_default,
+                             NS_LITERAL_STRING("true"), false);
+    // Set the page attribute so the XBL binding will find the text for the
+    // tooltip from the currently hovered element.
+    mTooltipContent->SetAttr(kNameSpaceID_None, nsGkAtoms::page,
+                             NS_LITERAL_STRING("true"), false);
+
+    aElements.AppendElement(mTooltipContent);
   }
 
   return NS_OK;
@@ -135,6 +197,12 @@ nsCanvasFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements, uint32
 {
   if (mCustomContentContainer) {
     aElements.AppendElement(mCustomContentContainer);
+  }
+  if (mPopupgroupContent) {
+    aElements.AppendElement(mPopupgroupContent);
+  }
+  if (mTooltipContent) {
+    aElements.AppendElement(mTooltipContent);
   }
 }
 
@@ -147,23 +215,17 @@ nsCanvasFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestro
     sf->RemoveScrollPositionListener(this);
   }
 
-  // Elements inserted in the custom content container have the same lifetime as
-  // the document, so before destroying the container, make sure to keep a clone
-  // of each of them at document level so they can be re-appended on reframe.
-  if (mCustomContentContainer) {
-    nsCOMPtr<nsIDocument> doc = mContent->OwnerDoc();
-    ErrorResult rv;
-
-    nsTArray<RefPtr<mozilla::dom::AnonymousContent>>& docAnonContents =
-      doc->GetAnonymousContents();
-    for (size_t i = 0, len = docAnonContents.Length(); i < len; ++i) {
-      AnonymousContent* content = docAnonContents[i];
-      nsCOMPtr<nsINode> clonedElement = content->GetContentNode()->CloneNode(true, rv);
-      content->SetContentNode(clonedElement->AsElement());
-    }
-  }
   aPostDestroyData.AddAnonymousContent(mCustomContentContainer.forget());
+  if (mPopupgroupContent) {
+    aPostDestroyData.AddAnonymousContent(mPopupgroupContent.forget());
+  }
+  if (mTooltipContent) {
+    aPostDestroyData.AddAnonymousContent(mTooltipContent.forget());
+  }
 
+  MOZ_ASSERT(!mPopupSetFrame ||
+             nsLayoutUtils::IsProperAncestorFrame(this, mPopupSetFrame),
+             "Someone forgot to clear popup set frame");
   nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
 }
 
@@ -260,6 +322,34 @@ nsRect nsCanvasFrame::CanvasArea() const
     result.UnionRect(result, nsRect(nsPoint(0, 0), portRect.Size()));
   }
   return result;
+}
+
+nsPopupSetFrame*
+nsCanvasFrame::GetPopupSetFrame()
+{
+  return mPopupSetFrame;
+}
+
+void
+nsCanvasFrame::SetPopupSetFrame(nsPopupSetFrame* aPopupSet)
+{
+  MOZ_ASSERT(!aPopupSet || !mPopupSetFrame,
+             "Popup set is already defined! Only 1 allowed.");
+  mPopupSetFrame = aPopupSet;
+}
+
+Element*
+nsCanvasFrame::GetDefaultTooltip()
+{
+  return mTooltipContent;
+}
+
+void
+nsCanvasFrame::SetDefaultTooltip(Element* aTooltip)
+{
+  MOZ_ASSERT(!aTooltip || aTooltip == mTooltipContent,
+             "Default tooltip should be anonymous content tooltip.");
+  mTooltipContent = aTooltip;
 }
 
 void
@@ -685,7 +775,7 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
   if (mFrames.IsEmpty()) {
     // We have no child frame, so return an empty size
     aDesiredSize.Width() = aDesiredSize.Height() = 0;
-  } else {
+  } else if (mFrames.FirstChild() != mPopupSetFrame) {
     nsIFrame* kidFrame = mFrames.FirstChild();
     bool kidDirty = (kidFrame->GetStateBits() & NS_FRAME_IS_DIRTY) != 0;
 
@@ -774,6 +864,21 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
                                     aStatus);
   }
 
+  if (mPopupSetFrame) {
+    MOZ_ASSERT(mFrames.ContainsFrame(mPopupSetFrame), "Only normal flow supported.");
+    nsReflowStatus popupStatus;
+    ReflowOutput popupDesiredSize(aReflowInput.GetWritingMode());
+    WritingMode wm = mPopupSetFrame->GetWritingMode();
+    LogicalSize availSize = aReflowInput.ComputedSize(wm);
+    availSize.BSize(wm) = NS_UNCONSTRAINEDSIZE;
+    ReflowInput popupReflowInput(aPresContext, aReflowInput,
+                                 mPopupSetFrame, availSize);
+    ReflowChild(mPopupSetFrame, aPresContext, popupDesiredSize,
+                popupReflowInput, 0, 0, NS_FRAME_NO_MOVE_FRAME, popupStatus);
+    FinishReflowChild(mPopupSetFrame, aPresContext, popupDesiredSize,
+                      &popupReflowInput, 0, 0, NS_FRAME_NO_MOVE_FRAME);
+  }
+
   FinishReflowWithAbsoluteFrames(aPresContext, aDesiredSize, aReflowInput, aStatus);
 
   NS_FRAME_TRACE_REFLOW_OUT("nsCanvasFrame::Reflow", aStatus);
@@ -784,8 +889,7 @@ nsresult
 nsCanvasFrame::GetContentForEvent(WidgetEvent* aEvent, nsIContent** aContent)
 {
   NS_ENSURE_ARG_POINTER(aContent);
-  nsresult rv = nsFrame::GetContentForEvent(aEvent,
-                                            aContent);
+  nsresult rv = nsFrame::GetContentForEvent(aEvent, aContent);
   if (NS_FAILED(rv) || !*aContent) {
     nsIFrame* kid = mFrames.FirstChild();
     if (kid) {

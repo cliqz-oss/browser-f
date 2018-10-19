@@ -90,8 +90,12 @@ macro_rules! rust_target_base {
             => Stable_1_0 => 1.0;
             /// Rust stable 1.19
             => Stable_1_19 => 1.19;
+            /// Rust stable 1.20
+            => Stable_1_20 => 1.20;
             /// Rust stable 1.21
             => Stable_1_21 => 1.21;
+            /// Rust stable 1.25
+            => Stable_1_25 => 1.25;
             /// Nightly rust
             => Nightly => nightly;
         );
@@ -106,65 +110,73 @@ pub const LATEST_STABLE_RUST: RustTarget = RustTarget::Stable_1_21;
 
 /// Create RustFeatures struct definition, new(), and a getter for each field
 macro_rules! rust_feature_def {
-    ( $( $( #[$attr:meta] )* => $feature:ident; )* ) => {
+    (
+        $( $rust_target:ident {
+            $( $( #[$attr:meta] )* => $feature:ident; )*
+        } )*
+    ) => {
         /// Features supported by a rust target
         #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
         pub struct RustFeatures {
-            $(
-                $feature: bool,
-            )*
+            $( $(
+                $(
+                    #[$attr]
+                )*
+                pub $feature: bool,
+            )* )*
         }
 
         impl RustFeatures {
             /// Gives a RustFeatures struct with all features disabled
             fn new() -> Self {
                 RustFeatures {
-                    $(
+                    $( $(
                         $feature: false,
-                    )*
+                    )* )*
                 }
             }
+        }
 
-            $(
+        impl From<RustTarget> for RustFeatures {
+            fn from(rust_target: RustTarget) -> Self {
+                let mut features = RustFeatures::new();
+
                 $(
-                    #[$attr]
-                )*
-                pub fn $feature(&self) -> bool {
-                    self.$feature
+                if rust_target >= RustTarget::$rust_target {
+                    $(
+                    features.$feature = true;
+                    )*
                 }
-            )*
+                )*
+
+                features
+            }
         }
     }
 }
 
 rust_feature_def!(
-    /// Untagged unions ([RFC 1444](https://github.com/rust-lang/rfcs/blob/master/text/1444-union.md))
-    => untagged_union;
-    /// `thiscall` calling convention ([Tracking issue](https://github.com/rust-lang/rust/issues/42202))
-    => thiscall_abi;
-    /// builtin impls for `Clone` ([PR](https://github.com/rust-lang/rust/pull/43690))
-    => builtin_clone_impls;
-);
-
-impl From<RustTarget> for RustFeatures {
-    fn from(rust_target: RustTarget) -> Self {
-        let mut features = RustFeatures::new();
-
-        if rust_target >= RustTarget::Stable_1_19 {
-            features.untagged_union = true;
-        }
-
-        if rust_target >= RustTarget::Stable_1_21 {
-            features.builtin_clone_impls = true;
-        }
-
-        if rust_target >= RustTarget::Nightly {
-            features.thiscall_abi = true;
-        }
-
-        features
+    Stable_1_19 {
+        /// Untagged unions ([RFC 1444](https://github.com/rust-lang/rfcs/blob/master/text/1444-union.md))
+        => untagged_union;
     }
-}
+    Stable_1_20 {
+        /// associated constants ([PR](https://github.com/rust-lang/rust/pull/42809))
+        => associated_const;
+    }
+    Stable_1_21 {
+        /// builtin impls for `Clone` ([PR](https://github.com/rust-lang/rust/pull/43690))
+        => builtin_clone_impls;
+    }
+    Stable_1_25 {
+        /// repr(align) ([PR](https://github.com/rust-lang/rust/pull/47006))
+        => repr_align;
+    }
+    Nightly {
+        /// `thiscall` calling convention ([Tracking issue](https://github.com/rust-lang/rust/issues/42202))
+        => thiscall_abi;
+    }
+);
 
 impl Default for RustFeatures {
     fn default() -> Self {
@@ -175,8 +187,36 @@ impl Default for RustFeatures {
 
 #[cfg(test)]
 mod test {
-#![allow(unused_imports)]
+    #![allow(unused_imports)]
     use super::*;
+
+    #[test]
+    fn target_features() {
+        let f_1_0 = RustFeatures::from(RustTarget::Stable_1_0);
+        assert!(
+            !f_1_0.untagged_union
+                && !f_1_0.associated_const
+                && !f_1_0.builtin_clone_impls
+                && !f_1_0.repr_align
+                && !f_1_0.thiscall_abi
+        );
+        let f_1_21 = RustFeatures::from(RustTarget::Stable_1_21);
+        assert!(
+            f_1_21.untagged_union
+                && f_1_21.associated_const
+                && f_1_21.builtin_clone_impls
+                && !f_1_21.repr_align
+                && !f_1_21.thiscall_abi
+        );
+        let f_nightly = RustFeatures::from(RustTarget::Nightly);
+        assert!(
+            f_nightly.untagged_union
+                && f_nightly.associated_const
+                && f_nightly.builtin_clone_impls
+                && f_nightly.repr_align
+                && f_nightly.thiscall_abi
+        );
+    }
 
     fn test_target(target_str: &str, target: RustTarget) {
         let target_string: String = target.into();
@@ -189,6 +229,7 @@ mod test {
         test_target("1.0", RustTarget::Stable_1_0);
         test_target("1.19", RustTarget::Stable_1_19);
         test_target("1.21", RustTarget::Stable_1_21);
+        test_target("1.25", RustTarget::Stable_1_25);
         test_target("nightly", RustTarget::Nightly);
     }
 }

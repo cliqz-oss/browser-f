@@ -15,8 +15,8 @@ nsMappedAttributeElement::SetAndSwapMappedAttribute(nsAtom* aName,
                                                     nsresult* aRetval)
 {
   nsHTMLStyleSheet* sheet = OwnerDoc()->GetAttributeStyleSheet();
-  *aRetval = mAttrsAndChildren.SetAndSwapMappedAttr(aName, aValue,
-                                                    this, sheet, aValueWasSet);
+  *aRetval = mAttrs.SetAndSwapMappedAttr(aName, aValue,
+                                         this, sheet, aValueWasSet);
   return true;
 }
 
@@ -27,8 +27,8 @@ nsMappedAttributeElement::GetAttributeMappingFunction() const
 }
 
 void
-nsMappedAttributeElement::MapNoAttributesInto(const nsMappedAttributes* aAttributes,
-                                              mozilla::GenericSpecifiedValues* aGenericData)
+nsMappedAttributeElement::MapNoAttributesInto(const nsMappedAttributes*,
+                                              mozilla::MappedDeclarations&)
 {
 }
 
@@ -36,6 +36,6 @@ void
 nsMappedAttributeElement::NodeInfoChanged(nsIDocument* aOldDoc)
 {
   nsHTMLStyleSheet* sheet = OwnerDoc()->GetAttributeStyleSheet();
-  mAttrsAndChildren.SetMappedAttrStyleSheet(sheet);
+  mAttrs.SetMappedAttrStyleSheet(sheet);
   nsMappedAttributeElementBase::NodeInfoChanged(aOldDoc);
 }

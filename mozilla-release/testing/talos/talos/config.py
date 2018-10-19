@@ -4,12 +4,10 @@
 from __future__ import absolute_import, print_function
 
 import copy
-import json
 import os
 import sys
 import time
 
-import mozinfo
 from mozlog.commandline import setup_logging
 from talos import utils, test
 from talos.cmdline import parse_args
@@ -21,7 +19,7 @@ class ConfigurationError(Exception):
 
 DEFAULTS = dict(
     # args to pass to browser
-    extra_args='',
+    extra_args=[],
     buildid='testbuildid',
     init_url='getInfo.html',
     env={'NO_EM_RESTART': '1'},
@@ -210,39 +208,11 @@ def build_manifest(config, manifestName):
     with open(manifestName, 'r') as fHandle:
         manifestLines = fHandle.readlines()
 
-    # look for configuration data - right now just MotionMark
-    tuning_data = {}
-    if os.path.isfile(manifestName + '.json'):
-        with open(manifestName + '.json', 'r') as f:
-            tuning_data = json.load(f)
-
     # write modified manifest lines
     with open(manifestName + '.develop', 'w') as newHandle:
         for line in manifestLines:
             newline = line.replace('localhost', config['webserver'])
             newline = newline.replace('page_load_test', 'tests')
-
-            if tuning_data:
-                suite = ''
-                test = ''
-                # parse suite/test from: suite-name=HTMLsuite&test-name=CompositedTransforms
-                parts = newline.split('&')
-                for part in parts:
-                    key_val = part.split('=')
-                    if len(key_val) != 2:
-                        continue
-
-                    if key_val[0] == 'suite-name':
-                        suite = key_val[1]
-                    if key_val[0] == 'test-name':
-                        test = key_val[1]
-
-                if suite and test and tuning_data:
-                    osver = mozinfo.os
-                    if osver not in ['linux', 'win']:
-                        osver = 'osx'
-                    complexity = tuning_data[suite]['complexity'][test][osver]
-                    newline = newline.replace('complexity=300', 'complexity=%s' % complexity)
             newHandle.write(newline)
 
     newManifestName = manifestName + '.develop'
@@ -362,7 +332,10 @@ def get_config(argv=None):
         except KeyError:
             raise ConfigurationError('No such suite: %r' % cli_opts.suite)
         argv += ['-a', ':'.join(suite_conf['tests'])]
-        argv += suite_conf.get('talos_options', [])
+        # talos_options in the suite config should not override command line
+        # options, so we prepend argv with talos_options so that, when parsed,
+        # the command line options will clobber the suite config options.
+        argv = suite_conf.get('talos_options', []) + argv
         # args needs to be reparsed now
     elif not cli_opts.activeTests:
         raise ConfigurationError('--activeTests or --suite required!')

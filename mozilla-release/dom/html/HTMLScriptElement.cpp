@@ -32,7 +32,7 @@ namespace dom {
 JSObject*
 HTMLScriptElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLScriptElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLScriptElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 HTMLScriptElement::HTMLScriptElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
@@ -54,12 +54,10 @@ NS_IMPL_ISUPPORTS_INHERITED(HTMLScriptElement, nsGenericHTMLElement,
 
 nsresult
 HTMLScriptElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent* aBindingParent)
 {
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (GetComposedDoc()) {
@@ -93,8 +91,7 @@ HTMLScriptElement::ParseAttribute(int32_t aNamespaceID,
 }
 
 nsresult
-HTMLScriptElement::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
-                         bool aPreallocateChildren) const
+HTMLScriptElement::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
 
@@ -102,7 +99,7 @@ HTMLScriptElement::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult,
   HTMLScriptElement* it = new HTMLScriptElement(ni, NOT_FROM_PARSER);
 
   nsCOMPtr<nsINode> kungFuDeathGrip = it;
-  nsresult rv = const_cast<HTMLScriptElement*>(this)->CopyInnerTo(it, aPreallocateChildren);
+  nsresult rv = const_cast<HTMLScriptElement*>(this)->CopyInnerTo(it);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // The clone should be marked evaluated if we are.
@@ -231,7 +228,7 @@ HTMLScriptElement::FreezeExecutionAttrs(nsIDocument* aOwnerDoc)
           NS_LITERAL_CSTRING("HTML"), OwnerDoc(),
           nsContentUtils::eDOM_PROPERTIES, "ScriptSourceInvalidUri",
           params, ArrayLength(params), nullptr,
-          EmptyString(), GetScriptLineNumber());
+          EmptyString(), GetScriptLineNumber(), GetScriptColumnNumber());
       }
     } else {
       const char16_t* params[] = { u"src" };
@@ -240,7 +237,7 @@ HTMLScriptElement::FreezeExecutionAttrs(nsIDocument* aOwnerDoc)
         NS_LITERAL_CSTRING("HTML"), OwnerDoc(),
         nsContentUtils::eDOM_PROPERTIES, "ScriptSourceEmpty",
         params, ArrayLength(params), nullptr,
-        EmptyString(), GetScriptLineNumber());
+        EmptyString(), GetScriptLineNumber(), GetScriptColumnNumber());
     }
 
     // At this point mUri will be null for invalid URLs.

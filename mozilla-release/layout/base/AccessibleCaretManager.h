@@ -315,7 +315,7 @@ protected:
   // or not show the carets when the selection is updated, as we want to hide
   // the carets for mouse-triggered selection changes but show them for other
   // input types such as touch.
-  uint16_t mLastInputSource = dom::MouseEventBinding::MOZ_SOURCE_UNKNOWN;
+  uint16_t mLastInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
 
   // Set to true in OnScrollStart() and set to false in OnScrollEnd().
   bool mIsScrollStarted = false;
@@ -330,10 +330,6 @@ protected:
   // boundary by 61 app units, which is 1 pixel + 1 app unit as defined in
   // AppUnit.h.
   static const int32_t kBoundaryAppUnits = 61;
-
-  // Preference to show selection bars at the two ends in selection mode. The
-  // selection bar is always disabled in cursor mode.
-  static bool sSelectionBarEnabled;
 
   // Preference to allow smarter selection of phone numbers,
   // when user long presses text to start.

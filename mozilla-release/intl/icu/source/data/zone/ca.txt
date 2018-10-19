@@ -1,8 +1,17 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html#License
 ca{
-    Version{"2.1.39.20"}
+    Version{"2.1.41.97"}
     zoneStrings{
+        "Etc:UTC"{
+            ls{"Temps universal coordinat"}
+        }
+        "Europe:Dublin"{
+            ld{"Hora estàndard d’Irlanda"}
+        }
+        "Europe:London"{
+            ld{"Hora d’estiu britànica"}
+        }
         "meta:Afghanistan"{
             ls{"Hora de l’Afganistan"}
         }

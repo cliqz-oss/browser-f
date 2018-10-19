@@ -26,6 +26,7 @@
 #include "nsGenericHTMLElement.h"
 
 #include "nsIFrame.h"
+#include "nsContainerFrame.h"
 #include "nsFrameTraversal.h"
 #include "nsIImageDocument.h"
 #include "nsIDocument.h"
@@ -115,6 +116,7 @@ nsTypeAheadFind::Init(nsIDocShell* aDocShell)
     mDidAddObservers = true;
     // ----------- Listen to prefs ------------------
     nsresult rv = prefInternal->AddObserver("accessibility.browsewithcaret", this, true);
+    NS_ENSURE_SUCCESS(rv, rv);
     rv = prefInternal->AddObserver("accessibility.typeaheadfind", this, true);
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -440,7 +442,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell, bool aIsLinksOnly,
 
   // XXXbz Should this really be ignoring errors?
   int16_t rangeCompareResult =
-    mStartPointRange->CompareBoundaryPoints(RangeBinding::START_TO_START,
+    mStartPointRange->CompareBoundaryPoints(Range_Binding::START_TO_START,
                                             *mSearchRange, IgnoreErrors());
   // No need to wrap find in doc if starting at beginning
   bool hasWrapped = (rangeCompareResult < 0);
@@ -494,7 +496,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell, bool aIsLinksOnly,
           // to continue at the start of returnRange.
           IgnoredErrorResult rv;
           int16_t compareResult =
-            mStartPointRange->CompareBoundaryPoints(RangeBinding::START_TO_END,
+            mStartPointRange->CompareBoundaryPoints(Range_Binding::START_TO_END,
                                                     *returnRange, rv);
           if (!rv.Failed() && compareResult <= 0) {
             // OK to start at the end of mStartPointRange
@@ -510,7 +512,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell, bool aIsLinksOnly,
           // need to continue at the end of returnRange.
           IgnoredErrorResult rv;
           int16_t compareResult =
-            mStartPointRange->CompareBoundaryPoints(RangeBinding::END_TO_START,
+            mStartPointRange->CompareBoundaryPoints(Range_Binding::END_TO_START,
                                                     *returnRange, rv);
           if (!rv.Failed() && compareResult >= 0) {
             // OK to start at the start of mStartPointRange
@@ -539,8 +541,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell, bool aIsLinksOnly,
         mPresShell = do_GetWeakReference(presShell);
       }
 
-      nsCOMPtr<nsIDocument> document =
-        do_QueryInterface(presShell->GetDocument());
+      nsCOMPtr<nsIDocument> document = presShell->GetDocument();
       NS_ASSERTION(document, "Wow, presShell doesn't have document!");
       if (!document)
         return NS_ERROR_UNEXPECTED;
@@ -902,7 +903,7 @@ nsTypeAheadFind::RangeStartsInsideLink(nsRange *aRange,
   nsCOMPtr<nsIContent> startContent =
     do_QueryInterface(aRange->GetStartContainer());
   if (!startContent) {
-    NS_NOTREACHED("startContent should never be null");
+    MOZ_ASSERT_UNREACHABLE("startContent should never be null");
     return;
   }
   nsCOMPtr<nsIContent> origContent = startContent;
@@ -1084,8 +1085,7 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, bool aLinksOnly,
       nsPresContext* presContext = presShell->GetPresContext();
       NS_ENSURE_TRUE(presContext, NS_OK);
 
-      nsCOMPtr<nsIDocument> document =
-        do_QueryInterface(presShell->GetDocument());
+      nsCOMPtr<nsIDocument> document = presShell->GetDocument();
       if (!document)
         return NS_ERROR_UNEXPECTED;
 
@@ -1129,8 +1129,8 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, bool aLinksOnly,
     }
   }
   else {
-    // Error sound
-    if (mTypeAheadBuffer.Length() > mLastFindLength)
+    // Error sound, except when whole word matching is ON.
+    if (!mEntireWord && mTypeAheadBuffer.Length() > mLastFindLength)
       PlayNotFoundSound();
   }
 
@@ -1340,15 +1340,25 @@ nsTypeAheadFind::IsRangeVisible(nsIPresShell *aPresShell,
   while (rectVisibility == nsRectVisibility_kAboveViewport) {
     frameTraversal->Next();
     frame = frameTraversal->CurrentItem();
-    if (!frame)
+    if (!frame) {
       return false;
-
-    if (!frame->GetRect().IsEmpty()) {
-      rectVisibility =
-        aPresShell->GetRectVisibility(frame,
-                                      nsRect(nsPoint(0,0), frame->GetSize()),
-                                      minDistance);
     }
+
+    // We don't really want to start on NAC, because we may skip iterating
+    // actual non-anonymous children that matter.
+    while (frame->GetContent() &&
+           frame->GetContent()->IsInNativeAnonymousSubtree()) {
+      frame = frame->GetParent();
+    }
+
+    if (frame->GetRect().IsEmpty()) {
+      continue;
+    }
+
+    rectVisibility =
+      aPresShell->GetRectVisibility(frame,
+                                    nsRect(nsPoint(0,0), frame->GetSize()),
+                                    minDistance);
   }
 
   if (frame) {

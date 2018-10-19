@@ -208,6 +208,8 @@ public:
     }
     mIsCodecSupportAdaptivePlayback =
       mJavaDecoder->IsAdaptivePlaybackSupported();
+    mIsHardwareAccelerated =
+      mJavaDecoder->IsHardwareAccelerated();
     return InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__);
   }
 
@@ -220,6 +222,7 @@ public:
       [self](const FlushPromise::ResolveOrRejectValue& aValue) {
         self->mInputInfos.Clear();
         self->mSeekTarget.reset();
+        self->mLatestOutputTime.reset();
         return FlushPromise::CreateAndResolveOrReject(aValue, __func__);
       });
   }
@@ -256,14 +259,24 @@ public:
   bool IsUsefulData(const RefPtr<MediaData>& aSample) override
   {
     AssertOnTaskQueue();
-    if (!mSeekTarget) {
-      return true;
+
+    if (mLatestOutputTime && aSample->mTime < mLatestOutputTime.value()) {
+      return false;
     }
-    if (aSample->GetEndTime() > mSeekTarget.value()) {
-      mSeekTarget.reset();
-      return true;
+
+    const TimeUnit endTime = aSample->GetEndTime();
+    if (mSeekTarget && endTime <= mSeekTarget.value()) {
+      return false;
     }
-    return false;
+
+    mSeekTarget.reset();
+    mLatestOutputTime = Some(endTime);
+    return true;
+  }
+
+  bool IsHardwareAccelerated(nsACString& aFailureReason) const override
+  {
+    return mIsHardwareAccelerated;
   }
 
 private:
@@ -272,11 +285,14 @@ private:
   AndroidSurfaceTextureHandle mSurfaceHandle;
   // Only accessed on reader's task queue.
   bool mIsCodecSupportAdaptivePlayback = false;
+  // Can be accessed on any thread, but only written on during init.
+  bool mIsHardwareAccelerated = false;
   // Accessed on mTaskQueue, reader's TaskQueue and Java callback tread.
   // SimpleMap however is thread-safe, so it's okay to do so.
   SimpleMap<InputInfo> mInputInfos;
   // Only accessed on the TaskQueue.
   Maybe<TimeUnit> mSeekTarget;
+  Maybe<TimeUnit> mLatestOutputTime;
 };
 
 class RemoteAudioDecoder : public RemoteDataDecoder
@@ -450,8 +466,8 @@ RemoteDataDecoder::CreateVideoDecoder(const CreateDecoderParams& aParams,
   MediaFormat::LocalRef format;
   NS_ENSURE_SUCCESS(
     MediaFormat::CreateVideoFormat(TranslateMimeType(config.mMimeType),
-                                   config.mDisplay.width,
-                                   config.mDisplay.height,
+                                   config.mImage.width,
+                                   config.mImage.height,
                                    &format),
     nullptr);
 

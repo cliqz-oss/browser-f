@@ -34,6 +34,36 @@ using namespace mozilla;
 #define MISC_STR_PTR(_cont) \
   reinterpret_cast<void*>((_cont)->mStringBits & NS_ATTRVALUE_POINTERVALUE_MASK)
 
+/* static */ MiscContainer*
+nsAttrValue::AllocMiscContainer()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MiscContainer* cont = nullptr;
+  Swap(cont, sMiscContainerCache);
+
+  if (cont) {
+    return new (cont) MiscContainer;
+  }
+
+  return new MiscContainer;
+}
+
+/* static */ void
+nsAttrValue::DeallocMiscContainer(MiscContainer* aCont)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!aCont) {
+    return;
+  }
+
+  if (!sMiscContainerCache) {
+    aCont->~MiscContainer();
+    sMiscContainerCache = aCont;
+  } else {
+    delete aCont;
+  }
+}
+
 bool
 MiscContainer::GetString(nsAString& aString) const
 {
@@ -122,6 +152,7 @@ MiscContainer::Evict()
 }
 
 nsTArray<const nsAttrValue::EnumTable*>* nsAttrValue::sEnumTableArray = nullptr;
+MiscContainer* nsAttrValue::sMiscContainerCache = nullptr;
 
 nsAttrValue::nsAttrValue()
     : mBits(0)
@@ -177,8 +208,14 @@ nsAttrValue::Init()
 void
 nsAttrValue::Shutdown()
 {
+  MOZ_ASSERT(NS_IsMainThread());
   delete sEnumTableArray;
   sEnumTableArray = nullptr;
+  // The MiscContainer pointed to by sMiscContainerCache has already
+  // be destructed so `delete sMiscContainerCache` is
+  // dangerous. Invoke `operator delete` to free the memory.
+  ::operator delete(sMiscContainerCache);
+  sMiscContainerCache = nullptr;
 }
 
 void
@@ -202,7 +239,7 @@ nsAttrValue::Reset()
         break;
       }
 
-      delete ClearMiscContainer();
+      DeallocMiscContainer(ClearMiscContainer());
 
       break;
     }
@@ -262,7 +299,7 @@ nsAttrValue::SetTo(const nsAttrValue& aOther)
 
   MiscContainer* otherCont = aOther.GetMiscContainer();
   if (otherCont->IsRefCounted()) {
-    delete ClearMiscContainer();
+    DeallocMiscContainer(ClearMiscContainer());
     NS_ADDREF(otherCont);
     SetPtrValueAndType(otherCont, eOtherBase);
     return;
@@ -327,7 +364,7 @@ nsAttrValue::SetTo(const nsAttrValue& aOther)
         // the same size so it doesn't really matter which one we assign
         cont->mValue.mSVGAngle = otherCont->mValue.mSVGAngle;
       } else {
-        NS_NOTREACHED("unknown type stored in MiscContainer");
+        MOZ_ASSERT_UNREACHABLE("unknown type stored in MiscContainer");
       }
       break;
     }
@@ -593,7 +630,7 @@ nsAttrValue::ToString(nsAString& aResult) const
 #ifdef DEBUG
     case eColor:
     {
-      NS_NOTREACHED("color attribute without string data");
+      MOZ_ASSERT_UNREACHABLE("color attribute without string data");
       aResult.Truncate();
       break;
     }
@@ -778,7 +815,7 @@ nsAttrValue::GetEnumString(nsAString& aResult, bool aRealTag) const
     table++;
   }
 
-  NS_NOTREACHED("couldn't find value in EnumTable");
+  MOZ_ASSERT_UNREACHABLE("couldn't find value in EnumTable");
 }
 
 uint32_t
@@ -899,7 +936,7 @@ nsAttrValue::HashValue() const
         // All SVG types are just pointers to classes so we can treat them alike
         return NS_PTR_TO_INT32(cont->mValue.mSVGAngle);
       }
-      NS_NOTREACHED("unknown type stored in MiscContainer");
+      MOZ_ASSERT_UNREACHABLE("unknown type stored in MiscContainer");
       return 0;
     }
   }
@@ -1009,7 +1046,7 @@ nsAttrValue::Equals(const nsAttrValue& aOther) const
         MOZ_ASSERT(false, "Comparing nsAttrValues that point to SVG data");
         return false;
       }
-      NS_NOTREACHED("unknown type stored in MiscContainer");
+      MOZ_ASSERT_UNREACHABLE("unknown type stored in MiscContainer");
       return false;
     }
   }
@@ -1331,7 +1368,7 @@ nsAttrValue::SetIntValueAndType(int32_t aValue, ValueType aType,
       }
       default:
       {
-        NS_NOTREACHED("unknown integer type");
+        MOZ_ASSERT_UNREACHABLE("unknown integer type");
         break;
       }
     }
@@ -1670,15 +1707,15 @@ nsAttrValue::ParseStyleAttribute(const nsAString& aString,
 {
   nsIDocument* ownerDoc = aElement->OwnerDoc();
   nsHTMLCSSStyleSheet* sheet = ownerDoc->GetInlineStyleSheet();
-  nsCOMPtr<nsIURI> baseURI = aElement->GetBaseURIForStyleAttr();
+  nsIURI* baseURI = aElement->GetBaseURIForStyleAttr();
   nsIURI* docURI = ownerDoc->GetDocumentURI();
 
   NS_ASSERTION(aElement->NodePrincipal() == ownerDoc->NodePrincipal(),
                "This is unexpected");
 
-  nsCOMPtr<nsIPrincipal> principal = (
-      aMaybeScriptedPrincipal ? aMaybeScriptedPrincipal
-                              : aElement->NodePrincipal());
+  nsIPrincipal* principal =
+    aMaybeScriptedPrincipal ? aMaybeScriptedPrincipal
+                            : aElement->NodePrincipal();
 
   // If the (immutable) document URI does not match the element's base URI
   // (the common case is that they do match) do not cache the rule.  This is
@@ -1687,8 +1724,9 @@ nsAttrValue::ParseStyleAttribute(const nsAString& aString,
   // Similarly, if the triggering principal does not match the node principal,
   // do not cache the rule, since the principal will be encoded in any parsed
   // URLs in the rule.
-  bool cachingAllowed = (sheet && baseURI == docURI &&
-                         principal == aElement->NodePrincipal());
+  const bool cachingAllowed = sheet &&
+                              baseURI == docURI &&
+                              principal == aElement->NodePrincipal();
   if (cachingAllowed) {
     MiscContainer* cont = sheet->LookupStyleAttr(aString);
     if (cont) {
@@ -1699,12 +1737,12 @@ nsAttrValue::ParseStyleAttribute(const nsAString& aString,
     }
   }
 
-  RefPtr<URLExtraData> data = new URLExtraData(baseURI, docURI,
-                                                principal);
-  RefPtr<DeclarationBlock> decl = DeclarationBlock::
-    FromCssText(aString, data,
-                ownerDoc->GetCompatibilityMode(),
-                ownerDoc->CSSLoader());
+  RefPtr<URLExtraData> data = new URLExtraData(baseURI, docURI, principal);
+  RefPtr<DeclarationBlock> decl =
+    DeclarationBlock::FromCssText(aString,
+                                  data,
+                                  ownerDoc->GetCompatibilityMode(),
+                                  ownerDoc->CSSLoader());
   if (!decl) {
     return false;
   }
@@ -1811,7 +1849,7 @@ nsAttrValue::ClearMiscContainer()
       // This MiscContainer is shared, we need a new one.
       NS_RELEASE(cont);
 
-      cont = new MiscContainer;
+      cont = AllocMiscContainer();
       SetPtrValueAndType(cont, eOtherBase);
     }
     else {
@@ -1864,7 +1902,7 @@ nsAttrValue::EnsureEmptyMiscContainer()
     cont = GetMiscContainer();
   }
   else {
-    cont = new MiscContainer;
+    cont = AllocMiscContainer();
     SetPtrValueAndType(cont, eOtherBase);
   }
 

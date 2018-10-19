@@ -2,6 +2,8 @@
  * vim: set ts=8 sts=4 et sw=4 tw=99:
  */
 
+#include "js/CompilationAndEvaluation.h"
+#include "js/SourceBufferHolder.h"
 #include "jsapi-tests/tests.h"
 
 using mozilla::ArrayLength;
@@ -17,8 +19,9 @@ BEGIN_TEST(testJSEvaluateScript)
     JS::CompileOptions opts(cx);
     JS::AutoObjectVector scopeChain(cx);
     CHECK(scopeChain.append(obj));
+    JS::SourceBufferHolder srcBuf(src, ArrayLength(src) - 1, JS::SourceBufferHolder::NoOwnership);
     CHECK(JS::Evaluate(cx, scopeChain, opts.setFileAndLine(__FILE__, __LINE__),
-                       src, ArrayLength(src) - 1, &retval));
+                       srcBuf, &retval));
 
     bool hasProp = true;
     CHECK(JS_AlreadyHasOwnProperty(cx, obj, "x", &hasProp));

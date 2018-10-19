@@ -314,7 +314,7 @@ class IonBuilder
     AbortReasonOr<Ok> binaryArithTrySpecializedOnBaselineInspector(bool* emitted, JSOp op,
                                                                    MDefinition* left,
                                                                    MDefinition* right);
-    AbortReasonOr<Ok> arithTrySharedStub(bool* emitted, JSOp op, MDefinition* left,
+    AbortReasonOr<Ok> arithTryBinaryStub(bool* emitted, JSOp op, MDefinition* left,
                                          MDefinition* right);
 
     // jsop_bitnot helpers.
@@ -326,22 +326,22 @@ class IonBuilder
 
     // jsop_compare helpers.
     AbortReasonOr<Ok> compareTrySpecialized(bool* emitted, JSOp op, MDefinition* left,
-                                            MDefinition* right, bool canTrackOptimization);
+                                            MDefinition* right);
     AbortReasonOr<Ok> compareTryBitwise(bool* emitted, JSOp op, MDefinition* left,
                                         MDefinition* right);
     AbortReasonOr<Ok> compareTrySpecializedOnBaselineInspector(bool* emitted, JSOp op,
                                                                MDefinition* left,
                                                                MDefinition* right);
-    AbortReasonOr<Ok> compareTrySharedStub(bool* emitted, MDefinition* left, MDefinition* right);
+    AbortReasonOr<Ok> compareTryBinaryStub(bool* emitted, MDefinition* left, MDefinition* right);
+    AbortReasonOr<Ok> compareTryCharacter(bool* emitted, JSOp op, MDefinition* left,
+                                          MDefinition* right);
 
     // jsop_newarray helpers.
-    AbortReasonOr<Ok> newArrayTrySharedStub(bool* emitted);
     AbortReasonOr<Ok> newArrayTryTemplateObject(bool* emitted, JSObject* templateObject,
                                                 uint32_t length);
     AbortReasonOr<Ok> newArrayTryVM(bool* emitted, JSObject* templateObject, uint32_t length);
 
     // jsop_newobject helpers.
-    AbortReasonOr<Ok> newObjectTrySharedStub(bool* emitted);
     AbortReasonOr<Ok> newObjectTryTemplateObject(bool* emitted, JSObject* templateObject);
     AbortReasonOr<Ok> newObjectTryVM(bool* emitted, JSObject* templateObject);
 
@@ -357,7 +357,8 @@ class IonBuilder
                              PropertyName* name,
                              size_t* fieldOffset,
                              TypedObjectPrediction* fieldTypeReprs,
-                             size_t* fieldIndex);
+                             size_t* fieldIndex,
+                             bool* fieldMutable);
     MDefinition* loadTypedObjectType(MDefinition* value);
     AbortReasonOr<Ok> loadTypedObjectData(MDefinition* typedObj,
                                           MDefinition** owner,
@@ -730,57 +731,12 @@ class IonBuilder
     InliningResult inlineSetTypedObjectOffset(CallInfo& callInfo);
     InliningResult inlineConstructTypedObject(CallInfo& callInfo, TypeDescr* target);
 
-    // SIMD intrinsics and natives.
-    InliningResult inlineConstructSimdObject(CallInfo& callInfo, SimdTypeDescr* target);
-
-    // SIMD helpers.
-    bool canInlineSimd(CallInfo& callInfo, JSNative native, unsigned numArgs,
-                       InlineTypedObject** templateObj);
-    MDefinition* unboxSimd(MDefinition* ins, SimdType type);
-    InliningResult boxSimd(CallInfo& callInfo, MDefinition* ins, InlineTypedObject* templateObj);
-    MDefinition* convertToBooleanSimdLane(MDefinition* scalar);
-
-    InliningResult inlineSimd(CallInfo& callInfo, JSFunction* target, SimdType type);
-
-    InliningResult inlineSimdBinaryArith(CallInfo& callInfo, JSNative native,
-                                         MSimdBinaryArith::Operation op, SimdType type);
-    InliningResult inlineSimdBinaryBitwise(CallInfo& callInfo, JSNative native,
-                                           MSimdBinaryBitwise::Operation op, SimdType type);
-    InliningResult inlineSimdBinarySaturating(CallInfo& callInfo, JSNative native,
-                                              MSimdBinarySaturating::Operation op, SimdType type);
-    InliningResult inlineSimdShift(CallInfo& callInfo, JSNative native, MSimdShift::Operation op,
-                                   SimdType type);
-    InliningResult inlineSimdComp(CallInfo& callInfo, JSNative native,
-                                  MSimdBinaryComp::Operation op, SimdType type);
-    InliningResult inlineSimdUnary(CallInfo& callInfo, JSNative native,
-                                   MSimdUnaryArith::Operation op, SimdType type);
-    InliningResult inlineSimdExtractLane(CallInfo& callInfo, JSNative native, SimdType type);
-    InliningResult inlineSimdReplaceLane(CallInfo& callInfo, JSNative native, SimdType type);
-    InliningResult inlineSimdSplat(CallInfo& callInfo, JSNative native, SimdType type);
-    InliningResult inlineSimdShuffle(CallInfo& callInfo, JSNative native, SimdType type,
-                                     unsigned numVectors);
-    InliningResult inlineSimdCheck(CallInfo& callInfo, JSNative native, SimdType type);
-    InliningResult inlineSimdConvert(CallInfo& callInfo, JSNative native, bool isCast,
-                                     SimdType from, SimdType to);
-    InliningResult inlineSimdSelect(CallInfo& callInfo, JSNative native, SimdType type);
-
-    bool prepareForSimdLoadStore(CallInfo& callInfo, Scalar::Type simdType,
-                                 MInstruction** elements, MDefinition** index,
-                                 Scalar::Type* arrayType);
-    InliningResult inlineSimdLoad(CallInfo& callInfo, JSNative native, SimdType type,
-                                  unsigned numElems);
-    InliningResult inlineSimdStore(CallInfo& callInfo, JSNative native, SimdType type,
-                                   unsigned numElems);
-
-    InliningResult inlineSimdAnyAllTrue(CallInfo& callInfo, bool IsAllTrue, JSNative native,
-                                        SimdType type);
-
     // Utility intrinsics.
     InliningResult inlineIsCallable(CallInfo& callInfo);
     InliningResult inlineIsConstructor(CallInfo& callInfo);
     InliningResult inlineIsObject(CallInfo& callInfo);
     InliningResult inlineToObject(CallInfo& callInfo);
-    InliningResult inlineIsWrappedArrayConstructor(CallInfo& callInfo);
+    InliningResult inlineIsCrossRealmArrayConstructor(CallInfo& callInfo);
     InliningResult inlineToInteger(CallInfo& callInfo);
     InliningResult inlineToString(CallInfo& callInfo);
     InliningResult inlineDump(CallInfo& callInfo);
@@ -794,6 +750,7 @@ class IonBuilder
     InliningResult inlineObjectHasPrototype(CallInfo& callInfo);
     InliningResult inlineFinishBoundFunctionInit(CallInfo& callInfo);
     InliningResult inlineIsPackedArray(CallInfo& callInfo);
+    InliningResult inlineWasmCall(CallInfo& callInfo, JSFunction* target);
 
     // Testing functions.
     InliningResult inlineBailout(CallInfo& callInfo);

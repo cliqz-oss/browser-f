@@ -37,7 +37,6 @@ ChromeUtils.import("resource://gre/modules/ExtensionChild.jsm");
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 const {
-  defineLazyGetter,
   getInnerWindowID,
   promiseEvent,
 } = ExtensionUtils;
@@ -46,6 +45,7 @@ const {
   BaseContext,
   CanOfAPIs,
   SchemaAPIManager,
+  defineLazyGetter,
 } = ExtensionCommon;
 
 const {
@@ -103,7 +103,7 @@ var apiManager = new class extends SchemaAPIManager {
     if (!this.initialized) {
       this.initialized = true;
       this.initGlobal();
-      for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS_ADDON)) {
+      for (let {value} of Services.catMan.enumerateCategory(CATEGORY_EXTENSION_SCRIPTS_ADDON)) {
         this.loadScript(value);
       }
     }
@@ -120,7 +120,7 @@ var devtoolsAPIManager = new class extends SchemaAPIManager {
     if (!this.initialized) {
       this.initialized = true;
       this.initGlobal();
-      for (let [/* name */, value] of XPCOMUtils.enumerateCategoryEntries(CATEGORY_EXTENSION_SCRIPTS_DEVTOOLS)) {
+      for (let {value} of Services.catMan.enumerateCategory(CATEGORY_EXTENSION_SCRIPTS_DEVTOOLS)) {
         this.loadScript(value);
       }
     }
@@ -399,9 +399,7 @@ ExtensionPageChild = {
       throw new Error("An extension context was already initialized for this frame");
     }
 
-    let mm = contentWindow.document.docShell
-                          .QueryInterface(Ci.nsIInterfaceRequestor)
-                          .getInterface(Ci.nsIContentFrameMessageManager);
+    let mm = contentWindow.docShell.messageManager;
 
     let {viewType, tabId, devtoolsToolboxInfo} = getFrameData(mm) || {};
 

@@ -35,7 +35,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(TouchList)
 JSObject*
 TouchList::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return TouchListBinding::Wrap(aCx, this, aGivenProto);
+  return TouchList_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 // static
@@ -276,10 +276,8 @@ TouchEvent::PrefEnabled(nsIDocShell* aDocShell)
       // The touch screen data seems to be inaccurate in the parent process,
       // and we really need the crash annotation in child processes.
       if (firstTime && !XRE_IsParentProcess()) {
-        CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("HasDeviceTouchScreen"),
-                                           enabled ?
-                                             NS_LITERAL_CSTRING("1") :
-                                             NS_LITERAL_CSTRING("0"));
+        CrashReporter::AnnotateCrashReport(
+          CrashReporter::Annotation::HasDeviceTouchScreen, enabled);
         firstTime = false;
       }
 

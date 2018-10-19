@@ -5,7 +5,7 @@
 use api::{ColorF, ColorU, DevicePoint};
 use api::{FontInstanceFlags, FontInstancePlatformOptions};
 use api::{FontKey, FontRenderMode, FontTemplate, FontVariation};
-use api::{GlyphIndex, GlyphDimensions};
+use api::{GlyphIndex, GlyphDimensions, SyntheticItalics};
 use api::{LayoutPoint, LayoutToWorldTransform, WorldPoint};
 use app_units::Au;
 use euclid::approxeq::ApproxEq;
@@ -15,7 +15,7 @@ use rayon::ThreadPool;
 use std::cmp;
 use std::hash::{Hash, Hasher};
 use std::mem;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 #[cfg(feature = "pathfinder")]
@@ -111,7 +111,8 @@ impl FontTransform {
         self.pre_scale(x_scale.recip() as f32, y_scale.recip() as f32)
     }
 
-    pub fn synthesize_italics(&self, skew_factor: f32) -> Self {
+    pub fn synthesize_italics(&self, angle: SyntheticItalics) -> Self {
+        let skew_factor = angle.to_skew();
         FontTransform::new(
             self.scale_x,
             self.skew_x - self.scale_x * skew_factor,
@@ -176,6 +177,7 @@ pub struct FontInstance {
     pub bg_color: ColorU,
     pub render_mode: FontRenderMode,
     pub flags: FontInstanceFlags,
+    pub synthetic_italics: SyntheticItalics,
     pub platform_options: Option<FontInstancePlatformOptions>,
     pub variations: Vec<FontVariation>,
     pub transform: FontTransform,
@@ -189,6 +191,7 @@ impl FontInstance {
         bg_color: ColorU,
         render_mode: FontRenderMode,
         flags: FontInstanceFlags,
+        synthetic_italics: SyntheticItalics,
         platform_options: Option<FontInstancePlatformOptions>,
         variations: Vec<FontVariation>,
     ) -> Self {
@@ -203,6 +206,7 @@ impl FontInstance {
             bg_color,
             render_mode,
             flags,
+            synthetic_italics,
             platform_options,
             variations,
             transform: FontTransform::identity(),
@@ -245,7 +249,7 @@ impl FontInstance {
     #[allow(dead_code)]
     pub fn get_subpx_offset(&self, glyph: &GlyphKey) -> (f64, f64) {
         if self.use_subpixel_position() {
-            let (dx, dy) = glyph.subpixel_offset;
+            let (dx, dy) = glyph.subpixel_offset();
             (dx.into(), dy.into())
         } else {
             (0.0, 0.0)
@@ -283,7 +287,8 @@ impl FontInstance {
         if max_size > FONT_SIZE_LIMIT &&
            self.transform.is_identity() &&
            self.render_mode != FontRenderMode::Subpixel &&
-           !self.use_subpixel_position() {
+           !self.use_subpixel_position()
+        {
             max_size / FONT_SIZE_LIMIT
         } else {
             1.0
@@ -368,30 +373,36 @@ impl Into<f64> for SubpixelOffset {
 #[derive(Clone, Hash, PartialEq, Eq, Debug, Ord, PartialOrd)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-pub struct GlyphKey {
-    pub index: u32,
-    pub subpixel_offset: (SubpixelOffset, SubpixelOffset),
-}
+pub struct GlyphKey(u32);
 
 impl GlyphKey {
     pub fn new(
         index: u32,
         point: DevicePoint,
         subpx_dir: SubpixelDirection,
-    ) -> GlyphKey {
+    ) -> Self {
         let (dx, dy) = match subpx_dir {
             SubpixelDirection::None => (0.0, 0.0),
             SubpixelDirection::Horizontal => (point.x, 0.0),
             SubpixelDirection::Vertical => (0.0, point.y),
             SubpixelDirection::Mixed => (point.x, point.y),
         };
+        let sox = SubpixelOffset::quantize(dx);
+        let soy = SubpixelOffset::quantize(dy);
+        assert_eq!(0, index & 0xF0000000);
 
-        GlyphKey {
-            index,
-            subpixel_offset: (
-                SubpixelOffset::quantize(dx),
-                SubpixelOffset::quantize(dy),
-            ),
+        GlyphKey(index | (sox as u32) << 28 | (soy as u32) << 30)
+    }
+
+    pub fn index(&self) -> GlyphIndex {
+        self.0 & 0x0FFFFFFF
+    }
+
+    fn subpixel_offset(&self) -> (SubpixelOffset, SubpixelOffset) {
+        let x = (self.0 >> 28) as u8 & 3;
+        let y = (self.0 >> 30) as u8 & 3;
+        unsafe {
+            (mem::transmute(x), mem::transmute(y))
         }
     }
 }
@@ -440,6 +451,8 @@ pub struct FontContexts {
     // Stored here as a convenience to get the current thread index.
     #[allow(dead_code)]
     workers: Arc<ThreadPool>,
+    locked_mutex: Mutex<bool>,
+    locked_cond: Condvar,
 }
 
 impl FontContexts {
@@ -464,6 +477,46 @@ impl FontContexts {
     // number of contexts associated to workers
     pub fn num_worker_contexts(&self) -> usize {
         self.worker_contexts.len()
+    }
+}
+
+pub trait ForEach<T> {
+    fn for_each<F: Fn(MutexGuard<T>) + Send + 'static>(&self, f: F);
+}
+
+impl ForEach<FontContext> for Arc<FontContexts> {
+    fn for_each<F: Fn(MutexGuard<FontContext>) + Send + 'static>(&self, f: F) {
+        // Reset the locked condition.
+        let mut locked = self.locked_mutex.lock().unwrap();
+        *locked = false;
+
+        // Arc that can be safely moved into a spawn closure.
+        let font_contexts = self.clone();
+        // Spawn a new thread on which to run the for-each off the main thread.
+        self.workers.spawn(move || {
+            // Lock the shared and worker contexts up front.
+            let mut locks = Vec::with_capacity(font_contexts.num_worker_contexts() + 1);
+            locks.push(font_contexts.lock_shared_context());
+            for i in 0 .. font_contexts.num_worker_contexts() {
+                locks.push(font_contexts.lock_context(Some(i)));
+            }
+
+            // Signal the locked condition now that all contexts are locked.
+            *font_contexts.locked_mutex.lock().unwrap() = true;
+            font_contexts.locked_cond.notify_all();
+
+            // Now that everything is locked, proceed to processing each locked context.
+            for context in locks {
+                f(context);
+            }
+        });
+
+        // Wait for locked condition before resuming. Safe to proceed thereafter
+        // since any other thread that needs to use a FontContext will try to lock
+        // it first.
+        while !*locked {
+            locked = self.locked_cond.wait(locked).unwrap();
+        }
     }
 }
 
@@ -516,6 +569,8 @@ impl GlyphRasterizer {
                 #[cfg(feature = "pathfinder")]
                 pathfinder_context: create_pathfinder_font_context()?,
                 workers: Arc::clone(&workers),
+                locked_mutex: Mutex::new(false),
+                locked_cond: Condvar::new(),
         };
 
         Ok(GlyphRasterizer {
@@ -530,27 +585,12 @@ impl GlyphRasterizer {
     }
 
     pub fn add_font(&mut self, font_key: FontKey, template: FontTemplate) {
-        let font_contexts = Arc::clone(&self.font_contexts);
-        // It's important to synchronously add the font for the shared context because
-        // we use it to check that fonts have been properly added when requesting glyphs.
-        font_contexts
-            .lock_shared_context()
-            .add_font(&font_key, &template);
-
-        // TODO: this locks each font context while adding the font data, probably not a big deal,
-        // but if there is contention on this lock we could easily have a queue of per-context
-        // operations to add and delete fonts, and have these queues lazily processed by each worker
-        // before rendering a glyph.
-        // We can also move this into a worker to free up some cycles in the calling (render backend)
-        // thread.
-        for i in 0 .. font_contexts.num_worker_contexts() {
-            font_contexts
-                .lock_context(Some(i))
-                .add_font(&font_key, &template);
-        }
-
         #[cfg(feature = "pathfinder")]
         self.add_font_to_pathfinder(&font_key, &template);
+
+        self.font_contexts.for_each(move |mut context| {
+            context.add_font(&font_key, &template);
+        });
     }
 
     pub fn delete_font(&mut self, font_key: FontKey) {
@@ -588,18 +628,10 @@ impl GlyphRasterizer {
             return
         }
 
-        let font_contexts = Arc::clone(&self.font_contexts);
         let fonts_to_remove = mem::replace(&mut self.fonts_to_remove, Vec::new());
-
-        self.workers.spawn(move || {
+        self.font_contexts.for_each(move |mut context| {
             for font_key in &fonts_to_remove {
-                font_contexts.lock_shared_context().delete_font(font_key);
-            }
-            for i in 0 .. font_contexts.num_worker_contexts() {
-                let mut context = font_contexts.lock_context(Some(i));
-                for font_key in &fonts_to_remove {
-                    context.delete_font(font_key);
-                }
+                context.delete_font(font_key);
             }
         });
     }
@@ -708,6 +740,7 @@ mod test_glyph_rasterizer {
             ColorF::new(0.0, 0.0, 0.0, 1.0),
             ColorU::new(0, 0, 0, 0),
             FontRenderMode::Subpixel,
+            Default::default(),
             Default::default(),
             None,
             Vec::new(),

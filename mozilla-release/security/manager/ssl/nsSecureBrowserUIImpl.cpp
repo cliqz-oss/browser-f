@@ -89,8 +89,7 @@ nsSecureBrowserUIImpl::nsSecureBrowserUIImpl()
 NS_IMPL_ISUPPORTS(nsSecureBrowserUIImpl,
                   nsISecureBrowserUI,
                   nsIWebProgressListener,
-                  nsISupportsWeakReference,
-                  nsISSLStatusProvider)
+                  nsISupportsWeakReference)
 
 NS_IMETHODIMP
 nsSecureBrowserUIImpl::Init(mozIDOMWindowProxy* aWindow)
@@ -266,8 +265,23 @@ nsSecureBrowserUIImpl::MapInternalToExternalState(uint32_t* aState, lockIconStat
   if (docShell->GetHasTrackingContentBlocked())
     *aState |= nsIWebProgressListener::STATE_BLOCKED_TRACKING_CONTENT;
 
+  if (docShell->GetHasSlowTrackingContentBlocked())
+    *aState |= nsIWebProgressListener::STATE_BLOCKED_SLOW_TRACKING_CONTENT;
+
   if (docShell->GetHasTrackingContentLoaded())
     *aState |= nsIWebProgressListener::STATE_LOADED_TRACKING_CONTENT;
+
+  if (docShell->GetHasCookiesBlockedByPermission())
+    *aState |= nsIWebProgressListener::STATE_COOKIES_BLOCKED_BY_PERMISSION;
+
+  if (docShell->GetHasCookiesBlockedDueToTrackers())
+    *aState |= nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER;
+
+  if (docShell->GetHasForeignCookiesBeenBlocked())
+    *aState |= nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN;
+
+  if (docShell->GetHasAllCookiesBeenBlocked())
+    *aState |= nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL;
 
   // Copy forward any diagnostic flags for downstream use (e.g., warnings)
   if (mNewToplevelSecurityStateKnown &&
@@ -374,23 +388,21 @@ nsSecureBrowserUIImpl::EvaluateAndUpdateSecurityState(nsIRequest* aRequest,
           ("SecureUI:%p: OnStateChange: remember mNewToplevelSecurityState => %x\n",
            this, mNewToplevelSecurityState));
 
-  nsCOMPtr<nsISSLStatusProvider> sp(do_QueryInterface(info));
-  if (sp) {
+  nsCOMPtr<nsITransportSecurityInfo> psmInfo(do_QueryInterface(info));
+  if (psmInfo) {
     // Ignore result
     updateStatus = true;
-    (void) sp->GetSSLStatus(getter_AddRefs(temp_SSLStatus));
+    (void) psmInfo->GetSSLStatus(getter_AddRefs(temp_SSLStatus));
     if (temp_SSLStatus) {
       bool aTemp;
       if (NS_SUCCEEDED(temp_SSLStatus->GetIsExtendedValidation(&aTemp))) {
         mNewToplevelIsEV = aTemp;
       }
     }
+    mSecInfo = psmInfo;
   }
 
   mNewToplevelSecurityStateKnown = true;
-  if (updateStatus) {
-    mSSLStatus = temp_SSLStatus;
-  }
   MOZ_LOG(gSecureDocLog, LogLevel::Debug,
          ("SecureUI:%p: remember securityInfo %p\n", this,
           info));
@@ -1014,7 +1026,7 @@ nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest,
 
     // If we have no security, we also shouldn't have any SSL status.
     if (newSecurityState == lis_no_security) {
-      mSSLStatus = nullptr;
+      mSecInfo = nullptr;
     }
   }
 
@@ -1166,9 +1178,8 @@ nsSecureBrowserUIImpl::OnSecurityChange(nsIWebProgress* aWebProgress,
   return NS_OK;
 }
 
-// nsISSLStatusProvider methods
 NS_IMETHODIMP
-nsSecureBrowserUIImpl::GetSSLStatus(nsISSLStatus** _result)
+nsSecureBrowserUIImpl::GetSecInfo(nsITransportSecurityInfo** _result)
 {
   NS_ENSURE_ARG_POINTER(_result);
   MOZ_ASSERT(NS_IsMainThread());
@@ -1187,7 +1198,7 @@ nsSecureBrowserUIImpl::GetSSLStatus(nsISSLStatus** _result)
       return NS_OK;
   }
 
-  *_result = mSSLStatus;
+  *_result = mSecInfo;
   NS_IF_ADDREF(*_result);
 
   return NS_OK;

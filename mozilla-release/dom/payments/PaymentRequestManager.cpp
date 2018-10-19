@@ -178,10 +178,7 @@ ConvertDetailsInit(JSContext* aCx,
                                   shippingOptions,
                                   modifiers,
                                   EmptyString(), // error message
-                                  EmptyString(), // shippingAddressErrors
-                                  aDetails.mDisplayItems.WasPassed(),
-                                  aDetails.mShippingOptions.WasPassed(),
-                                  aDetails.mModifiers.WasPassed());
+                                  EmptyString()); // shippingAddressErrors
   return NS_OK;
 }
 
@@ -223,10 +220,7 @@ ConvertDetailsUpdate(JSContext* aCx,
                                   shippingOptions,
                                   modifiers,
                                   error,
-                                  shippingAddressErrors,
-                                  aDetails.mDisplayItems.WasPassed(),
-                                  aDetails.mShippingOptions.WasPassed(),
-                                  aDetails.mModifiers.WasPassed());
+                                  shippingAddressErrors);
   return NS_OK;
 }
 
@@ -478,13 +472,18 @@ PaymentRequestManager::AbortPayment(PaymentRequest* aRequest, bool aDeferredShow
 
 nsresult
 PaymentRequestManager::CompletePayment(PaymentRequest* aRequest,
-                                       const PaymentComplete& aComplete)
+                                       const PaymentComplete& aComplete,
+                                       bool aTimedOut)
 {
   nsString completeStatusString(NS_LITERAL_STRING("unknown"));
-  uint8_t completeIndex = static_cast<uint8_t>(aComplete);
-  if (completeIndex < ArrayLength(PaymentCompleteValues::strings)) {
-    completeStatusString.AssignASCII(
-      PaymentCompleteValues::strings[completeIndex].value);
+  if (aTimedOut) {
+    completeStatusString.AssignLiteral("timeout");
+  } else {
+    uint8_t completeIndex = static_cast<uint8_t>(aComplete);
+    if (completeIndex < ArrayLength(PaymentCompleteValues::strings)) {
+      completeStatusString.AssignASCII(
+        PaymentCompleteValues::strings[completeIndex].value);
+    }
   }
 
   nsAutoString requestId;
@@ -522,6 +521,22 @@ PaymentRequestManager::UpdatePayment(JSContext* aCx,
   // If aDeferredShow is true, then this call serves as the ShowUpdate call for
   // this request.
   return SendRequestPayment(aRequest, action, aDeferredShow);
+}
+
+nsresult
+PaymentRequestManager::ClosePayment(PaymentRequest* aRequest)
+{
+  // for the case, the payment request is waiting for response from user.
+  if (auto entry = mActivePayments.Lookup(aRequest)) {
+    NotifyRequestDone(aRequest);
+  }
+  if (mShowingRequest == aRequest) {
+    mShowingRequest = nullptr;
+  }
+  nsAutoString requestId;
+  aRequest->GetInternalId(requestId);
+  IPCPaymentCloseActionRequest action(requestId);
+  return SendRequestPayment(aRequest, action, false);
 }
 
 nsresult
@@ -604,7 +619,6 @@ PaymentRequestManager::ChangeShippingAddress(PaymentRequest* aRequest,
                                          aAddress.dependentLocality(),
                                          aAddress.postalCode(),
                                          aAddress.sortingCode(),
-                                         aAddress.languageCode(),
                                          aAddress.organization(),
                                          aAddress.recipient(),
                                          aAddress.phone());

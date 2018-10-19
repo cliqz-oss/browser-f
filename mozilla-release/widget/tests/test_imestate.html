@@ -127,9 +127,7 @@ function hitEventLoop(aFunc, aTimes)
   }
 }
 
-var gUtils = window.
-      QueryInterface(Ci.nsIInterfaceRequestor).
-      getInterface(Ci.nsIDOMWindowUtils);
+var gUtils = window.windowUtils;
 var gFM = Cc["@mozilla.org/focus-manager;1"].
       getService(Ci.nsIFocusManager);
 const kIMEEnabledSupported = navigator.platform.indexOf("Mac") == 0 ||
@@ -1033,10 +1031,7 @@ function runComplexContenteditableTests()
      description + "IME isn't enabled on HTML editor");
   const kReadonly =
     Ci.nsIPlaintextEditor.eEditorReadonlyMask;
-  var editor =
-    window.QueryInterface(Ci.nsIInterfaceRequestor).
-      getInterface(Ci.nsIWebNavigation).
-      QueryInterface(Ci.nsIDocShell).editor;
+  var editor = window.docShell.editor;
   var flags = editor.flags;
   editor.flags = flags | kReadonly;
   is(gFM.focusedElement, container,
@@ -1065,10 +1060,7 @@ function runComplexContenteditableTests()
      description + "The button loses focus, the container is editable now");
   todo_is(gUtils.IMEStatus, gUtils.IME_STATUS_ENABLED,
           description + "IME is still disabled on the button, the container is editable now");
-  editor =
-    window.QueryInterface(Ci.nsIInterfaceRequestor).
-      getInterface(Ci.nsIWebNavigation).
-      QueryInterface(Ci.nsIDocShell).editor;
+  editor = window.docShell.editor;
   flags = editor.flags;
   editor.flags = flags | kReadonly;
   is(gFM.focusedElement, button,
@@ -1107,10 +1099,7 @@ function runComplexContenteditableTests()
     is(gUtils.IMEStatus, expectedState,
        description + "IME becomes " + unexpectedStateDescription +
          " on the " + aEditorDescription + ", the container is editable now");
-    editor =
-      window.QueryInterface(Ci.nsIInterfaceRequestor).
-        getInterface(Ci.nsIWebNavigation).
-        QueryInterface(Ci.nsIDocShell).editor;
+    editor = window.docShell.editor;
     flags = editor.flags;
     editor.flags = flags | kReadonly;
     is(gFM.focusedElement, aEditor,
@@ -1175,10 +1164,7 @@ function runComplexContenteditableTests()
        description + "IME becomes " + unexpectedStateDescription +
          " on the " + aFocusNodeDescription +
          ", the HTML editor is editable now");
-    editor =
-      window.QueryInterface(Ci.nsIInterfaceRequestor).
-        getInterface(Ci.nsIWebNavigation).
-        QueryInterface(Ci.nsIDocShell).editor;
+    editor = window.docShell.editor;
     flags = editor.flags;
     editor.flags = flags | kReadonly;
     is(gFM.focusedElement, aFocusNode,
@@ -1246,10 +1232,7 @@ function runEditorFlagChangeTests()
     Ci.nsIPlaintextEditor.eEditorPasswordMask |
     Ci.nsIPlaintextEditor.eEditorReadonlyMask |
     Ci.nsIPlaintextEditor.eEditorDisabledMask;
-  var editor =
-    window.QueryInterface(Ci.nsIInterfaceRequestor).
-      getInterface(Ci.nsIWebNavigation).
-      QueryInterface(Ci.nsIDocShell).editor;
+  var editor = window.docShell.editor;
   var flags = editor.flags;
 
   // input characters
@@ -1358,9 +1341,7 @@ function runTestPasswordFieldOnDialog()
   {
     ok(true, "onPasswordFieldFocus is called");
     passwordField.removeEventListener("focus", onPasswordFieldFocus);
-    var utils = dialog.
-      QueryInterface(Ci.nsIInterfaceRequestor).
-      getInterface(Ci.nsIDOMWindowUtils);
+    var utils = dialog.windowUtils;
     is(utils.IMEStatus, utils.IME_STATUS_PASSWORD,
        "IME isn't disabled on a password field of password dialog");
     synthesizeKey("VK_ESCAPE", { }, dialog);

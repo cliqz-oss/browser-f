@@ -15,7 +15,6 @@
 #include "nsServiceManagerUtils.h"
 #include "nsIPresShell.h"
 #include "nsNetUtil.h"
-#include "NullPrincipal.h"
 #include "nsIInputStream.h"
 #include "nsStringStream.h"
 #include "nsStreamUtils.h"
@@ -25,6 +24,7 @@
 #include "mozilla/dom/FontTableURIProtocolHandler.h"
 #include "mozilla/dom/SVGDocument.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/NullPrincipal.h"
 #include "nsSVGUtils.h"
 #include "nsContentUtils.h"
 #include "gfxFont.h"
@@ -40,7 +40,7 @@ using namespace mozilla;
 
 typedef mozilla::dom::Element Element;
 
-/* static */ const Color SimpleTextContextPaint::sZero = Color();
+/* static */ const mozilla::gfx::Color SimpleTextContextPaint::sZero;
 
 gfxSVGGlyphs::gfxSVGGlyphs(hb_blob_t *aSVGTable, gfxFontEntry *aFontEntry)
     : mSVGData(aSVGTable)
@@ -137,7 +137,7 @@ gfxSVGGlyphsDocument::SetupPresentation()
 {
     nsCOMPtr<nsICategoryManager> catMan = do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
     nsCString contractId;
-    nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers", "image/svg+xml", getter_Copies(contractId));
+    nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers", "image/svg+xml", contractId);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIDocumentLoaderFactory> docLoaderFactory =

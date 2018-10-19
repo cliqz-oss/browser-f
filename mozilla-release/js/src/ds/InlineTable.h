@@ -7,6 +7,7 @@
 #ifndef ds_InlineTable_h
 #define ds_InlineTable_h
 
+#include "mozilla/Maybe.h"
 #include "mozilla/Move.h"
 
 #include "js/AllocPolicy.h"
@@ -70,13 +71,7 @@ class InlineTable : private AllocPolicy
     MOZ_MUST_USE bool switchToTable() {
         MOZ_ASSERT(inlNext_ == InlineEntries);
 
-        if (table_.initialized()) {
-            table_.clear();
-        } else {
-            if (!table_.init(count()))
-                return false;
-            MOZ_ASSERT(table_.initialized());
-        }
+        table_.clear();
 
         InlineEntry* end = inlineEnd();
         for (InlineEntry* it = inlineStart(); it != end; ++it) {
@@ -329,7 +324,7 @@ class InlineTable : private AllocPolicy
             --inlCount_;
             return;
         }
-        MOZ_ASSERT(table_.initialized() && usingTable());
+        MOZ_ASSERT(usingTable());
         table_.remove(p.tablePtr_);
     }
 
@@ -343,22 +338,23 @@ class InlineTable : private AllocPolicy
         friend class InlineTable;
 
       protected:
-        TableRange   tableRange_;
+        mozilla::Maybe<TableRange> tableRange_; // `Nothing` if `isInline_==true`
         InlineEntry* cur_;
         InlineEntry* end_;
         bool         isInline_;
 
         explicit Range(TableRange r)
-          : cur_(nullptr),
+          : tableRange_(mozilla::Some(r)),
+            cur_(nullptr),
             end_(nullptr),
             isInline_(false)
         {
-            tableRange_ = r;
             MOZ_ASSERT(!isInlineRange());
         }
 
         Range(const InlineEntry* begin, const InlineEntry* end)
-          : cur_(const_cast<InlineEntry*>(begin)),
+          : tableRange_(mozilla::Nothing()),
+            cur_(const_cast<InlineEntry*>(begin)),
             end_(const_cast<InlineEntry*>(end)),
             isInline_(true)
         {
@@ -392,14 +388,14 @@ class InlineTable : private AllocPolicy
 
       public:
         bool empty() const {
-            return isInlineRange() ? cur_ == end_ : tableRange_.empty();
+            return isInlineRange() ? cur_ == end_ : tableRange_->empty();
         }
 
         Entry front() {
             MOZ_ASSERT(!empty());
             if (isInlineRange())
                 return Entry(cur_);
-            return Entry(&tableRange_.front());
+            return Entry(&tableRange_->front());
         }
 
         void popFront() {
@@ -407,7 +403,7 @@ class InlineTable : private AllocPolicy
             if (isInlineRange())
                 bumpCurPtr();
             else
-                tableRange_.popFront();
+                tableRange_->popFront();
         }
     };
 

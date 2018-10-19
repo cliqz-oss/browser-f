@@ -37,6 +37,19 @@ class WebRenderFallbackData;
 class WebRenderLayerManager;
 class WebRenderGroupData;
 
+class WebRenderBackgroundData
+{
+public:
+  WebRenderBackgroundData(wr::LayoutRect aBounds, wr::ColorF aColor)
+    : mBounds(aBounds)
+    , mColor(aColor)
+  { }
+  void AddWebRenderCommands(wr::DisplayListBuilder& aBuilder);
+protected:
+  wr::LayoutRect mBounds;
+  wr::ColorF mColor;
+};
+
 class WebRenderUserData
 {
 public:
@@ -138,9 +151,8 @@ public:
 
 protected:
   void ClearImageKey();
-  void CreateExternalImageIfNeeded();
 
-  wr::MaybeExternalImageId mExternalImageId;
+  RefPtr<TextureClient> mTextureOfImage;
   Maybe<wr::ImageKey> mKey;
   RefPtr<ImageClient> mImageClient;
   Maybe<wr::PipelineId> mPipelineId;

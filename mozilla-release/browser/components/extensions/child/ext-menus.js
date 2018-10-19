@@ -4,7 +4,7 @@
 
 var {
   withHandlingUserInput,
-} = ExtensionUtils;
+} = ExtensionCommon;
 
 // If id is not specified for an item we use an integer.
 // This ID need only be unique within a single addon. Since all addon code that
@@ -124,8 +124,14 @@ this.menusInternal = class extends ExtensionAPI {
               onClickedProp.setListener(createProperties.id, onclick);
             }
             if (callback) {
-              callback();
+              context.runSafeWithoutClone(callback);
             }
+          }).catch(error => {
+            context.withLastError(error, null, () => {
+              if (callback) {
+                context.runSafeWithoutClone(callback);
+              }
+            });
           });
           return createProperties.id;
         },

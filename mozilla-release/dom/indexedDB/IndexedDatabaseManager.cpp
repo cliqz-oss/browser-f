@@ -247,12 +247,12 @@ private:
 };
 
 void
-AtomicBoolPrefChangedCallback(const char* aPrefName, void* aClosure)
+AtomicBoolPrefChangedCallback(const char* aPrefName, Atomic<bool>* aClosure)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aClosure);
 
-  *static_cast<Atomic<bool>*>(aClosure) = Preferences::GetBool(aPrefName);
+  *aClosure = Preferences::GetBool(aPrefName);
 }
 
 void
@@ -562,7 +562,7 @@ IndexedDatabaseManager::CommonPostHandleEvent(EventChainPostVisitor& aVisitor,
       nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(window);
       MOZ_ASSERT(sgo);
 
-      if (NS_WARN_IF(NS_FAILED(sgo->HandleScriptError(init, &status)))) {
+      if (NS_WARN_IF(!sgo->HandleScriptError(init, &status))) {
         status = nsEventStatus_eIgnore;
       }
     } else {
@@ -628,19 +628,19 @@ IndexedDatabaseManager::ResolveSandboxBinding(JSContext* aCx)
     return false;
   }
 
-  if (!IDBCursorBinding::GetConstructorObject(aCx) ||
-      !IDBCursorWithValueBinding::GetConstructorObject(aCx) ||
-      !IDBDatabaseBinding::GetConstructorObject(aCx) ||
-      !IDBFactoryBinding::GetConstructorObject(aCx) ||
-      !IDBIndexBinding::GetConstructorObject(aCx) ||
-      !IDBKeyRangeBinding::GetConstructorObject(aCx) ||
-      !IDBLocaleAwareKeyRangeBinding::GetConstructorObject(aCx) ||
-      !IDBMutableFileBinding::GetConstructorObject(aCx) ||
-      !IDBObjectStoreBinding::GetConstructorObject(aCx) ||
-      !IDBOpenDBRequestBinding::GetConstructorObject(aCx) ||
-      !IDBRequestBinding::GetConstructorObject(aCx) ||
-      !IDBTransactionBinding::GetConstructorObject(aCx) ||
-      !IDBVersionChangeEventBinding::GetConstructorObject(aCx))
+  if (!IDBCursor_Binding::GetConstructorObject(aCx) ||
+      !IDBCursorWithValue_Binding::GetConstructorObject(aCx) ||
+      !IDBDatabase_Binding::GetConstructorObject(aCx) ||
+      !IDBFactory_Binding::GetConstructorObject(aCx) ||
+      !IDBIndex_Binding::GetConstructorObject(aCx) ||
+      !IDBKeyRange_Binding::GetConstructorObject(aCx) ||
+      !IDBLocaleAwareKeyRange_Binding::GetConstructorObject(aCx) ||
+      !IDBMutableFile_Binding::GetConstructorObject(aCx) ||
+      !IDBObjectStore_Binding::GetConstructorObject(aCx) ||
+      !IDBOpenDBRequest_Binding::GetConstructorObject(aCx) ||
+      !IDBRequest_Binding::GetConstructorObject(aCx) ||
+      !IDBTransaction_Binding::GetConstructorObject(aCx) ||
+      !IDBVersionChangeEvent_Binding::GetConstructorObject(aCx))
   {
     return false;
   }
@@ -775,8 +775,8 @@ IndexedDatabaseManager::ExperimentalFeaturesEnabled(JSContext* aCx, JSObject* aG
   // that preference. We can retrieve gExperimentalFeaturesEnabled without
   // actually going through IndexedDatabaseManager.
   // See Bug 1198093 comment 14 for detailed explanation.
-  if (IsNonExposedGlobal(aCx, js::GetGlobalForObjectCrossCompartment(aGlobal),
-                         GlobalNames::BackstagePass)) {
+  MOZ_DIAGNOSTIC_ASSERT(JS_IsGlobalObject(aGlobal));
+  if (IsNonExposedGlobal(aCx, aGlobal, GlobalNames::BackstagePass)) {
     MOZ_ASSERT(NS_IsMainThread());
     static bool featureRetrieved = false;
     if (!featureRetrieved) {
@@ -1131,13 +1131,13 @@ IndexedDatabaseManager::Observe(nsISupports* aSubject, const char* aTopic,
       sLowDiskSpaceMode = false;
     }
     else {
-      NS_NOTREACHED("Unknown data value!");
+      MOZ_ASSERT_UNREACHABLE("Unknown data value!");
     }
 
     return NS_OK;
   }
 
-   NS_NOTREACHED("Unknown topic!");
+   MOZ_ASSERT_UNREACHABLE("Unknown topic!");
    return NS_ERROR_UNEXPECTED;
 }
 

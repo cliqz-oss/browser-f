@@ -114,14 +114,20 @@ function BasicNotification(testId) {
   this.mainAction = {
     label: "Main Action",
     accessKey: "M",
-    callback: () => this.mainActionClicked = true
+    callback: ({source}) => {
+      this.mainActionClicked = true;
+      this.mainActionSource = source;
+    },
   };
   this.secondaryActions = [
     {
       label: "Secondary Action",
       accessKey: "S",
-      callback: () => this.secondaryActionClicked = true
-    }
+      callback: ({source}) => {
+        this.secondaryActionClicked = true;
+        this.secondaryActionSource = source;
+      },
+    },
   ];
   this.options = {
     name: "http://example.com",
@@ -143,7 +149,7 @@ function BasicNotification(testId) {
           this.swappingCallbackTriggered = true;
           break;
       }
-    }
+    },
   };
 }
 

@@ -13,8 +13,8 @@
 #include "mozilla/Attributes.h"         // for override
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/WidgetUtils.h"        // for ScreenRotation
-#include "mozilla/dom/ScreenOrientation.h"  // for ScreenOrientation
 #include "mozilla/ipc/SharedMemory.h"   // for SharedMemory, etc
+#include "mozilla/HalScreenConfiguration.h" // for ScreenOrientation
 #include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/layers/FocusTarget.h"
 #include "mozilla/layers/LayersTypes.h"
@@ -158,7 +158,7 @@ public:
    */
   void BeginTransaction(const gfx::IntRect& aTargetBounds,
                         ScreenRotation aRotation,
-                        mozilla::dom::ScreenOrientationInternal aOrientation);
+                        hal::ScreenOrientation aOrientation);
 
   /**
    * The following methods may only be called after BeginTransaction()
@@ -177,7 +177,6 @@ public:
   void CreatedColorLayer(ShadowableLayer* aColor);
   void CreatedCanvasLayer(ShadowableLayer* aCanvas);
   void CreatedRefLayer(ShadowableLayer* aRef);
-  void CreatedBorderLayer(ShadowableLayer* aRef);
 
   /**
    * At least one attribute of |aMutant| has changed, and |aMutant|
@@ -258,6 +257,7 @@ public:
                       bool aScheduleComposite,
                       uint32_t aPaintSequenceNumber,
                       bool aIsRepeatTransaction,
+                      const mozilla::TimeStamp& aRefreshStart,
                       const mozilla::TimeStamp& aTransactionStart,
                       bool* aSent);
 
@@ -343,7 +343,7 @@ public:
    */
   void SetFocusTarget(const FocusTarget& aFocusTarget) { mFocusTarget = aFocusTarget; }
 
-  void SetLayerObserverEpoch(uint64_t aLayerObserverEpoch);
+  void SetLayersObserverEpoch(LayersObserverEpoch aEpoch);
 
   static void PlatformSyncBeforeUpdate();
 
@@ -360,6 +360,9 @@ public:
 
   virtual void UpdateFwdTransactionId() override;
   virtual uint64_t GetFwdTransactionId() override;
+
+  void UpdateTextureLocks();
+  void SyncTextures(const nsTArray<uint64_t>& aSerials);
 
   void ReleaseLayer(const LayerHandle& aHandle);
 

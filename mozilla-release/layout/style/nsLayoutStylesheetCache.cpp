@@ -61,7 +61,7 @@ nsLayoutStylesheetCache::Observe(nsISupports* aSubject,
     mFormsSheet = nullptr;
   }
   else {
-    NS_NOTREACHED("Unexpected observer topic.");
+    MOZ_ASSERT_UNREACHABLE("Unexpected observer topic.");
   }
   return NS_OK;
 }
@@ -712,8 +712,9 @@ AnnotateCrashReport(nsIURI* aURI)
     annotation.AppendLiteral("No GRE omnijar\n");
   }
 
-  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("SheetLoadFailure"),
-                                     NS_ConvertUTF16toUTF8(annotation));
+  CrashReporter::AnnotateCrashReport(
+    CrashReporter::Annotation::SheetLoadFailure,
+    NS_ConvertUTF16toUTF8(annotation));
 }
 
 static void

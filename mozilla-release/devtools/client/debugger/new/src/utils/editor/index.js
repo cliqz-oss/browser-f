@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
+exports.onMouseOver = undefined;
 
 var _sourceDocuments = require("./source-documents");
 
@@ -51,6 +52,15 @@ Object.keys(_ui).forEach(function (key) {
     }
   });
 });
+
+var _tokenEvents = require("./token-events");
+
+Object.defineProperty(exports, "onMouseOver", {
+  enumerable: true,
+  get: function () {
+    return _tokenEvents.onMouseOver;
+  }
+});
 exports.getEditor = getEditor;
 exports.removeEditor = removeEditor;
 exports.shouldShowPrettyPrint = shouldShowPrettyPrint;
@@ -77,10 +87,6 @@ var _source = require("../source");
 var _wasm = require("../wasm");
 
 var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
-
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
-
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
 let editor;
 
@@ -114,7 +120,7 @@ function shouldShowFooter(selectedSource, horizontal) {
     return false;
   }
 
-  return shouldShowPrettyPrint(selectedSource) || (0, _devtoolsSourceMap.isOriginalId)(selectedSource.get("id"));
+  return shouldShowPrettyPrint(selectedSource) || (0, _devtoolsSourceMap.isOriginalId)(selectedSource.id);
 }
 
 function traverseResults(e, ctx, query, dir, modifiers) {
@@ -150,12 +156,12 @@ function toEditorRange(sourceId, location) {
     end
   } = location;
   return {
-    start: toEditorPosition(_objectSpread({}, start, {
+    start: toEditorPosition({ ...start,
       sourceId
-    })),
-    end: toEditorPosition(_objectSpread({}, end, {
+    }),
+    end: toEditorPosition({ ...end,
       sourceId
-    }))
+    })
   };
 }
 
@@ -187,9 +193,13 @@ function isVisible(codeMirror, top, left) {
 
   const scrollArea = codeMirror.getScrollInfo();
   const charWidth = codeMirror.defaultCharWidth();
-  const inXView = withinBounds(left, scrollArea.left, scrollArea.left + (scrollArea.clientWidth - 30) - charWidth);
   const fontHeight = codeMirror.defaultTextHeight();
-  const inYView = withinBounds(top, scrollArea.top, scrollArea.top + scrollArea.clientHeight - fontHeight);
+  const {
+    scrollTop,
+    scrollLeft
+  } = codeMirror.doc;
+  const inXView = withinBounds(left, scrollLeft, scrollLeft + (scrollArea.clientWidth - 30) - charWidth);
+  const inYView = withinBounds(top, scrollTop, scrollTop + scrollArea.clientHeight - fontHeight);
   return inXView && inYView;
 }
 

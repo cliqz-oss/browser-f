@@ -19,7 +19,6 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
     const nsXPTMethodInfo* info;
     uint8_t paramCount;
     uint8_t i;
-    nsresult result = NS_ERROR_FAILURE;
 
     NS_ASSERTION(self,"no self");
 
@@ -35,6 +34,8 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
         dispatchParams = paramBuffer;
     NS_ASSERTION(dispatchParams,"no place for params");
 
+    const uint8_t indexOfJSContext = info->IndexOfJSContext();
+
     uint32_t gpr = 1, fpr = 0;
 
     for(i = 0; i < paramCount; i++)
@@ -42,6 +43,13 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
         const nsXPTParamInfo& param = info->GetParam(i);
         const nsXPTType& type = param.GetType();
         nsXPTCMiniVariant* dp = &dispatchParams[i];
+
+        if (i == indexOfJSContext) {
+            if (gpr < 5)
+                a_gpr++, gpr++;
+            else
+                a_ov++;
+        }
 
         if(param.IsOut() || !type.IsArithmetic())
         {
@@ -138,7 +146,8 @@ PrepareAndDispatch(nsXPTCStubBase* self, uint32_t methodIndex,
         }
     }
 
-    result = self->mOuter->CallMethod((uint16_t)methodIndex, info, dispatchParams);
+    nsresult result = self->mOuter->CallMethod((uint16_t)methodIndex, info,
+                                               dispatchParams);
 
     if(dispatchParams != paramBuffer)
         delete [] dispatchParams;
@@ -183,4 +192,3 @@ nsresult nsXPTCStubBase::Sentinel##n() \
 }
 
 #include "xptcstubsdef.inc"
-

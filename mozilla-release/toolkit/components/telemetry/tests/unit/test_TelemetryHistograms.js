@@ -104,7 +104,7 @@ function check_histogram(histogram_type, name, min, max, bucket_count) {
 
 // This MUST be the very first test of this file.
 add_task({
-  skip_if: () => gIsAndroid
+  skip_if: () => gIsAndroid,
 },
 function test_instantiate() {
   const ID = "TELEMETRY_TEST_COUNT";
@@ -299,13 +299,13 @@ add_task(async function test_add_error_behaviour() {
     "TELEMETRY_TEST_FLAG",
     "TELEMETRY_TEST_EXPONENTIAL",
     "TELEMETRY_TEST_LINEAR",
-    "TELEMETRY_TEST_BOOLEAN"
+    "TELEMETRY_TEST_BOOLEAN",
   ];
 
   const KEYED_HISTOGRAMS_TO_TEST = [
     "TELEMETRY_TEST_KEYED_FLAG",
     "TELEMETRY_TEST_KEYED_COUNT",
-    "TELEMETRY_TEST_KEYED_BOOLEAN"
+    "TELEMETRY_TEST_KEYED_BOOLEAN",
   ];
 
   // Check that |add| doesn't throw for plain histograms.
@@ -495,7 +495,7 @@ add_task(async function test_keyed_boolean_histogram() {
     "histogram_type": 2,
     "sum": 1,
     "ranges": [0, 1, 2],
-    "counts": [0, 1, 0]
+    "counts": [0, 1, 0],
   };
   let testHistograms = numberRange(0, 3).map(i => JSON.parse(JSON.stringify(histogramBase)));
   let testKeys = [];
@@ -543,7 +543,7 @@ add_task(async function test_keyed_count_histogram() {
     "histogram_type": 4,
     "sum": 0,
     "ranges": [0, 1, 2],
-    "counts": [1, 0, 0]
+    "counts": [1, 0, 0],
   };
   let testHistograms = numberRange(0, 5).map(i => JSON.parse(JSON.stringify(histogramBase)));
   let testKeys = [];
@@ -650,7 +650,7 @@ add_task(async function test_keyed_flag_histogram() {
     "histogram_type": 3,
     "sum": 1,
     "ranges": [0, 1, 2],
-    "counts": [0, 1, 0]
+    "counts": [0, 1, 0],
   };
 
   Assert.deepEqual(h.keys().sort(), [KEY]);
@@ -1081,7 +1081,7 @@ add_task(async function test_keyed_linear_multiple_samples() {
 add_task(async function test_non_array_non_string_obj() {
   let invalid_obj = {
     "prop1": "someValue",
-    "prop2": "someOtherValue"
+    "prop2": "someOtherValue",
     };
   let key = "someString";
 
@@ -1093,7 +1093,7 @@ add_task(async function test_non_array_non_string_obj() {
 });
 
 add_task({
-  skip_if: () => gIsAndroid
+  skip_if: () => gIsAndroid,
 },
 async function test_productSpecificHistograms() {
   const DEFAULT_PRODUCTS_HISTOGRAM = "TELEMETRY_TEST_DEFAULT_PRODUCTS";
@@ -1126,7 +1126,7 @@ async function test_productSpecificHistograms() {
 });
 
 add_task({
-  skip_if: () => !gIsAndroid
+  skip_if: () => !gIsAndroid,
 },
 async function test_mobileSpecificHistograms() {
   const DEFAULT_PRODUCTS_HISTOGRAM = "TELEMETRY_TEST_DEFAULT_PRODUCTS";
@@ -1159,7 +1159,7 @@ async function test_mobileSpecificHistograms() {
 });
 
 add_task({
-  skip_if: () => gIsAndroid
+  skip_if: () => gIsAndroid,
 },
 async function test_clearHistogramsOnSnapshot() {
   const COUNT = "TELEMETRY_TEST_COUNT";
@@ -1196,4 +1196,43 @@ async function test_clearHistogramsOnSnapshot() {
   snapshot = Telemetry.snapshotHistograms(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN,
                                               false /* clear */).parent;
   Assert.ok(!(COUNT in snapshot));
+});
+
+add_task(async function test_valid_os_smoketest() {
+  let nonExistingProbe;
+  let existingProbe;
+
+  switch (AppConstants.platform) {
+    case "linux":
+      nonExistingProbe = "TELEMETRY_TEST_OS_ANDROID_ONLY";
+      existingProbe = "TELEMETRY_TEST_OS_LINUX_ONLY";
+      break;
+    case "macosx":
+      nonExistingProbe = "TELEMETRY_TEST_OS_ANDROID_ONLY";
+      existingProbe = "TELEMETRY_TEST_OS_MAC_ONLY";
+      break;
+    case "win":
+      nonExistingProbe = "TELEMETRY_TEST_OS_ANDROID_ONLY";
+      existingProbe = "TELEMETRY_TEST_OS_WIN_ONLY";
+      break;
+    case "android":
+      nonExistingProbe = "TELEMETRY_TEST_OS_LINUX_ONLY";
+      existingProbe = "TELEMETRY_TEST_OS_ANDROID_ONLY";
+      break;
+    default:
+      /* Unknown OS. Let's not test OS-specific probes */
+      return;
+  }
+
+  Assert.throws(() => Telemetry.getHistogramById(nonExistingProbe),
+    /NS_ERROR_FAILURE/,
+    `Should throw on ${nonExistingProbe} probe that's not available on ${AppConstants.platform}`);
+
+  let h = Telemetry.getHistogramById(existingProbe);
+  h.clear();
+  h.add(1);
+  let snapshot = Telemetry.snapshotHistograms(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN,
+                                              false /* clear */).parent;
+  Assert.ok(existingProbe in snapshot, `${existingProbe} should be recorded on ${AppConstants.platform}`);
+  Assert.equal(snapshot[existingProbe].sum, 1);
 });

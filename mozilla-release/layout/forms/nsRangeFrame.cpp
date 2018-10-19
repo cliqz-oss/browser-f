@@ -11,7 +11,6 @@
 
 #include "gfxContext.h"
 #include "nsContentCreatorFunctions.h"
-#include "nsContentUtils.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCSSRendering.h"
 #include "nsCheckboxRadioFrame.h"
@@ -25,7 +24,7 @@
 #include "nsNodeInfoManager.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/ServoStyleSet.h"
-#include "nsThemeConstants.h"
+#include "nsStyleConsts.h"
 
 #ifdef ACCESSIBILITY
 #include "nsAccessibilityService.h"
@@ -81,7 +80,7 @@ nsRangeFrame::Init(nsIContent*       aContent,
   ServoStyleSet* styleSet = PresContext()->StyleSet();
 
   mOuterFocusStyle =
-    styleSet->ProbePseudoElementStyle(aContent->AsElement(),
+    styleSet->ProbePseudoElementStyle(*aContent->AsElement(),
                                       CSSPseudoElementType::mozFocusOuter,
                                       Style());
 
@@ -549,7 +548,7 @@ nsRangeFrame::GetValueAtEventPoint(WidgetGUIEvent* aEvent)
     bool notUsedCanOverride;
     LayoutDeviceIntSize size;
     presContext->GetTheme()->
-      GetMinimumWidgetSize(presContext, this, NS_THEME_RANGE_THUMB, &size,
+      GetMinimumWidgetSize(presContext, this, StyleAppearance::RangeThumb, &size,
                            &notUsedCanOverride);
     thumbSize.width = presContext->DevPixelsToAppUnits(size.width);
     thumbSize.height = presContext->DevPixelsToAppUnits(size.height);
@@ -873,7 +872,7 @@ nsRangeFrame::ShouldUseNativeStyle() const
   nsIFrame* progressFrame = mProgressDiv->GetPrimaryFrame();
   nsIFrame* thumbFrame = mThumbDiv->GetPrimaryFrame();
 
-  return (StyleDisplay()->mAppearance == NS_THEME_RANGE) &&
+  return (StyleDisplay()->mAppearance == StyleAppearance::Range) &&
          !PresContext()->HasAuthorSpecifiedRules(this,
                                                  (NS_AUTHOR_SPECIFIED_BORDER |
                                                   NS_AUTHOR_SPECIFIED_BACKGROUND)) &&

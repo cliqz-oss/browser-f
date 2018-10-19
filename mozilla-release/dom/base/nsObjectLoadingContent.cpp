@@ -16,7 +16,6 @@
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
 #include "nsIDocShell.h"
-#include "nsIDocShellLoadInfo.h"
 #include "nsIDocument.h"
 #include "nsIExternalProtocolHandler.h"
 #include "nsIInterfaceRequestorUtils.h"
@@ -103,10 +102,10 @@
 
 static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
 
-static const char *kPrefYoutubeRewrite = "plugins.rewrite_youtube_embeds";
-static const char *kPrefBlockURIs = "browser.safebrowsing.blockedURIs.enabled";
-static const char *kPrefFavorFallbackMode = "plugins.favorfallback.mode";
-static const char *kPrefFavorFallbackRules = "plugins.favorfallback.rules";
+static const char kPrefYoutubeRewrite[] = "plugins.rewrite_youtube_embeds";
+static const char kPrefBlockURIs[] = "browser.safebrowsing.blockedURIs.enabled";
+static const char kPrefFavorFallbackMode[] = "plugins.favorfallback.mode";
+static const char kPrefFavorFallbackRules[] = "plugins.favorfallback.rules";
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -307,7 +306,8 @@ nsSimplePluginEvent::Run()
     LOG(("OBJLC [%p]: nsSimplePluginEvent firing event \"%s\"", mTarget.get(),
          NS_ConvertUTF16toUTF8(mEvent).get()));
     nsContentUtils::DispatchTrustedEvent(mDocument, mTarget,
-                                         mEvent, true, true);
+                                         mEvent, CanBubble::eYes,
+                                         Cancelable::eYes);
   }
   return NS_OK;
 }
@@ -502,7 +502,7 @@ IsPluginEnabledByExtension(nsIURI* uri, nsCString& mimeType)
   RefPtr<nsPluginHost> pluginHost = nsPluginHost::GetInst();
 
   if (!pluginHost) {
-    NS_NOTREACHED("No pluginhost");
+    MOZ_ASSERT_UNREACHABLE("No pluginhost");
     return false;
   }
 
@@ -529,12 +529,12 @@ bool
 nsObjectLoadingContent::MakePluginListener()
 {
   if (!mInstanceOwner) {
-    NS_NOTREACHED("expecting a spawned plugin");
+    MOZ_ASSERT_UNREACHABLE("expecting a spawned plugin");
     return false;
   }
   RefPtr<nsPluginHost> pluginHost = nsPluginHost::GetInst();
   if (!pluginHost) {
-    NS_NOTREACHED("No pluginHost");
+    MOZ_ASSERT_UNREACHABLE("No pluginHost");
     return false;
   }
   NS_ASSERTION(!mFinalListener, "overwriting a final listener");
@@ -561,9 +561,7 @@ nsObjectLoadingContent::SetupFrameLoader(int32_t aJSPluginId)
   mFrameLoader = nsFrameLoader::Create(thisContent->AsElement(),
                                        /* aOpener = */ nullptr,
                                        mNetworkCreated, aJSPluginId);
-  if (!mFrameLoader) {
-    NS_NOTREACHED("nsFrameLoader::Create failed");
-  }
+  MOZ_ASSERT(mFrameLoader, "nsFrameLoader::Create failed");
 }
 
 // Helper to spawn the frameloader and return a pointer to its docshell.
@@ -583,7 +581,7 @@ nsObjectLoadingContent::SetupDocShell(nsIURI* aRecursionCheckURI)
       IgnoredErrorResult result;
       docShell = mFrameLoader->GetDocShell(result);
       if (result.Failed()) {
-        NS_NOTREACHED("Could not get DocShell from mFrameLoader?");
+        MOZ_ASSERT_UNREACHABLE("Could not get DocShell from mFrameLoader?");
       }
     } else {
       LOG(("OBJLC [%p]: Aborting recursive load", this));
@@ -602,11 +600,9 @@ nsObjectLoadingContent::SetupDocShell(nsIURI* aRecursionCheckURI)
 nsresult
 nsObjectLoadingContent::BindToTree(nsIDocument* aDocument,
                                    nsIContent* aParent,
-                                   nsIContent* aBindingParent,
-                                   bool aCompileEventHandlers)
+                                   nsIContent* aBindingParent)
 {
-  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent,
-                                    aCompileEventHandlers);
+  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent);
 
   if (aDocument) {
     aDocument->AddPlugin(this);
@@ -673,13 +669,13 @@ nsObjectLoadingContent::~nsObjectLoadingContent()
   // Should have been unbound from the tree at this point, and
   // CheckPluginStopEvent keeps us alive
   if (mFrameLoader) {
-    NS_NOTREACHED("Should not be tearing down frame loaders at this point");
+    MOZ_ASSERT_UNREACHABLE("Should not be tearing down frame loaders at this point");
     mFrameLoader->Destroy();
   }
   if (mInstanceOwner || mInstantiating) {
     // This is especially bad as delayed stop will try to hold on to this
     // object...
-    NS_NOTREACHED("Should not be tearing down a plugin at this point!");
+    MOZ_ASSERT_UNREACHABLE("Should not be tearing down a plugin at this point!");
     StopPluginInstance();
   }
   DestroyImageLoadingContent();
@@ -727,11 +723,10 @@ nsObjectLoadingContent::InstantiatePluginInstance(bool aIsLoading)
     return NS_OK;
   }
 
-  nsresult rv = NS_ERROR_FAILURE;
   RefPtr<nsPluginHost> pluginHost = nsPluginHost::GetInst();
 
   if (!pluginHost) {
-    NS_NOTREACHED("No pluginhost");
+    MOZ_ASSERT_UNREACHABLE("No pluginhost");
     return NS_ERROR_FAILURE;
   }
 
@@ -744,9 +739,9 @@ nsObjectLoadingContent::InstantiatePluginInstance(bool aIsLoading)
   }
 
   RefPtr<nsPluginInstanceOwner> newOwner;
-  rv = pluginHost->InstantiatePluginInstance(mContentType,
-                                             mURI.get(), this,
-                                             getter_AddRefs(newOwner));
+  nsresult rv = pluginHost->InstantiatePluginInstance(mContentType,
+                                                      mURI.get(), this,
+                                                      getter_AddRefs(newOwner));
 
   // XXX(johns): We don't suspend native inside stopping plugins...
   if (appShell) {
@@ -1000,19 +995,21 @@ nsObjectLoadingContent::OnStartRequest(nsIRequest *aRequest,
   if (mType == eType_Plugin) {
     if (!mInstanceOwner) {
       // We drop mChannel when stopping plugins, so something is wrong
-      NS_NOTREACHED("Opened a channel in plugin mode, but don't have a plugin");
+      MOZ_ASSERT_UNREACHABLE("Opened a channel in plugin mode, but don't have "
+                             "a plugin");
       return NS_BINDING_ABORTED;
     }
     if (MakePluginListener()) {
       return mFinalListener->OnStartRequest(aRequest, nullptr);
     }
-    NS_NOTREACHED("Failed to create PluginStreamListener, aborting channel");
+    MOZ_ASSERT_UNREACHABLE("Failed to create PluginStreamListener, aborting "
+                           "channel");
     return NS_BINDING_ABORTED;
   }
 
   // Otherwise we should be state loading, and call LoadObject with the channel
   if (mType != eType_Loading) {
-    NS_NOTREACHED("Should be type loading at this point");
+    MOZ_ASSERT_UNREACHABLE("Should be type loading at this point");
     return NS_BINDING_ABORTED;
   }
   NS_ASSERTION(!mChannelLoaded, "mChannelLoaded set already?");
@@ -1114,7 +1111,8 @@ nsObjectLoadingContent::OnDataAvailable(nsIRequest *aRequest,
   }
 
   // We shouldn't have a connected channel with no final listener
-  NS_NOTREACHED("Got data for channel with no connected final listener");
+  MOZ_ASSERT_UNREACHABLE("Got data for channel with no connected final "
+                         "listener");
   mChannel = nullptr;
 
   return NS_ERROR_UNEXPECTED;
@@ -1333,7 +1331,7 @@ nsObjectLoadingContent::ObjectState() const
           return NS_EVENT_STATE_VULNERABLE_NO_UPDATE;
       }
   }
-  NS_NOTREACHED("unknown type?");
+  MOZ_ASSERT_UNREACHABLE("unknown type?");
   return NS_EVENT_STATE_LOADING;
 }
 
@@ -1450,7 +1448,7 @@ bool
 nsObjectLoadingContent::CheckLoadPolicy(int16_t *aContentPolicy)
 {
   if (!aContentPolicy || !mURI) {
-    NS_NOTREACHED("Doing it wrong");
+    MOZ_ASSERT_UNREACHABLE("Doing it wrong");
     return false;
   }
 
@@ -1489,7 +1487,7 @@ bool
 nsObjectLoadingContent::CheckProcessPolicy(int16_t *aContentPolicy)
 {
   if (!aContentPolicy) {
-    NS_NOTREACHED("Null out variable");
+    MOZ_ASSERT_UNREACHABLE("Null out variable");
     return false;
   }
 
@@ -1514,7 +1512,8 @@ nsObjectLoadingContent::CheckProcessPolicy(int16_t *aContentPolicy)
       objectType = GetContentPolicyType();
       break;
     default:
-      NS_NOTREACHED("Calling checkProcessPolicy with a unloadable type");
+      MOZ_ASSERT_UNREACHABLE("Calling checkProcessPolicy with an unloadable "
+                             "type");
       return false;
   }
 
@@ -1632,7 +1631,7 @@ nsObjectLoadingContent::UpdateObjectParameters()
   } else if (thisElement->NodeInfo()->Equals(nsGkAtoms::embed)) {
     thisElement->GetAttr(kNameSpaceID_None, nsGkAtoms::src, uriStr);
   } else {
-    NS_NOTREACHED("Unrecognized plugin-loading tag");
+    MOZ_ASSERT_UNREACHABLE("Unrecognized plugin-loading tag");
   }
 
   mRewrittenYoutubeEmbed = false;
@@ -1699,7 +1698,7 @@ nsObjectLoadingContent::UpdateObjectParameters()
     nsCString channelType;
     rv = mChannel->GetContentType(channelType);
     if (NS_FAILED(rv)) {
-      NS_NOTREACHED("GetContentType failed");
+      MOZ_ASSERT_UNREACHABLE("GetContentType failed");
       stateInvalid = true;
       channelType.Truncate();
     }
@@ -1719,7 +1718,7 @@ nsObjectLoadingContent::UpdateObjectParameters()
     // Channel can change our URI through redirection
     rv = NS_GetFinalChannelURI(mChannel, getter_AddRefs(newURI));
     if (NS_FAILED(rv)) {
-      NS_NOTREACHED("NS_GetFinalChannelURI failure");
+      MOZ_ASSERT_UNREACHABLE("NS_GetFinalChannelURI failure");
       stateInvalid = true;
     }
 
@@ -1905,7 +1904,7 @@ nsObjectLoadingContent::InitializeFromChannel(nsIRequest *aChannel)
   if (mType != eType_Loading || mChannel) {
     // We could technically call UnloadObject() here, if consumers have a valid
     // reason for wanting to call this on an already-loaded tag.
-    NS_NOTREACHED("Should not have begun loading at this point");
+    MOZ_ASSERT_UNREACHABLE("Should not have begun loading at this point");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -2048,7 +2047,7 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
     // The only time we should have a loaded channel with a changed state is
     // when the channel has just opened -- in which case this call should
     // have originated from OnStartRequest
-    NS_NOTREACHED("Loading with a channel, but state doesn't make sense");
+    MOZ_ASSERT_UNREACHABLE("Loading with a channel, but state doesn't make sense");
     return NS_OK;
   }
 
@@ -2150,16 +2149,14 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
   if (mFrameLoader || mPendingInstantiateEvent || mInstanceOwner ||
       mPendingCheckPluginStopEvent || mFinalListener)
   {
-    NS_NOTREACHED("Trying to load new plugin with existing content");
-    rv = NS_ERROR_UNEXPECTED;
+    MOZ_ASSERT_UNREACHABLE("Trying to load new plugin with existing content");
     return NS_OK;
   }
 
   // More sanity-checking:
   // If mChannel is set, mChannelLoaded should be set, and vice-versa
   if (mType != eType_Null && !!mChannel != mChannelLoaded) {
-    NS_NOTREACHED("Trying to load with bad channel state");
-    rv = NS_ERROR_UNEXPECTED;
+    MOZ_ASSERT_UNREACHABLE("Trying to load with bad channel state");
     return NS_OK;
   }
 
@@ -2185,7 +2182,7 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
       if (!mChannel) {
         // We have a LoadImage() call, but UpdateObjectParameters requires a
         // channel for images, so this is not a valid state.
-        NS_NOTREACHED("Attempting to load image without a channel?");
+        MOZ_ASSERT_UNREACHABLE("Attempting to load image without a channel?");
         rv = NS_ERROR_UNEXPECTED;
         break;
       }
@@ -2289,7 +2286,8 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
       }
 
       if (!handlerURI) {
-        NS_NOTREACHED("Selected type is not a proper fake plugin handler");
+        MOZ_ASSERT_UNREACHABLE("Selected type is not a proper fake plugin "
+                               "handler");
         rv = NS_ERROR_FAILURE;
         break;
       }
@@ -2311,7 +2309,8 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
       if (!mChannel) {
         // We could mFrameLoader->LoadURI(mURI), but UpdateObjectParameters
         // requires documents have a channel, so this is not a valid state.
-        NS_NOTREACHED("Attempting to load a document without a channel");
+        MOZ_ASSERT_UNREACHABLE("Attempting to load a document without a "
+                               "channel");
         rv = NS_ERROR_FAILURE;
         break;
       }
@@ -2335,7 +2334,7 @@ nsObjectLoadingContent::LoadObject(bool aNotify,
       nsCOMPtr<nsIURILoader>
         uriLoader(do_GetService(NS_URI_LOADER_CONTRACTID, &rv));
       if (NS_FAILED(rv)) {
-        NS_NOTREACHED("Failed to get uriLoader service");
+        MOZ_ASSERT_UNREACHABLE("Failed to get uriLoader service");
         mFrameLoader->Destroy();
         mFrameLoader = nullptr;
         break;
@@ -2860,7 +2859,7 @@ nsObjectLoadingContent::ScriptRequestPluginInstance(JSContext* aCx,
                               NS_LITERAL_STRING("PluginScripted"));
     nsresult rv = NS_DispatchToCurrentThread(ev);
     if (NS_FAILED(rv)) {
-      NS_NOTREACHED("failed to dispatch PluginScripted event");
+      MOZ_ASSERT_UNREACHABLE("failed to dispatch PluginScripted event");
     }
     mScriptRequested = true;
   } else if (callerIsContentJS && mType == eType_Plugin && !mInstanceOwner &&
@@ -3571,6 +3570,7 @@ nsObjectLoadingContent::SetupProtoChain(JSContext* aCx,
   // so make sure to enter the realm of aObject.
   MOZ_ASSERT(aCx == nsContentUtils::GetCurrentJSContext());
 
+  MOZ_ASSERT(IsDOMObject(aObject));
   JSAutoRealm ar(aCx, aObject);
 
   RefPtr<nsNPAPIPluginInstance> pi;
@@ -3783,7 +3783,8 @@ nsObjectLoadingContent::MaybeFireErrorEvent()
     RefPtr<AsyncEventDispatcher> loadBlockingAsyncDispatcher =
       new LoadBlockingAsyncEventDispatcher(thisContent,
                                            NS_LITERAL_STRING("error"),
-                                           false, false);
+                                           CanBubble::eNo,
+                                           ChromeOnlyDispatch::eNo);
     loadBlockingAsyncDispatcher->PostDOMEvent();
   }
 }

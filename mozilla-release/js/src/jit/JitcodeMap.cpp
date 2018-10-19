@@ -9,11 +9,13 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 
 #include "gc/Marking.h"
 #include "gc/Statistics.h"
 #include "jit/BaselineJIT.h"
+#include "jit/JitRealm.h"
 #include "jit/JitSpewer.h"
 #include "js/Vector.h"
 #include "vm/GeckoProfiler.h"
@@ -323,29 +325,31 @@ JitcodeGlobalEntry::createScriptString(JSContext* cx, JSScript* script, size_t* 
     const char* filenameStr = script->filename() ? script->filename() : "(null)";
     size_t filenameLength = strlen(filenameStr);
 
-    // Calculate lineno length
-    bool hasLineno = false;
-    size_t linenoLength = 0;
-    char linenoStr[15];
+    // Calculate line + column length
+    bool hasLineAndColumn = false;
+    size_t lineAndColumnLength = 0;
+    char lineAndColumnStr[30];
     if (hasName || (script->functionNonDelazifying() || script->isForEval())) {
-        linenoLength = SprintfLiteral(linenoStr, "%u", script->lineno());
-        hasLineno = true;
+        lineAndColumnLength =
+            SprintfLiteral(lineAndColumnStr, "%u:%u",
+                           script->lineno(), script->column());
+        hasLineAndColumn = true;
     }
 
     // Full profile string for scripts with functions is:
-    //      FuncName (FileName:Lineno)
+    //      FuncName (FileName:Lineno:Column)
     // Full profile string for scripts without functions is:
-    //      FileName:Lineno
-    // Full profile string for scripts without functions and without linenos is:
+    //      FileName:Lineno:Column
+    // Full profile string for scripts without functions and without lines is:
     //      FileName
 
     // Calculate full string length.
     size_t fullLength = 0;
     if (hasName) {
-        MOZ_ASSERT(hasLineno);
-        fullLength = nameLength + 2 + filenameLength + 1 + linenoLength + 1;
-    } else if (hasLineno) {
-        fullLength = filenameLength + 1 + linenoLength;
+        MOZ_ASSERT(hasLineAndColumn);
+        fullLength = nameLength + 2 + filenameLength + 1 + lineAndColumnLength + 1;
+    } else if (hasLineAndColumn) {
+        fullLength = filenameLength + 1 + lineAndColumnLength;
     } else {
         fullLength = filenameLength;
     }
@@ -369,11 +373,11 @@ JitcodeGlobalEntry::createScriptString(JSContext* cx, JSScript* script, size_t* 
     memcpy(str + cur, filenameStr, filenameLength);
     cur += filenameLength;
 
-    // Fill lineno chars.
-    if (hasLineno) {
+    // Fill line + column chars.
+    if (hasLineAndColumn) {
         str[cur++] = ':';
-        memcpy(str + cur, linenoStr, linenoLength);
-        cur += linenoLength;
+        memcpy(str + cur, lineAndColumnStr, lineAndColumnLength);
+        cur += lineAndColumnLength;
     }
 
     // Terminal ')' if necessary.
@@ -1200,8 +1204,8 @@ JitcodeRegionEntry::ReadDelta(CompactBufferReader& reader,
 }
 
 /* static */ uint32_t
-JitcodeRegionEntry::ExpectedRunLength(const CodeGeneratorShared::NativeToBytecode* entry,
-                                      const CodeGeneratorShared::NativeToBytecode* end)
+JitcodeRegionEntry::ExpectedRunLength(const NativeToBytecode* entry,
+                                      const NativeToBytecode* end)
 {
     MOZ_ASSERT(entry < end);
 
@@ -1288,7 +1292,7 @@ struct JitcodeMapBufferWriteSpewer
 /* static */ bool
 JitcodeRegionEntry::WriteRun(CompactBufferWriter& writer,
                              JSScript** scriptList, uint32_t scriptListSize,
-                             uint32_t runLength, const CodeGeneratorShared::NativeToBytecode* entry)
+                             uint32_t runLength, const NativeToBytecode* entry)
 {
     MOZ_ASSERT(runLength > 0);
     MOZ_ASSERT(runLength <= MAX_RUN_LENGTH);
@@ -1422,26 +1426,6 @@ JitcodeRegionEntry::findPcOffset(uint32_t queryNativeOffset, uint32_t startPcOff
     return curPcOffset;
 }
 
-typedef js::Vector<char*, 32, SystemAllocPolicy> ProfilingStringVector;
-
-struct AutoFreeProfilingStrings {
-    ProfilingStringVector& profilingStrings_;
-    bool keep_;
-    explicit AutoFreeProfilingStrings(ProfilingStringVector& vec)
-        : profilingStrings_(vec),
-          keep_(false)
-    {}
-
-    void keepStrings() { keep_ = true; }
-
-    ~AutoFreeProfilingStrings() {
-        if (keep_)
-            return;
-        for (size_t i = 0; i < profilingStrings_.length(); i++)
-            js_free(profilingStrings_[i]);
-    }
-};
-
 bool
 JitcodeIonTable::makeIonEntry(JSContext* cx, JitCode* code,
                               uint32_t numScripts, JSScript** scripts,
@@ -1458,7 +1442,12 @@ JitcodeIonTable::makeIonEntry(JSContext* cx, JitCode* code,
     if (!profilingStrings.reserve(numScripts))
         return false;
 
-    AutoFreeProfilingStrings autoFreeProfilingStrings(profilingStrings);
+    // Cleanup allocations on failure.
+    auto autoFreeProfilingStrings = mozilla::MakeScopeExit([&] {
+        for (auto elem: profilingStrings)
+            js_free(elem);
+    });
+
     for (uint32_t i = 0; i < numScripts; i++) {
         char* str = JitcodeGlobalEntry::createScriptString(cx, scripts[i]);
         if (!str)
@@ -1472,8 +1461,8 @@ JitcodeIonTable::makeIonEntry(JSContext* cx, JitCode* code,
     if (!mem)
         return false;
 
-    // Keep allocated profiling strings on destruct.
-    autoFreeProfilingStrings.keepStrings();
+    // Keep allocated profiling strings.
+    autoFreeProfilingStrings.release();
 
     SizedScriptList* scriptList = new (mem) SizedScriptList(numScripts, scripts,
                                                             &profilingStrings[0]);
@@ -1538,8 +1527,8 @@ JitcodeIonTable::findRegionEntry(uint32_t nativeOffset) const
 /* static */ bool
 JitcodeIonTable::WriteIonTable(CompactBufferWriter& writer,
                                JSScript** scriptList, uint32_t scriptListSize,
-                               const CodeGeneratorShared::NativeToBytecode* start,
-                               const CodeGeneratorShared::NativeToBytecode* end,
+                               const NativeToBytecode* start,
+                               const NativeToBytecode* end,
                                uint32_t* tableOffsetOut, uint32_t* numRegionsOut)
 {
     MOZ_ASSERT(tableOffsetOut != nullptr);
@@ -1547,19 +1536,20 @@ JitcodeIonTable::WriteIonTable(CompactBufferWriter& writer,
     MOZ_ASSERT(writer.length() == 0);
     MOZ_ASSERT(scriptListSize > 0);
 
-    JitSpew(JitSpew_Profiling, "Writing native to bytecode map for %s:%u (%zu entries)",
-            scriptList[0]->filename(), scriptList[0]->lineno(),
+    JitSpew(JitSpew_Profiling, "Writing native to bytecode map for %s:%u:%u (%zu entries)",
+            scriptList[0]->filename(), scriptList[0]->lineno(), scriptList[0]->column(),
             mozilla::PointerRangeSize(start, end));
 
     JitSpew(JitSpew_Profiling, "  ScriptList of size %d", int(scriptListSize));
     for (uint32_t i = 0; i < scriptListSize; i++) {
-        JitSpew(JitSpew_Profiling, "  Script %d - %s:%u",
-                int(i), scriptList[i]->filename(), scriptList[i]->lineno());
+        JitSpew(JitSpew_Profiling, "  Script %d - %s:%u:%u",
+                int(i), scriptList[i]->filename(), 
+                scriptList[i]->lineno(), scriptList[i]->column());
     }
 
     // Write out runs first.  Keep a vector tracking the positive offsets from payload
     // start to the run.
-    const CodeGeneratorShared::NativeToBytecode* curEntry = start;
+    const NativeToBytecode* curEntry = start;
     js::Vector<uint32_t, 32, SystemAllocPolicy> runOffsets;
 
     while (curEntry != end) {

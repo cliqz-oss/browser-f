@@ -6,8 +6,6 @@
 
 var EXPORTED_SYMBOLS = ["RuntimePermissions"];
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
 ChromeUtils.defineModuleGetter(this, "EventDispatcher",
                                "resource://gre/modules/Messaging.jsm");
 
@@ -17,6 +15,7 @@ const ACCESS_FINE_LOCATION = "android.permission.ACCESS_FINE_LOCATION";
 const CAMERA = "android.permission.CAMERA";
 const RECORD_AUDIO = "android.permission.RECORD_AUDIO";
 const WRITE_EXTERNAL_STORAGE = "android.permission.WRITE_EXTERNAL_STORAGE";
+const READ_EXTERNAL_STORAGE = "android.permission.READ_EXTERNAL_STORAGE";
 
 var RuntimePermissions = {
   ACCESS_COARSE_LOCATION: ACCESS_COARSE_LOCATION,
@@ -24,6 +23,7 @@ var RuntimePermissions = {
   CAMERA: CAMERA,
   RECORD_AUDIO: RECORD_AUDIO,
   WRITE_EXTERNAL_STORAGE: WRITE_EXTERNAL_STORAGE,
+  READ_EXTERNAL_STORAGE: READ_EXTERNAL_STORAGE,
 
   /**
    * Check whether the permissions have been granted or not. If needed prompt the user to accept the permissions.

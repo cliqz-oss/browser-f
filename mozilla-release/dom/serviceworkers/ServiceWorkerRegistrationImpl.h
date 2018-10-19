@@ -52,9 +52,6 @@ public:
 
   // ServiceWorkerRegistrationListener
   void
-  UpdateFound() override;
-
-  void
   UpdateState(const ServiceWorkerRegistrationDescriptor& aDescriptor) override;
 
   void
@@ -83,6 +80,7 @@ private:
 
   ServiceWorkerRegistration* mOuter;
   ServiceWorkerRegistrationDescriptor mDescriptor;
+  RefPtr<ServiceWorkerRegistrationInfo> mInfo;
   const nsString mScope;
   bool mListeningForEvents;
 };
@@ -119,9 +117,6 @@ public:
   Unregister(ServiceWorkerBoolCallback&& aSuccessCB,
              ServiceWorkerFailureCallback&& aFailureCB) override;
 
-  void
-  UpdateFound();
-
 private:
   ~ServiceWorkerRegistrationWorkerThread();
 
@@ -130,6 +125,9 @@ private:
 
   void
   ReleaseListener();
+
+  void
+  UpdateState(const ServiceWorkerRegistrationDescriptor& aDescriptor);
 
   // This can be called only by WorkerListener.
   WorkerPrivate*

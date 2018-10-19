@@ -43,7 +43,7 @@ AbortController::AbortController(nsIGlobalObject* aGlobal)
 JSObject*
 AbortController::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return AbortControllerBinding::Wrap(aCx, this, aGivenProto);
+  return AbortController_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 nsIGlobalObject*
@@ -56,7 +56,7 @@ AbortSignal*
 AbortController::Signal()
 {
   if (!mSignal) {
-    mSignal = new AbortSignal(this, mAborted);
+    mSignal = new AbortSignal(mGlobal, mAborted);
   }
 
   return mSignal;

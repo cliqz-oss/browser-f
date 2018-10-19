@@ -9,7 +9,7 @@ var windowState = {windows: [{tabs: [
   {entries: [{url: "http://example.com#5", triggeringPrincipal_base64}], hidden: true},
   {entries: [{url: "http://example.com#6", triggeringPrincipal_base64}], hidden: true},
   {entries: [{url: "http://example.com#7", triggeringPrincipal_base64}], hidden: true},
-  {entries: [{url: "http://example.com#8", triggeringPrincipal_base64}], hidden: true}
+  {entries: [{url: "http://example.com#8", triggeringPrincipal_base64}], hidden: true},
 ]}]};
 
 function test() {
@@ -93,13 +93,13 @@ var TabsProgressListener = {
     }
 
     return [needsRestore, isRestoring];
-  }
+  },
 };
 
 // ----------
 function newWindowWithState(state, callback) {
   let opts = "chrome,all,dialog=no,height=800,width=800";
-  let win = window.openDialog(getBrowserURL(), "_blank", opts);
+  let win = window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank", opts);
 
   registerCleanupFunction(() => BrowserTestUtils.closeWindow(win));
 

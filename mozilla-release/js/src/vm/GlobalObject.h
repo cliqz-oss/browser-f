@@ -16,7 +16,7 @@
 #include "vm/ArrayBufferObject.h"
 #include "vm/ErrorObject.h"
 #include "vm/JSFunction.h"
-#include "vm/RegExpStatics.h"
+#include "vm/Realm.h"
 #include "vm/Runtime.h"
 
 namespace js {
@@ -24,9 +24,7 @@ namespace js {
 class Debugger;
 class TypedObjectModuleObject;
 class LexicalEnvironmentObject;
-
-class SimdTypeDescr;
-enum class SimdType;
+class RegExpStatics;
 
 /*
  * Global object slots are reserved as follows:
@@ -450,17 +448,6 @@ class GlobalObject : public NativeObject
                                  initTypedObjectModule);
     }
 
-    static JSObject*
-    getOrCreateSimdGlobalObject(JSContext* cx, Handle<GlobalObject*> global) {
-        return getOrCreateObject(cx, global, APPLICATION_SLOTS + JSProto_SIMD, initSimdObject);
-    }
-
-    // Get the type descriptor for one of the SIMD types.
-    // simdType is one of the JS_SIMDTYPEREPR_* constants.
-    // Implemented in builtin/SIMD.cpp.
-    static SimdTypeDescr*
-    getOrCreateSimdTypeDescr(JSContext* cx, Handle<GlobalObject*> global, SimdType simdType);
-
     TypedObjectModuleObject& getTypedObjectModule() const;
 
     static JSObject*
@@ -739,7 +726,8 @@ class GlobalObject : public NativeObject
 
     static JSObject* getOrCreateThrowTypeError(JSContext* cx, Handle<GlobalObject*> global);
 
-    static bool isRuntimeCodeGenEnabled(JSContext* cx, Handle<GlobalObject*> global);
+    static bool isRuntimeCodeGenEnabled(JSContext* cx, HandleValue code,
+                                        Handle<GlobalObject*> global);
 
     static bool getOrCreateEval(JSContext* cx, Handle<GlobalObject*> global,
                                 MutableHandleObject eval);
@@ -777,10 +765,6 @@ class GlobalObject : public NativeObject
 
     // Implemented in builtin/TypedObject.cpp
     static bool initTypedObjectModule(JSContext* cx, Handle<GlobalObject*> global);
-
-    // Implemented in builtin/SIMD.cpp
-    static bool initSimdObject(JSContext* cx, Handle<GlobalObject*> global);
-    static bool initSimdType(JSContext* cx, Handle<GlobalObject*> global, SimdType simdType);
 
     static bool initStandardClasses(JSContext* cx, Handle<GlobalObject*> global);
     static bool initSelfHostingBuiltins(JSContext* cx, Handle<GlobalObject*> global,

@@ -87,6 +87,7 @@ AddonTargetActor.prototype = {
       name: this._addon.name,
       url: this.url,
       iconURL: this._addon.iconURL,
+      isSystem: this._addon.isSystem,
       debuggable: this._addon.isDebuggable,
       temporarilyInstalled: this._addon.temporarilyInstalled,
       type: this._addon.type,
@@ -184,22 +185,14 @@ AddonTargetActor.prototype = {
   },
 
   preNest: function() {
-    const e = Services.wm.getEnumerator(null);
-    while (e.hasMoreElements()) {
-      const win = e.getNext();
-      const windowUtils = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
+    for (const {windowUtils} of Services.wm.getEnumerator(null)) {
       windowUtils.suppressEventHandling(true);
       windowUtils.suspendTimeouts();
     }
   },
 
   postNest: function() {
-    const e = Services.wm.getEnumerator(null);
-    while (e.hasMoreElements()) {
-      const win = e.getNext();
-      const windowUtils = win.QueryInterface(Ci.nsIInterfaceRequestor)
-                           .getInterface(Ci.nsIDOMWindowUtils);
+    for (const {windowUtils} of Services.wm.getEnumerator(null)) {
       windowUtils.resumeTimeouts();
       windowUtils.suppressEventHandling(false);
     }

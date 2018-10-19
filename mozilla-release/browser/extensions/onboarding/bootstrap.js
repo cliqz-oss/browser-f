@@ -59,7 +59,7 @@ let startupData;
  **/
 function setPrefs(prefs) {
   prefs.forEach(pref => {
-    let prefObj = PREF_WHITELIST.find(([name, ]) => name == pref.name);
+    let prefObj = PREF_WHITELIST.find(([name ]) => name == pref.name);
     if (!prefObj) {
       return;
     }
@@ -152,7 +152,7 @@ function initContentMessageListener() {
         break;
       case "get-login-status":
         msg.target.messageManager.sendAsyncMessage("Onboarding:ResponseLoginStatus", {
-          isLoggedIn: syncTourChecker.isLoggedIn()
+          isLoggedIn: syncTourChecker.isLoggedIn(),
         });
         break;
       case "ping-centre":
@@ -174,7 +174,7 @@ function onBrowserReady() {
 
   OnboardingTourType.check();
   OnboardingTelemetry.init(startupData);
-  Services.mm.loadFrameScript("resource://onboarding/onboarding.js", true);
+  Services.mm.loadFrameScript("resource://onboarding/onboarding.js", true, true);
   initContentMessageListener();
 }
 

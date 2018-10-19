@@ -7,12 +7,19 @@ fi
 
 TOOLTOOL_DIR=${TOOLTOOL_DIR:-$topsrcdir}
 
-# We deal with valgrind builds here
-CC="$TOOLTOOL_DIR/gcc/bin/gcc"
-CXX="$TOOLTOOL_DIR/gcc/bin/g++"
+if [ -n "$FORCE_GCC" -o -n "$MOZ_PGO" ]; then
+    CC="$TOOLTOOL_DIR/gcc/bin/gcc"
+    CXX="$TOOLTOOL_DIR/gcc/bin/g++"
 
-# We want to make sure we use binutils and other binaries in the tooltool
-# package.
-mk_add_options "export PATH=$TOOLTOOL_DIR/gcc/bin:$PATH"
+    # We want to make sure we use binutils and other binaries in the tooltool
+    # package.
+    mk_add_options "export PATH=$TOOLTOOL_DIR/gcc/bin:$PATH"
+else
+    CC="$TOOLTOOL_DIR/clang/bin/clang"
+    CXX="$TOOLTOOL_DIR/clang/bin/clang++"
+    export ENABLE_CLANG_PLUGIN=1
+
+    mk_add_options "export PATH=$TOOLTOOL_DIR/binutils/bin:$PATH"
+fi
 
 . "$topsrcdir/build/unix/mozconfig.stdcxx"

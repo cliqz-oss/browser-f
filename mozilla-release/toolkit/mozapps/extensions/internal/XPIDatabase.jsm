@@ -118,7 +118,7 @@ const PROP_JSON_FIELDS = ["id", "syncGUID", "version", "type",
                           "seen", "dependencies", "hasEmbeddedWebExtension",
                           "userPermissions", "icons", "iconURL", "icon64URL",
                           "blocklistState", "blocklistURL", "startupData",
-                          "previewImage"];
+                          "previewImage", "hidden"];
 
 const LEGACY_TYPES = new Set([
   "extension",
@@ -294,6 +294,7 @@ class AddonInternal {
     this.seen = true;
     this.skinnable = false;
     this.startupData = null;
+    this._hidden = false;
 
     this.inDatabase = false;
 
@@ -422,7 +423,12 @@ class AddonInternal {
   }
 
   get hidden() {
-    return this.location.isSystem;
+    return this.location.isSystem ||
+           (this._hidden && this.signedState == AddonManager.SIGNEDSTATE_PRIVILEGED);
+  }
+
+  set hidden(val) {
+    this._hidden = val;
   }
 
   get disabled() {
@@ -492,8 +498,11 @@ class AddonInternal {
 
     // Only extensions and dictionaries can be compatible by default; themes
     // and language packs always use strict compatibility checking.
+    // Dictionaries are compatible by default unless requested by the dictinary.
     if (this.type in COMPATIBLE_BY_DEFAULT_TYPES &&
-        !AddonManager.strictCompatibility && !this.strictCompatibility) {
+        !this.strictCompatibility &&
+        (!AddonManager.strictCompatibility ||
+         this.type == "webextension-dictionary")) {
 
       // The repository can specify compatibility overrides.
       // Note: For now, only blacklisting is supported by overrides.
@@ -580,11 +589,23 @@ class AddonInternal {
     }
 
     if (this.inDatabase) {
+<<<<<<< HEAD
       /* In CLIQZ we need to be able to userDisable system addons like HTTPSEverywhere
       // hidden and system add-ons should not be user disabled,
       // as there is no UI to re-enable them.
       if (this.hidden) {
         throw new Error(`Cannot disable hidden add-on ${this.id}`);
+||||||| merged common ancestors
+      // hidden and system add-ons should not be user disabled,
+      // as there is no UI to re-enable them.
+      if (this.hidden) {
+        throw new Error(`Cannot disable hidden add-on ${this.id}`);
+=======
+      // System add-ons should not be user disabled, as there is no UI to
+      // re-enable them.
+      if (this.location.isSystem) {
+        throw new Error(`Cannot disable system add-on ${this.id}`);
+>>>>>>> origin/upstream-releases
       }
       */
       await XPIDatabase.updateAddonDisabledState(this, val);
@@ -853,7 +874,7 @@ AddonWrapper = class {
       return val;
 
     XPIDatabase.setAddonProperties(addon, {
-      applyBackgroundUpdates: val
+      applyBackgroundUpdates: val,
     });
     AddonManagerPrivate.callAddonListeners("onPropertyChanged", this, ["applyBackgroundUpdates"]);
 
@@ -1566,7 +1587,7 @@ this.XPIDatabase = {
 
       let changes = {
         enabled: [],
-        disabled: []
+        disabled: [],
       };
 
       for (let addon of addons) {
@@ -2193,7 +2214,7 @@ this.XPIDatabase = {
     this.setAddonProperties(aAddon, {
       userDisabled: aUserDisabled,
       appDisabled,
-      softDisabled: aSoftDisabled
+      softDisabled: aSoftDisabled,
     });
 
     let wrapper = aAddon.wrapper;
@@ -2750,7 +2771,7 @@ this.XPIDatabaseReconcile = {
       for (let [id, oldAddon] of dbAddons) {
         // Check if the add-on is still installed
         let xpiState = location.get(id);
-        if (xpiState) {
+        if (xpiState && !xpiState.missing) {
           let newAddon = this.updateExistingAddon(oldAddon, xpiState,
                                                   findManifest(location, id),
                                                   aUpdateCompatibility, aSchemaChange);
@@ -2768,7 +2789,7 @@ this.XPIDatabaseReconcile = {
       }
 
       for (let [id, xpiState] of location) {
-        if (locationAddons.has(id))
+        if (locationAddons.has(id) || xpiState.missing)
           continue;
         let newAddon = findManifest(location, id);
         let addon = this.addMetadata(location, id, xpiState, newAddon,

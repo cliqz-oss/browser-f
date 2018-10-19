@@ -207,25 +207,15 @@ static void ParsePlistPluginInfo(nsPluginInfo& info, CFBundleRef bundle)
   // Allocate memory for mime data
   int mimeDataArraySize = mimeDictKeyCount * sizeof(char*);
   info.fMimeTypeArray = static_cast<char**>(moz_xmalloc(mimeDataArraySize));
-  if (!info.fMimeTypeArray)
-    return;
   memset(info.fMimeTypeArray, 0, mimeDataArraySize);
   info.fExtensionArray = static_cast<char**>(moz_xmalloc(mimeDataArraySize));
-  if (!info.fExtensionArray)
-    return;
   memset(info.fExtensionArray, 0, mimeDataArraySize);
   info.fMimeDescriptionArray = static_cast<char**>(moz_xmalloc(mimeDataArraySize));
-  if (!info.fMimeDescriptionArray)
-    return;
   memset(info.fMimeDescriptionArray, 0, mimeDataArraySize);
 
   // Allocate memory for mime dictionary keys and values
   mozilla::UniquePtr<CFTypeRef[]> keys(new CFTypeRef[mimeDictKeyCount]);
-  if (!keys)
-    return;
   mozilla::UniquePtr<CFTypeRef[]> values(new CFTypeRef[mimeDictKeyCount]);
-  if (!values)
-    return;
 
   info.fVariantCount = 0;
 
@@ -334,10 +324,8 @@ static char* p2cstrdup(StringPtr pstr)
 {
   int len = pstr[0];
   char* cstr = static_cast<char*>(moz_xmalloc(len + 1));
-  if (cstr) {
-    memmove(cstr, pstr + 1, len);
-    cstr[len] = '\0';
-  }
+  memmove(cstr, pstr + 1, len);
+  cstr[len] = '\0';
   return cstr;
 }
 
@@ -410,28 +398,6 @@ nsresult nsPluginFile::GetPluginInfo(nsPluginInfo& info, PRLibrary **outLibrary)
       return NS_OK;
   }
 
-  // Don't load "fbplugin" or any plugins whose name starts with "fbplugin_"
-  // (Facebook plugins) if we're running on OS X 10.10 (Yosemite) or later.
-  // A "fbplugin" file crashes on load, in the call to LoadPlugin() below.
-  // See bug 1086977.
-  if (nsCocoaFeatures::OnYosemiteOrLater()) {
-    if (fileName.EqualsLiteral("fbplugin") ||
-        StringBeginsWith(fileName, NS_LITERAL_CSTRING("fbplugin_"))) {
-      nsAutoCString msg;
-      msg.AppendPrintf("Preventing load of %s (see bug 1086977)",
-                       fileName.get());
-      NS_WARNING(msg.get());
-      return NS_ERROR_FAILURE;
-    }
-
-    // The block above assumes that "fbplugin" is the filename of the plugin
-    // to be blocked, or that the filename starts with "fbplugin_".  But we
-    // don't yet know for sure if this is always true.  So for the time being
-    // record extra information in our crash logs.
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Bug_1086977"),
-                                       fileName);
-  }
-
   // It's possible that our plugin has 2 entry points that'll give us mime type
   // info. Quicktime does this to get around the need of having admin rights to
   // change mime info in the resource fork. We need to use this info instead of
@@ -439,13 +405,6 @@ nsresult nsPluginFile::GetPluginInfo(nsPluginInfo& info, PRLibrary **outLibrary)
 
   // Sadly we have to load the library for this to work.
   rv = LoadPlugin(outLibrary);
-
-  if (nsCocoaFeatures::OnYosemiteOrLater()) {
-    // If we didn't crash in LoadPlugin(), change the previous annotation so we
-    // don't sow confusion.
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("Bug_1086977"),
-                                       NS_LITERAL_CSTRING("Didn't crash, please ignore"));
-  }
 
   if (NS_FAILED(rv))
     return rv;
@@ -476,15 +435,9 @@ nsresult nsPluginFile::GetPluginInfo(nsPluginInfo& info, PRLibrary **outLibrary)
   // Fill in the info struct based on the data in the BPSupportedMIMETypes struct
   int variantCount = info.fVariantCount;
   info.fMimeTypeArray = static_cast<char**>(moz_xmalloc(variantCount * sizeof(char*)));
-  if (!info.fMimeTypeArray)
-    return NS_ERROR_OUT_OF_MEMORY;
   info.fExtensionArray = static_cast<char**>(moz_xmalloc(variantCount * sizeof(char*)));
-  if (!info.fExtensionArray)
-    return NS_ERROR_OUT_OF_MEMORY;
   if (mi.infoStrings) {
     info.fMimeDescriptionArray = static_cast<char**>(moz_xmalloc(variantCount * sizeof(char*)));
-    if (!info.fMimeDescriptionArray)
-      return NS_ERROR_OUT_OF_MEMORY;
   }
   short mimeIndex = 2;
   short descriptionIndex = 2;

@@ -15,9 +15,19 @@ module.exports = {
    *         Amount by which to increment.
    */
   getStepForUnit(unit) {
-    let step = 1;
-    if (unit === "em" || unit === "rem") {
-      step = 0.1;
+    let step;
+    switch (unit) {
+      case "":
+      case "em":
+      case "rem":
+      case "vw":
+      case "vh":
+      case "vmin":
+      case "vmax":
+        step = 0.1;
+        break;
+      default:
+        step = 1;
     }
 
     return step;
@@ -82,5 +92,22 @@ module.exports = {
       }, {});
 
     return axes;
+  },
+
+  /**
+   * Limit the decimal count of a number. Used instead of Number.toFixed() which pads
+   * integers with zeroes. If the input is not a number, it is returned as is.
+   *
+   * @param {Number} number
+   * @param {Number} decimals
+   *        Decimal count in the output number. Default to one decimal.
+   * @return {Number}
+   */
+  toFixed(number, decimals = 1) {
+    if (typeof number !== "number") {
+      return number;
+    }
+
+    return Math.floor(number * Math.pow(10, decimals)) / Math.pow(10, decimals);
   }
 };

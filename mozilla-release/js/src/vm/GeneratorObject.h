@@ -60,7 +60,7 @@ class GeneratorObject : public NativeObject
     static JSObject* create(JSContext* cx, AbstractFramePtr frame);
 
     static bool resume(JSContext* cx, InterpreterActivation& activation,
-                       HandleObject obj, HandleValue arg, ResumeKind resumeKind);
+                       Handle<GeneratorObject*> genObj, HandleValue arg);
 
     static bool initialSuspend(JSContext* cx, HandleObject obj, AbstractFramePtr frame, jsbytecode* pc) {
         return suspend(cx, obj, frame, pc, nullptr, 0);
@@ -124,6 +124,9 @@ class GeneratorObject : public NativeObject
     // instruction that suspended the generator. The yield index can be mapped
     // to the bytecode offset (interpreter) or to the native code offset (JIT).
 
+    bool isBeforeInitialYield() const {
+        return getFixedSlot(YIELD_AND_AWAIT_INDEX_SLOT).isUndefined();
+    }
     bool isRunning() const {
         MOZ_ASSERT(!isClosed());
         return getFixedSlot(YIELD_AND_AWAIT_INDEX_SLOT).toInt32() == YIELD_AND_AWAIT_INDEX_RUNNING;
@@ -144,13 +147,17 @@ class GeneratorObject : public NativeObject
         setFixedSlot(YIELD_AND_AWAIT_INDEX_SLOT, Int32Value(YIELD_AND_AWAIT_INDEX_RUNNING));
     }
     void setClosing() {
-        MOZ_ASSERT(isSuspended());
+        MOZ_ASSERT(isRunning());
         setFixedSlot(YIELD_AND_AWAIT_INDEX_SLOT, Int32Value(YIELD_AND_AWAIT_INDEX_CLOSING));
     }
     void setYieldAndAwaitIndex(uint32_t yieldAndAwaitIndex) {
         MOZ_ASSERT_IF(yieldAndAwaitIndex == 0,
                       getFixedSlot(YIELD_AND_AWAIT_INDEX_SLOT).isUndefined());
         MOZ_ASSERT_IF(yieldAndAwaitIndex != 0, isRunning() || isClosing());
+        setYieldAndAwaitIndexNoAssert(yieldAndAwaitIndex);
+    }
+    // Debugger has to flout the state machine rules a bit.
+    void setYieldAndAwaitIndexNoAssert(uint32_t yieldAndAwaitIndex) {
         MOZ_ASSERT(yieldAndAwaitIndex < uint32_t(YIELD_AND_AWAIT_INDEX_CLOSING));
         setFixedSlot(YIELD_AND_AWAIT_INDEX_SLOT, Int32Value(yieldAndAwaitIndex));
         MOZ_ASSERT(isSuspended());
@@ -196,10 +203,16 @@ class GeneratorObject : public NativeObject
 
 bool GeneratorThrowOrReturn(JSContext* cx, AbstractFramePtr frame, Handle<GeneratorObject*> obj,
                             HandleValue val, uint32_t resumeKind);
-void SetGeneratorClosed(JSContext* cx, AbstractFramePtr frame);
 
-MOZ_MUST_USE bool
-CheckGeneratorResumptionValue(JSContext* cx, HandleValue v);
+/**
+ * Return the generator object associated with the given frame. The frame must
+ * be a call frame for a generator. If the generator object hasn't been created
+ * yet, or hasn't been stored in the stack slot yet, this returns null.
+ */
+GeneratorObject*
+GetGeneratorObjectForFrame(JSContext* cx, AbstractFramePtr frame);
+
+void SetGeneratorClosed(JSContext* cx, AbstractFramePtr frame);
 
 } // namespace js
 

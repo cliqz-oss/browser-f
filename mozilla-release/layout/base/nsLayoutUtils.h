@@ -61,7 +61,6 @@ class nsPIDOMWindowOuter;
 class imgIRequest;
 class nsIDocument;
 struct nsStyleFont;
-struct nsStyleImageOrientation;
 struct nsOverflowAreas;
 
 namespace mozilla {
@@ -75,6 +74,7 @@ class WritingMode;
 class DisplayItemClip;
 class EffectSet;
 struct ActiveScrolledRoot;
+enum class StyleImageOrientation : uint8_t;
 namespace dom {
 class CanvasRenderingContext2D;
 class DOMRectList;
@@ -119,6 +119,11 @@ struct DisplayPortMarginsPropertyData {
   uint32_t mPriority;
 };
 
+struct MotionPathData {
+  gfx::Point mTranslate;
+  float mRotate;
+};
+
 } // namespace mozilla
 
 // For GetDisplayPort
@@ -133,6 +138,12 @@ enum class DrawStringFlags {
   eForceHorizontal = 0x1 // Forces the text to be drawn horizontally.
 };
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(DrawStringFlags)
+
+enum class ReparentingDirection {
+  Backwards,
+  Forwards,
+  Variable // Could be either of the above; take most pessimistic action.
+};
 
 /**
  * nsLayoutUtils is a namespace class used for various helper
@@ -1221,10 +1232,11 @@ public:
    * or RECTS_USE_MARGIN_BOX, the corresponding type of box is used.
    * Otherwise (by default), the border box is used.
    */
-  static void GetAllInFlowRects(nsIFrame* aFrame, nsIFrame* aRelativeTo,
+  static void GetAllInFlowRects(nsIFrame* aFrame, const nsIFrame* aRelativeTo,
                                 RectCallback* aCallback, uint32_t aFlags = 0);
 
-  static void GetAllInFlowRectsAndTexts(nsIFrame* aFrame, nsIFrame* aRelativeTo,
+  static void GetAllInFlowRectsAndTexts(nsIFrame* aFrame,
+                                        const nsIFrame* aRelativeTo,
                                         RectCallback* aCallback,
                                         mozilla::dom::Sequence<nsString>* aTextList,
                                         uint32_t aFlags = 0);
@@ -1239,7 +1251,7 @@ public:
    * or RECTS_USE_MARGIN_BOX, the corresponding type of box is used.
    * Otherwise (by default), the border box is used.
    */
-  static nsRect GetAllInFlowRectsUnion(nsIFrame* aFrame, nsIFrame* aRelativeTo,
+  static nsRect GetAllInFlowRectsUnion(nsIFrame* aFrame, const nsIFrame* aRelativeTo,
                                        uint32_t aFlags = 0);
 
   enum {
@@ -1990,7 +2002,7 @@ public:
    */
   static already_AddRefed<imgIContainer>
   OrientImage(imgIContainer* aContainer,
-              const nsStyleImageOrientation& aOrientation);
+              const mozilla::StyleImageOrientation& aOrientation);
 
   /**
    * Determine if any corner radius is of nonzero size
@@ -2224,7 +2236,6 @@ public:
   }
 
   // There are a bunch of callers of SurfaceFromElement.  Just mark it as
-  // MOZ_CAN_RUN_SCRIPT_BOUNDARY for now.
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   static SurfaceFromElementResult SurfaceFromElement(nsIImageLoadingContent *aElement,
                                                      uint32_t aSurfaceFlags,
@@ -2394,11 +2405,6 @@ public:
    * Checks if we should enable parsing for CSS Filters.
    */
   static bool CSSFiltersEnabled();
-
-  /**
-   * Checks whether support for the CSS-wide "unset" value is enabled.
-   */
-  static bool UnsetValueEnabled();
 
   /**
    * Checks whether support for inter-character ruby is enabled.
@@ -2793,6 +2799,10 @@ public:
    * resolution, cumulative resolution, zoom, composition size, root
    * composition size, scroll offset and scrollable rect.
    *
+   * Note that for the RCD-RSF, the scroll offset returned is the layout
+   * viewport offset; if you need the visual viewport offset, that needs to
+   * be queried independently via nsIPresShell::GetVisualViewportOffset().
+   *
    * By contrast, ComputeFrameMetrics() computes all the fields, but requires
    * extra inputs and can only be called during frame layer building.
    */
@@ -2850,11 +2860,11 @@ public:
   static bool HasDocumentLevelListenersForApzAwareEvents(nsIPresShell* aShell);
 
   /**
-   * Set the scroll port size for the purpose of clamping the scroll position
+   * Set the viewport size for the purpose of clamping the scroll position
    * for the root scroll frame of this document
-   * (see nsIDOMWindowUtils.setScrollPositionClampingScrollPortSize).
+   * (see nsIDOMWindowUtils.setVisualViewportSize).
    */
-  static void SetScrollPositionClampingScrollPortSize(nsIPresShell* aPresShell,
+  static void SetVisualViewportSize(nsIPresShell* aPresShell,
                                                       CSSSize aSize);
 
   /**
@@ -3110,6 +3120,12 @@ public:
    * used for the given scrollbar part frame.
    */
   static ComputedStyle* StyleForScrollbar(nsIFrame* aScrollbarPart);
+
+  /**
+   * Generate the motion path transform result.
+   **/
+  static mozilla::Maybe<mozilla::MotionPathData>
+  ResolveMotionPath(const nsIFrame* aFrame);
 
 private:
   static uint32_t sFontSizeInflationEmPerLine;

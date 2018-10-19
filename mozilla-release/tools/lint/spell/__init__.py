@@ -59,9 +59,9 @@ class CodespellProcess(ProcessHandlerMixin):
         m = re.match(r'^[a-z][A-Z][a-z]*', typo)
         if m:
             return
-        res = {'path': os.path.relpath(abspath, self.config['root']),
+        res = {'path': abspath,
                'message': typo + " ==> " + correct,
-               'level': "warning",
+               'level': 'error',
                'lineno': line,
                }
         results.append(result.from_config(self.config, **res))

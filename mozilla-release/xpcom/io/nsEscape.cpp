@@ -113,9 +113,6 @@ nsEscape(const char* aStr, size_t aLength, size_t* aOutputLength,
   }
 
   char* result = (char*)moz_xmalloc(dstSize);
-  if (!result) {
-    return nullptr;
-  }
 
   unsigned char* dst = (unsigned char*)result;
   src = (const unsigned char*)aStr;
@@ -310,7 +307,7 @@ T_EscapeURL(const typename T::char_type* aPart, size_t aPartLen,
                 "unexpected char type");
 
   if (!aPart) {
-    NS_NOTREACHED("null pointer");
+    MOZ_ASSERT_UNREACHABLE("null pointer");
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -546,7 +543,7 @@ NS_UnescapeURL(const char* aStr, int32_t aLen, uint32_t aFlags,
                const mozilla::fallible_t&)
 {
   if (!aStr) {
-    NS_NOTREACHED("null pointer");
+    MOZ_ASSERT_UNREACHABLE("null pointer");
     return NS_ERROR_INVALID_ARG;
   }
 

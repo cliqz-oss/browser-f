@@ -39,7 +39,7 @@ from mozharness.mozilla.testing.codecoverage import (
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 
 SUITE_CATEGORIES = ['gtest', 'cppunittest', 'jittest', 'mochitest', 'reftest', 'xpcshell',
-                    'mozbase', 'mozmill']
+                    'mozmill']
 SUITE_DEFAULT_E10S = ['mochitest', 'reftest']
 SUITE_NO_E10S = ['xpcshell']
 
@@ -95,14 +95,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
             "help": "Specify which jit-test suite to run. "
                     "Suites are defined in the config file\n."
                     "Examples: 'jittest'"}
-         ],
-        [['--mozbase-suite', ], {
-            "action": "extend",
-            "dest": "specified_mozbase_suites",
-            "type": "string",
-            "help": "Specify which mozbase suite to run. "
-                    "Suites are defined in the config file\n."
-                    "Examples: 'mozbase'"}
          ],
         [['--mozmill-suite', ], {
             "action": "extend",
@@ -170,7 +162,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
         [["--gpu-required"], {
             "action": "store_true",
             "dest": "gpu_required",
-            "default": "False",
+            "default": False,
             "help": "Run additional verification on modified tests using gpu instances."}
          ],
     ] + copy.deepcopy(testing_config_options) + \
@@ -217,7 +209,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
             ('specified_cppunittest_suites', 'cppunit'),
             ('specified_gtest_suites', 'gtest'),
             ('specified_jittest_suites', 'jittest'),
-            ('specified_mozbase_suites', 'mozbase'),
             ('specified_mozmill_suites', 'mozmill'),
         )
         for s, prefix in suites:
@@ -274,7 +265,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                                                    'blobber_upload_dir')
         dirs['abs_jittest_dir'] = os.path.join(dirs['abs_test_install_dir'],
                                                "jit-test", "jit-test")
-        dirs['abs_mozbase_dir'] = os.path.join(dirs['abs_test_install_dir'], "mozbase")
         dirs['abs_mozmill_dir'] = os.path.join(dirs['abs_test_install_dir'], "mozmill")
 
         if os.path.isabs(c['virtualenv_path']):
@@ -503,7 +493,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
     def structured_output(self, suite_category, flavor=None):
         unstructured_flavors = self.config.get('unstructured_flavors')
         if not unstructured_flavors:
-            return False
+            return True
         if suite_category not in unstructured_flavors:
             return True
         if not unstructured_flavors.get(suite_category) or \
@@ -553,7 +543,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
     def download_and_extract(self):
         """
         download and extract test zip / download installer
-        optimizes which subfolders to extract from tests zip
+        optimizes which subfolders to extract from tests archive
         """
         c = self.config
 
@@ -888,18 +878,18 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                     final_cmd = copy.copy(cmd)
                     final_cmd.extend(per_test_args)
 
+                    final_env = copy.copy(env)
+
                     if self.per_test_coverage:
-                        gcov_dir, jsvm_dir = self.set_coverage_env(env)
+                        self.set_coverage_env(final_env)
 
                     return_code = self.run_command(final_cmd, cwd=dirs['abs_work_dir'],
                                                    output_timeout=cmd_timeout,
                                                    output_parser=parser,
-                                                   env=env)
+                                                   env=final_env)
 
                     if self.per_test_coverage:
-                        self.add_per_test_coverage_report(
-                            gcov_dir, jsvm_dir, suite, per_test_args[-1]
-                        )
+                        self.add_per_test_coverage_report(final_env, suite, per_test_args[-1])
 
                     # mochitest, reftest, and xpcshell suites do not return
                     # appropriate return codes. Therefore, we must parse the output

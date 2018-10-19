@@ -42,11 +42,8 @@ public:
   virtual Float GetSize() const override { return mSize; }
 
 #ifdef USE_SKIA
-  virtual SkTypeface* GetSkTypeface() { return mTypeface; }
+  SkTypeface* GetSkTypeface();
 #endif
-
-  // Not true, but required to instantiate a ScaledFontBase.
-  virtual FontType GetType() const override { return FontType::SKIA; }
 
 #ifdef USE_CAIRO_SCALED_FONT
   bool PopulateCairoScaledFont();
@@ -57,7 +54,8 @@ public:
 protected:
   friend class DrawTargetSkia;
 #ifdef USE_SKIA
-  SkTypeface* mTypeface;
+  Atomic<SkTypeface*> mTypeface;
+  virtual SkTypeface* CreateSkTypeface() { return nullptr; }
   SkPath GetSkiaPathForGlyphs(const GlyphBuffer &aBuffer);
 #endif
 #ifdef USE_CAIRO_SCALED_FONT

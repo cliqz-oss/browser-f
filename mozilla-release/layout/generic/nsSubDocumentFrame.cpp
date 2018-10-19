@@ -340,7 +340,7 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   // If we are pointer-events:none then we don't need to HitTest background
   bool pointerEventsNone =
-    StyleUserInterface()->mPointerEvents == NS_STYLE_POINTER_EVENTS_NONE;
+    StyleUI()->mPointerEvents == NS_STYLE_POINTER_EVENTS_NONE;
   if (!aBuilder->IsForEventDelivery() || !pointerEventsNone) {
     nsDisplayListCollection decorations(aBuilder);
     DisplayBorderBackgroundOutline(aBuilder, decorations);
@@ -377,6 +377,16 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   if (!presShell) {
     return;
+  }
+
+  if (aBuilder->IsInFilter()) {
+    nsIDocument* outerDoc = PresShell()->GetDocument();
+    nsIDocument* innerDoc = presShell->GetDocument();
+    if (outerDoc && innerDoc) {
+      if (!outerDoc->NodePrincipal()->Equals(innerDoc->NodePrincipal())) {
+        outerDoc->SetDocumentAndPageUseCounter(eUseCounter_custom_FilteredCrossOriginIFrame);
+      }
+    }
   }
 
   nsIFrame* subdocRootFrame = presShell->GetRootFrame();
@@ -1047,7 +1057,7 @@ nsSubDocumentFrame::GetMarginAttributes()
 }
 
 nsFrameLoader*
-nsSubDocumentFrame::FrameLoader()
+nsSubDocumentFrame::FrameLoader() const
 {
   nsIContent* content = GetContent();
   if (!content)
@@ -1060,6 +1070,12 @@ nsSubDocumentFrame::FrameLoader()
     }
   }
   return mFrameLoader;
+}
+
+mozilla::layout::RenderFrameParent*
+nsSubDocumentFrame::GetRenderFrameParent() const
+{
+  return FrameLoader() ? FrameLoader()->GetCurrentRenderFrame() : nullptr;
 }
 
 // XXX this should be called ObtainDocShell or something like that,

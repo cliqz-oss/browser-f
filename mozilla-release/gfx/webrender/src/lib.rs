@@ -60,7 +60,6 @@ mod box_shadow;
 #[cfg(any(feature = "capture", feature = "replay"))]
 mod capture;
 mod clip;
-mod clip_scroll_node;
 mod clip_scroll_tree;
 mod debug_colors;
 #[cfg(feature = "debug_renderer")]
@@ -89,7 +88,6 @@ mod picture;
 mod prim_store;
 mod print_tree;
 mod profiler;
-mod query;
 mod record;
 mod render_backend;
 mod render_task;
@@ -99,6 +97,7 @@ mod scene;
 mod scene_builder;
 mod segment;
 mod shade;
+mod spatial_node;
 mod texture_allocator;
 mod texture_cache;
 mod tiling;
@@ -182,6 +181,7 @@ pub extern crate webrender_api;
 #[doc(hidden)]
 pub use device::{build_shader_strings, ReadPixelsFormat, UploadMethod, VertexUsageHint};
 pub use device::{ProgramBinary, ProgramCache, ProgramCacheObserver, ProgramSources};
+pub use frame_builder::ChasePrimitive;
 pub use renderer::{AsyncPropertySampler, CpuProfile, DebugFlags, OutputImageHandler, RendererKind};
 pub use renderer::{ExternalImage, ExternalImageHandler, ExternalImageSource, GpuProfile};
 pub use renderer::{GraphicsApi, GraphicsApiInfo, PipelineInfo, Renderer, RendererOptions};

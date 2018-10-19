@@ -140,10 +140,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=549682
   function run() {
     var localmm = document.getElementById('ifr').messageManager;
 
-    var wn = document.getElementById('ifr').contentWindow
-      .getInterface(Ci.nsIWebNavigation);
-    ok(wn, "Should have webnavigation");
-    var cfmm = wn.getInterface(Ci.nsIContentFrameMessageManager);
+    var docShell = document.getElementById('ifr').contentWindow.docShell;
+    ok(docShell, "Should have docshell");
+    var cfmm = docShell.messageManager;
     ok(cfmm, "Should have content messageManager");
 
     var didGetSyncMessage = false;

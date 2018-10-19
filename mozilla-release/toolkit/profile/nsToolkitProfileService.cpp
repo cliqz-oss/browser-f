@@ -24,7 +24,7 @@
 #include "nsIToolkitProfile.h"
 #include "nsIFactory.h"
 #include "nsIFile.h"
-#include "nsISimpleEnumerator.h"
+#include "nsSimpleEnumerator.h"
 
 #ifdef XP_MACOSX
 #include <CoreFoundation/CoreFoundation.h>
@@ -144,16 +144,19 @@ private:
 
     static nsToolkitProfileService *gService;
 
-    class ProfileEnumerator final : public nsISimpleEnumerator
+    class ProfileEnumerator final : public nsSimpleEnumerator
     {
     public:
-        NS_DECL_ISUPPORTS
         NS_DECL_NSISIMPLEENUMERATOR
+
+        const nsID& DefaultInterface() override
+        {
+          return NS_GET_IID(nsIToolkitProfile);
+        }
 
         explicit ProfileEnumerator(nsToolkitProfile *first)
           { mCurrent = first; }
     private:
-        ~ProfileEnumerator() { }
         RefPtr<nsToolkitProfile> mCurrent;
     };
 };
@@ -595,9 +598,6 @@ nsToolkitProfileService::GetProfiles(nsISimpleEnumerator* *aResult)
     return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS(nsToolkitProfileService::ProfileEnumerator,
-                  nsISimpleEnumerator)
-
 NS_IMETHODIMP
 nsToolkitProfileService::ProfileEnumerator::HasMoreElements(bool* aResult)
 {
@@ -693,24 +693,10 @@ NS_LockProfilePath(nsIFile* aPath, nsIFile* aTempPath,
     return NS_OK;
 }
 
-static const char kTable[] =
-    { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-      'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-      '1', '2', '3', '4', '5', '6', '7', '8', '9', '0' };
-
 static void SaltProfileName(nsACString& aName)
 {
-    double fpTime = double(PR_Now());
-
-    // use 1e-6, granularity of PR_Now() on the mac is seconds
-    srand((unsigned int)(fpTime * 1e-6 + 0.5));
-
     char salt[9];
-
-    int i;
-    for (i = 0; i < 8; ++i)
-        salt[i] = kTable[rand() % ArrayLength(kTable)];
-
+    NS_MakeRandomString(salt, 8);
     salt[8] = '.';
 
     aName.Insert(salt, 0, 9);

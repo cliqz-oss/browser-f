@@ -10,6 +10,7 @@
 #include "PaintWorkletGlobalScope.h"
 
 #include "mozilla/dom/WorkletBinding.h"
+#include "mozilla/dom/AudioWorkletBinding.h"
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Fetch.h"
@@ -18,6 +19,8 @@
 #include "mozilla/dom/Response.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/ScriptLoader.h"
+#include "js/CompilationAndEvaluation.h"
+#include "js/SourceBufferHolder.h"
 #include "nsIInputStreamPump.h"
 #include "nsIThreadRetargetableRequest.h"
 #include "nsNetUtil.h"
@@ -69,7 +72,8 @@ public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
   static already_AddRefed<Promise>
-  Fetch(Worklet* aWorklet, const nsAString& aModuleURL, CallerType aCallerType,
+  Fetch(Worklet* aWorklet, const nsAString& aModuleURL,
+        const WorkletOptions& aOptions, CallerType aCallerType,
         ErrorResult& aRv)
   {
     MOZ_ASSERT(aWorklet);
@@ -123,6 +127,7 @@ public:
     request.SetAsUSVString().Rebind(aModuleURL.Data(), aModuleURL.Length());
 
     RequestInit init;
+    init.mCredentials.Construct(aOptions.mCredentials);
 
     RefPtr<Promise> fetchPromise =
       FetchRequest(global, request, init, aCallerType, aRv);
@@ -432,9 +437,19 @@ ExecutionRunnable::RunOnMainThread()
 // ---------------------------------------------------------------------------
 // WorkletLoadInfo
 
-WorkletLoadInfo::WorkletLoadInfo()
+WorkletLoadInfo::WorkletLoadInfo(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal)
+  : mInnerWindowID(aWindow->WindowID())
+  , mDumpEnabled(DOMPrefs::DumpEnabled())
+  , mOriginAttributes(BasePrincipal::Cast(aPrincipal)->OriginAttributesRef())
+  , mPrincipal(aPrincipal)
 {
   MOZ_ASSERT(NS_IsMainThread());
+  nsPIDOMWindowOuter* outerWindow = aWindow->GetOuterWindow();
+  if (outerWindow) {
+    mOuterWindowID = outerWindow->WindowID();
+  } else {
+    mOuterWindowID = 0;
+  }
 }
 
 WorkletLoadInfo::~WorkletLoadInfo()
@@ -471,6 +486,7 @@ Worklet::Worklet(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal,
                  WorkletType aWorkletType)
   : mWindow(aWindow)
   , mWorkletType(aWorkletType)
+  , mWorkletLoadInfo(aWindow, aPrincipal)
 {
   MOZ_ASSERT(aWindow);
   MOZ_ASSERT(aPrincipal);
@@ -479,24 +495,6 @@ Worklet::Worklet(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal,
 #ifdef RELEASE_OR_BETA
   MOZ_CRASH("This code should not go to release/beta yet!");
 #endif
-
-  // Reset mWorkletLoadInfo and populate it.
-
-  memset(&mWorkletLoadInfo, 0, sizeof(WorkletLoadInfo));
-
-  mWorkletLoadInfo.mInnerWindowID = aWindow->WindowID();
-
-  nsPIDOMWindowOuter* outerWindow = aWindow->GetOuterWindow();
-  if (outerWindow) {
-    mWorkletLoadInfo.mOuterWindowID = outerWindow->WindowID();
-  }
-
-  mWorkletLoadInfo.mOriginAttributes =
-    BasePrincipal::Cast(aPrincipal)->OriginAttributesRef();
-
-  mWorkletLoadInfo.mPrincipal = aPrincipal;
-
-  mWorkletLoadInfo.mDumpEnabled = DOMPrefs::DumpEnabled();
 }
 
 Worklet::~Worklet()
@@ -508,15 +506,21 @@ JSObject*
 Worklet::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  return WorkletBinding::Wrap(aCx, this, aGivenProto);
+  if (mWorkletType == eAudioWorklet) {
+    return AudioWorklet_Binding::Wrap(aCx, this, aGivenProto);
+  } else {
+    return Worklet_Binding::Wrap(aCx, this, aGivenProto);
+  }
 }
 
 already_AddRefed<Promise>
-Worklet::Import(const nsAString& aModuleURL, CallerType aCallerType,
-                ErrorResult& aRv)
+Worklet::AddModule(const nsAString& aModuleURL,
+                   const WorkletOptions& aOptions,
+                   CallerType aCallerType,
+                   ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  return WorkletFetchHandler::Fetch(this, aModuleURL, aCallerType, aRv);
+  return WorkletFetchHandler::Fetch(this, aModuleURL, aOptions, aCallerType, aRv);
 }
 
 /* static */ already_AddRefed<WorkletGlobalScope>

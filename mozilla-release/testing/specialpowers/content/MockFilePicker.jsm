@@ -8,9 +8,9 @@ const Cm = Components.manager;
 
 const CONTRACT_ID = "@mozilla.org/filepicker;1";
 
-ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
+ChromeUtils.defineModuleGetter(this, "FileUtils",
+                               "resource://gre/modules/FileUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 // Allow stuff from this scope to be accessed from non-privileged scopes. This
 // would crash if used outside of automation.
@@ -214,20 +214,21 @@ MockFilePickerInstance.prototype = {
     return {
       index: 0,
       QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),
+      [Symbol.iterator]() {
+        return Array.from(MockFilePicker.returnData, d => d.nsIFile).values();
+      },
       hasMoreElements() {
         return this.index < MockFilePicker.returnData.length;
       },
       getNext() {
         if (!MockFilePicker.returnData[this.index].nsIFile) {
-          return null;
+          throw Components.Exception("", Cr.NS_ERROR_FAILURE);
         }
         return MockFilePicker.returnData[this.index++].nsIFile;
       }
     };
   },
   get domFileOrDirectoryEnumerator() {
-    this.parent.QueryInterface(Ci.nsIInterfaceRequestor)
-               .getInterface(Ci.nsIDOMWindowUtils);
     return {
       index: 0,
       QueryInterface: ChromeUtils.generateQI([Ci.nsISimpleEnumerator]),

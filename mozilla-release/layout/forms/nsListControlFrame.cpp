@@ -137,7 +137,7 @@ void
 nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData)
 {
   // get the receiver interface from the browser button's content node
-  ENSURE_TRUE(mContent);
+  NS_ENSURE_TRUE_VOID(mContent);
 
   // Clear the frame pointer on our event listener, just in case the
   // event listener can outlive the frame.
@@ -158,8 +158,9 @@ nsListControlFrame::DestroyFrom(nsIFrame* aDestructRoot, PostDestroyData& aPostD
   if (ShouldFireDropDownEvent()) {
     nsContentUtils::AddScriptRunner(
       new AsyncEventDispatcher(mContent,
-                               NS_LITERAL_STRING("mozhidedropdown"), true,
-                               true));
+                               NS_LITERAL_STRING("mozhidedropdown"),
+                               CanBubble::eYes,
+                               ChromeOnlyDispatch::eYes));
   }
 
   nsCheckboxRadioFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
@@ -621,17 +622,17 @@ nsListControlFrame::ReflowAsDropdown(nsPresContext*           aPresContext,
   nsHTMLScrollFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
 }
 
-ScrollbarStyles
-nsListControlFrame::GetScrollbarStyles() const
+ScrollStyles
+nsListControlFrame::GetScrollStyles() const
 {
   // We can't express this in the style system yet; when we can, this can go away
-  // and GetScrollbarStyles can be devirtualized
+  // and GetScrollStyles can be devirtualized
   int32_t style = IsInDropDownMode() ? NS_STYLE_OVERFLOW_AUTO
                                      : NS_STYLE_OVERFLOW_SCROLL;
   if (GetWritingMode().IsVertical()) {
-    return ScrollbarStyles(style, NS_STYLE_OVERFLOW_HIDDEN);
+    return ScrollStyles(style, NS_STYLE_OVERFLOW_HIDDEN);
   } else {
-    return ScrollbarStyles(NS_STYLE_OVERFLOW_HIDDEN, style);
+    return ScrollStyles(NS_STYLE_OVERFLOW_HIDDEN, style);
   }
 }
 
@@ -1387,12 +1388,14 @@ nsListControlFrame::FireOnInputAndOnChange()
   nsCOMPtr<nsIContent> content = mContent;
   // Dispatch the input event.
   nsContentUtils::DispatchTrustedEvent(content->OwnerDoc(), content,
-                                       NS_LITERAL_STRING("input"), true,
-                                       false);
+                                       NS_LITERAL_STRING("input"),
+                                       CanBubble::eYes,
+                                       Cancelable::eNo);
   // Dispatch the change event.
   nsContentUtils::DispatchTrustedEvent(content->OwnerDoc(), content,
-                                       NS_LITERAL_STRING("change"), true,
-                                       false);
+                                       NS_LITERAL_STRING("change"),
+                                       CanBubble::eYes,
+                                       Cancelable::eNo);
 }
 
 NS_IMETHODIMP
@@ -1785,7 +1788,8 @@ FireShowDropDownEvent(nsIContent* aContent, bool aShow, bool aIsSourceTouchEvent
       eventName = NS_LITERAL_STRING("mozhidedropdown");
     }
     nsContentUtils::DispatchChromeEvent(aContent->OwnerDoc(), aContent,
-                                        eventName, true, false);
+                                        eventName, CanBubble::eYes,
+                                        Cancelable::eNo);
     return true;
   }
 
@@ -1851,7 +1855,7 @@ nsListControlFrame::MouseDown(dom::Event* aMouseEvent)
       }
 
       uint16_t inputSource = mouseEvent->MozInputSource();
-      bool isSourceTouchEvent = inputSource == MouseEventBinding::MOZ_SOURCE_TOUCH;
+      bool isSourceTouchEvent = inputSource == MouseEvent_Binding::MOZ_SOURCE_TOUCH;
       if (FireShowDropDownEvent(mContent, !mComboboxFrame->IsDroppedDownOrHasParentPopup(),
                                 isSourceTouchEvent)) {
         return NS_OK;

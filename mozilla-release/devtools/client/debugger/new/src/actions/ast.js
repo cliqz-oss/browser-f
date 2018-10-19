@@ -12,6 +12,8 @@ var _selectors = require("../selectors/index");
 
 var _pause = require("./pause/index");
 
+var _tabs = require("./tabs");
+
 var _setInScopeLines = require("./ast/setInScopeLines");
 
 var _parser = require("../workers/parser/index");
@@ -21,6 +23,8 @@ var _promise = require("./utils/middleware/promise");
 var _devtoolsSourceMap = require("devtools/client/shared/source-map/index.js");
 
 var _prefs = require("../utils/prefs");
+
+var _source = require("../utils/source");
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -32,11 +36,12 @@ function setSourceMetaData(sourceId) {
   }) => {
     const source = (0, _selectors.getSource)(getState(), sourceId);
 
-    if (!source || !source.text || source.isWasm) {
+    if (!source || !(0, _source.isLoaded)(source) || source.isWasm) {
       return;
     }
 
     const framework = await (0, _parser.getFramework)(source.id);
+    dispatch((0, _tabs.updateTab)(source.url, framework));
     dispatch({
       type: "SET_SOURCE_METADATA",
       sourceId: source.id,
@@ -52,9 +57,9 @@ function setSymbols(sourceId) {
     dispatch,
     getState
   }) => {
-    const source = (0, _selectors.getSource)(getState(), sourceId);
+    const source = (0, _selectors.getSourceFromId)(getState(), sourceId);
 
-    if (!source || !source.text || source.isWasm || (0, _selectors.hasSymbols)(getState(), source)) {
+    if (source.isWasm || (0, _selectors.hasSymbols)(getState(), source)) {
       return;
     }
 
@@ -85,11 +90,11 @@ function setOutOfScopeLocations() {
       return;
     }
 
-    const source = (0, _selectors.getSource)(getState(), location.sourceId);
+    const source = (0, _selectors.getSourceFromId)(getState(), location.sourceId);
     let locations = null;
 
-    if (location.line && source && (0, _selectors.isPaused)(getState())) {
-      locations = await (0, _parser.findOutOfScopeLocations)(source.get("id"), location);
+    if (location.line && source && !source.isWasm && (0, _selectors.isPaused)(getState())) {
+      locations = await (0, _parser.findOutOfScopeLocations)(source.id, location);
     }
 
     dispatch({
@@ -100,27 +105,47 @@ function setOutOfScopeLocations() {
   };
 }
 
+function compressPausePoints(pausePoints) {
+  const compressed = {};
+
+  for (const line in pausePoints) {
+    compressed[line] = {};
+
+    for (const col in pausePoints[line]) {
+      const point = pausePoints[line][col];
+      compressed[line][col] = (point.break && 1) | (point.step && 2);
+    }
+  }
+
+  return compressed;
+}
+
 function setPausePoints(sourceId) {
   return async ({
     dispatch,
     getState,
     client
   }) => {
-    const source = (0, _selectors.getSource)(getState(), sourceId);
+    const source = (0, _selectors.getSourceFromId)(getState(), sourceId);
 
-    if (!_prefs.features.pausePoints || !source || !source.text || source.isWasm) {
+    if (!_prefs.features.pausePoints || !source || !source.text) {
+      return;
+    }
+
+    if (source.isWasm) {
       return;
     }
 
     const pausePoints = await (0, _parser.getPausePoints)(sourceId);
+    const compressed = compressPausePoints(pausePoints);
 
     if ((0, _devtoolsSourceMap.isGeneratedId)(sourceId)) {
-      await client.setPausePoints(sourceId, pausePoints);
+      await client.setPausePoints(sourceId, compressed);
     }
 
     dispatch({
       type: "SET_PAUSE_POINTS",
-      sourceText: source.text,
+      sourceText: source.text || "",
       sourceId,
       pausePoints
     });

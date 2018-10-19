@@ -13,8 +13,10 @@
 #define nsExceptionHandler_h__
 
 #include "mozilla/Assertions.h"
+#include "mozilla/EnumeratedArray.h"
 
-#include <functional>
+#include "CrashAnnotations.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include "nsError.h"
@@ -37,8 +39,6 @@
 #endif
 
 class nsIFile;
-template<class KeyClass, class DataType> class nsDataHashtable;
-class nsCStringHashKey;
 
 namespace CrashReporter {
 
@@ -92,8 +92,11 @@ nsresult SetMinidumpPath(const nsAString& aPath);
 // AnnotateCrashReport, RemoveCrashReportAnnotation and
 // AppendAppNotesToCrashReport may be called from any thread in a chrome
 // process, but may only be called from the main thread in a content process.
-nsresult AnnotateCrashReport(const nsACString& key, const nsACString& data);
-nsresult RemoveCrashReportAnnotation(const nsACString& key);
+nsresult AnnotateCrashReport(Annotation key, bool data);
+nsresult AnnotateCrashReport(Annotation key, int data);
+nsresult AnnotateCrashReport(Annotation key, unsigned int data);
+nsresult AnnotateCrashReport(Annotation key, const nsACString& data);
+nsresult RemoveCrashReportAnnotation(Annotation key);
 nsresult AppendAppNotesToCrashReport(const nsACString& data);
 
 void AnnotateOOMAllocationSize(size_t size);
@@ -113,7 +116,8 @@ nsresult UnregisterAppMemory(void* ptr);
 void SetIncludeContextHeap(bool aValue);
 
 // Functions for working with minidumps and .extras
-typedef nsDataHashtable<nsCStringHashKey, nsCString> AnnotationTable;
+typedef mozilla::EnumeratedArray<Annotation, Annotation::Count, nsCString>
+        AnnotationTable;
 
 void DeleteMinidumpFilesForID(const nsAString& id);
 bool GetMinidumpForID(const nsAString& id, nsIFile** minidump);
@@ -229,14 +233,11 @@ ThreadId CurrentThreadId();
  *   aIncomingDumpToPair.
  * @return bool indicating success or failure
  */
-void
-CreateMinidumpsAndPair(ProcessHandle aTargetPid,
-                       ThreadId aTargetBlamedThread,
-                       const nsACString& aIncomingPairName,
-                       nsIFile* aIncomingDumpToPair,
-                       nsIFile** aTargetDumpOut,
-                       std::function<void(bool)>&& aCallback,
-                       bool aAsync);
+bool CreateMinidumpsAndPair(ProcessHandle aTargetPid,
+                            ThreadId aTargetBlamedThread,
+                            const nsACString& aIncomingPairName,
+                            nsIFile* aIncomingDumpToPair,
+                            nsIFile** aTargetDumpOut);
 
 // Create an additional minidump for a child of a process which already has
 // a minidump (|parentMinidump|).

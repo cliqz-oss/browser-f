@@ -447,19 +447,22 @@ DevTools.prototype = {
    * @param {Number} startTime
    *        Optional, indicates the time at which the user event related to this toolbox
    *        opening started. This is a `Cu.now()` timing.
+   * @param {string} reason
+   *        Reason the tool was opened
    *
    * @return {Toolbox} toolbox
    *        The toolbox that was opened
    */
-  async showToolbox(target, toolId, hostType, hostOptions, startTime) {
+  async showToolbox(target, toolId, hostType, hostOptions, startTime, reason = "toolbox_show") {
     let toolbox = this._toolboxes.get(target);
+
     if (toolbox) {
       if (hostType != null && toolbox.hostType != hostType) {
         await toolbox.switchHost(hostType);
       }
 
       if (toolId != null && toolbox.currentToolId != toolId) {
-        await toolbox.selectTool(toolId, "toolbox_show");
+        await toolbox.selectTool(toolId, reason);
       }
 
       toolbox.raise();
@@ -477,14 +480,18 @@ DevTools.prototype = {
       this._creatingToolboxes.delete(target);
 
       if (startTime) {
-        this.logToolboxOpenTime(toolbox.currentToolId, startTime);
+        this.logToolboxOpenTime(toolbox, startTime);
       }
       this._firstShowToolbox = false;
     }
 
+    // We send the "enter" width here to ensure it is always sent *after*
+    // the "open" event.
     const width = Math.ceil(toolbox.win.outerWidth / 50) * 50;
+    const panelName = this.makeToolIdHumanReadable(toolId || toolbox.defaultToolId);
     this._telemetry.addEventProperty(
-      "devtools.main", "open", "tools", null, "width", width);
+      "devtools.main", "enter", panelName, null, "width", width
+    );
 
     return toolbox;
   },
@@ -496,22 +503,24 @@ DevTools.prototype = {
    * subsequent toolbox opening, which should all be faster.
    * These two probes are indexed by Tool ID.
    *
-   * @param {String} toolId
-   *        The id of the opened tool.
+   * @param {String} toolbox
+   *        Toolbox instance.
    * @param {Number} startTime
    *        Indicates the time at which the user event related to the toolbox
    *        opening started. This is a `Cu.now()` timing.
    */
-  logToolboxOpenTime(toolId, startTime) {
+  logToolboxOpenTime(toolbox, startTime) {
+    const toolId = toolbox.currentToolId || toolbox.defaultToolId;
     const delay = Cu.now() - startTime;
+    const panelName = this.makeToolIdHumanReadable(toolId);
 
     const telemetryKey = this._firstShowToolbox ?
       "DEVTOOLS_COLD_TOOLBOX_OPEN_DELAY_MS" : "DEVTOOLS_WARM_TOOLBOX_OPEN_DELAY_MS";
     this._telemetry.getKeyedHistogramById(telemetryKey).add(toolId, delay);
 
     this._telemetry.addEventProperty(
-      "devtools.main", "open", "tools", null, "first_panel",
-      this.makeToolIdHumanReadable(toolId));
+      "devtools.main", "open", "tools", null, "first_panel", panelName
+    );
   },
 
   makeToolIdHumanReadable(toolId) {
@@ -650,8 +659,15 @@ DevTools.prototype = {
       nodeFront = await walker.querySelector(nodeFront, selector);
       if (nodeSelectors.length > 0) {
         const { nodes } = await walker.children(nodeFront);
-        // This is the NodeFront for the document node inside the iframe
-        nodeFront = nodes[0];
+        // If there are remaining selectors to process, they will target a document or a
+        // document-fragment under the current node. Whether the element is a frame or
+        // a web component, it can only contain one document/document-fragment, so just
+        // select the first one available.
+        nodeFront = nodes.find(node => {
+          const { nodeType } = node;
+          return nodeType === Node.DOCUMENT_FRAGMENT_NODE ||
+                 nodeType === Node.DOCUMENT_NODE;
+        });
       }
       return querySelectors(nodeFront);
     }
@@ -678,7 +694,8 @@ DevTools.prototype = {
   async inspectNode(tab, nodeSelectors, startTime) {
     const target = TargetFactory.forTab(tab);
 
-    const toolbox = await gDevTools.showToolbox(target, "inspector", null, null, startTime);
+    const toolbox = await gDevTools.showToolbox(target, "inspector", null, null,
+                                                startTime, "inspect_dom");
     const inspector = toolbox.getCurrentPanel();
 
     // If the toolbox has been switched into a nested frame, we should first remove

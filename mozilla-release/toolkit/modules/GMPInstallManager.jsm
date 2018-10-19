@@ -7,9 +7,7 @@
 // 1 day default
 const DEFAULT_SECONDS_BETWEEN_CHECKS = 60 * 60 * 24;
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Log.jsm");
 ChromeUtils.import("resource://gre/modules/osfile.jsm");
@@ -378,7 +376,7 @@ GMPExtractor.prototype = {
         return deferredPromise.reject({
           target: this,
           status: msg.data.exception,
-          type: "exception"
+          type: "exception",
         });
       }
       log.info("Successfully extracted zip file: " + zipPath);
@@ -386,7 +384,7 @@ GMPExtractor.prototype = {
     };
     worker.postMessage({zipPath, relativeInstallPath});
     return this._deferred.promise;
-  }
+  },
 };
 
 
@@ -413,7 +411,7 @@ GMPDownloader.prototype = {
       log.info("gmpAddon is not valid, will not continue");
       return Promise.reject({
         target: this,
-        type: "downloaderr"
+        type: "downloaderr",
       });
     }
 

@@ -1,25 +1,28 @@
 "use strict";
 
 const PREF_INTRO_COUNT = "privacy.trackingprotection.introCount";
+const PREF_CB_UI_ENABLED = "browser.contentblocking.ui.enabled";
 const PREF_TP_ENABLED = "privacy.trackingprotection.enabled";
-const BENIGN_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/benignPage.html";
-const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/trackingPage.html";
+const BENIGN_PAGE = "http://tracking.example.org/browser/browser/base/content/test/trackingUI/benignPage.html";
+const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/trackingUI/trackingPage.html";
 const TOOLTIP_PANEL = document.getElementById("UITourTooltip");
-const TOOLTIP_ANCHOR = document.getElementById("tracking-protection-icon");
+const TOOLTIP_ANCHOR = document.getElementById("tracking-protection-icon-animatable-box");
 
 var {UrlClassifierTestUtils} = ChromeUtils.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
 
 registerCleanupFunction(function() {
   UrlClassifierTestUtils.cleanupTestTrackers();
+  Services.prefs.clearUserPref(PREF_CB_UI_ENABLED);
   Services.prefs.clearUserPref(PREF_TP_ENABLED);
   Services.prefs.clearUserPref(PREF_INTRO_COUNT);
 });
 
 function allowOneIntro() {
-  Services.prefs.setIntPref(PREF_INTRO_COUNT, TrackingProtection.MAX_INTROS - 1);
+  Services.prefs.setIntPref(PREF_INTRO_COUNT, window.ContentBlocking.MAX_INTROS - 1);
 }
 
 add_task(async function setup_test() {
+  Services.prefs.setBoolPref(PREF_CB_UI_ENABLED, false);
   Services.prefs.setBoolPref(PREF_TP_ENABLED, true);
   await UrlClassifierTestUtils.addTestTrackers();
 });
@@ -48,10 +51,10 @@ add_task(async function test_trackingPages() {
                            "Intro panel should appear");
     });
 
-    is(Services.prefs.getIntPref(PREF_INTRO_COUNT), TrackingProtection.MAX_INTROS, "Check intro count increased");
+    is(Services.prefs.getIntPref(PREF_INTRO_COUNT), window.ContentBlocking.MAX_INTROS, "Check intro count increased");
 
     let step2URL = Services.urlFormatter.formatURLPref("privacy.trackingprotection.introURL") +
-                   "?step=2&newtab=true";
+                   "?step=2&newtab=true&variation=0";
     let buttons = document.getElementById("UITourTooltipButtons");
 
     info("Click the step text and nothing should happen");
@@ -67,7 +70,7 @@ add_task(async function test_trackingPages() {
     info("Clicking the main button");
     EventUtils.synthesizeMouseAtCenter(buttons.children[1], {});
     let tab = await tabPromise;
-    is(Services.prefs.getIntPref(PREF_INTRO_COUNT), TrackingProtection.MAX_INTROS,
+    is(Services.prefs.getIntPref(PREF_INTRO_COUNT), window.ContentBlocking.MAX_INTROS,
        "Check intro count is at the max after opening step 2");
     is(gBrowser.tabs.length, tabCount + 1, "Tour step 2 tab opened");
     await panelHiddenPromise;

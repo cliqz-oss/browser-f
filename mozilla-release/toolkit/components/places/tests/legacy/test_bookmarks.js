@@ -66,7 +66,7 @@ var bookmarksObserver = {
   },
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsINavBookmarkObserver,
-  ])
+  ]),
 };
 
 
@@ -83,7 +83,6 @@ add_task(async function test_bookmarks() {
   Assert.ok(bs.bookmarksMenuFolder > 0);
   Assert.ok(bs.tagsFolder > 0);
   Assert.ok(bs.toolbarFolder > 0);
-  Assert.ok(bs.unfiledBookmarksFolder > 0);
 
   // test getFolderIdForItem() with bogus item id will throw
   try {
@@ -101,7 +100,6 @@ add_task(async function test_bookmarks() {
   Assert.equal(bs.getFolderIdForItem(bs.bookmarksMenuFolder), bs.placesRoot);
   Assert.equal(bs.getFolderIdForItem(bs.tagsFolder), bs.placesRoot);
   Assert.equal(bs.getFolderIdForItem(bs.toolbarFolder), bs.placesRoot);
-  Assert.equal(bs.getFolderIdForItem(bs.unfiledBookmarksFolder), bs.placesRoot);
 
   // create a folder to hold all the tests
   // this makes the tests more tolerant of changes to default_places.html
@@ -328,7 +326,7 @@ add_task(async function test_bookmarks() {
 
   // check if setting an item annotation triggers onItemChanged
   bookmarksObserver._itemChangedId = -1;
-  anno.setItemAnnotation(newId3, "test-annotation", "foo", 0, 0);
+  anno.setItemAnnotation(newId3, "test-annotation", "foo", 0, anno.EXPIRE_NEVER);
   Assert.equal(bookmarksObserver._itemChangedId, newId3);
   Assert.equal(bookmarksObserver._itemChangedProperty, "test-annotation");
   Assert.ok(bookmarksObserver._itemChanged_isAnnotationProperty);

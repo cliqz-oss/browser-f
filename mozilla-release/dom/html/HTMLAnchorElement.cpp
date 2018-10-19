@@ -72,7 +72,7 @@ NS_IMPL_ELEMENT_CLONE(HTMLAnchorElement)
 JSObject*
 HTMLAnchorElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return HTMLAnchorElementBinding::Wrap(aCx, this, aGivenProto);
+  return HTMLAnchorElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 int32_t
@@ -117,14 +117,12 @@ HTMLAnchorElement::HasDeferredDNSPrefetchRequest()
 
 nsresult
 HTMLAnchorElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent,
-                              bool aCompileEventHandlers)
+                              nsIContent* aBindingParent)
 {
   Link::ResetLinkState(false, Link::ElementHasHref());
 
   nsresult rv = nsGenericHTMLElement::BindToTree(aDocument, aParent,
-                                                 aBindingParent,
-                                                 aCompileEventHandlers);
+                                                 aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Prefetch links

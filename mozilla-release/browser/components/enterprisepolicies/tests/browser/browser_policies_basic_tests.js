@@ -4,12 +4,6 @@
 "use strict";
 
 add_task(async function test_simple_policies() {
-  await ContentTask.spawn(gBrowser.selectedBrowser, null, async function() {
-    // Initialize the service in the content process, in case it hasn't
-    // already started.
-    Services.policies;
-  });
-
   let { Policies } = ChromeUtils.import("resource:///modules/policies/Policies.jsm", {});
 
   let policy0Ran = false, policy1Ran = false, policy2Ran = false, policy3Ran = false;
@@ -20,7 +14,7 @@ add_task(async function test_simple_policies() {
     onProfileAfterChange(manager, param) {
       is(param, true, "Param matches what was passed in config file");
       policy0Ran = true;
-    }
+    },
   };
 
   Policies.simple_policy1 = {
@@ -28,7 +22,7 @@ add_task(async function test_simple_policies() {
       is(param, true, "Param matches what was passed in config file");
       manager.disallowFeature("feature1", /* needed in content process */ true);
       policy1Ran = true;
-    }
+    },
   };
 
   Policies.simple_policy2 = {
@@ -36,14 +30,14 @@ add_task(async function test_simple_policies() {
       is(param, true, "Param matches what was passed in config file");
       manager.disallowFeature("feature2", /* needed in content process */ false);
       policy2Ran = true;
-    }
+    },
   };
 
   Policies.simple_policy3 = {
     onAllWindowsRestored(manager, param) {
       is(param, false, "Param matches what was passed in config file");
       policy3Ran = true;
-    }
+    },
   };
 
   await setupPolicyEngineWithJson(
@@ -53,30 +47,30 @@ add_task(async function test_simple_policies() {
         "simple_policy0": true,
         "simple_policy1": true,
         "simple_policy2": true,
-        "simple_policy3": false
-      }
+        "simple_policy3": false,
+      },
     },
 
     // custom schema
     {
       properties: {
         "simple_policy0": {
-          "type": "boolean"
+          "type": "boolean",
         },
 
         "simple_policy1": {
-          "type": "boolean"
+          "type": "boolean",
         },
 
         "simple_policy2": {
-          "type": "boolean"
+          "type": "boolean",
         },
 
         "simple_policy3": {
-          "type": "boolean"
-        }
+          "type": "boolean",
+        },
 
-      }
+      },
     }
   );
 

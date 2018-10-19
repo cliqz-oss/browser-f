@@ -142,6 +142,7 @@ SheetLoadData::SheetLoadData(Loader* aLoader,
                              const nsAString& aTitle,
                              nsIURI* aURI,
                              StyleSheet* aSheet,
+                             bool aSyncLoad,
                              nsIStyleSheetLinkingElement* aOwningElement,
                              IsAlternate aIsAlternate,
                              MediaMatched aMediaMatches,
@@ -156,7 +157,7 @@ SheetLoadData::SheetLoadData(Loader* aLoader,
   , mSheet(aSheet)
   , mNext(nullptr)
   , mPendingChildren(0)
-  , mSyncLoad(false)
+  , mSyncLoad(aSyncLoad)
   , mIsNonDocumentSheet(false)
   , mIsLoading(false)
   , mIsBeingParsed(false)
@@ -322,7 +323,7 @@ SheetLoadData::FireLoadEvent(nsIThreadInternal* aThread)
                                        mLoadFailed ?
                                          NS_LITERAL_STRING("error") :
                                          NS_LITERAL_STRING("load"),
-                                       false, false);
+                                       CanBubble::eNo, Cancelable::eNo);
 
   // And unblock onload
   mLoader->UnblockOnload(true);
@@ -784,8 +785,9 @@ SheetLoadData::VerifySheetReadyToParse(nsresult aStatus,
       // line number unknown. mRequestingNode doesn't bear this info.
       csp->LogViolationDetails(
         nsIContentSecurityPolicy::VIOLATION_TYPE_REQUIRE_SRI_FOR_STYLE,
+        nullptr, // triggering element
         NS_ConvertUTF8toUTF16(spec), EmptyString(),
-        0, EmptyString(), EmptyString());
+        0, 0, EmptyString(), EmptyString());
       return NS_OK;
     }
   } else {
@@ -849,26 +851,6 @@ Loader::IsAlternateSheet(const nsAString& aTitle, bool aHasAlternateRel)
   }
 
   return IsAlternate::Yes;
-}
-
-nsresult
-Loader::ObsoleteSheet(nsIURI* aURI)
-{
-  if (!mSheets) {
-    return NS_OK;
-  }
-  if (!aURI) {
-    return NS_ERROR_INVALID_ARG;
-  }
-  for (auto iter = mSheets->mCompleteSheets.Iter(); !iter.Done(); iter.Next()) {
-    nsIURI* sheetURI = iter.Key()->GetURI();
-    bool areEqual;
-    nsresult rv = sheetURI->Equals(aURI, &areEqual);
-    if (NS_SUCCEEDED(rv) && areEqual) {
-      iter.Remove();
-    }
-  }
-  return NS_OK;
 }
 
 nsresult
@@ -1620,6 +1602,7 @@ Loader::ParseSheet(const nsACString& aBytes,
                    AllowAsyncParse aAllowAsync)
 {
   LOG(("css::Loader::ParseSheet"));
+  AUTO_PROFILER_LABEL("css::Loader::ParseSheet", LAYOUT);
   MOZ_ASSERT(aLoadData);
   aLoadData->mIsBeingParsed = true;
 
@@ -1918,6 +1901,7 @@ Loader::LoadInlineStyle(const SheetInfo& aInfo,
                                           aInfo.mTitle,
                                           nullptr,
                                           sheet,
+                                          false,
                                           owningElement,
                                           isAlternate,
                                           matched,
@@ -1977,6 +1961,12 @@ Loader::LoadStyleLink(const SheetInfo& aInfo, nsICSSLoaderObserver* aObserver)
     context = mDocument;
   }
 
+  bool syncLoad = aInfo.mContent &&
+                  aInfo.mContent->IsInUAWidget() &&
+                  IsChromeURI(aInfo.mURI);
+  LOG(("  Link sync load: '%s'", syncLoad ? "true" : "false"));
+  MOZ_ASSERT_IF(syncLoad, !aObserver);
+
   nsresult rv = CheckContentPolicy(loadingPrincipal, principal, aInfo.mURI, context, false);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     // Don't fire the error event if our document is loaded as data.  We're
@@ -1989,7 +1979,8 @@ Loader::LoadStyleLink(const SheetInfo& aInfo, nsICSSLoaderObserver* aObserver)
       RefPtr<AsyncEventDispatcher> loadBlockingAsyncDispatcher =
         new LoadBlockingAsyncEventDispatcher(aInfo.mContent,
                                              NS_LITERAL_STRING("error"),
-                                             false, false);
+                                             CanBubble::eNo,
+                                             ChromeOnlyDispatch::eNo);
       loadBlockingAsyncDispatcher->PostDOMEvent();
     }
     return Err(rv);
@@ -2001,7 +1992,7 @@ Loader::LoadStyleLink(const SheetInfo& aInfo, nsICSSLoaderObserver* aObserver)
   rv = CreateSheet(aInfo,
                    principal,
                    eAuthorSheetFeatures,
-                   false,
+                   syncLoad,
                    state,
                    &sheet);
   if (NS_FAILED(rv)) {
@@ -2041,6 +2032,7 @@ Loader::LoadStyleLink(const SheetInfo& aInfo, nsICSSLoaderObserver* aObserver)
                                           aInfo.mTitle,
                                           aInfo.mURI,
                                           sheet,
+                                          syncLoad,
                                           owningElement,
                                           isAlternate,
                                           matched,
@@ -2055,7 +2047,8 @@ Loader::LoadStyleLink(const SheetInfo& aInfo, nsICSSLoaderObserver* aObserver)
              "These should better match!");
 
   // If we have to parse and it's a non-blocking non-inline sheet, defer it.
-  if (state == eSheetNeedsParser &&
+  if (!syncLoad &&
+      state == eSheetNeedsParser &&
       mSheets->mLoadingDatas.Count() != 0 &&
       !result.ShouldBlock()) {
     LOG(("  Deferring sheet load"));
@@ -2075,7 +2068,9 @@ Loader::LoadStyleLink(const SheetInfo& aInfo, nsICSSLoaderObserver* aObserver)
     return Err(rv);
   }
 
-  data->mMustNotify = true;
+  if (!syncLoad) {
+    data->mMustNotify = true;
+  }
   return result;
 }
 
@@ -2413,6 +2408,7 @@ Loader::PostLoadEvent(nsIURI* aURI,
                       EmptyString(), // title doesn't matter here
                       aURI,
                       aSheet,
+                      false,
                       aElement,
                       aWasAlternate,
                       aMediaMatched,

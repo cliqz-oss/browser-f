@@ -31,10 +31,6 @@ using AutoObjectVector = AutoVector<JSObject*>;
 
 class CallArgs;
 
-class JS_FRIEND_API(CompileOptions);
-class JS_FRIEND_API(ReadOnlyCompileOptions);
-class JS_FRIEND_API(OwningCompileOptions);
-class JS_FRIEND_API(TransitiveCompileOptions);
 class JS_PUBLIC_API(RealmOptions);
 
 } // namespace JS
@@ -68,7 +64,6 @@ struct JSClass;
 class JSErrorReport;
 struct JSExceptionState;
 struct JSFunctionSpec;
-struct JSLocaleCallbacks;
 struct JSPrincipals;
 struct JSPropertySpec;
 struct JSSecurityCallbacks;
@@ -104,10 +99,6 @@ CurrentThreadIsPerformingGC();
 namespace JS {
 
 struct JS_PUBLIC_API(PropertyDescriptor);
-
-class OffThreadToken;
-
-typedef void (*OffThreadCompileCallback)(OffThreadToken* token, void* callbackData);
 
 enum class HeapState {
     Idle,             // doing nothing with the GC heap
@@ -145,10 +136,15 @@ RuntimeHeapIsMinorCollecting()
 }
 
 static inline bool
+RuntimeHeapIsCollecting(HeapState state)
+{
+    return state == HeapState::MajorCollecting || state == HeapState::MinorCollecting;
+}
+
+static inline bool
 RuntimeHeapIsCollecting()
 {
-    HeapState state = RuntimeHeapState();
-    return state == HeapState::MajorCollecting || state == HeapState::MinorCollecting;
+    return RuntimeHeapIsCollecting(RuntimeHeapState());
 }
 
 static inline bool
