@@ -565,7 +565,6 @@ nsBrowserContentHandler.prototype = {
     }
 
     var startPage = "";
-<<<<<<< HEAD
 
     // DB-1878
     // If 'Show home page' is selected then we need to take into account which option is chosen
@@ -587,21 +586,6 @@ nsBrowserContentHandler.prototype = {
       }
     } else {
       startPage = "about:blank";
-||||||| merged common ancestors
-    try {
-      var choice = prefb.getIntPref("browser.startup.page");
-      if (choice == 1 || choice == 3)
-        startPage = this.startPage;
-    } catch (e) {
-      Cu.reportError(e);
-=======
-    try {
-      var choice = prefb.getIntPref("browser.startup.page");
-      if (choice == 1 || choice == 3)
-        startPage = HomePage.get();
-    } catch (e) {
-      Cu.reportError(e);
->>>>>>> origin/upstream-releases
     }
 
     if (startPage == "about:blank")

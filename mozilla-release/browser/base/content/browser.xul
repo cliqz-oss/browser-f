@@ -109,7 +109,9 @@ xmlns="http://www.w3.org/1999/xhtml"
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
       <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
-<<<<<<< HEAD
+      <menuitem id="context_reloadSelectedTabs" label="&reloadSelectedTabs.label;" hidden="true"
+                accesskey="&reloadSelectedTabs.accesskey;"
+                oncommand="gBrowser.reloadMultiSelectedTabs();"/>
 #if CQZ_AUTO_PRIVATE_TAB
       <menuitem
           id="context_togglePrivate"
@@ -121,12 +123,6 @@ xmlns="http://www.w3.org/1999/xhtml"
           />
 #endif
       <menuseparator/>
-||||||| merged common ancestors
-=======
-      <menuitem id="context_reloadSelectedTabs" label="&reloadSelectedTabs.label;" hidden="true"
-                accesskey="&reloadSelectedTabs.accesskey;"
-                oncommand="gBrowser.reloadMultiSelectedTabs();"/>
->>>>>>> origin/upstream-releases
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuitem id="context_toggleMuteSelectedTabs" hidden="true"
                 oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
@@ -155,14 +151,8 @@ xmlns="http://www.w3.org/1999/xhtml"
       <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
-<<<<<<< HEAD
-                oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
-#if 0
-||||||| merged common ancestors
-                oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
-=======
                 oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
->>>>>>> origin/upstream-releases
+#if 0
       <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
             class="sync-ui-item"
@@ -370,38 +360,14 @@ xmlns="http://www.w3.org/1999/xhtml"
                      label="&historyButton.label;"
                      class="subviewbutton subviewbutton-iconic"
                      key="key_gotoHistory"
-<<<<<<< HEAD
-                     observes="viewHistorySidebar"
-                     oncommand="SidebarUI.show('viewHistorySidebar');">
-        <observes element="viewHistorySidebar" attribute="checked"/>
-      </toolbarbutton>
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-                     observes="viewHistorySidebar"
-                     oncommand="SidebarUI.show('viewHistorySidebar');">
-        <observes element="viewHistorySidebar" attribute="checked"/>
-      </toolbarbutton>
-=======
                      oncommand="SidebarUI.show('viewHistorySidebar');"/>
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
       <toolbarbutton id="sidebar-switcher-tabs"
                      type="checkbox"
                      label="&syncedTabs.sidebar.label;"
                      class="subviewbutton subviewbutton-iconic sync-ui-item"
-<<<<<<< HEAD
-                     observes="viewTabsSidebar"
-                     oncommand="SidebarUI.show('viewTabsSidebar');">
-        <observes element="viewTabsSidebar" attribute="checked"/>
-      </toolbarbutton>
-#endif
-||||||| merged common ancestors
-                     observes="viewTabsSidebar"
-                     oncommand="SidebarUI.show('viewTabsSidebar');">
-        <observes element="viewTabsSidebar" attribute="checked"/>
-      </toolbarbutton>
-=======
                      oncommand="SidebarUI.show('viewTabsSidebar');"/>
->>>>>>> origin/upstream-releases
+#endif
       <toolbarseparator/>
       <!-- Extension toolbarbuttons go here. -->
       <toolbarseparator id="sidebar-extensions-separator"/>

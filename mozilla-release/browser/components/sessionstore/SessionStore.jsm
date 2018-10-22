@@ -2450,24 +2450,12 @@ var SessionStoreInternal = {
     // Cliqz. DB-919: Added aTab.private param into addTab so that new tab will be private
     // if it's duplicated from a private tab
     let userContextId = aTab.getAttribute("usercontextid");
-<<<<<<< HEAD
-    let newTab = aTab == aWindow.gBrowser.selectedTab ?
-      aWindow.gBrowser.addTab(null,
-        {relatedToCurrent: true, ownerTab: aTab, userContextId, private: aTab.private}) :
-      aWindow.gBrowser.addTab(null,
-        {userContextId, private: aTab.private});
-||||||| merged common ancestors
-    let newTab = aTab == aWindow.gBrowser.selectedTab ?
-      aWindow.gBrowser.addTab(null, {relatedToCurrent: true, ownerTab: aTab, userContextId}) :
-      aWindow.gBrowser.addTab(null, {userContextId});
-=======
 
     let tabOptions = {
       userContextId,
-      ...(aTab == aWindow.gBrowser.selectedTab ? {relatedToCurrent: true, ownerTab: aTab} : {}),
+      ...(aTab == aWindow.gBrowser.selectedTab ? {relatedToCurrent: true, ownerTab: aTab, private: aTab.private} : {private: aTab.private}),
     };
     let newTab = aWindow.gBrowser.addTrustedTab(null, tabOptions);
->>>>>>> origin/upstream-releases
 
     // Start the throbber to pretend we're doing something while actually
     // waiting for data from the frame script.
@@ -3159,19 +3147,9 @@ var SessionStoreInternal = {
     let homePages = ["about:blank"];
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
-<<<<<<< HEAD
     let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
     if (addFreshTab)
-      homePages = homePages.concat(aWindow.gHomeButton.getHomePage().split("|"));
-||||||| merged common ancestors
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
-      homePages = homePages.concat(aWindow.gHomeButton.getHomePage().split("|"));
-=======
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
       homePages = homePages.concat(HomePage.get().split("|"));
->>>>>>> origin/upstream-releases
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
       let tab = tabbrowser.tabs[i];

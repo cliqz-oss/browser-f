@@ -1503,16 +1503,7 @@ DebuggerProgressListener.prototype = {
     // Add the docshell to the watched set. We're actually adding the window,
     // because docShell objects are not wrappercached and would be rejected
     // by the WeakSet.
-<<<<<<< HEAD
-
-    const docShellWindow = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIDOMWindow);
-||||||| merged common ancestors
-    const docShellWindow = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                                 .getInterface(Ci.nsIDOMWindow);
-=======
     const docShellWindow = docShell.domWindow;
->>>>>>> origin/upstream-releases
     this._watchedDocShells.add(docShellWindow);
 
     const webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)

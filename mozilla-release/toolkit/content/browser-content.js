@@ -9,12 +9,8 @@
 
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-<<<<<<< HEAD
 ChromeUtils.import("resource:///modules/AutoForgetTabsMonitor.jsm");
-||||||| merged common ancestors
-=======
 ChromeUtils.import("resource://gre/modules/ActorManagerChild.jsm");
->>>>>>> origin/upstream-releases
 
 ActorManagerChild.attach(this);
 
@@ -29,26 +25,9 @@ XPCOMUtils.defineLazyServiceGetter(this, "formFill",
 
 var global = this;
 
-<<<<<<< HEAD
 var aftMon = new AutoForgetTabsMonitor(docShell, global);
 addEventListener("unload", () => { aftMon.shutdown(); });
 
-// Lazily load the finder code
-addMessageListener("Finder:Initialize", function() {
-  let {RemoteFinderListener} = ChromeUtils.import("resource://gre/modules/RemoteFinder.jsm", {});
-  new RemoteFinderListener(global);
-});
-
-||||||| merged common ancestors
-
-// Lazily load the finder code
-addMessageListener("Finder:Initialize", function() {
-  let {RemoteFinderListener} = ChromeUtils.import("resource://gre/modules/RemoteFinder.jsm", {});
-  new RemoteFinderListener(global);
-});
-
-=======
->>>>>>> origin/upstream-releases
 var AutoScrollListener = {
   handleEvent(event) {
     if (event.isTrusted &

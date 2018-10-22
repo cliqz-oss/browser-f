@@ -589,23 +589,11 @@ class AddonInternal {
     }
 
     if (this.inDatabase) {
-<<<<<<< HEAD
       /* In CLIQZ we need to be able to userDisable system addons like HTTPSEverywhere
-      // hidden and system add-ons should not be user disabled,
-      // as there is no UI to re-enable them.
-      if (this.hidden) {
-        throw new Error(`Cannot disable hidden add-on ${this.id}`);
-||||||| merged common ancestors
-      // hidden and system add-ons should not be user disabled,
-      // as there is no UI to re-enable them.
-      if (this.hidden) {
-        throw new Error(`Cannot disable hidden add-on ${this.id}`);
-=======
       // System add-ons should not be user disabled, as there is no UI to
       // re-enable them.
       if (this.location.isSystem) {
         throw new Error(`Cannot disable system add-on ${this.id}`);
->>>>>>> origin/upstream-releases
       }
       */
       await XPIDatabase.updateAddonDisabledState(this, val);

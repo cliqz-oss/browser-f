@@ -26,7 +26,7 @@
  *
  * Always Resume
  * This service will always resume the session if the integer pref
- * browser.startup.page is set to 3.
+ * browser.startup.restoreTabs is set to true.
  */
 
 var EXPORTED_SYMBOLS = ["SessionStartup"];
@@ -50,9 +50,6 @@ const TYPE_NO_SESSION = 0;
 const TYPE_RECOVER_SESSION = 1;
 const TYPE_RESUME_SESSION = 2;
 const TYPE_DEFER_SESSION = 3;
-
-// 'browser.startup.page' preference value to resume the previous session.
-const BROWSER_STARTUP_RESUME_SESSION = 3;
 
 function warning(aMsg, aException) {
   let consoleMsg = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
@@ -118,7 +115,7 @@ var SessionStartup = {
 
     this._resumeSessionEnabled =
       Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-      Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
+      Services.prefs.getBoolPref("browser.startup.restoreTabs");
 
     SessionFile.read().then(
       this._onSessionFileRead.bind(this),
@@ -298,7 +295,7 @@ var SessionStartup = {
     }
 
     return Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-           Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
+           Services.prefs.getBoolPref("browser.startup.restoreTabs");
   },
 
   /**
@@ -308,6 +305,14 @@ var SessionStartup = {
   _willRestore() {
     return this._sessionType == this.RECOVER_SESSION ||
            this._sessionType == this.RESUME_SESSION;
+  },
+
+  _willRestoreCliqz() {
+    //     Either we'll show a recovery page
+    return this._sessionType == Ci.nsISessionStartup.RECOVER_SESSION ||
+    //        Or just previously open tabs (without start pages)
+              (this._sessionType == Ci.nsISessionStartup.RESUME_SESSION &&
+               !Services.prefs.getBoolPref("browser.startup.addFreshTab"));
   },
 
   /**
@@ -336,7 +341,7 @@ var SessionStartup = {
       this.onceInitialized.then(() => {
         // If there are valid windows with not only pinned tabs, signal that we
         // will override the default homepage by restoring a session.
-        resolve(this._willRestore() &&
+        resolve(this._willRestoreCliqz() &&
                 this._initialState &&
                 this._initialState.windows &&
                 this._initialState.windows.some(w => w.tabs.some(t => !t.pinned)));

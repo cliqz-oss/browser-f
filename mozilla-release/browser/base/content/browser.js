@@ -390,22 +390,15 @@ var gInitialPages = [
   "about:privatebrowsing",
   "about:welcomeback",
   "about:sessionrestore",
-<<<<<<< HEAD
   "resource://cliqz/freshtab/home.html",
   "about:cliqz",
-  "about:welcome"
-||||||| merged common ancestors
-  "about:welcome"
-=======
   "about:welcome",
->>>>>>> origin/upstream-releases
 ];
 
 function isInitialPage(url) {
   return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
 }
 
-<<<<<<< HEAD
 var gCliqzPages = [
   "resource://cliqz/freshtab/home.html",
   "chrome://cliqz/content/onboarding-v3/index.html"
@@ -415,35 +408,8 @@ function isCliqzPage(url) {
   return gCliqzPages.includes(url);
 }
 
-function* browserWindows() {
-  let windows = Services.wm.getEnumerator("navigator:browser");
-  while (windows.hasMoreElements())
-    yield windows.getNext();
-}
-
-/**
-* We can avoid adding multiple load event listeners and save some time by adding
-* one listener that calls all real handlers.
-*/
-function pageShowEventHandlers(persisted) {
-  XULBrowserWindow.asyncUpdateUI();
-||||||| merged common ancestors
-function* browserWindows() {
-  let windows = Services.wm.getEnumerator("navigator:browser");
-  while (windows.hasMoreElements())
-    yield windows.getNext();
-}
-
-/**
-* We can avoid adding multiple load event listeners and save some time by adding
-* one listener that calls all real handlers.
-*/
-function pageShowEventHandlers(persisted) {
-  XULBrowserWindow.asyncUpdateUI();
-=======
 function browserWindows() {
   return Services.wm.getEnumerator("navigator:browser");
->>>>>>> origin/upstream-releases
 }
 
 function UpdateBackForwardCommands(aWebNavigation) {
@@ -1421,15 +1387,9 @@ var gBrowserInit = {
     LanguageDetectionListener.init();
     BrowserOnClick.init();
     FeedHandler.init();
-<<<<<<< HEAD
 #if 0
-    TrackingProtection.init();
-#endif
-||||||| merged common ancestors
-    TrackingProtection.init();
-=======
     ContentBlocking.init();
->>>>>>> origin/upstream-releases
+#endif
     CaptivePortalWatcher.init();
     ZoomUI.init(window);
 
@@ -2006,19 +1966,11 @@ var gBrowserInit = {
     BrowserOnClick.uninit();
 
     FeedHandler.uninit();
-<<<<<<< HEAD
+
 #if 0
-    TrackingProtection.uninit();
-#endif
-||||||| merged common ancestors
-
-    TrackingProtection.uninit();
-
-=======
-
     ContentBlocking.uninit();
+#endif
 
->>>>>>> origin/upstream-releases
     CaptivePortalWatcher.uninit();
 
     SidebarUI.uninit();
@@ -5139,15 +5091,9 @@ var XULBrowserWindow = {
       uri = Services.uriFixup.createExposableURI(uri);
     } catch (e) {}
     gIdentityHandler.updateIdentity(this._state, uri);
-<<<<<<< HEAD
 #if 0
-    TrackingProtection.onSecurityChange(this._state, aIsSimulated);
-#endif
-||||||| merged common ancestors
-    TrackingProtection.onSecurityChange(this._state, aIsSimulated);
-=======
     ContentBlocking.onSecurityChange(this._state, aWebProgress, aIsSimulated);
->>>>>>> origin/upstream-releases
+#endif
   },
 
   // simulate all change notifications after switching tabs
@@ -7555,20 +7501,6 @@ function checkEmptyPageOrigin(browser = gBrowser.selectedBrowser,
   return ssm.isSystemPrincipal(contentPrincipal);
 }
 
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-function BrowserOpenSyncTabs() {
-  gSync.openSyncedTabsPanel();
-}
-#endif
-
-||||||| merged common ancestors
-function BrowserOpenSyncTabs() {
-  gSync.openSyncedTabsPanel();
-}
-
-=======
->>>>>>> origin/upstream-releases
 function ReportFalseDeceptiveSite() {
   let docURI = gBrowser.selectedBrowser.documentURI;
   let isPhishingPage =
@@ -7946,280 +7878,6 @@ var MenuTouchModeObserver = {
   },
 };
 
-<<<<<<< HEAD
-var TabContextMenu = {
-  contextTab: null,
-  _updateToggleMuteMenuItems(aTab, aConditionFn) {
-    ["muted", "soundplaying"].forEach(attr => {
-      if (!aConditionFn || aConditionFn(attr)) {
-        if (aTab.hasAttribute(attr)) {
-          aTab.toggleMuteMenuItem.setAttribute(attr, "true");
-          aTab.toggleMultiSelectMuteMenuItem.setAttribute(attr, "true");
-        } else {
-          aTab.toggleMuteMenuItem.removeAttribute(attr);
-          aTab.toggleMultiSelectMuteMenuItem.removeAttribute(attr);
-        }
-      }
-    });
-  },
-
-  updateContextMenu: function updateContextMenu(aPopupMenu) {
-    this.contextTab = aPopupMenu.triggerNode.localName == "tab" ?
-                      aPopupMenu.triggerNode : gBrowser.selectedTab;
-    let disabled = gBrowser.tabs.length == 1;
-    let multiselectionContext = this.contextTab.multiselected;
-
-    var menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-multiple");
-    for (let menuItem of menuItems)
-      menuItem.disabled = disabled;
-
-    if (this.contextTab.hasAttribute("customizemode"))
-      document.getElementById("context_openTabInWindow").disabled = true;
-
-    disabled = gBrowser.visibleTabs.length == 1;
-    menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-multiple-visible");
-    for (let menuItem of menuItems)
-      menuItem.disabled = disabled;
-
-    // Session store
-    document.getElementById("context_undoCloseTab").disabled =
-      SessionStore.getClosedTabCount(window) == 0;
-
-    // Only one of pin/unpin should be visible
-    document.getElementById("context_pinTab").hidden = this.contextTab.pinned;
-    document.getElementById("context_unpinTab").hidden = !this.contextTab.pinned;
-
-    // Disable "Close Tabs to the Right" if there are no tabs
-    // following it.
-    document.getElementById("context_closeTabsToTheEnd").disabled =
-      gBrowser.getTabsToTheEndFrom(this.contextTab).length == 0;
-
-    // Disable "Close other Tabs" if there are no unpinned tabs.
-    let unpinnedTabsToClose = gBrowser.visibleTabs.length - gBrowser._numPinnedTabs;
-    if (!this.contextTab.pinned) {
-      unpinnedTabsToClose--;
-    }
-    document.getElementById("context_closeOtherTabs").disabled = unpinnedTabsToClose < 1;
-
-    // Only one of close_tab/close_selected_tabs should be visible
-    document.getElementById("context_closeTab").hidden = multiselectionContext;
-    document.getElementById("context_closeSelectedTabs").hidden = !multiselectionContext;
-
-    // Hide "Bookmark All Tabs" for a pinned tab.  Update its state if visible.
-    let bookmarkAllTabs = document.getElementById("context_bookmarkAllTabs");
-    bookmarkAllTabs.hidden = this.contextTab.pinned;
-    if (!bookmarkAllTabs.hidden)
-      PlacesCommandHook.updateBookmarkAllTabsCommand();
-
-    let toggleMute = document.getElementById("context_toggleMuteTab");
-    let toggleMultiSelectMute = document.getElementById("context_toggleMuteSelectedTabs");
-
-    // Only one of mute_unmute_tab/mute_unmute_selected_tabs should be visible
-    toggleMute.hidden = multiselectionContext;
-    toggleMultiSelectMute.hidden = !multiselectionContext;
-
-    // Adjust the state of the toggle mute menu item.
-    if (this.contextTab.hasAttribute("activemedia-blocked")) {
-      toggleMute.label = gNavigatorBundle.getString("playTab.label");
-      toggleMute.accessKey = gNavigatorBundle.getString("playTab.accesskey");
-    } else if (this.contextTab.hasAttribute("muted")) {
-      toggleMute.label = gNavigatorBundle.getString("unmuteTab.label");
-      toggleMute.accessKey = gNavigatorBundle.getString("unmuteTab.accesskey");
-    } else {
-      toggleMute.label = gNavigatorBundle.getString("muteTab.label");
-      toggleMute.accessKey = gNavigatorBundle.getString("muteTab.accesskey");
-    }
-
-    // Adjust the state of the toggle mute menu item for multi-selected tabs.
-    if (this.contextTab.hasAttribute("activemedia-blocked")) {
-      toggleMultiSelectMute.label = gNavigatorBundle.getString("playTabs.label");
-      toggleMultiSelectMute.accessKey = gNavigatorBundle.getString("playTabs.accesskey");
-    } else if (this.contextTab.hasAttribute("muted")) {
-      toggleMultiSelectMute.label = gNavigatorBundle.getString("unmuteSelectedTabs.label");
-      toggleMultiSelectMute.accessKey = gNavigatorBundle.getString("unmuteSelectedTabs.accesskey");
-    } else {
-      toggleMultiSelectMute.label = gNavigatorBundle.getString("muteSelectedTabs.label");
-      toggleMultiSelectMute.accessKey = gNavigatorBundle.getString("muteSelectedTabs.accesskey");
-    }
-
-    this.contextTab.toggleMuteMenuItem = toggleMute;
-    this.contextTab.toggleMultiSelectMuteMenuItem = toggleMultiSelectMute;
-    this._updateToggleMuteMenuItems(this.contextTab);
-
-#if CQZ_AUTO_PRIVATE_TAB
-    // Privateness related menu items.
-    const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-    const tabIsPrivate = this.contextTab.private;
-    const togglePrivateItem = document.getElementById("context_togglePrivate");
-    togglePrivateItem.hidden = windowIsPrivate;
-    togglePrivateItem.label =
-        gNavigatorBundle.getString(
-            tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
-                         : "apt.tabContext.reloadInForgetMode");
-    const addExceptionItem =
-        document.getElementById("context_togglePrivateAndRememberDomain");
-    addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
-    addExceptionItem.label =
-        gNavigatorBundle.getString(
-            tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
-                         : "apt.tabContext.alwaysInForgetMode");
-#endif
-
-    this.contextTab.addEventListener("TabAttrModified", this);
-    aPopupMenu.addEventListener("popuphiding", this);
-
-#ifdef MOZ_SERVICES_SYNC
-    gSync.updateTabContextMenu(aPopupMenu, this.contextTab);
-#endif
-
-    updateTabMenuUserContextUIVisibility("context_reopenInContainer");
-  },
-
-#if CQZ_AUTO_PRIVATE_TAB
-  togglePrivateMode: function(rememberDomain) {
-    autoForgetTabs.toggleBrowserPrivateMode(
-        this.contextTab.linkedBrowser, rememberDomain);
-  },
-#endif
-
-  handleEvent(aEvent) {
-    switch (aEvent.type) {
-      case "popuphiding":
-        gBrowser.removeEventListener("TabAttrModified", this);
-        aEvent.target.removeEventListener("popuphiding", this);
-        break;
-      case "TabAttrModified":
-        let tab = aEvent.target;
-        this._updateToggleMuteMenuItems(tab,
-          attr => aEvent.detail.changed.includes(attr));
-        break;
-    }
-  }
-};
-
-||||||| merged common ancestors
-var TabContextMenu = {
-  contextTab: null,
-  _updateToggleMuteMenuItems(aTab, aConditionFn) {
-    ["muted", "soundplaying"].forEach(attr => {
-      if (!aConditionFn || aConditionFn(attr)) {
-        if (aTab.hasAttribute(attr)) {
-          aTab.toggleMuteMenuItem.setAttribute(attr, "true");
-          aTab.toggleMultiSelectMuteMenuItem.setAttribute(attr, "true");
-        } else {
-          aTab.toggleMuteMenuItem.removeAttribute(attr);
-          aTab.toggleMultiSelectMuteMenuItem.removeAttribute(attr);
-        }
-      }
-    });
-  },
-  updateContextMenu: function updateContextMenu(aPopupMenu) {
-    this.contextTab = aPopupMenu.triggerNode.localName == "tab" ?
-                      aPopupMenu.triggerNode : gBrowser.selectedTab;
-    let disabled = gBrowser.tabs.length == 1;
-    let multiselectionContext = this.contextTab.multiselected;
-
-    var menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-multiple");
-    for (let menuItem of menuItems)
-      menuItem.disabled = disabled;
-
-    if (this.contextTab.hasAttribute("customizemode"))
-      document.getElementById("context_openTabInWindow").disabled = true;
-
-    disabled = gBrowser.visibleTabs.length == 1;
-    menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-multiple-visible");
-    for (let menuItem of menuItems)
-      menuItem.disabled = disabled;
-
-    // Session store
-    document.getElementById("context_undoCloseTab").disabled =
-      SessionStore.getClosedTabCount(window) == 0;
-
-    // Only one of pin/unpin should be visible
-    document.getElementById("context_pinTab").hidden = this.contextTab.pinned;
-    document.getElementById("context_unpinTab").hidden = !this.contextTab.pinned;
-
-    // Disable "Close Tabs to the Right" if there are no tabs
-    // following it.
-    document.getElementById("context_closeTabsToTheEnd").disabled =
-      gBrowser.getTabsToTheEndFrom(this.contextTab).length == 0;
-
-    // Disable "Close other Tabs" if there are no unpinned tabs.
-    let unpinnedTabsToClose = gBrowser.visibleTabs.length - gBrowser._numPinnedTabs;
-    if (!this.contextTab.pinned) {
-      unpinnedTabsToClose--;
-    }
-    document.getElementById("context_closeOtherTabs").disabled = unpinnedTabsToClose < 1;
-
-    // Only one of close_tab/close_selected_tabs should be visible
-    document.getElementById("context_closeTab").hidden = multiselectionContext;
-    document.getElementById("context_closeSelectedTabs").hidden = !multiselectionContext;
-
-    // Hide "Bookmark All Tabs" for a pinned tab.  Update its state if visible.
-    let bookmarkAllTabs = document.getElementById("context_bookmarkAllTabs");
-    bookmarkAllTabs.hidden = this.contextTab.pinned;
-    if (!bookmarkAllTabs.hidden)
-      PlacesCommandHook.updateBookmarkAllTabsCommand();
-
-    let toggleMute = document.getElementById("context_toggleMuteTab");
-    let toggleMultiSelectMute = document.getElementById("context_toggleMuteSelectedTabs");
-
-    // Only one of mute_unmute_tab/mute_unmute_selected_tabs should be visible
-    toggleMute.hidden = multiselectionContext;
-    toggleMultiSelectMute.hidden = !multiselectionContext;
-
-    // Adjust the state of the toggle mute menu item.
-    if (this.contextTab.hasAttribute("activemedia-blocked")) {
-      toggleMute.label = gNavigatorBundle.getString("playTab.label");
-      toggleMute.accessKey = gNavigatorBundle.getString("playTab.accesskey");
-    } else if (this.contextTab.hasAttribute("muted")) {
-      toggleMute.label = gNavigatorBundle.getString("unmuteTab.label");
-      toggleMute.accessKey = gNavigatorBundle.getString("unmuteTab.accesskey");
-    } else {
-      toggleMute.label = gNavigatorBundle.getString("muteTab.label");
-      toggleMute.accessKey = gNavigatorBundle.getString("muteTab.accesskey");
-    }
-
-    // Adjust the state of the toggle mute menu item for multi-selected tabs.
-    if (this.contextTab.hasAttribute("activemedia-blocked")) {
-      toggleMultiSelectMute.label = gNavigatorBundle.getString("playTabs.label");
-      toggleMultiSelectMute.accessKey = gNavigatorBundle.getString("playTabs.accesskey");
-    } else if (this.contextTab.hasAttribute("muted")) {
-      toggleMultiSelectMute.label = gNavigatorBundle.getString("unmuteSelectedTabs.label");
-      toggleMultiSelectMute.accessKey = gNavigatorBundle.getString("unmuteSelectedTabs.accesskey");
-    } else {
-      toggleMultiSelectMute.label = gNavigatorBundle.getString("muteSelectedTabs.label");
-      toggleMultiSelectMute.accessKey = gNavigatorBundle.getString("muteSelectedTabs.accesskey");
-    }
-
-    this.contextTab.toggleMuteMenuItem = toggleMute;
-    this.contextTab.toggleMultiSelectMuteMenuItem = toggleMultiSelectMute;
-    this._updateToggleMuteMenuItems(this.contextTab);
-
-    this.contextTab.addEventListener("TabAttrModified", this);
-    aPopupMenu.addEventListener("popuphiding", this);
-
-    gSync.updateTabContextMenu(aPopupMenu, this.contextTab);
-
-    updateTabMenuUserContextUIVisibility("context_reopenInContainer");
-  },
-  handleEvent(aEvent) {
-    switch (aEvent.type) {
-      case "popuphiding":
-        gBrowser.removeEventListener("TabAttrModified", this);
-        aEvent.target.removeEventListener("popuphiding", this);
-        break;
-      case "TabAttrModified":
-        let tab = aEvent.target;
-        this._updateToggleMuteMenuItems(tab,
-          attr => aEvent.detail.changed.includes(attr));
-        break;
-    }
-  }
-};
-
-=======
->>>>>>> origin/upstream-releases
 // Prompt user to restart the browser in safe mode
 function safeModeRestart() {
   if (Services.appinfo.inSafeMode) {

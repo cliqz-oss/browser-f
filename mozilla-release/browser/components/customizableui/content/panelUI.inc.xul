@@ -222,14 +222,8 @@
                          enabled="false"
                          oncommand="ContentBlocking.onGlobalToggleCommand();" />
         </toolbaritem>
-<<<<<<< HEAD
 #endif
-        <toolbarseparator />
-||||||| merged common ancestors
-        <toolbarseparator />
-=======
         <toolbarseparator id="appMenu-tp-separator"/>
->>>>>>> origin/upstream-releases
         <toolbarbutton id="appMenu-new-window-button"
                        class="subviewbutton subviewbutton-iconic"
                        label="&newNavigatorCmd.label;"

@@ -506,7 +506,6 @@ button > hbox > label {
   margin-bottom: 0;
 }
 
-<<<<<<< HEAD
 .mozilla-support-label-drm {
   margin-top: 0;
   margin-bottom: 0;
@@ -524,13 +523,10 @@ button > hbox > label {
   color: #999;
 }
 
-||||||| merged common ancestors
-=======
 .text-link[disabled="true"] {
   pointer-events: none;
 }
 
->>>>>>> origin/upstream-releases
 #showUpdateHistory {
   margin-inline-start: 0;
 }
@@ -1003,11 +999,8 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 .proxy-port-input {
   width: calc(5ch + 22px); /* 5 chars + 11px padding on both sides */
 }
-<<<<<<< HEAD
 
 %include ./cliqz.home.inc.css
-||||||| merged common ancestors
-=======
 
 #defaultBrowserLanguage {
   margin-inline-start: 0;
@@ -1033,4 +1026,3 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 .add-browser-language {
   margin: 0 4px;
 }
->>>>>>> origin/upstream-releases

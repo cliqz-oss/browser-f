@@ -1273,16 +1273,8 @@ BrowserGlue.prototype = {
         label:     win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.label"),
         accessKey: win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.accesskey"),
         callback() {
-<<<<<<< HEAD
           win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
-        }
-||||||| merged common ancestors
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
-        }
-=======
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
         },
->>>>>>> origin/upstream-releases
       },
     ];
 
@@ -1710,21 +1702,11 @@ BrowserGlue.prototype = {
     // browser.showQuitWarning specifically covers quitting
     // browser.tabs.warnOnClose is the global "warn when closing multiple tabs" pref
 
-<<<<<<< HEAD
     var sessionWillBeRestored =
         Services.prefs.getBoolPref("browser.startup.restoreTabs") ||
         Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-    if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit"))
-||||||| merged common ancestors
-    var sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-    if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit"))
-=======
-    var sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
     if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit") ||
         !Services.prefs.getBoolPref("browser.tabs.warnOnClose"))
->>>>>>> origin/upstream-releases
       return;
 
     let win = BrowserWindowTracker.getTopWindow();
@@ -1735,67 +1717,8 @@ BrowserGlue.prototype = {
       aCancelQuit.data =
         !win.gBrowser.warnAboutClosingTabs(pagecount, win.gBrowser.closingTabsEnum.ALL);
     } else {
-<<<<<<< HEAD
-      let text = quitBundle.formatStringFromName(
-        windowcount == 1 ? "messageNoWindows" : "message", [appName], 1);
-      let flags = prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_0 +
-                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_1 +
-                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_2 +
-                  prompt.BUTTON_POS_0_DEFAULT;
-      choice = prompt.confirmEx(win, quitDialogTitle, text, flags,
-                                quitBundle.GetStringFromName("saveTitle"),
-                                quitBundle.GetStringFromName("cancelTitle"),
-                                quitBundle.GetStringFromName("quitTitle"),
-                                neverAskText, neverAsk);
-    }
-
-    switch (choice) {
-    case 2: // Quit
-      if (neverAsk.value)
-        Services.prefs.setBoolPref("browser.showQuitWarning", false);
-      break;
-    case 1: // Cancel
-      aCancelQuit.QueryInterface(Ci.nsISupportsPRBool);
-      aCancelQuit.data = true;
-      break;
-    case 0: // Save & Quit
-      this._saveSession = true;
-      if (neverAsk.value) {
-        // always save state when shutting down
-        Services.prefs.setBoolPref("browser.startup.restoreTabs", true);
-      }
-      break;
-||||||| merged common ancestors
-      let text = quitBundle.formatStringFromName(
-        windowcount == 1 ? "messageNoWindows" : "message", [appName], 1);
-      let flags = prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_0 +
-                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_1 +
-                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_2 +
-                  prompt.BUTTON_POS_0_DEFAULT;
-      choice = prompt.confirmEx(win, quitDialogTitle, text, flags,
-                                quitBundle.GetStringFromName("saveTitle"),
-                                quitBundle.GetStringFromName("cancelTitle"),
-                                quitBundle.GetStringFromName("quitTitle"),
-                                neverAskText, neverAsk);
-    }
-
-    switch (choice) {
-    case 2: // Quit
-      if (neverAsk.value)
-        Services.prefs.setBoolPref("browser.showQuitWarning", false);
-      break;
-    case 1: // Cancel
-      aCancelQuit.QueryInterface(Ci.nsISupportsPRBool);
-      aCancelQuit.data = true;
-      break;
-    case 0: // Save & Quit
-      this._saveSession = true;
-      if (neverAsk.value) {
-        // always save state when shutting down
-        Services.prefs.setIntPref("browser.startup.page", 3);
-      }
-      break;
-=======
+//        Services.prefs.setBoolPref("browser.startup.restoreTabs", true);
+//        Services.prefs.setIntPref("browser.startup.page", 3);
       // More than 1 window. Compose our own message.
       let tabSubstring = gTabbrowserBundle.GetStringFromName("tabs.closeWarningMultipleWindowsTabSnippet");
       tabSubstring = PluralForm.get(pagecount, tabSubstring).replace(/#1/, pagecount);
@@ -1804,7 +1727,6 @@ BrowserGlue.prototype = {
       windowString = windowString.replace(/%(?:1$)?S/i, tabSubstring);
       aCancelQuit.data =
         !win.gBrowser.warnAboutClosingTabs(pagecount, win.gBrowser.closingTabsEnum.ALL, windowString);
->>>>>>> origin/upstream-releases
     }
   },
 

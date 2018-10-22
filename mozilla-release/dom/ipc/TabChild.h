@@ -23,13 +23,7 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsFrameMessageManager.h"
 #include "nsIPresShell.h"
-<<<<<<< HEAD
 #include "nsIPrivacyTransitionObserver.h"
-#include "nsIScriptObjectPrincipal.h"
-||||||| merged common ancestors
-#include "nsIScriptObjectPrincipal.h"
-=======
->>>>>>> origin/upstream-releases
 #include "nsWeakReference.h"
 #include "nsITabChild.h"
 #include "nsITooltipListener.h"

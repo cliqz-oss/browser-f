@@ -67,21 +67,12 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browsercompsbase'
 
-<<<<<<< HEAD
 EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
     'nsBrowserGlue.js',
 ]
 
-||||||| merged common ancestors
-EXTRA_PP_COMPONENTS += [
-    'BrowserComponents.manifest',
-]
-
-=======
->>>>>>> origin/upstream-releases
 EXTRA_COMPONENTS += [
-    'BrowserComponents.manifest',
     'nsBrowserContentHandler.js',
     'tests/startupRecorder.js',
     'tests/testComponents.manifest',

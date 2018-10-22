@@ -82,6 +82,8 @@ ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./download_windows_artifacts.sh | call %BUILD_SH
 SET RUSTC=c:\build\rustc\bin\rustc
 SET CARGO=c:\build\rustc\bin\cargo
 SET LLVM_CONFIG=c:\build\clang\bin\llvm-config
+SET CBINDGEN=c:\build\cbindgen\cbindgen
+SET NODEJS=c:\build\node\node.exe
 IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
   SET WIN32_REDIST_DIR=c:\build\redist\msvc\x64\
   SET WIN_UCRT_REDIST_DIR=c:\build\redist\ucrt\DLLs\x64\

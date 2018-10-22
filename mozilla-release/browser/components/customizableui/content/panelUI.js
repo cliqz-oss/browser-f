@@ -622,15 +622,7 @@ const PanelUI = {
 
     let helpMenu = document.getElementById("menu_HelpPopup");
     let items = this.getElementsByTagName("vbox")[0];
-<<<<<<< HEAD
     let attrs = ["label", "key", "disabled"];
-    let NSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-||||||| merged common ancestors
-    let attrs = ["oncommand", "onclick", "label", "key", "disabled"];
-    let NSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-=======
-    let attrs = ["oncommand", "onclick", "label", "key", "disabled"];
->>>>>>> origin/upstream-releases
 
     // Remove all buttons from the view
     while (items.firstChild) {

@@ -366,21 +366,8 @@ var gPrivacyPane = {
     this.updateHistoryModePane();
     this.updatePrivacyMicroControls();
     this.initAutoStartPrivateBrowsingReverter();
-<<<<<<< HEAD
-#if 0
-    this._initTrackingProtection();
-    this._initTrackingProtectionPBM();
-    this._initTrackingProtectionExtensionControl();
-#endif
-||||||| merged common ancestors
-    this._initTrackingProtection();
-    this._initTrackingProtectionPBM();
-    this._initTrackingProtectionExtensionControl();
-=======
->>>>>>> origin/upstream-releases
     this._initAutocomplete();
 
-<<<<<<< HEAD
     this._initHttpsEverywhere();
     this._initConsentric();
 #if CQZ_AUTO_PRIVATE_TAB
@@ -389,18 +376,8 @@ var gPrivacyPane = {
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
-    Preferences.get("privacy.sanitize.sanitizeOnShutdown").on("change",
-      gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gPrivacyPane.updatePrivacyMicroControls.bind(gPrivacyPane));
-||||||| merged common ancestors
-    Preferences.get("privacy.sanitize.sanitizeOnShutdown").on("change",
-      gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gPrivacyPane.updatePrivacyMicroControls.bind(gPrivacyPane));
-=======
     /* Initialize Content Blocking / Tracking Protection */
-
+#if 0
     if (contentBlockingUiEnabled) {
       this.initContentBlocking();
     } else {
@@ -413,11 +390,11 @@ var gPrivacyPane = {
 
     this.updateContentBlockingVisibility();
 
->>>>>>> origin/upstream-releases
     Preferences.get("privacy.trackingprotection.enabled").on("change",
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
     Preferences.get("privacy.trackingprotection.pbmode.enabled").on("change",
       gPrivacyPane.trackingProtectionReadPrefs.bind(gPrivacyPane));
+#endif
 
     // Watch all of the prefs that the new Cookies & Site Data UI depends on
     Preferences.get("network.cookie.cookieBehavior").on("change",
@@ -426,10 +403,10 @@ var gPrivacyPane = {
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
     Preferences.get("browser.privatebrowsing.autostart").on("change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-
+#if 0
     setEventListener("trackingProtectionExceptions", "command",
       gPrivacyPane.showTrackingProtectionExceptions);
-
+#endif
     Preferences.get("privacy.sanitize.sanitizeOnShutdown").on("change",
       gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
     Preferences.get("browser.privatebrowsing.autostart").on("change",
@@ -462,30 +439,6 @@ var gPrivacyPane = {
       gPrivacyPane.showCookieExceptions);
     setEventListener("clearDataSettings", "command",
       gPrivacyPane.showClearPrivateDataSettings);
-<<<<<<< HEAD
-#if 0
-    setEventListener("disableTrackingProtectionExtension", "command",
-      makeDisableControllingExtension(
-        PREF_SETTING_TYPE, TRACKING_PROTECTION_KEY));
-    setEventListener("trackingProtectionRadioGroup", "command",
-      gPrivacyPane.trackingProtectionWritePrefs);
-    setEventListener("trackingProtectionExceptions", "command",
-      gPrivacyPane.showTrackingProtectionExceptions);
-    setEventListener("changeBlockList", "command",
-      gPrivacyPane.showBlockLists);
-#endif
-||||||| merged common ancestors
-    setEventListener("disableTrackingProtectionExtension", "command",
-      makeDisableControllingExtension(
-        PREF_SETTING_TYPE, TRACKING_PROTECTION_KEY));
-    setEventListener("trackingProtectionRadioGroup", "command",
-      gPrivacyPane.trackingProtectionWritePrefs);
-    setEventListener("trackingProtectionExceptions", "command",
-      gPrivacyPane.showTrackingProtectionExceptions);
-    setEventListener("changeBlockList", "command",
-      gPrivacyPane.showBlockLists);
-=======
->>>>>>> origin/upstream-releases
     setEventListener("passwordExceptions", "command",
       gPrivacyPane.showPasswordExceptions);
     setEventListener("useMasterPassword", "command",
