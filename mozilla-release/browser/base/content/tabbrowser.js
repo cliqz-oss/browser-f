@@ -1347,6 +1347,7 @@ window._gBrowser = {
     var aNextTabParentId;
     var aFocusUrlBar;
     var aName;
+    var aPrivate;
     if (arguments.length == 2 &&
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)) {
@@ -1800,7 +1801,7 @@ window._gBrowser = {
     sameProcessAsFrameLoader,
     uriIsAboutBlank,
     userContextId,
-    privateFlag,
+    private,
   } = {}) {
     let b = document.createXULElement("browser");
     b.permanentKey = {};
@@ -1827,7 +1828,7 @@ window._gBrowser = {
       b.setAttribute("remote", "true");
     }
 
-    if (privateFlag) {
+    if (private) {
       b.setAttribute("mozprivatebrowsing", 1);
     }
 

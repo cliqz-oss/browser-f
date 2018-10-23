@@ -2387,7 +2387,8 @@ function BrowserOpenTab(event) {
 
 #if CQZ_AUTO_PRIVATE_TAB
 function BrowserOpenPrivateTab() {
-  openUILinkIn("about:privatebrowsing", "tab", {private: true});
+  // use openTrustedLinkIn as it adds system principal to triggeringPrincipal by default
+  openTrustedLinkIn("about:privatebrowsing", "tab", {private: true});
   gURLBar.focus();
 }
 #endif
