@@ -580,7 +580,7 @@ nsBrowserContentHandler.prototype = {
         // Calling this.startPage will trigger startPage getter defined below.
         // Services.prefs.getComplexValue will return an object
         // which contains a user predefined homepage url.
-        startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
+        startPage = HomePage.get().replace("about:home", "resource://cliqz/freshtab/home.html");
       } catch (e) {
         Cu.reportError(e);
       }

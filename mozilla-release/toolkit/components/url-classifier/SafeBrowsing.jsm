@@ -76,9 +76,11 @@ var SafeBrowsing = {
       return;
     }
 
+#if 0
     Services.prefs.addObserver("browser.contentblocking.enabled", this);
     Services.prefs.addObserver("browser.safebrowsing", this);
     Services.prefs.addObserver("privacy.trackingprotection", this);
+#endif
     Services.prefs.addObserver("urlclassifier", this);
     Services.prefs.addObserver("plugins.flashBlock.enabled", this);
     Services.prefs.addObserver("plugins.show_infobar", this);
@@ -129,6 +131,8 @@ var SafeBrowsing = {
     for (let i = 0; i < this.passwordAllowLists.length; ++i) {
       this.registerTableWithURLs(this.passwordAllowLists[i]);
     }
+
+#if 0
     for (let i = 0; i < this.trackingAnnotationLists.length; ++i) {
       this.registerTableWithURLs(this.trackingAnnotationLists[i]);
     }
@@ -141,6 +145,8 @@ var SafeBrowsing = {
     for (let i = 0; i < this.trackingProtectionWhitelists.length; ++i) {
       this.registerTableWithURLs(this.trackingProtectionWhitelists[i]);
     }
+#endif
+
     for (let i = 0; i < this.blockedLists.length; ++i) {
       this.registerTableWithURLs(this.blockedLists[i]);
     }
@@ -262,9 +268,11 @@ var SafeBrowsing = {
     this.malwareEnabled = Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled");
     this.downloadsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled");
     this.passwordsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
+#if 0
     this.trackingEnabled = contentBlockingEnabled && (Services.prefs.getBoolPref("privacy.trackingprotection.enabled") || Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
     this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.trackingAnnotations = Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
+#endif
     this.flashBlockEnabled = Services.prefs.getBoolPref("plugins.flashBlock.enabled");
     this.flashInfobarListEnabled = Services.prefs.getBoolPref("plugins.show_infobar", false);
 
@@ -280,10 +288,12 @@ var SafeBrowsing = {
                        this.downloadBlockLists,
                        this.downloadAllowLists,
                        this.passwordAllowLists,
+#if 0
                        this.trackingAnnotationLists,
                        this.trackingAnnotationWhitelists,
                        this.trackingProtectionLists,
                        this.trackingProtectionWhitelists,
+#endif
                        this.blockedLists,
                        this.flashLists,
                        this.flashInfobarLists];
@@ -321,10 +331,12 @@ var SafeBrowsing = {
                       this.downloadBlockLists,
                       this.downloadAllowLists,
                       this.passwordAllowLists,
+#if 0
                       this.trackingAnnotationLists,
                       this.trackingAnnotationWhitelists,
                       this.trackingProtectionLists,
                       this.trackingProtectionWhitelists,
+#endif
                       this.blockedLists,
                       this.flashLists,
                       this.flashInfobarLists];
@@ -464,6 +476,8 @@ var SafeBrowsing = {
         listManager.enableUpdate(this.passwordAllowLists[i]);
       }
     }
+
+#if 0
     for (let i = 0; i < this.trackingAnnotationLists.length; ++i) {
       if (this.trackingAnnotations) {
         listManager.enableUpdate(this.trackingAnnotationLists[i]);
@@ -484,6 +498,8 @@ var SafeBrowsing = {
         listManager.enableUpdate(this.trackingProtectionWhitelists[i]);
       }
     }
+#endif
+
     for (let i = 0; i < this.blockedLists.length; ++i) {
       if (this.blockedEnabled) {
         listManager.enableUpdate(this.blockedLists[i]);
