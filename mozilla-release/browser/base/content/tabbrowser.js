@@ -1800,6 +1800,7 @@ window._gBrowser = {
     sameProcessAsFrameLoader,
     uriIsAboutBlank,
     userContextId,
+    privateFlag,
   } = {}) {
     let b = document.createXULElement("browser");
     b.permanentKey = {};
@@ -1826,7 +1827,7 @@ window._gBrowser = {
       b.setAttribute("remote", "true");
     }
 
-    if (aParams.private) {
+    if (privateFlag) {
       b.setAttribute("mozprivatebrowsing", 1);
     }
 

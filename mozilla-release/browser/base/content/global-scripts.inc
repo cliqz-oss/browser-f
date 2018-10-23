@@ -30,7 +30,6 @@ for (let script of [
   "chrome://browser/content/browser-sidebar.js",
   "chrome://browser/content/browser-siteIdentity.js",
   "chrome://browser/content/browser-tabsintitlebar.js",
-  "chrome://browser/content/browser-trackingprotection.js",
 
   "chrome://global/content/globalOverlay.js",
   "chrome://browser/content/utilityOverlay.js",

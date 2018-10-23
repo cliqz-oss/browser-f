@@ -1515,10 +1515,9 @@
             if (this._pbObserver)
               this._pbObserver._browser = null;
 
-            Components.utils.import('resource://gre/modules/XPCOMUtils.jsm');
             // Set new observer.
             this._pbObserver = {
-              QueryInterface: XPCOMUtils.generateQI([
+              QueryInterface: ChromeUtils.generateQI([
                 Components.interfaces.nsISupportsWeakReference,
                 Components.interfaces.nsIPrivacyTransitionObserver
               ]),

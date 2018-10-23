@@ -119,7 +119,7 @@ class AutoForgetTabsMonitor {
 }
 
 // nsISupports:
-AutoForgetTabsMonitor.prototype.QueryInterface = XPCOMUtils.generateQI([
+AutoForgetTabsMonitor.prototype.QueryInterface = ChromeUtils.generateQI([
     Ci.nsISupports,
     Ci.nsISupportsWeakReference,
     Ci.nsIWebProgressListener,

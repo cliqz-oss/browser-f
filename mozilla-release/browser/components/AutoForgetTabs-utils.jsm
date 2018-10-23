@@ -155,7 +155,7 @@ class RPCResponder {
   }
 }
 // nsISupports:
-RPCResponder.prototype.QueryInterface = XPCOMUtils.generateQI([
+RPCResponder.prototype.QueryInterface = ChromeUtils.generateQI([
     Ci.nsISupports,
 ]);
 
