@@ -78,9 +78,9 @@ var SafeBrowsing = {
 
 #if 0
     Services.prefs.addObserver("browser.contentblocking.enabled", this);
-    Services.prefs.addObserver("browser.safebrowsing", this);
     Services.prefs.addObserver("privacy.trackingprotection", this);
 #endif
+    Services.prefs.addObserver("browser.safebrowsing", this);
     Services.prefs.addObserver("urlclassifier", this);
     Services.prefs.addObserver("plugins.flashBlock.enabled", this);
     Services.prefs.addObserver("plugins.show_infobar", this);
@@ -131,7 +131,6 @@ var SafeBrowsing = {
     for (let i = 0; i < this.passwordAllowLists.length; ++i) {
       this.registerTableWithURLs(this.passwordAllowLists[i]);
     }
-
 #if 0
     for (let i = 0; i < this.trackingAnnotationLists.length; ++i) {
       this.registerTableWithURLs(this.trackingAnnotationLists[i]);
@@ -146,7 +145,6 @@ var SafeBrowsing = {
       this.registerTableWithURLs(this.trackingProtectionWhitelists[i]);
     }
 #endif
-
     for (let i = 0; i < this.blockedLists.length; ++i) {
       this.registerTableWithURLs(this.blockedLists[i]);
     }
@@ -186,10 +184,12 @@ var SafeBrowsing = {
   downloadBlockLists:           [],
   downloadAllowLists:           [],
   passwordAllowLists:           [],
+#if 0
   trackingAnnotationLists:      [],
   trackingAnnotationWhiteLists: [],
   trackingProtectionLists:      [],
   trackingProtectionWhitelists: [],
+#endif
   blockedLists:                 [],
   flashLists:                   [],
   flashInfobarLists:            [],
@@ -270,9 +270,9 @@ var SafeBrowsing = {
     this.passwordsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
 #if 0
     this.trackingEnabled = contentBlockingEnabled && (Services.prefs.getBoolPref("privacy.trackingprotection.enabled") || Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled"));
-    this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.trackingAnnotations = Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
 #endif
+    this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.flashBlockEnabled = Services.prefs.getBoolPref("plugins.flashBlock.enabled");
     this.flashInfobarListEnabled = Services.prefs.getBoolPref("plugins.show_infobar", false);
 
@@ -476,7 +476,6 @@ var SafeBrowsing = {
         listManager.enableUpdate(this.passwordAllowLists[i]);
       }
     }
-
 #if 0
     for (let i = 0; i < this.trackingAnnotationLists.length; ++i) {
       if (this.trackingAnnotations) {
@@ -499,7 +498,6 @@ var SafeBrowsing = {
       }
     }
 #endif
-
     for (let i = 0; i < this.blockedLists.length; ++i) {
       if (this.blockedEnabled) {
         listManager.enableUpdate(this.blockedLists[i]);
