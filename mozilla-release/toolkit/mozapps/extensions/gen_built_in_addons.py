@@ -87,6 +87,10 @@ def main(output, *args):
 
         listing["system"] = [os.path.splitext(it)[0] for it in sorted(features)]
 
+        # Cliqz. Still using another way to generate a SystemAddons list
+        bindir = os.path.join(buildconfig.topobjdir, 'dist/bin')
+        listing["system"] = [os.path.splitext(it)[0] for it in sorted(os.listdir(os.path.join(bindir,
+                                                                      args.featuresdir)))]
     json.dump(listing, output)
 
     return inputs
