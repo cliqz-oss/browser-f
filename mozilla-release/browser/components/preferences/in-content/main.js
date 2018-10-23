@@ -105,7 +105,9 @@ if (AppConstants.MOZ_DEV_EDITION) {
 
 Preferences.addAll([
   // Startup
+#if 0
   { id: "browser.startup.page", type: "int" },
+#endif
   { id: "browser.startup.homepage", type: "wstring" },
 
   { id: "pref.browser.homepage.disable_button.current_page", type: "bool" },
@@ -278,10 +280,12 @@ var gMainPane = {
   // that match that string.
   _visibleTypes: [],
 
+#if 0
   // browser.startup.page values
   STARTUP_PREF_BLANK: 0,
   STARTUP_PREF_HOMEPAGE: 1,
   STARTUP_PREF_RESTORE_SESSION: 3,
+#endif
 
   // Convenience & Performance Shortcuts
 
@@ -401,12 +405,14 @@ var gMainPane = {
     gMainPane.updateBrowserStartupUI = gMainPane.updateBrowserStartupUI.bind(gMainPane);
     Preferences.get("browser.privatebrowsing.autostart").on("change",
       gMainPane.updateBrowserStartupUI);
+#if 0
     Preferences.get("browser.startup.page").on("change",
       gMainPane.updateBrowserStartupUI);
-/*
+#endif
+
     Preferences.get("browser.startup.homepage").on("change",
       gMainPane.updateBrowserStartupUI);
-*/
+
     gMainPane.updateBrowserStartupUI();
 
     if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -1077,6 +1083,7 @@ var gMainPane = {
     this.showConfirmLanguageChangeMessageBar(locales);
   },
 
+#if 0
   onBrowserRestoreSessionChange(event) {
     const value = event.target.checked;
     const startupPref = Preferences.get("browser.startup.page");
@@ -1093,6 +1100,7 @@ var gMainPane = {
     }
     startupPref.value = newValue;
   },
+#endif
 
   // TABS
 

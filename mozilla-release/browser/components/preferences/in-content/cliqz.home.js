@@ -1,9 +1,7 @@
-// browser.startup.page values
 // HOME PAGE
 /*
  * Preferences:
  *
- * browser.startup.page
  * - what page(s) to show when the user starts the application, as an integer:
  *
  *  0: a blank page (DEPRECATED - this can be set via browser.startup.homepage)
@@ -26,14 +24,10 @@ let gHomePane = {
    * */
   onMenuChange(event) {
     const {value} = event.target;
-    const startupPref = Preferences.get("browser.startup.page");
     const homePref = Preferences.get("browser.startup.homepage");
 
     switch (value) {
       case this.HOME_MODE_CLIQZ_HOME:
-        if (startupPref.value === STARTUP_PREF_BLANK) {
-          startupPref.value = STARTUP_PREF_HOMEPAGE;
-        }
         if (homePref.value !== homePref.defaultValue) {
           homePref.value = homePref.defaultValue;
         } else {
@@ -222,8 +216,6 @@ let gHomePane = {
     }
     customSettingsContainerEl.hidden = !shouldShow;
 
-    // We can't use isHomePageDefaultValue and isHomePageBlank here because we want to disregard the blank
-    // possibility triggered by the browser.startup.page being 0.
     let newValue;
     if (homePref.value !== homePref.defaultValue && homePref.value !== ABOUT_BLANK_URL) {
       newValue = homePref.value;
@@ -240,9 +232,8 @@ let gHomePane = {
    * @returns {bool} Is the homepage set to the default pref value?
    */
   _isHomePageDefaultValue() {
-    const startupPref = Preferences.get("browser.startup.page");
     const homePref = Preferences.get("browser.startup.homepage");
-    return startupPref.value !== STARTUP_PREF_BLANK && homePref.value === homePref.defaultValue;
+    return homePref.value === homePref.defaultValue;
   },
 
   /**
@@ -250,9 +241,8 @@ let gHomePane = {
    * @returns {bool} Is the homepage set to about:blank?
    */
   isHomePageBlank() {
-    const startupPref = Preferences.get("browser.startup.page");
     const homePref = Preferences.get("browser.startup.homepage");
-    return homePref.value === ABOUT_BLANK_URL || homePref.value === "" || startupPref.value === STARTUP_PREF_BLANK;
+    return homePref.value === ABOUT_BLANK_URL || homePref.value === "";
   },
 
   init() {

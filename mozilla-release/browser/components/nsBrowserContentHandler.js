@@ -577,7 +577,7 @@ nsBrowserContentHandler.prototype = {
         // to show a page a user whats to be displayed as a default
         // when she/he opens a new window / homepage.
         // That is why we do not test against browser.startup.addFreshTab prop here.
-        // Calling this.startPage will trigger startPage getter defined below.
+        // Calling HomePage.get will trigger a getter defined in resource:///modules/HomePage.jsm.
         // Services.prefs.getComplexValue will return an object
         // which contains a user predefined homepage url.
         startPage = HomePage.get().replace("about:home", "resource://cliqz/freshtab/home.html");

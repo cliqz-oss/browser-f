@@ -553,16 +553,25 @@ var Policies = {
       }
       if (param.Locked) {
         setAndLockPref("browser.startup.homepage", homepages);
+#if 0
+// Since we do not need a browser.startup.page pref;
         setAndLockPref("browser.startup.page", 1);
+#endif
         setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
         setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
         setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
       } else {
         setDefaultPref("browser.startup.homepage", homepages);
+#if 0
+// Since we do not need a browser.startup.page pref;
         setDefaultPref("browser.startup.page", 1);
+#endif
         runOncePerModification("setHomepage", homepages, () => {
           Services.prefs.clearUserPref("browser.startup.homepage");
+#if 0
+// Since we do not need a browser.startup.page pref;
           Services.prefs.clearUserPref("browser.startup.page");
+#endif
         });
       }
     },
