@@ -1280,14 +1280,14 @@ PREF("preferences.allow.omt-write", bool, true)
 VARCACHE_PREF(
   "browser.contentblocking.enabled",
    browser_contentblocking_enabled,
-  bool, true
+  bool, false
 )
 
 // Whether Content Blocking UI has been enabled.
 VARCACHE_PREF(
   "browser.contentblocking.ui.enabled",
    browser_contentblocking_ui_enabled,
-  bool, true
+  bool, false
 )
 
 // Whether Content Blocking Third-Party Cookies UI has been enabled.
@@ -1300,7 +1300,7 @@ VARCACHE_PREF(
 VARCACHE_PREF(
   "browser.contentblocking.allowlist.annotations.enabled",
    browser_contentblocking_allowlist_annotations_enabled,
-  bool, true
+  bool, false
 )
 
 // Whether FastBlock has been enabled.

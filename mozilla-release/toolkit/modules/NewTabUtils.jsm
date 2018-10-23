@@ -1448,6 +1448,7 @@ var ActivityStreamLinks = {
     }
 
     // Add the Pocket items if we need more and want them
+    aOptions.excludePocket = true; // Cliqz. Hardcoded, don't use Pocket
     if (aOptions.numItems - results.length > 0 && !aOptions.excludePocket) {
       const latestSince = ~~(Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0));
       // Invalidate the cache, get new stories, and update timestamps if:

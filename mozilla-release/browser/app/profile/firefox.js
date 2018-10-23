@@ -1511,39 +1511,39 @@ pref("browser.ping-centre.production.endpoint", "");
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
-pref("browser.contentblocking.allowlist.storage.enabled", true);
+pref("browser.contentblocking.allowlist.storage.enabled", false);
 
 #ifdef NIGHTLY_BUILD
-pref("browser.contentblocking.global-toggle.enabled", true);
+pref("browser.contentblocking.global-toggle.enabled", false);
 #else
 pref("browser.contentblocking.global-toggle.enabled", false);
 #endif
 
 // Define a set of default features for the Content Blocking UI
 #ifdef EARLY_BETA_OR_EARLIER
-pref("browser.contentblocking.fastblock.ui.enabled", true);
-pref("browser.contentblocking.fastblock.control-center.ui.enabled", true);
+pref("browser.contentblocking.fastblock.ui.enabled", false);
+pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
 #else
 pref("browser.contentblocking.fastblock.ui.enabled", false);
 pref("browser.contentblocking.fastblock.control-center.ui.enabled", false);
 #endif
 
-pref("browser.contentblocking.trackingprotection.ui.enabled", true);
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.ui.recommended", true);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", true);
-pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", true);
+pref("browser.contentblocking.trackingprotection.ui.enabled", false);
+pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", false);
+pref("browser.contentblocking.rejecttrackers.ui.enabled", false);
+pref("browser.contentblocking.rejecttrackers.ui.recommended", false);
+pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", false);
+pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.recommended", false);
+pref("browser.contentblocking.cookies-site-data.ui.reject-trackers.enabled", false);
 
 // Enable the Report Breakage UI on Nightly and Beta but not on Release yet.
 #ifdef EARLY_BETA_OR_EARLIER
-pref("browser.contentblocking.reportBreakage.enabled", true);
+pref("browser.contentblocking.reportBreakage.enabled", false);
 #else
 pref("browser.contentblocking.reportBreakage.enabled", false);
 #endif
 // Show report breakage for tracking cookies in all channels.
-pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", true);
+pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", false);
 
 pref("browser.contentblocking.reportBreakage.url", "https://tracking-protection-issues.herokuapp.com/new");
 
