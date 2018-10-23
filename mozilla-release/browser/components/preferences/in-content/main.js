@@ -17,6 +17,7 @@ ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource://gre/modules/DownloadUtils.jsm");
 ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm");
 ChromeUtils.import("resource://gre/modules/Localization.jsm");
+ChromeUtils.import("resource:///modules/HomePage.jsm");
 ChromeUtils.defineModuleGetter(this, "CloudStorage",
   "resource://gre/modules/CloudStorage.jsm");
 
@@ -796,7 +797,7 @@ var gMainPane = {
    */
 
   syncFromHomePref() {
-    let homePref = Preferences.get("browser.startup.homepage");
+    let homePref = HomePage.getAsString(true);
 
     // Set the "Use Current Page(s)" button's text and enabled state.
     this._updateUseCurrentButton();
@@ -834,9 +835,8 @@ var gMainPane = {
     // to show the placeholder text (about:home title) rather than
     // exposing those URLs to users.
     let defaultBranch = Services.prefs.getDefaultBranch("");
-    let defaultValue = defaultBranch.getComplexValue("browser.startup.homepage",
-      Ci.nsIPrefLocalizedString).data;
-    let currentValue = homePref.value.toLowerCase();
+    let defaultValue = HomePage.getAsString(true);
+    let currentValue = homePref.toLowerCase();
     if (currentValue == "about:home" ||
       (currentValue == defaultValue && currentValue == "about:newtab")) {
       return "";
@@ -845,7 +845,7 @@ var gMainPane = {
     // If the pref is actually "", show about:blank.  The actual home page
     // loading code treats them the same, and we don't want the placeholder text
     // to be shown.
-    if (homePref.value == "")
+    if (homePref == "")
       return "about:blank";
 
     // Otherwise, show the actual pref value.
@@ -867,7 +867,6 @@ var gMainPane = {
    * window UI to reflect this.
    */
   setHomePageToCurrent() {
-    let homePage = Preferences.get("browser.startup.homepage");
     let tabs = this._getTabsForHomePage();
     function getTabURI(t) {
       return t.linkedBrowser.currentURI.spec;
@@ -875,7 +874,7 @@ var gMainPane = {
 
     // FIXME Bug 244192: using dangerous "|" joiner!
     if (tabs.length) {
-      homePage.value = tabs.map(getTabURI).join("|");
+      HomePage.set(tabs.map(getTabURI).join("|"));
     }
 
     Services.telemetry.scalarAdd("preferences.use_current_page", 1);
@@ -914,10 +913,8 @@ var gMainPane = {
     if (aEvent.detail.button != "accept")
       return;
     if (rv.urls && rv.names) {
-      var homePage = Preferences.get("browser.startup.homepage");
-
       // XXX still using dangerous "|" joiner!
-      homePage.value = rv.urls.join("|");
+      HomePage.set(rv.urls.join("|"));
     }
   },
 
@@ -975,8 +972,7 @@ var gMainPane = {
    * Restores the default home page as the user's home page.
    */
   restoreDefaultHomePage() {
-    var homePage = Preferences.get("browser.startup.homepage");
-    homePage.value = homePage.defaultValue;
+    HomePage.set(HomePage.getAsString(true));
   },
 
   /**
@@ -1092,7 +1088,7 @@ var gMainPane = {
     if (value) {
       // We need to restore the blank homepage setting in our other pref
       if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        Preferences.get("browser.startup.homepage").value = "about:blank";
+        HomePage.set('about:blank');
       }
       newValue = this.STARTUP_PREF_RESTORE_SESSION;
     } else {

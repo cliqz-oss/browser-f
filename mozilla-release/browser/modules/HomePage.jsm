@@ -47,6 +47,16 @@ let HomePage = {
     return getHomepagePref();
   },
 
+  getAsString(isDefault) {
+    const res = isDefault === true ? this.getDefault() : this.get();
+
+    if (typeof res === 'string') {
+      return res;
+    }
+
+    return res.value;
+  },
+
   getDefault() {
     return getHomepagePref(true);
   },
